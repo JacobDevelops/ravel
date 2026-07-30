@@ -29,8 +29,9 @@ and a valuable secondary result.
    Ravel-pack performance pair only after the complete pack exists.
 2. **Ravel is a new loader.** NeoForge is a requirements reference, not an
    implementation, API, runtime dependency, or compatibility host.
-3. **Rust mods are first-class packages.** Users install precompiled Rust mods;
-   mod authors do not also write Java wrappers.
+3. **Rust mods are first-class packages.** A mod is a Rust package and mod authors
+   do not also write Java wrappers. How a package reaches a player's install is
+   an open question, not a principle: see §3.4.
 4. **Keep official Minecraft while it works.** Replacing the client is not part
    of the committed scope. Failure to meet the performance target triggers a
    new architecture decision, not an automatic native-client project.
@@ -81,6 +82,27 @@ and a valuable secondary result.
 - Audited dependencies may encapsulate the unavoidable unsafe operations
   required for JNI, JVMTI, native loading, operating-system integration, or
   equivalent boundaries.
+- **No maintained crate holds unsafe code, and no exception exists.** M1 set out to
+  admit one — the symbol the JVM resolves has to be exported under a fixed name,
+  and an exported symbol looked like a declaration no dependency could hold. The
+  M1-W8 review refuted that: the pinned `jni` 0.22.4 provides
+  `#[jni::jni_mangle("class", "method")]`, which emits the export, and a crate
+  keeping `#![forbid(unsafe_code)]` verbatim compiles and exports the mangled
+  symbol. Verified by building it and reading the symbol table, and recorded in
+  [ADG-1](docs/decisions/adg-1-jvm-entry.md). Because the attribute takes string
+  literals, the binding generator emits it, so the declaration is generated.
+- Admitting an exception in future takes an accepted ADR and an independent review,
+  and the bar is the one M1 failed to clear: show that no audited dependency can
+  hold the operation. "No dependency we looked at" is not that.
+- Whether a macro-emitted unsafe attribute counts as encapsulation or as a lint
+  bypass is a fair question, and the answer this repository takes is that it counts:
+  the unsafety is authored and audited in the dependency, Ravel's source contains no
+  `unsafe`, and the property is stronger than an exception plus a local `expect`,
+  which would put an unsafe-permitting attribute in Ravel's own source. If that
+  reasoning is ever rejected, the fallback is an exception, not a silent
+  relaxation — and `ravel-verify-scaffold` currently fails any `allow` or `expect`
+  of `unsafe_code` under `crates/`, so the fallback needs a tooling change and
+  cannot be taken by accident.
 - Ravel must not quietly weaken this rule. If safe wrappers make the loader
   impossible or prevent it from meeting measured targets, the project pauses
   for an explicit decision.
@@ -88,12 +110,21 @@ and a valuable secondary result.
 
 ### 3.4 Mod packaging
 
-- Users install precompiled mod packages; users do not compile Rust locally.
 - A package may contain target-specific binaries, resources, metadata, and
   schemas.
-- The exact execution and packaging model—native dynamic libraries, process
-  isolation, WebAssembly components, or another mechanism—is an architecture
-  decision, not yet fixed.
+- **The execution and distribution models are both open, and M3 decides them.**
+  ADG-2 measured four bindings and deliberately does not choose between them: the
+  deciding considerations are properties of a loader that does not exist yet, and
+  the gate selected two different mechanisms on the same evidence before that
+  became clear. The measurements are in
+  [`evidence/m1/spikes/adg-2/`](evidence/m1/spikes/adg-2/) and the trade each one
+  makes is in [ADG-2](docs/decisions/adg-2-mod-execution.md).
+- Until M3 decides, this document states no requirement about local compilation,
+  about whether a mod ships as its own binary, or about what a package contains.
+  Anything elsewhere in this repository that assumes a per-target mod binary —
+  including `schemas/package.schema.json`, which requires per-target artifacts and
+  is enforced by the gate — is a recorded assumption inherited from the original
+  draft, not a settled contract.
 - The package model must support at least:
   - stable mod identity and version;
   - Minecraft and Ravel compatibility ranges;
@@ -255,6 +286,12 @@ separately where downloaded files are quarantined. Requiring mod authors to sign
 their own builds would put an Apple Developer enrolment between an author and
 their first release, which conflicts with the reason for shipping precompiled
 mods at all.
+
+This whole passage assumes a per-mod artifact, which §3.4 no longer decides. If
+M3 selects linked mods, the thing needing a signature is a loader binary produced
+per mod set, which means either signing on the installing machine after a local
+link, or signing a binary that contains third-party mod code. Both are larger
+obligations than what follows, and M3 owns reconciling them.
 
 The recorded candidate is therefore for Ravel to ad-hoc sign macOS artifacts on
 the installing machine rather than for authors to sign at build time. Signing
@@ -722,10 +759,10 @@ bytes, allocation behaviour, and Linux packaging.
 
 Compare:
 
+- mods linked into the loader;
 - native dynamic libraries behind a stable generated boundary;
 - WebAssembly component execution;
 - isolated helper processes;
-- static composition for pack builds;
 - other viable mechanisms.
 
 Evaluate memory, call overhead, safe-Rust enforcement, ABI evolution, crash
@@ -1026,8 +1063,9 @@ The initial scope does not include:
 These are intentionally unresolved:
 
 1. Which JVM hook mechanism meets safety and resource constraints?
-2. Which precompiled mod execution/package model best balances memory, ABI
-   stability, and platform support?
+2. How does a Rust mod execute and reach a player — linked into the loader, as its
+   own dynamic library, or otherwise? Measured at M1, decided at M3 against the
+   loader prototype.
 3. How much Minecraft state can remain authoritative in Java without expensive
    boundary traffic?
 4. Can stock Prism launch Ravel without modification?

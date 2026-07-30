@@ -38,15 +38,22 @@ pass `ravel-format`. Report the real output. Never state that a gate passed with
 
 ## Hard rules
 
-- Every maintained crate root carries `#![forbid(unsafe_code)]`, and the workspace denies `clippy::all` and
+- Every maintained crate root carries `#![forbid(unsafe_code)]`, `ravel-bootstrap` included, and no
+  exception exists. The table in
+  [`docs/architecture/safety-boundary.md`](docs/architecture/safety-boundary.md) is empty and adding a row
+  takes an accepted ADR plus an independent review, so assume the answer is no. The workspace denies
+  `clippy::all` and
   `clippy::pedantic`. Fix causes: no `#[allow]`, no `#[ignore]`, no skipped tests, no loosened assertions to
-  reach green. Unsafe operations belong only in audited dependencies behind narrow safe wrappers.
+  reach green. Everywhere else, unsafe operations belong only in audited dependencies behind narrow safe
+  wrappers. Measurement experiments under `experiments/` may hold unsafe and are fenced out of the
+  production graph.
 - Respect the layering in [`docs/architecture/dependency-rules.md`](docs/architecture/dependency-rules.md).
   `ravel-core` depends on no other Ravel crate, the SDK exposes no bootstrap or JVM or version internals, and
   production crates never depend on `ravel-testkit`.
-- The ADG-1 to ADG-6 decisions (JVM entry, Rust execution and ABI, bindings, state ownership, Prism
-  integration, configuration UI) are open. Do not commit code that picks a mechanism before its ADR is
-  accepted. Empty boundary crates are the correct placeholder.
+- ADG-1 to ADG-5 are accepted; read [`docs/decisions/`](docs/decisions/) before writing anything that
+  touches JVM entry, mod execution, bindings, state ownership, or launcher integration, and follow the
+  mechanism the ADR selected. ADG-6 has not started; do not commit code that picks its mechanism, and an
+  empty boundary crate remains the correct placeholder for it.
 - Never track mod JARs, official Minecraft or modpack assets, credentials, private worlds, or raw captures.
   Authorized local material goes in `tests/fixtures/local/`, which is ignored. `ravel-verify-scaffold`
   enforces this and will fail the gate.
@@ -79,7 +86,8 @@ your first commit in a session; it holds the commands and the review loop.
 
 ## Scope
 
-The repository is at the M0 scaffold stage, so most crates are intentionally empty. Implement what the
+The repository is at the M1 architecture stage: the decisions are recorded and measured, and most crates are
+still intentionally empty because M2 is what fills them. Implement what the
 current work package asks and nothing beyond it; the roadmap order is a dependency order. Prefer the standard
 library and dependencies already in `Cargo.lock`. A new dependency needs a reason and has to pass
 `cargo deny check` for advisories, licences, bans, and sources.

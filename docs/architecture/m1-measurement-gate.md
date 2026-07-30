@@ -39,15 +39,25 @@ quality (`exact`, `estimated`, or `unavailable`), and the raw-artifact hash:
 | Area | Required evidence |
 | --- | --- |
 | Identity | ADG, candidate ID, revision, target, Java and Minecraft versions, command hash |
-| Memory | bootstrap peak RSS, post-bootstrap retained RSS, retained class count |
+| Memory | bootstrap peak RSS, retained RSS, retained class count, all sampled at the ready marker before the workload runs |
 | Startup | process-start to game-ready milliseconds and candidate-attributed delta |
-| Calls | invocation count plus p50, p95, and p99 callback nanoseconds |
-| Boundary traffic | bytes transferred per call and total bytes |
+| Calls | invocation count plus p50, p95, and p99 callback nanoseconds, taken over batch totals and divided afterwards |
+| Boundary traffic | bytes transferred per call and total bytes, computed from the measured signature rather than counted by an instrument |
 | Allocation | allocations and allocated bytes per call where the runtime exposes them |
 | Packaging | installed bytes, artifact count, required native/runtime components |
 | Failure | invalid-input, unavailable-runtime, callback-failure, crash, and timeout outcomes |
-| Safety | maintained unsafe-code scan and audited boundary dependency list |
+| Safety | unsafe operations a production implementation would need in maintained crates, and the audited boundary dependency list |
 | Operability | diagnostics, debug workflow, crash attribution, and Prism launch result |
+
+The batching is why a single crossing can be timed at all — one transition costs
+less than a `nanoTime` pair — and it is also the limit of what these percentiles
+mean. A percentile of 64-call totals describes averages of 64, so it suppresses
+dispersion and cannot bound a worst-case crossing. That is adequate for ranking
+candidates, which is what M1 does. It is not adequate for a frame or tick budget,
+so any later gate that sets one has to measure unbatched, record a maximum
+alongside the percentiles, and run long enough for the sample to contain
+collection, safepoint, and scheduler events. M2-W8 is the first gate that needs
+this.
 
 ADG-specific additions remain required:
 
@@ -61,8 +71,15 @@ ADG-specific additions remain required:
 
 ## Failure actions
 
-- Reject a candidate that requires maintained unsafe Rust, another Java mod
-  loader, unredacted credentials, or untracked restricted artifacts.
+- Reject a candidate that requires a maintained unsafe *call*, another Java mod
+  loader, unredacted credentials, or untracked restricted artifacts. No exception
+  is admitted: `SPEC.md` §3.3 records none and the table in
+  [`safety-boundary.md`](safety-boundary.md) is empty, so admitting one would take
+  an accepted amendment plus a row. ADG-1 applied this to reject JVMTI at four
+  unsafe calls and the hosted VM at two. ADG-2's dynamic library needs two and is
+  retained rather than rejected, because M3 decides the execution model and
+  rejecting the only drop-in candidate here would decide it early; the ADR records
+  what selecting it would cost.
 - Reject a candidate that cannot launch the pinned official game, preserve the
   required lifecycle boundary, or fail closed for invalid input and crashes.
 - Mark evidence incomplete when a required metric, unit, collector hash,

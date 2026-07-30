@@ -4,6 +4,20 @@ M1 experiments live here and must use the common benchmark/evidence contract.
 No experiment is a production dependency before its architecture decision is
 accepted.
 
+## The experiments
+
+| Experiment | Gate | What it measures |
+| --- | --- | --- |
+| [`spike-harness`](spike-harness/) | all | the shared measurement contract itself |
+| [`adg-1-jvm-entry`](adg-1-jvm-entry/) | ADG-1 | four ways into the game's JVM, and the cost of a hook callback |
+| [`adg-2-guest`](adg-2-guest/) and [`adg-2-mod-execution`](adg-2-mod-execution/) | ADG-2 | one mod body bound four ways: dynamic library, WebAssembly, helper process, linked in |
+| [`adg-3-bindings`](adg-3-bindings/) | ADG-3 | two readings of the pinned jar, and whether a drifted input is refused |
+| [`adg-4-state`](adg-4-state/) | ADG-4 | one object flow under three owners |
+| [`adg-5-prism`](adg-5-prism/) | ADG-5 | what the pinned launcher can be asked to do, without launching it |
+
+Each one has a task: `devenv tasks run ravel:spike-adg-<n>`. None of them
+authenticates or launches the game.
+
 ## Common contract
 
 [`spike-harness`](spike-harness/) implements the M1-W1 measurement contract from

@@ -396,9 +396,15 @@ that boundary appears, code stays in the nearest existing crate.
 Every maintained crate has `#![forbid(unsafe_code)]` at its root. The workspace
 gate verifies this. JNI, JVMTI, native loading, operating-system calls, and
 generated boundary code must be provided by audited dependencies with safe
-wrappers. If ADG evidence shows that maintained unsafe code is unavoidable,
-implementation stops for a spec amendment; the plan does not pre-create an
-“unsafe escape hatch” crate.
+wrappers.
+
+M1 set out to admit one exception — the exported JNI symbol — and the M1-W8 review
+refuted the premise: `jni` 0.22.4's `jni_mangle` attribute emits the export, and a
+crate keeping `#![forbid(unsafe_code)]` verbatim compiles and exports the mangled
+symbol. No exception is needed and none exists;
+[`safety-boundary.md`](docs/architecture/safety-boundary.md) records an empty list.
+Adding one takes an accepted ADR plus an independent review, and the bar is showing
+that no audited dependency can hold the operation.
 
 ### Version boundary
 
@@ -578,12 +584,12 @@ locking the workspace to an assumed runtime.
 | --- | --- | --- | --- | --- |
 | M1-W1 | Build common spike harness | M0 | shared benchmark protocol and trivial callback workload | every candidate reports the same metric schema |
 | M1-W2 | ADG-1 JVM entry/hook comparison | M1-W1 | candidate code, Linux data, ADR | bootstrap RSS, retained classes, startup, callback, bytes and allocation metrics are measured on Linux; rejection is explicit |
-| M1-W3 | ADG-2 Rust execution/ABI comparison | M1-W1 | dylib/Wasm/process/static evidence as viable, ADR | memory, p50/p95/p99 call cost, crash isolation, packaging, debug and evolution rubric complete |
+| M1-W3 | ADG-2 Rust execution/ABI comparison | M1-W1 | dylib/Wasm/process/static evidence as viable, ADR recording the measurements and the trade each makes | memory, p50/p95/p99 call cost, crash isolation, packaging, debug and evolution rubric complete. The ADR records measurements only: the selection is deferred to M3, because it turns on loader properties M1 cannot observe. |
 | M1-W4 | ADG-3 binding strategy comparison | M1-W2 | extraction/codegen/cache prototype and ADR | a generated 26.1.2 binding is reproducible from pinned inputs and fails on drift |
 | M1-W5 | ADG-4 state-ownership experiment | M1-W2..W4 | representative object-flow benchmark and ADR | duplicated state and boundary traffic are measured under the canonical spike |
 | M1-W6 | ADG-5 Prism integration spike | M0-W6, M1-W2 | stock launch proof or patch estimates and ADR | official Minecraft launches without another mod loader; auth tokens are absent from captures |
 | M1-W7 | Architecture synthesis | M1-W2..W6 | overview and dependency/safety boundary docs | all selected and rejected options trace to Linux evidence |
-| M1-W8 | Independent architecture review | M1-W7 | review record | reviewer confirms safe-Rust feasibility and plausible M9 budget; M1 gate passes |
+| M1-W8 | Independent architecture review | M1-W7 | reviewer, result, and record hash claimed in the M1 manifest; the record itself is held outside the repository | reviewer confirms safe-Rust feasibility, and confirms the per-crossing costs and the rate at which they would become material; M1 gate passes |
 
 No production crate may encode a selected mechanism before its ADR is accepted.
 If safe wrappers cannot support a viable result, work stops for an explicit
@@ -597,7 +603,7 @@ precompiled Rust package.
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
 | M2-W1 | Implement canonical IDs, sides, versions and diagnostics | M1 | `ravel-core` | unit/property tests cover valid and invalid values |
-| M2-W2 | Implement package schema, targets and integrity | M2-W1, ADG-2 | `ravel-package` and JSON schema | valid packages round-trip; tamper, target and schema failures precede code execution |
+| M2-W2 | Implement package schema, targets and integrity | M2-W1 | `ravel-package` and JSON schema | valid packages round-trip; tamper and schema failures precede code execution. Target-specific failure modes wait on ADG-2, which M3 decides, so this package implements identity, integrity and compatibility only. |
 | M2-W3 | Implement dependency resolution and load plans | M2-W2 | `ravel-resolve` | required/optional/incompatible/discouraged, cycles, duplicates, ranges and deterministic-order cases pass |
 | M2-W4 | Implement lifecycle state machine | M2-W1 | loader state machine | every legal and illegal transition plus every spec invariant is tested |
 | M2-W5 | Implement selected bootstrap and adapter shell | M1 ADRs, M2-W4 | bootstrap, host API, shared adapter plus 26.1.2 version data | official 26.1.2 process reaches Ravel without another loader |
@@ -612,6 +618,14 @@ mods on Linux. The target-platform expansion waits until after Linux M10.
 
 Before M3 closes, ADG-6 selects the configuration schema/UI model with a
 standalone original test case.
+
+M3 also closes ADG-2. M1 measured four mod-execution bindings and deliberately
+deferred the choice, because it turns on distribution, hot reload, and what a
+package contains — properties only a working loader exposes. The prototype this
+milestone builds is what makes that decision informed, and it is the last point at
+which the answer is cheap to change. `schemas/package.schema.json` and anything
+else assuming a per-target mod binary is reconciled with whatever ADG-2 selects
+here.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |

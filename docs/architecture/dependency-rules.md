@@ -18,6 +18,15 @@ stable contracts toward concrete host internals.
   harnesses, but production libraries never depend on testkit. Restricted fixtures
   are never package or source dependencies.
 
+- `ravel-bootstrap` is the JVM entry crate. It holds no unsafe code — see
+  [`safety-boundary.md`](safety-boundary.md) — it exposes only safe Rust upward, and no other
+  maintained crate depends on it. The SDK never re-exports it, and a mod cannot
+  reach it.
+- Measurement experiments under `experiments/` are not production crates. No
+  production crate depends on one, and `ravel:verify-scaffold` enforces that.
+
 Architecture-gated crates may exist as empty boundaries before a decision, but
 production code must not select an ADG-1 through ADG-5 mechanism until its ADR
-is accepted.
+is accepted. ADG-1, ADG-3, ADG-4 and ADG-5 are accepted; see
+[`docs/decisions/`](../decisions/). ADG-2 is measured but deferred to M3, so no
+production code may select a mod execution model yet. ADG-6 has not started.

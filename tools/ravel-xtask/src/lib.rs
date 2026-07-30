@@ -80,6 +80,8 @@ const ROOT_FILES: &[&str] = &[
     "devenv.lock",
     "devenv.nix",
     "devenv.yaml",
+    "docs/architecture/m1-measurement-gate.md",
+    "docs/decisions/README.md",
     "docs/runbooks/darwin-verification.md",
     "experiments/README.md",
     "flake.lock",

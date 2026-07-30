@@ -48,3 +48,7 @@ secrets.json
 *.jfr
 *.hprof
 *.trace
+
+# Agent tool local state
+/.claude/settings.local.json
+/.codex/

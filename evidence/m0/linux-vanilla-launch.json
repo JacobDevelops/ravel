@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "native",
+  "workPackage": "M0-W6",
+  "platform": "linux",
+  "architecture": "x86_64",
+  "hardwareProfile": "linux-reference-v1",
+  "workload": "vanilla",
+  "observedAt": "2026-07-30T03:17:42Z",
+  "versions": {
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "java": "25.0.1"
+  },
+  "instance": {
+    "componentSha256": "ea1eaa482d28d5bde4584527e13815b68a8fadc97e8c9248133489be4f720439",
+    "modFileCount": 0,
+    "loaderPresent": false
+  },
+  "launch": {
+    "uiTitleScreenReached": true,
+    "cliTitleScreenReached": true,
+    "freshWorldOpened": true,
+    "returnedToTitleAfterSave": true,
+    "cleanExit": true,
+    "redactedLogSha256": "093337f15aeaae196824149fa9aacb7c967328c55694644952e01586d485f04d"
+  },
+  "freshWorld": {
+    "levelDatSha256": "fe66d43c403f38fc330b416ebfad18dce6744cdbd5c7e270716cd74f5f27b7a4",
+    "worldTreeSha256": "72ff582c003df5bb99ea71ec963cf308af01eec710d375b576de67d71a583375",
+    "worldFileCount": 39
+  },
+  "privateValidationSha256": "7222bff3ad2b8c3dfef8008b00e865b010486ad4e39325812ad727455c3a6300"
+}

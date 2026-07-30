@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ravel:schema:fixture:1",
+  "title": "Ravel restricted fixture descriptor",
+  "description": "Public metadata for reconstructing and verifying an ignored local fixture.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "source", "manifest"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.-]*$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "projectId",
+        "fileId",
+        "pageUrl",
+        "downloadUrl",
+        "termsUrl",
+        "fileName",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "curseforge-client-pack"
+        },
+        "projectId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fileId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pageUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://www\\.curseforge\\.com/"
+        },
+        "downloadUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://mediafilez\\.forgecdn\\.net/"
+        },
+        "termsUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "fileName": {
+          "type": "string",
+          "pattern": "^[^/\\\\]+\\.zip$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry",
+        "sha256",
+        "manifestType",
+        "manifestVersion",
+        "name",
+        "version",
+        "author",
+        "minecraft",
+        "modLoader",
+        "expectedReferenceCount"
+      ],
+      "properties": {
+        "entry": {
+          "const": "manifest.json"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "manifestType": {
+          "const": "minecraftModpack"
+        },
+        "manifestVersion": {
+          "const": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minecraft": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modLoader": {
+          "type": "string",
+          "pattern": "^neoforge-[0-9].+$"
+        },
+        "expectedReferenceCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

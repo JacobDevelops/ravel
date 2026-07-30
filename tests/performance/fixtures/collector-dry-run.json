@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "initial-v1",
+  "captureMode": "dry-run",
+  "synthetic": true,
+  "fixturePurpose": "Schema and collector wiring test only; contains no measured baseline data.",
+  "profile": {
+    "id": "initial",
+    "version": 3,
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "run": {
+    "id": "synthetic-dry-run-1",
+    "repetition": 1,
+    "subject": "synthetic",
+    "workload": "synthetic",
+    "startedAt": "2026-01-01T00:00:00Z",
+    "endedAt": "2026-01-01T00:00:01Z",
+    "monotonicDurationNs": 1000000000
+  },
+  "collector": {
+    "id": "synthetic-collector",
+    "version": "fixture-v1",
+    "platform": "synthetic",
+    "architecture": "synthetic",
+    "commandSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "clock": {
+      "kind": "monotonic",
+      "resolutionNs": 1000000
+    }
+  },
+  "capabilities": [
+    {
+      "metric": "frame-time",
+      "availability": "available",
+      "quality": "exact"
+    },
+    {
+      "metric": "integrated-server-tick-time",
+      "availability": "available",
+      "quality": "exact"
+    },
+    {
+      "metric": "process-rss",
+      "availability": "available",
+      "quality": "exact"
+    },
+    {
+      "metric": "system-used-memory",
+      "availability": "available",
+      "quality": "estimated"
+    },
+    {
+      "metric": "system-memory-pressure",
+      "availability": "available",
+      "quality": "exact"
+    },
+    {
+      "metric": "swap-in-total",
+      "availability": "available",
+      "quality": "exact"
+    },
+    {
+      "metric": "swap-out-total",
+      "availability": "available",
+      "quality": "exact"
+    },
+    {
+      "metric": "gpu-allocation",
+      "availability": "unavailable",
+      "reason": "Synthetic platform exposes no GPU allocation source."
+    }
+  ],
+  "events": [
+    {
+      "kind": "process-start",
+      "elapsedNs": 0
+    },
+    {
+      "kind": "game-ready",
+      "elapsedNs": 50000000
+    },
+    {
+      "kind": "world-load-start",
+      "elapsedNs": 100000000
+    },
+    {
+      "kind": "world-ready",
+      "elapsedNs": 200000000,
+      "dimension": "synthetic:dimension"
+    },
+    {
+      "kind": "warm-up-start",
+      "elapsedNs": 200000000
+    },
+    {
+      "kind": "measurement-start",
+      "elapsedNs": 300000000
+    },
+    {
+      "kind": "route-step-start",
+      "elapsedNs": 300000000,
+      "routeStep": "synthetic-step",
+      "dimension": "synthetic:dimension"
+    },
+    {
+      "kind": "route-step-start",
+      "elapsedNs": 400000000,
+      "routeStep": "synthetic-step-2",
+      "dimension": "synthetic:dimension"
+    },
+    {
+      "kind": "dimension-change-start",
+      "elapsedNs": 500000000,
+      "dimension": "synthetic:dimension-2"
+    },
+    {
+      "kind": "route-step-start",
+      "elapsedNs": 500000000,
+      "routeStep": "synthetic-step-3",
+      "dimension": "synthetic:dimension-2"
+    },
+    {
+      "kind": "dimension-ready",
+      "elapsedNs": 550000000,
+      "dimension": "synthetic:dimension-2"
+    },
+    {
+      "kind": "route-step-start",
+      "elapsedNs": 600000000,
+      "routeStep": "synthetic-step-4",
+      "dimension": "synthetic:dimension-2"
+    },
+    {
+      "kind": "dimension-change-start",
+      "elapsedNs": 700000000,
+      "dimension": "synthetic:dimension"
+    },
+    {
+      "kind": "route-step-start",
+      "elapsedNs": 700000000,
+      "routeStep": "synthetic-step-5",
+      "dimension": "synthetic:dimension"
+    },
+    {
+      "kind": "dimension-ready",
+      "elapsedNs": 750000000,
+      "dimension": "synthetic:dimension"
+    },
+    {
+      "kind": "measurement-end",
+      "elapsedNs": 900000000
+    },
+    {
+      "kind": "process-exit",
+      "elapsedNs": 1000000000
+    }
+  ],
+  "samples": [
+    {
+      "metric": "frame-time",
+      "elapsedNs": 400000000,
+      "phase": "steady-state",
+      "value": 16666667,
+      "unit": "nanoseconds",
+      "quality": "exact",
+      "source": "synthetic clock"
+    },
+    {
+      "metric": "integrated-server-tick-time",
+      "elapsedNs": 400000000,
+      "phase": "steady-state",
+      "value": 10000000,
+      "unit": "nanoseconds",
+      "quality": "exact",
+      "source": "synthetic tick hook"
+    },
+    {
+      "metric": "process-rss",
+      "elapsedNs": 400000000,
+      "phase": "steady-state",
+      "value": 1073741824,
+      "unit": "bytes",
+      "quality": "exact",
+      "source": "synthetic process counter"
+    },
+    {
+      "metric": "system-used-memory",
+      "elapsedNs": 400000000,
+      "phase": "steady-state",
+      "value": 2147483648,
+      "unit": "bytes",
+      "quality": "estimated",
+      "source": "synthetic system counter"
+    },
+    {
+      "metric": "system-memory-pressure",
+      "elapsedNs": 400000000,
+      "phase": "steady-state",
+      "value": 0,
+      "unit": "level",
+      "quality": "exact",
+      "source": "synthetic pressure counter"
+    },
+    {
+      "metric": "swap-in-total",
+      "elapsedNs": 400000000,
+      "phase": "steady-state",
+      "value": 0,
+      "unit": "bytes",
+      "quality": "exact",
+      "source": "synthetic swap counter"
+    },
+    {
+      "metric": "swap-out-total",
+      "elapsedNs": 950000000,
+      "phase": "cool-down",
+      "value": 0,
+      "unit": "bytes",
+      "quality": "exact",
+      "source": "synthetic swap counter"
+    }
+  ]
+}

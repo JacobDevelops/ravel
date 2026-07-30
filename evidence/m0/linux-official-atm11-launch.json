@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "native",
+  "workPackage": "M0-W7",
+  "platform": "linux",
+  "architecture": "x86_64",
+  "hardwareProfile": "linux-reference-v1",
+  "workload": "official-atm11",
+  "observedAt": "2026-07-30T06:57:00Z",
+  "versions": {
+    "minecraft": "26.1.2",
+    "neoforge": "26.1.2.78",
+    "prism": "11.0.3",
+    "fixture": "ATM11 0.2.1",
+    "java": "25.0.1"
+  },
+  "fixture": {
+    "descriptorSha256": "9b067595a5e03eb4b846de539a4e5b0bd5a0ff1f74ea713b66a8f5a6506fa675",
+    "archiveSha256": "c931db298c22643c8bd13c1e452323a34828d9410dad6c8b6002033111ac5d50",
+    "manifestSha256": "7e5ef9696d85279ce669082f019f0f40a95f4012e9c27b1fc572333d0dd5d3ac",
+    "requiredReferenceCount": 235
+  },
+  "instance": {
+    "componentSha256": "aff978c87cad9510d5228ef383ec9523ab6f72aae377d3e23e3dbb61ce79ba4c",
+    "expectedLoader": "neoforge",
+    "expectedLoaderVersion": "26.1.2.78",
+    "unexpectedLoaderPresent": false,
+    "modFileCount": 229,
+    "wrapperKind": "focus-free-supervisor",
+    "wrapperCommandSha256": "7f8bbe2012d5d0a22d17f0ded05391a1dfbeea2e3b90b077f9e8c904e3d5e712"
+  },
+  "launch": {
+    "operatorConfirmedPlayable": true,
+    "focusCaptured": false,
+    "clientReadyEventObserved": true,
+    "integratedServerStarted": true,
+    "saveObserved": true,
+    "serverStopped": true,
+    "allDimensionsSavedAfterStop": true,
+    "lifecycleOrderValid": true,
+    "redactedLifecycleSummarySha256": "23b55c5346516363ce59e8e79f1b6c56c603b8666f2cbf61e94c6886ade03b4b"
+  },
+  "freshWorld": {
+    "levelDatSha256": "47751f332f96b193a97ba1d7f95648081e2fb816800ed6c85c01f60006dabaa3",
+    "worldTreeSha256": "85bf542da6c811d54ea606365a8706ed0d2c8e3b721ff11aba0833560443f30a",
+    "worldFileCount": 355
+  },
+  "privateValidationSha256": "cf8f3836c9e80d5f1beb73ecd3bf6f0c8593724bdb7e3829a502fc4316f48e6e"
+}

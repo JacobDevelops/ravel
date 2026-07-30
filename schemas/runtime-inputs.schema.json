@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ravel:schema:runtime-inputs:1",
+  "title": "Ravel pinned Minecraft and launcher inputs",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "retrievedAt", "minecraft", "prism", "platforms"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "retrievedAt": {
+      "type": "string",
+      "format": "date"
+    },
+    "minecraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "type",
+        "metadata",
+        "minimumLauncherVersion",
+        "assetIndex",
+        "javaComponent",
+        "javaMajorVersion"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "const": "release"
+        },
+        "metadata": {
+          "$ref": "#/$defs/hashedSource"
+        },
+        "minimumLauncherVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "assetIndex": {
+          "type": "string",
+          "minLength": 1
+        },
+        "javaComponent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "javaMajorVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "prism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "releaseUrl", "publishedAt"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "releaseUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://github\\.com/PrismLauncher/"
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "java", "prism"],
+        "properties": {
+          "id": {
+            "enum": ["linux-x86_64", "macos-aarch64"]
+          },
+          "java": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["version", "releasedAt", "manifest"],
+            "properties": {
+              "version": {
+                "type": "string",
+                "minLength": 1
+              },
+              "releasedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "manifest": {
+                "$ref": "#/$defs/hashedSource"
+              }
+            }
+          },
+          "prism": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fileName", "url", "size", "sha256"],
+            "properties": {
+              "fileName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://github\\.com/PrismLauncher/"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "sha256": {
+                "$ref": "#/$defs/sha256"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha1": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hashedSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sha1", "sha256"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "sha1": {
+          "$ref": "#/$defs/sha1"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}

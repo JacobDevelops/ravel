@@ -1,0 +1,39 @@
+schema_version = 1
+profile_id = "macos-constrained-m1-pro-v1"
+platform = "macos"
+architecture = "aarch64"
+native_execution_required = true
+
+[operating_system]
+distribution = "macOS"
+initial_version = "15.4.1"
+
+[processor]
+vendor = "Apple"
+model = "M1 Pro"
+
+[memory]
+physical_bytes = 17179869184
+unified = true
+
+[graphics]
+vendor = "Apple"
+model = "M1 Pro integrated GPU"
+unified_memory = true
+
+[display]
+kind = "built-in"
+width_pixels = 3456
+height_pixels = 2234
+
+[capture_controls]
+power_source = "mains"
+low_power_mode = false
+virtual_machine_allowed = false
+architecture_translation_allowed = false
+record_os_build = true
+record_thermal_state = true
+record_memory_pressure = true
+record_swap_counters = true
+record_free_storage_bytes = true
+record_background_process_policy = true

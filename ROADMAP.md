@@ -11,8 +11,9 @@ Ravel enables a player to run a complete, precompiled Rust modpack inside
 official Minecraft: Java Edition, initially for Minecraft 26.1.2, without
 another Java mod loader. Initial completion means that the separate private
 ATM11-equivalent pack passes its automated compatibility suites, meets the
-constrained M1 Pro performance contract, and completes the pinned progression
-path in a fresh Ravel world.
+Linux performance contract, and completes the pinned progression path in a
+fresh Ravel world. Apple Silicon support is a separate phase after that complete
+Linux result.
 
 The public `ravel` repository owns the reusable loader, SDK, package contracts,
 tooling, unrestricted test mods, and sanitized evidence. Rights-sensitive
@@ -64,13 +65,15 @@ unit-testable state-machine rule and an integration-testable process outcome.
 
 ### Initial-completion boundary
 
-M0 through M10 are required for initial completion. M11 is a later
-interoperability release. M12 requires a new capability amendment. M13 is
-post-initial publication and registry work.
+M0 through M10 are required for Linux initial completion. Apple Silicon
+platform expansion starts only after that gate. M11 is a later interoperability
+release, M12 requires a new capability amendment, and M13 is post-initial
+publication and registry work.
 
-This interpretation follows the spec's single-player-first ordering, pack
-completion evidence, M9 constrained-device gate, M10 progression acceptance,
-and explicit description of official ATM11 multiplayer as later work.
+This interpretation follows the spec's Linux-first, single-player ordering,
+pack completion evidence, M9 Linux performance gate, M10 progression
+acceptance, and explicit description of macOS and official ATM11 multiplayer as
+later work.
 
 ## Non-goals
 
@@ -159,28 +162,37 @@ Additional policies:
   code. Generated bindings, benchmark-only spikes, and external process glue
   may be excluded only by a reviewed, explicit allowlist.
 - Behavioural conformance is required even when line coverage passes.
-- Linux x86_64 is required from M0 onward.
-- Apple Silicon macOS evidence is required at M0, M1 where the selected design
-  affects viability, and every loader/SDK milestone from M3 onward.
+- Linux x86_64 is the only required gate for M0 through M10.
+- Apple Silicon macOS work starts after Linux M10 has passed with the loader,
+  counterpart library, complete pack, constrained performance, and progression
+  evidence already accepted. No macOS build, launch, capture, packaging,
+  verification, or platform-specific investigation belongs in M0 through M10.
 - Tangled Spindles provide the Linux gate. Because Spindle engines are
-  Linux-based, the required Darwin gate runs on an actual `aarch64-darwin`
+  Linux-based, any future Darwin gate runs on an actual `aarch64-darwin`
   machine via `docs/runbooks/darwin-verification.md`; a Linux evaluation never
-  substitutes for that evidence.
+  substitutes for required Mac evidence once that post-M10 phase begins.
 - A gate rejects untracked restricted fixture patterns, credential patterns,
   forbidden loader artifacts, or maintained Rust that permits unsafe code.
 
 ### Performance evidence
 
-M0 creates a versioned `tests/performance/profiles/initial.toml` containing the
-canonical world, route, warm-up, duration, repetitions, graphics and simulation
-settings, active content, sampling intervals, and pass/fail calculations. M0
-cannot close until those values are explicit.
+M0 records enough Linux launch evidence to prove vanilla 26.1.2 and official
+ATM11 0.2.1 run from the pinned Prism setup without restricted material or
+credentials entering the repository. It does not require performance capture
+or repeated launches.
+
+The single-pair performance protocol lives in
+`tests/performance/profiles/initial.toml` for later M9 acceptance. It contains
+the canonical world, route, warm-up, duration, graphics and
+simulation settings, active content, sampling intervals, and pass/fail
+calculations. M9 cannot close until those values are explicit and the complete
+Linux workload passes them.
 
 The fixed M9 values come from the spec:
 
-- Apple M1 Pro with 16 GB unified memory;
+- native Linux x86_64 reference hardware;
 - single-player with integrated server;
-- 3456 x 2234 output;
+- 3440 x 1440 output;
 - 8-chunk render distance;
 - no shaders;
 - sustained 30 FPS under the canonical workload;
@@ -189,29 +201,30 @@ The fixed M9 values come from the spec:
 - no sustained memory-pressure warning or swap thrashing;
 - recorded median, p95, and p99 frame time and integrated-server tick time.
 
-The profile must define “sustained,” “steady-state,” “transient,” “warning,”
-“thrashing,” and run-to-run reproducibility numerically before the first
-baseline is accepted. M9 uses the same profile version as the official
-baseline, or records and reruns a reviewed migration of both baselines.
+The profile must define “sustained,” “steady-state,” “transient,” “warning,” and
+“thrashing” numerically before M9 acceptance evidence is accepted. M9 runs one
+official-pack comparison and one Ravel-pack acceptance under the same profile
+hash. It does not require repeated runs or claim run-to-run reproducibility.
 
 ## Delivery dependency map
 
 ```text
-M0 baselines and reproducibility
+M0 Linux launch smoke proof
  └─> M1 ADG-1..5 architecture evidence
       └─> M2 loader skeleton
-           └─> M3 credible cross-platform loader
+           └─> M3 credible Linux loader
                 ├─> M4 general SDK breadth
                 │    └─> M5 private compatibility inventory
                 │         └─> M6 foundation counterparts
                 │              └─> M7 complete counterpart library
                 │                   └─> M8 complete pack
-                │                        └─> M9 constrained performance
+                │                        └─> M9 Linux performance
                 │                             └─> M10 progression acceptance
-                │                                  └─> initial completion
+                │                                  └─> Linux initial completion
                 └─> ADG-6 configuration/UI decision before M3 closes
 
 M10 └─> ADG-7 └─> M11 official-server interoperability
+M10 └─> post-Linux-M10 Apple Silicon platform expansion
 M9 failure └─> ADG-8; it does not relax M9 or authorize a native client
 M12 and M13 require separately approved post-initial scope
 ```
@@ -449,7 +462,8 @@ capability proposals plus original public test-mod acceptance cases.
 `devenv` is the canonical local task surface. Tangled Spindle CI runs
 `devenv test` and `nix flake check` in a Nixery environment. Nix pins the tools
 and native dependencies; Cargo remains the Rust build system. Spindle covers
-Linux only, while the Darwin runbook defines the required native Mac gate.
+Linux only. The Darwin runbook is dormant until the post-Linux-M10 Apple
+Silicon phase begins.
 
 cargo2nix is intentionally deferred during M0. At this stage, committing a
 generated `Cargo.nix` would duplicate the rapidly changing Cargo dependency
@@ -518,9 +532,9 @@ for platform modules. Unsupported platforms fail with a clear message.
 | `ravel:verify-milestone` | validate an evidence bundle against a milestone |
 
 Git hooks run fast formatting, lint, schema, secret, and forbidden-file checks.
-The Tangled Spindle pipeline runs the complete Linux environment gate, and
-milestone gates add recorded native Darwin evidence where required. Hooks never
-replace CI.
+The Tangled Spindle pipeline runs the complete Linux environment gate. Native
+Darwin evidence is introduced only in the post-Linux-M10 platform phase. Hooks
+never replace CI.
 CLI launch commands are limited to reproducible development/test invocation and
 handoff to a Prism-managed instance. They do not own authentication, Minecraft
 installation, instance management, pack acquisition, or general launcher UI.
@@ -534,21 +548,22 @@ Current configuration guidance used by this plan:
 
 ## Milestone roadmap
 
-### M0 — Reproducible baselines
+### M0 — Linux launch smoke proof
 
-**Purpose:** establish reproducible tooling, legal fixture boundaries, and the
-measurement oracle before choosing architecture.
+**Purpose:** establish reproducible tooling, legal fixture boundaries, and
+Linux launch proof before choosing architecture. Performance capture begins
+only with the single M9 comparison pair.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
-| M0-W1 | Initialize Cargo, Nix, and devenv roots | none | root manifests, locks, platform modules, pinned Rust | `devenv test` and `nix flake check` pass on Linux and Mac |
+| M0-W1 | Initialize Cargo, Nix, and devenv roots | none | root manifests, locks, platform modules, pinned Rust | `devenv test` and `nix flake check` pass on Linux |
 | M0-W2 | Create verification and evidence skeleton | M0-W1 | `ravel-xtask`, evidence/schema contract, base CI | a deliberately incomplete M0 bundle is rejected; a synthetic complete bundle passes |
 | M0-W3 | Define fixture manifest and ignore policy | M0-W1 | pinned metadata, authorized-source descriptors, ignore/secret rules | fixture and secret canaries are rejected from the tracked tree |
 | M0-W4 | Implement fixture reconstruction and hashing | M0-W3 | CLI command and local-only fixture output | exact MC/NeoForge/ATM versions, expected reference count, and all recorded hashes verify |
-| M0-W5 | Specify canonical performance protocol | M0-W2 | versioned workload/profile and collector schemas | schema and dry-run collector tests pass on Linux and Mac |
-| M0-W6 | Record hardware, Java, Prism, and launch inputs | M0-W3 | sanitized hardware profiles and exact runtime metadata | clean-machine runbook reproduces vanilla launch on both platforms |
-| M0-W7 | Capture vanilla and official ATM11 baselines | M0-W4..W6 | Linux and Mac result bundles | required memory, pressure, frame, tick, startup and world-load fields validate |
-| M0-W8 | Set M1/M2 interim overhead budgets | M0-W7 | reviewed numeric budget ADR derived from measured headroom | ADR names thresholds and failure action for every M1 benchmark |
+| M0-W5 | Specify later performance protocol shape | M0-W2 | versioned workload/profile and collector schemas | schema and dry-run collector tests pass on Linux; no native repeated capture is required |
+| M0-W6 | Record Linux hardware, Java, Prism, and launch inputs | M0-W3 | sanitized Linux hardware profile and exact runtime metadata | clean-machine runbook reproduces vanilla launch on Linux |
+| M0-W7 | Prove Linux vanilla and official ATM11 launch | M0-W4..W6 | Linux launch result bundle and workload attestation | vanilla and official ATM11 reach a playable world through Prism; credentials and restricted content are absent from evidence |
+| M0-W8 | Define M1 architecture measurement gate | M0-W7 | reviewed metric and failure-action plan | every M1 candidate reports comparable Linux memory, startup, call-cost, allocation, packaging, and failure evidence without requiring an M0 baseline |
 | M0-W9 | Independent milestone review | M0-W1..W8 | review record and M0 evidence manifest | `devenv tasks run ravel:verify-milestone:m0` passes; tracked-tree audit is clean |
 
 M0 may download authorized files only into ignored local paths. A failed rights,
@@ -562,12 +577,12 @@ locking the workspace to an assumed runtime.
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
 | M1-W1 | Build common spike harness | M0 | shared benchmark protocol and trivial callback workload | every candidate reports the same metric schema |
-| M1-W2 | ADG-1 JVM entry/hook comparison | M1-W1 | candidate code, Linux/Mac data, ADR | bootstrap RSS, retained classes, startup, callback, bytes and allocation metrics meet M0 budgets or rejection is explicit |
+| M1-W2 | ADG-1 JVM entry/hook comparison | M1-W1 | candidate code, Linux data, ADR | bootstrap RSS, retained classes, startup, callback, bytes and allocation metrics are measured on Linux; rejection is explicit |
 | M1-W3 | ADG-2 Rust execution/ABI comparison | M1-W1 | dylib/Wasm/process/static evidence as viable, ADR | memory, p50/p95/p99 call cost, crash isolation, packaging, debug and evolution rubric complete |
 | M1-W4 | ADG-3 binding strategy comparison | M1-W2 | extraction/codegen/cache prototype and ADR | a generated 26.1.2 binding is reproducible from pinned inputs and fails on drift |
 | M1-W5 | ADG-4 state-ownership experiment | M1-W2..W4 | representative object-flow benchmark and ADR | duplicated state and boundary traffic are measured under the canonical spike |
 | M1-W6 | ADG-5 Prism integration spike | M0-W6, M1-W2 | stock launch proof or patch estimates and ADR | official Minecraft launches without another mod loader; auth tokens are absent from captures |
-| M1-W7 | Architecture synthesis | M1-W2..W6 | overview and dependency/safety boundary docs | all selected/rejected options trace to evidence and have Linux plus viable Mac results |
+| M1-W7 | Architecture synthesis | M1-W2..W6 | overview and dependency/safety boundary docs | all selected and rejected options trace to Linux evidence |
 | M1-W8 | Independent architecture review | M1-W7 | review record | reviewer confirms safe-Rust feasibility and plausible M9 budget; M1 gate passes |
 
 No production crate may encode a selected mechanism before its ADR is accepted.
@@ -588,12 +603,12 @@ precompiled Rust package.
 | M2-W5 | Implement selected bootstrap and adapter shell | M1 ADRs, M2-W4 | bootstrap, host API, shared adapter plus 26.1.2 version data | official 26.1.2 process reaches Ravel without another loader |
 | M2-W6 | Package and execute no-op test mod | M2-W2..W5 | precompiled no-op package | recorded evidence shows validate/resolve/load/construct/register/run/stop in deterministic order |
 | M2-W7 | Add world-access and structured-failure gates | M2-W3..W6 | pre-world UI/log diagnostic path | invalid packages, sides, integrity and graphs cannot open a world; reports redact secrets/paths |
-| M2-W8 | Measure loader overhead and review | M2-W6..W7 | benchmark vs M0 vanilla and review | M0 overhead budget passes and M2 gate passes |
+| M2-W8 | Measure loader overhead and set regression budget | M2-W6..W7 | Linux no-op loader benchmark and review | the measured loader cost establishes the numeric regression budget used from M3 onward; M2 gate passes |
 
 ### M3 — Credible loader prototype
 
 **Purpose:** demonstrate useful loader semantics with original unrestricted test
-mods on both target platforms.
+mods on Linux. The target-platform expansion waits until after Linux M10.
 
 Before M3 closes, ADG-6 selects the configuration schema/UI model with a
 standalone original test case.
@@ -606,7 +621,7 @@ standalone original test case.
 | M3-W4 | Implement versioned saved data | M3-W1 | save test mod and world fixture | create/save/exit/reload preserves state; incompatible/missing required data fails closed |
 | M3-W5 | Implement in-game mod/dependency surface | M2-W7 | mod list and diagnostics UI | valid and invalid graphs render deterministic actionable messages |
 | M3-W6 | Implement opt-in profiling | M2-W8 | collectors and profiling UI/report | per-mod attribution accuracy and unsupported metrics are explicit; normal-mode budget passes |
-| M3-W7 | Cross-platform process matrix | M3-W1..W6 | Linux and M1 Pro result bundle | every required surface passes on both; instance scan proves no other loader |
+| M3-W7 | Linux process matrix | M3-W1..W6 | Linux result bundle | every required surface passes natively on Linux; instance scan proves no other loader |
 | M3-W8 | Independent prototype review | M3-W7 | review record | M3 gate passes and authorizes private inventory work only after M4 |
 
 ### M4 — General SDK breadth
@@ -623,7 +638,7 @@ pack authoring surface.
 | M4-W5 | Complete pack declarations and validator | M4-W2..W4 | `ravel-pack`, pack example | dependency, resource, registry and progression closure checks pass |
 | M4-W6 | Prove version isolation | M4-W1..W5 | synthetic second-version data fixture | shared adapter and general crates compile/test without 26.1.2-specific edits or a new crate |
 | M4-W7 | Agent usability acceptance | M4-W1..W6 | docs task and resulting original test mod | a fresh agent receives only public docs and builds a conforming mod without internal access |
-| M4-W8 | Cross-platform review and gate | M4-W7 | evidence and review | global gate, process matrix, SDK docs and M4 milestone gate pass |
+| M4-W8 | Linux review and gate | M4-W7 | evidence and review | global Linux gate, process matrix, SDK docs and M4 milestone gate pass |
 
 The SDK remains semver-experimental through M10 even though its behaviour is
 testable here.
@@ -701,9 +716,9 @@ reachable executable pack behaviour.
 | M8-W5 | Repeated save/reload soak | M8-W4 | world and migration evidence | repeated clean shutdown/reload cycles preserve state; failure cases fail closed |
 | M8-W6 | Independent pack review and gate | M8-W1..W5 | private review/evidence | no Java/JavaScript mods execute; all pack/scenario suites and M8 gate pass |
 
-### M9 — Constrained-device performance
+### M9 — Linux performance acceptance
 
-**Purpose:** prove the complete single-player pack meets the fixed M1 Pro
+**Purpose:** prove the complete single-player pack meets the fixed Linux
 contract without silently reducing scope or settings.
 
 | ID | Work package | Depends on | Output | Verification |
@@ -711,8 +726,8 @@ contract without silently reducing scope or settings.
 | M9-W1 | Freeze comparable performance inputs | M8, M0 profile | exact build, world, route and profile hashes | verifier rejects any unrecorded setting or content drift |
 | M9-W2 | Attribute current costs | M9-W1 | per-mod/boundary/JVM/GPU/memory profile | exact vs estimated metrics are labelled; profiling overhead is separately measured |
 | M9-W3 | Optimize without behavioural regression | M9-W2 | reviewed loader/SDK/counterpart changes | relevant M4, M7 and M8 suites remain green after every optimization |
-| M9-W4 | Run final constrained acceptance | M9-W3 | repeated M1 Pro result bundles | all fixed FPS/RSS/pressure/swap and frame/tick reporting requirements pass |
-| M9-W5 | Independent performance review | M9-W4 | review and reproducibility rerun | reviewer reproduces the result; M9 gate passes |
+| M9-W4 | Run final Linux acceptance pair | M9-W3 | one official-pack result and one Ravel-pack result | both use the same profile hash; all fixed FPS/RSS/pressure/swap and frame/tick reporting requirements pass |
+| M9-W5 | Independent performance review | M9-W4 | result and raw-artifact review | reviewer confirms settings, hashes, calculations, and comparison integrity; no rerun is required |
 
 If M9-W4 cannot pass with the complete workload, open ADG-8. Do not mark M9
 complete, relax the profile, remove required content, or begin a native client
@@ -731,12 +746,23 @@ progression in a fresh world and preserve Ravel save compatibility.
 | M10-W4 | Verify save compatibility sequence | M10-W1..W3 | migration reports across declared builds | worlds open only with compatible required mods/data and preserve expected state |
 | M10-W5 | Final independent audit | M0..M10 | complete evidence index and review | all manifests pass; public/private boundary audit is clean; no blocker remains; M10 gate passes |
 
-Passing M10-W5 is **initial completion**.
+Passing M10-W5 is **Linux initial completion**: the loader, SDK, counterpart
+library, complete pack, Linux performance, and progression goal are all
+accepted before macOS work begins.
 
 The final boundary audit proves that the public tracked tree and Cargo metadata
 contain no private path dependency, counterpart source, official fixture,
 restricted asset, private world, rights-sensitive source note, credential,
 launcher token, or unredacted sensitive log.
+
+### Post-Linux-M10 — Apple Silicon platform expansion
+
+No macOS build, launch, capture, packaging, signing, or verification work starts
+before M10-W5 passes. Afterward, a separately reviewed plan ports the already
+complete Linux loader and mod set to `macos-aarch64`, proves packaging and
+signing, runs the native Apple Silicon process matrix, and evaluates the
+constrained M1 Pro performance contract. Linux cross-evaluation never
+substitutes for that later native evidence.
 
 ### M11 — Official ATM11 server interoperability
 
@@ -779,7 +805,7 @@ distribution, rollback, and private-history isolation.
 | Public/private separation | separate repos and schemas | dependency/path/content audit |
 | Counterpart completeness | private inventory and packages | verified-total ledger and per-package suites |
 | Pack completeness | private pack and scenarios | full inventory mapping, closure and soak |
-| Performance | performance profiles/collectors | M0 baselines and M9 repeated acceptance |
+| Performance | performance profiles/collectors | M0 Linux launch proof and M9 single-pair Linux acceptance |
 | Progression | private checklist/world | M10 journal plus regressions |
 | Official server protocol | network plus private adapters | ADG-7 and M11 cross-client suite |
 
@@ -788,9 +814,9 @@ distribution, rollback, and private-history isolation.
 | Question | Deadline | Blocking effect |
 | --- | --- | --- |
 | Exact fixture reference total and authoritative hashes | M0-W4 | blocks M0 |
-| Canonical workload duration, repetitions and metric definitions | M0-W5 | blocks M0 |
+| Canonical workload duration and metric definitions | M9-W1 | blocks M9 |
 | Game Java runtime required by pinned metadata | M0-W6 | blocks reproducible launch |
-| Interim loader/boundary overhead budgets | M0-W8 | blocks M1 selection |
+| Architecture comparison metrics and failure actions | M0-W8 | blocks M1 selection |
 | JVM hook mechanism | ADG-1 / M1 | blocks M2 bootstrap |
 | Rust execution/package/ABI model | ADG-2 / M1 | blocks M2 package execution |
 | Binding extraction and generation | ADG-3 / M1 | blocks real adapter |
@@ -811,10 +837,11 @@ be:
    choosing ADG-1 through ADG-4.
 2. M0-W2: implement the evidence schema, `ravel-xtask` gate skeleton, and CI
    parity.
-3. M0-W3 through M0-W5: establish the ignored fixture contract and canonical
-   performance protocol before downloading or benchmarking anything.
-4. Review that foundation, then capture M0 baselines on the two specified
-   machines.
+3. M0-W3 through M0-W5: establish the ignored fixture contract and later
+   performance protocol shape before admitting launch evidence.
+4. Review that foundation, then admit the already-proven Linux vanilla and
+   official ATM11 launch evidence. Performance capture waits for M9, and macOS
+   work waits until Linux M10 is complete.
 
 Do not begin a loader implementation until M1's selected architecture ADRs pass
 their review.

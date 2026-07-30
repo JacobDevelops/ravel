@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "native",
+  "milestone": "M0",
+  "workPackages": [
+    "M0-W1",
+    "M0-W2",
+    "M0-W3",
+    "M0-W4",
+    "M0-W5",
+    "M0-W6",
+    "M0-W7",
+    "M0-W8",
+    "M0-W9"
+  ],
+  "revision": {
+    "id": "a0ddb78beb53d1a313047db0b5e1fc577e68653a",
+    "dirty": false
+  },
+  "versions": {
+    "minecraft": "26.1.2",
+    "neoforge": "26.1.2.78",
+    "prism": "11.0.3",
+    "fixture": "ATM11 0.2.1",
+    "java": "25.0.1",
+    "rust": "1.95.0",
+    "nix": "2.33.3",
+    "devenv": "2.1.2"
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1",
+    "settings": {
+      "scope": "Linux launch smoke proof",
+      "launchEvidencePolicy": "admit the existing successful run without a repeat quota",
+      "performanceCaptureRequired": false
+    }
+  },
+  "inputs": [
+    {
+      "name": "ATM11 fixture descriptor",
+      "sha256": "9b067595a5e03eb4b846de539a4e5b0bd5a0ff1f74ea713b66a8f5a6506fa675"
+    },
+    {
+      "name": "runtime input descriptor",
+      "sha256": "d642ec717e5c2624fc1dcf009fb174db3666d0279669125d982a18660c4a513b"
+    },
+    {
+      "name": "Linux reference hardware profile",
+      "sha256": "532b589e5763a650ce154bfe6ebb9c77d615cb160bcc83e3627a3b3bb539c96c"
+    },
+    {
+      "name": "M1 measurement gate",
+      "sha256": "d4b5d4a4249d2411d3bd4bc55878d6311290efb0e8f286fca9424fe994f2924c"
+    }
+  ],
+  "commands": [
+    {
+      "command": "devenv tasks run ravel:fixture-reconstruct",
+      "argvSha256": "1ec5fbb20ecd923e8c9078ee99e348951dc5d3a402bc520424fcee91a99392e0",
+      "startedAt": "2026-07-30T08:08:38Z",
+      "durationMs": 2590,
+      "exitStatus": 0,
+      "logSha256": "d09accf116f64810cd063d888ca67abf618e3356a217dad87330a8d68aa0d8e9"
+    },
+    {
+      "command": "devenv tasks run ravel:fixture-verify",
+      "argvSha256": "1462642e9c5e3c232943c9108d864c2e530d6c74d50430a0a1bd4ceba4f389ee",
+      "startedAt": "2026-07-30T08:08:41Z",
+      "durationMs": 2590,
+      "exitStatus": 0,
+      "logSha256": "bb20b6b6458514f4ec8feef0e80a380c216e16bc9ccfe92a82a81e6b0b931bc9"
+    },
+    {
+      "command": "devenv tasks run ravel:baseline",
+      "argvSha256": "84505561d52ce5f568a9d5c25d78c0e5069b79cc95c3796f6e09868f61a74145",
+      "startedAt": "2026-07-30T08:08:43Z",
+      "durationMs": 364,
+      "exitStatus": 0,
+      "logSha256": "625fcc90d3d6b82b5bed8945faceb83e9d8232a957009c7bb125cf2a346a0aa6"
+    },
+    {
+      "command": "devenv tasks run ravel:verify",
+      "argvSha256": "a36230a5336c48fd96b4c6b4bf599a12ce95121ad5442ed30ae4353293d7dd05",
+      "startedAt": "2026-07-30T08:08:44Z",
+      "durationMs": 2667,
+      "exitStatus": 0,
+      "logSha256": "71d552e46d5b3ff47bb4325f15e3280018d005d130b0c45eb0059e0bec59316b"
+    },
+    {
+      "command": "cargo llvm-cov report --summary-only",
+      "argvSha256": "9beb7af4cf113bb79669e1ce387f8ada12114633e0cbbfa4c30a202dee20c12d",
+      "startedAt": "2026-07-30T08:09:00Z",
+      "durationMs": 62,
+      "exitStatus": 0,
+      "logSha256": "a3ef77d66738a167b07a0df5ffcb4f9688624b8cebeb1621445b1227a0fe82be"
+    }
+  ],
+  "tests": {
+    "total": 92,
+    "passed": 92,
+    "failed": 0,
+    "skipped": 0,
+    "lineCoveragePercent": 81.05
+  },
+  "benchmarks": {
+    "protocolVersion": "M0 shape dry-run only",
+    "results": []
+  },
+  "deviations": [],
+  "risks": [],
+  "review": {
+    "reviewer": "independent Codex reviewer",
+    "independent": true,
+    "result": "pass",
+    "record": {
+      "name": "M0 independent admission review",
+      "sha256": "b225d06b3f4b6bdd61812ad271c795147c92de5c497e1d6347e65c74c9739599"
+    }
+  },
+  "attestations": [
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "workloads": [
+        "vanilla",
+        "official-atm11"
+      ],
+      "statement": "Native Linux launch records confirm playable vanilla and official ATM11 worlds, saved state, and clean server shutdown without requiring a repeat run.",
+      "attestedBy": "Ravel operator",
+      "attestedAt": "2026-07-30T06:57:00Z"
+    }
+  ],
+  "platformEvidence": [
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "hardwareProfile": "linux-reference-v1",
+      "versions": {
+        "minecraft": "26.1.2",
+        "neoforge": "26.1.2.78",
+        "prism": "11.0.3",
+        "fixture": "ATM11 0.2.1",
+        "java": "25.0.1",
+        "rust": "1.95.0",
+        "nix": "2.33.3",
+        "devenv": "2.1.2"
+      },
+      "settings": {
+        "native": true,
+        "focusFreeOfficialPackRun": true,
+        "performanceCaptureAdmitted": false
+      },
+      "native": true,
+      "commands": [
+        {
+          "command": "devenv test --no-tui",
+          "argvSha256": "15f342f76e83f0f6868557963ea7edaf321535ae7abc45a921195bdc86369638",
+          "startedAt": "2026-07-30T08:08:25Z",
+          "durationMs": 5905,
+          "exitStatus": 0,
+          "logSha256": "07188df0064ce818dc9d4abe13742c9cfe8bf0a7189dbf039f14d57699b98251"
+        },
+        {
+          "command": "nix flake check --accept-flake-config",
+          "argvSha256": "21351eb2d5787f49b02fb2d7f68dc9e760589166708584d56b1b91444c05e96f",
+          "startedAt": "2026-07-30T08:08:31Z",
+          "durationMs": 7233,
+          "exitStatus": 0,
+          "logSha256": "57c5d1cd748dcb5bb79e7e33fa727505243486f6a1e6bcb8149e1db58016889e"
+        }
+      ],
+      "baselines": [
+        {
+          "workload": "vanilla",
+          "result": {
+            "name": "Linux vanilla launch summary",
+            "sha256": "907e81331be6941fe74a99b1cc6e6ea6e234d83ea7c74d369aad54ec1d4146db"
+          },
+          "validation": {
+            "name": "private Linux vanilla launch validation",
+            "sha256": "7222bff3ad2b8c3dfef8008b00e865b010486ad4e39325812ad727455c3a6300"
+          }
+        },
+        {
+          "workload": "official-atm11",
+          "result": {
+            "name": "Linux official ATM11 launch summary",
+            "sha256": "88e2c3ec13a87e3a0d7b3ac0faf87fad28ee273a44bc70eb70029dbdef7e0cf7"
+          },
+          "validation": {
+            "name": "private Linux official ATM11 launch validation",
+            "sha256": "cf8f3836c9e80d5f1beb73ecd3bf6f0c8593724bdb7e3829a502fc4316f48e6e"
+          }
+        }
+      ]
+    }
+  ]
+}

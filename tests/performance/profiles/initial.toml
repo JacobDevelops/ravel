@@ -1,0 +1,256 @@
+schema_version = 1
+protocol_version = "initial-v1"
+profile_id = "initial"
+profile_version = 3
+description = "Canonical M9 Linux single-player performance protocol."
+
+[execution]
+repetitions_per_subject = 1
+warm_up_seconds = 300
+measurement_seconds = 900
+cool_down_seconds = 120
+maximum_invalid_repetitions = 0
+subject_order = ["official-pack", "ravel-pack"]
+
+[world]
+creation = "fresh-per-repetition"
+seed = 726548921
+preset = "minecraft:normal"
+game_mode = "survival"
+difficulty = "normal"
+hardcore = false
+allow_commands = false
+starting_day_time_ticks = 1000
+weather = "clear"
+weather_duration_seconds = 1800
+world_border_diameter_blocks = 4096
+pre_generated_radius_chunks = 16
+prepared_world_sha256_required = true
+
+[route]
+coordinate_system = "relative-to-recorded-world-anchor"
+operator_position_tolerance_blocks = 2
+operator_heading_tolerance_degrees = 5
+speed_tolerance_percent = 10
+total_duration_seconds = 900
+dimension_change_count = 2
+
+[[route.steps]]
+id = "base-observation"
+sequence = 1
+phase = "steady-state"
+dimension = "minecraft:overworld"
+duration_seconds = 180
+movement = "stationary"
+target_speed_blocks_per_second = 0
+active_area = "base"
+
+[[route.steps]]
+id = "overworld-traverse"
+sequence = 2
+phase = "steady-state"
+dimension = "minecraft:overworld"
+duration_seconds = 240
+movement = "recorded-path"
+target_speed_blocks_per_second = 4
+active_area = "overworld-route"
+
+[[route.steps]]
+id = "outbound-dimension-change"
+sequence = 3
+phase = "transient"
+dimension = "minecraft:the_nether"
+duration_seconds = 120
+movement = "recorded-path-and-portal"
+target_speed_blocks_per_second = 4
+active_area = "dimension-route"
+
+[[route.steps]]
+id = "dimension-traverse"
+sequence = 4
+phase = "steady-state"
+dimension = "minecraft:the_nether"
+duration_seconds = 180
+movement = "recorded-path"
+target_speed_blocks_per_second = 4
+active_area = "dimension-route"
+
+[[route.steps]]
+id = "return-and-base-observation"
+sequence = 5
+phase = "transient"
+dimension = "minecraft:overworld"
+duration_seconds = 180
+movement = "recorded-path-and-portal-then-stationary"
+target_speed_blocks_per_second = 4
+active_area = "base"
+
+[settings.display]
+width_pixels = 3440
+height_pixels = 1440
+fullscreen = true
+gui_scale = 3
+frame_rate_limit_fps = 120
+vertical_sync = false
+
+[settings.graphics]
+quality = "fancy"
+render_distance_chunks = 8
+simulation_distance_chunks = 8
+shaders_enabled = false
+clouds = "fancy"
+particles = "all"
+entity_distance_percent = 100
+biome_blend_radius_blocks = 5
+mipmap_levels = 4
+dynamic_fov = true
+
+[settings.gameplay]
+single_player = true
+integrated_server = true
+pause_on_lost_focus = false
+max_background_fps = 120
+
+[active_content.common]
+loaded_dimension_count = 1
+minimum_loaded_chunks = 289
+minimum_ticking_entities = 64
+minimum_ticking_block_entities = 16
+minimum_active_vanilla_processes = 8
+minimum_redstone_clocks = 4
+
+[active_content.vanilla]
+installed_pack_content_enabled_percent = 0
+minimum_active_pack_machines = 0
+minimum_distinct_pack_machine_types = 0
+minimum_active_pack_recipes = 0
+
+[active_content.complete_pack]
+installed_pack_content_enabled_percent = 100
+minimum_active_pack_machines = 48
+minimum_distinct_pack_machine_types = 8
+minimum_active_pack_recipes = 32
+minimum_ticking_entities = 96
+minimum_ticking_block_entities = 64
+
+[sampling]
+monotonic_clock_resolution_nanoseconds_maximum = 1000000
+timestamp_alignment_tolerance_milliseconds = 5
+
+[sampling.frame_time]
+mode = "every-frame"
+interval_milliseconds = 0
+required_quality = "exact"
+
+[sampling.integrated_server_tick_time]
+mode = "every-tick"
+interval_milliseconds = 0
+required_quality = "exact"
+
+[sampling.process_rss]
+mode = "interval"
+interval_milliseconds = 1000
+required_quality = "exact"
+
+[sampling.process_rss.linux]
+source = "proc-pid-smaps-rollup-rss"
+unit_conversion = "reported-kibibytes * 1024"
+
+[sampling.system_used_memory]
+mode = "interval"
+interval_milliseconds = 1000
+required_quality = "exact-or-estimated"
+
+[sampling.system_used_memory.linux]
+source = "proc-meminfo"
+formula = "(MemTotal - MemAvailable) * 1024"
+quality = "estimated"
+
+[sampling.system_memory_pressure]
+mode = "interval"
+interval_milliseconds = 1000
+required_quality = "exact"
+
+[sampling.system_memory_pressure.linux]
+source = "proc-pressure-memory-cumulative-totals"
+normal_condition = "some-total-delta-microseconds == 0 and full-total-delta-microseconds == 0"
+warning_condition = "some-total-delta-microseconds > 0 and full-total-delta-microseconds == 0"
+critical_condition = "full-total-delta-microseconds > 0"
+
+[sampling.swap_counters]
+mode = "interval"
+interval_milliseconds = 1000
+required_quality = "exact"
+
+[sampling.swap_counters.linux]
+source = "proc-vmstat-pswpin-pswpout"
+unit_conversion = "cumulative-pages * base-page-size-bytes"
+
+[sampling.gpu_allocation]
+mode = "interval"
+interval_milliseconds = 1000
+required_quality = "exact-or-estimated"
+
+[statistics]
+percentile_method = "nearest-rank"
+percentile_rank_formula = "ceil(percentile * ordered_sample_count)"
+fps_formula = "eligible_frame_count / eligible_frame_duration_seconds"
+gib_bytes = 1073741824
+
+[definitions.sustained]
+eligible_phase = "steady-state"
+window_seconds = 60
+step_seconds = 1
+windows_may_cross_ineligible_phase = false
+minimum_average_fps = 30
+maximum_failing_windows_per_repetition = 0
+minimum_passing_repetitions = 1
+
+[definitions.steady_state]
+world_ready_settle_seconds = 120
+dimension_ready_settle_seconds = 120
+seconds_before_next_dimension_change = 30
+process_rss_limit_bytes = 8589934592
+statistic = "maximum-eligible-sample"
+
+[definitions.transient]
+process_start_through_world_ready_grace_seconds = 180
+dimension_change_through_ready_grace_seconds = 180
+process_rss_limit_bytes = 10737418240
+statistic = "maximum-window-sample"
+
+[definitions.warning]
+warning_level_minimum = 1
+critical_level_minimum = 2
+sustained_window_seconds = 30
+window_step_seconds = 1
+maximum_sustained_windows_per_repetition = 0
+
+[definitions.thrashing]
+swap_throughput_window_seconds = 30
+window_step_seconds = 1
+combined_swap_throughput_bytes_per_second_minimum = 67108864
+sustained_window_seconds = 30
+maximum_sustained_windows_per_repetition = 0
+
+[definitions.reproducibility]
+required_valid_repetitions = 1
+run_to_run_reproducibility_required = false
+
+[pass_calculations]
+baseline_mode = "report-only"
+acceptance_mode = "all-criteria"
+required_passing_repetitions = 1
+required_valid_repetitions = 1
+startup_statistic = "minimum-valid-repetition"
+world_load_statistic = "minimum-valid-repetition"
+frame_time_report_percentiles = [50, 95, 99]
+tick_time_report_percentiles = [50, 95, 99]
+steady_state_rss_operator = "less-than-or-equal"
+transient_rss_operator = "less-than-or-equal"
+sustained_fps_operator = "greater-than-or-equal"
+warning_operator = "fewer-than-sustained-window-seconds"
+thrashing_operator = "fewer-than-sustained-window-seconds"
+missing_required_metric_result = "invalid"
+unreviewed_profile_deviation_result = "invalid"
+reproducibility_result = "not-applicable"

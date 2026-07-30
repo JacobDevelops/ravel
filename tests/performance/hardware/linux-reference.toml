@@ -1,0 +1,35 @@
+schema_version = 1
+profile_id = "linux-reference-v1"
+platform = "linux"
+architecture = "x86_64"
+native_execution_required = true
+
+[operating_system]
+distribution = "Linux Mint"
+version = "22.3"
+kernel_series = "6.8"
+
+[processor]
+vendor = "AMD"
+model = "Ryzen 7 9800X3D"
+physical_cores = 8
+hardware_threads = 16
+
+[memory]
+physical_bytes = 51539607552
+unified = false
+
+[graphics]
+vendor = "NVIDIA"
+model = "GeForce RTX 5090"
+api = "Vulkan"
+minimum_api_version = "1.4"
+
+[capture_controls]
+power_source = "mains"
+virtual_machine_allowed = false
+architecture_translation_allowed = false
+record_cpu_governor = true
+record_gpu_driver = true
+record_thermal_state = true
+record_background_process_policy = true

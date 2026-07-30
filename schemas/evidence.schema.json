@@ -7,6 +7,7 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion",
+    "evidenceKind",
     "milestone",
     "workPackages",
     "revision",
@@ -19,11 +20,16 @@
     "deviations",
     "risks",
     "review",
-    "attestations"
+    "attestations",
+    "platformEvidence"
   ],
   "properties": {
     "schemaVersion": {
       "const": 1
+    },
+    "evidenceKind": {
+      "enum": ["synthetic", "native"],
+      "description": "Synthetic documents test the contract; only native documents can close a milestone."
     },
     "milestone": {
       "type": "string",
@@ -45,48 +51,17 @@
       "properties": {
         "id": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Source revision exercised by the recorded commands; it may precede the revision that admits this manifest."
         },
         "dirty": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Whether the exercised source tree had uncommitted changes when the commands ran."
         }
       }
     },
     "versions": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "minecraft",
-        "prism",
-        "fixture",
-        "java",
-        "rust",
-        "nix",
-        "devenv"
-      ],
-      "properties": {
-        "minecraft": {
-          "$ref": "#/$defs/versionText"
-        },
-        "prism": {
-          "$ref": "#/$defs/versionText"
-        },
-        "fixture": {
-          "$ref": "#/$defs/versionText"
-        },
-        "java": {
-          "$ref": "#/$defs/versionText"
-        },
-        "rust": {
-          "$ref": "#/$defs/versionText"
-        },
-        "nix": {
-          "$ref": "#/$defs/versionText"
-        },
-        "devenv": {
-          "$ref": "#/$defs/versionText"
-        }
-      }
+      "$ref": "#/$defs/versionSet"
     },
     "environment": {
       "type": "object",
@@ -183,11 +158,14 @@
     "review": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["reviewer", "result"],
+      "required": ["reviewer", "independent", "result"],
       "properties": {
         "reviewer": {
           "type": "string",
           "minLength": 1
+        },
+        "independent": {
+          "type": "boolean"
         },
         "result": {
           "enum": ["pass", "fail", "not-required"]
@@ -202,8 +180,29 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["statement", "attestedBy", "attestedAt"],
+        "required": [
+          "platform",
+          "architecture",
+          "workloads",
+          "statement",
+          "attestedBy",
+          "attestedAt"
+        ],
         "properties": {
+          "platform": {
+            "enum": ["linux", "macos"]
+          },
+          "architecture": {
+            "enum": ["x86_64", "aarch64"]
+          },
+          "workloads": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": ["vanilla", "official-atm11", "ravel"]
+            }
+          },
           "statement": {
             "type": "string",
             "minLength": 1
@@ -218,12 +217,58 @@
           }
         }
       }
+    },
+    "platformEvidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/platformEvidence"
+      }
     }
   },
   "$defs": {
     "versionText": {
       "type": "string",
       "minLength": 1
+    },
+    "versionSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minecraft",
+        "neoforge",
+        "prism",
+        "fixture",
+        "java",
+        "rust",
+        "nix",
+        "devenv"
+      ],
+      "properties": {
+        "minecraft": {
+          "$ref": "#/$defs/versionText"
+        },
+        "neoforge": {
+          "$ref": "#/$defs/versionText"
+        },
+        "prism": {
+          "$ref": "#/$defs/versionText"
+        },
+        "fixture": {
+          "$ref": "#/$defs/versionText"
+        },
+        "java": {
+          "$ref": "#/$defs/versionText"
+        },
+        "rust": {
+          "$ref": "#/$defs/versionText"
+        },
+        "nix": {
+          "$ref": "#/$defs/versionText"
+        },
+        "devenv": {
+          "$ref": "#/$defs/versionText"
+        }
+      }
     },
     "sha256": {
       "type": "string",
@@ -251,6 +296,10 @@
         "command": {
           "type": "string",
           "minLength": 1
+        },
+        "argvSha256": {
+          "$ref": "#/$defs/sha256",
+          "description": "Hash of the NUL-delimited argv executed for this record."
         },
         "startedAt": {
           "type": "string",
@@ -281,6 +330,105 @@
           "enum": ["blocking", "non-blocking"]
         }
       }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workload", "result", "validation"],
+      "properties": {
+        "workload": {
+          "enum": ["vanilla", "official-atm11"]
+        },
+        "result": {
+          "$ref": "#/$defs/hashedArtifact"
+        },
+        "validation": {
+          "$ref": "#/$defs/hashedArtifact"
+        }
+      }
+    },
+    "platformEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "architecture",
+        "hardwareProfile",
+        "versions",
+        "settings",
+        "native",
+        "commands",
+        "baselines"
+      ],
+      "properties": {
+        "platform": {
+          "enum": ["linux", "macos"]
+        },
+        "architecture": {
+          "enum": ["x86_64", "aarch64"]
+        },
+        "hardwareProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versions": {
+          "$ref": "#/$defs/versionSet"
+        },
+        "settings": {
+          "type": "object"
+        },
+        "native": {
+          "type": "boolean"
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/command"
+          }
+        },
+        "baselines": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/baseline"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "linux"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "architecture": {
+                "const": "x86_64"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "macos"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "architecture": {
+                "const": "aarch64"
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

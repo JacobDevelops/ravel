@@ -1,0 +1,126 @@
+--- a/csvexport/src/csvexport.cpp
++++ b/csvexport/src/csvexport.cpp
+@@ -10,6 +10,7 @@
+ #include <string>
+ 
+ #include <math.h>
++#include <inttypes.h>
+ #include <stdio.h>
+ #include <stdint.h>
+ 
+@@ -31,6 +32,7 @@
+     fprintf(stderr, "  -u, --unwrap             Report each cpu zone event\n");
+     fprintf(stderr, "  -g, --gpu                Report each gpu zone event\n" );
+     fprintf(stderr, "  -m, --messages           Report only messages\n");
++    fprintf(stderr, "  -r, --frames             Report each discontinuous named frame\n");
+     fprintf(stderr, "  -p, --plot               Report plot data (only with -u)\n");
+     fprintf(stderr, "  -t, --truncated_mean arg Report truncated mean (arg is the percentile. Default is 90)\n");
+ 
+@@ -47,6 +49,7 @@
+     bool show_gpu;
+     bool unwrapMessages;
+     bool plot;
++    bool frames;
+     int truncated_mean_percentile;
+ };
+ 
+@@ -57,7 +60,7 @@
+         print_usage_exit(1);
+     }
+ 
+-    Args args = { "", ",", "", false, false, false, false, false, false, 0};
++    Args args = { "", ",", "", false, false, false, false, false, false, false, 0};
+ 
+     struct option long_opts[] = {
+         { "help", no_argument, NULL, 'h' },
+@@ -69,12 +72,13 @@
+         { "gpu", no_argument, NULL, 'g' },
+         { "messages", no_argument, NULL, 'm' },
+         { "plot", no_argument, NULL, 'p' },
++        { "frames", no_argument, NULL, 'r' },
+         { "truncated_mean", optional_argument, NULL, 't' },
+         { NULL, 0, NULL, 0 }
+     };
+ 
+     int c;
+-    while ((c = getopt_long(argc, argv, "hf:s:ceugmp", long_opts, NULL)) != -1)
++    while ((c = getopt_long(argc, argv, "hf:s:ceugmpr", long_opts, NULL)) != -1)
+     {
+         switch (c)
+         {
+@@ -105,6 +109,9 @@
+         case 'p':
+             args.plot = true;
+             break;
++        case 'r':
++            args.frames = true;
++            break;
+         case 't':
+             args.truncated_mean_percentile = std::clamp<int>(optarg ? std::atoi(optarg) : 90, 1, 99);
+             break;
+@@ -301,6 +308,65 @@
+         return 0;
+     }
+ 
++    if (args.frames)
++    {
++        const auto& frameSets = worker.GetFrames();
++        printf(
++            "frame_set%sframe_index%sstart_ns%send_ns%sduration_ns\n",
++            args.separator,
++            args.separator,
++            args.separator,
++            args.separator
++        );
++
++        for (const auto* frameSet : frameSets)
++        {
++            if (
++                frameSet->name == 0 ||
++                frameSet->name >> 63 != 0 ||
++                frameSet->continuous
++            )
++            {
++                continue;
++            }
++
++            const auto* name = worker.GetString(frameSet->name);
++            if (
++                args.filter[0] != '\0' &&
++                !is_substring(args.filter, name, args.case_sensitive)
++            )
++            {
++                continue;
++            }
++
++            size_t outputIndex = 0;
++            for (size_t index = 0; index < worker.GetFrameCount(*frameSet); ++index)
++            {
++                if (frameSet->frames[index].end < 0)
++                {
++                    continue;
++                }
++
++                const auto start = worker.GetFrameBegin(*frameSet, index);
++                const auto end = worker.GetFrameEnd(*frameSet, index);
++                printf(
++                    "%s%s%zu%s%" PRId64 "%s%" PRId64 "%s%" PRId64 "\n",
++                    name,
++                    args.separator,
++                    outputIndex,
++                    args.separator,
++                    start,
++                    args.separator,
++                    end,
++                    args.separator,
++                    end - start
++                );
++                ++outputIndex;
++            }
++        }
++        return 0;
++    }
++
+     while (!worker.AreSourceLocationZonesReady())
+     {
+         std::this_thread::sleep_for(std::chrono::milliseconds(10));

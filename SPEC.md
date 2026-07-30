@@ -15,16 +15,18 @@ not load NeoForge, Fabric, or other Java mods. The first large-scale proof is a
 separate Rust modpack containing a Rust counterpart for every mod referenced by
 the pinned ATM11 manifest.
 
-The immediate user outcome is that a 16 GB M1 Pro Mac can play the complete
-pack in single-player and can eventually join players using the official ATM11
-pack, without the resident-memory cost of hundreds of Java mods. Building a
-reusable Rust modding ecosystem is a required means to that outcome and a
-valuable secondary result.
+The immediate user outcome is a complete Linux Ravel loader, SDK, Rust
+counterpart library, and playable single-player pack that finishes the pinned
+progression without hundreds of resident Java mods. Apple Silicon support and
+official-server interoperability are later phases after that Linux outcome.
+Building a reusable Rust modding ecosystem is a required means to the outcome
+and a valuable secondary result.
 
 ## 2. Product principles
 
-1. **Measure before replacing.** Baseline official ATM11, then attribute memory
-   and frame-time costs before choosing component boundaries.
+1. **Measure decisions that need measurement.** Compare architecture candidates
+   on Linux before choosing component boundaries. Capture the official-pack and
+   Ravel-pack performance pair only after the complete pack exists.
 2. **Ravel is a new loader.** NeoForge is a requirements reference, not an
    implementation, API, runtime dependency, or compatibility host.
 3. **Rust mods are first-class packages.** Users install precompiled Rust mods;
@@ -234,16 +236,17 @@ substitute for target-device testing.
 - 16-inch 3456 × 2234 built-in display
 - approximately 52 GB free storage at initial discovery
 
-Initial macOS scope is this Apple Silicon class only. Windows, Linux ARM, and
-Intel macOS are not initial requirements.
+macOS scope starts only after Linux M10 has passed with the loader, counterpart
+library, complete pack, constrained performance, and progression evidence
+already accepted. When that phase starts, the macOS scope is this Apple Silicon
+class only. Windows, Linux ARM, and Intel macOS are not initial requirements.
 
 ### 5.3 Distribution targets
 
-Precompiled mods are built for two initial targets, `linux-x86_64` and
-`macos-aarch64`. These are the values the package manifest's `platform` and
-`architecture` fields carry, and no other combination is an initial requirement.
-A mod author's build matrix is therefore two entries, not the full product of
-supported operating systems and architectures.
+Precompiled mods initially build for `linux-x86_64`. After Linux M10 passes,
+the Apple Silicon expansion adds `macos-aarch64` to the package manifest's
+`platform` and `architecture` values. No other combination is part of this
+plan.
 
 The macOS target carries a signing obligation that the Linux target does not.
 Because Apple Silicon refuses to load unsigned executable code, every macOS
@@ -263,36 +266,38 @@ discard at the open question 2 gate, not a settled design.
 
 ### 6.1 Target workload
 
-The constrained Mac must run the complete Ravel ATM11-equivalent pack:
+Linux M9 must run the complete Ravel ATM11-equivalent pack:
 
 - in single-player with its integrated server;
-- at 3456 × 2234 output resolution;
+- at 3440 × 1440 output resolution;
 - at an 8-chunk render distance;
 - without shaders;
 - at a sustained minimum target of 30 FPS under a defined representative
   workload.
 
-Multiplayer client-only measurements are recorded separately after official
-server interoperability exists. Running the official ATM11 server on a stronger
-machine is the desired multiplayer deployment, but does not replace the
-single-player requirement.
+One official-pack run and one Ravel-pack run use the same profile hash. The
+contract does not require repeated runs or claim run-to-run reproducibility.
+The post-Linux-M10 Mac phase defines its native 3456 × 2234 profile separately.
+Multiplayer client-only measurements are recorded after official-server
+interoperability exists.
 
 ### 6.2 Memory budget
 
-Initial single-player acceptance targets:
+Linux single-player acceptance targets:
 
 - no more than 8 GiB steady-state process RSS during representative play;
 - no more than 10 GiB transient process RSS during loading or dimension
   changes;
-- no sustained macOS memory-pressure warning;
+- no sustained memory-pressure warning;
 - no sustained swap thrashing.
 
-After M11 establishes official-server interoperability, the same measurements
+After official-server interoperability, the same measurements
 are reported separately for the multiplayer client-only workload.
 
-The full system report must also record unified-memory pressure and relevant GPU
-allocation data where macOS exposes them. Process RSS alone is not a complete
-unified-memory measurement.
+The Linux report records system pressure, swap, and GPU allocation availability.
+The later Mac profile additionally records unified-memory pressure and relevant
+GPU allocation data; process RSS alone is not a complete unified-memory
+measurement.
 
 ### 6.3 Frame-time definition
 
@@ -314,8 +319,8 @@ unplayable.
 
 ### 6.4 Startup and world loading
 
-Startup and world-load time have no fixed numerical target. Ravel must report
-the best achieved result and compare it with the pinned official baseline.
+Startup and world-load time have no fixed numerical target. Ravel reports the
+single observed result and compares it with the same-profile official result.
 
 ### 6.5 Architecture failure gate
 
@@ -633,7 +638,8 @@ work behind its own decision gate.
 - Minecraft-process tests for each supported hook and registration surface;
 - save/reload and migration tests;
 - crash-attribution and diagnostic-redaction tests;
-- platform tests on Linux x86_64 and Apple Silicon macOS;
+- platform tests on Linux x86_64 through M10, then Apple Silicon macOS in the
+  post-Linux-M10 platform-expansion phase;
 - performance regression tests for loader overhead and Java/Rust boundaries.
 
 ### 13.2 Counterpart tests
@@ -666,8 +672,8 @@ human-reviewed or tolerance-based comparisons.
 - No disabled lint rules, skipped tests, loosened assertions, or ignored errors
   to obtain a passing build.
 - Each milestone defines its own coverage and behavioural obligations.
-- Loader and SDK changes require Linux and macOS validation once the Mac harness
-  exists.
+- Loader and SDK changes require Linux validation through M10. macOS validation
+  starts only once the post-Linux-M10 Mac harness exists.
 - Nontrivial changes require an independent code review before completion.
 
 ## 14. Lifecycle and state model
@@ -710,7 +716,7 @@ Compare:
 - viable combinations.
 
 Measure bootstrap RSS, retained classes, startup time, callback cost, transferred
-bytes, allocation behaviour, and cross-platform packaging.
+bytes, allocation behaviour, and Linux packaging.
 
 ### ADG-2: Rust mod execution and ABI
 
@@ -723,7 +729,7 @@ Compare:
 - other viable mechanisms.
 
 Evaluate memory, call overhead, safe-Rust enforcement, ABI evolution, crash
-behaviour, platform packaging, debugging, and mod-to-mod calls. Trusted execution
+behaviour, Linux packaging, debugging, and mod-to-mod calls. Trusted execution
 does not remove the need for a stable package contract.
 
 ### ADG-3: Minecraft bindings
@@ -768,7 +774,7 @@ capability specification.
 
 Milestones are dependency ordered. They have no promised calendar duration.
 
-### M0 — Reproducible baselines
+### M0 — Linux launch smoke proof
 
 Deliver:
 
@@ -776,14 +782,15 @@ Deliver:
 - ignored, pinned official ATM11 0.2.1 fixture on Linux;
 - fixture reconstruction and hash verification tool;
 - documented Linux reference hardware;
-- reproducible performance capture;
-- equivalent vanilla and official ATM11 captures on the constrained Mac.
+- sanitized Linux launch proof for vanilla and official ATM11 through Prism;
+- later performance protocol shape and dry-run schema wiring, without native
+  repeated benchmark capture.
 
 Exit:
 
-- vanilla and official ATM11 launches are reproducible;
-- baseline RSS, system memory pressure, frame times, tick times, startup, and
-  world loading are recorded on both target platforms;
+- vanilla and official ATM11 each reach a playable Linux world through Prism;
+- the Linux launch evidence records sanitized startup, world-open, runtime, and
+  clean-exit results for both workloads;
 - fixture files and secrets are absent from source control.
 
 ### M1 — Architecture spikes
@@ -793,7 +800,7 @@ Deliver isolated experiments for ADG-1 through ADG-4 and ADG-5.
 Exit:
 
 - the selected bootstrap, execution model, binding approach, and state boundary
-  have benchmark evidence on Linux and a viable macOS path;
+  have benchmark evidence on Linux;
 - maintained code still forbids unsafe;
 - rejected approaches and reasons are recorded;
 - a reviewer confirms that the choice can plausibly meet the product targets.
@@ -835,7 +842,7 @@ Deliver multiple original test mods demonstrating:
 
 Exit:
 
-- the prototype runs on Linux x86_64 and the target Apple Silicon Mac;
+- the prototype runs on Linux x86_64;
 - a world saves, exits, reloads, and preserves state;
 - all required test surfaces pass;
 - profiling attributes mod costs without unacceptable normal-mode overhead;
@@ -925,17 +932,19 @@ Exit:
 - repeated save/reload is stable;
 - no JavaScript or Java mods execute.
 
-### M9 — Constrained-device performance
+### M9 — Linux performance acceptance
 
-Profile and optimize the complete pack in single-player on the M1 Pro Mac.
+Profile and optimize the complete pack in single-player on Linux. The M1 Pro
+Mac acceptance phase starts only after Linux M10 is complete.
 
 Exit:
 
-- 3456 × 2234, no shaders, 8 chunks;
+- 3440 × 1440, no shaders, 8 chunks;
 - sustained 30 FPS target under the canonical workload;
 - no more than 8 GiB steady RSS and 10 GiB transient RSS;
 - no sustained memory-pressure warning or swap thrashing;
-- results are reproducible and include frame-time distributions.
+- one official-pack/Ravel-pack pair shares the exact profile hash and reports
+  frame-time and integrated-server tick distributions.
 
 Failure invokes ADG-8 rather than silently changing requirements.
 
@@ -950,6 +959,17 @@ Exit:
 - encountered incompatibilities become regression tests;
 - release-blocking functional gaps are closed;
 - Ravel save compatibility is verified across the tested build sequence.
+
+Passing M10 is the complete Linux goal. No macOS build, launch, capture,
+packaging, signing, or native verification starts before this point.
+
+### Post-Linux-M10 — Apple Silicon platform expansion
+
+Port the already-complete Linux loader, SDK, counterpart set, and pack to
+`macos-aarch64`. Prove native packaging and signing, run the full process and
+save matrices, and evaluate the M1 Pro constrained performance contract at
+3456 × 2234. This phase reuses accepted behaviour contracts; it does not block
+or reopen Linux M0 through M10.
 
 ### M11 — Official ATM11 server interoperability
 
@@ -1011,7 +1031,8 @@ These are intentionally unresolved:
 3. How much Minecraft state can remain authoritative in Java without expensive
    boundary traffic?
 4. Can stock Prism launch Ravel without modification?
-5. What are the actual official ATM11 baselines on Linux and the target Mac?
+5. What are the single-pair official ATM11 comparisons on Linux, and later on
+   the target Mac after Linux M10?
 6. Which ATM11 counterparts permit source-informed ports and asset reuse?
 7. Can official Minecraft plus Ravel meet the constrained Mac target?
 8. What protocol surface is required for pinned ATM11 server interoperability?
@@ -1055,8 +1076,7 @@ The immediate execution lane is:
 1. initialize the public-ready Ravel repository structure;
 2. write the pinned fixture manifest and reconstruction design without
    downloading restricted files into source control;
-3. establish Prism-based vanilla and official ATM11 baselines on Linux and the
-   constrained Mac;
+3. establish Prism-based vanilla and official ATM11 launch proof on Linux;
 4. turn ADG-1 through ADG-5 into isolated benchmark plans;
 5. review M1 evidence before selecting the loader architecture.
 

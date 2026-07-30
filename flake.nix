@@ -63,23 +63,31 @@
         in
         {
           devenv = shell.ci;
-          scaffold =
-            pkgs.runCommand "ravel-scaffold-check"
-              {
-                nativeBuildInputs = [
-                  pkgs.jq
-                  shell.config.languages.rust.toolchainPackage
-                ];
-                src = self;
-              }
-              ''
-                export HOME="$TMPDIR"
-                cp -R "$src" source
-                chmod -R u+w source
-                cd source
-                cargo run --offline --locked -p ravel-xtask -- verify scaffold
-                touch "$out"
-              '';
+          scaffold = pkgs.stdenv.mkDerivation {
+            pname = "ravel-scaffold-check";
+            version = "0";
+            src = self;
+            cargoDeps = pkgs.rustPlatform.importCargoLock {
+              lockFile = ./Cargo.lock;
+            };
+            nativeBuildInputs = [
+              pkgs.jq
+              pkgs.rustPlatform.cargoSetupHook
+              shell.config.languages.rust.toolchainPackage
+            ];
+            buildPhase = ''
+              runHook preBuild
+              export HOME="$TMPDIR"
+              cargo run --offline --locked -p ravel-xtask -- verify scaffold
+              runHook postBuild
+            '';
+            installPhase = ''
+              runHook preInstall
+              mkdir -p "$out"
+              touch "$out/passed"
+              runHook postInstall
+            '';
+          };
         }
       );
     };

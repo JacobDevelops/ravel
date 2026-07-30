@@ -48,6 +48,8 @@ const ROOT_FILES: &[&str] = &[
     ".gitignore",
     ".markdownlint.yaml",
     ".tangled/workflows/ci.yml",
+    "AGENTS.md",
+    "CLAUDE.md",
     "Cargo.lock",
     "Cargo.toml",
     "LICENSE-APACHE",
@@ -72,9 +74,13 @@ const ROOT_FILES: &[&str] = &[
     "rustfmt.toml",
     "schemas/configuration.schema.json",
     "schemas/evidence.schema.json",
+    "schemas/fixture.schema.json",
     "schemas/pack.schema.json",
     "schemas/package.schema.json",
+    "schemas/performance-collector.schema.json",
+    "schemas/performance-result.schema.json",
     "schemas/provenance.schema.json",
+    "schemas/runtime-inputs.schema.json",
     "schemas/saved-data.schema.json",
     "tests/conformance/Cargo.toml",
     "tests/fixtures/README.md",
@@ -151,49 +157,264 @@ pub fn verify_milestone(root: &Path, milestone: &str) -> Vec<String> {
     if let Err(error) = fs::metadata(&manifest_path) {
         return vec![format!("cannot read {}: {error}", manifest_path.display())];
     }
-    match jq_matches(&manifest_path, "type == \"object\"") {
+
+    let mut violations = verify_evidence_manifest(root, &manifest_path, milestone);
+    verify_admitted_manifest(&manifest_path, milestone, &mut violations);
+    violations
+}
+
+/// Checks one evidence manifest against the schema and milestone closure rules.
+#[must_use]
+pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &str) -> Vec<String> {
+    if !is_valid_milestone_id(milestone) {
+        return vec![format!("invalid milestone ID: {milestone}")];
+    }
+
+    match jq_matches(manifest_path, "type == \"object\"") {
         Ok(true) => {}
         Ok(false) => return vec!["milestone manifest must be a JSON object".to_owned()],
         Err(error) => return vec![error],
     }
 
     let mut violations = Vec::new();
-    match evidence_schema_matches(root, &manifest_path) {
+    match evidence_schema_matches(root, manifest_path) {
         Ok(true) => {}
         Ok(false) => {
             violations.push("milestone manifest does not conform to evidence schema".to_owned());
         }
         Err(error) => violations.push(error),
     }
-    if !jq_matches(&manifest_path, ".schemaVersion == 1").unwrap_or(false) {
+    verify_manifest_redaction(manifest_path, &mut violations);
+    if !jq_matches(manifest_path, ".schemaVersion == 1").unwrap_or(false) {
         violations.push("manifest schemaVersion must equal 1".to_owned());
     }
     let milestone_filter = format!(".milestone == \"{milestone}\"");
-    if !jq_matches(&manifest_path, &milestone_filter).unwrap_or(false) {
+    if !jq_matches(manifest_path, &milestone_filter).unwrap_or(false) {
         violations.push(format!("manifest milestone must equal {milestone}"));
     }
 
-    for field in [
-        "workPackages",
-        "revision",
-        "versions",
-        "environment",
-        "inputs",
-        "commands",
-        "tests",
-        "benchmarks",
-        "deviations",
-        "risks",
-        "review",
-        "attestations",
-    ] {
-        let filter = format!("has(\"{field}\")");
-        if !jq_matches(&manifest_path, &filter).unwrap_or(false) {
-            violations.push(format!("milestone manifest is missing field: {field}"));
-        }
+    verify_general_closure(manifest_path, milestone, &mut violations);
+    if milestone == "M0" {
+        verify_m0_manifest(manifest_path, &mut violations);
     }
 
     violations
+}
+
+fn verify_general_closure(manifest_path: &Path, milestone: &str, violations: &mut Vec<String>) {
+    let work_package_prefix = format!("{milestone}-W");
+    require_manifest_rule(
+        manifest_path,
+        &format!(".workPackages | length > 0 and all(startswith(\"{work_package_prefix}\"))"),
+        "work-package IDs must belong to the manifest milestone",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".revision.dirty == false",
+        "milestone revision must be clean",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".inputs | length > 0",
+        "milestone must include at least one hashed input",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        "([.commands[].exitStatus] + [.platformEvidence[].commands[].exitStatus]) | length > 0 and all(. == 0)",
+        "milestone commands must all succeed",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".tests.total == (.tests.passed + .tests.failed + .tests.skipped)",
+        "test counts must equal passed + failed + skipped",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".tests.total > 0 and .tests.passed > 0",
+        "milestone must record at least one passing test",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".tests.failed == 0",
+        "milestone tests must have zero failures",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".tests.skipped == 0",
+        "milestone tests must have zero skipped tests",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".tests.lineCoveragePercent != null and .tests.lineCoveragePercent >= 80",
+        "milestone line coverage must be at least 80%",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        "([.deviations[].classification] + [.risks[].classification]) | all(. != \"blocking\")",
+        "milestone must have no blocking deviations or risks",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".review.independent == true and .review.result == \"pass\"",
+        "milestone review must be independent and pass",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".review | has(\"record\")",
+        "milestone review must include a hashed record",
+        violations,
+    );
+}
+
+fn verify_admitted_manifest(manifest_path: &Path, milestone: &str, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        manifest_path,
+        r#".evidenceKind == "native""#,
+        "milestone closure requires native evidence, not a synthetic contract fixture",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#"[.. | strings | ascii_downcase | contains("synthetic")] | any | not"#,
+        "native milestone evidence must not contain synthetic placeholders",
+        violations,
+    );
+    if milestone == "M0" {
+        require_manifest_rule(
+            manifest_path,
+            r#".attestations
+                | any(
+                    .platform == "linux"
+                    and .architecture == "x86_64"
+                    and (.workloads | sort == ["official-atm11", "vanilla"])
+                )"#,
+            "M0 closure requires a workload-bound native Linux attestation",
+            violations,
+        );
+    }
+}
+
+fn verify_m0_manifest(manifest_path: &Path, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        manifest_path,
+        ".workPackages | sort == [\"M0-W1\", \"M0-W2\", \"M0-W3\", \"M0-W4\", \"M0-W5\", \"M0-W6\", \"M0-W7\", \"M0-W8\", \"M0-W9\"]",
+        "M0 manifest must include every work package from M0-W1 through M0-W9 exactly once",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".versions.minecraft == \"26.1.2\" and .versions.neoforge == \"26.1.2.78\" and .versions.fixture == \"ATM11 0.2.1\"",
+        "M0 manifest must pin Minecraft 26.1.2, NeoForge 26.1.2.78, and ATM11 0.2.1",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        &m0_platform_filter("linux", "x86_64", "linux-reference-v1"),
+        "M0 manifest must include native Linux x86_64 launch evidence",
+        violations,
+    );
+}
+
+fn m0_platform_filter(platform: &str, architecture: &str, hardware_profile: &str) -> String {
+    format!(
+        r#".platformEvidence | any(
+            .platform == "{platform}"
+            and .architecture == "{architecture}"
+            and .native == true
+            and .hardwareProfile == "{hardware_profile}"
+            and .versions.minecraft == "26.1.2"
+            and .versions.neoforge == "26.1.2.78"
+            and .versions.prism == "11.0.3"
+            and .versions.fixture == "ATM11 0.2.1"
+            and .versions.java == "25.0.1"
+            and .versions.rust == "1.95.0"
+            and .versions.nix == "2.33.3"
+            and .versions.devenv == "2.1.2"
+            and (.settings | length > 0)
+            and any(.commands[]; .command == "devenv test --no-tui")
+            and any(.commands[]; .command == "nix flake check --accept-flake-config")
+            and any(.baselines[]; .workload == "vanilla")
+            and any(.baselines[]; .workload == "official-atm11")
+        )"#
+    )
+}
+
+fn verify_manifest_redaction(manifest_path: &Path, violations: &mut Vec<String>) {
+    let output = Command::new("jq")
+        .args(["--raw-output", ".. | strings"])
+        .arg(manifest_path)
+        .output();
+    let lower = output
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).to_ascii_lowercase())
+        .unwrap_or_default();
+    let contains_local_data = [
+        "/home/",
+        "/users/",
+        r"c:\\users\\",
+        ".minecraft",
+        "tests/fixtures/local/",
+        "evidence/private/",
+    ]
+    .iter()
+    .any(|pattern| lower.contains(pattern));
+    let contains_credential_value = [
+        "authorization: bearer",
+        "authorization= bearer",
+        "access_token=",
+        "accesstoken=",
+        "minecraft_access_token=",
+        "tangled_token=",
+        "aws_secret_access_key=",
+        "atp_app_password=",
+        "ghp_",
+        "xoxb-",
+        "xoxp-",
+    ]
+    .iter()
+    .any(|pattern| lower.contains(pattern));
+    let credential_fields_absent = jq_matches(
+        manifest_path,
+        r#"[paths(strings) as $path
+            | select(
+                any(
+                    $path[];
+                    type == "string"
+                    and (ascii_downcase | test("token|password|secret|credential|authorization"))
+                )
+                and (getpath($path) | length > 0)
+            )] | length == 0"#,
+    )
+    .unwrap_or(false);
+
+    if contains_local_data || contains_credential_value || !credential_fields_absent {
+        violations.push("milestone manifest contains sensitive or local data".to_owned());
+    }
+}
+
+fn require_manifest_rule(
+    manifest_path: &Path,
+    filter: &str,
+    violation: &str,
+    violations: &mut Vec<String>,
+) {
+    match jq_matches(manifest_path, filter) {
+        Ok(true) => {}
+        Ok(false) => violations.push(violation.to_owned()),
+        Err(error) => violations.push(error),
+    }
 }
 
 /// Rejects rights-restricted, secret, and local-runtime paths from a tracked tree.
@@ -241,6 +462,7 @@ fn maintained_rust_roots() -> Vec<String> {
         .map(|name| format!("crates/{name}/src/lib.rs"))
         .chain([
             "tests/conformance/src/lib.rs".to_owned(),
+            "tools/ravel-cli/src/lib.rs".to_owned(),
             "tools/ravel-cli/src/main.rs".to_owned(),
             "tools/ravel-xtask/src/lib.rs".to_owned(),
             "tools/ravel-xtask/src/main.rs".to_owned(),
@@ -271,9 +493,13 @@ fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
     for schema in [
         "configuration",
         "evidence",
+        "fixture",
         "pack",
         "package",
+        "performance-collector",
+        "performance-result",
         "provenance",
+        "runtime-inputs",
         "saved-data",
     ] {
         let relative = format!("schemas/{schema}.schema.json");
@@ -398,6 +624,10 @@ fn is_forbidden_tracked_path(path: &str) -> bool {
     let forbidden_component = components
         .iter()
         .any(|component| matches!(*component, "saves" | "logs" | "crash-reports"));
+    let forbidden_evidence_component = lower.starts_with("evidence/")
+        && components
+            .iter()
+            .any(|component| matches!(*component, "raw" | "captures"));
     let forbidden_basename = matches!(
         basename,
         ".env"
@@ -424,7 +654,11 @@ fn is_forbidden_tracked_path(path: &str) -> bool {
     .iter()
     .any(|extension| lower.ends_with(extension));
 
-    forbidden_prefix || forbidden_component || forbidden_basename || forbidden_extension
+    forbidden_prefix
+        || forbidden_component
+        || forbidden_evidence_component
+        || forbidden_basename
+        || forbidden_extension
 }
 
 fn is_valid_milestone_id(milestone: &str) -> bool {
@@ -540,11 +774,13 @@ mod tests {
         let violations = verify_tracked_paths([
             "tests/fixtures/local/secret.jar",
             "evidence/private/capture.json",
+            "evidence/m0/raw/process.log",
+            "evidence/m0/captures/frame.trace",
             "config/credentials.json",
             "docs/README.md",
         ]);
 
-        assert_eq!(violations.len(), 3);
+        assert_eq!(violations.len(), 5);
         assert!(
             violations
                 .iter()

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "synthetic",
+  "milestone": "M0",
+  "workPackages": ["M0-W2"],
+  "revision": {
+    "id": "synthetic-dirty-revision",
+    "dirty": true
+  },
+  "versions": {
+    "minecraft": "synthetic-minecraft",
+    "neoforge": "synthetic-neoforge",
+    "prism": "synthetic-prism",
+    "fixture": "synthetic-fixture",
+    "java": "synthetic-java",
+    "rust": "synthetic-rust",
+    "nix": "synthetic-nix",
+    "devenv": "synthetic-devenv"
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "synthetic-assembly-host",
+    "settings": {}
+  },
+  "inputs": [],
+  "commands": [
+    {
+      "command": "synthetic failing verification",
+      "startedAt": "2026-01-01T00:00:00Z",
+      "durationMs": 1,
+      "exitStatus": 1,
+      "logSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "tests": {
+    "total": 4,
+    "passed": 1,
+    "failed": 1,
+    "skipped": 1,
+    "lineCoveragePercent": 79.9
+  },
+  "benchmarks": {
+    "protocolVersion": "synthetic-incomplete",
+    "results": []
+  },
+  "deviations": [
+    {
+      "summary": "Synthetic blocking deviation",
+      "classification": "blocking"
+    }
+  ],
+  "risks": [],
+  "review": {
+    "reviewer": "synthetic author",
+    "independent": false,
+    "result": "fail"
+  },
+  "attestations": [],
+  "platformEvidence": []
+}

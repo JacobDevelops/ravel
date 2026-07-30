@@ -11,6 +11,10 @@ rust-version.workspace = true
 ravel-pack.workspace = true
 ravel-package.workspace = true
 ravel-testkit.workspace = true
+rustix.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "synthetic",
+  "milestone": "M0",
+  "workPackages": [
+    "M0-W1",
+    "M0-W2",
+    "M0-W3",
+    "M0-W4",
+    "M0-W5",
+    "M0-W6",
+    "M0-W7",
+    "M0-W8",
+    "M0-W9"
+  ],
+  "revision": {
+    "id": "synthetic-clean-revision",
+    "dirty": false
+  },
+  "versions": {
+    "minecraft": "26.1.2",
+    "neoforge": "26.1.2.78",
+    "prism": "synthetic-prism",
+    "fixture": "ATM11 0.2.1",
+    "java": "synthetic-java",
+    "rust": "synthetic-rust",
+    "nix": "synthetic-nix",
+    "devenv": "synthetic-devenv"
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "synthetic-assembly-host",
+    "settings": {
+      "purpose": "schema and verifier test only"
+    }
+  },
+  "inputs": [
+    {
+      "name": "synthetic fixture manifest",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ],
+  "commands": [
+    {
+      "command": "devenv tasks run ravel:verify",
+      "startedAt": "2026-01-01T00:00:00Z",
+      "durationMs": 1,
+      "exitStatus": 0,
+      "logSha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "tests": {
+    "total": 10,
+    "passed": 10,
+    "failed": 0,
+    "skipped": 0,
+    "lineCoveragePercent": 100
+  },
+  "benchmarks": {
+    "protocolVersion": "not-required-at-m0",
+    "results": []
+  },
+  "deviations": [],
+  "risks": [
+    {
+      "summary": "Synthetic non-blocking risk",
+      "classification": "non-blocking"
+    }
+  ],
+  "review": {
+    "reviewer": "synthetic independent reviewer",
+    "independent": true,
+    "result": "pass",
+    "record": {
+      "name": "synthetic review record",
+      "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  },
+  "attestations": [
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "workloads": ["vanilla", "official-atm11"],
+      "statement": "synthetic Linux launch attestation",
+      "attestedBy": "synthetic reviewer",
+      "attestedAt": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "platformEvidence": [
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "hardwareProfile": "linux-reference-v1",
+      "versions": {
+        "minecraft": "26.1.2",
+        "neoforge": "26.1.2.78",
+        "prism": "11.0.3",
+        "fixture": "ATM11 0.2.1",
+        "java": "25.0.1",
+        "rust": "1.95.0",
+        "nix": "2.33.3",
+        "devenv": "2.1.2"
+      },
+      "settings": {
+        "purpose": "synthetic native Linux context"
+      },
+      "native": true,
+      "commands": [
+        {
+          "command": "devenv test --no-tui",
+          "startedAt": "2026-01-01T00:00:00Z",
+          "durationMs": 1,
+          "exitStatus": 0,
+          "logSha256": "5555555555555555555555555555555555555555555555555555555555555555"
+        },
+        {
+          "command": "nix flake check --accept-flake-config",
+          "startedAt": "2026-01-01T00:00:01Z",
+          "durationMs": 1,
+          "exitStatus": 0,
+          "logSha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      ],
+      "baselines": [
+        {
+          "workload": "vanilla",
+          "result": {
+            "name": "synthetic Linux vanilla launch proof",
+            "sha256": "7777777777777777777777777777777777777777777777777777777777777777"
+          },
+          "validation": {
+            "name": "synthetic Linux vanilla launch validation",
+            "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          }
+        },
+        {
+          "workload": "official-atm11",
+          "result": {
+            "name": "synthetic Linux official-ATM11 launch proof",
+            "sha256": "8888888888888888888888888888888888888888888888888888888888888888"
+          },
+          "validation": {
+            "name": "synthetic Linux official-ATM11 launch validation",
+            "sha256": "1010101010101010101010101010101010101010101010101010101010101010"
+          }
+        }
+      ]
+    }
+  ]
+}

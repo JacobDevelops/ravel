@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "synthetic",
+  "milestone": "M0",
+  "workPackages": ["M0-W1"],
+  "revision": {
+    "id": "synthetic-revision",
+    "dirty": false
+  },
+  "versions": {
+    "minecraft": "synthetic",
+    "neoforge": "synthetic",
+    "prism": "synthetic",
+    "fixture": "synthetic",
+    "java": "synthetic",
+    "rust": "synthetic",
+    "nix": "synthetic",
+    "devenv": "synthetic"
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "synthetic",
+    "settings": {}
+  },
+  "inputs": [
+    {
+      "name": "synthetic invalid input",
+      "sha256": "not-a-sha256"
+    }
+  ],
+  "commands": [
+    {
+      "command": "synthetic",
+      "startedAt": "2026-01-01T00:00:00Z",
+      "durationMs": 0,
+      "exitStatus": 0,
+      "logSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "tests": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "lineCoveragePercent": 100
+  },
+  "benchmarks": {
+    "protocolVersion": "synthetic",
+    "results": []
+  },
+  "deviations": [],
+  "risks": [],
+  "review": {
+    "reviewer": "synthetic",
+    "independent": true,
+    "result": "pass"
+  },
+  "attestations": [],
+  "platformEvidence": []
+}

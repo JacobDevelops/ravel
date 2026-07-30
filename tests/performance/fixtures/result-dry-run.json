@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "initial-v1",
+  "captureMode": "dry-run",
+  "synthetic": true,
+  "fixturePurpose": "Schema and aggregation wiring test only; contains no measured baseline data.",
+  "profile": {
+    "id": "initial",
+    "version": 3,
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "subject": {
+    "kind": "synthetic",
+    "name": "synthetic dry-run subject",
+    "version": "fixture-v1",
+    "workload": "synthetic"
+  },
+  "environment": {
+    "platform": "synthetic",
+    "architecture": "synthetic",
+    "hardwareProfileSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "launchInputSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "worldSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+    "routeSha256": "5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "inputs": [
+    {
+      "name": "synthetic collector output",
+      "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  ],
+  "invalidAttempts": [],
+  "repetitions": [
+    {
+      "id": "synthetic-dry-run-1",
+      "ordinal": 1,
+      "valid": true,
+      "invalidReasons": [],
+      "startupDurationMs": 100,
+      "worldLoadDurationMs": 100,
+      "averageFps": 60,
+      "frameTimeMs": {
+        "quality": "exact",
+        "sampleCount": 1,
+        "median": 16.666667,
+        "p95": 16.666667,
+        "p99": 16.666667
+      },
+      "sustained": {
+        "windowSeconds": 60,
+        "stepSeconds": 1,
+        "windowCount": 1,
+        "minimumWindowAverageFps": 60,
+        "failingWindowCount": 0
+      },
+      "integratedServerTickTimeMs": {
+        "quality": "exact",
+        "sampleCount": 1,
+        "median": 10,
+        "p95": 10,
+        "p99": 10
+      },
+      "memory": {
+        "steadyStateRssMaximumBytes": 1073741824,
+        "transientRssPeakBytes": 1073741824
+      },
+      "systemMemory": {
+        "availability": {
+          "status": "measured",
+          "quality": "estimated"
+        },
+        "peakUsedBytes": 2147483648
+      },
+      "memoryPressure": {
+        "availability": {
+          "status": "measured",
+          "quality": "exact"
+        },
+        "maximumLevel": 0,
+        "longestWarningSeconds": 0,
+        "sustainedWindowCount": 0
+      },
+      "swap": {
+        "availability": {
+          "status": "measured",
+          "quality": "exact"
+        },
+        "maximumWindowThroughputBytesPerSecond": 0,
+        "longestThrashingSeconds": 0,
+        "sustainedWindowCount": 0
+      },
+      "gpu": {
+        "availability": {
+          "status": "unavailable",
+          "reason": "Synthetic platform exposes no GPU allocation source."
+        },
+        "peakAllocationBytes": null
+      }
+    }
+  ],
+  "aggregate": {
+    "validRepetitionCount": 1,
+    "bestStartupDurationMs": 100,
+    "bestWorldLoadDurationMs": 100,
+    "medianAverageFps": 60,
+    "frameTimeMs": {
+      "quality": "exact",
+      "sampleCount": 1,
+      "median": 16.666667,
+      "p95": 16.666667,
+      "p99": 16.666667
+    },
+    "integratedServerTickTimeMs": {
+      "quality": "exact",
+      "sampleCount": 1,
+      "median": 10,
+      "p95": 10,
+      "p99": 10
+    },
+    "steadyStateRssMaximumBytes": 1073741824,
+    "transientRssPeakBytes": 1073741824,
+    "systemMemoryPeakUsedBytes": 2147483648,
+    "longestWarningSeconds": 0,
+    "longestThrashingSeconds": 0,
+    "gpuPeakAllocationBytes": null
+  },
+  "reproducibility": {
+    "requiredValidRepetitions": 1,
+    "validRepetitions": 1,
+    "formula": "100 * (maximum - minimum) / median",
+    "metrics": [
+      {
+        "metric": "average-fps",
+        "minimum": 60,
+        "maximum": 60,
+        "median": 60,
+        "relativeSpreadPercent": 0,
+        "limitPercent": 10,
+        "status": "dry-run"
+      }
+    ],
+    "categoricalResultsMatch": true,
+    "status": "dry-run"
+  },
+  "criteria": {
+    "sustainedFps": {
+      "status": "dry-run",
+      "observed": 60,
+      "operator": "greater-than-or-equal",
+      "limit": 30,
+      "unit": "frames-per-second",
+      "passingRepetitions": 1,
+      "requiredRepetitions": 1
+    },
+    "steadyStateRss": {
+      "status": "dry-run",
+      "observed": 1073741824,
+      "operator": "less-than-or-equal",
+      "limit": 8589934592,
+      "unit": "bytes",
+      "passingRepetitions": 1,
+      "requiredRepetitions": 1
+    },
+    "transientRss": {
+      "status": "dry-run",
+      "observed": 1073741824,
+      "operator": "less-than-or-equal",
+      "limit": 10737418240,
+      "unit": "bytes",
+      "passingRepetitions": 1,
+      "requiredRepetitions": 1
+    },
+    "memoryPressureWarning": {
+      "status": "dry-run",
+      "observed": 0,
+      "operator": "less-than",
+      "limit": 30,
+      "unit": "seconds",
+      "passingRepetitions": 1,
+      "requiredRepetitions": 1
+    },
+    "swapThrashing": {
+      "status": "dry-run",
+      "observed": 0,
+      "operator": "less-than",
+      "limit": 30,
+      "unit": "seconds",
+      "passingRepetitions": 1,
+      "requiredRepetitions": 1
+    },
+    "reproducibility": {
+      "status": "dry-run",
+      "observed": 0,
+      "operator": "less-than-or-equal",
+      "limit": 10,
+      "unit": "percent",
+      "passingRepetitions": 1,
+      "requiredRepetitions": 1
+    }
+  },
+  "overallStatus": "dry-run"
+}

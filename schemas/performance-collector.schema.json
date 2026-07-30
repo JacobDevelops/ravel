@@ -1,0 +1,1033 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ravel:schema:performance-collector:1",
+  "title": "Ravel performance collector output",
+  "description": "Normalized event and sample output from one collector for one performance repetition.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "protocolVersion",
+    "captureMode",
+    "synthetic",
+    "profile",
+    "run",
+    "collector",
+    "capabilities",
+    "events",
+    "samples"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "protocolVersion": {
+      "const": "initial-v1"
+    },
+    "captureMode": {
+      "enum": ["dry-run", "baseline", "acceptance"]
+    },
+    "synthetic": {
+      "type": "boolean"
+    },
+    "fixturePurpose": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": {
+      "$ref": "#/$defs/profile"
+    },
+    "run": {
+      "$ref": "#/$defs/run"
+    },
+    "collector": {
+      "$ref": "#/$defs/collector"
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/capability"
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/frameTimeCapability"
+        },
+        {
+          "$ref": "#/$defs/tickTimeCapability"
+        },
+        {
+          "$ref": "#/$defs/processRssCapability"
+        },
+        {
+          "$ref": "#/$defs/systemMemoryCapability"
+        },
+        {
+          "$ref": "#/$defs/memoryPressureCapability"
+        },
+        {
+          "$ref": "#/$defs/swapInCapability"
+        },
+        {
+          "$ref": "#/$defs/swapOutCapability"
+        },
+        {
+          "$ref": "#/$defs/gpuCapability"
+        }
+      ]
+    },
+    "events": {
+      "type": "array",
+      "minItems": 17,
+      "items": {
+        "$ref": "#/$defs/event"
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/processStartEvent"
+        },
+        {
+          "$ref": "#/$defs/gameReadyEvent"
+        },
+        {
+          "$ref": "#/$defs/worldLoadStartEvent"
+        },
+        {
+          "$ref": "#/$defs/worldReadyEvent"
+        },
+        {
+          "$ref": "#/$defs/warmUpStartEvent"
+        },
+        {
+          "$ref": "#/$defs/measurementStartEvent"
+        },
+        {
+          "$ref": "#/$defs/routeStepEvents"
+        },
+        {
+          "$ref": "#/$defs/dimensionChangeEvents"
+        },
+        {
+          "$ref": "#/$defs/dimensionReadyEvents"
+        },
+        {
+          "$ref": "#/$defs/measurementEndEvent"
+        },
+        {
+          "$ref": "#/$defs/processExitEvent"
+        }
+      ]
+    },
+    "samples": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "$ref": "#/$defs/sample"
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/frameTimeSample"
+        },
+        {
+          "$ref": "#/$defs/tickTimeSample"
+        },
+        {
+          "$ref": "#/$defs/processRssSample"
+        },
+        {
+          "$ref": "#/$defs/systemMemorySample"
+        },
+        {
+          "$ref": "#/$defs/memoryPressureSample"
+        },
+        {
+          "$ref": "#/$defs/swapInSample"
+        },
+        {
+          "$ref": "#/$defs/swapOutSample"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "captureMode": {
+            "const": "dry-run"
+          }
+        },
+        "required": ["captureMode"]
+      },
+      "then": {
+        "properties": {
+          "synthetic": {
+            "const": true
+          },
+          "run": {
+            "properties": {
+              "subject": {
+                "const": "synthetic"
+              },
+              "workload": {
+                "const": "synthetic"
+              }
+            }
+          },
+          "collector": {
+            "properties": {
+              "platform": {
+                "const": "synthetic"
+              },
+              "architecture": {
+                "const": "synthetic"
+              }
+            }
+          }
+        },
+        "required": ["fixturePurpose"]
+      },
+      "else": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          },
+          "run": {
+            "properties": {
+              "subject": {
+                "enum": ["vanilla", "official-pack", "ravel-pack"]
+              },
+              "workload": {
+                "enum": ["vanilla", "complete-pack"]
+              }
+            }
+          },
+          "collector": {
+            "properties": {
+              "platform": {
+                "const": "linux"
+              },
+              "architecture": {
+                "const": "x86_64"
+              }
+            }
+          },
+          "capabilities": {
+            "$ref": "#/$defs/requiredMetricCapabilities"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "run": {
+            "properties": {
+              "subject": {
+                "const": "vanilla"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "run": {
+            "properties": {
+              "workload": {
+                "const": "vanilla"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "run": {
+            "properties": {
+              "subject": {
+                "enum": ["official-pack", "ravel-pack"]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "run": {
+            "properties": {
+              "workload": {
+                "const": "complete-pack"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$"
+    },
+    "metric": {
+      "enum": [
+        "frame-time",
+        "integrated-server-tick-time",
+        "process-rss",
+        "system-used-memory",
+        "system-memory-pressure",
+        "swap-in-total",
+        "swap-out-total",
+        "gpu-allocation"
+      ]
+    },
+    "quality": {
+      "enum": ["exact", "estimated"]
+    },
+    "requiredMetricCapabilities": {
+      "type": "array",
+      "allOf": [
+        {
+          "contains": {
+            "properties": {
+              "metric": {
+                "const": "frame-time"
+              },
+              "availability": {
+                "const": "available"
+              },
+              "quality": {
+                "const": "exact"
+              }
+            }
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "metric": {
+                "const": "integrated-server-tick-time"
+              },
+              "availability": {
+                "const": "available"
+              },
+              "quality": {
+                "const": "exact"
+              }
+            }
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "metric": {
+                "const": "process-rss"
+              },
+              "availability": {
+                "const": "available"
+              },
+              "quality": {
+                "const": "exact"
+              }
+            }
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "metric": {
+                "const": "system-used-memory"
+              },
+              "availability": {
+                "const": "available"
+              }
+            }
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "metric": {
+                "const": "system-memory-pressure"
+              },
+              "availability": {
+                "const": "available"
+              },
+              "quality": {
+                "const": "exact"
+              }
+            }
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "metric": {
+                "const": "swap-in-total"
+              },
+              "availability": {
+                "const": "available"
+              },
+              "quality": {
+                "const": "exact"
+              }
+            }
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "metric": {
+                "const": "swap-out-total"
+              },
+              "availability": {
+                "const": "available"
+              },
+              "quality": {
+                "const": "exact"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "singleCapability": {
+      "type": "array",
+      "minContains": 1,
+      "maxContains": 1
+    },
+    "frameTimeCapability": {
+      "$ref": "#/$defs/singleCapability",
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "frame-time"
+          }
+        }
+      }
+    },
+    "tickTimeCapability": {
+      "$ref": "#/$defs/singleCapability",
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "integrated-server-tick-time"
+          }
+        }
+      }
+    },
+    "processRssCapability": {
+      "$ref": "#/$defs/singleCapability",
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "process-rss"
+          }
+        }
+      }
+    },
+    "systemMemoryCapability": {
+      "$ref": "#/$defs/singleCapability",
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "system-used-memory"
+          }
+        }
+      }
+    },
+    "memoryPressureCapability": {
+      "$ref": "#/$defs/singleCapability",
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "system-memory-pressure"
+          }
+        }
+      }
+    },
+    "swapInCapability": {
+      "$ref": "#/$defs/singleCapability",
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "swap-in-total"
+          }
+        }
+      }
+    },
+    "swapOutCapability": {
+      "$ref": "#/$defs/singleCapability",
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "swap-out-total"
+          }
+        }
+      }
+    },
+    "gpuCapability": {
+      "$ref": "#/$defs/singleCapability",
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "gpu-allocation"
+          }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "sha256"],
+      "properties": {
+        "id": {
+          "const": "initial"
+        },
+        "version": {
+          "const": 3
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "repetition",
+        "subject",
+        "workload",
+        "startedAt",
+        "endedAt",
+        "monotonicDurationNs"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "repetition": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1
+        },
+        "subject": {
+          "enum": ["vanilla", "official-pack", "ravel-pack", "synthetic"]
+        },
+        "workload": {
+          "enum": ["vanilla", "complete-pack", "synthetic"]
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "endedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "monotonicDurationNs": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "collector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "platform",
+        "architecture",
+        "commandSha256",
+        "clock"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "enum": ["linux", "macos", "synthetic"]
+        },
+        "architecture": {
+          "enum": ["x86_64", "aarch64", "synthetic"]
+        },
+        "commandSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "clock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "resolutionNs"],
+          "properties": {
+            "kind": {
+              "const": "monotonic"
+            },
+            "resolutionNs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            }
+          }
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "availability"],
+      "properties": {
+        "metric": {
+          "$ref": "#/$defs/metric"
+        },
+        "availability": {
+          "enum": ["available", "unavailable", "not-applicable"]
+        },
+        "quality": {
+          "$ref": "#/$defs/quality"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "availability": {
+                "const": "available"
+              }
+            },
+            "required": ["availability"]
+          },
+          "then": {
+            "required": ["quality"],
+            "not": {
+              "required": ["reason"]
+            }
+          },
+          "else": {
+            "required": ["reason"],
+            "not": {
+              "required": ["quality"]
+            }
+          }
+        }
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "elapsedNs"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "process-start",
+            "game-ready",
+            "world-load-start",
+            "world-ready",
+            "warm-up-start",
+            "measurement-start",
+            "route-step-start",
+            "dimension-change-start",
+            "dimension-ready",
+            "measurement-end",
+            "process-exit"
+          ]
+        },
+        "elapsedNs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "routeStep": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dimension": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "route-step-start"
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["routeStep", "dimension"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "world-ready",
+                  "dimension-change-start",
+                  "dimension-ready"
+                ]
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["dimension"],
+            "not": {
+              "required": ["routeStep"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "process-start",
+                  "game-ready",
+                  "world-load-start",
+                  "warm-up-start",
+                  "measurement-start",
+                  "measurement-end",
+                  "process-exit"
+                ]
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": ["routeStep"]
+                },
+                {
+                  "required": ["dimension"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "processStartEvent": {
+      "type": "array",
+      "minContains": 1,
+      "maxContains": 1,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "process-start"
+          }
+        }
+      }
+    },
+    "gameReadyEvent": {
+      "type": "array",
+      "minContains": 1,
+      "maxContains": 1,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "game-ready"
+          }
+        }
+      }
+    },
+    "worldLoadStartEvent": {
+      "type": "array",
+      "minContains": 1,
+      "maxContains": 1,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "world-load-start"
+          }
+        }
+      }
+    },
+    "worldReadyEvent": {
+      "type": "array",
+      "minContains": 1,
+      "maxContains": 1,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "world-ready"
+          }
+        }
+      }
+    },
+    "warmUpStartEvent": {
+      "type": "array",
+      "minContains": 1,
+      "maxContains": 1,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "warm-up-start"
+          }
+        }
+      }
+    },
+    "measurementStartEvent": {
+      "type": "array",
+      "minContains": 1,
+      "maxContains": 1,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "measurement-start"
+          }
+        }
+      }
+    },
+    "routeStepEvents": {
+      "type": "array",
+      "minContains": 5,
+      "maxContains": 5,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "route-step-start"
+          }
+        }
+      }
+    },
+    "dimensionChangeEvents": {
+      "type": "array",
+      "minContains": 2,
+      "maxContains": 2,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "dimension-change-start"
+          }
+        }
+      }
+    },
+    "dimensionReadyEvents": {
+      "type": "array",
+      "minContains": 2,
+      "maxContains": 2,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "dimension-ready"
+          }
+        }
+      }
+    },
+    "measurementEndEvent": {
+      "type": "array",
+      "minContains": 1,
+      "maxContains": 1,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "measurement-end"
+          }
+        }
+      }
+    },
+    "processExitEvent": {
+      "type": "array",
+      "minContains": 1,
+      "maxContains": 1,
+      "contains": {
+        "properties": {
+          "kind": {
+            "const": "process-exit"
+          }
+        }
+      }
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "elapsedNs", "phase", "value", "unit", "quality", "source"],
+      "properties": {
+        "metric": {
+          "$ref": "#/$defs/metric"
+        },
+        "elapsedNs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "phase": {
+          "enum": [
+            "startup",
+            "world-load",
+            "warm-up",
+            "steady-state",
+            "transient",
+            "cool-down"
+          ]
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": ["nanoseconds", "bytes", "level"]
+        },
+        "quality": {
+          "$ref": "#/$defs/quality"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "metric": {
+                "enum": ["frame-time", "integrated-server-tick-time"]
+              }
+            },
+            "required": ["metric"]
+          },
+          "then": {
+            "properties": {
+              "unit": {
+                "const": "nanoseconds"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metric": {
+                "enum": [
+                  "process-rss",
+                  "system-used-memory",
+                  "swap-in-total",
+                  "swap-out-total",
+                  "gpu-allocation"
+                ]
+              }
+            },
+            "required": ["metric"]
+          },
+          "then": {
+            "properties": {
+              "unit": {
+                "const": "bytes"
+              },
+              "value": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "metric": {
+                "const": "system-memory-pressure"
+              }
+            },
+            "required": ["metric"]
+          },
+          "then": {
+            "properties": {
+              "unit": {
+                "const": "level"
+              },
+              "value": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    "frameTimeSample": {
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "frame-time"
+          }
+        }
+      }
+    },
+    "tickTimeSample": {
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "integrated-server-tick-time"
+          }
+        }
+      }
+    },
+    "processRssSample": {
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "process-rss"
+          }
+        }
+      }
+    },
+    "systemMemorySample": {
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "system-used-memory"
+          }
+        }
+      }
+    },
+    "memoryPressureSample": {
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "system-memory-pressure"
+          }
+        }
+      }
+    },
+    "swapInSample": {
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "swap-in-total"
+          }
+        }
+      }
+    },
+    "swapOutSample": {
+      "contains": {
+        "properties": {
+          "metric": {
+            "const": "swap-out-total"
+          }
+        }
+      }
+    }
+  }
+}

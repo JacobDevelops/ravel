@@ -3,7 +3,8 @@
 Status: local release-candidate scaffold. Publishing packages or creating a
 registry is post-initial scope.
 
-1. Run the complete `ravel:verify` gate on supported Linux and macOS targets.
+1. Run the complete `ravel:verify` gate on Linux through M10. After the
+   Apple Silicon phase begins, run it on every then-supported target.
 2. Validate the relevant milestone evidence and independent review.
 3. Confirm package identity, compatibility, targets, integrity, licence, source,
    and provenance metadata.

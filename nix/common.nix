@@ -6,6 +6,11 @@
 }:
 
 let
+  tracyWithFrameExport = pkgs.tracy.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [
+      ../tests/performance/collectors/tracy-csvexport-frames.patch
+    ];
+  });
   supportedSystems = [
     "x86_64-linux"
     "aarch64-darwin"
@@ -16,7 +21,7 @@ in
   assertions = [
     {
       assertion = builtins.elem pkgs.stdenv.hostPlatform.system supportedSystems;
-      message = "Ravel supports only x86_64-linux and aarch64-darwin during M0.";
+      message = "unsupported Ravel host system";
     }
   ];
 
@@ -50,6 +55,7 @@ in
     shfmt
     statix
     taplo
+    tracyWithFrameExport
     unzip
     xz
     zip
@@ -117,6 +123,25 @@ in
         cargo nextest run --workspace --all-features
         cargo test --workspace --doc
         check-jsonschema --check-metaschema schemas/*.schema.json
+        check-jsonschema --schemafile schemas/fixture.schema.json \
+          tests/fixtures/descriptors/atm11-0.2.1.json
+        check-jsonschema --schemafile schemas/runtime-inputs.schema.json \
+          tests/fixtures/descriptors/runtime-inputs-26.1.2.json
+        check-jsonschema --schemafile schemas/performance-collector.schema.json \
+          tests/performance/fixtures/collector-dry-run.json
+        check-jsonschema --schemafile schemas/performance-result.schema.json \
+          tests/performance/fixtures/result-dry-run.json
+
+        duplicate_event_fixture="$(mktemp)"
+        trap 'rm -f "$duplicate_event_fixture"' EXIT
+        jq '.events += [(.events[] | select(.kind == "process-start"))]' \
+          tests/performance/fixtures/collector-dry-run.json >"$duplicate_event_fixture"
+        if check-jsonschema \
+          --schemafile schemas/performance-collector.schema.json \
+          "$duplicate_event_fixture"; then
+          echo "collector schema accepted a duplicate singleton event" >&2
+          exit 1
+        fi
       '';
     };
 
@@ -169,6 +194,50 @@ in
         nix flake check --accept-flake-config
       '';
     };
+
+    ravel-fixture-reconstruct = {
+      description = "Reconstruct the pinned fixture under the ignored local boundary.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+        cargo run --locked -p ravel-cli -- fixture reconstruct
+      '';
+    };
+
+    ravel-fixture-verify = {
+      description = "Verify pinned fixture versions, counts, and hashes.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+        cargo run --locked -p ravel-cli -- fixture verify
+      '';
+    };
+
+    ravel-baseline = {
+      description = "Validate a named performance profile and its dry-run contract.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        if [[ "$#" -ne 2 || "$1" != "initial" || "$2" != "dry-run" ]]; then
+          echo "usage: ravel-baseline initial dry-run" >&2
+          echo "native capture remains an operator-run procedure" >&2
+          exit 2
+        fi
+
+        taplo format --check tests/performance/profiles/initial.toml
+        check-jsonschema --schemafile schemas/performance-collector.schema.json \
+          tests/performance/fixtures/collector-dry-run.json
+        check-jsonschema --schemafile schemas/performance-result.schema.json \
+          tests/performance/fixtures/result-dry-run.json
+        jq --exit-status \
+          '.captureMode == "dry-run" and .profile.id == "initial" and .profile.version == 3' \
+          tests/performance/fixtures/collector-dry-run.json >/dev/null
+        jq --exit-status \
+          '.captureMode == "dry-run" and .profile.id == "initial" and .profile.version == 3' \
+          tests/performance/fixtures/result-dry-run.json >/dev/null
+      '';
+    };
   };
 
   tasks = {
@@ -180,6 +249,9 @@ in
     "ravel:audit".exec = "ravel-audit";
     "ravel:verify-scaffold".exec = "ravel-verify-scaffold";
     "ravel:verify-environment".exec = "ravel-verify-environment";
+    "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";
+    "ravel:fixture-verify".exec = "ravel-fixture-verify";
+    "ravel:baseline".exec = "ravel-baseline initial dry-run";
 
     "ravel:verify" = {
       after = [

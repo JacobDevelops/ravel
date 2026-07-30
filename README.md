@@ -23,6 +23,8 @@ in the roadmap.
   named evidence gates pass.
 - [`schemas/`](schemas/) contains the initial machine-readable interchange
   contracts.
+- [`AGENTS.md`](AGENTS.md) is the working contract for coding agents, read by
+  Codex directly and by Claude Code through the `CLAUDE.md` symlink.
 
 ## Development
 
@@ -50,10 +52,11 @@ cargo test --workspace --doc
 cargo deny check
 ```
 
-Tangled Spindles currently provide the Linux gate. Required Apple Silicon
-verification runs on an actual `aarch64-darwin` host using
-[`docs/runbooks/darwin-verification.md`](docs/runbooks/darwin-verification.md);
-M0 cannot close without that evidence.
+Tangled Spindles currently provide the Linux gate. M0 through M10 are
+Linux-first; Apple Silicon verification is deferred until Linux M10 has already
+passed. When the post-Linux-M10 Mac phase begins, native verification runs on an
+actual `aarch64-darwin` host using
+[`docs/runbooks/darwin-verification.md`](docs/runbooks/darwin-verification.md).
 
 Ravel-maintained Rust and public mod-author code forbid unsafe code. Audited
 dependencies may encapsulate unavoidable operating-system or JVM boundaries.

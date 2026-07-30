@@ -44,6 +44,17 @@ GLX/OpenGL is absent.
    quiet window when unavoidable UI setup remains.
 4. Never admit virtual-display performance numbers as native baseline evidence.
 
+Xvfb is the wrong server for this, and the symptom is specific enough to
+recognise without re-diagnosing it. `glxinfo -B` against an Xvfb display reports
+`Error: couldn't find RGB GLX visual or fbconfig`, with or without
+`LIBGL_ALWAYS_SOFTWARE=1`, and the client then dies in
+`com.mojang.blaze3d.platform.Window.<init>` with `Failed to create backend
+OpenGL`. That is the X server, not the game: Xvfb and Xnest support software
+rendering only, and this build advertises no usable GLX visual. Xephyr on the
+same host exposes OpenGL 4.5 core through llvmpipe, because it is built from the
+same X server as the session's Xorg. Choose Xephyr and check the renderer rather
+than tuning llvmpipe against Xvfb.
+
 For focus-free world creation or other setup-only UI, Xephyr may be used when
 it exposes working GLX:
 
@@ -77,8 +88,51 @@ When sending input inside the nested display:
   because `type` can consume later tokens as text;
 - never point `xdotool` at the host display.
 
-Do not assume `xdotool key --window MINECRAFT_WINDOW` makes native operation
-focus-free. Minecraft/GLFW can ignore synthetic key events while another window
+One probe drives that whole sequence and proves it, so the mechanics do not have
+to be reassembled by hand:
+
+```console
+.agents/skills/capture-ravel-evidence/scripts/prism-nested-launch-probe.sh \
+  :97 3 LAUNCHER DATA_DIR INSTANCE_ID WORLD PRIVATE_OUT_DIR
+```
+
+It backs the instance configuration up, disables `OverrideCommands` for the
+setup launch, starts the nested display, runs a window manager inside it, waits
+on log conditions rather than sleeps, captures the screen, types into chat over
+XTEST, and requires both a landed keystroke and a clean exit before reporting
+`probe=pass`. It restores the configuration on every exit path, including
+failure, and verifies the restored file byte-for-byte. Set `RAVEL_PROBE_JVM_ARGS`
+to attach an agent. Refuse to run it while any Prism process is alive, which it
+enforces. Keep its output directory private: the captures contain world content.
+
+The instance configuration is shared state, so **never run this probe
+concurrently with another agent session or another capture**. It rewrites
+`OverrideCommands`, and the launcher is not the only thing that can be mid-run:
+the working copy and the launcher directory are shared. One probe at a time, and
+no other session driving the same instance while it runs.
+
+Interruption is covered but not perfectly. A probe killed with `SIGTERM`,
+`SIGINT`, or a closing tool session restores the configuration through its exit
+trap, and the test proves it. `SIGKILL` cannot be trapped, so it leaves
+`OverrideCommands=false` behind. The repair is one command, using the backup the
+probe writes before it changes anything:
+
+```console
+cp PRIVATE_OUT_DIR/instance.cfg.backup INSTANCE_DIR/instance.cfg
+```
+
+After that, confirm `OverrideCommands=true` and exactly one `WrapperCommand`
+line before any capture. If the backup is gone, the instance has to be rebuilt
+from the runbook rather than guessed at.
+
+On the reference Linux machine the pinned vanilla 26.1.2 instance produced a
+client window 13 seconds after launch, reached a loaded world, accepted typed
+chat, and exited cleanly, rendering through `llvmpipe` at OpenGL 4.5 core. Those
+seconds are a liveness signal, not a measurement.
+
+Bare XTEST on an isolated display is therefore a proven input route, while a
+directed event is not. Do not assume `xdotool key --window MINECRAFT_WINDOW`
+makes native operation focus-free. Minecraft/GLFW can ignore synthetic key events while another window
 owns X11 focus even though `xdotool` returns success. Prove both the resulting
 game state and the unchanged focus owner in an isolated display before relying
 on directed events. The ATM11 0.2.1 setup test rejected this path: Escape was

@@ -51,6 +51,10 @@ in
     jujutsu
     markdownlint-cli
     nixfmt
+    # Pure X clients for setup-only nested-display work. The nested X server and
+    # its GL stack stay host-provided: a nixpkgs Xephyr or glxinfo would report
+    # on nixpkgs' Mesa rather than the Mesa the game actually renders through.
+    openbox
     pkg-config
     shellcheck
     shfmt
@@ -58,6 +62,7 @@ in
     taplo
     tracyWithFrameExport
     unzip
+    xdotool
     xz
     zip
     zstd

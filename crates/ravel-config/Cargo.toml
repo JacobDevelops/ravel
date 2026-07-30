@@ -1,0 +1,14 @@
+[package]
+name = "ravel-config"
+description = "Configuration schemas, validation, and layered overrides"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ravel-core.workspace = true
+
+[lints]
+workspace = true

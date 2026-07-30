@@ -1,0 +1,15 @@
+[package]
+name = "ravel-resolve"
+description = "Dependency resolution and deterministic load planning for Ravel"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ravel-core.workspace = true
+ravel-package.workspace = true
+
+[lints]
+workspace = true

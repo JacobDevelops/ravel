@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ravel:schema:saved-data:1",
+  "title": "Ravel saved-data envelope",
+  "description": "Versioned mod-owned data checked before a world is opened or mutated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "owner",
+    "dataVersion",
+    "requiredPackages",
+    "payload"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "owner": {
+      "$ref": "#/$defs/id"
+    },
+    "dataVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "requiredPackages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "version"],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "payloadSchema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": true
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$"
+    }
+  }
+}

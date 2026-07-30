@@ -237,6 +237,28 @@ substitute for target-device testing.
 Initial macOS scope is this Apple Silicon class only. Windows, Linux ARM, and
 Intel macOS are not initial requirements.
 
+### 5.3 Distribution targets
+
+Precompiled mods are built for two initial targets, `linux-x86_64` and
+`macos-aarch64`. These are the values the package manifest's `platform` and
+`architecture` fields carry, and no other combination is an initial requirement.
+A mod author's build matrix is therefore two entries, not the full product of
+supported operating systems and architectures.
+
+The macOS target carries a signing obligation that the Linux target does not.
+Because Apple Silicon refuses to load unsigned executable code, every macOS
+artifact must be signed before it can run, and notarization becomes relevant
+separately where downloaded files are quarantined. Requiring mod authors to sign
+their own builds would put an Apple Developer enrolment between an author and
+their first release, which conflicts with the reason for shipping precompiled
+mods at all.
+
+The recorded candidate is therefore for Ravel to ad-hoc sign macOS artifacts on
+the installing machine rather than for authors to sign at build time. Signing
+without a full Xcode toolchain present appears feasible, which would keep the
+user-side toolchain requirement at zero. This is a candidate to prove or
+discard at the open question 2 gate, not a settled design.
+
 ## 6. Performance contract
 
 ### 6.1 Target workload
@@ -477,8 +499,13 @@ exact measurements.
 - Sandboxing filesystem, network, or native access is not an initial
   requirement.
 - Package integrity verification is required.
-- Package signing and publisher identity are architecture decisions for the
-  post-initial registry.
+- Publisher signing and publisher identity are distribution-trust decisions for
+  the post-initial registry.
+- Platform code signing is a separate execution requirement and is not deferred.
+  Apple Silicon requires a signature on all executable code, so an unsigned
+  precompiled artifact does not load on the constrained target at all. This
+  constrains the packaging and execution model and is an input to open
+  question 2 rather than to the registry.
 - Microsoft authentication remains outside Ravel.
 - Logs and diagnostics must not collect or expose launcher tokens.
 - Fixture reconstruction must not bypass Minecraft ownership, authorized
@@ -566,6 +593,33 @@ requires purging restricted history.
 A Ravel package registry is post-initial scope. It is considered when individual
 counterparts and the loader are ready for publication. Until then, package
 acquisition remains file/manifest based and external to the loader.
+
+Open question 9 has a recorded preferred shape. A registry should be an index
+over author-owned release records rather than the authoritative store of the
+artifacts themselves. Publisher identity should be portable and bound to
+something the author already controls, so that losing a registry account does
+not invalidate published releases. Published releases must be immutable and
+addressed by the content hash the package manifest already requires. Moderation
+should act at the index rather than at the distribution layer.
+
+Immutability is the binding constraint. A mechanism that permits an author to
+withdraw or rewrite a published release breaks every dependent resolution and
+disqualifies itself regardless of its other properties.
+
+Three candidate mechanisms are recorded for M13 evaluation. A Go module style
+design distributes from author-controlled URLs and derives immutability and
+integrity from an append-only transparency log. The Update Framework and
+Sigstore address publisher identity and signing directly, including key
+compromise, rollback, and freeze attacks. An AT Protocol style design supplies
+portable domain-bound identity and signed records, but its records are mutable
+by their author, its blob storage targets small media rather than mod artifacts,
+and its aggregation model is sized for social write volume; adopting it would
+require reintroducing immutability at the index and so weakens the
+author-owned-store property that motivates it.
+
+Recording these candidates does not select one, does not add a signature field
+to the package manifest, and does not change M0 through M10. Selection is M13
+work behind its own decision gate.
 
 ## 13. Testing contract
 
@@ -965,7 +1019,10 @@ These are intentionally unresolved:
    use?
 
 None of these questions blocks M0. Each has an explicit decision gate before it
-can affect implementation.
+can affect implementation. Question 2 has a recorded platform-signing constraint
+and candidate in section 5.3. Question 9 has a recorded preferred shape and
+three candidate mechanisms in section 12.3. Recording a candidate does not
+resolve a question.
 
 ## 19. Research basis
 

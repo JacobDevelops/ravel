@@ -1,0 +1,14 @@
+[package]
+name = "ravel-test-mod-failure-cases"
+description = "Negative package, lifecycle, side, and diagnostic test mod"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ravel-sdk.workspace = true
+
+[lints]
+workspace = true

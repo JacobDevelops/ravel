@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "test-mods/*", "tests/conformance", "tools/*"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+rust-version = "1.95"
+
+[workspace.dependencies]
+ravel-bootstrap = { path = "crates/ravel-bootstrap", version = "0.0.0" }
+ravel-config = { path = "crates/ravel-config", version = "0.0.0" }
+ravel-core = { path = "crates/ravel-core", version = "0.0.0" }
+ravel-data = { path = "crates/ravel-data", version = "0.0.0" }
+ravel-host-api = { path = "crates/ravel-host-api", version = "0.0.0" }
+ravel-loader = { path = "crates/ravel-loader", version = "0.0.0" }
+ravel-minecraft = { path = "crates/ravel-minecraft", version = "0.0.0" }
+ravel-minecraft-adapter = { path = "crates/ravel-minecraft-adapter", version = "0.0.0" }
+ravel-network = { path = "crates/ravel-network", version = "0.0.0" }
+ravel-observability = { path = "crates/ravel-observability", version = "0.0.0" }
+ravel-pack = { path = "crates/ravel-pack", version = "0.0.0" }
+ravel-package = { path = "crates/ravel-package", version = "0.0.0" }
+ravel-resolve = { path = "crates/ravel-resolve", version = "0.0.0" }
+ravel-save = { path = "crates/ravel-save", version = "0.0.0" }
+ravel-sdk = { path = "crates/ravel-sdk", version = "0.0.0" }
+ravel-sdk-macros = { path = "crates/ravel-sdk-macros", version = "0.0.0" }
+ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "deny"

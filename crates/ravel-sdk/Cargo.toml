@@ -1,0 +1,18 @@
+[package]
+name = "ravel-sdk"
+description = "Safe public Rust API for Ravel mod authors"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ravel-config.workspace = true
+ravel-core.workspace = true
+ravel-data.workspace = true
+ravel-network.workspace = true
+ravel-save.workspace = true
+
+[lints]
+workspace = true

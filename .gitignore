@@ -1,0 +1,50 @@
+# Cargo and local build output
+/target/
+/result
+/result-*
+
+# devenv and editor state
+/.devenv/
+/.direnv/
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Credentials and private keys
+*.pem
+*.p12
+*.pfx
+*.key
+*.keystore
+credentials.json
+secrets.json
+
+# Official or rights-restricted compatibility fixtures
+/tests/fixtures/local/**
+!/tests/fixtures/local/README.md
+/evidence/private/**
+/private/
+/restricted/
+*.jar
+*.mrpack
+
+# Local Minecraft and Prism state
+/.minecraft/
+/prism-instances/
+**/saves/
+**/logs/
+**/crash-reports/
+**/hs_err_pid*.log
+
+# Raw or sensitive evidence; sanitized manifests and summaries remain tracked
+/evidence/**/raw/
+/evidence/**/captures/
+*.jfr
+*.hprof
+*.trace

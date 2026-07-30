@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ravel:schema:evidence:1",
+  "title": "Ravel milestone evidence manifest",
+  "description": "Sanitized, reproducible evidence for one milestone gate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "milestone",
+    "workPackages",
+    "revision",
+    "versions",
+    "environment",
+    "inputs",
+    "commands",
+    "tests",
+    "benchmarks",
+    "deviations",
+    "risks",
+    "review",
+    "attestations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "milestone": {
+      "type": "string",
+      "pattern": "^M(?:[0-9]|1[0-3])$"
+    },
+    "workPackages": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^M(?:[0-9]|1[0-3])-W[1-9][0-9]*$"
+      }
+    },
+    "revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "dirty"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minecraft",
+        "prism",
+        "fixture",
+        "java",
+        "rust",
+        "nix",
+        "devenv"
+      ],
+      "properties": {
+        "minecraft": {
+          "$ref": "#/$defs/versionText"
+        },
+        "prism": {
+          "$ref": "#/$defs/versionText"
+        },
+        "fixture": {
+          "$ref": "#/$defs/versionText"
+        },
+        "java": {
+          "$ref": "#/$defs/versionText"
+        },
+        "rust": {
+          "$ref": "#/$defs/versionText"
+        },
+        "nix": {
+          "$ref": "#/$defs/versionText"
+        },
+        "devenv": {
+          "$ref": "#/$defs/versionText"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "architecture", "hardwareProfile", "settings"],
+      "properties": {
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "architecture": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hardwareProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "settings": {
+          "type": "object"
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/hashedArtifact"
+      }
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/command"
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "passed", "failed", "skipped", "lineCoveragePercent"],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lineCoveragePercent": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "benchmarks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "results"],
+      "properties": {
+        "protocolVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hashedArtifact"
+          }
+        }
+      }
+    },
+    "deviations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/classifiedFinding"
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/classifiedFinding"
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewer", "result"],
+      "properties": {
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "result": {
+          "enum": ["pass", "fail", "not-required"]
+        },
+        "record": {
+          "$ref": "#/$defs/hashedArtifact"
+        }
+      }
+    },
+    "attestations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement", "attestedBy", "attestedAt"],
+        "properties": {
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "attestedBy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "attestedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "versionText": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hashedArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "startedAt", "durationMs", "exitStatus", "logSha256"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exitStatus": {
+          "type": "integer"
+        },
+        "logSha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "classifiedFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "classification"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "enum": ["blocking", "non-blocking"]
+        }
+      }
+    }
+  }
+}

@@ -92,21 +92,23 @@ Every work package has:
 5. an evidence manifest;
 6. an independent review record when the change is nontrivial.
 
-The repository-native gate command will be:
+The repository-native fast and environment gate commands will be:
 
 ```text
 devenv tasks run ravel:verify
-devenv tasks run ravel:verify-milestone -- M<N>
+devenv tasks run ravel:verify-environment
+devenv tasks run ravel:verify-milestone:m<N>
 ```
 
-The second task wraps:
+The milestone task wraps:
 
 ```text
 cargo run -p ravel-xtask -- verify milestone M<N>
 ```
 
-These commands do not exist in the empty repository yet. M0-W2 creates them.
-Until then, this document is the source of the required checks.
+M0-W2 creates these commands. `ravel:verify` is the fast code-policy graph.
+`ravel:verify-environment` runs `devenv test` and `nix flake check`, with
+`devenv test` executing the same code-policy graph inside the pinned shell.
 
 ### Evidence contract
 
@@ -141,6 +143,11 @@ cargo nextest run --workspace --all-features
 cargo test --workspace --doc
 cargo llvm-cov nextest --workspace --all-features --fail-under-lines 80
 cargo deny check
+```
+
+The complete `ravel:verify-environment` gate additionally runs:
+
+```text
 devenv test
 nix flake check
 ```
@@ -155,6 +162,10 @@ Additional policies:
 - Linux x86_64 is required from M0 onward.
 - Apple Silicon macOS evidence is required at M0, M1 where the selected design
   affects viability, and every loader/SDK milestone from M3 onward.
+- Tangled Spindles provide the Linux gate. Because Spindle engines are
+  Linux-based, the required Darwin gate runs on an actual `aarch64-darwin`
+  machine via `docs/runbooks/darwin-verification.md`; a Linux evaluation never
+  substitutes for that evidence.
 - A gate rejects untracked restricted fixture patterns, credential patterns,
   forbidden loader artifacts, or maintained Rust that permits unsafe code.
 
@@ -218,10 +229,9 @@ ravel/
 │   └── config.toml                 # aliases and target-neutral Cargo policy
 ├── .config/
 │   └── nextest.toml                # deterministic test profiles and retries policy
-├── .github/
+├── .tangled/
 │   └── workflows/
-│       ├── ci.yml                  # devenv-backed Linux and macOS verification
-│       └── dependency-audit.yml    # licence, advisory, and provenance checks
+│       └── ci.yml                  # Spindle pipeline mirroring the verification tasks
 ├── crates/
 │   ├── ravel-core/                 # IDs, versions, sides, capability and lifecycle types
 │   ├── ravel-package/              # package/manifest schemas and integrity contract
@@ -232,7 +242,7 @@ ravel/
 │   ├── ravel-host-api/             # [ADG-2] stable loader-to-mod execution contract
 │   ├── ravel-bootstrap/            # [ADG-1] selected official-JVM entry/hook plumbing
 │   ├── ravel-minecraft/            # version-neutral Minecraft capability traits
-│   ├── ravel-minecraft-26-1-2/     # mappings, hooks, and bindings for the first version
+│   ├── ravel-minecraft-adapter/    # shared version-data/codegen adapter runtime
 │   ├── ravel-config/               # schema, validation, overrides, restart/side semantics
 │   ├── ravel-data/                 # resources, recipes, tags, loot, progression data
 │   ├── ravel-save/                 # versioned saved data and fail-closed migrations
@@ -247,10 +257,12 @@ ravel/
 │   ├── bootstrap/                  # generated/minimal classes, never a Java mod API
 │   └── build/                      # reproducible JVM artifact build description
 ├── minecraft/
-│   └── 26.1.2/
-│       ├── adapter.toml             # adapter inputs and exact upstream hashes
-│       ├── hooks.toml               # reviewed hook capability inventory
-│       └── mappings.lock            # mapping provenance and pinned inputs
+│   └── versions/
+│       └── 26.1.2/
+│           ├── README.md            # M0 boundary; no guessed mapping data
+│           ├── adapter.toml         # [M1/ADG-3] inputs and exact upstream hashes
+│           ├── hooks.toml           # [M1/ADG-3] reviewed hook capability inventory
+│           └── mappings.lock        # [M1/ADG-3] mapping provenance and pinned inputs
 ├── schemas/
 │   ├── package.schema.json
 │   ├── pack.schema.json
@@ -343,21 +355,21 @@ ravel/
 | `ravel-host-api` | Selected stable package execution/ABI boundary | core and serialization/ABI support selected by ADG-2 | concrete Minecraft bindings |
 | `ravel-bootstrap` | Selected JVM entry, callback routing, launch bootstrap | loader, host API, Minecraft trait and selected audited boundary dependencies | public SDK implementation policy |
 | `ravel-minecraft` | Version-neutral handles, hooks and capability traits | core | 26.1.2 mappings or generated version symbols |
-| `ravel-minecraft-26-1-2` | First adapter, generated bindings, hook table and conversions | Minecraft traits, core, selected audited JVM dependencies | SDK authoring policy |
+| `ravel-minecraft-adapter` | Shared adapter runtime, code generation, hook dispatch and conversion machinery | Minecraft traits, core, selected audited JVM dependencies, version data | SDK authoring policy and hardcoded assumptions outside selected version data |
 | `ravel-config` | Schemas, validation, side/restart flags, layered overrides | core | generated UI widgets or version details |
 | `ravel-data` | Declarative resources, recipes, tags, loot and progression contracts | core, package | loader or concrete adapter |
 | `ravel-save` | Ownership, schema versioning, migrations and compatibility checks | core | official ATM11 world import logic |
 | `ravel-network` | Ravel packet/channel abstractions and side rules | core | NeoForge as canonical identity or runtime dependency |
 | `ravel-observability` | Structured reports, redaction, metric schemas, profiling coordinator | core and selected collectors | authentication/token collection |
 | `ravel-pack` | Pack pinning, declarative composition, closure validation | package, resolve, config, data | marketplace/download ownership |
-| `ravel-testkit` | Deterministic fake hosts, fixture builders, process harness contracts | public contracts and test-only dependencies | restricted fixtures |
+| `ravel-testkit` | Deterministic fake hosts, fixture builders, process harness contracts | loader, public contracts and test-only dependencies | production runtime ownership and restricted fixtures |
 
 Dependency direction is inward toward contracts:
 
 ```text
 SDK/test mods ───────> public contracts and feature schemas
 loader ──────────────> contracts + resolver + host/Minecraft traits
-26.1.2 adapter ──────> version-neutral Minecraft traits
+shared adapter ──────> version data + version-neutral Minecraft traits
 bootstrap ───────────> loader + selected audited boundary dependencies
 CLI/xtask/testkit ───> libraries; libraries never depend on tools
 ```
@@ -377,15 +389,20 @@ implementation stops for a spec amendment; the plan does not pre-create an
 
 ### Version boundary
 
-Only `ravel-minecraft-26-1-2`, its adapter data directory, and adapter-specific
-process fixtures may encode 26.1.2 mappings or hook names. A workspace policy
-test rejects `26.1.2`, generated mapping packages, and concrete game symbols in
-core, package, resolver, loader, SDK, pack, and general feature crates.
+Only `minecraft/versions/26.1.2`, generated outputs derived from it, and
+adapter-specific process fixtures may encode 26.1.2 mappings or hook names.
+`ravel-minecraft-adapter` is shared across supported versions and selects
+version data explicitly. A workspace policy test rejects `26.1.2`, generated
+mapping packages, and concrete game symbols in core, package, resolver, loader,
+SDK, pack, and general feature crates.
 
-Adding a second version must require a new adapter crate and adapter data, not
-changes to package identity, dependency resolution, lifecycle, or ordinary mod
-source. M4 proves this structurally with a synthetic second adapter in tests;
-shipping a second game version is not required.
+Adding a second version must normally require only a new version-data directory
+and generated outputs, not a new crate or changes to package identity,
+dependency resolution, lifecycle, or ordinary mod source. ADG-3 may authorize a
+per-version crate only if evidence demonstrates that separately compiled types,
+artifacts, dependencies, or safety boundaries require it. M4 proves the default
+model structurally with synthetic second-version data; shipping that version is
+not required.
 
 ### Public/private workspace boundary
 
@@ -429,8 +446,17 @@ capability proposals plus original public test-mod acceptance cases.
 
 ## Nix and devenv design
 
-`devenv` is the canonical local and CI task surface. Nix pins the tools and
-native dependencies. Cargo remains the Rust build system.
+`devenv` is the canonical local task surface. Tangled Spindle CI runs
+`devenv test` and `nix flake check` in a Nixery environment. Nix pins the tools
+and native dependencies; Cargo remains the Rust build system. Spindle covers
+Linux only, while the Darwin runbook defines the required native Mac gate.
+
+cargo2nix is intentionally deferred during M0. At this stage, committing a
+generated `Cargo.nix` would duplicate the rapidly changing Cargo dependency
+graph without producing a Nix-owned runtime artifact. Re-evaluate it after
+ADG-1 and ADG-2, before M2 packages the first runnable mod, when per-crate Nix
+caching, native dependency wiring, or distributable Nix package outputs can
+justify the additional generated file and regeneration gate.
 
 ### Root files
 
@@ -479,18 +505,22 @@ for platform modules. Unsupported platforms fail with a clear message.
 | --- | --- |
 | `ravel:fmt` | Rust, Nix, shell, TOML and Markdown formatting checks |
 | `ravel:typecheck` | `cargo check` for workspace targets and features |
-| `ravel:lint` | clippy, Nix lint, shell lint, policy and secret scans |
+| `ravel:lint` | clippy, Nix lint and shell lint |
 | `ravel:test` | nextest, doctests, compile tests and schema tests |
 | `ravel:coverage` | llvm-cov with the workspace floor |
 | `ravel:audit` | advisories, licences, duplicate dependency policy |
+| `ravel:verify-scaffold` | topology, schema, version-boundary and tracked-file policy |
 | `ravel:verify` | dependency-ordered aggregate of the preceding tasks |
+| `ravel:verify-environment` | complete pinned devenv and Nix flake gates |
 | `ravel:fixture-reconstruct` | authorized local reconstruction into ignored paths |
 | `ravel:fixture-verify` | manifest count and content hash verification |
 | `ravel:baseline` | run a named platform/workload profile |
 | `ravel:verify-milestone` | validate an evidence bundle against a milestone |
 
 Git hooks run fast formatting, lint, schema, secret, and forbidden-file checks.
-CI and milestone gates run the complete task graph. Hooks never replace CI.
+The Tangled Spindle pipeline runs the complete Linux environment gate, and
+milestone gates add recorded native Darwin evidence where required. Hooks never
+replace CI.
 CLI launch commands are limited to reproducible development/test invocation and
 handoff to a Prism-managed instance. They do not own authentication, Minecraft
 installation, instance management, pack acquisition, or general launcher UI.
@@ -519,7 +549,7 @@ measurement oracle before choosing architecture.
 | M0-W6 | Record hardware, Java, Prism, and launch inputs | M0-W3 | sanitized hardware profiles and exact runtime metadata | clean-machine runbook reproduces vanilla launch on both platforms |
 | M0-W7 | Capture vanilla and official ATM11 baselines | M0-W4..W6 | Linux and Mac result bundles | required memory, pressure, frame, tick, startup and world-load fields validate |
 | M0-W8 | Set M1/M2 interim overhead budgets | M0-W7 | reviewed numeric budget ADR derived from measured headroom | ADR names thresholds and failure action for every M1 benchmark |
-| M0-W9 | Independent milestone review | M0-W1..W8 | review record and M0 evidence manifest | `ravel:verify-milestone -- M0` passes; tracked-tree audit is clean |
+| M0-W9 | Independent milestone review | M0-W1..W8 | review record and M0 evidence manifest | `devenv tasks run ravel:verify-milestone:m0` passes; tracked-tree audit is clean |
 
 M0 may download authorized files only into ignored local paths. A failed rights,
 hash, count, or redaction check blocks the gate.
@@ -555,7 +585,7 @@ precompiled Rust package.
 | M2-W2 | Implement package schema, targets and integrity | M2-W1, ADG-2 | `ravel-package` and JSON schema | valid packages round-trip; tamper, target and schema failures precede code execution |
 | M2-W3 | Implement dependency resolution and load plans | M2-W2 | `ravel-resolve` | required/optional/incompatible/discouraged, cycles, duplicates, ranges and deterministic-order cases pass |
 | M2-W4 | Implement lifecycle state machine | M2-W1 | loader state machine | every legal and illegal transition plus every spec invariant is tested |
-| M2-W5 | Implement selected bootstrap and adapter shell | M1 ADRs, M2-W4 | bootstrap, host API, 26.1.2 adapter foundation | official 26.1.2 process reaches Ravel without another loader |
+| M2-W5 | Implement selected bootstrap and adapter shell | M1 ADRs, M2-W4 | bootstrap, host API, shared adapter plus 26.1.2 version data | official 26.1.2 process reaches Ravel without another loader |
 | M2-W6 | Package and execute no-op test mod | M2-W2..W5 | precompiled no-op package | recorded evidence shows validate/resolve/load/construct/register/run/stop in deterministic order |
 | M2-W7 | Add world-access and structured-failure gates | M2-W3..W6 | pre-world UI/log diagnostic path | invalid packages, sides, integrity and graphs cannot open a world; reports redact secrets/paths |
 | M2-W8 | Measure loader overhead and review | M2-W6..W7 | benchmark vs M0 vanilla and review | M0 overhead budget passes and M2 gate passes |
@@ -591,7 +621,7 @@ pack authoring surface.
 | M4-W3 | Complete hooks, events, sides and networking abstractions | M4-W1 | public APIs and client/server test mods | client-only code never loads on server sides; packet contracts round-trip |
 | M4-W4 | Complete config, save migrations and inter-mod services | M4-W1 | public schemas/APIs and examples | migration chains, service dependencies and failure closure pass |
 | M4-W5 | Complete pack declarations and validator | M4-W2..W4 | `ravel-pack`, pack example | dependency, resource, registry and progression closure checks pass |
-| M4-W6 | Prove version isolation | M4-W1..W5 | synthetic adapter contract fixture | general crates compile/test against a fake second adapter without 26.1.2 edits |
+| M4-W6 | Prove version isolation | M4-W1..W5 | synthetic second-version data fixture | shared adapter and general crates compile/test without 26.1.2-specific edits or a new crate |
 | M4-W7 | Agent usability acceptance | M4-W1..W6 | docs task and resulting original test mod | a fresh agent receives only public docs and builds a conforming mod without internal access |
 | M4-W8 | Cross-platform review and gate | M4-W7 | evidence and review | global gate, process matrix, SDK docs and M4 milestone gate pass |
 
@@ -740,7 +770,7 @@ distribution, rollback, and private-history isolation.
 | Safe Rust boundary | all maintained crates; audited dependencies | policy scan, dependency audit, architecture review |
 | Packages/dependencies | package, resolve, pack | schema/property/negative tests; M7/M8 closure |
 | Lifecycle/invariants | core and loader | state-machine and process conformance suites |
-| Version isolation | Minecraft traits and 26.1.2 adapter | forbidden-reference scan; synthetic adapter test |
+| Version isolation | Minecraft traits, shared adapter, and per-version data | forbidden-reference scan; synthetic version-data test |
 | Configuration/UI | config and adapter UI integration | ADG-6; round-trip process tests |
 | Resources/data | data and pack | schema and Minecraft-process tests |
 | Saves/migrations | save and loader world gate | repeated save/reload and migration matrix |

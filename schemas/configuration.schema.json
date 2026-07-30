@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ravel:schema:configuration:1",
+  "title": "Ravel configuration declaration",
+  "description": "Common validation metadata for file and generated-UI configuration. ADG-6 may extend the presentation model.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "owner", "version", "settings"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "owner": {
+      "$ref": "#/$defs/id"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "settings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/setting"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$"
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "setting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "valueSchema", "default", "side", "restartRequired"],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "valueSchema": {
+          "description": "A JSON Schema fragment used to validate the value.",
+          "type": "object"
+        },
+        "default": true,
+        "side": {
+          "enum": ["client", "integrated-server", "dedicated-server", "common"]
+        },
+        "restartRequired": {
+          "type": "boolean"
+        },
+        "packOverride": {
+          "enum": ["allowed", "locked", "required"]
+        }
+      }
+    }
+  }
+}

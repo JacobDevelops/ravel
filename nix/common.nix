@@ -190,6 +190,24 @@ in
       '';
     };
 
+    ravel-spike-adg-1 = {
+      description = "Measure the ADG-1 JVM entry candidates and record their evidence.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        if [[ ! -f tests/fixtures/local/tooling/minecraft-26.1.2/client.jar ]]; then
+          echo "the pinned client jar is absent; see tests/fixtures/local/README.md" >&2
+          exit 1
+        fi
+
+        # Release, because a debug boundary would measure the profile rather
+        # than the mechanism.
+        cargo build --locked --release -p ravel-spike-adg-1-jvm-entry
+        ./target/release/ravel-spike-adg-1-jvm-entry
+      '';
+    };
+
     ravel-verify-stack = {
       description = "Verify the jj change stack contract.";
       exec = ''
@@ -311,6 +329,7 @@ in
     "ravel:audit".exec = "ravel-audit";
     "ravel:verify-scaffold".exec = "ravel-verify-scaffold";
     "ravel:verify-spikes".exec = "ravel-verify-spikes";
+    "ravel:spike-adg-1".exec = "ravel-spike-adg-1";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";

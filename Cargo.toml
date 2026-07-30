@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/*",
+  "experiments/adg-1-jvm-entry",
   "experiments/spike-harness",
   "test-mods/*",
   "tests/conformance",

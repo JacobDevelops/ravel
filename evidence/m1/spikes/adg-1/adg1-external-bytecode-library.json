@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-1",
+  "candidate": {
+    "id": "adg1.external-bytecode-library",
+    "title": "External Java bytecode library inside the agent",
+    "disposition": "rejected",
+    "rejectionReason": "The pinned runtime ships java.lang.classfile, so an external rewriting library would add a shaded Java dependency to every launch for an API the runtime already provides. Ravel also ships no Java artifacts it does not have to, and a shaded library is exactly such an artifact."
+  },
+  "trial": {
+    "revision": {
+      "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
+      "dirty": true,
+      "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt"
+    },
+    "commandSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "startedAt": "2026-07-30T13:27:42Z",
+    "durationMs": 0,
+    "clock": "monotonic",
+    "warmupInvocations": 0,
+    "measuredInvocations": 0
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "java": {
+      "version": "25.0.4",
+      "runtime": "OpenJDK Runtime Environment (nix)",
+      "pinned": false
+    },
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "retainedRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "retainedClasses": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "candidateDelta": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "calls": {
+    "invocationCount": 0,
+    "callbackNanoseconds": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "totalBytes": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "allocatedBytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "packaging": {
+    "installedBytes": 0,
+    "artifactCount": 0,
+    "requiredComponents": []
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "not-evaluated",
+      "detail": "the candidate was rejected before its failure matrix was exercised"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "a Java rewriting library needs no unsafe Rust; the rejection is about shipped dependencies, not safety",
+    "auditedBoundaryDependencies": []
+  },
+  "operability": {
+    "diagnostics": "a shaded rewriting library has to be version-matched to the runtime by hand on every game update",
+    "debugWorkflow": "not evaluated",
+    "crashAttribution": "not evaluated",
+    "prismLaunch": "not-evaluated"
+  },
+  "artifacts": [],
+  "deviations": []
+}

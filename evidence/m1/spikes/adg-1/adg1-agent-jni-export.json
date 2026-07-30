@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-1",
+  "candidate": {
+    "id": "adg1.agent-jni-export",
+    "title": "java.lang.instrument agent, exported JNI symbol",
+    "disposition": "measured"
+  },
+  "trial": {
+    "revision": {
+      "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
+      "dirty": true,
+      "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt"
+    },
+    "commandSha256": "0f41dc3121848a691c87fdb2fcdee4035f58b4b7def09b361580f70febeea79b",
+    "startedAt": "2026-07-30T13:27:32Z",
+    "durationMs": 297,
+    "clock": "monotonic",
+    "warmupInvocations": 200000,
+    "measuredInvocations": 1280000
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "java": {
+      "version": "25.0.4",
+      "runtime": "OpenJDK Runtime Environment",
+      "pinned": false
+    },
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 66879488.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 66879488.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedClasses": {
+      "status": "measured",
+      "collector": "spike.jmx",
+      "value": 1641.0,
+      "unit": "classes",
+      "quality": "exact"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 35.823983,
+      "unit": "milliseconds",
+      "quality": "exact"
+    },
+    "candidateDelta": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 14.423909,
+      "unit": "milliseconds",
+      "quality": "estimated"
+    }
+  },
+  "calls": {
+    "invocationCount": 1280000,
+    "callbackNanoseconds": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "quality": "estimated",
+      "sampleCount": 20000,
+      "median": 10.015625,
+      "p95": 12.53125,
+      "p99": 12.53125
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 16.0,
+      "unit": "bytes-per-call",
+      "quality": "exact"
+    },
+    "totalBytes": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 20480000.0,
+      "unit": "bytes",
+      "quality": "exact"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.jmx",
+      "reason": "the runtime exposes allocated bytes per thread but not allocation counts"
+    },
+    "allocatedBytesPerCall": {
+      "status": "measured",
+      "collector": "spike.jmx",
+      "value": 0.0,
+      "unit": "bytes-per-call",
+      "quality": "estimated"
+    }
+  },
+  "packaging": {
+    "installedBytes": 735989,
+    "artifactCount": 3,
+    "requiredComponents": [
+      "trial.jar",
+      "agent.jar",
+      "libravel_spike_adg1.so"
+    ]
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "failed-closed",
+      "detail": "the callback returned a rejection sentinel"
+    },
+    {
+      "scenario": "callback-failure",
+      "outcome": "failed-closed",
+      "detail": "IllegalStateException"
+    },
+    {
+      "scenario": "unavailable-runtime",
+      "outcome": "failed-closed",
+      "detail": "UnsatisfiedLinkError"
+    },
+    {
+      "scenario": "crash",
+      "outcome": "failed-closed",
+      "detail": "the process died on signal 6 and reported nothing"
+    },
+    {
+      "scenario": "timeout",
+      "outcome": "failed-closed",
+      "detail": "the harness killed a candidate that never announced readiness within 3 seconds"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "the JNI-mangled export is emitted by jni_mangle inside the macro, so a crate keeping forbid(unsafe_code) holds none; the spike wrote the symbol by hand and Ravel does not have to",
+    "auditedBoundaryDependencies": [
+      {
+        "name": "jni",
+        "version": "0.22.4",
+        "licence": "MIT OR Apache-2.0"
+      }
+    ]
+  },
+  "operability": {
+    "diagnostics": "Java-side failures keep their stack trace; native failures surface as a JNI exception or a process abort",
+    "debugWorkflow": "two debuggers: a Java debugger for the agent and a native debugger for the callback",
+    "crashAttribution": "a native abort ends the game process and names the shared object rather than a Java frame",
+    "prismLaunch": "stock-jvm-arguments"
+  },
+  "artifacts": [
+    {
+      "name": "trial.jar",
+      "sha256": "a8f9a1b7f762cfa45fb3fe4cc096a486b3da9c1d15216354f19b99bca9f2d4b1"
+    },
+    {
+      "name": "agent.jar",
+      "sha256": "f93acf87b1045955d23f02635abf62b99cd6ff7c48a69d4ec85e4a54e0f424a4"
+    },
+    {
+      "name": "libravel_spike_adg1.so",
+      "sha256": "577dfa7d46db8bcdafeb35d7bc2cca9a6e938d5183a540bba6eb49d12fd3d2c4"
+    }
+  ],
+  "deviations": [
+    {
+      "summary": "measured on runtime 25.0.4 rather than the pinned game runtime 25.0.1; set RAVEL_SPIKE_JAVA to the pinned runtime to remove this difference",
+      "classification": "non-blocking"
+    }
+  ]
+}

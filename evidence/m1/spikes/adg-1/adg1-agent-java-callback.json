@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-1",
+  "candidate": {
+    "id": "adg1.agent-java-callback",
+    "title": "java.lang.instrument agent, callback stays in Java",
+    "disposition": "measured"
+  },
+  "trial": {
+    "revision": {
+      "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
+      "dirty": true,
+      "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt"
+    },
+    "commandSha256": "6cdee8b896a93b7b5c49c1d97a0b49a34ebdb4aef10aea875828d18dda58188d",
+    "startedAt": "2026-07-30T13:27:29Z",
+    "durationMs": 246,
+    "clock": "monotonic",
+    "warmupInvocations": 200000,
+    "measuredInvocations": 1280000
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "java": {
+      "version": "25.0.4",
+      "runtime": "OpenJDK Runtime Environment",
+      "pinned": false
+    },
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 66756608.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 66756608.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedClasses": {
+      "status": "measured",
+      "collector": "spike.jmx",
+      "value": 1641.0,
+      "unit": "classes",
+      "quality": "exact"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 36.121047,
+      "unit": "milliseconds",
+      "quality": "exact"
+    },
+    "candidateDelta": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 14.720973,
+      "unit": "milliseconds",
+      "quality": "estimated"
+    }
+  },
+  "calls": {
+    "invocationCount": 1280000,
+    "callbackNanoseconds": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "quality": "estimated",
+      "sampleCount": 20000,
+      "median": 0.625,
+      "p95": 3.453125,
+      "p99": 5.796875
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 16.0,
+      "unit": "bytes-per-call",
+      "quality": "exact"
+    },
+    "totalBytes": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 20480000.0,
+      "unit": "bytes",
+      "quality": "exact"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.jmx",
+      "reason": "the runtime exposes allocated bytes per thread but not allocation counts"
+    },
+    "allocatedBytesPerCall": {
+      "status": "measured",
+      "collector": "spike.jmx",
+      "value": 0.0,
+      "unit": "bytes-per-call",
+      "quality": "estimated"
+    }
+  },
+  "packaging": {
+    "installedBytes": 16981,
+    "artifactCount": 2,
+    "requiredComponents": [
+      "trial.jar",
+      "agent.jar"
+    ]
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "failed-closed",
+      "detail": "IllegalArgumentException"
+    },
+    {
+      "scenario": "callback-failure",
+      "outcome": "failed-closed",
+      "detail": "IllegalStateException"
+    },
+    {
+      "scenario": "unavailable-runtime",
+      "outcome": "failed-closed",
+      "detail": "UnsatisfiedLinkError"
+    },
+    {
+      "scenario": "crash",
+      "outcome": "failed-closed",
+      "detail": "the process exited with status 134 and reported nothing"
+    },
+    {
+      "scenario": "timeout",
+      "outcome": "failed-closed",
+      "detail": "the harness killed a candidate that never announced readiness within 3 seconds"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "the injected call stays inside the JVM, so no Rust boundary exists",
+    "auditedBoundaryDependencies": []
+  },
+  "operability": {
+    "diagnostics": "agent failures surface as ordinary Java exceptions with a complete stack trace",
+    "debugWorkflow": "one Java debugger covers both the agent and the injected call",
+    "crashAttribution": "a failure names the agent class in the Java stack trace",
+    "prismLaunch": "stock-jvm-arguments"
+  },
+  "artifacts": [
+    {
+      "name": "trial.jar",
+      "sha256": "a8f9a1b7f762cfa45fb3fe4cc096a486b3da9c1d15216354f19b99bca9f2d4b1"
+    },
+    {
+      "name": "agent.jar",
+      "sha256": "f93acf87b1045955d23f02635abf62b99cd6ff7c48a69d4ec85e4a54e0f424a4"
+    }
+  ],
+  "deviations": [
+    {
+      "summary": "measured on runtime 25.0.4 rather than the pinned game runtime 25.0.1; set RAVEL_SPIKE_JAVA to the pinned runtime to remove this difference",
+      "classification": "non-blocking"
+    }
+  ]
+}

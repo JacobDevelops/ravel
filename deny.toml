@@ -9,7 +9,9 @@ yanked = "deny"
 
 [licenses]
 confidence-threshold = 0.93
-allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
+# ISC covers libloading, which the JNI bindings use to open the runtime library.
+# It is a permissive, OSI-approved licence with the same obligations as MIT.
+allow = ["Apache-2.0", "ISC", "MIT", "Unicode-3.0"]
 
 [bans]
 multiple-versions = "warn"

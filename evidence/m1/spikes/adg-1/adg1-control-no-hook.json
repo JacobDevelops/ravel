@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-1",
+  "candidate": {
+    "id": "adg1.control-no-hook",
+    "title": "Control: pinned call site with no hook",
+    "disposition": "measured"
+  },
+  "trial": {
+    "revision": {
+      "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
+      "dirty": true,
+      "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt"
+    },
+    "commandSha256": "b24d1b89a78add1dd00fda5c688b5f7f6466cc0ba9c7786f0a040bfb95506c0a",
+    "startedAt": "2026-07-30T13:27:26Z",
+    "durationMs": 211,
+    "clock": "monotonic",
+    "warmupInvocations": 200000,
+    "measuredInvocations": 1280000
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "java": {
+      "version": "25.0.4",
+      "runtime": "OpenJDK Runtime Environment",
+      "pinned": false
+    },
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 62595072.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 62595072.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedClasses": {
+      "status": "measured",
+      "collector": "spike.jmx",
+      "value": 1485.0,
+      "unit": "classes",
+      "quality": "exact"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 21.400074,
+      "unit": "milliseconds",
+      "quality": "exact"
+    },
+    "candidateDelta": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 0.0,
+      "unit": "milliseconds",
+      "quality": "estimated"
+    }
+  },
+  "calls": {
+    "invocationCount": 1280000,
+    "callbackNanoseconds": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "quality": "estimated",
+      "sampleCount": 20000,
+      "median": 0.46875,
+      "p95": 2.828125,
+      "p99": 2.984375
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 0.0,
+      "unit": "bytes-per-call",
+      "quality": "exact"
+    },
+    "totalBytes": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 0.0,
+      "unit": "bytes",
+      "quality": "exact"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.jmx",
+      "reason": "the runtime exposes allocated bytes per thread but not allocation counts"
+    },
+    "allocatedBytesPerCall": {
+      "status": "measured",
+      "collector": "spike.jmx",
+      "value": 0.0,
+      "unit": "bytes-per-call",
+      "quality": "estimated"
+    }
+  },
+  "packaging": {
+    "installedBytes": 8472,
+    "artifactCount": 1,
+    "requiredComponents": [
+      "trial.jar"
+    ]
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "failed-closed",
+      "detail": "IllegalArgumentException"
+    },
+    {
+      "scenario": "callback-failure",
+      "outcome": "failed-closed",
+      "detail": "IllegalStateException"
+    },
+    {
+      "scenario": "unavailable-runtime",
+      "outcome": "failed-closed",
+      "detail": "UnsatisfiedLinkError"
+    },
+    {
+      "scenario": "crash",
+      "outcome": "failed-closed",
+      "detail": "the process exited with status 134 and reported nothing"
+    },
+    {
+      "scenario": "timeout",
+      "outcome": "failed-closed",
+      "detail": "the harness killed a candidate that never announced readiness within 3 seconds"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "the control crosses no boundary",
+    "auditedBoundaryDependencies": []
+  },
+  "operability": {
+    "diagnostics": "the control has nothing of its own to diagnose",
+    "debugWorkflow": "a plain Java debugger attaches to the trial",
+    "crashAttribution": "any crash belongs to the runtime or the game",
+    "prismLaunch": "not-evaluated"
+  },
+  "artifacts": [
+    {
+      "name": "trial.jar",
+      "sha256": "a8f9a1b7f762cfa45fb3fe4cc096a486b3da9c1d15216354f19b99bca9f2d4b1"
+    }
+  ],
+  "deviations": [
+    {
+      "summary": "measured on runtime 25.0.4 rather than the pinned game runtime 25.0.1; set RAVEL_SPIKE_JAVA to the pinned runtime to remove this difference",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "the control installs no callback, so its callback distribution records the unhooked cost of the same call site; the other candidates are comparable against it rather than against each other only",
+      "classification": "non-blocking"
+    }
+  ]
+}

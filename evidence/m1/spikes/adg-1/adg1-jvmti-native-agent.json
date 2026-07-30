@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-1",
+  "candidate": {
+    "id": "adg1.jvmti-native-agent",
+    "title": "JVMTI native agent",
+    "disposition": "rejected",
+    "rejectionReason": "JVMTI reaches the same hook through a raw C environment table: an exported Agent_OnLoad, a jvmtiEnv function-table dereference per capability, event callback registration, and class retransformation. It buys nothing the java.lang.instrument agent does not already provide for this hook shape, while adding unsafe surface that no audited crate encapsulates."
+  },
+  "trial": {
+    "revision": {
+      "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
+      "dirty": true,
+      "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt"
+    },
+    "commandSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "startedAt": "2026-07-30T13:27:42Z",
+    "durationMs": 0,
+    "clock": "monotonic",
+    "warmupInvocations": 0,
+    "measuredInvocations": 0
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "java": {
+      "version": "25.0.4",
+      "runtime": "OpenJDK Runtime Environment (nix)",
+      "pinned": false
+    },
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "retainedRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "retainedClasses": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "candidateDelta": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "calls": {
+    "invocationCount": 0,
+    "callbackNanoseconds": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "totalBytes": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "allocatedBytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "packaging": {
+    "installedBytes": 0,
+    "artifactCount": 0,
+    "requiredComponents": []
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "not-evaluated",
+      "detail": "the candidate was rejected before its failure matrix was exercised"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 4,
+    "maintainedUnsafeDetail": "enumerated from the JVMTI contract rather than measured: Agent_OnLoad export, jvmtiEnv table dereference, SetEventCallbacks, and RetransformClasses",
+    "auditedBoundaryDependencies": []
+  },
+  "operability": {
+    "diagnostics": "a JVMTI failure is reported by the VM as an agent load error with no Java stack trace",
+    "debugWorkflow": "not evaluated",
+    "crashAttribution": "not evaluated",
+    "prismLaunch": "not-evaluated"
+  },
+  "artifacts": [],
+  "deviations": []
+}

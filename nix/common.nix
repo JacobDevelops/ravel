@@ -223,6 +223,22 @@ in
       '';
     };
 
+    ravel-spike-adg-3 = {
+      description = "Generate the pinned 26.1.2 binding both ways and record the evidence.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        if [[ ! -f tests/fixtures/local/tooling/minecraft-26.1.2/client.jar ]]; then
+          echo "the pinned client jar is absent; see tests/fixtures/local/README.md" >&2
+          exit 1
+        fi
+
+        cargo build --locked --release -p ravel-spike-adg-3-bindings
+        ./target/release/ravel-spike-adg-3-bindings
+      '';
+    };
+
     ravel-verify-stack = {
       description = "Verify the jj change stack contract.";
       exec = ''
@@ -346,6 +362,7 @@ in
     "ravel:verify-spikes".exec = "ravel-verify-spikes";
     "ravel:spike-adg-1".exec = "ravel-spike-adg-1";
     "ravel:spike-adg-2".exec = "ravel-spike-adg-2";
+    "ravel:spike-adg-3".exec = "ravel-spike-adg-3";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";

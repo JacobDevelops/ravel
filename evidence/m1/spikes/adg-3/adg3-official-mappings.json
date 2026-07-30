@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-3",
+  "candidate": {
+    "id": "adg3.official-mappings",
+    "title": "Mojang's published mapping file",
+    "disposition": "rejected",
+    "rejectionReason": "26.1.2 publishes no client mapping download, and its class files carry real names, so there is nothing for a mapping file to translate. The pinned version manifest is the evidence: it lists client and server downloads and no mapping entry. An obfuscated future version would bring this candidate back, and the adapter inputs already name the mapping source so that change would be explicit."
+  },
+  "trial": {
+    "revision": {
+      "id": "e0e178f9dc6f1fecbbbb24df5156f561459622a6",
+      "dirty": true,
+      "changeId": "ysvpslstqmmmkkzknzmozqkpnozlworn"
+    },
+    "commandSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "startedAt": "2026-07-30T13:45:25Z",
+    "durationMs": 0,
+    "clock": "monotonic",
+    "warmupInvocations": 0,
+    "measuredInvocations": 0
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "retainedRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "retainedClasses": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "candidateDelta": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "calls": {
+    "invocationCount": 0,
+    "callbackNanoseconds": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "totalBytes": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "allocatedBytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "packaging": {
+    "installedBytes": 0,
+    "artifactCount": 0,
+    "requiredComponents": []
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "not-evaluated",
+      "detail": "the candidate was rejected before its failure matrix was exercised"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "no extraction mechanism needs unsafe Rust; this rejection is not about safety",
+    "auditedBoundaryDependencies": []
+  },
+  "operability": {
+    "diagnostics": "a missing mapping file cannot be diagnosed at all: it simply does not exist upstream",
+    "debugWorkflow": "not evaluated",
+    "crashAttribution": "not evaluated",
+    "prismLaunch": "not-evaluated"
+  },
+  "artifacts": [],
+  "deviations": []
+}

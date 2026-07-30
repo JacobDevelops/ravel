@@ -1,0 +1,25 @@
+# Adapter inputs and exact upstream hashes for Minecraft 26.1.2.
+#
+# These are the only inputs the binding generator is allowed to read. The jar
+# itself is a restricted local fixture that is never tracked; what is tracked is
+# its hash, so any change to the input is detected before generation runs.
+
+schemaVersion = 1
+minecraft = "26.1.2"
+
+# 26.1.2 ships unobfuscated class files and publishes no client mapping file, so
+# the class files are the mapping. See docs/decisions/adg-3-bindings.md.
+mappingSource = "unobfuscated-class-files"
+
+[inputs.clientJar]
+path = "tests/fixtures/local/tooling/minecraft-26.1.2/client.jar"
+sha256 = "b1b3158572666445eff01e82fad8c7de2e4953db6d354f311730d77a8359d0b0"
+bytes = 38113927
+
+[inputs.versionManifest]
+path = "tests/fixtures/local/tooling/minecraft-26.1.2/version.json"
+sha256 = "c0befcb001356cf53de2ee7cfa8fa796afcd3e2fe4530274c66d473cc576c98b"
+upstream = "https://piston-meta.mojang.com/v1/packages/a5ba42111e0de7712d677c458bd0dbfc9f36482e/26.1.2.json"
+
+[inputs.hookInventory]
+path = "minecraft/versions/26.1.2/hooks.toml"

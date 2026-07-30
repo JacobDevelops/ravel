@@ -1,0 +1,47 @@
+# Generated mapping provenance for Minecraft 26.1.2. Do not edit.
+#
+# Every line pins one resolved member. A change to the jar, the
+# inventory, or the extractor changes this file, which is how drift is
+# noticed before a build trusts a binding.
+
+schemaVersion = 1
+minecraft = "26.1.2"
+mappingSource = "unobfuscated-class-files"
+extractor = "classfile"
+clientJarSha256 = "b1b3158572666445eff01e82fad8c7de2e4953db6d354f311730d77a8359d0b0"
+
+[target."chat.allowed-character"]
+class = "net/minecraft/util/StringUtil"
+member = "isAllowedChatCharacter"
+descriptor = "(I)Z"
+static = true
+
+[target."chat.filter-text"]
+class = "net/minecraft/util/StringUtil"
+member = "filterText"
+descriptor = "(Ljava/lang/String;Z)Ljava/lang/String;"
+static = true
+
+[target."chat.filter-text-simple"]
+class = "net/minecraft/util/StringUtil"
+member = "filterText"
+descriptor = "(Ljava/lang/String;)Ljava/lang/String;"
+static = true
+
+[target."player.name-valid"]
+class = "net/minecraft/util/StringUtil"
+member = "isValidPlayerName"
+descriptor = "(Ljava/lang/String;)Z"
+static = true
+
+[target."input.smooth-delta"]
+class = "net/minecraft/util/SmoothDouble"
+member = "getNewDeltaValue"
+descriptor = "(DD)D"
+static = false
+
+[target."input.smooth-last-amount"]
+class = "net/minecraft/util/SmoothDouble"
+member = "lastAmount"
+descriptor = "D"
+static = false

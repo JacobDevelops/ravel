@@ -1,0 +1,62 @@
+# Reviewed hook capability inventory for Minecraft 26.1.2.
+#
+# Every entry names one member of the pinned client jar by its exact JVM
+# descriptor, because the class file resolves members by descriptor and two
+# members can share a name. ADG-3's generator reads this file, resolves each
+# entry against the pinned jar, and refuses to generate anything if one entry
+# does not resolve exactly once.
+#
+# This inventory is deliberately small. It exists to prove the extraction and
+# drift contract on real members, not to enumerate the hook surface; M3 onward
+# grows it as capabilities land.
+
+schemaVersion = 1
+minecraft = "26.1.2"
+
+[[hook]]
+id = "chat.allowed-character"
+class = "net.minecraft.util.StringUtil"
+member = "isAllowedChatCharacter"
+descriptor = "(I)Z"
+kind = "static-method"
+capability = "Filter or veto a character the game would accept in chat."
+
+[[hook]]
+id = "chat.filter-text"
+class = "net.minecraft.util.StringUtil"
+member = "filterText"
+descriptor = "(Ljava/lang/String;Z)Ljava/lang/String;"
+kind = "static-method"
+capability = "Rewrite chat text, in the overload that keeps newlines."
+
+[[hook]]
+id = "chat.filter-text-simple"
+class = "net.minecraft.util.StringUtil"
+member = "filterText"
+descriptor = "(Ljava/lang/String;)Ljava/lang/String;"
+kind = "static-method"
+capability = "Rewrite chat text, in the overload that strips newlines. Shares a name with the entry above and is distinguished only by descriptor."
+
+[[hook]]
+id = "player.name-valid"
+class = "net.minecraft.util.StringUtil"
+member = "isValidPlayerName"
+descriptor = "(Ljava/lang/String;)Z"
+kind = "static-method"
+capability = "Accept or reject a player name."
+
+[[hook]]
+id = "input.smooth-delta"
+class = "net.minecraft.util.SmoothDouble"
+member = "getNewDeltaValue"
+descriptor = "(DD)D"
+kind = "instance-method"
+capability = "Observe or adjust smoothed input deltas."
+
+[[hook]]
+id = "input.smooth-last-amount"
+class = "net.minecraft.util.SmoothDouble"
+member = "lastAmount"
+descriptor = "D"
+kind = "instance-field"
+capability = "Read the previous smoothed amount, proving field extraction as well as method extraction."

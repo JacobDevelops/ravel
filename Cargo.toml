@@ -5,6 +5,7 @@ members = [
   "experiments/adg-1-jvm-entry",
   "experiments/adg-2-guest",
   "experiments/adg-2-mod-execution",
+  "experiments/adg-3-bindings",
   "experiments/spike-harness",
   "test-mods/*",
   "tests/conformance",
@@ -35,12 +36,14 @@ ravel-save = { path = "crates/ravel-save", version = "0.0.0" }
 ravel-sdk = { path = "crates/ravel-sdk", version = "0.0.0" }
 ravel-sdk-macros = { path = "crates/ravel-sdk-macros", version = "0.0.0" }
 ravel-spike-adg-2-guest = { path = "experiments/adg-2-guest", version = "0.0.0" }
+ravel-spike-adg-3-bindings = { path = "experiments/adg-3-bindings", version = "0.0.0" }
 ravel-spike-harness = { path = "experiments/spike-harness", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
 rustix = { version = "1.1.4", default-features = false, features = ["process"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
+toml = "1.1.4"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

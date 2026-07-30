@@ -45,6 +45,7 @@ const EXPERIMENT_NAMES: &[&str] = &[
     "adg-1-jvm-entry",
     "adg-2-guest",
     "adg-2-mod-execution",
+    "adg-3-bindings",
     "spike-harness",
 ];
 
@@ -83,6 +84,9 @@ const ROOT_FILES: &[&str] = &[
     "flake.nix",
     "minecraft/README.md",
     "minecraft/versions/26.1.2/README.md",
+    "minecraft/versions/26.1.2/adapter.toml",
+    "minecraft/versions/26.1.2/hooks.toml",
+    "minecraft/versions/26.1.2/mappings.lock",
     "nix/ci.nix",
     "nix/common.nix",
     "nix/darwin.nix",
@@ -558,7 +562,9 @@ fn verify_manifest_redaction(manifest_path: &Path, violations: &mut Vec<String>)
         "/home/",
         "/users/",
         r"c:\\users\\",
-        ".minecraft",
+        // A path segment, not a bare suffix: `net.minecraft.util.StringUtil` is
+        // a class name that evidence is supposed to contain.
+        "/.minecraft",
         "tests/fixtures/local/",
         "evidence/private/",
     ]

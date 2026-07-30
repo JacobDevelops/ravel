@@ -163,6 +163,24 @@ fn identifying_local_paths_are_rejected() {
 }
 
 #[test]
+fn a_java_class_name_is_not_mistaken_for_a_game_directory() {
+    // `net.minecraft.util.StringUtil` is exactly what binding evidence records.
+    let path = altered_complete_fixture(
+        "schema and verifier test only",
+        "resolved net.minecraft.util.StringUtil from the pinned jar",
+    );
+
+    let violations = verify_evidence_manifest(repository_root(), &path, "M0");
+
+    assert!(
+        !violations
+            .iter()
+            .any(|violation| violation == "milestone manifest contains sensitive or local data")
+    );
+    fs::remove_file(path).expect("altered fixture should be removable");
+}
+
+#[test]
 fn empty_test_runs_cannot_close_a_milestone() {
     let path = altered_complete_fixture(
         r#""total": 10,

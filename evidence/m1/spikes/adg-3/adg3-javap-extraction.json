@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-3",
+  "candidate": {
+    "id": "adg3.javap-extraction",
+    "title": "Ask the JDK's javap to describe the pinned jar",
+    "disposition": "measured"
+  },
+  "trial": {
+    "revision": {
+      "id": "e0e178f9dc6f1fecbbbb24df5156f561459622a6",
+      "dirty": true,
+      "changeId": "ysvpslstqmmmkkzknzmozqkpnozlworn"
+    },
+    "commandSha256": "755e517dce2f0b5b5a758218ef9bffe50e7f30037b876bb1f42da6453aaf758f",
+    "startedAt": "2026-07-30T13:45:19Z",
+    "durationMs": 1681,
+    "clock": "monotonic",
+    "warmupInvocations": 0,
+    "measuredInvocations": 6
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 40919040.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 3010560.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedClasses": {
+      "status": "unavailable",
+      "collector": "spike.jmx",
+      "reason": "generation hosts no class loader"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 1680.885547,
+      "unit": "milliseconds",
+      "quality": "exact"
+    },
+    "candidateDelta": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "a generator has no control to subtract: its whole run is its cost"
+    }
+  },
+  "calls": {
+    "invocationCount": 0,
+    "callbackNanoseconds": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "generation crosses no call boundary; its cost is one build-time run"
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "generation crosses no call boundary"
+    },
+    "totalBytes": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 3413.0,
+      "unit": "bytes",
+      "quality": "exact"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "generation crosses no call boundary"
+    },
+    "allocatedBytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "generation crosses no call boundary"
+    }
+  },
+  "packaging": {
+    "installedBytes": 3413,
+    "artifactCount": 2,
+    "requiredComponents": [
+      "bindings.rs",
+      "mappings.lock",
+      "a JDK on the build machine"
+    ]
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "failed-closed",
+      "detail": "a hook does not resolve: chat.allowed-character resolves 0 times in net.minecraft.util.StringUtil"
+    },
+    {
+      "scenario": "callback-failure",
+      "outcome": "failed-closed",
+      "detail": "a hook does not resolve: chat.allowed-character is declared InstanceField but the jar declares the other kind"
+    },
+    {
+      "scenario": "unavailable-runtime",
+      "outcome": "failed-closed",
+      "detail": "extraction failed: javap refused to describe net.minecraft.util.StringUtil"
+    },
+    {
+      "scenario": "crash",
+      "outcome": "failed-closed",
+      "detail": "the generator died on signal 6 and left no half-written output behind"
+    },
+    {
+      "scenario": "timeout",
+      "outcome": "failed-closed",
+      "detail": "the harness killed a generator that never announced readiness within 3 seconds"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "reading a class file is reading bytes; the generator and both extractors are safe Rust",
+    "auditedBoundaryDependencies": []
+  },
+  "operability": {
+    "diagnostics": "the javap and classfile extractors resolved all 6 targets identically",
+    "debugWorkflow": "generation is an ordinary build-time program, so a failure is a build failure with a message naming the hook that did not resolve",
+    "crashAttribution": "the generator died on signal 6 and left no half-written output behind",
+    "prismLaunch": "not-evaluated"
+  },
+  "artifacts": [
+    {
+      "name": "bindings.rs",
+      "sha256": "229901ac0475ea79993321b8e1c3aa6c567240ac8a0453ec7decd8e979124cba"
+    },
+    {
+      "name": "mappings.lock",
+      "sha256": "59172f292953f4dd4c3e65780aa99ba2570c10b46582ebb05f8e3843ba0c2bda"
+    }
+  ],
+  "bindingGeneration": {
+    "durationMs": 601,
+    "outputSha256": "8b093021698edf51579b3ce430eaee6473c423e35b876e26902b850a14d4427a",
+    "outputBytes": 3413,
+    "driftDetected": true
+  },
+  "deviations": [
+    {
+      "summary": "a drifted input was refused, observed rather than assumed: refused: client.jar hashes b1b3158572666445eff01e82fad8c7de2e4953db6d354f311730d77a8359d0b0 but the adapter inputs pin 0000000000000000000000000000000000000000000000000000000000000000",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "the javap extractor starts a JVM per class, and that JVM's memory is not included in this trial's memory, which only covers the generator process",
+      "classification": "non-blocking"
+    }
+  ]
+}

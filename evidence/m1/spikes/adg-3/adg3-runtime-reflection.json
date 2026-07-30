@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-3",
+  "candidate": {
+    "id": "adg3.runtime-reflection",
+    "title": "Resolve members by reflection at startup",
+    "disposition": "rejected",
+    "rejectionReason": "Reflection needs no generation step, which is its whole appeal, and it defers every version error to the moment a player triggers the hook. Ravel has to refuse an incompatible mod before a world opens, and a resolution failure discovered mid-game is the opposite of that. It also costs a lookup per resolution where a generated constant costs nothing."
+  },
+  "trial": {
+    "revision": {
+      "id": "e0e178f9dc6f1fecbbbb24df5156f561459622a6",
+      "dirty": true,
+      "changeId": "ysvpslstqmmmkkzknzmozqkpnozlworn"
+    },
+    "commandSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "startedAt": "2026-07-30T13:45:25Z",
+    "durationMs": 0,
+    "clock": "monotonic",
+    "warmupInvocations": 0,
+    "measuredInvocations": 0
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "retainedRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "retainedClasses": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "candidateDelta": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "calls": {
+    "invocationCount": 0,
+    "callbackNanoseconds": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "totalBytes": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    },
+    "allocatedBytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "the candidate was rejected before measurement"
+    }
+  },
+  "packaging": {
+    "installedBytes": 0,
+    "artifactCount": 0,
+    "requiredComponents": []
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "not-evaluated",
+      "detail": "the candidate was rejected before its failure matrix was exercised"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "no extraction mechanism needs unsafe Rust; this rejection is not about safety",
+    "auditedBoundaryDependencies": []
+  },
+  "operability": {
+    "diagnostics": "a failure names the missing member, but only once the game reaches it",
+    "debugWorkflow": "not evaluated",
+    "crashAttribution": "not evaluated",
+    "prismLaunch": "not-evaluated"
+  },
+  "artifacts": [],
+  "deviations": []
+}

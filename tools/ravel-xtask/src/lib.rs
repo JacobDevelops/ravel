@@ -41,7 +41,12 @@ const TEST_MOD_NAMES: &[&str] = &[
     "saved-data",
 ];
 
-const EXPERIMENT_NAMES: &[&str] = &["adg-1-jvm-entry", "spike-harness"];
+const EXPERIMENT_NAMES: &[&str] = &[
+    "adg-1-jvm-entry",
+    "adg-2-guest",
+    "adg-2-mod-execution",
+    "spike-harness",
+];
 
 /// Gate directories under `evidence/m1/spikes` and the gate ID they must carry.
 const SPIKE_GATES: &[(&str, &str)] = &[

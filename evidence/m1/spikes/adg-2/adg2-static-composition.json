@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-2",
+  "candidate": {
+    "id": "adg2.static-composition",
+    "title": "Mod linked into the loader binary",
+    "disposition": "measured"
+  },
+  "trial": {
+    "revision": {
+      "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
+      "dirty": true,
+      "changeId": "kolnlmlvyqxqwmluykymlvoxysslpvws"
+    },
+    "commandSha256": "e76f079b82276501174a51e63f865605de71931dac3554bec9c0b4f13d8f0c46",
+    "startedAt": "2026-07-30T13:29:43Z",
+    "durationMs": 8,
+    "clock": "monotonic",
+    "warmupInvocations": 200000,
+    "measuredInvocations": 1280000
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 3420160.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 3420160.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedClasses": {
+      "status": "unavailable",
+      "collector": "spike.jmx",
+      "reason": "these trials host no class loader"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 0.38011,
+      "unit": "milliseconds",
+      "quality": "exact"
+    },
+    "candidateDelta": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "every candidate is its own process here, so there is no shared control to subtract"
+    }
+  },
+  "calls": {
+    "invocationCount": 1280000,
+    "callbackNanoseconds": {
+      "status": "measured",
+      "collector": "spike.host",
+      "quality": "estimated",
+      "sampleCount": 20000,
+      "median": 2.5,
+      "p95": 2.515625,
+      "p99": 2.984375
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "measured",
+      "collector": "spike.host",
+      "value": 16.0,
+      "unit": "bytes-per-call",
+      "quality": "exact"
+    },
+    "totalBytes": {
+      "status": "measured",
+      "collector": "spike.host",
+      "value": 20480000.0,
+      "unit": "bytes",
+      "quality": "exact"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "measured",
+      "collector": "spike.host",
+      "value": 0.0,
+      "unit": "count-per-call",
+      "quality": "estimated"
+    },
+    "allocatedBytesPerCall": {
+      "status": "measured",
+      "collector": "spike.host",
+      "value": 0.0,
+      "unit": "bytes-per-call",
+      "quality": "estimated"
+    }
+  },
+  "packaging": {
+    "installedBytes": 14508960,
+    "artifactCount": 1,
+    "requiredComponents": [
+      "ravel-spike-adg-2-host",
+      "a loader binary rebuilt for every mod set"
+    ]
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "failed-closed",
+      "detail": "the mod returned its rejection value"
+    },
+    {
+      "scenario": "unavailable-runtime",
+      "outcome": "failed-closed",
+      "detail": "a linked mod cannot lack an entry point; the link would have failed"
+    },
+    {
+      "scenario": "callback-failure",
+      "outcome": "failed-closed",
+      "detail": "the host kept running and reported that it survived the mod body panicked and the host caught it"
+    },
+    {
+      "scenario": "crash",
+      "outcome": "continued",
+      "detail": "it took the host process down with it on signal 6"
+    },
+    {
+      "scenario": "timeout",
+      "outcome": "failed-closed",
+      "detail": "the harness killed a host that never announced readiness within 3 seconds"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "a linked mod is an ordinary Rust call; nothing crosses a raw boundary",
+    "auditedBoundaryDependencies": []
+  },
+  "operability": {
+    "diagnostics": "one binary, one backtrace, every frame from mod to loader",
+    "debugWorkflow": "one debugger over the whole program",
+    "crashAttribution": "a mod fault is indistinguishable from a loader fault",
+    "prismLaunch": "not-evaluated"
+  },
+  "artifacts": [
+    {
+      "name": "ravel-spike-adg-2-host",
+      "sha256": "170ce1ef3eb797bde49f7248a2771ebe835a644dc6eead1c9ca27faf340d7f4f"
+    }
+  ],
+  "isolation": {
+    "status": "observed",
+    "detail": "a mod whose body fails: the host kept running and reported that it survived the mod body panicked and the host caught it. A mod that ends its own process: it took the host process down with it on signal 6"
+  },
+  "abiEvolution": {
+    "status": "observed",
+    "detail": "the host read contract version 1 and refused the absent entry point before calling it; a linked mod cannot drift, because a contract change that breaks it fails the build instead of the launch"
+  },
+  "modToModCalls": {
+    "status": "measured",
+    "collector": "spike.host",
+    "value": 2.34375,
+    "unit": "nanoseconds",
+    "quality": "estimated"
+  },
+  "deviations": [
+    {
+      "summary": "these trials host no JVM, so the measured cost is the mod-execution boundary alone; reaching it from the game costs what ADG-1 measured, and the two add",
+      "classification": "non-blocking"
+    }
+  ]
+}

@@ -208,6 +208,21 @@ in
       '';
     };
 
+    ravel-spike-adg-2 = {
+      description = "Measure the ADG-2 mod-execution candidates and record their evidence.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        # Release, because a debug boundary would measure the profile rather
+        # than the mechanism. The guest is built twice from one source: once
+        # natively for the dynamic-library candidate, once for WebAssembly.
+        cargo build --locked --release -p ravel-spike-adg-2-guest --target wasm32-unknown-unknown
+        cargo build --locked --release -p ravel-spike-adg-2-guest -p ravel-spike-adg-2-mod-execution
+        ./target/release/ravel-spike-adg-2-mod-execution
+      '';
+    };
+
     ravel-verify-stack = {
       description = "Verify the jj change stack contract.";
       exec = ''
@@ -330,6 +345,7 @@ in
     "ravel:verify-scaffold".exec = "ravel-verify-scaffold";
     "ravel:verify-spikes".exec = "ravel-verify-spikes";
     "ravel:spike-adg-1".exec = "ravel-spike-adg-1";
+    "ravel:spike-adg-2".exec = "ravel-spike-adg-2";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";

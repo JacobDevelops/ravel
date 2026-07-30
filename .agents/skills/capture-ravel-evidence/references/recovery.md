@@ -164,6 +164,54 @@ the saved state on disk rather than trusting chat feedback:
 For a 16-chunk radius, inspect the Anvil location tables and require every
 expected coordinate, not merely a total chunk count.
 
+## An attached agent cannot find its native library
+
+Symptom: the client never opens a window, and the game process aborts with
+`FATAL ERROR in native method: processing of -javaagent failed`, caused by
+`java.lang.UnsatisfiedLinkError: no <library> in java.library.path: <instance>/natives`.
+
+The instance's `JvmArgs` are placed on the command line *before* the launcher's
+own `-Djava.library.path=<instance>/natives`, and the last one wins, so an
+instance setting that appends a directory to that path has no effect. The
+launcher also removes `<instance>/natives` when a launch ends, so a library
+copied there survives exactly one launch.
+
+Put the library back immediately before every launch:
+
+```console
+mkdir -p INSTANCE_DIR/natives
+cp target/release/libravel_bootstrap.so INSTANCE_DIR/natives/
+```
+
+Keep the `-Djava.library.path` argument set anyway — it is what ADG-5 decided
+and it is inert rather than wrong — and record the override as a deviation
+wherever the launch is admitted. Both halves of this are the launcher's
+behaviour rather than a Ravel bug, and a launch record that does not mention it
+overstates how stock the arrangement is.
+
+## The agent's shutdown line is nowhere on disk
+
+Ravel's premain agent prints what it rewrote from a JVM shutdown hook, after the
+game's own logging has stopped, so the line reaches raw stdout and never enters
+`<instance>/minecraft/logs/`. The launcher shows it in an instance console
+window, writes that window's contents to no file, and — when launched with `-l`
+and no `--show-window` — quits with the game and takes the window with it.
+
+Capture it with a stock `WrapperCommand` that tees the process's own output:
+
+```bash
+#!/usr/bin/env bash
+"$@" 2>&1 | tee PRIVATE_OUT_DIR/game-stdout.log
+```
+
+`tee` rather than a redirect, because the launcher reads that stream. The
+wrapper changes no launch argument and starts nothing else, which is what keeps
+the launch admissible as a stock one. Set `OverrideCommands=true` for it, and
+restore the instance configuration afterwards.
+
+A launch driven this way must not use the nested probe, which disables
+`OverrideCommands` for its own setup launch. Keep the two paths separate.
+
 ## Focus-free rule
 
 Background process launch and localhost Tracy collection are allowed. Global

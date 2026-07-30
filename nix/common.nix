@@ -172,6 +172,50 @@ in
       '';
     };
 
+    ravel-verify-stack = {
+      description = "Verify the jj change stack contract.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        if [[ ! -d .jj ]]; then
+          echo "no jj repository here; skipping the stack contract"
+          exit 0
+        fi
+
+        conventional='^(feat|fix|docs|refactor|perf|test|chore|build|ci|revert)(\([a-z0-9-]+\))?!?: .'
+        fixup='(?i)(\bwip\b|fixup|squash!|address (review|feedback)|review comments)'
+        status=0
+
+        report() {
+          local found
+          found=$(jj log --no-pager --no-graph -r "$1" \
+            -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"')
+          if [[ -n "$found" ]]; then
+            printf '%s\n%s\n' "$2" "$found" >&2
+            status=1
+          fi
+        }
+
+        if [[ "$(jj config get git.write-change-id-header 2>/dev/null || true)" != "true" ]]; then
+          echo "change ids are not written to git commits;" \
+            "run: jj config set --repo git.write-change-id-header true" >&2
+          status=1
+        fi
+
+        report "::@ & mutable() & ~empty() & ~description(regex:'$conventional')" \
+          "describe each change up front with a conventional message (jj describe -m ...):"
+        report "::@ & mutable() & description(regex:'$fixup')" \
+          "revise the change that is wrong instead of stacking a follow-up (jj squash --into <change>):"
+        report "::@ & mutable() & empty() & ~@" \
+          "abandon empty changes instead of leaving them in the stack (jj abandon <change>):"
+        report "::@ & mutable() & conflicts()" \
+          "resolve conflicts inside the change that carries them (jj resolve):"
+
+        exit "$status"
+      '';
+    };
+
     ravel-verify-milestone = {
       description = "Verify one milestone evidence manifest.";
       exec = ''
@@ -248,6 +292,7 @@ in
     "ravel:coverage".exec = "ravel-coverage";
     "ravel:audit".exec = "ravel-audit";
     "ravel:verify-scaffold".exec = "ravel-verify-scaffold";
+    "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";
     "ravel:fixture-verify".exec = "ravel-fixture-verify";
@@ -262,6 +307,7 @@ in
         "ravel:coverage"
         "ravel:audit"
         "ravel:verify-scaffold"
+        "ravel:verify-stack"
       ];
       exec = "true";
     };

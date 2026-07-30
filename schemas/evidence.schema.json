@@ -47,12 +47,17 @@
     "revision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "dirty"],
+      "required": ["id", "changeId", "dirty"],
       "properties": {
         "id": {
           "type": "string",
           "minLength": 1,
-          "description": "Source revision exercised by the recorded commands; it may precede the revision that admits this manifest."
+          "description": "Commit exercised by the recorded commands; it may precede the revision that admits this manifest, and every jj rewrite abandons it, so it records what ran rather than where to find it."
+        },
+        "changeId": {
+          "type": "string",
+          "pattern": "^[k-z]{32}$",
+          "description": "The change that holds this manifest. Survives every rewrite, and the milestone gate recomputes it against the change that introduced the file."
         },
         "dirty": {
           "type": "boolean",

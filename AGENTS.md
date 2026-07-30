@@ -6,6 +6,9 @@ inside the official game runtime and is not built on Fabric, NeoForge, Forge, or
 This file is the single source of agent instructions. Codex reads `AGENTS.md`; Claude Code reads it through
 the `CLAUDE.md` symlink. Edit this file only — never fork the two.
 
+Project skills live once in [`.agents/skills/`](.agents/skills/) and are exposed to Claude Code through
+per-skill symlinks in `.claude/skills/`. Adding a skill means adding its symlink; never copy the directory.
+
 ## Read before changing code
 
 - [`SPEC.md`](SPEC.md) is the product and capability contract.
@@ -53,12 +56,26 @@ pass `ravel-format`. Report the real output. Never state that a gate passed with
 
 ## Version control
 
-- This is a jj repository. Use `jj st`, `jj diff`, `jj log`, `jj show`. Never use `git diff`, `git log`, or
-  `git commit`.
-- One logical change is one commit with a conventional message, scoped to the files you touched
-  (`jj commit <paths>`) so a shared working copy does not sweep up other work.
+This is a jj repository, and the history is a stack of changes rather than a stream of commits. A change has
+a stable change id that survives every rewrite, so the way to fix work is to edit the change that is wrong,
+not to append another commit on top. Read [`docs/jj-stacked-changes.md`](docs/jj-stacked-changes.md) before
+your first commit in a session; it holds the commands and the review loop.
+
+- Use `jj st`, `jj diff`, `jj log`, `jj show`, `jj evolog`. Never use `git commit`, `git rebase`,
+  `git cherry-pick`, or `git push`, and never read history with `git diff` or `git log`.
+- A work package is a short stack of purposeful changes, each one reviewable on its own and each one
+  described up front with a conventional message. Prefer three changes that each say something over ten that
+  narrate your editing session.
+- Revise in place. `jj squash --into <change>` folds new work into the change it belongs to, `jj describe`
+  fixes a message, and `jj edit <change>` reopens a change so descendants rebase onto it automatically.
+  Never write `wip`, `fixup`, or "address review" changes; that is the git workaround this repo does not use.
+- Scope every squash or commit to the files you touched (`jj squash <paths>`, `jj commit <paths>`) so a
+  shared working copy does not sweep up other work.
+- Refer to work by change id, never by commit hash. Hashes change on every rewrite; change ids do not.
 - Never push and never create or merge a pull request without explicit approval in the current turn.
-  Stopping at a local commit is completion.
+  Stopping at a described local change is completion. When approval exists, pushing a revised change is the
+  normal path, not a force push to apologise for.
+- `devenv tasks run ravel:verify-stack` enforces this contract and runs inside `ravel:verify`.
 
 ## Scope
 

@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-5",
+  "candidate": {
+    "id": "adg5.stock-jvm-arguments",
+    "title": "Reach the official game through stock Prism JVM arguments",
+    "disposition": "measured"
+  },
+  "trial": {
+    "revision": {
+      "id": "e35a894c10d25b1fa48ef4f5f7a11703fe0de872",
+      "dirty": true,
+      "changeId": "mltvmnlltvqxoqoomxvknmovorkvslvx"
+    },
+    "commandSha256": "6a0d3530399f00bf939f0193038eb486058292637f77f997d1e8836a889add0e",
+    "startedAt": "2026-07-30T20:06:29Z",
+    "durationMs": 0,
+    "clock": "monotonic",
+    "warmupInvocations": 0,
+    "measuredInvocations": 1
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "this candidate inspects the launcher's configuration rather than running the game, so it measures no memory"
+    },
+    "retainedRss": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "this candidate inspects the launcher's configuration rather than running the game, so it measures no memory"
+    },
+    "retainedClasses": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "this candidate inspects the launcher's configuration rather than running the game, so it measures no class count"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "this candidate inspects the launcher's configuration rather than running the game, so it measures no startup"
+    },
+    "candidateDelta": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "this candidate inspects the launcher's configuration rather than running the game, so it measures no startup"
+    }
+  },
+  "calls": {
+    "invocationCount": 0,
+    "callbackNanoseconds": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "a launcher configuration has no call boundary"
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "this candidate inspects the launcher's configuration rather than running the game, so it measures no call boundary"
+    },
+    "totalBytes": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "this candidate inspects the launcher's configuration rather than running the game, so it measures no call boundary"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "this candidate inspects the launcher's configuration rather than running the game, so it measures no call boundary"
+    },
+    "allocatedBytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "this candidate inspects the launcher's configuration rather than running the game, so it measures no call boundary"
+    }
+  },
+  "packaging": {
+    "installedBytes": 0,
+    "artifactCount": 0,
+    "requiredComponents": [
+      "one -javaagent argument on the instance",
+      "one -Djava.library.path argument on the instance"
+    ]
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "failed-closed",
+      "detail": "a setting the launcher does not expose is reported absent rather than assumed present"
+    },
+    {
+      "scenario": "unavailable-runtime",
+      "outcome": "failed-closed",
+      "detail": "an absent launcher stops the inspection before it reads anything"
+    },
+    {
+      "scenario": "callback-failure",
+      "outcome": "failed-closed",
+      "detail": "a launcher whose hash does not match the tracked pin stops the inspection before it unpacks anything"
+    },
+    {
+      "scenario": "crash",
+      "outcome": "not-evaluated",
+      "detail": "this candidate runs no game, so there is no process for a crash to end"
+    },
+    {
+      "scenario": "timeout",
+      "outcome": "not-evaluated",
+      "detail": "this candidate runs no game, so there is nothing to hang"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "setting a launcher argument needs no unsafe code",
+    "auditedBoundaryDependencies": []
+  },
+  "operability": {
+    "diagnostics": "the launcher writes the full launch command to its own instance log, so a wrong argument is visible without Ravel reporting anything",
+    "debugWorkflow": "an operator edits two instance settings and can remove them again, which makes Ravel switchable off without uninstalling it",
+    "crashAttribution": "the game process is the launcher's own, so a crash report belongs to the instance the launcher already tracks",
+    "prismLaunch": "stock-jvm-arguments"
+  },
+  "artifacts": [
+    {
+      "name": "prismlauncher",
+      "sha256": "0823a0e5f53694f0ff65a9523b6f221e6f10565b904941fa9522d89e8e7c69d1"
+    },
+    {
+      "name": "redacted-instance-launch.log",
+      "sha256": "da9287af551bfe23086f90daaf41978378c0d20330462a16c2dfc80b659843ab"
+    }
+  ],
+  "prismIntegration": {
+    "stockLaunch": true,
+    "changedLines": 0,
+    "ownership": "none-required",
+    "detail": "the pinned launcher exposes OverrideJavaArgs and JvmArgs, so the two arguments ADG-1 needs can be set on an instance without changing the launcher. It also exposes OverrideCommands and WrapperCommand, so the rejected hosted-VM candidate would not have needed a patch either. An operator's instance log shows the pinned game launched with both arguments on its command line and no other mod loader named."
+  },
+  "deviations": [
+    {
+      "summary": "an operator's instance log shows the pinned game launching with both of Ravel's arguments and no other mod loader; only the hash of its redacted form is recorded, because a launcher log can carry the account's session arguments",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "the launcher's settings are read as names in its own 16286664 bytes of executable, which proves the settings exist and not that a given value is accepted",
+      "classification": "non-blocking"
+    }
+  ]
+}

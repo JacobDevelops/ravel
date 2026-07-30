@@ -252,6 +252,22 @@ in
       '';
     };
 
+    ravel-spike-adg-5 = {
+      description = "Check the pinned launcher's configuration surface without launching it.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        if [[ ! -f tests/fixtures/local/tooling/prism-11.0.3/PrismLauncher-Linux-x86_64.AppImage ]]; then
+          echo "the pinned launcher is absent; see tests/fixtures/local/README.md" >&2
+          exit 1
+        fi
+
+        cargo build --locked --release -p ravel-spike-adg-5-prism
+        ./target/release/ravel-spike-adg-5-prism
+      '';
+    };
+
     ravel-verify-stack = {
       description = "Verify the jj change stack contract.";
       exec = ''
@@ -377,6 +393,7 @@ in
     "ravel:spike-adg-2".exec = "ravel-spike-adg-2";
     "ravel:spike-adg-3".exec = "ravel-spike-adg-3";
     "ravel:spike-adg-4".exec = "ravel-spike-adg-4";
+    "ravel:spike-adg-5".exec = "ravel-spike-adg-5";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";

@@ -935,6 +935,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-spike-adg-5-prism"
+version = "0.0.0"
+dependencies = [
+ "ravel-spike-harness",
+]
+
+[[package]]
 name = "ravel-spike-harness"
 version = "0.0.0"
 dependencies = [

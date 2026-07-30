@@ -7,6 +7,7 @@ members = [
   "experiments/adg-2-mod-execution",
   "experiments/adg-3-bindings",
   "experiments/adg-4-state",
+  "experiments/adg-5-prism",
   "experiments/spike-harness",
   "test-mods/*",
   "tests/conformance",

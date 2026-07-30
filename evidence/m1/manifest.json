@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "native",
+  "milestone": "M1",
+  "workPackages": [
+    "M1-W1",
+    "M1-W2",
+    "M1-W3",
+    "M1-W4",
+    "M1-W5",
+    "M1-W6",
+    "M1-W7",
+    "M1-W8"
+  ],
+  "revision": {
+    "id": "909240424db44c16a912792d0ed810159642b151",
+    "changeId": "rxovtruttmykusmvquqkuqqtqwousopz",
+    "dirty": false
+  },
+  "versions": {
+    "minecraft": "26.1.2",
+    "neoforge": "26.1.2.78",
+    "prism": "11.0.3",
+    "fixture": "ATM11 0.2.1",
+    "java": "25.0.4",
+    "rust": "1.95.0",
+    "nix": "2.33.3",
+    "devenv": "2.1.2"
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1",
+    "settings": {
+      "scope": "architecture measurement across five decision gates",
+      "spikeProtocol": "spike-v1",
+      "performanceCaptureRequired": false
+    }
+  },
+  "inputs": [
+    {
+      "name": "docs/architecture/m1-measurement-gate.md",
+      "sha256": "2bfce2617e427652cdbccaec993daebdd2e9ff10f7613d442ab405010c7b6e18"
+    },
+    {
+      "name": "schemas/spike-result.schema.json",
+      "sha256": "4ab91da39dc16d89545d2800450c95ffb9f07ea219317586fe076fa86a86fc00"
+    },
+    {
+      "name": "minecraft/versions/26.1.2/hooks.toml",
+      "sha256": "2c27691d5bee0d0f3556efcbb02706c76e490f85691151f71a1a6b59f0b432fa"
+    },
+    {
+      "name": "minecraft/versions/26.1.2/mappings.lock",
+      "sha256": "8c5965a8c9f25a73823e7400032e5a737c359abc36c9de2c25c8f2be06f327c2"
+    },
+    {
+      "name": "tests/performance/hardware/linux-reference.toml",
+      "sha256": "532b589e5763a650ce154bfe6ebb9c77d615cb160bcc83e3627a3b3bb539c96c"
+    }
+  ],
+  "commands": [
+    {
+      "command": "devenv tasks run ravel:verify",
+      "argvSha256": "01f965102881cb623f53c96b53607fef04b7376a899ea9dca3e2dadfca7df339",
+      "startedAt": "2026-07-30T22:29:31Z",
+      "durationMs": 9404,
+      "exitStatus": 0,
+      "logSha256": "95c09cb7283f12b5fcc0503d2f0e4d9e791225d63c36084df642eb72c870e8d8"
+    },
+    {
+      "command": "cargo xtask verify spikes",
+      "argvSha256": "f34fade745a904a50cde52259e676bc133ff28e7daca4666050da0ceb112c94c",
+      "startedAt": "2026-07-30T22:29:41Z",
+      "durationMs": 3802,
+      "exitStatus": 0,
+      "logSha256": "2d4cc4ceb96541f4c643c91b229a1db3980903950a15ae5da6e13954e2ce8ccc"
+    },
+    {
+      "command": "cargo xtask verify scaffold",
+      "argvSha256": "e4df015ad52fe927748384b35cb9a3c290e88213c444d00d07b105ee52ddb7e9",
+      "startedAt": "2026-07-30T22:29:44Z",
+      "durationMs": 105,
+      "exitStatus": 0,
+      "logSha256": "df1e898333d93242686654c0828d334f9dd815f85370aec3b60cd481df1c2094"
+    }
+  ],
+  "tests": {
+    "total": 135,
+    "passed": 135,
+    "failed": 0,
+    "skipped": 0,
+    "lineCoveragePercent": 84.36
+  },
+  "benchmarks": {
+    "protocolVersion": "spike-v1",
+    "results": [
+      {
+        "name": "spikes/adg-1/adg1-agent-java-callback.json",
+        "sha256": "26032cacacc5cf2f199306add0dddeb6efe3d27057d2b80e6f4af05410d50e9f"
+      },
+      {
+        "name": "spikes/adg-1/adg1-agent-jni-export.json",
+        "sha256": "2bc202daf7b7fa4616f0c20e2ffa79d2af2db4881edf428c53825bc9e6184f09"
+      },
+      {
+        "name": "spikes/adg-1/adg1-control-no-hook.json",
+        "sha256": "c3463febbb9f06e649b400b716bda65fd8a536e272b49a47013f657df95f8890"
+      },
+      {
+        "name": "spikes/adg-1/adg1-external-bytecode-library.json",
+        "sha256": "2c48892ae1a22bf9d59f5f8e25e8e82be687aaa9b83f37f2153fb443951d2e9b"
+      },
+      {
+        "name": "spikes/adg-1/adg1-hosted-register-natives.json",
+        "sha256": "f43b77010a29b6ad4a2a1821fae10f8eb98c271497d752d02e9b9893f3ec4495"
+      },
+      {
+        "name": "spikes/adg-1/adg1-jvmti-native-agent.json",
+        "sha256": "73e72d50b356d1a8e502d5e947e290facb142bd7bd7bd3dcfe2c4af3fc169c5e"
+      },
+      {
+        "name": "spikes/adg-2/adg2-helper-process.json",
+        "sha256": "1fc4c37d82b8950bc82993f546b3a4b605d933139b342c934914b2e8f39161d5"
+      },
+      {
+        "name": "spikes/adg-2/adg2-native-dylib.json",
+        "sha256": "972ca429bec0250239494613cb02b6e080021b542e8a3ec6e227b1b62d6b774c"
+      },
+      {
+        "name": "spikes/adg-2/adg2-static-composition.json",
+        "sha256": "0093302eaf7244e8dae0021a2350e45f9fee65b982992d7bca60aa56d8015237"
+      },
+      {
+        "name": "spikes/adg-2/adg2-wasm-sandbox.json",
+        "sha256": "24e7cdf9cc1893696765b54c66e6ad2dbd52a2bb36ce5d84337b0701a6c6a929"
+      },
+      {
+        "name": "spikes/adg-3/adg3-classfile-extraction.json",
+        "sha256": "79e73a41e649a7e54350bc59f79e9ccff20e2d54af95d840611584c375055444"
+      },
+      {
+        "name": "spikes/adg-3/adg3-hand-written-version-data.json",
+        "sha256": "5a0d0e56ecb95952a0a8cf47735fa93cae1a73b3eae6732ee25add3dd50575ed"
+      },
+      {
+        "name": "spikes/adg-3/adg3-javap-extraction.json",
+        "sha256": "7ea71cea92f9450bbe5e59e0856215afb82f9d10b0af911a663b52f928db0b9d"
+      },
+      {
+        "name": "spikes/adg-3/adg3-official-mappings.json",
+        "sha256": "5bc58947996cdb0e6f19f89d3277bc8bbf9cee6922b4570487ee6693168127c1"
+      },
+      {
+        "name": "spikes/adg-3/adg3-runtime-reflection.json",
+        "sha256": "a023a118c11b7175f0fc6bbf1744d92f900d45c8d74eaed1b1f72b4277b4fe9c"
+      },
+      {
+        "name": "spikes/adg-3/adg3-third-party-mappings.json",
+        "sha256": "9344536dc9b1d031aa359fe1efdaf1cc1977ceb68d8821d54c937363f0d7fdbe"
+      },
+      {
+        "name": "spikes/adg-4/adg4-java-authoritative.json",
+        "sha256": "56e2f561bc3ece22624235a26559f607fc0617ea17c679684036bce6bcf1c433"
+      },
+      {
+        "name": "spikes/adg-4/adg4-mirrored.json",
+        "sha256": "bc68318fea9cccf99920db827ecc8604a633f00033b991612755d3e6b2d3401f"
+      },
+      {
+        "name": "spikes/adg-4/adg4-rust-authoritative.json",
+        "sha256": "b99cb6ff8e5d8ebdbfabf87b50845350ddc7f5dcf8c15caa14c525b1ba4321af"
+      },
+      {
+        "name": "spikes/adg-5/adg5-stock-jvm-arguments.json",
+        "sha256": "6be4aca5626a4016982b6d9cf1082b59a12cd5ac5ebd93c8f80090d7ea2edbea"
+      }
+    ]
+  },
+  "deviations": [
+    {
+      "summary": "Trials ran on development runtime 25.0.4 rather than the pinned Mojang 25.0.1; setting RAVEL_SPIKE_JAVA to the pinned runtime removes the difference. Every gate carries it, so the figures are comparable to each other and none is a measurement of the runtime players use.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Boundary-traffic figures are computed from each trial's known signature rather than counted by an instrument, yet are recorded as measured with a collector identity. The arithmetic is correct and no conclusion rests on it.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Retained RSS and bootstrap peak RSS come from one /proc read taken at the ready marker before any measured invocation, so they are byte-identical in every ADG-1, ADG-2 and ADG-4 result and measure no workload-retained memory.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "ADG-4 describes one flow under three owners, but the three models differ by two Java field writes and one addition, so argument size is confounded with a small difference in work done.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Seven of twenty results record a trial.revision.id that cannot be reconstructed as described: six ADG-1 results name a predecessor of their own change, and the ADG-5 result names a change above the one holding it. The checked half, trial.revision.changeId, is correct on all twenty and is recomputed by ravel:verify-spikes. Nothing reads the commit field.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "ADG-5 records a stock launch as three substring tests over a redacted log. Nothing verifies the launched version, the launcher identity, that the arguments sat on the game command line, or that the client reached a world or exited cleanly.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "schemas/package.schema.json still requires per-target mod artifacts, which SPEC 3.4 no longer promises. It is disclosed there by name as an inherited assumption and is owned by M3.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The cold audit returned FAIL with ten findings. All ten were resolved and none has been re-audited, so the last cold verdict recorded against this evidence is FAIL.",
+      "classification": "non-blocking"
+    }
+  ],
+  "risks": [
+    {
+      "summary": "The selected native binding has never run in the real game. The observed ADG-5 launch used ADG-1's Java-callback variant, so the exported-symbol path is unexercised outside the spike harness. M2-W5 owns closing this.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The measured hot path carries no panic guard, and the veto-by-throwing hook shape named first in hooks.toml was never measured. 10.02 ns is the unguarded cost.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "ADG-2 retains the dynamic library as a live M3 candidate although it needs two maintained unsafe calls, which the M1 gate failure actions otherwise reject. Selecting it requires a SPEC 3.3 amendment and a safety-boundary row.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The linked candidate's mod-to-mod path is unguarded and crosses extern C, so a panic there aborts exactly as the dynamic library does. Guarding it costs something this gate did not measure.",
+      "classification": "non-blocking"
+    }
+  ],
+  "review": {
+    "reviewer": "independent Claude reviewer (M1 architecture, four passes) with a separate cold audit",
+    "independent": true,
+    "result": "pass",
+    "record": {
+      "name": "M1 independent architecture review",
+      "sha256": "5257619f1d017617c833f9efd819c88636c25977097b02c993a2cb9430d3750a"
+    }
+  },
+  "attestations": [],
+  "platformEvidence": []
+}

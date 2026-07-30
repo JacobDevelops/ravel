@@ -34,6 +34,15 @@ fn altered_complete_fixture(needle: &str, replacement: &str) -> PathBuf {
     path
 }
 
+/// A private directory a test can build an evidence root inside.
+fn temporary_root() -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "ravel-evidence-root-{}-{}",
+        std::process::id(),
+        NEXT_PATH.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
 fn actual_milestone_violations(manifest: &Path) -> Vec<String> {
     let root = std::env::temp_dir().join(format!(
         "ravel-native-evidence-{}-{}",
@@ -160,6 +169,69 @@ fn identifying_local_paths_are_rejected() {
             .any(|violation| violation == "milestone manifest contains sensitive or local data")
     );
     fs::remove_file(path).expect("altered fixture should be removable");
+}
+
+#[test]
+fn m1_closure_accepts_the_recorded_prism_launch() {
+    // Checked against the real repository, so this test states M1's status: every
+    // gate has a result, every gate has a decision record, and ADG-5's result
+    // records the launch an operator observed.
+    let violations =
+        verify_evidence_manifest(repository_root(), &fixture("complete-m1.json"), "M1");
+
+    for unmet in [
+        "M1 closure requires an ADG-5 result",
+        "M1 closure requires a recorded result",
+        "M1 closure requires the decision record",
+    ] {
+        assert!(
+            !violations
+                .iter()
+                .any(|violation| violation.starts_with(unmet)),
+            "{unmet} should be satisfied, got {violations:?}"
+        );
+    }
+}
+
+#[test]
+fn m1_closure_is_refused_when_no_result_records_a_launch() {
+    // The rule has to still bite, so this drives it with the shape ADG-5's result
+    // had before an operator ran a launch.
+    let root = temporary_root();
+    fs::create_dir_all(root.join("evidence/m1/spikes/adg-5"))
+        .expect("spike directory should be creatable");
+    fs::write(
+        root.join("evidence/m1/spikes/adg-5/unlaunched.json"),
+        r#"{"prismIntegration": {"stockLaunch": false}}"#,
+    )
+    .expect("unlaunched result should be writable");
+
+    let violations = verify_evidence_manifest(&root, &fixture("complete-m1.json"), "M1");
+
+    fs::remove_dir_all(&root).expect("evidence root should be removable");
+    assert!(
+        violations.iter().any(|violation| violation
+            == "M1 closure requires an ADG-5 result recording an observed stock-Prism launch"),
+        "expected the outstanding launch to be reported, got {violations:?}"
+    );
+}
+
+#[test]
+fn m1_work_packages_must_cover_the_whole_milestone() {
+    let path = fixture("complete-m1.json");
+    let source = fs::read_to_string(&path).expect("the M1 fixture must be readable");
+    // One work package listed twice and another missing: the mistake a hand-edited
+    // manifest actually makes.
+    let duplicated = source.replace("\"M1-W8\"", "\"M1-W1\"");
+    assert_ne!(source, duplicated, "fixture mutation must replace content");
+    let altered = std::env::temp_dir().join(format!("ravel-m1-short-{}.json", std::process::id()));
+    fs::write(&altered, duplicated).expect("altered fixture must be writable");
+
+    let violations = verify_evidence_manifest(repository_root(), &altered, "M1");
+
+    assert!(violations.iter().any(|violation| violation
+        == "M1 manifest must include every work package from M1-W1 through M1-W8 exactly once"));
+    fs::remove_file(altered).expect("altered fixture should be removable");
 }
 
 #[test]

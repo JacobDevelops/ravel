@@ -82,6 +82,7 @@ const ROOT_FILES: &[&str] = &[
     "devenv.yaml",
     "docs/architecture/m1-measurement-gate.md",
     "docs/decisions/README.md",
+    "evidence/m1/README.md",
     "docs/runbooks/darwin-verification.md",
     "experiments/README.md",
     "flake.lock",
@@ -209,10 +210,120 @@ pub fn verify_spikes(root: &Path) -> Vec<String> {
         }
         for result in &results {
             verify_spike_result(root, result, gate, &mut violations);
+            verify_recorded_change(root, result, &mut violations);
         }
     }
 
     violations
+}
+
+/// Checks that a result names the change that introduced it.
+///
+/// `trial.revision.id` is a commit, which every jj rewrite abandons, so it cannot
+/// be resolved and is not checked. The change id can be, and this is the only
+/// reason to prefer it: seven results named the wrong revision for a week because
+/// nothing recomputed the claim.
+fn verify_recorded_change(root: &Path, path: &Path, violations: &mut Vec<String>) {
+    if !root.join(".jj").exists() {
+        return;
+    }
+    let label = path
+        .strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string();
+    let recorded = match jq_value(path, ".trial.revision.changeId") {
+        Ok(value) if value != "null" && !value.is_empty() => value,
+        // A result with no recorded change is the failure this rule exists for,
+        // so it cannot be the branch that returns quietly.
+        Ok(_) => {
+            violations.push(format!("{label} records no change id"));
+            return;
+        }
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    match introducing_change(root, &label) {
+        Ok(owner) => violations.extend(change_mismatch(&label, &recorded, &owner)),
+        Err(error) => violations.push(error),
+    }
+}
+
+/// Resolves the change that introduced a tracked path.
+///
+/// A lookup that cannot run is an error, not a pass. This is the repository's
+/// strongest provenance control, and a control that fails open when its tool is
+/// missing verifies nothing on exactly the machines where it matters. Empty
+/// output is not an error: an untracked result has no introducing change yet.
+fn introducing_change(root: &Path, label: &str) -> Result<String, String> {
+    let output = Command::new("jj")
+        .args([
+            "log",
+            "-r",
+            &format!("roots(::@ & files('{label}'))"),
+            "--no-graph",
+            "-T",
+            "change_id",
+        ])
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("cannot resolve the change that introduced {label}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "cannot resolve the change that introduced {label}: jj exited {}",
+            output.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// Checks that a milestone manifest names the change that introduced it.
+///
+/// The same rule the spike results carry, for the same reason: a commit id is
+/// abandoned by every rewrite, so a manifest that records only one cannot be
+/// resolved by the reader it is written for.
+fn verify_manifest_change(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    if !root.join(".jj").exists() {
+        return;
+    }
+    let Ok(label) = manifest_path.strip_prefix(root) else {
+        return;
+    };
+    let label = label.display().to_string();
+    // Contract fixtures are synthetic by design and describe no real revision;
+    // only admitted evidence carries a resolvable provenance claim.
+    if !label.starts_with("evidence/") {
+        return;
+    }
+    let owner = match introducing_change(root, &label) {
+        Ok(owner) => owner,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    match jq_value(manifest_path, ".revision.changeId") {
+        Ok(recorded) if recorded != "null" && !recorded.is_empty() => {
+            violations.extend(change_mismatch(&label, &recorded, &owner));
+        }
+        Ok(_) => violations.push(format!("{label} records no change id")),
+        Err(error) => violations.push(error),
+    }
+}
+
+/// Compares a recorded change against the one that introduced the file.
+///
+/// An untracked result has no introducing change yet, which is not a violation:
+/// the schema still constrains the field, and the next run has a change to check.
+fn change_mismatch(label: &str, recorded: &str, owner: &str) -> Option<String> {
+    if owner.is_empty() || owner == recorded {
+        return None;
+    }
+    Some(format!(
+        "{label} records change {recorded} but was introduced by {owner}"
+    ))
 }
 
 fn verify_spike_result(root: &Path, path: &Path, gate: &str, violations: &mut Vec<String>) {
@@ -243,6 +354,14 @@ fn verify_spike_result(root: &Path, path: &Path, gate: &str, violations: &mut Ve
                     == ["callback-failure", "crash", "invalid-input", "timeout",
                         "unavailable-runtime"])"#,
             "must exercise every required failure scenario exactly once",
+        ),
+        (
+            // Recording the scenarios says nothing about what happened in them.
+            // A candidate that never once failed closed never demonstrated the
+            // property this gate exists to check.
+            r#".candidate.disposition == "rejected"
+                or ([.failures[] | select(.outcome == "failed-closed")] | length > 0)"#,
+            "a measured candidate must record at least one failure that closed",
         ),
         (
             r#"[.memory.bootstrapPeakRss, .memory.retainedRss, .memory.retainedClasses,
@@ -352,12 +471,14 @@ pub fn verify_milestone(root: &Path, milestone: &str) -> Vec<String> {
         return vec![format!("invalid milestone ID: {milestone}")];
     }
 
-    let manifest_path = root
-        .join("evidence")
-        .join(milestone.to_ascii_lowercase())
-        .join("manifest.json");
-    if let Err(error) = fs::metadata(&manifest_path) {
-        return vec![format!("cannot read {}: {error}", manifest_path.display())];
+    let relative = format!("evidence/{}/manifest.json", milestone.to_ascii_lowercase());
+    let manifest_path = root.join(&relative);
+    if !manifest_path.is_file() {
+        // A milestone with no manifest is not closed. Say that, rather than
+        // reporting a filesystem error against an absolute path.
+        return vec![format!(
+            "{milestone} is not closed: {relative} does not exist"
+        )];
     }
 
     let mut violations = verify_evidence_manifest(root, &manifest_path, milestone);
@@ -396,8 +517,12 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
     }
 
     verify_general_closure(manifest_path, milestone, &mut violations);
+    verify_manifest_change(root, manifest_path, &mut violations);
     if milestone == "M0" {
         verify_m0_manifest(manifest_path, &mut violations);
+    }
+    if milestone == "M1" {
+        verify_m1_manifest(root, manifest_path, &mut violations);
     }
 
     violations
@@ -506,6 +631,82 @@ fn verify_admitted_manifest(manifest_path: &Path, milestone: &str, violations: &
         );
     }
 }
+
+/// Checks what closing M1 requires beyond the rules every milestone shares.
+///
+/// M1 decides the architecture, so its closure is about decisions being made on
+/// recorded evidence: every gate measured, every decision written down, and the
+/// one gate that needs an operator-run launch actually having one.
+fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        manifest_path,
+        ".workPackages | sort == [\"M1-W1\", \"M1-W2\", \"M1-W3\", \"M1-W4\", \"M1-W5\", \"M1-W6\", \"M1-W7\", \"M1-W8\"]",
+        "M1 manifest must include every work package from M1-W1 through M1-W8 exactly once",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".benchmarks.protocolVersion == \"spike-v1\" and (.benchmarks.results | length > 0)",
+        "M1 manifest must record spike results under the spike-v1 protocol",
+        violations,
+    );
+
+    // Every gate needs a recorded result and an accepted decision. A gate with
+    // no ADR is a measurement nobody committed to.
+    for (directory, gate) in SPIKE_GATES {
+        let results = root.join("evidence/m1/spikes").join(directory);
+        let recorded = fs::read_dir(&results)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "json")
+            })
+            .count();
+        if recorded == 0 {
+            violations.push(format!("M1 closure requires a recorded result for {gate}"));
+        }
+    }
+    for decision in M1_DECISIONS {
+        if !root.join("docs/decisions").join(decision).is_file() {
+            violations.push(format!(
+                "M1 closure requires the decision record {decision}"
+            ));
+        }
+    }
+
+    // The review itself is a process artifact and stays out of the repository, so
+    // the manifest's hashed record names a document held elsewhere. That is a
+    // weaker guarantee than recomputing the hash here, and deliberately so: the
+    // shared rules still require the claim, only the file no longer ships.
+
+    // ADG-5 is the one gate whose answer needs the game to actually start.
+    let launched = fs::read_dir(root.join("evidence/m1/spikes/adg-5"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|kind| kind == "json"))
+        .any(|path| jq_matches(&path, ".prismIntegration.stockLaunch == true").unwrap_or(false));
+    if !launched {
+        violations.push(
+            "M1 closure requires an ADG-5 result recording an observed stock-Prism launch"
+                .to_owned(),
+        );
+    }
+}
+
+/// Decision records M1 cannot close without.
+const M1_DECISIONS: &[&str] = &[
+    "adg-1-jvm-entry.md",
+    "adg-2-mod-execution.md",
+    "adg-3-bindings.md",
+    "adg-4-state-ownership.md",
+    "adg-5-prism-integration.md",
+];
 
 fn verify_m0_manifest(manifest_path: &Path, violations: &mut Vec<String>) {
     require_manifest_rule(
@@ -885,6 +1086,20 @@ fn is_valid_milestone_id(milestone: &str) -> bool {
     )
 }
 
+/// Reads one scalar out of a JSON file, for claims that are compared rather than
+/// asserted.
+fn jq_value(path: &Path, filter: &str) -> Result<String, String> {
+    let output = Command::new("jq")
+        .args(["-r", filter])
+        .arg(path)
+        .output()
+        .map_err(|error| format!("cannot read JSON with jq: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("cannot read {filter} from {}", path.display()));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
 fn jq_matches(path: &Path, filter: &str) -> Result<bool, String> {
     let output = Command::new("jq")
         .args(["--exit-status", filter])
@@ -928,9 +1143,9 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        required_scaffold_paths, verify_experiment_fence, verify_ignored_boundaries,
-        verify_milestone, verify_scaffold, verify_spikes, verify_tracked_contents,
-        verify_tracked_paths, verify_version_boundary,
+        change_mismatch, required_scaffold_paths, verify_experiment_fence,
+        verify_ignored_boundaries, verify_milestone, verify_scaffold, verify_spikes,
+        verify_tracked_contents, verify_tracked_paths, verify_version_boundary,
     };
 
     #[test]
@@ -965,6 +1180,47 @@ mod tests {
         assert!(violations.iter().any(|violation| {
             violation.ends_with("must exercise every required failure scenario exactly once")
         }));
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_claimed_stock_launch_without_the_redacted_log_hash_is_refused() {
+        let root = temporary_root("spikes-launch-log");
+        fs::create_dir_all(root.join("schemas")).expect("schema directory should be creatable");
+        fs::copy(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../schemas/spike-result.schema.json"),
+            root.join("schemas/spike-result.schema.json"),
+        )
+        .expect("spike schema should be copied");
+        let gate = root.join("evidence/m1/spikes/adg-5");
+        fs::create_dir_all(&gate).expect("spike directory should be creatable");
+        let recorded = fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../evidence/m1/spikes/adg-5/adg5-stock-jvm-arguments.json"),
+        )
+        .expect("the recorded ADG-5 result should be readable");
+        let target = gate.join("candidate.json");
+
+        // The recorded result is the control: only the log artifact's name differs
+        // between the two writes, so nothing but the new rule can explain the refusal.
+        fs::write(&target, &recorded).expect("spike result should be writable");
+        assert!(
+            verify_spikes(&root).is_empty(),
+            "the recorded result should pass unaltered"
+        );
+
+        fs::write(
+            &target,
+            recorded.replace("redacted-instance-launch.log", "some-other-capture.log"),
+        )
+        .expect("altered spike result should be writable");
+        assert!(
+            verify_spikes(&root)
+                .iter()
+                .any(|violation| violation.ends_with("does not conform to the spike schema")),
+            "a stock launch with no redacted log hash should be refused"
+        );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
@@ -1016,6 +1272,31 @@ mod tests {
             ["production crate depends on an experiment: crates/ravel-loader/Cargo.toml"]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_result_naming_a_change_that_did_not_introduce_it_is_reported() {
+        // The defect this exists for: seven results named a revision no rewrite
+        // had updated, and nothing recomputed the claim until a human read them.
+        let wrong = change_mismatch(
+            "evidence/m1/spikes/adg-3/adg3-javap-extraction.json",
+            "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt",
+            "ysvpslstqmmmkkzknzmozqkpnozlworn",
+        );
+        assert_eq!(
+            wrong.as_deref(),
+            Some(
+                "evidence/m1/spikes/adg-3/adg3-javap-extraction.json records change \
+                 wtvoqolwmrxtpwsxspnlwnsnkoslxxlt but was introduced by \
+                 ysvpslstqmmmkkzknzmozqkpnozlworn"
+            )
+        );
+        assert_eq!(
+            change_mismatch("r.json", "wtvoqolwmrxt", "wtvoqolwmrxt"),
+            None
+        );
+        // An untracked result has no introducing change and is not yet checkable.
+        assert_eq!(change_mismatch("r.json", "wtvoqolwmrxt", ""), None);
     }
 
     #[test]

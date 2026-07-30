@@ -92,11 +92,17 @@
         "revision": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["id", "dirty"],
+          "required": ["id", "changeId", "dirty"],
           "properties": {
             "id": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "description": "A commit that existed when the trial ran. Later rewrites abandon it, so it records what ran and is not a way to find anything."
+            },
+            "changeId": {
+              "type": "string",
+              "pattern": "^[k-z]{32}$",
+              "description": "The change that holds this result. Survives every rewrite, and ravel:verify-spikes checks it against the change that introduced the file."
             },
             "dirty": {
               "type": "boolean"
@@ -590,6 +596,37 @@
       },
       "then": {
         "required": ["prismIntegration"]
+      }
+    },
+    {
+      "description": "A claimed stock launch has to carry the hash of the redacted launch log that shows it. The log itself is never tracked, so the hash is the only thing standing between the claim and an assertion.",
+      "if": {
+        "properties": {
+          "prismIntegration": {
+            "properties": {
+              "stockLaunch": {
+                "const": true
+              }
+            },
+            "required": ["stockLaunch"]
+          }
+        },
+        "required": ["prismIntegration"]
+      },
+      "then": {
+        "properties": {
+          "artifacts": {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "redacted-instance-launch.log"
+                }
+              },
+              "required": ["name"]
+            }
+          }
+        },
+        "required": ["artifacts"]
       }
     }
   ],

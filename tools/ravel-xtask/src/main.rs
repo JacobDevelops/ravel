@@ -14,8 +14,14 @@ fn main() -> ExitCode {
             "milestone",
             ravel_xtask::verify_milestone(&root, milestone_id),
         ),
+        [verify, spikes] if verify == "verify" && spikes == "spikes" => {
+            ("spikes", ravel_xtask::verify_spikes(&root))
+        }
         _ => {
-            eprintln!("usage:\n  cargo xtask verify scaffold\n  cargo xtask verify milestone M<N>");
+            eprintln!(
+                "usage:\n  cargo xtask verify scaffold\n  cargo xtask verify spikes\n  \
+                 cargo xtask verify milestone M<N>"
+            );
             return ExitCode::from(2);
         }
     };

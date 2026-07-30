@@ -46,6 +46,7 @@ in
     gnutar
     gzip
     hyperfine
+    jdk25
     jq
     jujutsu
     markdownlint-cli
@@ -150,7 +151,15 @@ in
       exec = ''
         set -euo pipefail
         cd "$DEVENV_ROOT"
-        cargo llvm-cov nextest --workspace --all-features --fail-under-lines 80
+
+        # The per-gate spike candidates are benchmark-only instruments: what they
+        # measure needs a JVM, a launcher, or a game, so they are excluded under
+        # the roadmap's reviewed-allowlist clause. The shared harness is not
+        # excluded — it is ordinary logic every gate depends on, so it earns the
+        # floor like anything else. The fence in `ravel-verify-scaffold` keeps
+        # both out of the production graph.
+        cargo llvm-cov nextest --workspace --all-features --fail-under-lines 80 \
+          --ignore-filename-regex '(^|/)experiments/adg-'
       '';
     };
 
@@ -169,6 +178,15 @@ in
         set -euo pipefail
         cd "$DEVENV_ROOT"
         cargo run --locked -p ravel-xtask -- verify scaffold
+      '';
+    };
+
+    ravel-verify-spikes = {
+      description = "Verify recorded architecture spike results.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+        cargo run --locked -p ravel-xtask -- verify spikes
       '';
     };
 
@@ -292,6 +310,7 @@ in
     "ravel:coverage".exec = "ravel-coverage";
     "ravel:audit".exec = "ravel-audit";
     "ravel:verify-scaffold".exec = "ravel-verify-scaffold";
+    "ravel:verify-spikes".exec = "ravel-verify-spikes";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";
@@ -307,6 +326,7 @@ in
         "ravel:coverage"
         "ravel:audit"
         "ravel:verify-scaffold"
+        "ravel:verify-spikes"
         "ravel:verify-stack"
       ];
       exec = "true";

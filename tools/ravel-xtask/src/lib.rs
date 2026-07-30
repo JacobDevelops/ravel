@@ -41,6 +41,17 @@ const TEST_MOD_NAMES: &[&str] = &[
     "saved-data",
 ];
 
+const EXPERIMENT_NAMES: &[&str] = &["spike-harness"];
+
+/// Gate directories under `evidence/m1/spikes` and the gate ID they must carry.
+const SPIKE_GATES: &[(&str, &str)] = &[
+    ("adg-1", "ADG-1"),
+    ("adg-2", "ADG-2"),
+    ("adg-3", "ADG-3"),
+    ("adg-4", "ADG-4"),
+    ("adg-5", "ADG-5"),
+];
+
 const ROOT_FILES: &[&str] = &[
     ".cargo/config.toml",
     ".config/nextest.toml",
@@ -62,6 +73,7 @@ const ROOT_FILES: &[&str] = &[
     "devenv.nix",
     "devenv.yaml",
     "docs/runbooks/darwin-verification.md",
+    "experiments/README.md",
     "flake.lock",
     "flake.nix",
     "minecraft/README.md",
@@ -82,6 +94,7 @@ const ROOT_FILES: &[&str] = &[
     "schemas/provenance.schema.json",
     "schemas/runtime-inputs.schema.json",
     "schemas/saved-data.schema.json",
+    "schemas/spike-result.schema.json",
     "tests/conformance/Cargo.toml",
     "tests/fixtures/README.md",
     "tests/fixtures/local/README.md",
@@ -105,6 +118,11 @@ pub fn required_scaffold_paths() -> Vec<String> {
             TEST_MOD_NAMES
                 .iter()
                 .map(|name| format!("test-mods/{name}/Cargo.toml")),
+        )
+        .chain(
+            EXPERIMENT_NAMES
+                .iter()
+                .map(|name| format!("experiments/{name}/Cargo.toml")),
         )
         .collect()
 }
@@ -131,6 +149,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_ignored_boundaries(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
+    verify_experiment_fence(root, &mut violations);
 
     match tracked_paths(root) {
         Ok(paths) => {
@@ -141,6 +160,176 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     }
 
     violations
+}
+
+/// Checks every recorded architecture spike result against the M1 gate rules.
+///
+/// An absent spike tree is not a violation; the M1 milestone gate is what
+/// requires results to exist. This check only enforces that recorded results are
+/// complete, comparable, and free of substituted values.
+#[must_use]
+pub fn verify_spikes(root: &Path) -> Vec<String> {
+    let mut violations = Vec::new();
+    let spikes = root.join("evidence/m1/spikes");
+
+    for (directory, gate) in SPIKE_GATES {
+        let gate_root = spikes.join(directory);
+        if !gate_root.is_dir() {
+            continue;
+        }
+
+        let mut results = fs::read_dir(&gate_root)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "json")
+            })
+            .collect::<Vec<_>>();
+        results.sort();
+
+        if results.is_empty() {
+            violations.push(format!("spike gate {gate} has no recorded result"));
+            continue;
+        }
+        for result in &results {
+            verify_spike_result(root, result, gate, &mut violations);
+        }
+    }
+
+    violations
+}
+
+fn verify_spike_result(root: &Path, path: &Path, gate: &str, violations: &mut Vec<String>) {
+    let label = path
+        .strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string();
+
+    match spike_schema_matches(root, path) {
+        Ok(true) => {}
+        Ok(false) => violations.push(format!("{label} does not conform to the spike schema")),
+        Err(error) => violations.push(error),
+    }
+
+    let rules = [
+        (
+            ".schemaVersion == 1 and .protocolVersion == \"spike-v1\"",
+            "must record spike protocol version 1",
+        ),
+        (
+            &format!(".gate == \"{gate}\""),
+            "must record the gate of the directory it belongs to",
+        ),
+        (
+            r#".candidate.disposition == "rejected"
+                or ([.failures[].scenario] | sort
+                    == ["callback-failure", "crash", "invalid-input", "timeout",
+                        "unavailable-runtime"])"#,
+            "must exercise every required failure scenario exactly once",
+        ),
+        (
+            r#"[.memory.bootstrapPeakRss, .memory.retainedRss, .memory.retainedClasses,
+                .startup.processToReady]
+                | all((.status == "unavailable") or (.value > 0))"#,
+            "must not report a measured bootstrap or startup value of zero",
+        ),
+        (
+            r#".candidate.disposition == "rejected"
+                or .calls.callbackNanoseconds.status == "measured"
+                or (.calls.callbackNanoseconds.reason | length > 0)"#,
+            "must measure callback cost or record why it is unavailable",
+        ),
+        (
+            r#".deviations | all(.classification != "blocking")"#,
+            "must not carry a blocking deviation",
+        ),
+        (
+            r#".trial.measuredInvocations > 0 or .candidate.disposition == "rejected""#,
+            "must measure at least one invocation",
+        ),
+    ];
+    for (filter, requirement) in rules {
+        match jq_matches(path, filter) {
+            Ok(true) => {}
+            Ok(false) => violations.push(format!("{label} {requirement}")),
+            Err(error) => violations.push(error),
+        }
+    }
+
+    verify_manifest_redaction(path, violations);
+}
+
+fn spike_schema_matches(root: &Path, result: &Path) -> Result<bool, String> {
+    let output = Command::new("check-jsonschema")
+        .arg("--schemafile")
+        .arg(root.join("schemas/spike-result.schema.json"))
+        .arg(result)
+        .output()
+        .map_err(|error| format!("cannot validate spike schema: {error}"))?;
+    Ok(output.status.success())
+}
+
+/// Keeps measurement-only spike crates out of the production dependency graph.
+fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
+    let production_manifests = CRATE_NAMES
+        .iter()
+        .map(|name| format!("crates/{name}/Cargo.toml"))
+        .chain(
+            TEST_MOD_NAMES
+                .iter()
+                .map(|name| format!("test-mods/{name}/Cargo.toml")),
+        )
+        .chain([
+            "tests/conformance/Cargo.toml".to_owned(),
+            "tools/ravel-cli/Cargo.toml".to_owned(),
+            "tools/ravel-xtask/Cargo.toml".to_owned(),
+        ]);
+
+    for relative in production_manifests {
+        let Ok(manifest) = fs::read_to_string(root.join(&relative)) else {
+            continue;
+        };
+        if manifest.contains("ravel-spike") || manifest.contains("experiments/") {
+            violations.push(format!(
+                "production crate depends on an experiment: {relative}"
+            ));
+        }
+        if manifest.contains(r#"unsafe_code = "allow""#) {
+            violations.push(format!(
+                "unsafe code is permitted outside the experiment boundary: {relative}"
+            ));
+        }
+    }
+
+    let mut sources = Vec::new();
+    for directory in ["crates", "test-mods", "tools", "tests"] {
+        collect_files(&root.join(directory), &mut sources);
+    }
+    for path in sources {
+        if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
+            continue;
+        }
+        // A bare `contains` would match this rule's own literals, so anchor on
+        // the attribute position instead of the substring.
+        if fs::read_to_string(&path).is_ok_and(|source| {
+            source.lines().map(str::trim_start).any(|line| {
+                line.starts_with("#![allow(unsafe_code)")
+                    || line.starts_with("#[allow(unsafe_code)")
+                    || line.starts_with("#![expect(unsafe_code)")
+                    || line.starts_with("#[expect(unsafe_code)")
+            })
+        }) {
+            let relative = path.strip_prefix(root).unwrap_or(&path);
+            violations.push(format!(
+                "unsafe code is permitted outside the experiment boundary: {}",
+                relative.display()
+            ));
+        }
+    }
 }
 
 /// Checks a milestone evidence manifest's identity and minimum gate fields.
@@ -501,6 +690,7 @@ fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
         "provenance",
         "runtime-inputs",
         "saved-data",
+        "spike-result",
     ] {
         let relative = format!("schemas/{schema}.schema.json");
         let path = root.join(&relative);
@@ -723,9 +913,117 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        required_scaffold_paths, verify_ignored_boundaries, verify_milestone, verify_scaffold,
-        verify_tracked_contents, verify_tracked_paths, verify_version_boundary,
+        required_scaffold_paths, verify_experiment_fence, verify_ignored_boundaries,
+        verify_milestone, verify_scaffold, verify_spikes, verify_tracked_contents,
+        verify_tracked_paths, verify_version_boundary,
     };
+
+    #[test]
+    fn an_absent_spike_tree_is_not_a_violation() {
+        let root = temporary_root("spikes-absent");
+
+        assert!(verify_spikes(&root).is_empty());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn spike_results_must_cover_every_failure_scenario() {
+        let root = temporary_root("spikes-failures");
+        let gate = root.join("evidence/m1/spikes/adg-1");
+        fs::create_dir_all(&gate).expect("spike directory should be creatable");
+        fs::write(
+            gate.join("candidate.json"),
+            r#"{"schemaVersion":1,"protocolVersion":"spike-v1","gate":"ADG-1",
+                "candidate":{"disposition":"measured"},
+                "failures":[{"scenario":"crash"}],
+                "memory":{"bootstrapPeakRss":{"status":"measured","value":1},
+                    "retainedRss":{"status":"measured","value":1},
+                    "retainedClasses":{"status":"measured","value":1}},
+                "startup":{"processToReady":{"status":"measured","value":1}},
+                "calls":{"callbackNanoseconds":{"status":"measured"}},
+                "trial":{"measuredInvocations":1},"deviations":[]}"#,
+        )
+        .expect("spike result should be writable");
+
+        let violations = verify_spikes(&root);
+
+        assert!(violations.iter().any(|violation| {
+            violation.ends_with("must exercise every required failure scenario exactly once")
+        }));
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn spike_results_must_not_substitute_zero_for_a_missing_measurement() {
+        let root = temporary_root("spikes-zero");
+        let gate = root.join("evidence/m1/spikes/adg-1");
+        fs::create_dir_all(&gate).expect("spike directory should be creatable");
+        fs::write(
+            gate.join("candidate.json"),
+            r#"{"schemaVersion":1,"protocolVersion":"spike-v1","gate":"ADG-1",
+                "candidate":{"disposition":"measured"},
+                "failures":[{"scenario":"callback-failure"},{"scenario":"crash"},
+                    {"scenario":"invalid-input"},{"scenario":"timeout"},
+                    {"scenario":"unavailable-runtime"}],
+                "memory":{"bootstrapPeakRss":{"status":"measured","value":0},
+                    "retainedRss":{"status":"measured","value":1},
+                    "retainedClasses":{"status":"measured","value":1}},
+                "startup":{"processToReady":{"status":"measured","value":1}},
+                "calls":{"callbackNanoseconds":{"status":"measured"}},
+                "trial":{"measuredInvocations":1},"deviations":[]}"#,
+        )
+        .expect("spike result should be writable");
+
+        let violations = verify_spikes(&root);
+
+        assert!(violations.iter().any(|violation| {
+            violation.ends_with("must not report a measured bootstrap or startup value of zero")
+        }));
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn production_crates_cannot_depend_on_measurement_experiments() {
+        let root = temporary_root("fence");
+        let crate_root = root.join("crates/ravel-loader");
+        fs::create_dir_all(&crate_root).expect("crate directory should be creatable");
+        fs::write(
+            crate_root.join("Cargo.toml"),
+            "[dependencies]\nravel-spike-harness.workspace = true\n",
+        )
+        .expect("manifest should be writable");
+        let mut violations = Vec::new();
+
+        verify_experiment_fence(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            ["production crate depends on an experiment: crates/ravel-loader/Cargo.toml"]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn unsafe_code_cannot_be_permitted_outside_experiments() {
+        let root = temporary_root("fence-unsafe");
+        let crate_root = root.join("crates/ravel-bootstrap/src");
+        fs::create_dir_all(&crate_root).expect("crate directory should be creatable");
+        fs::write(
+            crate_root.join("lib.rs"),
+            "#![allow(unsafe_code)]\npub fn boundary() {}\n",
+        )
+        .expect("source should be writable");
+        let mut violations = Vec::new();
+
+        verify_experiment_fence(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            ["unsafe code is permitted outside the experiment boundary: \
+                 crates/ravel-bootstrap/src/lib.rs"]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
 
     #[test]
     fn missing_files_are_reported_by_relative_path() {

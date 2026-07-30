@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "test-mods/*", "tests/conformance", "tools/*"]
+members = [
+  "crates/*",
+  "experiments/spike-harness",
+  "test-mods/*",
+  "tests/conformance",
+  "tools/*",
+]
 
 [workspace.package]
 edition = "2024"
@@ -25,6 +31,7 @@ ravel-resolve = { path = "crates/ravel-resolve", version = "0.0.0" }
 ravel-save = { path = "crates/ravel-save", version = "0.0.0" }
 ravel-sdk = { path = "crates/ravel-sdk", version = "0.0.0" }
 ravel-sdk-macros = { path = "crates/ravel-sdk-macros", version = "0.0.0" }
+ravel-spike-harness = { path = "experiments/spike-harness", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
 rustix = { version = "1.1.4", default-features = false, features = ["process"] }
 serde = { version = "1.0.229", features = ["derive"] }

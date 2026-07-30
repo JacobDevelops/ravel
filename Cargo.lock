@@ -270,6 +270,15 @@ name = "ravel-sdk-macros"
 version = "0.0.0"
 
 [[package]]
+name = "ravel-spike-harness"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "ravel-test-mod-commands"
 version = "0.0.0"
 dependencies = [

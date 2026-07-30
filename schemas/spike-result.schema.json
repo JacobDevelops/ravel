@@ -1,0 +1,760 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ravel:schema:spike-result:1",
+  "title": "Ravel architecture spike result",
+  "description": "Comparable Linux evidence for one architecture-decision-gate candidate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "protocolVersion",
+    "gate",
+    "candidate",
+    "trial",
+    "identity",
+    "memory",
+    "startup",
+    "calls",
+    "boundary",
+    "allocation",
+    "packaging",
+    "failures",
+    "safety",
+    "operability",
+    "artifacts",
+    "deviations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "protocolVersion": {
+      "const": "spike-v1"
+    },
+    "gate": {
+      "enum": ["ADG-1", "ADG-2", "ADG-3", "ADG-4", "ADG-5"]
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "disposition"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "disposition": {
+          "enum": ["measured", "rejected"],
+          "description": "A rejected candidate still records why, and any evidence collected before rejection."
+        },
+        "rejectionReason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "rejected"
+              }
+            },
+            "required": ["disposition"]
+          },
+          "then": {
+            "required": ["rejectionReason"]
+          },
+          "else": {
+            "not": {
+              "required": ["rejectionReason"]
+            }
+          }
+        }
+      ]
+    },
+    "trial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "commandSha256",
+        "startedAt",
+        "durationMs",
+        "clock",
+        "warmupInvocations",
+        "measuredInvocations"
+      ],
+      "properties": {
+        "revision": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "dirty"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dirty": {
+              "type": "boolean"
+            }
+          }
+        },
+        "commandSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "clock": {
+          "const": "monotonic"
+        },
+        "warmupInvocations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "measuredInvocations": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "hardwareProfile",
+        "minecraft",
+        "prism",
+        "trialKind"
+      ],
+      "properties": {
+        "target": {
+          "const": "x86_64-linux"
+        },
+        "hardwareProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minecraft": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prism": {
+          "type": "string",
+          "minLength": 1
+        },
+        "java": {
+          "type": "object",
+          "description": "Runtime the trial executed on, when it hosted a JVM at all. A gate that measures no JVM omits it.",
+          "additionalProperties": false,
+          "required": ["version", "runtime", "pinned"],
+          "properties": {
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "runtime": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pinned": {
+              "type": "boolean",
+              "description": "True only for the Mojang java-runtime-epsilon build the pinned game uses."
+            }
+          }
+        },
+        "trialKind": {
+          "enum": ["harness", "game-process"],
+          "description": "Harness trials load pinned game classes; game-process trials run the pinned game through Prism."
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrapPeakRss", "retainedRss", "retainedClasses"],
+      "properties": {
+        "bootstrapPeakRss": {
+          "$ref": "#/$defs/measurement"
+        },
+        "retainedRss": {
+          "$ref": "#/$defs/measurement"
+        },
+        "retainedClasses": {
+          "$ref": "#/$defs/measurement"
+        }
+      }
+    },
+    "startup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["processToReady", "candidateDelta"],
+      "properties": {
+        "processToReady": {
+          "$ref": "#/$defs/measurement"
+        },
+        "candidateDelta": {
+          "$ref": "#/$defs/measurement"
+        }
+      }
+    },
+    "calls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invocationCount", "callbackNanoseconds"],
+      "properties": {
+        "invocationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "callbackNanoseconds": {
+          "$ref": "#/$defs/distribution"
+        }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bytesPerCall", "totalBytes"],
+      "properties": {
+        "bytesPerCall": {
+          "$ref": "#/$defs/measurement"
+        },
+        "totalBytes": {
+          "$ref": "#/$defs/measurement"
+        }
+      }
+    },
+    "allocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allocationsPerCall", "allocatedBytesPerCall"],
+      "properties": {
+        "allocationsPerCall": {
+          "$ref": "#/$defs/measurement"
+        },
+        "allocatedBytesPerCall": {
+          "$ref": "#/$defs/measurement"
+        }
+      }
+    },
+    "packaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installedBytes", "artifactCount", "requiredComponents"],
+      "properties": {
+        "installedBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifactCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredComponents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario", "outcome", "detail"],
+        "properties": {
+          "scenario": {
+            "enum": [
+              "invalid-input",
+              "unavailable-runtime",
+              "callback-failure",
+              "crash",
+              "timeout"
+            ]
+          },
+          "outcome": {
+            "enum": ["failed-closed", "continued", "not-evaluated"]
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maintainedUnsafeBlocks",
+        "maintainedUnsafeDetail",
+        "auditedBoundaryDependencies"
+      ],
+      "properties": {
+        "maintainedUnsafeBlocks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unsafe blocks a production implementation of this candidate would need in maintained crates."
+        },
+        "maintainedUnsafeDetail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auditedBoundaryDependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "version", "licence"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1
+              },
+              "licence": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "operability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "diagnostics",
+        "debugWorkflow",
+        "crashAttribution",
+        "prismLaunch"
+      ],
+      "properties": {
+        "diagnostics": {
+          "type": "string",
+          "minLength": 1
+        },
+        "debugWorkflow": {
+          "type": "string",
+          "minLength": 1
+        },
+        "crashAttribution": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prismLaunch": {
+          "enum": [
+            "stock-jvm-arguments",
+            "stock-wrapper-command",
+            "patch-required",
+            "not-evaluated"
+          ]
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Raw trial artifacts. A measured candidate has at least one; a candidate rejected before measurement produced none.",
+      "items": {
+        "$ref": "#/$defs/hashedArtifact"
+      }
+    },
+    "isolation": {
+      "$ref": "#/$defs/measuredNote",
+      "description": "ADG-2: crash isolation observed for a failing mod."
+    },
+    "abiEvolution": {
+      "$ref": "#/$defs/measuredNote",
+      "description": "ADG-2: behaviour when a mod is built against an older host contract."
+    },
+    "modToModCalls": {
+      "$ref": "#/$defs/measurement",
+      "description": "ADG-2: nanoseconds for one mod-to-mod service call."
+    },
+    "bindingGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["durationMs", "outputSha256", "outputBytes", "driftDetected"],
+      "properties": {
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "outputBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "driftDetected": {
+          "type": "boolean",
+          "description": "ADG-3: whether a mutated pinned input made generation fail closed."
+        }
+      }
+    },
+    "stateOwnership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "duplicatedStateBytes", "boundaryBytesPerFlow"],
+      "properties": {
+        "model": {
+          "enum": ["java-authoritative", "rust-authoritative", "mirrored"]
+        },
+        "duplicatedStateBytes": {
+          "$ref": "#/$defs/measurement"
+        },
+        "boundaryBytesPerFlow": {
+          "$ref": "#/$defs/measurement"
+        }
+      }
+    },
+    "prismIntegration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stockLaunch", "changedLines", "ownership", "detail"],
+      "properties": {
+        "stockLaunch": {
+          "type": "boolean"
+        },
+        "changedLines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ownership": {
+          "enum": ["prism-upstream", "ravel", "none-required"]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "deviations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["summary", "classification"],
+        "properties": {
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "classification": {
+            "enum": ["blocking", "non-blocking"]
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "candidate": {
+            "properties": {
+              "disposition": {
+                "const": "measured"
+              }
+            },
+            "required": ["disposition"]
+          }
+        },
+        "required": ["candidate"]
+      },
+      "then": {
+        "properties": {
+          "artifacts": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "enum": ["ADG-1", "ADG-4"],
+            "description": "These gates always host a JVM, so a result without one is incomplete. ADG-5 is excluded: a launcher-configuration candidate starts no runtime."
+          }
+        },
+        "required": ["gate"]
+      },
+      "then": {
+        "properties": {
+          "identity": {
+            "required": ["java"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "ADG-2"
+          },
+          "candidate": {
+            "properties": {
+              "disposition": {
+                "const": "measured"
+              }
+            },
+            "required": ["disposition"]
+          }
+        },
+        "required": ["gate", "candidate"]
+      },
+      "then": {
+        "required": ["isolation", "abiEvolution", "modToModCalls"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "ADG-3"
+          },
+          "candidate": {
+            "properties": {
+              "disposition": {
+                "const": "measured"
+              }
+            },
+            "required": ["disposition"]
+          }
+        },
+        "required": ["gate", "candidate"]
+      },
+      "then": {
+        "required": ["bindingGeneration"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "ADG-4"
+          },
+          "candidate": {
+            "properties": {
+              "disposition": {
+                "const": "measured"
+              }
+            },
+            "required": ["disposition"]
+          }
+        },
+        "required": ["gate", "candidate"]
+      },
+      "then": {
+        "required": ["stateOwnership"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "ADG-5"
+          },
+          "candidate": {
+            "properties": {
+              "disposition": {
+                "const": "measured"
+              }
+            },
+            "required": ["disposition"]
+          }
+        },
+        "required": ["gate", "candidate"]
+      },
+      "then": {
+        "required": ["prismIntegration"]
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$"
+    },
+    "quality": {
+      "enum": ["exact", "estimated"]
+    },
+    "hashedArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "collector"],
+      "properties": {
+        "status": {
+          "enum": ["measured", "unavailable"]
+        },
+        "collector": {
+          "$ref": "#/$defs/identifier"
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "bytes",
+            "classes",
+            "milliseconds",
+            "nanoseconds",
+            "count",
+            "bytes-per-call",
+            "count-per-call"
+          ]
+        },
+        "quality": {
+          "$ref": "#/$defs/quality"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "measured"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["value", "unit", "quality"],
+            "not": {
+              "required": ["reason"]
+            }
+          },
+          "else": {
+            "required": ["reason"],
+            "not": {
+              "anyOf": [
+                {
+                  "required": ["value"]
+                },
+                {
+                  "required": ["quality"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "measuredNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "detail"],
+      "properties": {
+        "status": {
+          "enum": ["observed", "unavailable"]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "collector"],
+      "properties": {
+        "status": {
+          "enum": ["measured", "unavailable"]
+        },
+        "collector": {
+          "$ref": "#/$defs/identifier"
+        },
+        "quality": {
+          "$ref": "#/$defs/quality"
+        },
+        "sampleCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "median": {
+          "type": "number",
+          "minimum": 0
+        },
+        "p95": {
+          "type": "number",
+          "minimum": 0
+        },
+        "p99": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "measured"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["quality", "sampleCount", "median", "p95", "p99"],
+            "not": {
+              "required": ["reason"]
+            }
+          },
+          "else": {
+            "required": ["reason"]
+          }
+        }
+      ]
+    }
+  }
+}

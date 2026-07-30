@@ -14,7 +14,18 @@ result shape before candidate measurements begin. Every candidate uses:
 - one measured process trial, with callback distributions collected inside
   that process rather than repeated game launches;
 - identical warm-up, sampling, clock, and process-ownership rules;
-- a clean working tree and a recorded candidate revision and command hash.
+- a recorded candidate revision and command hash, where the revision records both
+  a commit that existed when the trial ran and the change that holds the result,
+  and the measured tree is that commit plus that change's diff.
+
+That last point replaces the "clean working tree" a git-shaped contract would ask
+for. This is a jj repository: the working copy is itself a change with content, so
+there is no state in which a trial runs against a tree identical to a recorded
+revision. Evidence written by a run cannot exist before the run either. So a
+result records a commit that existed when the trial ran, records the change that
+holds it, records that the measured tree differed from that commit, and relies on
+the reviewer seeing the difference — it is the diff of the change the result
+belongs to. Only the change is recomputed; the commit is a note about what ran.
 
 An invalid trial is recorded with its reason, corrected, and replaced. It is
 never averaged into the result or silently discarded. M0 launch evidence is

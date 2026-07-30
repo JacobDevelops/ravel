@@ -9,5 +9,6 @@ _:
     ravel-coverage
     ravel-audit
     ravel-verify-scaffold
+    ravel-verify-spikes
   '';
 }

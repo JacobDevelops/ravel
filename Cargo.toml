@@ -6,6 +6,7 @@ members = [
   "experiments/adg-2-guest",
   "experiments/adg-2-mod-execution",
   "experiments/adg-3-bindings",
+  "experiments/adg-4-state",
   "experiments/spike-harness",
   "test-mods/*",
   "tests/conformance",

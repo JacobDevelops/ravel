@@ -927,6 +927,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-spike-adg-4-state"
+version = "0.0.0"
+dependencies = [
+ "jni",
+ "ravel-spike-harness",
+]
+
+[[package]]
 name = "ravel-spike-harness"
 version = "0.0.0"
 dependencies = [

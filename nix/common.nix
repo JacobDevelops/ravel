@@ -239,6 +239,19 @@ in
       '';
     };
 
+    ravel-spike-adg-4 = {
+      description = "Measure the ADG-4 state-ownership models and record their evidence.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        # Release, because a debug boundary would measure the profile rather
+        # than the mechanism.
+        cargo build --locked --release -p ravel-spike-adg-4-state
+        ./target/release/ravel-spike-adg-4-state
+      '';
+    };
+
     ravel-verify-stack = {
       description = "Verify the jj change stack contract.";
       exec = ''
@@ -363,6 +376,7 @@ in
     "ravel:spike-adg-1".exec = "ravel-spike-adg-1";
     "ravel:spike-adg-2".exec = "ravel-spike-adg-2";
     "ravel:spike-adg-3".exec = "ravel-spike-adg-3";
+    "ravel:spike-adg-4".exec = "ravel-spike-adg-4";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";

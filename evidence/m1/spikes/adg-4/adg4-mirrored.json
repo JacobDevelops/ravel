@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "spike-v1",
+  "gate": "ADG-4",
+  "candidate": {
+    "id": "adg4.mirrored",
+    "title": "Both sides hold a copy; only changes ship",
+    "disposition": "measured"
+  },
+  "trial": {
+    "revision": {
+      "id": "b301640ac217379b3319cdcc0b0f02809607dba2",
+      "dirty": true,
+      "changeId": "qvunpvyunxpytwvonrsqotuppsmlouzn"
+    },
+    "commandSha256": "6a58658b0939f130de22b01a4408ad3530a308a23863b1c3e4b42ca102724c2d",
+    "startedAt": "2026-07-30T13:52:01Z",
+    "durationMs": 57,
+    "clock": "monotonic",
+    "warmupInvocations": 200000,
+    "measuredInvocations": 1280000
+  },
+  "identity": {
+    "target": "x86_64-linux",
+    "hardwareProfile": "linux-reference-v1",
+    "minecraft": "26.1.2",
+    "prism": "11.0.3",
+    "java": {
+      "version": "25.0.4",
+      "runtime": "OpenJDK Runtime Environment",
+      "pinned": false
+    },
+    "trialKind": "harness"
+  },
+  "memory": {
+    "bootstrapPeakRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 62853120.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedRss": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 62853120.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "retainedClasses": {
+      "status": "measured",
+      "collector": "spike.jmx",
+      "value": 918.0,
+      "unit": "classes",
+      "quality": "exact"
+    }
+  },
+  "startup": {
+    "processToReady": {
+      "status": "measured",
+      "collector": "spike.harness",
+      "value": 25.555555,
+      "unit": "milliseconds",
+      "quality": "exact"
+    },
+    "candidateDelta": {
+      "status": "unavailable",
+      "collector": "spike.harness",
+      "reason": "every model starts the same runtime and library, so there is no control to subtract that differs from the models"
+    }
+  },
+  "calls": {
+    "invocationCount": 1280000,
+    "callbackNanoseconds": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "quality": "estimated",
+      "sampleCount": 20000,
+      "median": 7.828125,
+      "p95": 9.546875,
+      "p99": 12.53125
+    }
+  },
+  "boundary": {
+    "bytesPerCall": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 16.0,
+      "unit": "bytes-per-call",
+      "quality": "exact"
+    },
+    "totalBytes": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 20480000.0,
+      "unit": "bytes",
+      "quality": "exact"
+    }
+  },
+  "allocation": {
+    "allocationsPerCall": {
+      "status": "unavailable",
+      "collector": "spike.jmx",
+      "reason": "a flow of primitives allocates nothing to count; the trial reports no counter"
+    },
+    "allocatedBytesPerCall": {
+      "status": "unavailable",
+      "collector": "spike.jmx",
+      "reason": "a flow of primitives allocates nothing to count; the trial reports no counter"
+    }
+  },
+  "packaging": {
+    "installedBytes": 722851,
+    "artifactCount": 2,
+    "requiredComponents": [
+      "flow.jar",
+      "libravel_spike_adg4.so"
+    ]
+  },
+  "failures": [
+    {
+      "scenario": "invalid-input",
+      "outcome": "failed-closed",
+      "detail": "the flow returned a rejection value"
+    },
+    {
+      "scenario": "callback-failure",
+      "outcome": "failed-closed",
+      "detail": "IllegalStateException"
+    },
+    {
+      "scenario": "unavailable-runtime",
+      "outcome": "failed-closed",
+      "detail": "UnsatisfiedLinkError"
+    },
+    {
+      "scenario": "crash",
+      "outcome": "failed-closed",
+      "detail": "the process died on signal 6 and reported nothing"
+    },
+    {
+      "scenario": "timeout",
+      "outcome": "failed-closed",
+      "detail": "the harness killed a trial that never announced readiness within 3 seconds"
+    }
+  ],
+  "safety": {
+    "maintainedUnsafeBlocks": 0,
+    "maintainedUnsafeDetail": "every model reaches the loader through the exported symbol ADG-1 selected, which jni_mangle generates rather than any maintained crate writing it; ownership adds none of its own",
+    "auditedBoundaryDependencies": [
+      {
+        "name": "jni",
+        "version": "0.22.4",
+        "licence": "MIT OR Apache-2.0"
+      }
+    ]
+  },
+  "operability": {
+    "diagnostics": "two copies means a diagnostic has to say which one it read, and a divergence between them is a class of bug the other models cannot have",
+    "debugWorkflow": "both debuggers, and a question about which copy is right",
+    "crashAttribution": "a stale mirror produces a wrong value with no failing call to attribute it to",
+    "prismLaunch": "not-evaluated"
+  },
+  "artifacts": [
+    {
+      "name": "flow.jar",
+      "sha256": "a8b7d69367cbf6b64880014b20a3101b6ba62b62f7ba2ffca3620cfe545503df"
+    },
+    {
+      "name": "libravel_spike_adg4.so",
+      "sha256": "270ed0d71ad6744f448aa8d84ba16a13137f1652ca64be9ccc9a9d1baae63c12"
+    }
+  ],
+  "stateOwnership": {
+    "model": "mirrored",
+    "duplicatedStateBytes": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 32.0,
+      "unit": "bytes",
+      "quality": "exact"
+    },
+    "boundaryBytesPerFlow": {
+      "status": "measured",
+      "collector": "spike.trial",
+      "value": 16.0,
+      "unit": "bytes",
+      "quality": "exact"
+    }
+  },
+  "deviations": [
+    {
+      "summary": "what this model costs beyond bytes: the mirror can go stale, and nothing in the mechanism notices",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "the flow carries primitives, so nothing here measures what an object graph would cost to move or mirror; that is M3's question once real counterparts exist",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "measured on runtime 25.0.4 rather than the pinned game runtime 25.0.1; set RAVEL_SPIKE_JAVA to the pinned runtime to remove this difference",
+      "classification": "non-blocking"
+    }
+  ]
+}

@@ -46,6 +46,7 @@ const EXPERIMENT_NAMES: &[&str] = &[
     "adg-2-guest",
     "adg-2-mod-execution",
     "adg-3-bindings",
+    "adg-4-state",
     "spike-harness",
 ];
 

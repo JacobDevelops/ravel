@@ -1,6 +1,9 @@
 # ADG-4 — State ownership
 
-Status: accepted at M1-W5.
+Status: accepted at M1-W5; amended at M3-W0 to admit opaque handles. The
+amendment is recorded under "Amendment: opaque handles" below and the
+consequence it corrects is marked where it appears. Nothing about who owns state
+changed.
 
 ## Decision
 
@@ -88,6 +91,9 @@ about.
 
 - Hook signatures carry values, not references to state the loader keeps. The
   generated binding passes what the flow needs and returns what it produced.
+  **Amended at M3-W0:** a hook may also carry an opaque handle to an object the
+  *game* keeps, which is not what this bullet forbids. See "Amendment: opaque
+  handles".
 - Reducing traffic means reducing crossings. M2-W8's regression budget should
   count crossings per tick, because that is the number this evidence says
   matters.
@@ -96,6 +102,74 @@ about.
 - `ravel-data` and `ravel-save` hold Ravel's own state, which is separate from
   this decision. Saved data is Ravel's by definition; the world's entities are
   not.
+
+## Amendment: opaque handles
+
+Amended at M3-W0. A hook may carry an **opaque handle** to an object the game
+owns: a reference the loader can hold for the duration of a call and hand back
+to the game, and cannot read into. Everything above about who owns state stands.
+
+### Why this is a correction rather than a reversal
+
+The consequence this amends says hook signatures carry no "references to state
+**the loader keeps**". A handle is a reference to state the *game* keeps, which
+is the arrangement this gate selected rather than the one it refused. The
+generator implemented the bullet as "no object may cross at all", which is
+stricter than the sentence and stricter than the reasoning behind it.
+
+Both concerns that decided this gate are untouched by a handle:
+
+- **Staleness.** The argument was that a mirror "can be stale, and nothing in the
+  mechanism notices". A handle cannot be stale, because it is not a second copy:
+  it names the one authoritative object, and reading through it reads what the
+  game currently holds. The failure mode the gate was built to prevent does not
+  arise.
+- **Duplication.** The number that decided the gate was 32 bytes per mirrored
+  object multiplied by the entities in a loaded world. A handle costs a pointer
+  and duplicates no field, so that multiplication does not happen.
+
+A third argument, not made when this gate was decided, runs the same way. A
+handle is **version-agnostic by construction**: it is opaque, so its shape is
+identical in every Minecraft version. A copy is not — its field layout is
+version-specific, so every game update would move it, and the remapping work
+would land on whoever maintains the copy. Of the two, the handle is the one that
+does not accumulate version debt.
+
+### What forced the amendment
+
+The reviewed inventory held six entries, all of them against
+`net.minecraft.util.StringUtil` and `net.minecraft.util.SmoothDouble`, carrying
+`(I)Z`, `(Ljava/lang/String;Z)Ljava/lang/String;`, `(DD)D` and `D`. Those are the
+only shapes the generator admits, and it was not a coincidence: they are what is
+left once every object is refused.
+
+M3 resolved real targets for registration, ticks, commands, resource reload,
+saved data and screens, recorded in
+[`../architecture/m3-hook-targets.md`](../architecture/m3-hook-targets.md).
+Essentially all of them carry game objects — `ResourceKey`, `BooleanSupplier`,
+`CommandBuildContext`, `SavedDataType`, `GuiGraphicsExtractor`. Under the strict
+reading Ravel can filter chat text and smooth a mouse delta and do nothing else,
+which is not a loader.
+
+### The residual risk is lifetime, not staleness
+
+A handle names a live object, so the question it raises is *how long it stays
+live*. A JNI reference is valid for the frame that produced it unless it is
+promoted deliberately; a handle held past its frame is a use-after-free, and a
+handle promoted and never released pins an object the collector wants.
+
+That risk belongs to a safe wrapper whose type ties a handle to the call that
+produced it, so a handle that outlives its frame does not compile. It is the part
+of this amendment that needs review, and it is the part no measurement here
+covers. It is a bounded and well-understood problem, which is what distinguishes
+it from the open-ended divergence a mirror would have introduced.
+
+### What is still forbidden
+
+Reading through a handle and keeping the result is a mirror, and every rule above
+still applies to it: it needs a measurement, a staleness argument, and an ADR
+saying how divergence is detected. The amendment admits a reference that crosses;
+it does not admit a copy that stays.
 
 ## Limits of this evidence
 

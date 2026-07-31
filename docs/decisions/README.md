@@ -11,9 +11,9 @@ measurement exists, a rejection is explicit, and the limits are written down.
 | Gate | Decision | Status |
 | --- | --- | --- |
 | [ADG-1](adg-1-jvm-entry.md) | JVM entry and hook mechanism | accepted (M1-W2) |
-| [ADG-2](adg-2-mod-execution.md) | Rust mod execution and ABI | measured (M1-W3); decision deferred to M3 |
+| [ADG-2](adg-2-mod-execution.md) | Rust mod execution and ABI | mods are interchangeable (M3); mechanism pending a compile-time measurement |
 | [ADG-3](adg-3-bindings.md) | Minecraft bindings | accepted (M1-W4) |
-| [ADG-4](adg-4-state-ownership.md) | State ownership | accepted (M1-W5) |
+| [ADG-4](adg-4-state-ownership.md) | State ownership | accepted (M1-W5); amended (M3-W0) to admit opaque handles |
 | [ADG-5](adg-5-prism-integration.md) | Prism integration | accepted: two stock instance arguments, launch observed |
 | ADG-6 | Configuration schema and UI | not started; due before M3 closes |
 

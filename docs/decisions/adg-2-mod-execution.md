@@ -1,21 +1,106 @@
 # ADG-2 — Rust mod execution and ABI
 
-Status: **measured at M1-W3; the decision is deferred to M3.** Four candidates were
-measured and the measurements stand. Choosing between them is not.
+Status: measured at M1-W3; **the distribution property is decided at M3 and the
+mechanism is not.** Mods are independently shipped and interchangeable. Whether
+an interchangeable mod arrives as a per-platform binary or as source that a
+bundled toolchain compiles turns on one measurement nobody has taken. See
+"Decision at M3" below.
 
 ## What is decided and what is not
 
-Nothing about how a mod executes is decided here. That is deliberate, and it is a
-correction rather than an omission: this gate selected native dynamic libraries at
-M1-W3, revised the selection to linked mods at M1-W6 on the same evidence, and the
-second revision exposed that the deciding considerations — distribution, hot
-reload, who links a mod set, what a package contains — are all properties of a
-loader that does not exist yet. A decision that flips twice before anything is
-built is a decision taken too early.
+How a mod executes was not decided at M1. That was deliberate, and a correction
+rather than an omission: this gate selected native dynamic libraries at M1-W3,
+revised the selection to linked mods at M1-W6 on the same evidence, and the second
+revision exposed that the deciding considerations — distribution, hot reload, who
+links a mod set, what a package contains — are all properties of a loader that did
+not exist yet. A decision that flips twice before anything is built is a decision
+taken too early.
 
-So M3 decides, against the loader prototype. What M1 contributes is the cost of
-each option and the trade each one makes, which is what a later decision needs and
-does not have to re-measure.
+M3 decides, against the loader prototype. What M1 contributes is the cost of each
+option and the trade each one makes, which is what a later decision needs and does
+not have to re-measure.
+
+## Decision at M3
+
+**A mod is independently shipped and interchangeable. A pack is not one binary.**
+
+A player adds a mod by adding one thing to an instance, removes it by removing
+that thing, and updates it by replacing it. A pack is a list of pinned mods plus
+configuration and data, not an opaque artifact.
+
+### Why, given the measurements said otherwise
+
+Neither number that used to argue for linking survives contact with the question
+it was answering.
+
+- **Call cost does not decide this.** The gap is 0.625 ns, and this record's own
+  arithmetic says it takes 160,000 mod calls in one tick to reach 0.1 ms. Nothing
+  approaches that.
+- **Iteration cost does not decide it either.** M2-W8 measured a relink at 598 ms
+  and a pack compile at 880 ms, which was the objection linking was supposed to
+  face and does not.
+
+What decides it is a property no measurement here was addressed to. Modded
+Minecraft is built on interchangeable mods, and every launcher and distribution
+site in that ecosystem assumes it. A pack that ships as one binary removes the
+behaviour experienced players most expect — adding a mod the pack author did not
+choose, removing one they did — and asks them to accept an opaque artifact in
+exchange for properties they cannot see. That is a worse trade than the
+nanoseconds suggested.
+
+### What this costs, and what buys most of it back
+
+Two of the three advantages linking held are recoverable, and the M1 trial did not
+attempt either because it was measuring a boundary rather than designing one.
+
+- **A panicking mod.** A panic crossing a C boundary is undefined behaviour, so the
+  trial's dynamic-library host died. It need not: the SDK generates every mod entry
+  point and no author writes the boundary by hand, so the generated wrapper catches
+  the panic on the mod's side and returns a failure the loader can attribute. What
+  the trial measured is an unwrapped boundary, not the only available one.
+- **Contract drift.** A symbol checked by name alone cannot notice a changed
+  signature. An explicit ABI version and a schema digest checked at load turn that
+  into a refusal with a message. Weaker than a compile error, and far from nothing.
+- **Maintained unsafe.** Not recoverable if the mechanism is a dynamic library:
+  `libloading` needs two calls, and that needs a `SPEC.md` §3.3 amendment and the
+  first row in [`safety-boundary.md`](../architecture/safety-boundary.md). It does
+  not arise at all if the mechanism is compiled source.
+
+### The open mechanism
+
+Interchangeability is the property. Two mechanisms deliver it and they fail
+differently.
+
+| | Per-platform binary | Source compiled by a bundled toolchain |
+| --- | --- | --- |
+| Artifacts per mod | one per platform | one, portable |
+| Rust's unstable ABI | must be answered with a C-shaped boundary the SDK owns and maintains | does not arise; one toolchain compiles the set |
+| Mod does not match the API | refused at load, if the version check is built | fails to compile, with a real error |
+| Panicking mod | needs the generated wrapper | caught natively |
+| Maintained unsafe | two calls, needs the exception | none |
+| Time from adding a mod to playing | immediate | a build, cacheable so it is paid once per change |
+| `SPEC.md` §3.4 | consistent with it | needs it amended |
+
+The second column reproduces what makes a Java archive pleasant — one portable
+artifact, no ABI fragility, failure that arrives early and legibly — which is the
+experience this decision is trying not to lose. It costs a shipped toolchain and a
+build.
+
+**The deciding measurement is compile time for a realistic pack-sized mod set,
+cold and cached.** M2-W8's 880 ms is a floor from generated one-struct crates and
+its own record says so; it is not a prediction. Nothing should be built on the
+mechanism until that number exists.
+
+Rejected mechanisms are unchanged: WebAssembly at 4.26× the call cost buys a
+restriction `SPEC.md` §10 does not want, and a helper process at 3.2 µs a call
+ends the argument for synchronous mod code.
+
+### What waits on the mechanism
+
+[`schemas/package.schema.json`](../../schemas/package.schema.json) requires
+per-target artifacts. That suits a shipped binary and does not describe shipped
+source, so the reconciliation this milestone owes waits for the measurement rather
+than guessing which shape to write.
 
 **The leading candidate is a mod linked into the loader**, on this evidence: 2.50 ns
 a call, no maintained unsafe anywhere in the mod boundary, a panicking mod the host

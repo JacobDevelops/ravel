@@ -19,5 +19,8 @@ ravel-package.workspace = true
 ravel-resolve.workspace = true
 ravel-save.workspace = true
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [lints]
 workspace = true

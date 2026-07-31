@@ -1,0 +1,105 @@
+{
+  "artifacts": [
+    {
+      "name": "redacted-instance-launch.log",
+      "reproducible": false,
+      "sha256": "d0f3297a8dd6636422803d18bde0c1df9b7b5368768c0dc4885699fb17c11379"
+    },
+    {
+      "name": "ravel-agent.jar",
+      "reproducible": true,
+      "sha256": "8afec13375ea1e7c4e433c5cea4f0f827f7015cf0f2d3fdb2615b153376f92ae"
+    },
+    {
+      "name": "libravel_bootstrap.so",
+      "reproducible": false,
+      "sha256": "32f1c2fd381a531e57da1adb6c4a0e10a203c47d1e0c6eec6a69fd1ef6b0ad7b"
+    }
+  ],
+  "deviations": [
+    {
+      "classification": "non-blocking",
+      "summary": "The launcher puts its own -Djava.library.path=<instance>/natives after the instance's JvmArgs and the last one wins, so the appended library directory ADG-5 describes has no effect, and the launcher deletes that natives directory when a launch ends. The native library was placed there immediately before this launch. Ravel is still switched off by removing the -javaagent argument, because nothing loads the library without it, and choosing the fix is an ADG-5 amendment rather than M2's to make."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The agent reports what it rewrote from a JVM shutdown hook, and the launcher shows that stream in a console window it writes to no file and closes with the game. This launch used a stock WrapperCommand that only tees the process's own output to a file. It changes no launch argument, adds no component, and starts nothing else."
+    }
+  ],
+  "identity": {
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1",
+    "java": "25.0.1",
+    "minecraft": "26.1.2",
+    "platform": "linux",
+    "prism": "11.0.3"
+  },
+  "instance": {
+    "components": [
+      {
+        "uid": "org.lwjgl3",
+        "version": "3.4.1"
+      },
+      {
+        "uid": "net.minecraft",
+        "version": "26.1.2"
+      }
+    ],
+    "coreModFiles": 0,
+    "detail": "The instance's own component list and mod directories, read after the launch. Ravel installs neither a component nor a file here: it is two JVM arguments. The launched instance carried a third stock setting as well, the wrapper command that captured the agent's shutdown report, which is a capture aid rather than part of Ravel.",
+    "modFiles": 0,
+    "otherLoaderComponents": [],
+    "withoutAnotherLoader": true
+  },
+  "launch": {
+    "agentArgument": true,
+    "attestation": {
+      "derived": false,
+      "detail": "An operator states that the launcher was the pinned stock build and that no line of it was changed for this launch. This runner reads the launcher's log, not the launcher, so these two are attested rather than measured, and the milestone attestation is where a person stands behind them.",
+      "launcherChangedLines": 0,
+      "stockLauncher": true
+    },
+    "detail": "ADG-5 decided Ravel reaches the game through two stock JVM arguments and no launcher change, and both appear on the command the launcher built. The conclusion rests on the -javaagent argument alone: removing it switches Ravel off without uninstalling anything, while the launcher appends its own -Djava.library.path after the instance's and the last one wins, so the instance's copy is inert. The instance carried a third stock setting beyond Ravel's two arguments, a wrapper command that only tees the process's output so the agent's shutdown report could be captured. Both are recorded as deviations below.",
+    "libraryPathArgument": true,
+    "objection": null,
+    "otherLoaderNamed": null,
+    "provesStockLaunch": true
+  },
+  "milestone": "M2",
+  "ravel": {
+    "evidence": "The JVM's own restricted-method warning names dev.ravel.jvm.Hook as the caller of System.loadLibrary, and only that class's static initializer calls it, so Ravel's Java class ran and its native library loaded inside the official game process.",
+    "hookClassInitialized": true,
+    "reachedGameProcess": true,
+    "rewrite": {
+      "classesRewritten": 2,
+      "detail": "The agent counts what it rewrote and asks the native library how many hook invocations reached it, then prints one line from a shutdown hook. A negative invocation count means the library never loaded, and a zero rewrite count means the transformer matched nothing.",
+      "methodsRewritten": 5,
+      "nativeInvocations": 144,
+      "reachedNativeCode": true,
+      "reachedRavel": true,
+      "reported": true
+    }
+  },
+  "record": "m2-prism-launch",
+  "redaction": {
+    "detail": "No line of the launcher's log reaches this record. The log is written outside the repository, redacted in memory, hashed, and deleted; the digest is the only thing that survives, which is how M0 and M1 recorded their launches.",
+    "recordsOnlyDigest": true,
+    "removed": [
+      "the account's session arguments, replaced by value before anything was hashed"
+    ]
+  },
+  "schemaVersion": 1,
+  "summary": "The pinned official client launched from stock Prism with Ravel's two ADG-5 arguments attached, rewrote its target classes inside the real game process, and reached native code, with no other mod loader installed.",
+  "trial": {
+    "revision": {
+      "changeId": "wxzwmyllqvrxvzkkyuzrkvlxoykrqoqm",
+      "dirty": true,
+      "id": "df717025a48fab4f6ae5702bc481f12a222e689f"
+    },
+    "startedAt": "2026-07-31T03:12:31Z"
+  },
+  "workPackages": [
+    "M2-W5",
+    "M2-W8"
+  ]
+}

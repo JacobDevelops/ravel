@@ -38,9 +38,15 @@ pub struct Launch {
 
 impl Launch {
     /// Whether this log proves a stock launch carrying Ravel's arguments.
+    ///
+    /// The agent argument is what the claim rests on: it is what loads Ravel,
+    /// and removing it switches Ravel off. The library path is recorded but not
+    /// required, because M2's launch found the launcher appends its own
+    /// `-Djava.library.path` after the instance's arguments and the last one
+    /// wins, so the appended one changes nothing either way.
     #[must_use]
     pub fn proves_stock_launch(&self) -> bool {
-        self.agent && self.library_path && self.other_loader.is_none()
+        self.agent && self.other_loader.is_none()
     }
 
     /// Why it does not, in the words a result should record.
@@ -52,16 +58,11 @@ impl Launch {
                  without another mod loader"
             ));
         }
-        match (self.agent, self.library_path) {
-            (true, true) => None,
-            (false, true) => Some("the launch command carries no -javaagent".to_owned()),
-            (true, false) => Some("the launch command carries no -Djava.library.path".to_owned()),
-            (false, false) => Some(
-                "the launch command carries neither of Ravel's two arguments, so this is a \
-                 launch of the unmodified game"
-                    .to_owned(),
-            ),
-        }
+        (!self.agent).then(|| {
+            "the launch command carries no -javaagent, so nothing loads Ravel and this is a \
+             launch of the unmodified game"
+                .to_owned()
+        })
     }
 }
 
@@ -177,8 +178,20 @@ mod tests {
             observed
                 .objection()
                 .expect("an unmodified launch must be objected to")
-                .contains("neither of Ravel's two arguments")
+                .contains("no -javaagent")
         );
+    }
+
+    #[test]
+    fn a_launch_without_the_inert_library_path_still_proves_a_stock_launch() {
+        // The launcher appends its own -Djava.library.path after the instance's,
+        // so the claim cannot rest on the instance's copy being there.
+        let observed = read(&log("-javaagent:/instance/ravel-agent.jar=x, "));
+
+        assert!(observed.agent);
+        assert!(!observed.library_path);
+        assert!(observed.proves_stock_launch());
+        assert_eq!(observed.objection(), None);
     }
 
     #[test]

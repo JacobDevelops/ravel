@@ -7,6 +7,8 @@ one of them.
   transformer, and the record the generator fills. Package `dev.ravel.jvm`.
 - `build/build-agent.sh` — builds `target/ravel-jvm/ravel-agent.jar` from those
   sources plus the generated `Hook` class.
+- `harness/` — a stub class and a `main` that run the whole path against a real
+  JVM without the game. See [Proving it without the game](#proving-it-without-the-game).
 
 The generated `Hook` class is not tracked. `ravel-minecraft-adapter`'s build
 script writes it to `target/ravel-jvm/generated/dev/ravel/jvm/Hook.java`, so a
@@ -43,8 +45,86 @@ Ravel off without uninstalling anything.
 
 At shutdown the agent prints one line naming how many classes and methods it
 rewrote and how many hook invocations reached native code. ADG-5's launch proved
-the JVM accepted both arguments and the client ran; it could not prove the
-rewrite happened, because nothing reported it. That line is what closes it.
+the JVM accepted the `-javaagent` and the client ran with it attached; it could
+not prove the rewrite happened, because nothing reported it. That line is what closes it, and
+`evidence/m2/prism-launch.json` records the launch where it did.
+
+### What that launch found about the second argument
+
+The library-path argument does not work as ADG-5 described it, and the first
+real launch is what showed it. Prism 11.0.3 puts the instance's `JvmArgs` on the
+command line *before* its own `-Djava.library.path=<instance>/natives`, and the
+last one wins, so appending a directory through the instance setting has no
+effect: the agent's `System.loadLibrary` fails, `premain` throws, and the JVM
+aborts before the client starts. The launcher also deletes that natives
+directory when a launch ends, so a library placed there lasts one launch.
+
+M2's launch therefore put `libravel_bootstrap.so` into `<instance>/natives`
+before starting, kept both arguments set, and recorded the override as a
+deviation. Ravel is still switched off by removing the `-javaagent` argument,
+because nothing loads the library without it. Which of the two proper fixes
+Ravel takes — the generated `Hook` calling `System.load` on a path given by a
+`-D` property, or an installer that owns the instance's natives directory — is
+an ADG-5 amendment and is not M2's to make.
+
+## Proving it without the game
+
+A launch is the only thing that proves Ravel reaches the official client, and
+`evidence/m2/prism-launch.json` records one. Everything short of the client is
+provable without it, and `harness/` is where:
+
+```console
+cargo build -p ravel-minecraft-adapter
+cargo build -p ravel-bootstrap --release
+./jvm/build/build-agent.sh
+./jvm/harness/run-harness.sh
+```
+
+`harness/net/minecraft/util/StringUtil.java` is a stub carrying the internal
+name, member names and exact descriptors the reviewed inventory pins, with
+invented bodies. It is not a Minecraft asset — no game bytecode, resource or jar
+is copied, and `minecraft/versions/*/hooks.toml` and `mappings.lock` already
+track the same strings. The transformer names no game type, so nothing here
+needs the client.
+
+The script refuses any output but this one:
+
+```text
+allowed=true
+filtered=a
+b
+simple=ab
+valid=true
+transformed=1 methods=4
+[ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code
+```
+
+Every line of it is a claim:
+
+- **Return values survive.** `filtered` keeps the newline and `simple` strips it,
+  so the transformer prepended the hook call and left the body intact. A
+  clobbered operand stack or a swallowed return shows up here first.
+- **One class, four methods.** The inventory pins five callable targets across
+  two classes; the harness stubs only `StringUtil`, so `SmoothDouble` is never
+  loaded. That is correct behaviour rather than a miss.
+- **Five invocations from four calls.** `filterText(String)` delegates to
+  `filterText(String, boolean)` and both are rewritten, so the delegating call
+  fires a second hook. Four would mean the one-arg overload matched and the
+  two-arg one did not — exactly the failure a name-only match produces, and the
+  reason the two overloads are in the stub.
+- **The `[ravel]` line is a real JNI call.** The shutdown hook reads the counter
+  through `Hook.nativeInvocations()`; `-1` means the library never loaded.
+
+Two further assertions hold outside the script and are recorded with it:
+
+```console
+sha256sum target/ravel-jvm/ravel-agent.jar   # stable across rebuilds
+nm -D --defined-only target/release/libravel_bootstrap.so | grep -c ' T Java_'
+```
+
+The jar hash is unchanged by rebuilding, which is what `jar --date` and the
+sorted entry list buy. The symbol count is 6 and every name is a `Hook` method:
+five generated exports and one hand-written counter.
 
 ## Three questions M2-W5 owed by name
 

@@ -71,7 +71,10 @@ Prism instance (stock, two JVM arguments)
   stale.
 - **[ADG-5](../decisions/adg-5-prism-integration.md): stock Prism, two instance
   arguments, no patch.** The launcher surface is verified, and the pinned client
-  has been observed launching with both of Ravel's arguments and no other loader.
+  has been observed launching with Ravel's `-javaagent` attached and no other
+  loader. The agent argument is what the claim rests on; the library path is
+  recorded but proves nothing, because the launcher appends its own after the
+  instance's and the last one wins.
 - **ADG-6 (configuration schema and UI)** has not started. It is due before M3
   closes.
 

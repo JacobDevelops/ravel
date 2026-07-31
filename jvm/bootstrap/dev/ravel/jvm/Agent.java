@@ -1,6 +1,11 @@
 package dev.ravel.jvm;
 
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.instrument.Instrumentation;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Ravel's premain entry point.
@@ -59,6 +64,13 @@ public final class Agent {
      * <p>ADG-5 proved the JVM accepted Ravel's arguments and the client ran, but
      * not that the rewrite happened, because nothing reported it. One line at
      * shutdown is what makes an ordinary launch direct evidence.
+     *
+     * <p>The line goes to the process's own standard output rather than to
+     * {@code System.out}. The game replaces {@code System.out} with its logger
+     * and that logger has stopped by the time a shutdown hook runs, so a
+     * {@code System.out.println} here reaches nothing in the one place the line
+     * exists to be read. Writing the file descriptor is what makes the report
+     * survive a real launch; M2's launch is what found that out.
      */
     public static void report() {
         long invocations;
@@ -67,8 +79,17 @@ public final class Agent {
         } catch (UnsatisfiedLinkError absent) {
             invocations = -1L;
         }
-        System.out.println("[ravel] rewrote " + transformedClasses() + " classes and "
+        String line = "[ravel] rewrote " + transformedClasses() + " classes and "
                 + rewrittenMethods() + " methods; " + invocations
-                + " hook invocations reached native code");
+                + " hook invocations reached native code\n";
+        // Not closed: the descriptor is the process's, and closing it would take
+        // standard output away from whatever else is still shutting down.
+        OutputStream out = new FileOutputStream(FileDescriptor.out);
+        try {
+            out.write(line.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        } catch (IOException unwritable) {
+            // A shutdown hook that cannot report has nowhere left to complain.
+        }
     }
 }

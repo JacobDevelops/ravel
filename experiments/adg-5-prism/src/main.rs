@@ -13,12 +13,11 @@
 
 #![forbid(unsafe_code)]
 
-mod launch;
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+use ravel_spike_adg_5_prism::launch;
 use ravel_spike_harness as harness;
 
 use harness::PinnedInputs;
@@ -360,8 +359,8 @@ fn prism_integration(observed: &Observed) -> PrismIntegration {
         .as_ref()
         .is_some_and(launch::Launch::proves_stock_launch);
     PrismIntegration {
-        // True only when an operator's log shows both arguments on the command
-        // line and no other loader. Without a log this is false, and the
+        // True only when an operator's log shows the agent argument on the
+        // command line and no other loader. Without a log this is false, and the
         // deviations name the step that closes it.
         stock_launch: launched,
         changed_lines: 0,
@@ -388,8 +387,8 @@ fn launch_sentence(observed: &Observed) -> String {
                  needs an authenticated session, which is an operator step."
             .to_owned(),
         Some(log) => match log.objection() {
-            None => "An operator's instance log shows the pinned game launched with both \
-                     arguments on its command line and no other mod loader named."
+            None => "An operator's instance log shows the pinned game launched with Ravel's \
+                     agent argument on its command line and no other mod loader named."
                 .to_owned(),
             Some(objection) => format!(
                 "An operator's instance log was read and does not prove a \
@@ -419,7 +418,7 @@ fn operability() -> Operability {
 fn deviations(observed: &Observed) -> Vec<Deviation> {
     let launch = match &observed.launch {
         Some(log) if log.proves_stock_launch() => "an operator's instance log shows the pinned \
-             game launching with both of Ravel's arguments and no other mod loader; only the \
+             game launching with Ravel's agent argument and no other mod loader; only the \
              hash of its redacted form is recorded, because a launcher log can carry the \
              account's session arguments"
             .to_owned(),

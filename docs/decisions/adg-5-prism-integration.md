@@ -93,8 +93,10 @@ gate:
 
    It redacts the account's session arguments, records only the hash of the
    redacted form, and sets `prismIntegration.stockLaunch` true when the command
-   line carried both arguments and named no other mod loader. If it did not, the
-   result says which argument was missing rather than claiming a launch. The log
+   line carried `-javaagent` and named no other mod loader. The library path is
+   recorded but not required, for the reason the correction at the end of this
+   file gives. If neither holds, the result says which of the two it was —
+   no agent, or a loader it named — rather than claiming a launch. The log
    itself is never copied into the result and never tracked, and it is deleted
    after recording.
 
@@ -141,3 +143,35 @@ gate:
 - Only Linux and only Prism 11.0.3. Other launchers and other platforms are
   M10-and-later questions, and the compatibility requirement above is how they
   will be judged.
+
+## What M2's launch found — the second argument does not work
+
+This note is a correction to the evidence above, not a change to the decision.
+The mechanism stands: stock launcher, no patch, and Ravel still switches off by
+removing arguments. What does not hold is the `-Djava.library.path` half of it.
+
+M2-W5's launch was the first to attach a native library, and it aborted at
+startup with `UnsatisfiedLinkError: no ravel_bootstrap in java.library.path`,
+naming only the instance's own natives directory. Prism 11.0.3 places the
+instance's `JvmArgs` on the command line *before* its own
+`-Djava.library.path=<instance>/natives`, and the last one wins, so appending a
+directory through the instance setting has no effect. The launcher also deletes
+that natives directory when a launch ends, so a library copied there lasts
+exactly one launch. M1's launch could not have found either, because its agent
+loaded no library.
+
+M2 got its launch by putting the library into the instance's natives directory
+immediately before starting, keeping both arguments set, and recording the
+override as a deviation in `evidence/m2/prism-launch.json`. That is a workaround
+rather than a mechanism. Two proper fixes exist — the generated `Hook` calling
+`System.load` on a path given by a `-D` property, which keeps Ravel to arguments
+alone, or an installer that owns the instance's natives directory, which does
+not — and choosing between them amends this ADR. Nothing should be built on the
+appended library path in the meantime.
+
+The reporting this record asked M2-W5 to build now exists and works, with one
+correction of its own: the game replaces `System.out` with a logger that has
+stopped by the time a shutdown hook runs, so the line has to be written to the
+process's own standard output. `evidence/m2/prism-launch.json` records what it
+printed — two classes and five methods rewritten inside the official client, and
+144 hook invocations reaching native code.

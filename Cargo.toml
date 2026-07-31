@@ -21,6 +21,8 @@ publish = false
 rust-version = "1.95"
 
 [workspace.dependencies]
+jni = "0.22.4"
+miniz_oxide = "0.8.9"
 ravel-bootstrap = { path = "crates/ravel-bootstrap", version = "0.0.0" }
 ravel-config = { path = "crates/ravel-config", version = "0.0.0" }
 ravel-core = { path = "crates/ravel-core", version = "0.0.0" }

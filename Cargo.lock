@@ -12,6 +12,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "adler2"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -667,6 +673,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "miniz_oxide"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
+dependencies = [
+ "adler2",
+]
+
+[[package]]
 name = "object"
 version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -747,9 +762,11 @@ dependencies = [
 name = "ravel-bootstrap"
 version = "0.0.0"
 dependencies = [
+ "jni",
  "ravel-host-api",
  "ravel-loader",
  "ravel-minecraft",
+ "ravel-minecraft-adapter",
 ]
 
 [[package]]
@@ -819,6 +836,7 @@ dependencies = [
  "ravel-package",
  "ravel-resolve",
  "ravel-save",
+ "serde_json",
 ]
 
 [[package]]
@@ -832,8 +850,12 @@ dependencies = [
 name = "ravel-minecraft-adapter"
 version = "0.0.0"
 dependencies = [
+ "miniz_oxide",
  "ravel-core",
  "ravel-minecraft",
+ "serde",
+ "sha2 0.11.0",
+ "toml",
 ]
 
 [[package]]
@@ -866,6 +888,9 @@ name = "ravel-package"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]

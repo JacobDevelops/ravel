@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Rewrites every reviewed target to call its generated hook first.
@@ -40,6 +41,7 @@ public final class Transformer implements ClassFileTransformer {
     private final Map<String, List<HookTarget>> byClass;
     private final AtomicInteger transformedClasses = new AtomicInteger();
     private final AtomicInteger rewrittenMethods = new AtomicInteger();
+    private final AtomicReference<String> loaderIdentity = new AtomicReference<>();
 
     /**
      * Indexes the generated targets by the class each one lives in.
@@ -64,6 +66,46 @@ public final class Transformer implements ClassFileTransformer {
         return rewrittenMethods.get();
     }
 
+    /**
+     * Describes the loader that loaded the first class this transformer
+     * rewrote, or {@code null} if it rewrote nothing.
+     *
+     * <p>ADG-1's second candidate turns on which loader resolves the game's
+     * classes, and {@link #transform} received that loader and discarded it, so
+     * nothing had ever measured it. The description is built at the moment of
+     * the rewrite and kept as text rather than as a reference, so recording it
+     * holds nothing of the game alive.
+     */
+    public String loaderIdentity() {
+        return loaderIdentity.get();
+    }
+
+    /**
+     * Names one loader as its class and its identity hash, so two entries in a
+     * chain can be told apart even when they are the same class.
+     */
+    private static String name(ClassLoader loader) {
+        return loader == null
+                ? "bootstrap"
+                : loader.getClass().getName() + "@"
+                        + Integer.toHexString(System.identityHashCode(loader));
+    }
+
+    /** Describes {@code loader} against the system loader and its parents. */
+    private static String describe(ClassLoader loader) {
+        ClassLoader system = ClassLoader.getSystemClassLoader();
+        StringBuilder chain = new StringBuilder();
+        for (ClassLoader current = loader; current != null; current = current.getParent()) {
+            chain.append(name(current)).append(" -> ");
+        }
+        chain.append(name(null));
+
+        return "rewrittenBy=" + name(loader)
+                + " system=" + name(system)
+                + " sameObject=" + (loader == system)
+                + " parentChain=" + chain;
+    }
+
     @Override
     public byte[] transform(
             Module module,
@@ -79,6 +121,9 @@ public final class Transformer implements ClassFileTransformer {
         if (targets == null) {
             return null;
         }
+        // Recorded before the rewrite rather than after, so a rewrite that
+        // throws still leaves the identity of the loader that asked for it.
+        loaderIdentity.compareAndSet(null, describe(loader));
 
         ClassFile context = ClassFile.of();
         byte[] rewritten = classfile;

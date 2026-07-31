@@ -325,10 +325,14 @@ refusing.
   API, not a number. Nobody has measured a per-frame crossing, and if the
   capability is ever built for another reason the arithmetic should be redone
   rather than inherited from here.
-- The 26.1.2 screen targets are resolved against the pinned jar but are not in
-  `hooks.toml` and have never run. `m3-hook-targets.md` records what adding them
-  costs, and until M3-W3 does it, nothing here has been exercised in a running
-  game.
+- The 26.1.2 screen targets were resolved against the pinned jar and, when this
+  was written, were not in `hooks.toml` and had never run. M3-W0 added them and
+  M3-W3 ran them: the launch recorded in
+  [`evidence/m3/class-loader-identity.json`](../../evidence/m3/class-loader-identity.json)
+  rewrote 10 classes and 24 methods in the official client, which reached its
+  title screen. That record reports counts rather than names, so it does not say
+  which of the targets those were. What remains unexercised is not the inventory
+  but the screen the screen targets are for.
 - One version. The claim that a declaration outlasts a drawn screen rests on the
   observation that 26.1.2's screen API already moved; it does not say how the
   next version moves, and a declaration format is only version-agnostic for as

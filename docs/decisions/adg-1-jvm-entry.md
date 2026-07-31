@@ -1,10 +1,12 @@
 # ADG-1 — JVM entry and hook mechanism
 
 Status: accepted at M1-W2; amended by [ADG-6](adg-6-configuration-ui.md) before
-M3-W3 to say what else Ravel puts into the game process. The amendment is
-recorded under "Amendment: what the agent jar carries" below and the consequence
-it corrects is marked where it appears. Nothing about the entry mechanism
-changed. It needs no `SPEC.md` §3.3 amendment and no unsafe exception: the
+M3-W3 to say what else Ravel puts into the game process, and amended again at
+M3-W3 on a measurement that found one class loader where this record described a
+delegating pair. The two amendments are recorded under "Amendment: what the agent
+jar carries" and "Amendment: there is one loader, not two" below, and each
+consequence they correct is marked where it appears. Nothing about the entry
+mechanism changed. It needs no `SPEC.md` §3.3 amendment and no unsafe exception: the
 premise that an exported symbol cannot be encapsulated turned out to be false,
 and the correction is recorded under "Unsafe surface" below.
 
@@ -239,6 +241,10 @@ its own superclass at launch. This is a mechanism failure rather than a policy
 one, and it would arrive as a `NoClassDefFoundError` in a running client rather
 than as a build error.
 
+> **Corrected at M3-W3. The mechanism in this paragraph is wrong; what it
+> concludes about `Hook` is right.** There is no delegation and no parent/child
+> pair. See "Amendment: there is one loader, not two" below.
+
 ### Why this is a correction rather than a reversal
 
 Nothing this ADR decided is being loosened. The entry mechanism, the exported
@@ -255,6 +261,52 @@ surface" as narrower than the reasoning behind it and widen it to admit a
 generated screen, by analogy with ADG-4's handle amendment. The two reasons above
 are why that analogy fails: ADG-4's sentence was stricter than its own reasoning,
 and this one is not.
+
+## Amendment: there is one loader, not two
+
+Amended at M3-W3, on a measurement rather than on an argument.
+[`evidence/m3/class-loader-identity.json`](../../evidence/m3/class-loader-identity.json)
+recorded, from inside one launch of the pinned client through the stock
+launcher, the identity of the loader that loaded a rewritten `net.minecraft`
+class and the identity of `ClassLoader.getSystemClassLoader()`. **They are the
+same object** — `jdk.internal.loader.ClassLoaders$AppClassLoader`, whose only
+parents are the platform and bootstrap loaders. The launch rewrote 10 classes and
+24 methods, so it is a launch that actually exercised the path.
+
+**What this corrects and what it leaves standing.** The paragraph marked above
+reasons from `jvm/README.md`'s "delegates to the system loader", and delegation
+needs two loaders. There is one object playing both parts, so "the jar is on the
+wrong side of the delegation" describes a geometry the pinned launch does not
+have. Its conclusion still holds and now holds more simply: a game class resolves
+`Hook`, because the loader that loads the game class is the loader `Hook` is on.
+`jvm/README.md` has been corrected in the same terms.
+
+**The decision is untouched.** The entry mechanism, the exported symbol, the
+loader binding, the zero-unsafe result, and the restrictive clause are all
+exactly as accepted. This amends a mechanism, in the way the amendment above
+amends a count.
+
+### The correction admits a third mechanism this record excluded
+
+The two options below were written under the false premise. If the system loader
+were the wrong side of a delegation, appending to it would be pointless, and that
+is why a third mechanism was never listed: **the agent appends a jar to the
+system class loader's search path itself, through the `Instrumentation` it
+already holds.**
+
+M3-W3 selected it, and it is better than either option below on their own terms.
+It keeps ADG-5 intact, because Ravel still adds only JVM arguments to a stock
+instance and no launcher puts anything anywhere — which is the cost that sank the
+first option. And the screen stays ordinary readable Java compiled ahead of
+time, which is what the second option gives up by emitting a GUI as
+`java.lang.classfile` builder calls.
+
+Two properties make it work, and both were measured rather than assumed.
+Appending is not defining: `appendToSystemClassLoaderSearch` at `premain` only
+widens where the loader may look, so no game class is forced to load before the
+client bootstraps, and defining the screen stays lazy behind a hook. And an entry
+appended at `premain` is still found by a `Class.forName` long afterwards, on the
+same `AppClassLoader` that loads the game.
 
 ### Where the screen artifact loads is not settled here
 
@@ -273,6 +325,11 @@ artifact gets to that loader is unresolved, and this record does not pick:
 M3-W3 owes the choice, in the same way M2-W5 owed `System.loadLibrary` and
 answered it. It is safe Java either way, so it bears on whether the mechanism
 works rather than on the unsafe count.
+
+> **Answered at M3-W3, and with neither of these two.** The measurement above
+> admitted a third mechanism that this list excluded on a false premise, and that
+> is the one selected. See "The correction admits a third mechanism this record
+> excluded".
 
 ### What is still forbidden
 

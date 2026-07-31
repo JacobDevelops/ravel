@@ -161,10 +161,14 @@ Two consequences follow, and both hold for the pinned game:
   runs, so `Hook` is loaded by the system class loader and the library binds
   there.
 - The rewritten call site resolves `dev.ravel.jvm.Hook` through the loader that
-  loaded the *rewritten* class. Stock Minecraft 26.1 runs on the application
-  class loader, which delegates to the system loader, so it finds that same copy.
-  A launcher that isolates the game behind a non-delegating loader would not, and
-  that is a compatibility requirement rather than a bug to work around.
+  loaded the *rewritten* class, and for the pinned launch that is the same loader
+  again, so it finds that same copy. No delegation is involved:
+  [`evidence/m3/class-loader-identity.json`](../evidence/m3/class-loader-identity.json)
+  measured a rewritten `net.minecraft` class and `ClassLoader.getSystemClassLoader()`
+  to be one object, `jdk.internal.loader.ClassLoaders$AppClassLoader`, whose only
+  parents are the platform and bootstrap loaders. A launcher that isolates the
+  game behind a non-delegating loader would break this, and that is a
+  compatibility requirement rather than a bug to work around.
 
 Loading eagerly from `premain` rather than lazily at the first hook is
 deliberate: an absent or unloadable library then fails at startup, where it is

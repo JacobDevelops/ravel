@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ravel:schema:configuration-override:1",
+  "title": "Ravel pack configuration override",
+  "description": "The values a pack states for one owner's settings. This is a per-setting document and never a replacement configuration file: a setting it does not name keeps the owner's declared default and stays the player's to change.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "owner", "values"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "owner": {
+      "description": "The package whose settings these are, matching the pack manifest entry that names this document.",
+      "$ref": "#/$defs/id"
+    },
+    "values": {
+      "description": "Setting key to the value the pack states for it. Each value is validated against that setting's valueSchema in the owner's configuration declaration, which is a different document and so is not expressible here.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/key"
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$"
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    }
+  }
+}

@@ -60,6 +60,8 @@
           "type": "boolean"
         },
         "packOverride": {
+          "description": "Who has the last word on this setting when a pack states a value for it. \"allowed\": a pack may state a value and the player may still change it. \"locked\": a pack may state a value, and where it did the player may not change it. \"required\": a pack must state a value and the player may not change it; pack validation refuses a pack whose override document omits the setting.",
+          "default": "allowed",
           "enum": ["allowed", "locked", "required"]
         }
       }

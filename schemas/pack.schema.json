@@ -66,6 +66,7 @@
       "type": "array",
       "default": [],
       "items": {
+        "description": "A per-setting override document for one owner, validated by configuration-override.schema.json. It states values for the settings the pack has an opinion about and is not a replacement configuration file: settings it does not name keep the owner's declared default.",
         "type": "object",
         "additionalProperties": false,
         "required": ["owner", "path", "sha256"],

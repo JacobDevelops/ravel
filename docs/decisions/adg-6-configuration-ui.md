@@ -3,7 +3,9 @@
 Status: accepted before M3-W3. Configuration is declared in data, the screen is
 drawn in Java, and Rust supplies the values. No new measurement was taken for
 this gate, and "Evidence" below says what decided it instead and why that is not
-a thing a measurement produces.
+a thing a measurement produces. Amended when the schema edits landed, to record
+the `packOverride` encoding and one open question the gate did not settle; the
+decision is unchanged and both are under "What has to change, precisely".
 
 ## Decision
 
@@ -212,8 +214,7 @@ This ADR changes no schema. M3-W3 makes these edits.
    setting `key` to value. Pack validation checks each value against the owning
    setting's `valueSchema`.
 3. `configuration.schema.json`'s `packOverride` gains `"default": "allowed"` and
-   a `description` per enum member, fixing the semantics it does not currently
-   have:
+   a `description` carrying the semantics it does not currently have:
    - `allowed` — a pack may state a value; the player has the last word and may
      change it in game.
    - `locked` — a pack may state a value; where it did, the pack has the last
@@ -226,6 +227,53 @@ than a permission, and it is the only one that can fail validation. That is
 deliberate: an author who marks a setting `required` is saying the value is not
 theirs to default, which is a statement pack validation can check and a screen
 cannot.
+
+**One description, not three.** This record originally asked for "a `description`
+per enum member", which draft 2020-12 cannot express on a bare `enum` — doing it
+literally means replacing the `enum` with `oneOf: [{const, description}, …]`.
+That was rejected on implementation, and the rejection is recorded here rather
+than left as a silent divergence. It would be the only construct of its kind in
+either schema, where `side`, `relationship`, `role` and `enabledSides` are all
+bare enums; and it degrades what a bad value reports, from "must be one of
+allowed, locked, required" to "must match exactly one schema in oneOf", in a
+document whose whole purpose is refusing bad input. The three semantics above are
+carried verbatim in one combined `description`. Nothing about the meaning
+changed, only the encoding.
+
+### Open: may a pack lock a client-side setting?
+
+**This gate does not decide it, and M3-W3 will meet it in its first test of a
+locked setting.** The schema admits `side: "client"` together with
+`packOverride: "locked"`, and nothing here says whether that is legal.
+
+It is a real choice rather than a limitation. `side` and `packOverride` are
+siblings inside the same `setting` object, so unlike the cross-document rules
+this one *is* expressible in the schema: an `if`/`then` could refuse the pairing
+outright. Both readings follow from what is already written and this record picks
+neither:
+
+- A pack legitimately locks a client setting for its own coherence — a pack that
+  needs a particular client-side rendering toggle to keep its visuals consistent
+  — and "Consequences" below, in saying a client setting is "not a pack's
+  business to lock on a server", means only that a *server* cannot impose one on
+  a connecting client.
+- Locking a client setting is exactly the pack-clobbers-player-preferences
+  behaviour the per-setting model was chosen to prevent, and the schema should
+  refuse the pairing.
+
+**The reversible direction is to refuse, and the schema currently permits.**
+Strict-to-permissive later costs nothing: documents that were refused start being
+accepted, and nothing already written breaks. Permissive-to-strict later breaks
+every declaration that used the pairing. This is the same asymmetry ADG-2 turned
+on — a compatibility surface cannot be withdrawn once things depend on it — and
+it runs the same way here.
+
+The schema permits the pairing anyway, because whether a pack may override a
+player's client-side choice is a product decision about player agency and
+accessibility rather than a schema detail, and it is not this gate's to take. The
+cost of that is worth stating plainly: the question gets more expensive to answer
+the longer it stays open, and it only gets more expensive in the direction of
+refusing.
 
 ## Consequences
 

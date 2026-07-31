@@ -109,6 +109,7 @@ const ROOT_FILES: &[&str] = &[
     "nix/linux.nix",
     "rust-toolchain.toml",
     "rustfmt.toml",
+    "schemas/configuration-override.schema.json",
     "schemas/configuration.schema.json",
     "schemas/evidence.schema.json",
     "schemas/fixture.schema.json",
@@ -1031,6 +1032,7 @@ fn verify_ignored_boundaries(root: &Path, violations: &mut Vec<String>) {
 fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
     for schema in [
         "configuration",
+        "configuration-override",
         "evidence",
         "fixture",
         "pack",

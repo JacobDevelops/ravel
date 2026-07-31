@@ -1,8 +1,12 @@
 # ADG-1 — JVM entry and hook mechanism
 
-Status: accepted at M1-W2. It needs no `SPEC.md` §3.3 amendment and no unsafe
-exception: the premise that an exported symbol cannot be encapsulated turned out to
-be false, and the correction is recorded under "Unsafe surface" below.
+Status: accepted at M1-W2; amended by [ADG-6](adg-6-configuration-ui.md) before
+M3-W3 to say what else Ravel puts into the game process. The amendment is
+recorded under "Amendment: what the agent jar carries" below and the consequence
+it corrects is marked where it appears. Nothing about the entry mechanism
+changed. It needs no `SPEC.md` §3.3 amendment and no unsafe exception: the
+premise that an exported symbol cannot be encapsulated turned out to be false,
+and the correction is recorded under "Unsafe surface" below.
 
 ## Decision
 
@@ -147,7 +151,10 @@ revisit if Ravel ever needs to do work before a VM exists.
   native library *contains* is ADG-2's question, not this one: under a linked mod
   set it is also where every installed mod lands, and under per-mod dynamic
   libraries it stays small. ADG-2 is deferred to M3, so this ADR does not claim
-  either.
+  either. **Amended before M3-W3:** the count is wrong and the description of the
+  jar is right. ADG-6 adds a third artifact — a version-specific Java screen —
+  and it goes beside the agent jar rather than inside it. See "Amendment: what
+  the agent jar carries".
 - **Who calls `System.loadLibrary`, and from which class loader, is unresolved.**
   JNI binds a loaded library to the loader that loaded it and resolves native
   methods only against that loader's copy of the declaring class, so a second copy
@@ -177,6 +184,109 @@ revisit if Ravel ever needs to do work before a VM exists.
   object reference, a megamorphic site, a scattered working set — costs more by an
   amount M2 has to measure. The floor is already enough to say that per-entity or
   per-tick-per-block hooks either stay in the injected Java or batch.
+
+## Amendment: what the agent jar carries
+
+Amended before M3-W3, on [ADG-6](adg-6-configuration-ui.md)'s account. ADG-6
+draws Ravel's settings screen in Java, which puts a third piece of Java into the
+game process and asks whether it belongs in this jar. **It does not.** The jar
+holds the entry point and the generated hook surface, exactly as the consequence
+above says; the screen is a separate, version-specific artifact. What is
+corrected is the count, not the description.
+
+### What the sentence said
+
+"Ravel ships two artifacts into the game process: a small premain agent jar and
+one native library. The agent jar is a Ravel artifact, not another mod loader,
+and it holds only the entry point and the generated hook surface."
+
+Read as a description of M1's jar, that is accurate and still is. Read as a
+prediction of everything Ravel would ever put into the process, it was wrong,
+because M1 had no screens. The sentence needed testing rather than repealing,
+and the answer is that its restrictive half holds and its arithmetic does not.
+
+### Why the jar stays minimal
+
+Two independent reasons, and neither is about what is convenient for M3-W3.
+
+**The jar builds without the game, and that is a property rather than an
+accident.** `jvm/build/build-agent.sh` says so where it compiles: "The
+transformer manipulates byte arrays and descriptor strings and never names a game
+type, so nothing here needs the client jar on the class path. That is what lets
+this run on a machine without the restricted fixture." `jvm/README.md` repeats it
+for both build steps, and
+[`m3-hook-targets.md`](../architecture/m3-hook-targets.md) records that the
+generator declares every reference parameter as `java.lang.Object` precisely so
+"`Hook.java` still names no game type and still compiles without the client jar".
+A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled
+without it. Putting the screen in this jar would make the licensed client jar a
+build input for the agent, for every contributor on every build, in a public
+repository whose
+[public/private boundary](../architecture/public-private-boundary.md) says
+official Minecraft files are never tracked and authorized material lives only in
+an ignored directory. That is a licensing and contribution property, not a
+packaging preference.
+
+**The jar is on the wrong side of the delegation.** M2-W5 resolved the class
+loader question this record left open, and `jvm/README.md` records the answer:
+the agent jar is appended to the system class path before `premain` runs, so
+`Hook` is loaded by the system class loader, while "Stock Minecraft 26.1 runs on
+the application class loader, which delegates to the system loader, so it finds
+that same copy". Delegation runs from child to parent. A game class therefore
+resolves `Hook`, and a class in the agent jar does *not* resolve
+`net.minecraft.*`. A `Screen` subclass placed in this jar would fail to resolve
+its own superclass at launch. This is a mechanism failure rather than a policy
+one, and it would arrive as a `NoClassDefFoundError` in a running client rather
+than as a build error.
+
+### Why this is a correction rather than a reversal
+
+Nothing this ADR decided is being loosened. The entry mechanism, the exported
+symbol, the loader binding, and the zero-unsafe result are untouched, and the
+restrictive clause — "only the entry point and the generated hook surface" — is
+upheld rather than widened. What changes is a count in the same sentence: three
+artifacts enter the game process, not two. `jvm/README.md` carried the same
+arithmetic in its opening line and now records both the count and the reason the
+screen is not this jar's to grow.
+
+The distinction matters because the tempting reading was the opposite one. It
+would have been easy to treat "only the entry point and the generated hook
+surface" as narrower than the reasoning behind it and widen it to admit a
+generated screen, by analogy with ADG-4's handle amendment. The two reasons above
+are why that analogy fails: ADG-4's sentence was stricter than its own reasoning,
+and this one is not.
+
+### Where the screen artifact loads is not settled here
+
+The screen names game types, so it has to be loaded by a loader that resolves
+them, and it has to reach Rust, which means reaching `Hook` on the system loader.
+The delegation above gives the second for free once the first holds. How the
+artifact gets to that loader is unresolved, and this record does not pick:
+
+- Ship it as a jar the launcher puts on the game's class path. That works, and it
+  costs [ADG-5](adg-5-prism-integration.md)'s property that Ravel adds arguments
+  to a stock instance and nothing else.
+- Have the agent define the screen's classes into the game's own loader, using
+  the `java.lang.classfile` machinery the transformer already runs. This keeps
+  ADG-5 intact and is the one to try first.
+
+M3-W3 owes the choice, in the same way M2-W5 owed `System.loadLibrary` and
+answered it. It is safe Java either way, so it bears on whether the mechanism
+works rather than on the unsafe count.
+
+### What is still forbidden
+
+- The agent jar must keep naming no game type and must keep compiling without the
+  client jar. That was an observation about M1's jar; from here it is an
+  invariant, and the build script's comment is the place it is enforced.
+- The screen artifact declares no native methods of its own. Every crossing still
+  goes through the generated `Hook`, which is what makes the loading loader and
+  the declaring loader the same one by construction. A second class binding its
+  own library reintroduces exactly the `UnsatisfiedLinkError` the consequence
+  above was written to prevent.
+- Nothing here admits a call from Rust into the game. ADG-6 refused that, and a
+  third artifact does not provide it: the screen is Java calling Java, and its
+  traffic to Rust runs in the direction this ADR already established.
 
 ## Limits of this evidence
 

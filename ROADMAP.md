@@ -266,7 +266,7 @@ ravel/
 ├── tools/
 │   ├── ravel-cli/                  # package, pack, fixture, Prism/test handoff and benchmarks
 │   └── ravel-xtask/                # codegen, policy, evidence and milestone gates
-├── jvm/                            # [ADG-1] absent unless minimal Java output is selected
+├── jvm/                            # [ADG-1] agent jar sources; ADG-6's screen is a separate artifact
 │   ├── bootstrap/                  # generated/minimal classes, never a Java mod API
 │   └── build/                      # reproducible JVM artifact build description
 ├── minecraft/
@@ -616,27 +616,49 @@ precompiled Rust package.
 **Purpose:** demonstrate useful loader semantics with original unrestricted test
 mods on Linux. The target-platform expansion waits until after Linux M10.
 
-Before M3 closes, ADG-6 selects the configuration schema/UI model with a
-standalone original test case.
+**ADG-6 is accepted**, before M3-W3 as this table requires. Configuration is
+declared in data files, the settings screen is drawn in Java, and Rust supplies
+the values; Ravel does not render from Rust, which is what makes M3-W5's screen
+the same mechanism as this one rather than a second one. The record is
+[`adg-6-configuration-ui.md`](docs/decisions/adg-6-configuration-ui.md). It
+resolves the repository's two incompatible readings of "pack override" in favour
+of the per-setting model, and names three schema changes M3-W3 makes rather than
+making them.
 
-M3 also closes ADG-2. M1 measured four mod-execution bindings and deliberately
-deferred the choice, because it turns on distribution, hot reload, and what a
-package contains — properties only a working loader exposes. The prototype this
-milestone builds is what makes that decision informed, and it is the last point at
-which the answer is cheap to change. `schemas/package.schema.json` and anything
-else assuming a per-target mod binary is reconciled with whatever ADG-2 selects
-here.
+**M3 also closes ADG-2, and has closed half of it.** The distribution property is
+decided — mods are independently shipped and interchangeable, and a pack is not
+one binary — and it was decided on what players expect of a mod set rather than
+on a measurement. The execution mechanism is still open, between a shipped
+per-platform binary and source a bundled toolchain compiles. The measurement
+ADG-2 named as deciding it now exists in
+[`pack-compile.json`](evidence/m3/pack-compile.json), which prices a pack-sized
+set of mods with real bodies; the mechanism has not been selected against it.
+`schemas/package.schema.json` and anything else assuming a per-target mod binary
+is reconciled with whatever ADG-2 selects.
+
+Two accepted records were amended for M3, and neither changed what it decided.
+ADG-4 admits an opaque handle to an object the *game* owns, which is what lets
+the generator carry M3's real hook targets — essentially all of them carry game
+objects, and under the strict reading the generator admitted almost none of this
+milestone's work. ADG-1 records that three artifacts
+enter the game process rather than two, and that the screen ADG-6 decided is not
+the agent jar's to carry.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
+| M3-W0 | Grow the 26.1.2 hook inventory to M3's targets | M2, ADG-4 | resolved target record, `hooks.toml` entries, re-pinned `adapter.toml` hash and regenerated `mappings.lock` | targets are resolved against the pinned jar by two independent passes and recorded in [`m3-hook-targets.md`](docs/architecture/m3-hook-targets.md); the inventory edit that lands them is separate and is what the hash re-pin and lock regeneration gate |
 | M3-W1 | Implement registry barrier and content registration | M2 | block/item/recipe test mods | duplicate/conflicting claims fail; IDs are immutable after registration |
 | M3-W2 | Implement commands, events, resources and data | M3-W1 | command/event/resource test mods | process tests exercise success, ordering, side and failure cases |
-| M3-W3 | Implement ADG-6 configuration and generated UI | M2, ADG-6 | schema, layered config and screen test mod | file/UI edits round-trip; validation, sides, restart and pack overrides pass |
-| M3-W4 | Implement versioned saved data | M3-W1 | save test mod and world fixture | create/save/exit/reload preserves state; incompatible/missing required data fails closed |
-| M3-W5 | Implement in-game mod/dependency surface | M2-W7 | mod list and diagnostics UI | valid and invalid graphs render deterministic actionable messages |
+| M3-W3 | Implement ADG-6 configuration and generated UI | M2, ADG-6 | the three schema edits ADG-6 names, layered config, generated Java screen and a screen test mod | file/UI edits round-trip; validation, sides, restart and per-setting pack overrides pass. Where the screen artifact loads is open: ADG-1's amendment names the two candidates and leaves the choice here |
+| M3-W4 | Implement versioned saved data | M3-W1 | save test mod and world fixture, over the deciding half `ravel-save` already models — what a version is, who owns it, and whether a world may be opened | create/save/exit/reload preserves state; incompatible/missing required data fails closed. What remains is moving bytes in a world, which needs the game objects ADG-4's amendment admits |
+| M3-W5 | Implement in-game mod/dependency surface | M2-W7, ADG-6 | mod list and diagnostics UI, over the model `ravel-loader` already holds ordered by resolved load order | valid and invalid graphs render deterministic actionable messages. The drawing half is ADG-6's mechanism rather than a second one, so what remains is a screen and not a design |
 | M3-W6 | Implement opt-in profiling | M2-W8 | collectors and profiling UI/report | per-mod attribution accuracy and unsupported metrics are explicit; normal-mode budget passes |
 | M3-W7 | Linux process matrix | M3-W1..W6 | Linux result bundle | every required surface passes natively on Linux; instance scan proves no other loader |
 | M3-W8 | Independent prototype review | M3-W7 | review record | M3 gate passes and authorizes private inventory work only after M4 |
+
+Where a row above says work already exists, that describes what is written, not
+what has passed. A row is closed by its Verification column and by
+`ravel:verify`, never by a file being present.
 
 ### M4 — General SDK breadth
 
@@ -827,16 +849,17 @@ distribution, rollback, and private-history isolation.
 
 | Question | Deadline | Blocking effect |
 | --- | --- | --- |
-| Exact fixture reference total and authoritative hashes | M0-W4 | blocks M0 |
+| Exact fixture reference total and authoritative hashes | M0-W4 | discharged; M0 closed on `evidence/m0/manifest.json` |
 | Canonical workload duration and metric definitions | M9-W1 | blocks M9 |
-| Game Java runtime required by pinned metadata | M0-W6 | blocks reproducible launch |
-| Architecture comparison metrics and failure actions | M0-W8 | blocks M1 selection |
-| JVM hook mechanism | ADG-1 / M1 | blocks M2 bootstrap |
-| Rust execution/package/ABI model | ADG-2 / M1 | blocks M2 package execution |
-| Binding extraction and generation | ADG-3 / M1 | blocks real adapter |
-| Java/Rust state ownership | ADG-4 / M1 | blocks loader architecture |
-| Stock Prism versus minimal patch | ADG-5 / M1 | blocks supported launch path |
-| Configuration and UI schema | ADG-6 before M3-W3 | blocks M3 |
+| Game Java runtime required by pinned metadata | M0-W6 | discharged; M0 closed |
+| Architecture comparison metrics and failure actions | M0-W8 | discharged; M1 selected against it |
+| JVM hook mechanism | ADG-1 / M1 | discharged; amended before M3-W3 on what enters the game process |
+| Rust execution/package/ABI model | ADG-2 / M1 **and M3** | half open: the distribution property is settled, the execution mechanism is not, and it blocks reconciling `package.schema.json` |
+| Binding extraction and generation | ADG-3 / M1 | discharged |
+| Java/Rust state ownership | ADG-4 / M1 | discharged; amended at M3-W0 to admit opaque handles |
+| Stock Prism versus minimal patch | ADG-5 / M1 | discharged, with a correction outstanding: the library-path argument does not work and choosing the fix amends ADG-5 |
+| Configuration and UI schema | ADG-6 before M3-W3 | discharged; declared in data, drawn in Java |
+| Where the generated screen artifact loads | M3-W3 | blocks M3-W3; ADG-1's amendment names two candidates and picks neither |
 | Per-counterpart rights and implementation method | M5 | blocks publication; may block lawful implementation |
 | Official server wire surface | ADG-7 after M10 | blocks M11 only |
 | Official host viability | ADG-8 only after M9 failure | leaves M9 incomplete |

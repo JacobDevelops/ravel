@@ -7,8 +7,10 @@ use crate::lifecycle::{LifecycleMachine, Requirement};
 /// `ROADMAP.md`'s M3-W5 row asks for valid and invalid graphs to render
 /// deterministic, actionable messages. This is the deterministic part: the
 /// model a mod list draws from, ordered by the resolved load order so the same
-/// package set always produces the same list. Drawing it is ADG-6's, because
-/// nothing has chosen how Ravel puts anything on screen.
+/// package set always produces the same list. Drawing it is ADG-6's, which
+/// decided that Ravel draws its screens in Java and never renders from Rust —
+/// M3-W5's mod list named among them — so this crate supplies the values and
+/// stops there.
 ///
 /// Separating the two is not tidiness. A model that can be asserted on without
 /// a game running is what lets M3-W7's process matrix check the *content* of a

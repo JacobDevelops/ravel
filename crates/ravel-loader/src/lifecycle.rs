@@ -266,6 +266,18 @@ impl LifecycleMachine {
         self.unregistered().is_none()
     }
 
+    /// Returns the plan entry one mod was admitted under.
+    ///
+    /// The state and the failure are answered separately because they change;
+    /// this is what the plan declared and does not.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LifecycleError::UnknownMod`] for an id outside the plan.
+    pub fn entry(&self, mod_id: &ModId) -> Result<&LifecycleEntry, LifecycleError> {
+        Ok(&self.tracked(mod_id)?.entry)
+    }
+
     /// Returns the identity that owns a registry identifier.
     #[must_use]
     pub fn registry_owner(&self, identifier: &str) -> Option<&ModId> {

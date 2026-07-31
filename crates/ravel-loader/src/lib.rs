@@ -4,6 +4,7 @@
 
 mod lifecycle;
 mod registry;
+mod surface;
 mod world;
 
 pub use lifecycle::{
@@ -11,4 +12,5 @@ pub use lifecycle::{
     executes_mod_code,
 };
 pub use registry::Registration;
+pub use surface::{ModEntry, ModSurface};
 pub use world::WorldRefused;

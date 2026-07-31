@@ -31,3 +31,8 @@ upstream = "https://piston-meta.mojang.com/v1/packages/a5ba42111e0de7712d677c458
 path = "minecraft/versions/26.1.2/hooks.toml"
 sha256 = "a217161105b84a5b9a6e4d19f7e4f0d7c5ce55ac80c28d02d38f874aeb766216"
 bytes = 11756
+
+[inputs.stubSeeds]
+path = "minecraft/versions/26.1.2/stubs.toml"
+sha256 = "7237d859d8ff16042ca8133d2557c0503b3831d6c2c09ed835a98787b9d088c7"
+bytes = 1442

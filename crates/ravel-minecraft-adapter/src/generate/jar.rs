@@ -94,6 +94,16 @@ impl Archive {
         Ok(Self { bytes, entries })
     }
 
+    /// Whether the archive carries an entry under this exact name.
+    ///
+    /// A supertype walk needs this: the client jar carries the game's own
+    /// classes and not the libraries it compiles against, so a walk that reached
+    /// `java/lang/Object` or a Brigadier interface has left the jar rather than
+    /// found a broken one.
+    pub(super) fn holds(&self, name: &str) -> bool {
+        self.entries.contains_key(name)
+    }
+
     /// Reads one entry back out, inflating it when it is deflated.
     pub(super) fn entry(&self, name: &str) -> Result<Vec<u8>, GenerateError> {
         self.read_entry(name)

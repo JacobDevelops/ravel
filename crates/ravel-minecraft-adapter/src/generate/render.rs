@@ -6,8 +6,10 @@
 
 use std::fmt::Write as _;
 
+use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
 use super::inputs::{Adapter, Inventory};
 use super::resolve::Resolved;
+use super::stubs::Stub;
 use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY};
 
 /// A JVM type a hook argument can carry across the boundary.
@@ -537,13 +539,297 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
     text
 }
 
+/// Renders the stub provenance lock.
+///
+/// The header states what the lock is worth, because a file named `.lock` reads
+/// like a stronger promise than this one makes.
+pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
+    let mut text = String::with_capacity(stubs.len() * 256 + 1536);
+    let _ = writeln!(
+        text,
+        "# Generated stub provenance for Minecraft {}. Do not edit.\n\
+         #\n\
+         # Every entry below is one compile-time stub the settings screen is built\n\
+         # against, read out of the pinned client jar. Descriptors and access flags\n\
+         # are the jar's own, which is the point: a hand-written stub transcribes a\n\
+         # generic signature, and the JVM links on the erased one.\n\
+         #\n\
+         # What this file does not promise:\n\
+         #\n\
+         # - It is checked only where the client jar is. A machine without the jar\n\
+         #   generates from this file, so on that machine the lock is the source and\n\
+         #   cannot disagree with anything. Drift is caught where the jar exists.\n\
+         # - It pins against a jar hash, so it is only as current as that pin. A\n\
+         #   Minecraft build nobody has re-pinned against is unchecked.\n\
+         # - It carries no hierarchy the stub set does not already hold. A supertype\n\
+         #   outside the set is dropped, so a change to one is invisible here.\n\
+         # - It covers the members `stubs.toml` seeds and nothing else. A member the\n\
+         #   screen starts calling is unpinned until it is seeded.\n\
+         #\n\
+         # This is a different table from mappings.lock and stays one. That file\n\
+         # pins call sites the agent rewrites; this one pins declarations the screen\n\
+         # compiles against, and one table meaning both is how the next person\n\
+         # misreads it.\n\
+         \n\
+         schemaVersion = {}\n\
+         minecraft = \"{}\"\n\
+         extractor = \"{EXTRACTOR}\"\n\
+         clientJarSha256 = \"{}\"",
+        adapter.minecraft,
+        adapter.schema_version,
+        adapter.minecraft,
+        adapter.inputs.client_jar.sha256.as_deref().unwrap_or("")
+    );
+
+    for stub in stubs {
+        let _ = writeln!(
+            text,
+            "\n[[stub]]\nclass = \"{}\"\nflags = {}",
+            stub.class, stub.flags
+        );
+        if let Some(parent) = &stub.extends {
+            let _ = writeln!(text, "extends = \"{parent}\"");
+        }
+        if !stub.implements.is_empty() {
+            let rendered = stub
+                .implements
+                .iter()
+                .map(|name| format!("\"{name}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = writeln!(text, "implements = [{rendered}]");
+        }
+        for member in &stub.members {
+            let _ = writeln!(
+                text,
+                "\n[[stub.member]]\nname = \"{}\"\ndescriptor = \"{}\"\nflags = {}\nmethod = {}",
+                member.name, member.descriptor, member.flags, member.method
+            );
+        }
+    }
+    text
+}
+
+/// Renders one stub as a Java source file, with the path it belongs at.
+pub(super) fn stub_java(adapter: &Adapter, stub: &Stub) -> Result<(String, String), GenerateError> {
+    let unsupported =
+        |detail: String| GenerateError::Unsupported(format!("{}: {detail}", stub.class));
+    let (package, simple) = split(&stub.class).map_err(&unsupported)?;
+
+    let mut text = String::with_capacity(stub.members.len() * 192 + 1024);
+    let _ = writeln!(
+        text,
+        "// Generated from the pinned Minecraft {} class files. Do not edit.\n\
+         //\n\
+         // A compile-time stub, not Minecraft. It is compiled against and then\n\
+         // discarded: `build-screen.sh` refuses to package one, because a stub in\n\
+         // the screen jar would shadow the game's own class on the loader they\n\
+         // share. See minecraft/versions/{}/stubs.lock.\n\
+         package {package};\n",
+        adapter.minecraft, adapter.minecraft
+    );
+
+    let mut declaration = String::new();
+    if stub.flags & ACC_PUBLIC != 0 {
+        declaration.push_str("public ");
+    }
+    if stub.is_interface() {
+        declaration.push_str("interface ");
+    } else {
+        if stub.is_abstract() {
+            declaration.push_str("abstract ");
+        }
+        if stub.is_final() {
+            declaration.push_str("final ");
+        }
+        declaration.push_str("class ");
+    }
+    declaration.push_str(simple);
+    if let Some(parent) = &stub.extends {
+        let _ = write!(declaration, " extends {}", source_name(parent));
+    }
+    if !stub.implements.is_empty() {
+        // An interface writes every supertype after `extends`; a class separates
+        // its one superclass from the interfaces it is also assignable to.
+        declaration.push_str(if stub.is_interface() && stub.extends.is_none() {
+            " extends "
+        } else if stub.is_interface() {
+            ", "
+        } else {
+            " implements "
+        });
+        declaration.push_str(
+            &stub
+                .implements
+                .iter()
+                .map(|name| source_name(name))
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+    }
+    let _ = writeln!(text, "{declaration} {{");
+
+    for member in &stub.members {
+        let modifiers = modifiers(member.flags, stub.is_interface(), member.method);
+        if member.method {
+            let (parameters, returns) = signature(&member.descriptor).map_err(&unsupported)?;
+            let declared = parameters
+                .iter()
+                .enumerate()
+                .map(|(index, parameter)| format!("{parameter} argument{index}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            if member.name == "<init>" {
+                let _ = writeln!(text, "\n    {modifiers}{simple}({declared}) {{\n    }}");
+            } else if returns == "void" {
+                let _ = writeln!(
+                    text,
+                    "\n    {modifiers}void {}({declared}) {{\n    }}",
+                    member.name
+                );
+            } else {
+                // A stub body is never reached: the real class is what the game
+                // loads. Throwing rather than returning a default is what makes
+                // that visible if one ever is.
+                let _ = writeln!(
+                    text,
+                    "\n    {modifiers}{returns} {}({declared}) {{\n        \
+                     throw new UnsupportedOperationException(\"stub\");\n    }}",
+                    member.name
+                );
+            }
+        } else if stub.is_interface() {
+            return Err(unsupported(format!(
+                "{} is a field on an interface, which is implicitly final and \
+                 would need a value no stub can invent",
+                member.name
+            )));
+        } else {
+            let (kind, rest) = java_type(&member.descriptor).map_err(&unsupported)?;
+            if !rest.is_empty() {
+                return Err(unsupported(format!(
+                    "{} declares {} which is not one type",
+                    member.name, member.descriptor
+                )));
+            }
+            let _ = writeln!(text, "\n    {modifiers}{kind} {};", member.name);
+        }
+    }
+
+    let _ = writeln!(text, "}}");
+    Ok((format!("{}.java", stub.class), text))
+}
+
+/// The modifiers a stub reproduces, as Java source writes them.
+///
+/// `abstract` is never among them. Every stub member has a body, so a class that
+/// extends a stub needs to implement nothing it did not mean to.
+fn modifiers(flags: u16, interface: bool, method: bool) -> String {
+    let mut text = String::new();
+    if flags & ACC_PUBLIC != 0 && !interface {
+        text.push_str("public ");
+    } else if flags & ACC_PROTECTED != 0 {
+        text.push_str("protected ");
+    }
+    if flags & ACC_STATIC != 0 {
+        text.push_str("static ");
+    } else if interface && method {
+        // An interface method with a body has to say so, and giving it one is
+        // what keeps a stub that implements the interface from having to.
+        text.push_str("default ");
+    }
+    if flags & ACC_FINAL != 0 && method {
+        text.push_str("final ");
+    }
+    text
+}
+
+/// Splits an internal class name into its package and its simple name.
+fn split(class: &str) -> Result<(String, &str), String> {
+    if class.contains('$') {
+        return Err(format!("{class} is a nested class, which no stub declares"));
+    }
+    let (package, simple) = class
+        .rsplit_once('/')
+        .ok_or_else(|| format!("{class} is in the default package"))?;
+    Ok((package.replace('/', "."), simple))
+}
+
+/// An internal class name as Java source writes it.
+fn source_name(class: &str) -> String {
+    class.replace('/', ".")
+}
+
+/// Reads a method descriptor as the Java source types it declares.
+fn signature(descriptor: &str) -> Result<(Vec<String>, String), String> {
+    let mut rest = descriptor
+        .strip_prefix('(')
+        .ok_or_else(|| format!("{descriptor} is not a method descriptor"))?;
+    let mut parameters = Vec::new();
+    while !rest.starts_with(')') {
+        let (kind, remainder) = java_type(rest)?;
+        parameters.push(kind);
+        rest = remainder;
+    }
+    let (returns, after) = java_type(&rest[1..])?;
+    if !after.is_empty() {
+        return Err(format!("{descriptor} declares more than one return type"));
+    }
+    Ok((parameters, returns))
+}
+
+/// Reads one type descriptor as Java source, returning it and whatever follows.
+fn java_type(descriptor: &str) -> Result<(String, &str), String> {
+    let first = descriptor
+        .chars()
+        .next()
+        .ok_or_else(|| format!("{descriptor} ends before a type does"))?;
+    let primitive = match first {
+        'V' => Some("void"),
+        'Z' => Some("boolean"),
+        'B' => Some("byte"),
+        'C' => Some("char"),
+        'S' => Some("short"),
+        'I' => Some("int"),
+        'J' => Some("long"),
+        'F' => Some("float"),
+        'D' => Some("double"),
+        _ => None,
+    };
+    if let Some(kind) = primitive {
+        return Ok((kind.to_owned(), &descriptor[1..]));
+    }
+    match first {
+        'L' => {
+            let end = descriptor
+                .find(';')
+                .ok_or_else(|| format!("{descriptor} names a class that is never terminated"))?;
+            let name = &descriptor[1..end];
+            if name.is_empty() {
+                return Err(format!("{descriptor} names no class between L and ;"));
+            }
+            if name.contains('$') {
+                return Err(format!("{name} is a nested class, which no stub declares"));
+            }
+            Ok((source_name(name), &descriptor[end + 1..]))
+        }
+        '[' => {
+            let (element, after) = java_type(&descriptor[1..])?;
+            Ok((format!("{element}[]"), after))
+        }
+        other => Err(format!("{other} is not a type descriptor")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::inputs::{Adapter, Hook, Input, Inputs, Inventory, Kind};
     use super::super::resolve::Resolved;
+    use super::super::stubs::{Member as StubMember, Stub};
     use super::{
         JavaType, constant_name, exports, hook_java, java_name, parameters, rust_name, shapes,
     };
+    use super::{java_type, signature, stub_java, stub_lock};
 
     /// Adapter inputs standing in for the tracked ones.
     ///
@@ -566,6 +852,7 @@ mod tests {
                 client_jar: unpinned(),
                 version_manifest: unpinned(),
                 hook_inventory: unpinned(),
+                stub_seeds: unpinned(),
             },
         }
     }
@@ -825,6 +1112,245 @@ mod tests {
                  Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;\""
             ),
             "the target keeps its own descriptor, which is what the agent matches on: {java}"
+        );
+    }
+
+    /// One stub, written the way the resolver hands them over.
+    fn stub(class: &str, flags: u16, members: &[(&str, &str, u16, bool)]) -> Stub {
+        Stub {
+            class: class.to_owned(),
+            flags,
+            extends: None,
+            implements: Vec::new(),
+            members: members
+                .iter()
+                .map(|(name, descriptor, flags, method)| StubMember {
+                    name: (*name).to_owned(),
+                    descriptor: (*descriptor).to_owned(),
+                    flags: *flags,
+                    method: *method,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_stub_declares_the_members_it_carries_with_the_descriptors_the_jar_declared() {
+        let screen = stub(
+            "net/minecraft/client/gui/screens/Screen",
+            0x0421, // public abstract class
+            &[
+                (
+                    "<init>",
+                    "(Lnet/minecraft/network/chat/Component;)V",
+                    4,
+                    true,
+                ),
+                ("init", "()V", 4, true),
+                ("init", "(II)V", 0x0011, true),
+                (
+                    "getTitle",
+                    "()Lnet/minecraft/network/chat/Component;",
+                    1,
+                    true,
+                ),
+            ],
+        );
+
+        let (path, java) = stub_java(&adapter(), &screen).expect("a stub should render");
+
+        assert_eq!(path, "net/minecraft/client/gui/screens/Screen.java");
+        assert!(
+            java.contains("package net.minecraft.client.gui.screens;"),
+            "{java}"
+        );
+        assert!(java.contains("public abstract class Screen {"), "{java}");
+        assert!(
+            java.contains("protected Screen(net.minecraft.network.chat.Component argument0) {"),
+            "a constructor takes the class's simple name: {java}"
+        );
+        assert!(java.contains("protected void init() {"), "{java}");
+        assert!(
+            java.contains("public final void init(int argument0, int argument1) {"),
+            "an overload is stubbed beside the one it overloads: {java}"
+        );
+        assert!(
+            java.contains(
+                "public net.minecraft.network.chat.Component getTitle() {\n        \
+                 throw new UnsupportedOperationException(\"stub\");"
+            ),
+            "a stub body is never reached and says so if it is: {java}"
+        );
+    }
+
+    #[test]
+    fn a_stubbed_supertype_is_declared_and_an_interface_method_gets_a_body() {
+        let mut component = stub(
+            "net/minecraft/network/chat/Component",
+            0x0601, // public abstract interface
+            &[(
+                "translatable",
+                "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;",
+                0x0009,
+                true,
+            )],
+        );
+        component.implements = vec!["net/minecraft/network/chat/FormattedText".to_owned()];
+        let mut mutable = stub("net/minecraft/network/chat/MutableComponent", 0x0031, &[]);
+        mutable.implements = vec!["net/minecraft/network/chat/Component".to_owned()];
+
+        let (_, interface) = stub_java(&adapter(), &component).expect("renders");
+        let (_, class) = stub_java(&adapter(), &mutable).expect("renders");
+
+        assert!(
+            interface.contains(
+                "public interface Component extends net.minecraft.network.chat.FormattedText {"
+            ),
+            "{interface}"
+        );
+        assert!(
+            interface.contains(
+                "static net.minecraft.network.chat.MutableComponent \
+                 translatable(java.lang.String argument0) {"
+            ),
+            "an interface member is never declared public, which javac warns on: {interface}"
+        );
+        assert!(
+            class.contains(
+                "public final class MutableComponent implements \
+                 net.minecraft.network.chat.Component {"
+            ),
+            "the edge that makes a returned value assignable is what the stub keeps: {class}"
+        );
+    }
+
+    #[test]
+    fn a_non_static_interface_method_is_given_a_body_rather_than_left_abstract() {
+        let component = stub(
+            "net/minecraft/network/chat/Component",
+            0x0601,
+            &[("getString", "()Ljava/lang/String;", 0x0401, true)],
+        );
+
+        let (_, java) = stub_java(&adapter(), &component).expect("renders");
+
+        assert!(
+            java.contains("default java.lang.String getString() {"),
+            "a stub that implements this interface must not have to implement it: {java}"
+        );
+    }
+
+    #[test]
+    fn a_stub_that_cannot_be_written_down_is_refused_rather_than_written_wrongly() {
+        for (broken, expected) in [
+            (stub("Toplevel", 1, &[]), "is in the default package"),
+            (stub("a/Holder$Reference", 1, &[]), "is a nested class"),
+            (
+                stub("a/B", 0x0201, &[("VALUE", "I", 0x0019, false)]),
+                "field on an interface",
+            ),
+            (
+                stub("a/B", 1, &[("of", "(Q)V", 1, true)]),
+                "not a type descriptor",
+            ),
+        ] {
+            let error = stub_java(&adapter(), &broken).expect_err("this must not render");
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_field_stub_keeps_its_declared_type_and_drops_nothing_else() {
+        let font = stub(
+            "net/minecraft/client/gui/Font",
+            1,
+            &[("lineHeight", "I", 1, false), ("glyphs", "[[J", 4, false)],
+        );
+
+        let (_, java) = stub_java(&adapter(), &font).expect("renders");
+
+        assert!(java.contains("public int lineHeight;"), "{java}");
+        assert!(java.contains("protected long[][] glyphs;"), "{java}");
+    }
+
+    #[test]
+    fn the_stub_lock_records_what_was_read_and_says_what_it_does_not_promise() {
+        let mut screen = stub(
+            "net/minecraft/client/gui/screens/Screen",
+            0x0421,
+            &[("init", "()V", 4, true)],
+        );
+        screen.extends = Some("net/minecraft/A".to_owned());
+        screen.implements = vec!["net/minecraft/B".to_owned()];
+
+        let lock = stub_lock(&adapter(), &[screen]);
+
+        assert!(lock.contains("extractor = \"classfile\""), "{lock}");
+        assert!(
+            lock.contains(
+                "[[stub]]\nclass = \"net/minecraft/client/gui/screens/Screen\"\n\
+                           flags = 1057\nextends = \"net/minecraft/A\"\n\
+                           implements = [\"net/minecraft/B\"]"
+            ),
+            "{lock}"
+        );
+        assert!(
+            lock.contains(
+                "[[stub.member]]\nname = \"init\"\ndescriptor = \"()V\"\nflags = 4\nmethod = true"
+            ),
+            "{lock}"
+        );
+        assert!(
+            lock.contains("checked only where the client jar is"),
+            "the header has to say what the lock is worth: {lock}"
+        );
+        assert!(
+            lock.contains("different table from mappings.lock"),
+            "{lock}"
+        );
+    }
+
+    #[test]
+    fn a_descriptor_reads_back_as_the_java_types_a_stub_writes_down() {
+        assert_eq!(
+            signature("(Ljava/lang/String;[I)J").expect("valid"),
+            (
+                vec!["java.lang.String".to_owned(), "int[]".to_owned()],
+                "long".to_owned()
+            )
+        );
+        assert_eq!(
+            signature("()V").expect("valid"),
+            (Vec::new(), "void".to_owned())
+        );
+        assert_eq!(
+            java_type("[[Ljava/lang/Object;").expect("valid"),
+            ("java.lang.Object[][]".to_owned(), "")
+        );
+        assert!(
+            signature("Ljava/lang/String;")
+                .expect_err("this is not a method descriptor")
+                .contains("not a method descriptor")
+        );
+        assert!(
+            signature("()VV")
+                .expect_err("one return type")
+                .contains("more than one return type")
+        );
+        assert!(
+            java_type("Lnet/minecraft/A")
+                .expect_err("unterminated")
+                .contains("never terminated")
+        );
+        assert!(
+            java_type("L;")
+                .expect_err("names nothing")
+                .contains("names no class")
+        );
+        assert!(
+            java_type("")
+                .expect_err("empty")
+                .contains("ends before a type")
         );
     }
 

@@ -70,6 +70,29 @@ pub(super) struct Inventory {
     pub(super) hooks: Vec<Hook>,
 }
 
+/// One class the settings screen compiles against.
+///
+/// The members are named and nothing else: every descriptor comes from the jar,
+/// which is the whole reason these are generated rather than written by hand. A
+/// name that the class overloads stubs every overload, because picking one would
+/// mean writing down the descriptor that distinguishes them.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Seed {
+    pub(super) class: String,
+    pub(super) members: Vec<String>,
+}
+
+/// The tracked list of classes to stub.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct Seeds {
+    pub(super) schema_version: u8,
+    pub(super) minecraft: String,
+    #[serde(rename = "stub")]
+    pub(super) stubs: Vec<Seed>,
+}
+
 /// One pinned input file.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -90,6 +113,7 @@ pub(super) struct Inputs {
     pub(super) client_jar: Input,
     pub(super) version_manifest: Input,
     pub(super) hook_inventory: Input,
+    pub(super) stub_seeds: Input,
 }
 
 /// The tracked adapter inputs.
@@ -108,6 +132,7 @@ pub(super) struct PinnedVersion {
     pub(super) directory: PathBuf,
     pub(super) adapter: Adapter,
     pub(super) inventory: Inventory,
+    pub(super) seeds: Seeds,
 }
 
 /// Reads the tracked data of the pinned version.
@@ -162,10 +187,24 @@ pub(super) fn pinned(root: &Path) -> Result<PinnedVersion, GenerateError> {
             inventory.schema_version, adapter.schema_version
         )));
     }
+
+    // The seed list is tracked and therefore present everywhere too, for the
+    // same reason: a build that generates stubs from the stub lock still has to
+    // know which classes the lock was asked to cover.
+    verify_input(root, &adapter.inputs.stub_seeds)?;
+    let seeds: Seeds = parse(&root.join(&adapter.inputs.stub_seeds.path))?;
+    if seeds.minecraft != adapter.minecraft || seeds.schema_version != adapter.schema_version {
+        return Err(GenerateError::Drift(format!(
+            "the stub seeds pin {} at schema {} but the adapter inputs pin {} at schema {}",
+            seeds.minecraft, seeds.schema_version, adapter.minecraft, adapter.schema_version
+        )));
+    }
+
     for input in [
         &adapter.inputs.client_jar,
         &adapter.inputs.version_manifest,
         &adapter.inputs.hook_inventory,
+        &adapter.inputs.stub_seeds,
     ] {
         // An input that records where it came from has to record a fetchable
         // origin, because that string is the only trail back to the bytes the
@@ -184,6 +223,7 @@ pub(super) fn pinned(root: &Path) -> Result<PinnedVersion, GenerateError> {
         directory,
         adapter,
         inventory,
+        seeds,
     })
 }
 
@@ -285,6 +325,15 @@ mod tests {
                 .iter()
                 .all(|hook| !hook.capability.is_empty()),
             "every entry carries the sentence its human review needs"
+        );
+        assert_eq!(pinned.seeds.minecraft, pinned.adapter.minecraft);
+        assert!(
+            pinned
+                .seeds
+                .stubs
+                .iter()
+                .all(|seed| !seed.members.is_empty()),
+            "a seed with no members would stub a class nothing can be called on"
         );
     }
 
@@ -393,6 +442,7 @@ mod tests {
             &inputs.client_jar,
             &inputs.version_manifest,
             &inputs.hook_inventory,
+            &inputs.stub_seeds,
         ] {
             assert!(
                 input.sha256.is_some() || input.bytes.is_some(),
@@ -403,6 +453,10 @@ mod tests {
         assert!(
             inputs.hook_inventory.sha256.is_some(),
             "the reviewed inventory decides what gets rewritten and must pin a hash"
+        );
+        assert!(
+            inputs.stub_seeds.sha256.is_some(),
+            "the seed list decides which game types the screen compiles against"
         );
     }
 

@@ -1,0 +1,85 @@
+# Generated stub provenance for Minecraft 26.1.2. Do not edit.
+#
+# Every entry below is one compile-time stub the settings screen is built
+# against, read out of the pinned client jar. Descriptors and access flags
+# are the jar's own, which is the point: a hand-written stub transcribes a
+# generic signature, and the JVM links on the erased one.
+#
+# What this file does not promise:
+#
+# - It is checked only where the client jar is. A machine without the jar
+#   generates from this file, so on that machine the lock is the source and
+#   cannot disagree with anything. Drift is caught where the jar exists.
+# - It pins against a jar hash, so it is only as current as that pin. A
+#   Minecraft build nobody has re-pinned against is unchecked.
+# - It carries no hierarchy the stub set does not already hold. A supertype
+#   outside the set is dropped, so a change to one is invisible here.
+# - It covers the members `stubs.toml` seeds and nothing else. A member the
+#   screen starts calling is unpinned until it is seeded.
+#
+# This is a different table from mappings.lock and stays one. That file
+# pins call sites the agent rewrites; this one pins declarations the screen
+# compiles against, and one table meaning both is how the next person
+# misreads it.
+
+schemaVersion = 1
+minecraft = "26.1.2"
+extractor = "classfile"
+clientJarSha256 = "b1b3158572666445eff01e82fad8c7de2e4953db6d354f311730d77a8359d0b0"
+
+[[stub]]
+class = "net/minecraft/client/Minecraft"
+flags = 33
+
+[[stub]]
+class = "net/minecraft/client/gui/Font"
+flags = 33
+
+[[stub]]
+class = "net/minecraft/client/gui/screens/Screen"
+flags = 1057
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/client/Minecraft;Lnet/minecraft/client/gui/Font;Lnet/minecraft/network/chat/Component;)V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/network/chat/Component;)V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "init"
+descriptor = "()V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "init"
+descriptor = "(II)V"
+flags = 17
+method = true
+
+[[stub]]
+class = "net/minecraft/network/chat/Component"
+flags = 1537
+
+[[stub.member]]
+name = "translatable"
+descriptor = "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "translatable"
+descriptor = "(Ljava/lang/String;[Ljava/lang/Object;)Lnet/minecraft/network/chat/MutableComponent;"
+flags = 137
+method = true
+
+[[stub]]
+class = "net/minecraft/network/chat/MutableComponent"
+flags = 49
+implements = ["net/minecraft/network/chat/Component"]

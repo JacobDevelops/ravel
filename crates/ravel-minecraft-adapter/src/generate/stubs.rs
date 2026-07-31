@@ -1,0 +1,535 @@
+//! Resolving the compile-time stubs the settings screen is built against.
+//!
+//! `jvm/build/build-screen.sh` cannot put the client jar on its class path: the
+//! jar is a restricted local fixture and most machines do not hold one, which is
+//! the property `build-agent.sh` already protects for the agent. So the screen
+//! compiles against stub declarations of the few game types it names.
+//!
+//! Those stubs are generated rather than written, and the reason is erasure. A
+//! hand-written stub transcribes a signature a person read, generics and all;
+//! the JVM links on the erased descriptor, which is a different string. A
+//! generated stub emits the descriptor the class file actually declares, so what
+//! the screen compiles against and what the runtime resolves are the same thing
+//! by construction. The seed list names classes and member names; every
+//! descriptor, every access flag, and every supertype edge comes from the jar.
+//!
+//! A stub reproduces the hierarchy only where it has to. The set of stubbed
+//! classes induces a subgraph of the game's real one: a supertype is declared
+//! when it is itself stubbed, and dropped when it is not. That is what keeps
+//! `Screen` free of the six types above it while still letting the `Component`
+//! that `MutableComponent` implements be assignable to it.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use serde::Deserialize;
+
+use super::classfile::{ACC_ABSTRACT, ACC_FINAL, ACC_INTERFACE, Hierarchy};
+use super::inputs::{Adapter, Seeds};
+use super::{GenerateError, classfile, jar};
+
+/// Packages already on every class path, which are never stubbed.
+const PROVIDED: [&str; 2] = ["java/", "javax/"];
+
+/// One member a stub declares.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Member {
+    pub(super) name: String,
+    pub(super) descriptor: String,
+    pub(super) flags: u16,
+    /// Whether the member is a method rather than a field.
+    pub(super) method: bool,
+}
+
+/// One generated stub class.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Stub {
+    /// Internal class name, as the JVM writes it.
+    pub(super) class: String,
+    /// The class's own access flags, as the jar declares them.
+    pub(super) flags: u16,
+    /// The stubbed superclass, when one of this class's ancestors is stubbed.
+    #[serde(default)]
+    pub(super) extends: Option<String>,
+    /// Stubbed interfaces this class is assignable to.
+    #[serde(default)]
+    pub(super) implements: Vec<String>,
+    /// Members the seed list asked for, empty for a class pulled in by a
+    /// descriptor rather than named as a seed.
+    #[serde(default, rename = "member")]
+    pub(super) members: Vec<Member>,
+}
+
+impl Stub {
+    /// Whether the class file declares an interface rather than a class.
+    pub(super) const fn is_interface(&self) -> bool {
+        self.flags & ACC_INTERFACE != 0
+    }
+
+    /// Whether the class file declares the class abstract.
+    pub(super) const fn is_abstract(&self) -> bool {
+        self.flags & ACC_ABSTRACT != 0
+    }
+
+    /// Whether the class file declares the class final.
+    pub(super) const fn is_final(&self) -> bool {
+        self.flags & ACC_FINAL != 0
+    }
+}
+
+/// The tracked stub lock.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Lock {
+    schema_version: u8,
+    minecraft: String,
+    extractor: String,
+    client_jar_sha256: String,
+    #[serde(rename = "stub")]
+    stubs: Vec<Stub>,
+}
+
+/// Resolves every seeded class, and everything its members name, from the jar.
+pub(super) fn from_jar(archive: &jar::Archive, seeds: &Seeds) -> Result<Vec<Stub>, GenerateError> {
+    let mut members: BTreeMap<String, Vec<Member>> = BTreeMap::new();
+    let mut referenced = BTreeSet::new();
+
+    for seed in &seeds.stubs {
+        let class = seed.class.replace('.', "/");
+        let declared = read_members(archive, &class)?;
+        let mut selected = Vec::new();
+        for name in &seed.members {
+            let matched = declared
+                .iter()
+                .filter(|member| &member.name == name && member.is_visible())
+                .collect::<Vec<_>>();
+            if matched.is_empty() {
+                return Err(GenerateError::Unresolved(format!(
+                    "{} declares no reachable {name}",
+                    seed.class
+                )));
+            }
+            // Every overload is stubbed. Picking one would mean writing its
+            // descriptor into the seed list, which is the transcription this
+            // generator exists to avoid.
+            for member in matched {
+                referenced.extend(names_in(&member.descriptor)?);
+                selected.push(Member {
+                    name: member.name.clone(),
+                    descriptor: member.descriptor.clone(),
+                    flags: member.flags,
+                    method: member.method,
+                });
+            }
+        }
+        selected.sort_by(|left, right| {
+            (&left.name, &left.descriptor).cmp(&(&right.name, &right.descriptor))
+        });
+        if members.insert(class, selected).is_some() {
+            return Err(GenerateError::Unresolved(format!(
+                "{} is seeded twice",
+                seed.class
+            )));
+        }
+    }
+
+    // A class named by a selected member's descriptor is stubbed too, with no
+    // members of its own: the screen has to be able to write the type down, not
+    // to call anything on it. Such a stub names nothing further, so the closure
+    // stops here rather than walking the jar.
+    let mut set = members.keys().cloned().collect::<BTreeSet<_>>();
+    set.extend(referenced);
+
+    let mut hierarchies = BTreeMap::new();
+    for class in &set {
+        hierarchies.insert(class.clone(), read_hierarchy(archive, class)?);
+    }
+
+    let mut stubs = Vec::with_capacity(set.len());
+    for class in &set {
+        let (extends, implements) = above(archive, class, &set, &hierarchies)?;
+        stubs.push(Stub {
+            class: class.clone(),
+            flags: hierarchies[class].flags,
+            extends,
+            implements,
+            members: members.get(class).cloned().unwrap_or_default(),
+        });
+    }
+    Ok(stubs)
+}
+
+/// Resolves every stub from the tracked lock.
+///
+/// This is what a machine without the restricted client jar generates from, for
+/// the same reason `mappings.lock` exists: the lock already carries every
+/// descriptor the jar resolved to, and it is tracked, so a change shows up in a
+/// diff rather than in a build that quietly disagreed with it.
+pub(super) fn from_lock(
+    tracked: &str,
+    adapter: &Adapter,
+    seeds: &Seeds,
+) -> Result<Vec<Stub>, GenerateError> {
+    let lock: Lock = toml::from_str(tracked)
+        .map_err(|error| GenerateError::Input(format!("cannot parse stubs.lock: {error}")))?;
+
+    for (what, recorded, pinned) in [
+        (
+            "the version",
+            lock.minecraft.as_str(),
+            adapter.minecraft.as_str(),
+        ),
+        (
+            "the client jar hash",
+            lock.client_jar_sha256.as_str(),
+            adapter.inputs.client_jar.sha256.as_deref().unwrap_or(""),
+        ),
+    ] {
+        if recorded != pinned {
+            return Err(GenerateError::Drift(format!(
+                "stubs.lock records {what} as {recorded} but the adapter inputs pin {pinned}"
+            )));
+        }
+    }
+    if lock.schema_version != adapter.schema_version {
+        return Err(GenerateError::Drift(format!(
+            "stubs.lock is schema {} but the adapter inputs are schema {}",
+            lock.schema_version, adapter.schema_version
+        )));
+    }
+    if lock.extractor != super::EXTRACTOR {
+        return Err(GenerateError::Drift(format!(
+            "stubs.lock was written by the {} extractor",
+            lock.extractor
+        )));
+    }
+
+    // The closure cannot be recomputed without the jar, so what is checked here
+    // is the half that can be: every seeded class is present, and every member
+    // name the seed list asks for resolves to at least one declaration.
+    for seed in &seeds.stubs {
+        let class = seed.class.replace('.', "/");
+        let stub = lock
+            .stubs
+            .iter()
+            .find(|stub| stub.class == class)
+            .ok_or_else(|| {
+                GenerateError::Drift(format!("stubs.lock carries no stub for {}", seed.class))
+            })?;
+        for name in &seed.members {
+            if !stub.members.iter().any(|member| &member.name == name) {
+                return Err(GenerateError::Drift(format!(
+                    "stubs.lock pins no {name} on {}",
+                    seed.class
+                )));
+            }
+        }
+    }
+    Ok(lock.stubs)
+}
+
+/// Reads one class's declared members out of the jar.
+fn read_members(
+    archive: &jar::Archive,
+    class: &str,
+) -> Result<Vec<classfile::Member>, GenerateError> {
+    let bytes = archive.entry(&format!("{class}.class"))?;
+    classfile::members(&bytes)
+        .map_err(|error| GenerateError::Extraction(format!("{class}: {error}")))
+}
+
+/// Reads one class's own flags and supertypes out of the jar.
+fn read_hierarchy(archive: &jar::Archive, class: &str) -> Result<Hierarchy, GenerateError> {
+    let bytes = archive.entry(&format!("{class}.class"))?;
+    classfile::hierarchy(&bytes)
+        .map_err(|error| GenerateError::Extraction(format!("{class}: {error}")))
+}
+
+/// The stubbed types one class is assignable to.
+///
+/// The superclass slot takes the nearest stubbed ancestor on the extends chain,
+/// so a stub declares at most the one Java allows. Every other stubbed type
+/// above the class is an interface and is declared as one. A walk that leaves
+/// the jar stops: the client jar carries the game's classes and not the
+/// libraries they compile against.
+fn above(
+    archive: &jar::Archive,
+    class: &str,
+    set: &BTreeSet<String>,
+    hierarchies: &BTreeMap<String, Hierarchy>,
+) -> Result<(Option<String>, Vec<String>), GenerateError> {
+    let mut extends = None;
+    let mut walk = Some(class.to_owned());
+    while let Some(current) = walk {
+        let hierarchy = hierarchy_of(archive, &current, hierarchies)?;
+        let Some(parent) = hierarchy.super_class else {
+            break;
+        };
+        if set.contains(&parent) {
+            extends = Some(parent);
+            break;
+        }
+        walk = archive.holds(&format!("{parent}.class")).then_some(parent);
+    }
+
+    let mut implements = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    let mut pending = vec![class.to_owned()];
+    while let Some(current) = pending.pop() {
+        if !seen.insert(current.clone()) {
+            continue;
+        }
+        let hierarchy = hierarchy_of(archive, &current, hierarchies)?;
+        for supertype in hierarchy.supertypes() {
+            if set.contains(supertype) && Some(supertype) != extends.as_deref() {
+                implements.insert(supertype.to_owned());
+            }
+            if archive.holds(&format!("{supertype}.class")) {
+                pending.push(supertype.to_owned());
+            }
+        }
+    }
+    Ok((extends, implements.into_iter().collect()))
+}
+
+/// The hierarchy of one class, reading the jar only for a class not already read.
+fn hierarchy_of(
+    archive: &jar::Archive,
+    class: &str,
+    hierarchies: &BTreeMap<String, Hierarchy>,
+) -> Result<Hierarchy, GenerateError> {
+    match hierarchies.get(class) {
+        Some(known) => Ok(known.clone()),
+        None => read_hierarchy(archive, class),
+    }
+}
+
+/// Every internal class name a descriptor mentions that is not already provided.
+///
+/// A nested class is refused rather than emitted. Reproducing one means emitting
+/// it inside its enclosing stub, and no member the screen needs names one yet;
+/// building that now would be building a shape nothing has asked for.
+pub(super) fn names_in(descriptor: &str) -> Result<Vec<String>, GenerateError> {
+    let mut names = Vec::new();
+    let mut rest = descriptor;
+    while let Some(start) = rest.find('L') {
+        let after = &rest[start + 1..];
+        let Some(end) = after.find(';') else {
+            break;
+        };
+        let name = &after[..end];
+        // `L` also opens a class name inside an array descriptor, and both write
+        // the name the same way, so one scan finds every one of them.
+        if !name.is_empty() && !PROVIDED.iter().any(|package| name.starts_with(package)) {
+            if name.contains('$') {
+                return Err(GenerateError::Unsupported(format!(
+                    "{descriptor} names the nested class {name}, which no stub can declare"
+                )));
+            }
+            names.push(name.to_owned());
+        }
+        rest = &after[end + 1..];
+    }
+    Ok(names)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::super::inputs::{self, PinnedVersion};
+    use super::{Lock, Stub, from_lock, names_in};
+
+    fn pinned() -> PinnedVersion {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("the crate lives under crates/<name>");
+        inputs::pinned(root).expect("the tracked version data should parse")
+    }
+
+    fn tracked_lock(pinned: &PinnedVersion) -> String {
+        std::fs::read_to_string(pinned.directory.join("stubs.lock"))
+            .expect("the tracked stub lock should be readable")
+    }
+
+    #[test]
+    fn the_tracked_lock_carries_every_seeded_class_and_member() {
+        let pinned = pinned();
+
+        let stubs = from_lock(&tracked_lock(&pinned), &pinned.adapter, &pinned.seeds)
+            .expect("the tracked stub lock should resolve");
+
+        let names = stubs
+            .iter()
+            .map(|stub| &stub.class)
+            .collect::<BTreeSet<_>>();
+        for seed in &pinned.seeds.stubs {
+            assert!(names.contains(&seed.class.replace('.', "/")), "{seed:?}");
+        }
+        assert!(
+            stubs.iter().any(|stub| !stub.members.is_empty()),
+            "a lock in which nothing declares a member stubs nothing"
+        );
+    }
+
+    #[test]
+    fn the_closure_carries_a_class_no_seed_names() {
+        let pinned = pinned();
+
+        let stubs =
+            from_lock(&tracked_lock(&pinned), &pinned.adapter, &pinned.seeds).expect("resolves");
+
+        let seeded = pinned
+            .seeds
+            .stubs
+            .iter()
+            .map(|seed| seed.class.replace('.', "/"))
+            .collect::<BTreeSet<_>>();
+        assert!(
+            stubs.iter().any(|stub| !seeded.contains(&stub.class)),
+            "a member's descriptor names types the seed list does not, and those are stubbed too"
+        );
+    }
+
+    #[test]
+    fn a_stubbed_supertype_is_declared_and_an_unstubbed_one_is_dropped() {
+        let pinned = pinned();
+        let stubs =
+            from_lock(&tracked_lock(&pinned), &pinned.adapter, &pinned.seeds).expect("resolves");
+        let stub = |class: &str| {
+            stubs
+                .iter()
+                .find(|stub| stub.class == class)
+                .unwrap_or_else(|| panic!("{class} should be stubbed"))
+                .clone()
+        };
+
+        let screen = stub("net/minecraft/client/gui/screens/Screen");
+        assert_eq!(screen.extends, None);
+        assert!(
+            screen.implements.is_empty(),
+            "nothing above Screen is stubbed, so the stub declares nothing above it"
+        );
+        assert!(screen.is_abstract());
+
+        let mutable = stub("net/minecraft/network/chat/MutableComponent");
+        assert_eq!(
+            mutable.implements,
+            ["net/minecraft/network/chat/Component"],
+            "the stub has to keep the edge that makes a returned value assignable"
+        );
+        assert!(stub("net/minecraft/network/chat/Component").is_interface());
+    }
+
+    #[test]
+    fn a_lock_pinning_another_jar_or_another_extractor_is_refused() {
+        let pinned = pinned();
+        let tracked = tracked_lock(&pinned);
+        let jar = pinned
+            .adapter
+            .inputs
+            .client_jar
+            .sha256
+            .as_deref()
+            .expect("a pinned hash");
+
+        for (broken, expected) in [
+            (tracked.replace(jar, &"0".repeat(64)), "the client jar hash"),
+            (
+                tracked.replace("extractor = \"classfile\"", "extractor = \"javap\""),
+                "javap",
+            ),
+            (
+                tracked.replace("schemaVersion = 1", "schemaVersion = 2"),
+                "schema 2",
+            ),
+        ] {
+            let error = from_lock(&broken, &pinned.adapter, &pinned.seeds)
+                .expect_err("a drifted lock must be refused");
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_lock_that_lost_a_seeded_class_or_member_is_refused() {
+        let pinned = pinned();
+        let tracked = tracked_lock(&pinned);
+        let first = pinned.seeds.stubs[0].class.replace('.', "/");
+        let member = &pinned.seeds.stubs[0].members[0];
+
+        let without_class = tracked.replace(&format!("class = \"{first}\""), "class = \"a/Ghost\"");
+        let error = from_lock(&without_class, &pinned.adapter, &pinned.seeds)
+            .expect_err("a lock missing a seeded class must be refused");
+        assert!(error.to_string().contains("carries no stub for"), "{error}");
+
+        let without_member = tracked.replace(&format!("name = \"{member}\""), "name = \"ghost\"");
+        let error = from_lock(&without_member, &pinned.adapter, &pinned.seeds)
+            .expect_err("a lock missing a seeded member must be refused");
+        assert!(error.to_string().contains("pins no"), "{error}");
+    }
+
+    #[test]
+    fn a_descriptor_names_the_classes_a_stub_has_to_carry_and_no_others() {
+        assert_eq!(
+            names_in("(Lnet/minecraft/network/chat/Component;)V").expect("valid"),
+            ["net/minecraft/network/chat/Component"]
+        );
+        assert_eq!(
+            names_in("(Ljava/lang/String;[Ljava/lang/Object;)Lnet/minecraft/A;").expect("valid"),
+            ["net/minecraft/A"],
+            "a provided package is on every class path already, array or not"
+        );
+        assert_eq!(names_in("(II)V").expect("valid"), Vec::<String>::new());
+        assert_eq!(
+            names_in("([[Lnet/minecraft/B;)V").expect("valid"),
+            ["net/minecraft/B"]
+        );
+    }
+
+    #[test]
+    fn a_nested_class_is_refused_rather_than_emitted_wrongly() {
+        let error = names_in("()Lnet/minecraft/core/Holder$Reference;")
+            .expect_err("a nested class must be refused");
+
+        assert!(error.to_string().contains("nested class"), "{error}");
+    }
+
+    #[test]
+    fn a_lock_whose_shape_is_wrong_is_refused_rather_than_half_read() {
+        let pinned = pinned();
+
+        let error = from_lock("stub = 3", &pinned.adapter, &pinned.seeds)
+            .expect_err("this is not a stub lock");
+
+        assert!(
+            error.to_string().contains("cannot parse stubs.lock"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn the_lock_shape_round_trips_through_the_kinds_a_stub_can_be() {
+        let lock: Lock = toml::from_str(
+            "schemaVersion = 1\nminecraft = \"0.0.0\"\nextractor = \"classfile\"\n\
+             clientJarSha256 = \"00\"\n\n[[stub]]\nclass = \"a/B\"\nflags = 1553\n",
+        )
+        .expect("a stub with no members and no supertypes is a whole stub");
+
+        let [stub] = lock.stubs.as_slice() else {
+            panic!("a lock holding one stub reads back as one stub");
+        };
+        assert!(stub.is_interface() && stub.is_abstract() && stub.is_final());
+        assert_eq!(stub.members, Vec::new());
+
+        let plain = Stub {
+            class: "a/B".to_owned(),
+            flags: 0,
+            extends: None,
+            implements: Vec::new(),
+            members: Vec::new(),
+        };
+        assert!(!plain.is_interface() && !plain.is_abstract() && !plain.is_final());
+    }
+}

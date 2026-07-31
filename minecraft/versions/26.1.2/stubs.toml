@@ -1,0 +1,33 @@
+# Game classes the Ravel settings screen compiles against, for Minecraft 26.1.2.
+#
+# `jvm/build/build-screen.sh` cannot put the client jar on its class path: the
+# jar is a restricted local fixture that most machines do not hold, which is the
+# property `build-agent.sh` already protects for the agent. So the screen is
+# compiled against generated stub declarations of the few game types it names.
+#
+# This file names classes and member names. It never names a descriptor, and
+# that is the whole reason the stubs are generated: a hand-written stub
+# transcribes the generic signature a person read, and the JVM links on the
+# erased one. Every descriptor, access flag, and supertype edge in
+# `stubs.lock` comes out of the pinned jar.
+#
+# A member name that the class overloads stubs every overload. Picking one would
+# mean writing down the descriptor that tells them apart, which is the
+# transcription this avoids.
+#
+# Adding an entry means regenerating `stubs.lock` and re-pinning the hash in
+# `adapter.toml`, exactly as adding a hook does.
+
+schemaVersion = 1
+minecraft = "26.1.2"
+
+[[stub]]
+# The screen's superclass. `<init>` is the constructor it calls through, and
+# `init` is the method it overrides to build its widgets.
+class = "net.minecraft.client.gui.screens.Screen"
+members = ["<init>", "init"]
+
+[[stub]]
+# The screen's title crosses as one of these.
+class = "net.minecraft.network.chat.Component"
+members = ["translatable"]

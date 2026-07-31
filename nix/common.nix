@@ -291,6 +291,35 @@ in
       '';
     };
 
+    ravel-measure-profiling-overhead = {
+      description = "Measure what opt-in profiling costs when it is off and record its budget.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        # Release, because the quantity measured is a branch that is not taken
+        # and a debug build would measure the profile rather than the branch.
+        cargo build --locked --release -p ravel-spike-m3-profiling-overhead
+        ./target/release/ravel-spike-m3-profiling-overhead
+      '';
+    };
+
+    ravel-verify-budget = {
+      description = "Compare the recorded runs against the regression budget.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        # Every recorded run at once, because the budget spans more than one
+        # record and no single run measures all of it. A limit that no run
+        # measured is a violation, which is what keeps a metric from being
+        # dropped and read as having passed.
+        cargo run --locked -p ravel-xtask -- verify budget \
+          evidence/m2/loader-overhead.json \
+          evidence/m3/profiling-overhead.json
+      '';
+    };
+
     ravel-measure-pack-compile = {
       description = "Measure what a pack-sized set of realistic mods costs to compile.";
       exec = ''
@@ -444,6 +473,8 @@ in
     "ravel:measure-loader-overhead".exec = "ravel-measure-loader-overhead";
     "ravel:measure-pack-compile".exec = "ravel-measure-pack-compile";
     "ravel:measure-pack-compile-variants".exec = "ravel-measure-pack-compile-variants";
+    "ravel:measure-profiling-overhead".exec = "ravel-measure-profiling-overhead";
+    "ravel:verify-budget".exec = "ravel-verify-budget";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";
@@ -460,6 +491,7 @@ in
         "ravel:audit"
         "ravel:verify-scaffold"
         "ravel:verify-spikes"
+        "ravel:verify-budget"
         "ravel:verify-stack"
       ];
       exec = "true";

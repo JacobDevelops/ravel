@@ -50,6 +50,7 @@ const EXPERIMENT_NAMES: &[&str] = &[
     "adg-5-prism",
     "m2-loader-overhead",
     "m3-pack-compile",
+    "m3-profiling-overhead",
     "spike-harness",
 ];
 
@@ -1076,8 +1077,17 @@ const VOID_LIMITS: &[(&str, &str)] = &[
 /// mechanism exists to end.
 const BUDGET_PROTOCOL: &str = "m2-loader-budget-v1";
 
-/// The record whose limits every later run is compared against.
-const BUDGET_RECORD: &str = "evidence/m2/loader-overhead.json";
+/// The records whose limits every later run is compared against.
+///
+/// The budget is their union rather than any one of them, because a limit is
+/// set by whichever measurement was addressed to it: M2 bounded what the loader
+/// costs, and M3-W6 bounds what profiling costs a tick when it is off. Two
+/// records may not state the same metric — a metric with two ceilings has none —
+/// and that is checked rather than resolved.
+const BUDGET_RECORDS: &[&str] = &[
+    "evidence/m2/loader-overhead.json",
+    "evidence/m3/profiling-overhead.json",
+];
 
 /// What comparing a run against the regression budget found.
 ///
@@ -1105,7 +1115,8 @@ struct Limit {
     operator: String,
 }
 
-/// Compares `candidate`'s measurements against the recorded regression budget.
+/// Compares the `candidates`' measurements against the recorded regression
+/// budget.
 ///
 /// The join key is the metric name, and both sides come from the same
 /// `budget.limits` shape: a re-run writes a new record carrying its own measured
@@ -1114,24 +1125,48 @@ struct Limit {
 /// of the record that can drift from it, and the drift would show up as a limit
 /// silently not compared.
 ///
-/// The hardware profile has to match. The record's own restatement says these
-/// limits "hold on linux-reference-v1 only" and that "a budget without the machine
-/// it was measured on is not a budget", so a run from another machine is refused
-/// rather than compared and passed.
+/// The candidates are taken together rather than one at a time. The budget spans
+/// more than one measurement now, and no single run measures all of it: asking
+/// each run for every limit would fail a loader run for not having profiled and
+/// a profiling run for not having loaded. A limit is satisfied when some run
+/// measured it and came in under it, and no limit may go unmeasured.
+///
+/// The hardware profile has to match. Each record's own restatement says its
+/// limits "hold on linux-reference-v1 only" and that "a budget without the
+/// machine it was measured on is not a budget", so a run from another machine is
+/// refused rather than compared and passed.
 #[must_use]
-pub fn verify_budget(root: &Path, candidate: &Path) -> BudgetReport {
+pub fn verify_budget(root: &Path, candidates: &[&Path]) -> BudgetReport {
     let mut report = BudgetReport::default();
-    let baseline = root.join(BUDGET_RECORD);
+    if candidates.is_empty() {
+        report.violations.push(
+            "no candidate run was given, and a budget compared against nothing passes \
+                   vacuously"
+                .to_owned(),
+        );
+        return report;
+    }
 
-    for (path, label) in [
-        (&baseline, "the budget record"),
-        (&candidate.to_path_buf(), "the candidate run"),
-    ] {
+    let owned = BUDGET_RECORDS
+        .iter()
+        .map(|record| root.join(record))
+        .collect::<Vec<_>>();
+    let baselines = owned
+        .iter()
+        .map(std::path::PathBuf::as_path)
+        .collect::<Vec<_>>();
+
+    for (path, label) in baselines
+        .iter()
+        .map(|path| (*path, "a budget record"))
+        .chain(candidates.iter().map(|path| (*path, "a candidate run")))
+    {
         match jq_value(path, ".budget.protocol") {
             Ok(protocol) if protocol == BUDGET_PROTOCOL => {}
             Ok(protocol) => report.violations.push(format!(
-                "{label} declares budget protocol `{protocol}`, and this comparison understands \
-                 only `{BUDGET_PROTOCOL}`"
+                "{label}, {}, declares budget protocol `{protocol}`, and this comparison \
+                 understands only `{BUDGET_PROTOCOL}`",
+                path.display()
             )),
             Err(error) => report.violations.push(error),
         }
@@ -1140,27 +1175,38 @@ pub fn verify_budget(root: &Path, candidate: &Path) -> BudgetReport {
         return report;
     }
 
-    match (
-        jq_value(&baseline, ".budget.hardwareProfile"),
-        jq_value(candidate, ".identity.hardwareProfile"),
-    ) {
-        (Ok(required), Ok(actual)) if required == actual => {}
-        (Ok(required), Ok(actual)) => {
-            report.violations.push(format!(
-                "the budget holds on hardware profile `{required}` and the candidate run was \
-                 measured on `{actual}`, so it is remeasured rather than compared"
-            ));
-            return report;
-        }
-        (Err(error), _) | (_, Err(error)) => {
+    let required = match hardware_profile(&baselines) {
+        Ok(profile) => profile,
+        Err(error) => {
             report.violations.push(error);
             return report;
         }
+    };
+    for candidate in candidates {
+        match jq_value(candidate, ".identity.hardwareProfile") {
+            Ok(actual) if actual == required => {}
+            Ok(actual) => report.violations.push(format!(
+                "the budget holds on hardware profile `{required}` and {} was measured on \
+                 `{actual}`, so it is remeasured rather than compared",
+                candidate.display()
+            )),
+            Err(error) => report.violations.push(error),
+        }
+    }
+    if !report.violations.is_empty() {
+        return report;
     }
 
-    let (baseline_limits, candidate_limits) = match (limits(&baseline), limits(candidate)) {
-        (Ok(baseline_limits), Ok(candidate_limits)) => (baseline_limits, candidate_limits),
-        (Err(error), _) | (_, Err(error)) => {
+    let baseline_limits = match union(&baselines, "budget records") {
+        Ok(limits) => limits,
+        Err(error) => {
+            report.violations.push(error);
+            return report;
+        }
+    };
+    let candidate_limits = match union(candidates, "candidate runs") {
+        Ok(limits) => limits,
+        Err(error) => {
             report.violations.push(error);
             return report;
         }
@@ -1236,6 +1282,54 @@ fn compare(limit: &Limit, candidate: &[Limit], violations: &mut Vec<String>) {
             limit.metric
         )),
     }
+}
+
+/// The one hardware profile every budget record holds on.
+///
+/// Two budget records that hold on different machines are not one budget, and a
+/// candidate cannot be on both. Refusing that is cheaper than deciding which
+/// half of an incoherent budget a run should be judged by.
+fn hardware_profile(baselines: &[&Path]) -> Result<String, String> {
+    let mut required: Option<String> = None;
+    for baseline in baselines {
+        let profile = jq_value(baseline, ".budget.hardwareProfile")?;
+        match &required {
+            None => required = Some(profile),
+            Some(first) if *first == profile => {}
+            Some(first) => {
+                return Err(format!(
+                    "the budget records hold on different hardware profiles, `{first}` and \
+                     `{profile}`, so together they are not a budget; {} is the second",
+                    baseline.display()
+                ));
+            }
+        }
+    }
+    required.ok_or_else(|| "no budget record was named".to_owned())
+}
+
+/// Reads every limit a set of records states, refusing a metric two of them
+/// state.
+///
+/// A metric with two ceilings has none: which one applies would be decided by
+/// the order the files happened to be read in. Refusing is the only answer that
+/// does not make the budget depend on that.
+fn union(paths: &[&Path], role: &str) -> Result<Vec<Limit>, String> {
+    let mut all: Vec<Limit> = Vec::new();
+    for path in paths {
+        for limit in limits(path)? {
+            if all.iter().any(|seen| seen.metric == limit.metric) {
+                return Err(format!(
+                    "`{}` is stated by two {role}, so it has two ceilings and therefore none; the \
+                     second is in {}",
+                    limit.metric,
+                    path.display()
+                ));
+            }
+            all.push(limit);
+        }
+    }
+    Ok(all)
 }
 
 /// Reads every limit a record states, in the order it states them.

@@ -42,6 +42,7 @@ ravel-spike-adg-3-bindings = { path = "experiments/adg-3-bindings", version = "0
 ravel-spike-harness = { path = "experiments/spike-harness", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
 rustix = { version = "1.1.4", default-features = false, features = ["process"] }
+semver = { version = "1.0.28", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"

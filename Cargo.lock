@@ -784,6 +784,11 @@ dependencies = [
 [[package]]
 name = "ravel-core"
 version = "0.0.0"
+dependencies = [
+ "semver",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "ravel-data"

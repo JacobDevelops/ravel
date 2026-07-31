@@ -793,9 +793,11 @@ dependencies = [
 name = "ravel-conformance-tests"
 version = "0.0.0"
 dependencies = [
+ "ravel-core",
  "ravel-package",
  "ravel-resolve",
  "ravel-sdk",
+ "serde_json",
 ]
 
 [[package]]

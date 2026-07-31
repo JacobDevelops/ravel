@@ -46,6 +46,26 @@ impl LifecycleState {
         Self::Failed,
     ];
 
+    /// The `SPEC.md` §14 name of this state, as a report writes it.
+    ///
+    /// Every crate that renders a state to a person uses this rather than the
+    /// derived `Debug` spelling, so one state has one user-facing name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Discovered => "discovered",
+            Self::Validated => "validated",
+            Self::Resolved => "resolved",
+            Self::Loaded => "loaded",
+            Self::Constructed => "constructed",
+            Self::Registered => "registered",
+            Self::Running => "running",
+            Self::Stopping => "stopping",
+            Self::Stopped => "stopped",
+            Self::Failed => "failed",
+        }
+    }
+
     /// Returns whether the lifecycle ends here.
     ///
     /// [`Self::Stopped`] and [`Self::Failed`] are the two ends, and neither has

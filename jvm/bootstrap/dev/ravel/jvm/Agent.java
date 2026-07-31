@@ -1,0 +1,74 @@
+package dev.ravel.jvm;
+
+import java.lang.instrument.Instrumentation;
+
+/**
+ * Ravel's premain entry point.
+ *
+ * <p>This is a Ravel artefact, not a mod loader. It installs one transformer,
+ * loads one native library, and prints one line at shutdown. It takes no
+ * arguments: what to rewrite comes from the generated {@link Hook} class in this
+ * same jar, which is the only thing that knows what the pinned game version
+ * resolved to.
+ */
+public final class Agent {
+
+    private static volatile Transformer transformer;
+
+    private Agent() {
+    }
+
+    /**
+     * Installs Ravel's transformer before the game's main class is loaded.
+     *
+     * @param arguments must be empty; the agent is configured by what it ships with
+     * @param instrumentation the JVM's own instrumentation service
+     */
+    public static void premain(String arguments, Instrumentation instrumentation) {
+        if (arguments != null && !arguments.isEmpty()) {
+            throw new IllegalArgumentException("the Ravel agent takes no arguments");
+        }
+
+        // Load the library before installing the transformer, so a missing or
+        // unloadable library fails at startup rather than at the first hook. It
+        // is loaded from Hook's own initializer, which is what binds it to the
+        // loader that declares the native methods.
+        Hook.initialize();
+
+        Transformer installed = new Transformer(Hook.TARGETS);
+        transformer = installed;
+        instrumentation.addTransformer(installed, false);
+        Runtime.getRuntime().addShutdownHook(new Thread(Agent::report, "ravel-report"));
+    }
+
+    /** Classes this agent rewrote. */
+    public static int transformedClasses() {
+        Transformer installed = transformer;
+        return installed == null ? 0 : installed.transformedClasses();
+    }
+
+    /** Methods this agent rewrote. */
+    public static int rewrittenMethods() {
+        Transformer installed = transformer;
+        return installed == null ? 0 : installed.rewrittenMethods();
+    }
+
+    /**
+     * Prints what this launch actually did.
+     *
+     * <p>ADG-5 proved the JVM accepted Ravel's arguments and the client ran, but
+     * not that the rewrite happened, because nothing reported it. One line at
+     * shutdown is what makes an ordinary launch direct evidence.
+     */
+    public static void report() {
+        long invocations;
+        try {
+            invocations = Hook.nativeInvocations();
+        } catch (UnsatisfiedLinkError absent) {
+            invocations = -1L;
+        }
+        System.out.println("[ravel] rewrote " + transformedClasses() + " classes and "
+                + rewrittenMethods() + " methods; " + invocations
+                + " hook invocations reached native code");
+    }
+}

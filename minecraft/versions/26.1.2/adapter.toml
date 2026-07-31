@@ -3,6 +3,12 @@
 # These are the only inputs the binding generator is allowed to read. The jar
 # itself is a restricted local fixture that is never tracked; what is tracked is
 # its hash, so any change to the input is detected before generation runs.
+#
+# Every input pins a hash, including the tracked ones. An input with nothing to
+# verify against is refused rather than read: the hook inventory decides which
+# methods the agent rewrites, so it is the last file that should be the one
+# nothing checks. Editing hooks.toml therefore means updating the hash below, and
+# that is the point.
 
 schemaVersion = 1
 minecraft = "26.1.2"
@@ -23,3 +29,5 @@ upstream = "https://piston-meta.mojang.com/v1/packages/a5ba42111e0de7712d677c458
 
 [inputs.hookInventory]
 path = "minecraft/versions/26.1.2/hooks.toml"
+sha256 = "2c27691d5bee0d0f3556efcbb02706c76e490f85691151f71a1a6b59f0b432fa"
+bytes = 2104

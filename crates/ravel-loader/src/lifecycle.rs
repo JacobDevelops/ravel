@@ -806,18 +806,7 @@ impl StructuredFailure for LifecycleError {
 
 /// The `SPEC.md` §14 name of a state, matching its serialized form.
 const fn state_name(state: LifecycleState) -> &'static str {
-    match state {
-        LifecycleState::Discovered => "discovered",
-        LifecycleState::Validated => "validated",
-        LifecycleState::Resolved => "resolved",
-        LifecycleState::Loaded => "loaded",
-        LifecycleState::Constructed => "constructed",
-        LifecycleState::Registered => "registered",
-        LifecycleState::Running => "running",
-        LifecycleState::Stopping => "stopping",
-        LifecycleState::Stopped => "stopped",
-        LifecycleState::Failed => "failed",
-    }
+    state.name()
 }
 
 /// The `SPEC.md` §3.4 name of a side, matching its serialized form.

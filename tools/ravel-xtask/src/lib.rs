@@ -1029,6 +1029,237 @@ fn verify_ignored_boundaries(root: &Path, violations: &mut Vec<String>) {
     }
 }
 
+/// The metrics `evidence/m2/loader-overhead.json`'s own expiry clause voided,
+/// and why each one is not compared.
+///
+/// The record says its three build limits "describe a linked pack" and that if
+/// M3 selected anything but linking they "describe a shape that no longer exists
+/// and are remeasured rather than carried". ADG-2 selected source compiled on the
+/// player's machine, so the condition fired exactly as written and `ROADMAP.md`
+/// records it.
+///
+/// They are listed here rather than removed from the record because a recorded
+/// measurement is not edited after the fact — the clause inside it is what does
+/// the voiding. They are listed at all, rather than skipped, because a limit that
+/// is quietly not compared is indistinguishable from one that passed, and that is
+/// how three breaches of 18x and 29x sat in this repository unremarked.
+const VOID_LIMITS: &[(&str, &str)] = &[
+    (
+        "build.packCompile",
+        "voided by the record's own expiry clause when ADG-2 chose source distribution over \
+         linking; the build cost of source distribution is evidence/m3/pack-compile.json",
+    ),
+    (
+        "build.relink",
+        "voided by the record's own expiry clause when ADG-2 chose source distribution over \
+         linking; nothing relinks a pack under the selected mechanism",
+    ),
+    (
+        "build.binaryGrowthPerMod",
+        "voided by the record's own expiry clause when ADG-2 chose source distribution over \
+         linking; per-mod binary growth describes an artefact the mechanism does not produce",
+    ),
+];
+
+/// The budget protocol this comparison understands.
+///
+/// A record declaring a different protocol is refused rather than compared. Two
+/// records can carry the same metric names and mean different things by them, and
+/// a budget that silently compared across protocols would be the same failure this
+/// mechanism exists to end.
+const BUDGET_PROTOCOL: &str = "m2-loader-budget-v1";
+
+/// The record whose limits every later run is compared against.
+const BUDGET_RECORD: &str = "evidence/m2/loader-overhead.json";
+
+/// What comparing a run against the regression budget found.
+///
+/// Violations and notes are separate because they answer different questions. A
+/// violation stops a milestone; a note says what was *not* checked, which is the
+/// half that has no other way to be seen. `budget.enforcement` in the record
+/// records that "comparing a later run against them is M3's to build, and until it
+/// does the rule above is a sentence rather than a mechanism" — notes are what
+/// keep the mechanism from quietly becoming a sentence again.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct BudgetReport {
+    /// Limits the candidate run exceeded, or could not be compared against.
+    pub violations: Vec<String>,
+    /// What was deliberately not compared, and why.
+    pub notes: Vec<String>,
+}
+
+/// One limit as a record states it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Limit {
+    metric: String,
+    /// The value a measurement must not exceed, as the record spells it.
+    ceiling: String,
+    measured: String,
+    operator: String,
+}
+
+/// Compares `candidate`'s measurements against the recorded regression budget.
+///
+/// The join key is the metric name, and both sides come from the same
+/// `budget.limits` shape: a re-run writes a new record carrying its own measured
+/// values, so nothing here needs a table mapping a metric to a field. That
+/// matters more than it looks — a hand-written path table is a second description
+/// of the record that can drift from it, and the drift would show up as a limit
+/// silently not compared.
+///
+/// The hardware profile has to match. The record's own restatement says these
+/// limits "hold on linux-reference-v1 only" and that "a budget without the machine
+/// it was measured on is not a budget", so a run from another machine is refused
+/// rather than compared and passed.
+#[must_use]
+pub fn verify_budget(root: &Path, candidate: &Path) -> BudgetReport {
+    let mut report = BudgetReport::default();
+    let baseline = root.join(BUDGET_RECORD);
+
+    for (path, label) in [
+        (&baseline, "the budget record"),
+        (&candidate.to_path_buf(), "the candidate run"),
+    ] {
+        match jq_value(path, ".budget.protocol") {
+            Ok(protocol) if protocol == BUDGET_PROTOCOL => {}
+            Ok(protocol) => report.violations.push(format!(
+                "{label} declares budget protocol `{protocol}`, and this comparison understands \
+                 only `{BUDGET_PROTOCOL}`"
+            )),
+            Err(error) => report.violations.push(error),
+        }
+    }
+    if !report.violations.is_empty() {
+        return report;
+    }
+
+    match (
+        jq_value(&baseline, ".budget.hardwareProfile"),
+        jq_value(candidate, ".identity.hardwareProfile"),
+    ) {
+        (Ok(required), Ok(actual)) if required == actual => {}
+        (Ok(required), Ok(actual)) => {
+            report.violations.push(format!(
+                "the budget holds on hardware profile `{required}` and the candidate run was \
+                 measured on `{actual}`, so it is remeasured rather than compared"
+            ));
+            return report;
+        }
+        (Err(error), _) | (_, Err(error)) => {
+            report.violations.push(error);
+            return report;
+        }
+    }
+
+    let (baseline_limits, candidate_limits) = match (limits(&baseline), limits(candidate)) {
+        (Ok(baseline_limits), Ok(candidate_limits)) => (baseline_limits, candidate_limits),
+        (Err(error), _) | (_, Err(error)) => {
+            report.violations.push(error);
+            return report;
+        }
+    };
+
+    for limit in &baseline_limits {
+        if let Some((_, reason)) = VOID_LIMITS
+            .iter()
+            .find(|(metric, _)| *metric == limit.metric)
+        {
+            report
+                .notes
+                .push(format!("`{}` is not compared: {reason}", limit.metric));
+            continue;
+        }
+        compare(limit, &candidate_limits, &mut report.violations);
+    }
+
+    for measured in &candidate_limits {
+        if !baseline_limits
+            .iter()
+            .any(|limit| limit.metric == measured.metric)
+        {
+            report.notes.push(format!(
+                "`{}` is measured by the candidate run and the budget sets no limit for it, so \
+                 nothing here can pass or fail it",
+                measured.metric
+            ));
+        }
+    }
+
+    report
+}
+
+/// Compares one live limit against whatever the candidate measured for it.
+///
+/// The ceiling and the comparison both come from the budget, and only the
+/// measurement comes from the candidate. A run that could restate the operator or
+/// the limit it is judged by would be grading itself, which is a softer version of
+/// the same silence this whole check exists to end.
+fn compare(limit: &Limit, candidate: &[Limit], violations: &mut Vec<String>) {
+    let Some(measured) = candidate.iter().find(|entry| entry.metric == limit.metric) else {
+        violations.push(format!(
+            "the budget limits `{}` and the candidate run does not measure it, so the limit \
+             cannot be said to hold",
+            limit.metric
+        ));
+        return;
+    };
+
+    // An operator this comparison does not implement is refused rather than
+    // assumed. Guessing that an unknown comparison meant "at most" is how a
+    // budget starts passing things it was written to stop.
+    if limit.operator != "less-than-or-equal" {
+        violations.push(format!(
+            "`{}` uses comparison `{}`, which this check does not implement",
+            limit.metric, limit.operator
+        ));
+        return;
+    }
+
+    match (
+        limit.ceiling.parse::<f64>(),
+        measured.measured.parse::<f64>(),
+    ) {
+        (Ok(ceiling), Ok(value)) if value <= ceiling => {}
+        (Ok(ceiling), Ok(value)) => violations.push(format!(
+            "`{}` measured {value} against a limit of {ceiling}, which is a regression",
+            limit.metric
+        )),
+        _ => violations.push(format!(
+            "`{}` has a limit or a measurement that is not a number",
+            limit.metric
+        )),
+    }
+}
+
+/// Reads every limit a record states, in the order it states them.
+fn limits(path: &Path) -> Result<Vec<Limit>, String> {
+    let rows = jq_value(
+        path,
+        r#".budget.limits[] | "\(.metric)\t\(.limit)\t\(.measured)\t\(.operator)""#,
+    )?;
+    if rows.is_empty() {
+        return Err(format!("{} states no budget limits", path.display()));
+    }
+
+    rows.lines()
+        .map(|row| {
+            let mut fields = row.split('\t');
+            match (fields.next(), fields.next(), fields.next(), fields.next()) {
+                (Some(metric), Some(ceiling), Some(measured), Some(operator)) => Ok(Limit {
+                    metric: metric.to_owned(),
+                    ceiling: ceiling.to_owned(),
+                    measured: measured.to_owned(),
+                    operator: operator.to_owned(),
+                }),
+                _ => Err(format!(
+                    "{} states a limit that is not complete",
+                    path.display()
+                )),
+            }
+        })
+        .collect()
+}
+
 fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
     for schema in [
         "configuration",

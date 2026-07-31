@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::env;
+use std::path::Path;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -17,10 +18,21 @@ fn main() -> ExitCode {
         [verify, spikes] if verify == "verify" && spikes == "spikes" => {
             ("spikes", ravel_xtask::verify_spikes(&root))
         }
+        [verify, budget, run] if verify == "verify" && budget == "budget" => {
+            let report = ravel_xtask::verify_budget(&root, Path::new(run));
+            // Notes say what was not compared, and they print whether or not the
+            // comparison passed. A limit that is quietly not checked reads
+            // exactly like one that passed, which is the failure this command
+            // exists to end.
+            for note in &report.notes {
+                println!("- {note}");
+            }
+            ("budget", report.violations)
+        }
         _ => {
             eprintln!(
                 "usage:\n  cargo xtask verify scaffold\n  cargo xtask verify spikes\n  \
-                 cargo xtask verify milestone M<N>"
+                 cargo xtask verify milestone M<N>\n  cargo xtask verify budget <run.json>"
             );
             return ExitCode::from(2);
         }

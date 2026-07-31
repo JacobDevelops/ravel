@@ -89,12 +89,16 @@ in
         )
         taplo format --check "''${toml_files[@]}"
 
+        # Restricted local material is ignored rather than repository content, so
+        # it is not held to the repository's formatting. Its README is tracked and
+        # stays in.
         mapfile -d "" markdown_files < <(
           find . -type f -name "*.md" \
             -not -path "./.devenv/*" \
             -not -path "./.direnv/*" \
             -not -path "./.jj/*" \
             -not -path "./target/*" \
+            -not \( -path "./tests/fixtures/local/*" ! -name "README.md" \) \
             -print0
         )
         markdownlint "''${markdown_files[@]}"
@@ -273,6 +277,20 @@ in
       '';
     };
 
+    ravel-measure-loader-overhead = {
+      description = "Measure loader overhead and set the M2 regression budget.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        # Release, because a debug build would measure the profile rather than
+        # the loader, and because the pack figures describe what an operator
+        # would actually build.
+        cargo build --locked --release -p ravel-spike-m2-loader-overhead
+        ./target/release/ravel-spike-m2-loader-overhead
+      '';
+    };
+
     ravel-verify-stack = {
       description = "Verify the jj change stack contract.";
       exec = ''
@@ -397,6 +415,7 @@ in
     "ravel:spike-adg-3".exec = "ravel-spike-adg-3";
     "ravel:spike-adg-4".exec = "ravel-spike-adg-4";
     "ravel:spike-adg-5".exec = "ravel-spike-adg-5";
+    "ravel:measure-loader-overhead".exec = "ravel-measure-loader-overhead";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";

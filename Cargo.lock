@@ -976,6 +976,7 @@ name = "ravel-spike-adg-5-prism"
 version = "0.0.0"
 dependencies = [
  "ravel-spike-harness",
+ "serde_json",
 ]
 
 [[package]]
@@ -985,6 +986,20 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+]
+
+[[package]]
+name = "ravel-spike-m2-loader-overhead"
+version = "0.0.0"
+dependencies = [
+ "ravel-core",
+ "ravel-host-api",
+ "ravel-package",
+ "ravel-resolve",
+ "ravel-spike-harness",
+ "ravel-test-mod-noop",
+ "ravel-testkit",
+ "serde_json",
 ]
 
 [[package]]

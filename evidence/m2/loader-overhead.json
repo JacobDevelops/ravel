@@ -1,0 +1,181 @@
+{
+  "budget": {
+    "enforcement": "Nothing checks these limits automatically yet. The milestone gate asks only that each one be a number above its measurement; comparing a later run against them is M3's to build, and until it does the rule above is a sentence rather than a mechanism. Re-running this measurement writes a new record, so keep the M2 record if you want the baseline: pass an output path rather than overwriting it.",
+    "expiry": "The three build limits describe a linked pack, which is the only shape available while ADG-2 is open. M3 both consumes this budget and closes ADG-2, so if it selects anything other than linking those three limits describe a shape that no longer exists and are remeasured rather than carried. The three loader limits do not depend on that choice.",
+    "hardwareProfile": "linux-reference-v1",
+    "headroomFactor": 2.0,
+    "limits": [
+      {
+        "limit": 14168.0,
+        "measured": 7084.0,
+        "metric": "loader.noopPackage.pipeline.p99",
+        "operator": "less-than-or-equal",
+        "unit": "nanoseconds"
+      },
+      {
+        "limit": 15539.0,
+        "measured": 7769.25,
+        "metric": "loader.marginalCostPerPackage.p99",
+        "operator": "less-than-or-equal",
+        "unit": "nanoseconds"
+      },
+      {
+        "limit": 12.0,
+        "measured": 5.51,
+        "metric": "loader.modCall.p99",
+        "operator": "less-than-or-equal",
+        "unit": "nanoseconds"
+      },
+      {
+        "limit": 1760.0,
+        "measured": 880.0,
+        "metric": "build.packCompile",
+        "operator": "less-than-or-equal",
+        "unit": "milliseconds"
+      },
+      {
+        "limit": 1196.0,
+        "measured": 598.0,
+        "metric": "build.relink",
+        "operator": "less-than-or-equal",
+        "unit": "milliseconds"
+      },
+      {
+        "limit": 3770.0,
+        "measured": 1885.0,
+        "metric": "build.binaryGrowthPerMod",
+        "operator": "less-than-or-equal",
+        "unit": "bytes"
+      }
+    ],
+    "protocol": "m2-loader-budget-v1",
+    "restatement": "These limits hold on linux-reference-v1 only. A different machine remeasures rather than reinterprets them, because a budget without the machine it was measured on is not a budget.",
+    "rule": "A measurement above its limit on this hardware profile is a regression and stops the milestone that produced it. Every limit is the M2 measurement times two, so a change that doubles a loader cost is what fails."
+  },
+  "identity": {
+    "buildProfile": "release",
+    "clock": "monotonic",
+    "hardwareProfile": "linux-reference-v1",
+    "hardwareProfileSha256": "532b589e5763a650ce154bfe6ebb9c77d615cb160bcc83e3627a3b3bb539c96c",
+    "minecraft": "26.1.2",
+    "target": "x86_64-linux"
+  },
+  "loader": {
+    "package": "noop",
+    "packagesInSet": 1,
+    "samplesPerMetric": 5000,
+    "scaling": {
+      "marginalMethod": "a secant between the one-package and 256-package 99th percentiles. The curve is not linear — per-package cost is flat near the middle sizes and higher at 256 — so this takes the steeper end and the budget it sets is the conservative one.",
+      "marginalPerPackageP99": 7769.250980392157,
+      "method": "the same pipeline over copies of the no-op package under distinct identities, so the curve is the loader's cost per package rather than any package's own",
+      "points": [
+        {
+          "median": 5801.0,
+          "p99": 6272.0,
+          "packages": 1
+        },
+        {
+          "median": 93347.0,
+          "p99": 97405.0,
+          "packages": 16
+        },
+        {
+          "median": 373819.0,
+          "p99": 402694.0,
+          "packages": 64
+        },
+        {
+          "median": 1841183.0,
+          "p99": 1987431.0,
+          "packages": 256
+        }
+      ]
+    },
+    "stages": {
+      "lifecycleAndChecksResidual": {
+        "method": "the whole pipeline's 99th percentile less the sum of three stage 99th percentiles, each from its own run, which leaves the lifecycle machine plus the compatibility and target checks. It is a difference of percentiles and therefore not a percentile: the four tails do not coincide, so it understates the true remainder, and a negative result is clamped to zero rather than reported. Read it as an order of magnitude, not a measurement.",
+        "nanoseconds": 1333.0
+      },
+      "parseManifest": {
+        "median": 1122.0,
+        "p95": 1173.0,
+        "p99": 1212.0,
+        "samples": 5000
+      },
+      "resolve": {
+        "median": 190.0,
+        "p95": 211.0,
+        "p99": 221.0,
+        "samples": 5000
+      },
+      "verifyIntegrity": {
+        "median": 3507.0,
+        "p95": 3596.0,
+        "p99": 4318.0,
+        "samples": 5000
+      }
+    },
+    "unit": "nanoseconds",
+    "wholePipeline": {
+      "median": 5972.0,
+      "p95": 6152.0,
+      "p99": 7084.0,
+      "samples": 5000
+    }
+  },
+  "milestone": "M2",
+  "modExecution": {
+    "gate": "ADG-2",
+    "linkedPack": {
+      "baselineBinaryBytes": 447744,
+      "baselineBuildMilliseconds": 2174,
+      "binaryGrowthBytes": 482736,
+      "binaryGrowthBytesPerMod": 1885,
+      "compileMillisecondsPerMod": 3,
+      "method": "two cold release builds of a generated workspace — one host with no mods linked, one with the whole pack — plus one incremental rebuild after a single mod changed. Per-mod figures divide the difference by the pack size and assume the cost is linear across it.",
+      "packBinaryBytes": 930480,
+      "packBuildMilliseconds": 3054,
+      "packCompileMilliseconds": 880,
+      "packSize": 256,
+      "relinkDetail": "One mod's source changed and the set was rebuilt, which is the whole cost of iterating on a mod when the set is linked. ADG-2 put this requirement on M2's tooling rather than on the mod format.",
+      "relinkMilliseconds": 598
+    },
+    "modCalls": {
+      "callDetail": "One HostMod::enter through the trait object the loader drives, which is the in-process safe-Rust call M2 has. It is not a measurement of any ADG-2 candidate.",
+      "callNanoseconds": {
+        "median": 5.17,
+        "p95": 5.18,
+        "p99": 5.51,
+        "samples": 5000
+      },
+      "perModPerProcessRun": 5,
+      "perTick": 0,
+      "perTickDetail": "The loader makes no mod call per tick in M2. The pipeline is pre-world and the lifecycle is the whole surface, so a mod is entered once per state and never again. ADG-2 reports the difference between its two leading candidates as 0.625 ns per call, which reaches 0.1 ms at 160000 calls in a tick; M3 is where the first non-zero per-tick count is measured and this budget is where it lands."
+    },
+    "status": "measured only; ADG-2 selects the mod execution and distribution model in M3 and nothing in this record prefers a candidate"
+  },
+  "record": "m2-w8-loader-overhead",
+  "schemaVersion": 1,
+  "summary": "What Ravel's pre-world loader costs on Linux for the no-op package, what a linked pack-sized set costs to build, and the numeric budget those measurements set for M3.",
+  "trial": {
+    "commandSha256": "97f17307d128ae4bb74e0b08d39094297ce397530a21692949aa6e5834dda3fc",
+    "revision": {
+      "changeId": "wxzwmyllqvrxvzkkyuzrkvlxoykrqoqm",
+      "dirty": true,
+      "id": "df717025a48fab4f6ae5702bc481f12a222e689f"
+    },
+    "startedAt": "2026-07-31T03:22:25Z"
+  },
+  "whatThisDoesNotSay": [
+    "The pipeline runs no JVM. Reaching the loader from the game costs what ADG-1 measured and the two add.",
+    "The no-op mod body does nothing, so every loader figure is a floor rather than a prediction of what a real mod set costs.",
+    "The scaling curve uses copies of one package, so it measures the loader's cost per package and not the cost of a dependency graph with real edges.",
+    "Integrity verification reads the package's artifacts, so the pipeline figures include filesystem work against a warm page cache. A cold cache is slower and is not measured.",
+    "The generated pack's mods are one struct each. A pack of real mods compiles slower and links larger, so the per-mod build figures are also floors.",
+    "Every build figure is one unrepeated sample: one cold baseline build, one cold pack build, one rebuild, differenced. There is no variance and no repetition behind them.",
+    "Cargo compiles the generated pack across every core this machine has, so the per-mod compile figure is amortized throughput on a sixteen-thread host rather than what one mod costs to compile.",
+    "Nothing here measures an ADG-2 candidate. The mod call is the in-process safe-Rust call M2 has, and the pack figures describe a linked set because that is the only shape available while ADG-2 is deferred — not because it was chosen.",
+    "The mod call hides its receiver and its result from the optimizer, without which a thousand devirtualized counter increments fold into one add and the measurement reads as 0.02 ns. That barrier costs something itself, so this figure is not comparable with ADG-2's 2.50 ns linked call, which was measured a different way."
+  ],
+  "workPackage": "M2-W8"
+}

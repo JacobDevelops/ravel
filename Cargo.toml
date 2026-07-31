@@ -8,6 +8,7 @@ members = [
   "experiments/adg-3-bindings",
   "experiments/adg-4-state",
   "experiments/adg-5-prism",
+  "experiments/m2-loader-overhead",
   "experiments/spike-harness",
   "test-mods/*",
   "tests/conformance",
@@ -41,6 +42,7 @@ ravel-sdk = { path = "crates/ravel-sdk", version = "0.0.0" }
 ravel-sdk-macros = { path = "crates/ravel-sdk-macros", version = "0.0.0" }
 ravel-spike-adg-2-guest = { path = "experiments/adg-2-guest", version = "0.0.0" }
 ravel-spike-adg-3-bindings = { path = "experiments/adg-3-bindings", version = "0.0.0" }
+ravel-spike-adg-5-prism = { path = "experiments/adg-5-prism", version = "0.0.0" }
 ravel-spike-harness = { path = "experiments/spike-harness", version = "0.0.0" }
 ravel-test-mod-noop = { path = "test-mods/noop", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }

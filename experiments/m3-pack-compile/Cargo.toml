@@ -1,0 +1,22 @@
+[package]
+name = "ravel-spike-m3-pack-compile"
+description = "ADG-2 mechanism measurement: what compiling a pack-sized set of realistic mods costs"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ravel-spike-harness.workspace = true
+serde_json.workspace = true
+
+# This experiment writes Rust, shells out to cargo, and reads `/proc`; nothing
+# here needs unsafe, so it keeps the workspace's forbid rather than the
+# measurement boundary's allowance.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"
+pedantic = "deny"

@@ -291,6 +291,32 @@ in
       '';
     };
 
+    ravel-measure-pack-compile = {
+      description = "Measure what a pack-sized set of realistic mods costs to compile.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        # Release, because the figures describe what a player's machine would
+        # actually build, and the generated packs are built in release too.
+        cargo build --locked --release -p ravel-spike-m3-pack-compile
+        ./target/release/ravel-spike-m3-pack-compile
+      '';
+    };
+
+    ravel-measure-pack-compile-variants = {
+      description = "Measure the four-core, dependency-graph, and link-time pack compile variants.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        # Splices into the record the curve wrote, so that record has to exist
+        # and its numbers are left exactly as they were measured.
+        cargo build --locked --release -p ravel-spike-m3-pack-compile
+        ./target/release/ravel-spike-m3-pack-compile --variants
+      '';
+    };
+
     ravel-verify-stack = {
       description = "Verify the jj change stack contract.";
       exec = ''
@@ -416,6 +442,8 @@ in
     "ravel:spike-adg-4".exec = "ravel-spike-adg-4";
     "ravel:spike-adg-5".exec = "ravel-spike-adg-5";
     "ravel:measure-loader-overhead".exec = "ravel-measure-loader-overhead";
+    "ravel:measure-pack-compile".exec = "ravel-measure-pack-compile";
+    "ravel:measure-pack-compile-variants".exec = "ravel-measure-pack-compile-variants";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";
     "ravel:fixture-reconstruct".exec = "ravel-fixture-reconstruct";

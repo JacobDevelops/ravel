@@ -49,6 +49,7 @@ const EXPERIMENT_NAMES: &[&str] = &[
     "adg-4-state",
     "adg-5-prism",
     "m2-loader-overhead",
+    "m3-pack-compile",
     "spike-harness",
 ];
 

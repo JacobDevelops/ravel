@@ -1,0 +1,456 @@
+{
+  "compile": {
+    "baselineDetail": "A host linking no mod, which is the shared cost of the loader crates, serde, and the link itself. Subtracted from each cold build so the remainder is attributable to the mods.",
+    "baselineMilliseconds": 2526,
+    "marginalColdMillisecondsPerMod": 113.34,
+    "marginalMethod": "a secant between the one-mod and 256-mod cold medians, each already less the baseline, so it is what one more mod adds across the whole measured range rather than a fitted slope.",
+    "method": "Three cold release builds per pack size against a cleared build directory, then three warm rebuilds after appending a line to one mod's source. Cargo builds across every core the machine has, so a per-mod figure is amortized throughput on a sixteen-thread host rather than what one mod costs to compile.",
+    "points": [
+      {
+        "binaryBytes": 448152,
+        "cacheBytes": 33912473,
+        "coldMilliseconds": 2526,
+        "coldMillisecondsLessBaseline": 0,
+        "coldMillisecondsPerMod": null,
+        "coldPeakProcessRssBytes": 274870272,
+        "coldPeakTreeRssBytes": 568410112,
+        "coldRssSamples": 257,
+        "coldSamplesMilliseconds": [
+          2526,
+          2351,
+          2550
+        ],
+        "modSourceBytes": 0,
+        "packSize": 0,
+        "warmMilliseconds": null,
+        "warmPeakTreeRssBytes": null,
+        "warmSamplesMilliseconds": []
+      },
+      {
+        "binaryBytes": 664360,
+        "cacheBytes": 46506332,
+        "coldMilliseconds": 3130,
+        "coldMillisecondsLessBaseline": 604,
+        "coldMillisecondsPerMod": 604.0,
+        "coldPeakProcessRssBytes": 279330816,
+        "coldPeakTreeRssBytes": 859860992,
+        "coldRssSamples": 330,
+        "coldSamplesMilliseconds": [
+          3399,
+          2837,
+          3130
+        ],
+        "modSourceBytes": 33873,
+        "packSize": 1,
+        "warmMilliseconds": 958,
+        "warmPeakTreeRssBytes": 214081536,
+        "warmSamplesMilliseconds": [
+          1079,
+          958,
+          753
+        ]
+      },
+      {
+        "binaryBytes": 2334720,
+        "cacheBytes": 88149319,
+        "coldMilliseconds": 4550,
+        "coldMillisecondsLessBaseline": 2024,
+        "coldMillisecondsPerMod": 126.5,
+        "coldPeakProcessRssBytes": 277778432,
+        "coldPeakTreeRssBytes": 2832695296,
+        "coldRssSamples": 430,
+        "coldSamplesMilliseconds": [
+          4999,
+          4550,
+          3948
+        ],
+        "modSourceBytes": 541968,
+        "packSize": 16,
+        "warmMilliseconds": 901,
+        "warmPeakTreeRssBytes": 211226624,
+        "warmSamplesMilliseconds": [
+          794,
+          1093,
+          901
+        ]
+      },
+      {
+        "binaryBytes": 7677320,
+        "cacheBytes": 221401610,
+        "coldMilliseconds": 9819,
+        "coldMillisecondsLessBaseline": 7293,
+        "coldMillisecondsPerMod": 113.95,
+        "coldPeakProcessRssBytes": 280887296,
+        "coldPeakTreeRssBytes": 2835132416,
+        "coldRssSamples": 886,
+        "coldSamplesMilliseconds": [
+          10351,
+          9020,
+          9819
+        ],
+        "modSourceBytes": 2167872,
+        "packSize": 64,
+        "warmMilliseconds": 1045,
+        "warmPeakTreeRssBytes": 215711744,
+        "warmSamplesMilliseconds": [
+          1045,
+          1237,
+          953
+        ]
+      },
+      {
+        "binaryBytes": 29046680,
+        "cacheBytes": 754410483,
+        "coldMilliseconds": 32031,
+        "coldMillisecondsLessBaseline": 29505,
+        "coldMillisecondsPerMod": 115.25,
+        "coldPeakProcessRssBytes": 340762624,
+        "coldPeakTreeRssBytes": 2849370112,
+        "coldRssSamples": 2918,
+        "coldSamplesMilliseconds": [
+          32031,
+          35557,
+          31516
+        ],
+        "modSourceBytes": 8671488,
+        "packSize": 256,
+        "warmMilliseconds": 1632,
+        "warmPeakTreeRssBytes": 420720640,
+        "warmSamplesMilliseconds": [
+          1632,
+          2166,
+          1628
+        ]
+      }
+    ],
+    "repeats": 3,
+    "unit": "milliseconds"
+  },
+  "disk": {
+    "cacheDetail": "The generated workspace's whole `target` directory after the cold build, which is what a player's machine keeps so the next warm rebuild is warm. A release build with debug info off still keeps every crate's rlib and every incremental fingerprint.",
+    "largestPackBinaryBytes": 29046680,
+    "largestPackCacheBytes": 754410483,
+    "toolchainBytes": 195541312,
+    "toolchainDetail": "The `rustc --print=sysroot` tree: the compiler, its standard library for this target, and cargo. Apparent size summed per path, so files the store hard-links are counted once each rather than deduplicated, and a shipped toolchain would compress. It excludes the linker and the C runtime, which come from the system."
+  },
+  "gate": "ADG-2",
+  "identity": {
+    "buildJobs": 16,
+    "buildProfile": "release",
+    "clock": "monotonic",
+    "hardwareProfile": "linux-reference-v1",
+    "hardwareProfileSha256": "532b589e5763a650ce154bfe6ebb9c77d615cb160bcc83e3627a3b3bb539c96c",
+    "minecraft": "26.1.2",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "target": "x86_64-linux",
+    "toolchain": "rf2kg09z2w5zp9grmw34a6dn3hmhk5fw-rust-minimal-1.95.0"
+  },
+  "milestone": "M3",
+  "protocol": "m3-pack-compile-v1",
+  "record": "m3-adg-2-pack-compile",
+  "schemaVersion": 1,
+  "summary": "What compiling a pack-sized set of mods with real bodies costs on Linux — cold, warm after one mod changes, in peak memory, and on disk — which is the measurement ADG-2 named as deciding between a shipped per-platform binary and source compiled by a bundled toolchain.",
+  "syntheticMod": {
+    "dependencies": [
+      "ravel-core",
+      "ravel-host-api",
+      "serde (derive)",
+      "serde_json"
+    ],
+    "derivedTypes": 11,
+    "featuresPerMod": 8,
+    "monomorphizations": 16,
+    "registryClaimsPerMod": 24,
+    "representativeness": "Sized against `test-mods/registries`, the largest tracked test mod, whose body is about 150 lines before its tests; `sourceLines` above says what this one came to. It was scaled by derives and generic instantiations rather than by lines, because that is what Rust charges for. It is still not a real mod: a large Minecraft mod is thousands of lines with dozens of dependencies, and nothing measured here has a dependency outside serde. Read every figure as a floor — a far higher one than M2-W8's one-struct crates, and still a floor.",
+    "shape": "One configuration type deserialized from JSON at construction, one graded enum with four variants and three match-based methods, one internally tagged result enum, a generic `Rule` trait with an associated input type, two generic functions over that trait, and one feature block per feature — each a serde-derived input struct, a `Rule` implementation with branching logic, three registry claims, and a driver. The `HostMod` implementation registers every claim and runs every feature on entering `Running`.",
+    "sourceBytes": 33873,
+    "sourceLines": 1161
+  },
+  "trial": {
+    "commandSha256": "cbe70d1196a4e8e166eb31e1e0a1315754e7bd1fd5b988d6ca7c5d6623847f5a",
+    "durationMs": 173843,
+    "revision": {
+      "changeId": "wpuqwqlrpuvttpzrvqvuxryzwmptuxyt",
+      "dirty": true,
+      "id": "4c550dae4d47f273a25a0f078ae75d53d90eb083"
+    },
+    "startedAt": "2026-07-31T06:51:28Z"
+  },
+  "variants": {
+    "chainShape": "`mod-000` through `mod-015` form a linear spine, each depending on the one before it. Every mod off the spine depends on the spine's tip and its midpoint. The critical path is therefore 17 crates deep, and no two spine crates can compile at the same time. Each dependency is called, not merely declared, so the edge is real in the type graph.",
+    "ltoShape": "`lto = \"fat\"` with `codegen-units = 1` on the release profile of the generated workspace, so every mod crate's bitcode is merged and optimized as one unit at link time.",
+    "method": "Each variant changes exactly one thing about the base curve and is measured at 64 and 256 mods. Every figure is the faster of two builds, with both recorded; the curve above is a median of three, so compare a variant against the `independent-j16` control here rather than against the curve directly.",
+    "repeats": 2,
+    "results": [
+      {
+        "id": "independent-j16",
+        "jobs": null,
+        "jobsDetail": "every hardware thread the machine has",
+        "lto": false,
+        "points": [
+          {
+            "binaryBytes": 7677088,
+            "cacheBytes": 221560035,
+            "coldMilliseconds": 8911,
+            "coldPeakProcessRssBytes": 274419712,
+            "coldPeakTreeRssBytes": 2834886656,
+            "coldSamplesMilliseconds": [
+              10331,
+              8911
+            ],
+            "packSize": 64,
+            "warmFirstModMilliseconds": 936,
+            "warmFirstModPeakTreeRssBytes": 249860096,
+            "warmFirstModSamplesMilliseconds": [
+              936,
+              988
+            ],
+            "warmLastModMilliseconds": 987,
+            "warmLastModPeakTreeRssBytes": 240467968,
+            "warmLastModSamplesMilliseconds": [
+              1026,
+              987
+            ]
+          },
+          {
+            "binaryBytes": 29046496,
+            "cacheBytes": 755046514,
+            "coldMilliseconds": 30522,
+            "coldPeakProcessRssBytes": 341630976,
+            "coldPeakTreeRssBytes": 2854739968,
+            "coldSamplesMilliseconds": [
+              30522,
+              37040
+            ],
+            "packSize": 256,
+            "warmFirstModMilliseconds": 1792,
+            "warmFirstModPeakTreeRssBytes": 438509568,
+            "warmFirstModSamplesMilliseconds": [
+              1792,
+              2099
+            ],
+            "warmLastModMilliseconds": 1732,
+            "warmLastModPeakTreeRssBytes": 465653760,
+            "warmLastModSamplesMilliseconds": [
+              1732,
+              1808
+            ]
+          }
+        ],
+        "question": "The control. The same pack the curve measured, rerun under this section's two-run protocol so the other three are compared against a like measurement rather than against the curve's median of three.",
+        "shape": "independent"
+      },
+      {
+        "id": "independent-j4",
+        "jobs": 4,
+        "jobsDetail": "cargo --jobs 4",
+        "lto": false,
+        "points": [
+          {
+            "binaryBytes": 7677088,
+            "cacheBytes": 221558422,
+            "coldMilliseconds": 23062,
+            "coldPeakProcessRssBytes": 276897792,
+            "coldPeakTreeRssBytes": 737980416,
+            "coldSamplesMilliseconds": [
+              24737,
+              23062
+            ],
+            "packSize": 64,
+            "warmFirstModMilliseconds": 968,
+            "warmFirstModPeakTreeRssBytes": 254902272,
+            "warmFirstModSamplesMilliseconds": [
+              1014,
+              968
+            ],
+            "warmLastModMilliseconds": 939,
+            "warmLastModPeakTreeRssBytes": 218845184,
+            "warmLastModSamplesMilliseconds": [
+              939,
+              956
+            ]
+          },
+          {
+            "binaryBytes": 29046496,
+            "cacheBytes": 755044389,
+            "coldMilliseconds": 73803,
+            "coldPeakProcessRssBytes": 339066880,
+            "coldPeakTreeRssBytes": 754434048,
+            "coldSamplesMilliseconds": [
+              77360,
+              73803
+            ],
+            "packSize": 256,
+            "warmFirstModMilliseconds": 1643,
+            "warmFirstModPeakTreeRssBytes": 466993152,
+            "warmFirstModSamplesMilliseconds": [
+              1643,
+              1743
+            ],
+            "warmLastModMilliseconds": 1712,
+            "warmLastModPeakTreeRssBytes": 429768704,
+            "warmLastModSamplesMilliseconds": [
+              1791,
+              1712
+            ]
+          }
+        ],
+        "question": "What a four-core player pays, in time and in peak memory. Peak memory during a build is set by how many rustc processes run at once, so this is the number that decides whether a build is safe on a small machine.",
+        "shape": "independent"
+      },
+      {
+        "id": "chain-j16",
+        "jobs": null,
+        "jobsDetail": "every hardware thread the machine has",
+        "lto": false,
+        "points": [
+          {
+            "binaryBytes": 7658544,
+            "cacheBytes": 222288721,
+            "coldMilliseconds": 11824,
+            "coldPeakProcessRssBytes": 276676608,
+            "coldPeakTreeRssBytes": 2926833664,
+            "coldSamplesMilliseconds": [
+              12551,
+              11824
+            ],
+            "packSize": 64,
+            "warmFirstModMilliseconds": 9258,
+            "warmFirstModPeakTreeRssBytes": 2934312960,
+            "warmFirstModSamplesMilliseconds": [
+              9258,
+              9519
+            ],
+            "warmLastModMilliseconds": 1005,
+            "warmLastModPeakTreeRssBytes": 222797824,
+            "warmLastModSamplesMilliseconds": [
+              1005,
+              1016
+            ]
+          },
+          {
+            "binaryBytes": 28971352,
+            "cacheBytes": 758446034,
+            "coldMilliseconds": 33234,
+            "coldPeakProcessRssBytes": 341000192,
+            "coldPeakTreeRssBytes": 2956996608,
+            "coldSamplesMilliseconds": [
+              33234,
+              36157
+            ],
+            "packSize": 256,
+            "warmFirstModMilliseconds": 29775,
+            "warmFirstModPeakTreeRssBytes": 2966986752,
+            "warmFirstModSamplesMilliseconds": [
+              29775,
+              30689
+            ],
+            "warmLastModMilliseconds": 1759,
+            "warmLastModPeakTreeRssBytes": 416210944,
+            "warmLastModSamplesMilliseconds": [
+              1854,
+              1759
+            ]
+          }
+        ],
+        "question": "What a dependency graph costs. Cargo cannot start a crate until its dependencies finish, so a deep graph converts parallel work into serial work and the cost lands on machines with more cores, not fewer.",
+        "shape": "chain"
+      },
+      {
+        "id": "lto-fat-j16",
+        "jobs": null,
+        "jobsDetail": "every hardware thread the machine has",
+        "lto": true,
+        "points": [
+          {
+            "binaryBytes": 3894512,
+            "cacheBytes": 220328661,
+            "coldMilliseconds": 27917,
+            "coldPeakProcessRssBytes": 539037696,
+            "coldPeakTreeRssBytes": 3039952896,
+            "coldSamplesMilliseconds": [
+              27917,
+              28306
+            ],
+            "packSize": 64,
+            "warmFirstModMilliseconds": 21128,
+            "warmFirstModPeakTreeRssBytes": 576978944,
+            "warmFirstModSamplesMilliseconds": [
+              21128,
+              21267
+            ],
+            "warmLastModMilliseconds": 21332,
+            "warmLastModPeakTreeRssBytes": 577351680,
+            "warmLastModSamplesMilliseconds": [
+              21332,
+              21600
+            ]
+          },
+          {
+            "binaryBytes": 14185256,
+            "cacheBytes": 750782029,
+            "coldMilliseconds": 104311,
+            "coldPeakProcessRssBytes": 1705496576,
+            "coldPeakTreeRssBytes": 3082317824,
+            "coldSamplesMilliseconds": [
+              112552,
+              104311
+            ],
+            "packSize": 256,
+            "warmFirstModMilliseconds": 77359,
+            "warmFirstModPeakTreeRssBytes": 1752211456,
+            "warmFirstModSamplesMilliseconds": [
+              77621,
+              77359
+            ],
+            "warmLastModMilliseconds": 77839,
+            "warmLastModPeakTreeRssBytes": 1752502272,
+            "warmLastModSamplesMilliseconds": [
+              82159,
+              77839
+            ]
+          }
+        ],
+        "question": "What optimizing the pack as one unit costs, and whether the warm path survives it. Mods stay separately shipped and versioned; only the optimization is shared.",
+        "shape": "independent"
+      }
+    ],
+    "sizes": [
+      64,
+      256
+    ],
+    "spineDepth": 16,
+    "trial": {
+      "detail": "Measured in a later run than the curve above and spliced in, so the curve's numbers are the ones it recorded rather than a rerun of them.",
+      "durationMs": 1161231,
+      "revision": {
+        "changeId": "wpuqwqlrpuvttpzrvqvuxryzwmptuxyt",
+        "dirty": true,
+        "id": "4c550dae4d47f273a25a0f078ae75d53d90eb083"
+      },
+      "startedAt": "2026-07-31T07:08:49Z"
+    },
+    "unit": "milliseconds",
+    "warmTouchPoints": "Two warm rebuilds are measured per variant: one changing `mod-000` and one changing the last mod. Under the independent shape those are two ordinary mods and the pair is a repeat. Under the chain shape `mod-000` is the root of the spine, so everything depends on it transitively, and the last mod is a leaf that nothing depends on — the worst and best cases a player can hit.",
+    "whatThisDoesNotSay": [
+      "The four-core figure limits cargo's job count on a sixteen-thread machine. It is not a four-core machine: the cores are the same fast cores, the cache is the whole chip's, and memory bandwidth is not contended the way a smaller part would contend it. Read it as the parallelism a player has, not as the machine.",
+      "The chain shape is one graph, not a survey of graphs. Its depth is the whole finding, and a real pack's depth is unknown — a shallower graph costs less than this and a deeper one costs more, in proportion to the serial section.",
+      "Every mod off the spine depends on the same two spine crates, so the fan-out is uniform. A real pack has hub libraries of very different popularity.",
+      "The link-time figures are fat LTO with one codegen unit, which is the expensive end. Thin LTO would cost less and buy less, and is not measured.",
+      "Peak memory stays a 25-millisecond sampled sum over the process tree, so the true peak is at or above what is recorded. That understates the link-time variant most, because its peak is one short-lived process rather than a long plateau.",
+      "The disk figures here are for the variant's own workspace after its last cold build. The warm rebuilds that follow grow the cache further and that growth is not recorded."
+    ]
+  },
+  "whatThisDoesNotSay": [
+    "The mods are generated, so they are alike. A real pack's mods differ in size, in dependencies, and in how much they share, and 256 copies of one shape compile more evenly than 256 different ones would.",
+    "No generated mod depends on another. A real pack has a dependency graph, and cargo cannot start a dependent crate until its dependency finishes, so a real set of the same total size parallelizes worse than this one.",
+    "Nothing depends on anything outside serde and the two Ravel crates. Real mods pull real dependency trees, and those are compiled once per pack rather than once per mod — a cost this measurement omits entirely rather than underestimates.",
+    "Each figure is the median of three runs on one machine on one afternoon. Every sample is recorded beside it, so the spread is readable, but three runs is not a distribution and nothing here is a percentile.",
+    "Peak memory is a 25-millisecond sampled sum over the cargo process tree, so a spike shorter than the interval is missed, and the true peak is at or above what is recorded.",
+    "Cargo compiled across every core this machine has. A player with four cores pays more wall-clock time for the same work, and the per-mod figures are throughput on a sixteen-thread host rather than the cost of one mod.",
+    "The build ran against a warm cargo registry and a warm page cache, and downloaded nothing. A first install would also fetch and unpack the dependency crates.",
+    "The warm rebuild changes one mod and rebuilds. That is updating a mod, not adding one: adding a mod also compiles a crate that was never compiled here and relinks, which is between this figure and the cold one and is not measured.",
+    "This is release profile with cargo's defaults. A mechanism that shipped source could choose a cheaper profile, and a cheaper profile is a slower game.",
+    "Nothing here selects an ADG-2 mechanism. It measures what one of the two open mechanisms would cost, and says nothing about what the other one costs to maintain."
+  ]
+}

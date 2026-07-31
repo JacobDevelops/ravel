@@ -3,12 +3,12 @@ use std::fmt;
 use std::num::NonZeroU32;
 
 use ravel_core::{
-    DependencyRelationship, FailureKind, ModId, Side, SideSet, Version, VersionRange,
+    DependencyRelationship, FailureKind, ModId, Side, SideSet, StructuredFailure, Version,
+    VersionRange,
 };
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 
-use crate::PackageFailure;
 use crate::values::{NonEmptyText, RelativePath, SchemaVersion, Sha256Digest};
 
 /// Everything `schemas/package.schema.json` declares about one package.
@@ -376,7 +376,7 @@ impl fmt::Display for ManifestError {
 
 impl std::error::Error for ManifestError {}
 
-impl PackageFailure for ManifestError {
+impl StructuredFailure for ManifestError {
     /// A malformed manifest has no `SPEC.md` §9.2 kind.
     ///
     /// That list names the dependency-graph outcomes a player is shown before
@@ -386,15 +386,24 @@ impl PackageFailure for ManifestError {
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
+
+    /// The detail is the deserializer's own sentence rather than one this crate
+    /// wrote, so a report attributes it accordingly. It reports a line and a
+    /// column and never a location on disk, but that is `serde_json`'s promise
+    /// to keep, not this crate's to make on its behalf.
+    fn quotes_untrusted_text(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{DependencyRelationship, FailureKind, LifecycleState, Redaction, Side};
+    use ravel_core::{
+        DependencyRelationship, FailureKind, LifecycleState, Redaction, Side, StructuredFailure,
+    };
     use serde_json::{Value, json};
 
     use super::{ArtifactRole, DependencyOrder, ManifestError, PackageManifest};
-    use crate::PackageFailure;
 
     const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const OTHER_DIGEST: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
@@ -647,11 +656,16 @@ mod tests {
     }
 
     #[test]
-    fn a_manifest_failure_publishes_a_redacted_diagnostic() {
+    fn a_manifest_failure_hands_its_text_to_a_policy_rather_than_vouching_for_it() {
         let error = parse(&json!({})).expect_err("an empty object");
         let diagnostic = error.diagnostic();
-        assert_eq!(diagnostic.redaction, Redaction::Applied);
-        assert_eq!(diagnostic.text, error.to_string());
+        assert_eq!(diagnostic.redaction(), Redaction::Raw);
+        assert!(!diagnostic.is_publishable());
+        assert_eq!(diagnostic.text(), error.to_string());
+        assert!(
+            error.quotes_untrusted_text(),
+            "the detail is the deserializer's sentence"
+        );
     }
 
     #[test]

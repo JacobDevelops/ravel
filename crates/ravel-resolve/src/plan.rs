@@ -1,6 +1,6 @@
 use std::fmt;
 
-use ravel_core::{DiagnosticMessage, ModId, Redaction, Side, Version};
+use ravel_core::{ModId, Side, Version};
 
 /// The order a validated package set loads in, on one side.
 ///
@@ -52,7 +52,8 @@ impl LoadPlan {
     ///
     /// A discouraged relationship is the one dependency kind that reports
     /// without failing, so it is carried on the successful plan rather than in
-    /// an error. The list is empty for a package set that declares none.
+    /// an error, and a pre-world report notes it rather than refusing on it.
+    /// The list is empty for a package set that declares none.
     #[must_use]
     pub fn discouraged(&self) -> &[Discouraged] {
         &self.discouraged
@@ -76,22 +77,6 @@ pub struct Discouraged {
     pub installed: Version,
 }
 
-impl Discouraged {
-    /// Returns the report text, ready to publish.
-    ///
-    /// A discouragement names two mod ids and a version and nothing else, so
-    /// there is no filesystem path and no credential in it to remove, and the
-    /// text is tagged [`Redaction::Applied`] for the same reason every
-    /// `ravel-package` failure is.
-    #[must_use]
-    pub fn diagnostic(&self) -> DiagnosticMessage {
-        DiagnosticMessage {
-            text: self.to_string(),
-            redaction: Redaction::Applied,
-        }
-    }
-}
-
 impl fmt::Display for Discouraged {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self {
@@ -108,7 +93,7 @@ impl fmt::Display for Discouraged {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{ModId, Redaction, Side, Version};
+    use ravel_core::{ModId, Side, Version};
 
     use super::{Discouraged, LoadPlan};
 
@@ -162,12 +147,8 @@ mod tests {
     }
 
     #[test]
-    fn a_discouragement_publishes_a_redacted_diagnostic() {
-        let discouraged = discouragement();
-        let diagnostic = discouraged.diagnostic();
-
-        assert_eq!(diagnostic.redaction, Redaction::Applied);
-        assert_eq!(diagnostic.text, discouraged.to_string());
-        assert!(!diagnostic.text.contains('/'), "{}", diagnostic.text);
+    fn a_discouragement_names_only_mods_and_a_version() {
+        let rendered = discouragement().to_string();
+        assert!(!rendered.contains('/'), "{rendered}");
     }
 }

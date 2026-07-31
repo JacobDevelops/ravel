@@ -823,9 +823,10 @@ mod tests {
     use std::collections::BTreeSet;
 
     use ravel_core::{
-        DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, LifecycleState,
-        ModId, Redaction, Side, SideSet, StructuredFailure,
+        FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId, Redaction,
+        Side, SideSet, StructuredFailure,
     };
+    use ravel_observability::redact;
 
     use super::{
         LifecycleEntry, LifecycleError, LifecycleMachine, Requirement, executes_mod_code,
@@ -858,11 +859,11 @@ mod tests {
 
     fn attribution(name: &str, state: LifecycleState) -> FailureAttribution {
         FailureAttribution {
-            mod_id: id(name),
+            mod_id: Some(id(name)),
             version: None,
             dependency_chain: Vec::new(),
             state,
-            kind: FailureKind::MissingRequiredDependency,
+            kind: Some(FailureKind::MissingRequiredDependency),
             surface: None,
             environment: FailureEnvironment {
                 ravel: "0.1.0".parse().expect("valid version"),
@@ -870,10 +871,7 @@ mod tests {
                 platform: "linux".to_owned(),
                 architecture: "x86_64".to_owned(),
             },
-            message: DiagnosticMessage {
-                text: "the dependency is absent".to_owned(),
-                redaction: Redaction::Applied,
-            },
+            message: redact("the dependency is absent"),
         }
     }
 
@@ -1342,11 +1340,20 @@ mod tests {
     fn every_refusal_reports_itself_through_the_shared_failure_trait() {
         for (error, expected) in every_refusal() {
             let diagnostic = error.diagnostic();
-            assert_eq!(diagnostic.text, expected);
+            assert_eq!(diagnostic.text(), expected);
             assert_eq!(
-                diagnostic.redaction,
-                Redaction::Applied,
-                "lifecycle messages name mods, never paths or secrets"
+                diagnostic.redaction(),
+                Redaction::Raw,
+                "no failure vouches for its own text; only a policy does"
+            );
+            assert!(
+                !error.quotes_untrusted_text(),
+                "every lifecycle message is written here: {error:?}"
+            );
+            assert_eq!(
+                redact(diagnostic.text()).text(),
+                expected,
+                "a lifecycle message names mods, so the policy has nothing to take"
             );
 
             let expected_kind = match error {

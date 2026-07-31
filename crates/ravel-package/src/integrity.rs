@@ -3,11 +3,11 @@ use std::fs::File;
 use std::io::{ErrorKind, Read};
 use std::path::Path;
 
-use ravel_core::FailureKind;
+use ravel_core::{FailureKind, StructuredFailure};
 use sha2::{Digest, Sha256};
 
 use crate::values::{RelativePath, Sha256Digest};
-use crate::{Artifact, PackageFailure, PackageManifest, Provenance};
+use crate::{Artifact, PackageManifest, Provenance};
 
 /// How much of a file is hashed at a time.
 ///
@@ -187,7 +187,7 @@ impl fmt::Display for IntegrityError {
 
 impl std::error::Error for IntegrityError {}
 
-impl PackageFailure for IntegrityError {
+impl StructuredFailure for IntegrityError {
     /// An integrity failure has no `SPEC.md` §9.2 kind.
     ///
     /// That list names the dependency-graph outcomes reported before world
@@ -196,6 +196,12 @@ impl PackageFailure for IntegrityError {
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
+
+    /// [`Self::Unreadable`] quotes the operating system, which is text this
+    /// project did not write. The other two are written here and name a file.
+    fn quotes_untrusted_text(&self) -> bool {
+        matches!(self, Self::Unreadable { .. })
+    }
 }
 
 #[cfg(test)]
@@ -203,12 +209,12 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use ravel_core::{LifecycleState, Redaction};
+    use ravel_core::{LifecycleState, Redaction, StructuredFailure};
     use sha2::{Digest, Sha256};
 
     use super::{IntegrityError, verify_artifact, verify_package, verify_provenance};
+    use crate::PackageManifest;
     use crate::values::Sha256Digest;
-    use crate::{PackageFailure, PackageManifest};
 
     const ARTIFACT_BYTES: &[u8] = b"the artifact this package ships";
     const RECORD_BYTES: &[u8] = b"{\"origin\":\"example\"}";
@@ -375,6 +381,10 @@ mod tests {
         );
         assert_eq!(error.file(), "mod.bin");
         assert!(error.to_string().starts_with("`mod.bin` could not be read"));
+        assert!(
+            error.quotes_untrusted_text(),
+            "the detail is the operating system's sentence"
+        );
         fs::remove_dir_all(&root).expect("cleanup");
     }
 
@@ -412,10 +422,14 @@ mod tests {
             "{rendered}"
         );
 
-        assert_eq!(error.diagnostic().redaction, Redaction::Applied);
-        assert_eq!(error.diagnostic().text, rendered);
+        assert_eq!(error.diagnostic().redaction(), Redaction::Raw);
+        assert_eq!(error.diagnostic().text(), rendered);
         assert_eq!(error.lifecycle_state(), LifecycleState::Discovered);
         assert_eq!(error.failure_kind(), None);
+        assert!(
+            !error.quotes_untrusted_text(),
+            "a missing file is named by this crate"
+        );
         fs::remove_dir_all(&root).expect("cleanup");
     }
 

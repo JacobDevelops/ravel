@@ -5,13 +5,13 @@ use std::collections::BTreeSet;
 use std::num::NonZeroU32;
 
 use ravel_core::{
-    DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId,
-    Redaction, Side, SideSet,
+    FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId, Side, SideSet,
 };
 use ravel_loader::{
     LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,
     executes_mod_code,
 };
+use ravel_observability::redact;
 
 /// The states a set walks from `Discovered` to `Running`.
 const STARTUP: [LifecycleState; 6] = [
@@ -38,11 +38,11 @@ fn entry(name: &str, sides: &[Side], requirement: Requirement) -> LifecycleEntry
 
 fn attribution(name: &str, state: LifecycleState, kind: FailureKind) -> FailureAttribution {
     FailureAttribution {
-        mod_id: id(name),
+        mod_id: Some(id(name)),
         version: Some("1.0.0".parse().expect("valid version")),
         dependency_chain: Vec::new(),
         state,
-        kind,
+        kind: Some(kind),
         surface: None,
         environment: FailureEnvironment {
             ravel: "0.1.0".parse().expect("valid version"),
@@ -50,10 +50,7 @@ fn attribution(name: &str, state: LifecycleState, kind: FailureKind) -> FailureA
             platform: "linux".to_owned(),
             architecture: "x86_64".to_owned(),
         },
-        message: DiagnosticMessage {
-            text: "the mod could not continue".to_owned(),
-            redaction: Redaction::Applied,
-        },
+        message: redact("the mod could not continue"),
     }
 }
 
@@ -63,6 +60,66 @@ fn started(machine: &mut LifecycleMachine) {
             .advance_all(state)
             .expect("the whole set advances one step");
     }
+}
+
+/// The sixth invariant reaches the mods the set had skipped: once a failure has
+/// followed world mutation, a mod parked because it does not load on this side
+/// cannot be started either.
+///
+/// `advance_all` skips a parked mod, so the halt is only visible to it when a
+/// caller names it directly — which is exactly when a run would otherwise
+/// silently continue with a mod the set had already passed over. Quiescing is
+/// not open to it either: a mod that never loaded has no `stopping` step to
+/// take, so a halted set leaves it where it stands.
+#[test]
+fn a_halted_set_cannot_start_even_a_mod_it_had_parked() {
+    let mut machine = LifecycleMachine::new(
+        Side::DedicatedServer,
+        vec![
+            entry(
+                "server_mod",
+                &[Side::DedicatedServer],
+                Requirement::Required,
+            ),
+            entry("client_mod", &[Side::Client], Requirement::Required),
+        ],
+    )
+    .expect("two mods are a valid plan");
+    started(&mut machine);
+
+    assert_eq!(
+        machine.state(&id("client_mod")).expect("known mod"),
+        LifecycleState::Resolved,
+        "a mod that does not load here parks rather than advancing"
+    );
+    machine
+        .record_world_mutation()
+        .expect("a parked mod does not block world access");
+    machine
+        .fail(
+            &id("server_mod"),
+            attribution(
+                "server_mod",
+                LifecycleState::Running,
+                FailureKind::ConflictingRegistryClaim,
+            ),
+        )
+        .expect("failure is legal from running");
+
+    assert_eq!(
+        machine.advance(&id("client_mod"), LifecycleState::Loaded),
+        Err(LifecycleError::Halted {
+            mod_id: id("client_mod"),
+            from: LifecycleState::Resolved,
+            to: LifecycleState::Loaded,
+        }),
+        "the halt reaches every mod, not only the ones that were running"
+    );
+    assert_eq!(
+        machine.state(&id("client_mod")).expect("known mod"),
+        LifecycleState::Resolved,
+        "a refused step leaves the parked mod exactly where the set left it"
+    );
 }
 
 /// The first invariant: no mod code runs before validation and dependency

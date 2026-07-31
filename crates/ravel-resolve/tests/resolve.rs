@@ -8,8 +8,8 @@
 
 use std::collections::BTreeSet;
 
-use ravel_core::{FailureKind, LifecycleState, ModId, Side};
-use ravel_package::{PackageFailure, PackageManifest};
+use ravel_core::{FailureKind, LifecycleState, ModId, Side, StructuredFailure};
+use ravel_package::PackageManifest;
 use ravel_resolve::{ResolutionError, resolve};
 
 const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -111,7 +111,7 @@ fn a_pack_walks_from_manifest_documents_to_one_load_order() {
     assert_eq!(plan.side(), Side::Client);
     assert_eq!(plan.discouraged().len(), 1);
     assert_eq!(
-        plan.discouraged()[0].diagnostic().text,
+        plan.discouraged()[0].to_string(),
         "`example_tweaks` discourages `example_machines`, and `example_machines` 3.1.0 is \
          installed"
     );

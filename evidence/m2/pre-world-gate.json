@@ -1,0 +1,94 @@
+{
+  "gate": {
+    "grantsWorldAccessWhenNothingIsRefused": true,
+    "noticesRecordedWithoutRefusing": 1,
+    "ranModCode": false,
+    "refusesWorldAccess": true,
+    "rule": "A report holding any refusal withholds world access, including a refusal from a stage that ran before any lifecycle machine existed."
+  },
+  "milestone": "M2",
+  "record": "m2-w7-pre-world-gate",
+  "redaction": {
+    "published": "`example_mod` refused to enter `loaded`: could not open level.dat using [redacted]",
+    "quotesUntrustedText": true,
+    "removed": [
+      "an absolute filesystem path, reduced to the file it names",
+      "an authentication value, replaced outright"
+    ]
+  },
+  "refusals": [
+    {
+      "case": "unparsable-manifest",
+      "failureKind": null,
+      "invalidInput": "a manifest that is not JSON",
+      "lifecycleState": "discovered",
+      "quotesUntrustedText": true,
+      "ranModCode": false,
+      "report": "refused an unidentified package at `discovered`: the manifest is not JSON: key must be a string at line 1 column 3, quoted rather than written by Ravel",
+      "worldAccess": false
+    },
+    {
+      "case": "digest-mismatch",
+      "failureKind": null,
+      "invalidInput": "an artifact whose bytes are not the bytes the manifest records",
+      "lifecycleState": "discovered",
+      "quotesUntrustedText": false,
+      "ranModCode": false,
+      "report": "refused `example_mod` at `discovered`: `mod.bin` hashes ee7ec0d8eeec2da653dfac66fef292829d000980e7629f7253b04927966ee553 but the manifest records 2e2b52bad9e77f7ab95e359ad0219809ab2489f8bfa9b03cb3808a067cbb8cfa",
+      "worldAccess": false
+    },
+    {
+      "case": "unsupported-target",
+      "failureKind": "unsupported-target",
+      "invalidInput": "a package that ships for no target the running host has",
+      "lifecycleState": "discovered",
+      "quotesUntrustedText": false,
+      "ranModCode": false,
+      "report": "refused `example_mod` at `discovered` [unsupported-target]: the package ships for linux/aarch64, but linux/x86_64 is running",
+      "worldAccess": false
+    },
+    {
+      "case": "side-mismatch",
+      "failureKind": "side-mismatch",
+      "invalidInput": "a required dependency that is installed but declares another side",
+      "lifecycleState": "validated",
+      "quotesUntrustedText": false,
+      "ranModCode": false,
+      "report": "refused `example_mod` at `validated` [side-mismatch]: `example_mod` requires `example_library`, which does not load on the dedicated-server side",
+      "worldAccess": false
+    },
+    {
+      "case": "missing-required-dependency",
+      "failureKind": "missing-required-dependency",
+      "invalidInput": "a required dependency that is not installed",
+      "lifecycleState": "validated",
+      "quotesUntrustedText": false,
+      "ranModCode": false,
+      "report": "refused `example_mod` at `validated` [missing-required-dependency]: `example_mod` requires `example_library` `^1.0.0`, which is not installed",
+      "worldAccess": false
+    },
+    {
+      "case": "incompatible-pair",
+      "failureKind": "incompatible-version",
+      "invalidInput": "two mods that declare each other incompatible and are both loading",
+      "lifecycleState": "validated",
+      "quotesUntrustedText": false,
+      "ranModCode": false,
+      "report": "refused `example_mod` at `validated` [incompatible-version]: `example_mod` cannot load with `example_rival` `*`, and `example_rival` 1.0.0 is installed",
+      "worldAccess": false
+    },
+    {
+      "case": "dependency-cycle",
+      "failureKind": "dependency-cycle",
+      "invalidInput": "two mods that require each other",
+      "lifecycleState": "validated",
+      "quotesUntrustedText": false,
+      "ranModCode": false,
+      "report": "refused `example_mod` at `validated` [dependency-cycle]: the dependency cycle `example_library` -> `example_mod` -> `example_library` cannot be ordered",
+      "worldAccess": false
+    }
+  ],
+  "schemaVersion": 1,
+  "summary": "Every invalid package, side, integrity and dependency-graph case was refused before a world could open, each reported as its own outcome, with every message published through the redaction policy.",
+  "workPackage": "M2-W7"
+}

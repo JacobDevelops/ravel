@@ -76,10 +76,26 @@ fn running_minecraft() -> String {
     declared
 }
 
+/// The platform and architecture the run is admitted against.
+///
+/// These are the process's own, because the package is checked against the host
+/// it is actually running on and Ravel ships for Linux through M10. A package
+/// that declared no target for this machine would be refused, which is the
+/// `SPEC.md` §9.2 unsupported-target outcome working as intended.
+fn running_target() -> (String, String) {
+    (
+        std::env::consts::OS.to_owned(),
+        std::env::consts::ARCH.to_owned(),
+    )
+}
+
 fn host() -> Host {
+    let (platform, architecture) = running_target();
     Host {
         ravel: RUNNING_RAVEL.parse().expect("the crate version is semver"),
         minecraft: running_minecraft(),
+        platform,
+        architecture,
     }
 }
 

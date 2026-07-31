@@ -14,6 +14,12 @@ stable contracts toward concrete host internals.
   General crates must remain buildable against a synthetic second adapter.
 - Feature crates for configuration, data, saves, networking, observability, and
   packs depend on public contracts rather than concrete hook implementations.
+- `ravel-observability` owns the redaction policy `SPEC.md` §9.1 requires, and it
+  is the only crate that can produce a `Redaction::Applied` message:
+  `ravel-core` names the obligation as `RedactionPolicy` and holds none of the
+  rules, and `DiagnosticMessage::redacted` earns the tag by running a policy
+  rather than by being told one ran. Every failure in the workspace reports its
+  own text as `Redaction::Raw`; the report surface redacts it on the way in.
 - Testkit may depend on the loader and public contracts to construct process
   harnesses, but production libraries never depend on testkit. Restricted fixtures
   are never package or source dependencies.

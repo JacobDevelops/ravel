@@ -2,9 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ravel_core::{
-    DependencyRelationship, FailureKind, LifecycleState, ModId, Side, Version, VersionRange,
+    DependencyRelationship, FailureKind, LifecycleState, ModId, Side, StructuredFailure, Version,
+    VersionRange,
 };
-use ravel_package::{Dependency, DependencyOrder, PackageFailure, PackageManifest};
+use ravel_package::{Dependency, DependencyOrder, PackageManifest};
 
 use crate::plan::{Discouraged, LoadPlan};
 
@@ -554,7 +555,7 @@ impl fmt::Display for ResolutionError {
 
 impl std::error::Error for ResolutionError {}
 
-impl PackageFailure for ResolutionError {
+impl StructuredFailure for ResolutionError {
     /// Every resolution failure is one of the `SPEC.md` §9.2 outcomes.
     ///
     /// Unlike a manifest or integrity failure, which happens before there is a
@@ -611,8 +612,8 @@ fn side_name(side: Side) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{FailureKind, LifecycleState, ModId, Redaction, Side};
-    use ravel_package::{PackageFailure, PackageManifest};
+    use ravel_core::{FailureKind, LifecycleState, ModId, Redaction, Side, StructuredFailure};
+    use ravel_package::PackageManifest;
 
     use super::{ResolutionError, resolve};
 
@@ -1272,8 +1273,9 @@ mod tests {
         ] {
             assert_eq!(error.failure_kind(), Some(expected), "{error}");
             assert_eq!(error.lifecycle_state(), LifecycleState::Validated);
-            assert_eq!(error.diagnostic().redaction, Redaction::Applied);
-            assert_eq!(error.diagnostic().text, error.to_string());
+            assert_eq!(error.diagnostic().redaction(), Redaction::Raw);
+            assert_eq!(error.diagnostic().text(), error.to_string());
+            assert!(!error.quotes_untrusted_text(), "{error}");
             assert!(!error.to_string().contains('/'), "{error}");
         }
     }

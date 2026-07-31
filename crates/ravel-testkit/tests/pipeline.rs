@@ -9,7 +9,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ravel_core::{LifecycleState, ModId, Side, Version};
+use ravel_core::{FailureKind, LifecycleState, ModId, Side, Version};
 use ravel_host_api::{HostError, HostMod};
 use ravel_loader::LifecycleError;
 use ravel_package::{CompatibilityError, IntegrityError, ManifestError, Sha256Digest};
@@ -21,6 +21,8 @@ use serde_json::{Value, json};
 
 const RUNNING_RAVEL: &str = "0.1.0";
 const RUNNING_MINECRAFT: &str = "26.0.0";
+const RUNNING_PLATFORM: &str = "linux";
+const RUNNING_ARCHITECTURE: &str = "x86_64";
 
 /// A mod that records what it was asked to do, and optionally refuses one step.
 struct Recording {
@@ -72,6 +74,8 @@ fn host() -> Host {
     Host {
         ravel: RUNNING_RAVEL.parse().expect("a valid version"),
         minecraft: RUNNING_MINECRAFT.to_owned(),
+        platform: RUNNING_PLATFORM.to_owned(),
+        architecture: RUNNING_ARCHITECTURE.to_owned(),
     }
 }
 
@@ -392,6 +396,7 @@ fn a_package_written_for_another_host_is_refused_on_either_version() {
         let elsewhere = Host {
             ravel: ravel.parse().expect("a valid version"),
             minecraft: minecraft.to_owned(),
+            ..host()
         };
         let mut noop = Recording::new("example_mod");
         let error = run(
@@ -545,6 +550,7 @@ fn a_package_is_read_from_its_manifest_file_or_reported_by_name() {
             .starts_with("`package.json` could not be read")
     );
     assert!(!error.to_string().contains("absent"), "{error}");
+    assert!(error.stage().is_none(), "no crate raised it but this one");
 
     fs::remove_dir_all(&parent).expect("cleanup");
 }
@@ -648,6 +654,39 @@ fn a_declared_version_the_running_host_satisfies_is_the_one_that_was_checked() {
         Host {
             ravel: running,
             minecraft: "25.0.0".to_owned(),
+            ..host()
         }
     );
+}
+
+#[test]
+fn a_package_that_ships_for_no_target_the_host_has_is_refused_before_it_resolves() {
+    let (parent, packages) = single("unsupported-target");
+    let elsewhere = Host {
+        architecture: "aarch64".to_owned(),
+        ..host()
+    };
+
+    let mut noop = Recording::new("example_mod");
+    let error = run(
+        &packages,
+        &elsewhere,
+        Side::Client,
+        &mut [&mut noop as &mut dyn HostMod],
+    )
+    .expect_err("the package ships for no target this host has");
+
+    assert!(matches!(error, PipelineError::Target(_)), "{error}");
+    assert!(
+        error.to_string().starts_with("validation failed:"),
+        "{error}"
+    );
+    let stage = error.stage().expect("the package crate raised it");
+    assert_eq!(stage.failure_kind(), Some(FailureKind::UnsupportedTarget));
+    assert_eq!(stage.lifecycle_state(), LifecycleState::Discovered);
+    assert!(
+        noop.entered.is_empty(),
+        "an unsupported target is refused before any mod code runs"
+    );
+    fs::remove_dir_all(&parent).expect("cleanup");
 }

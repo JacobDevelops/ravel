@@ -795,12 +795,14 @@ version = "0.0.0"
 dependencies = [
  "ravel-core",
  "ravel-host-api",
+ "ravel-observability",
  "ravel-package",
  "ravel-resolve",
  "ravel-sdk",
  "ravel-test-mod-noop",
  "ravel-testkit",
  "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]

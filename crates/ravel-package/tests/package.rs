@@ -10,9 +10,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use ravel_package::{
-    ArtifactRole, IntegrityError, PackageFailure, PackageManifest, Sha256Digest, verify_package,
-};
+use ravel_core::StructuredFailure;
+use ravel_package::{ArtifactRole, IntegrityError, PackageManifest, Sha256Digest, verify_package};
 use sha2::{Digest, Sha256};
 
 const ARTIFACT_BYTES: &[u8] = b"the artifact this package ships";

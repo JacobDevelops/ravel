@@ -2,14 +2,14 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::PathBuf;
 
-use ravel_core::{LifecycleState, ModId, Side, Version};
+use ravel_core::{LifecycleState, ModId, Side, StructuredFailure, Version};
 use ravel_host_api::{HostError, HostMod};
 use ravel_loader::{
     LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,
     executes_mod_code,
 };
 use ravel_package::{
-    CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
+    CompatibilityError, IntegrityError, ManifestError, PackageManifest, TargetError, verify_package,
 };
 use ravel_resolve::{LoadPlan, ResolutionError, resolve};
 
@@ -80,12 +80,14 @@ impl DiscoveredPackage {
     pub const MANIFEST_FILE: &'static str = "package.json";
 }
 
-/// The versions a package set is being admitted against.
+/// What a package set is being admitted against.
 ///
-/// Both are supplied rather than discovered. Ravel's own version is the running
-/// loader's, and the Minecraft version belongs to `minecraft/versions/`, so a
-/// version-neutral crate that guessed either would be encoding a version
-/// boundary `SPEC.md` §3.7 puts somewhere else.
+/// Every field is supplied rather than discovered. Ravel's own version is the
+/// running loader's and the Minecraft version belongs to `minecraft/versions/`,
+/// so a version-neutral crate that guessed either would be encoding a version
+/// boundary `SPEC.md` §3.7 puts somewhere else; the platform and architecture
+/// are supplied for the same reason, and because a harness that read them from
+/// the process it happened to be compiled for could not test any other host.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Host {
     /// The Ravel version a package's `compatibility.ravel` range is checked
@@ -94,6 +96,10 @@ pub struct Host {
     /// The exact Minecraft version a package's `compatibility.minecraft` list
     /// is checked against.
     pub minecraft: String,
+    /// The platform a package's declared targets are checked against.
+    pub platform: String,
+    /// The architecture a package's declared targets are checked against.
+    pub architecture: String,
 }
 
 /// What one completed run of the pipeline did.
@@ -157,17 +163,17 @@ impl PipelineRun {
 /// model before then. When M3 selects one, the mechanism produces the values
 /// passed here and this function does not change.
 ///
-/// Two `SPEC.md` §14 validation facets are deliberately absent. Target
-/// selection is ADG-2's, and `ravel-package` refuses to select a target for the
-/// same reason; the pre-world diagnostic path that reports an unsupported one is
-/// M2-W7's.
+/// Target *selection* is deliberately absent: which target a host would load is
+/// ADG-2's question and ADG-2 is deferred to M3. Reporting that a package ships
+/// for no target the host has is not selection, and validation does it.
 ///
 /// # Errors
 ///
 /// Returns the first failure in pipeline order, so a package set that breaks
-/// two rules reports the earlier one: [`PipelineError::Manifest`] and
-/// [`PipelineError::Integrity`] and [`PipelineError::Compatibility`] during
-/// validation, [`PipelineError::Resolution`] during resolution, and
+/// two rules reports the earlier one: [`PipelineError::Manifest`],
+/// [`PipelineError::Integrity`], [`PipelineError::Compatibility`] and
+/// [`PipelineError::Target`] during validation,
+/// [`PipelineError::Resolution`] during resolution, and
 /// [`PipelineError::Host`] or [`PipelineError::Lifecycle`] while running.
 /// [`PipelineError::UnexpectedMod`] is raised before any state changes and
 /// [`PipelineError::MissingMod`] when the plan reaches a mod the caller did not
@@ -201,10 +207,15 @@ pub fn run(
 
 /// Admits every package, or none of them.
 ///
-/// The four checks are what `SPEC.md` §14 requires before
-/// [`LifecycleState::Validated`], minus the target facet ADG-2 owns. They run
-/// over the whole set before resolution begins, because a package set is
-/// admitted together and resolving a set that holds an unvalidated package
+/// The checks are what `SPEC.md` §14 requires before
+/// [`LifecycleState::Validated`]: schema, integrity, compatibility, and target.
+/// The target check asks only whether a declared target names the running host,
+/// which is the `SPEC.md` §9.2 unsupported-target report; it selects no target
+/// and reads no artifact, because that is ADG-2's question and ADG-2 is
+/// deferred to M3.
+///
+/// They run over the whole set before resolution begins, because a package set
+/// is admitted together and resolving a set that holds an unvalidated package
 /// would be reading declarations nothing has vouched for.
 fn validate(
     packages: &[DiscoveredPackage],
@@ -223,6 +234,9 @@ fn validate(
             .compatibility
             .check_minecraft(&host.minecraft)
             .map_err(PipelineError::Compatibility)?;
+        manifest
+            .check_target(&host.platform, &host.architecture)
+            .map_err(PipelineError::Target)?;
         manifests.push(manifest);
     }
     Ok(manifests)
@@ -294,11 +308,11 @@ fn enter_all(
 
 /// Why a package set did not complete the pipeline.
 ///
-/// The first five variants forward the failure the owning crate raised, kept
-/// whole rather than flattened into text, so a caller can assert on the rule
-/// that was broken instead of on a sentence. The last three are this harness's
-/// own, and every one of them names a mod or a file rather than a path, for the
-/// reason `SPEC.md` §9.1 gives.
+/// Six variants forward the failure the owning crate raised, kept whole rather
+/// than flattened into text, so a caller can assert on the rule that was broken
+/// instead of on a sentence. The other three are this harness's own, and every
+/// one of them names a mod or a file rather than a path, for the reason
+/// `SPEC.md` §9.1 gives.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PipelineError {
     /// A manifest file could not be read.
@@ -314,6 +328,8 @@ pub enum PipelineError {
     Integrity(IntegrityError),
     /// A package does not support the host it was asked to load on.
     Compatibility(CompatibilityError),
+    /// A package ships for no target that matches the running host.
+    Target(TargetError),
     /// A validated package set has no load order.
     Resolution(ResolutionError),
     /// The lifecycle refused a step of the run.
@@ -343,6 +359,7 @@ impl fmt::Display for PipelineError {
             Self::Manifest(error) => write!(formatter, "validation failed: {error}"),
             Self::Integrity(error) => write!(formatter, "validation failed: {error}"),
             Self::Compatibility(error) => write!(formatter, "validation failed: {error}"),
+            Self::Target(error) => write!(formatter, "validation failed: {error}"),
             Self::Resolution(error) => write!(formatter, "resolution failed: {error}"),
             Self::Lifecycle(error) => write!(formatter, "the run failed: {error}"),
             Self::Host(error) => write!(formatter, "the run failed: {error}"),
@@ -361,10 +378,28 @@ impl fmt::Display for PipelineError {
 
 impl std::error::Error for PipelineError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.stage()
+            .map(|failure| failure as &dyn std::error::Error)
+    }
+}
+
+impl PipelineError {
+    /// Returns the owning crate's failure, for the failures this harness
+    /// forwards rather than raises.
+    ///
+    /// This is what makes one `match` arm enough for a report: a caller that
+    /// wants the structured facts of a pipeline failure asks for the failure
+    /// the owning crate raised and reports *that*, without naming a stage.
+    /// This harness deliberately does not implement [`StructuredFailure`]
+    /// itself, because it is test support rather than a report surface and
+    /// implementing it would put it in the reporting contract.
+    #[must_use]
+    pub fn stage(&self) -> Option<&(dyn StructuredFailure + 'static)> {
         match self {
             Self::Manifest(error) => Some(error),
             Self::Integrity(error) => Some(error),
             Self::Compatibility(error) => Some(error),
+            Self::Target(error) => Some(error),
             Self::Resolution(error) => Some(error),
             Self::Lifecycle(error) => Some(error),
             Self::Host(error) => Some(error),

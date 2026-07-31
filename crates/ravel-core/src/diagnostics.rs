@@ -7,9 +7,11 @@ use crate::{LifecycleState, ModId, Version};
 /// `SPEC.md` §9.1 requires a failure report to carry a lifecycle phase and
 /// redacted detail, and §9.2 requires the dependency-graph outcomes to be named
 /// distinctly before world access. This trait is how the crate that formats
-/// those reports gets all three from any error without matching on each error
-/// type, and it lives in `ravel-core` because more than one crate raises
-/// failures that a single pre-world report has to render together.
+/// those reports gets all of that from any error without matching on each error
+/// type, and it lives in `ravel-core` because every stage of the pipeline —
+/// manifest, integrity, compatibility, target, resolution, lifecycle, and the
+/// mod itself — raises failures that a single pre-world report has to render
+/// together. One `match` arm covers all of them.
 pub trait StructuredFailure: std::error::Error {
     /// The `SPEC.md` §9.2 outcome this failure is, when it is one of them.
     ///
@@ -28,19 +30,39 @@ pub trait StructuredFailure: std::error::Error {
         LifecycleState::Discovered
     }
 
-    /// The failure text, ready to publish.
+    /// Whether the rendered text quotes words this project did not write.
     ///
-    /// The default tags the rendered message [`Redaction::Applied`], which an
-    /// implementation may only rely on when every one of its messages is
-    /// written to hold no filesystem path and no credential. Anything that
-    /// interpolates untrusted text overrides this and tags it
-    /// [`Redaction::Raw`] for a policy to handle.
-    fn diagnostic(&self) -> DiagnosticMessage {
-        DiagnosticMessage {
-            text: self.to_string(),
-            redaction: Redaction::Applied,
-        }
+    /// A report is published through a redaction policy either way, so this
+    /// changes no rule the policy applies. It is the one fact about a message
+    /// that the text itself does not show: whether the sentence a player is
+    /// about to read came from Ravel or from a mod, which is what lets a report
+    /// attribute it to the right author.
+    fn quotes_untrusted_text(&self) -> bool {
+        false
     }
+
+    /// The failure text, before any policy has run over it.
+    ///
+    /// The message is [`Redaction::Raw`] because nothing has vetted it yet:
+    /// [`Redaction::Applied`] is a claim only a [`RedactionPolicy`] can earn,
+    /// and no implementation of this trait is allowed to make it on a policy's
+    /// behalf.
+    fn diagnostic(&self) -> DiagnosticMessage {
+        DiagnosticMessage::raw(self.to_string())
+    }
+}
+
+/// The rules a report's text is held to before it is published.
+///
+/// `SPEC.md` §9.1 requires reports to redact authentication tokens, secrets,
+/// and unnecessarily identifying filesystem paths. `ravel-core` names that
+/// obligation and deliberately owns none of the rules: it is the crate every
+/// other one depends on, so a policy written here would be one nobody could
+/// replace. The rules belong to the crate that publishes reports, and this
+/// trait is how a [`DiagnosticMessage`] proves one of them ran.
+pub trait RedactionPolicy {
+    /// Returns `text` with everything the policy removes taken out.
+    fn apply(&self, text: &str) -> String;
 }
 
 /// What went wrong, from the set `SPEC.md` §9.2 requires Ravel to report before
@@ -64,13 +86,45 @@ pub enum FailureKind {
     ConflictingRegistryClaim,
 }
 
+impl FailureKind {
+    /// Every outcome, in the order `SPEC.md` §9.2 lists them.
+    pub const ALL: [Self; 7] = [
+        Self::MissingRequiredDependency,
+        Self::IncompatibleVersion,
+        Self::DependencyCycle,
+        Self::SideMismatch,
+        Self::DuplicateIdentity,
+        Self::UnsupportedTarget,
+        Self::ConflictingRegistryClaim,
+    ];
+
+    /// The name a report writes this outcome under, matching its serialized
+    /// form.
+    ///
+    /// A pre-world report shows the outcome next to the message, and it uses
+    /// this rather than the derived `Debug` spelling so that one outcome has
+    /// one user-facing name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::MissingRequiredDependency => "missing-required-dependency",
+            Self::IncompatibleVersion => "incompatible-version",
+            Self::DependencyCycle => "dependency-cycle",
+            Self::SideMismatch => "side-mismatch",
+            Self::DuplicateIdentity => "duplicate-identity",
+            Self::UnsupportedTarget => "unsupported-target",
+            Self::ConflictingRegistryClaim => "conflicting-registry-claim",
+        }
+    }
+}
+
 /// Whether a redaction policy has run over a diagnostic message.
 ///
 /// `SPEC.md` §9.1 requires reports to redact authentication tokens, secrets,
 /// and unnecessarily identifying filesystem paths. `ravel-core` carries the tag
-/// and deliberately owns none of the policy: the rules live with the crate that
-/// formats reports, and the tag is what lets a publishing surface refuse text
-/// that nothing has redacted.
+/// and owns none of the policy: the rules live with the crate that formats
+/// reports, and the tag is what lets a publishing surface refuse text that
+/// nothing has redacted.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Redaction {
@@ -81,12 +135,88 @@ pub enum Redaction {
 }
 
 /// Human-readable failure detail together with its redaction state.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+///
+/// The fields are private and the two constructors are the whole story:
+/// [`DiagnosticMessage::raw`] records text nothing has vetted, and
+/// [`DiagnosticMessage::redacted`] is the only way to obtain
+/// [`Redaction::Applied`]. It earns the tag rather than accepting it, because
+/// it runs the [`RedactionPolicy`] itself instead of being told one ran.
+///
+/// The type is serialized but never deserialized. A report is published, not
+/// parsed, and reading text back out of a document would let the document
+/// assert a policy had run over it.
+///
+/// # Examples
+///
+/// ```
+/// use ravel_core::{DiagnosticMessage, Redaction, RedactionPolicy};
+///
+/// struct DropEverything;
+///
+/// impl RedactionPolicy for DropEverything {
+///     fn apply(&self, _: &str) -> String {
+///         "[redacted]".to_owned()
+///     }
+/// }
+///
+/// let raw = DiagnosticMessage::raw("could not read /home/player/token.txt");
+/// assert_eq!(raw.redaction(), Redaction::Raw);
+/// assert!(!raw.is_publishable());
+///
+/// let published = DiagnosticMessage::redacted(&DropEverything, raw.text());
+/// assert_eq!(published.text(), "[redacted]");
+/// assert!(published.is_publishable());
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DiagnosticMessage {
-    /// The message text.
-    pub text: String,
-    /// Whether a redaction policy has been applied to `text`.
-    pub redaction: Redaction,
+    text: String,
+    redaction: Redaction,
+}
+
+impl DiagnosticMessage {
+    /// Records text no policy has run over.
+    #[must_use]
+    pub fn raw(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            redaction: Redaction::Raw,
+        }
+    }
+
+    /// Runs `policy` over `text` and records the result as publishable.
+    ///
+    /// This is the only way to produce [`Redaction::Applied`] anywhere in the
+    /// workspace, which is what makes the tag mean something: a caller cannot
+    /// claim its text is safe, it can only hand the text to a policy and keep
+    /// what comes back.
+    #[must_use]
+    pub fn redacted<P>(policy: &P, text: &str) -> Self
+    where
+        P: RedactionPolicy + ?Sized,
+    {
+        Self {
+            text: policy.apply(text),
+            redaction: Redaction::Applied,
+        }
+    }
+
+    /// Returns the message text.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Returns whether a policy has run over the text.
+    #[must_use]
+    pub const fn redaction(&self) -> Redaction {
+        self.redaction
+    }
+
+    /// Returns whether the text may be shown to a player.
+    #[must_use]
+    pub const fn is_publishable(&self) -> bool {
+        matches!(self.redaction, Redaction::Applied)
+    }
 }
 
 /// The Minecraft-facing surface a failure occurred on (`SPEC.md` §9.1).
@@ -141,15 +271,23 @@ pub struct FailureEnvironment {
 /// ```
 /// use ravel_core::{
 ///     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, LifecycleState,
-///     ModId, Redaction,
+///     ModId, RedactionPolicy,
 /// };
 ///
+/// struct KeepEverything;
+///
+/// impl RedactionPolicy for KeepEverything {
+///     fn apply(&self, text: &str) -> String {
+///         text.to_owned()
+///     }
+/// }
+///
 /// let failure = FailureAttribution {
-///     mod_id: "example_mod".parse()?,
+///     mod_id: Some("example_mod".parse()?),
 ///     version: Some("1.4.0".parse()?),
 ///     dependency_chain: vec!["example_pack".parse()?],
 ///     state: LifecycleState::Resolved,
-///     kind: FailureKind::MissingRequiredDependency,
+///     kind: Some(FailureKind::MissingRequiredDependency),
 ///     surface: None,
 ///     environment: FailureEnvironment {
 ///         ravel: "0.1.0".parse()?,
@@ -157,19 +295,22 @@ pub struct FailureEnvironment {
 ///         platform: "linux".to_owned(),
 ///         architecture: "x86_64".to_owned(),
 ///     },
-///     message: DiagnosticMessage {
-///         text: "requires `example_library`".to_owned(),
-///         redaction: Redaction::Applied,
-///     },
+///     message: DiagnosticMessage::redacted(&KeepEverything, "requires `example_library`"),
 /// };
 ///
 /// assert!(failure.state.can_transition_to(LifecycleState::Failed));
+/// assert!(failure.message.is_publishable());
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct FailureAttribution {
-    /// The mod the failure is attributed to.
-    pub mod_id: ModId,
+    /// The mod the failure is attributed to, absent when the failure preceded
+    /// metadata validation and no identity was ever accepted.
+    ///
+    /// A manifest that will not parse claims nothing, so there is no identity
+    /// to name. Naming one anyway would put a mod id in a report that no
+    /// package on the player's disk ever declared.
+    pub mod_id: Option<ModId>,
     /// The version that mod declared, absent when the failure preceded metadata
     /// validation and no version was ever accepted.
     pub version: Option<Version>,
@@ -178,8 +319,14 @@ pub struct FailureAttribution {
     pub dependency_chain: Vec<ModId>,
     /// The lifecycle state the mod was in when it failed.
     pub state: LifecycleState,
-    /// What went wrong.
-    pub kind: FailureKind,
+    /// What went wrong, absent when the failure is not one of the `SPEC.md`
+    /// §9.2 dependency-graph outcomes.
+    ///
+    /// This mirrors [`StructuredFailure::failure_kind`] exactly. A manifest
+    /// that will not parse and a file that does not match its digest both fail
+    /// earlier than the graph, and an attribution that had to name a kind would
+    /// force them to borrow one that misdescribes them.
+    pub kind: Option<FailureKind>,
     /// The surface involved, absent for a failure that reached no surface.
     pub surface: Option<FailureSurface>,
     /// Where the loader was running.
@@ -192,19 +339,37 @@ pub struct FailureAttribution {
 mod tests {
     use super::{
         DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
-        Redaction,
+        Redaction, RedactionPolicy, StructuredFailure,
     };
     use crate::{LifecycleState, ModId, Version};
 
-    const KINDS: [FailureKind; 7] = [
-        FailureKind::MissingRequiredDependency,
-        FailureKind::IncompatibleVersion,
-        FailureKind::DependencyCycle,
-        FailureKind::SideMismatch,
-        FailureKind::DuplicateIdentity,
-        FailureKind::UnsupportedTarget,
-        FailureKind::ConflictingRegistryClaim,
-    ];
+    /// A policy that removes nothing, so a test can produce a publishable
+    /// message without depending on the crate that owns the real rules.
+    struct Verbatim;
+
+    impl RedactionPolicy for Verbatim {
+        fn apply(&self, text: &str) -> String {
+            text.to_owned()
+        }
+    }
+
+    /// The smallest failure that exercises every trait default.
+    #[derive(Debug)]
+    struct Bare;
+
+    impl std::fmt::Display for Bare {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("nothing worked")
+        }
+    }
+
+    impl std::error::Error for Bare {}
+
+    impl StructuredFailure for Bare {
+        fn failure_kind(&self) -> Option<FailureKind> {
+            None
+        }
+    }
 
     fn environment() -> FailureEnvironment {
         FailureEnvironment {
@@ -217,33 +382,31 @@ mod tests {
 
     fn attribution(version: Option<Version>) -> FailureAttribution {
         FailureAttribution {
-            mod_id: "example_mod".parse().expect("valid id"),
+            mod_id: Some("example_mod".parse().expect("valid id")),
             version,
             dependency_chain: vec!["example_pack".parse().expect("valid id")],
             state: LifecycleState::Resolved,
-            kind: FailureKind::MissingRequiredDependency,
+            kind: Some(FailureKind::MissingRequiredDependency),
             surface: None,
             environment: environment(),
-            message: DiagnosticMessage {
-                text: "requires `example_library`".to_owned(),
-                redaction: Redaction::Applied,
-            },
+            message: DiagnosticMessage::redacted(&Verbatim, "requires `example_library`"),
         }
     }
 
     #[test]
-    fn every_spec_failure_kind_round_trips_as_a_kebab_case_name() {
-        for kind in KINDS {
+    fn every_spec_failure_kind_round_trips_as_its_reported_name() {
+        assert_eq!(FailureKind::ALL.len(), 7);
+        for kind in FailureKind::ALL {
             let encoded = serde_json::to_string(&kind).expect("kind should serialize");
+            assert_eq!(encoded, format!("\"{}\"", kind.name()));
             assert_eq!(
                 serde_json::from_str::<FailureKind>(&encoded).expect("kind should deserialize"),
                 kind
             );
         }
         assert_eq!(
-            serde_json::to_string(&FailureKind::ConflictingRegistryClaim)
-                .expect("kind should serialize"),
-            "\"conflicting-registry-claim\""
+            FailureKind::ConflictingRegistryClaim.name(),
+            "conflicting-registry-claim"
         );
     }
 
@@ -270,38 +433,56 @@ mod tests {
     }
 
     #[test]
-    fn a_message_carries_whether_a_policy_has_redacted_it() {
-        let raw = DiagnosticMessage {
-            text: "/home/player/instance/mods".to_owned(),
-            redaction: Redaction::Raw,
-        };
-        assert_ne!(raw.redaction, Redaction::Applied);
-
-        let encoded = serde_json::to_string(&raw).expect("message should serialize");
+    fn a_message_is_raw_until_a_policy_has_run_over_it() {
+        let raw = DiagnosticMessage::raw("/home/player/instance/mods");
+        assert_eq!(raw.redaction(), Redaction::Raw);
+        assert!(!raw.is_publishable());
+        assert_eq!(raw.text(), "/home/player/instance/mods");
         assert_eq!(
-            encoded,
+            serde_json::to_string(&raw).expect("message should serialize"),
             "{\"text\":\"/home/player/instance/mods\",\"redaction\":\"raw\"}"
-        );
-        assert_eq!(
-            serde_json::from_str::<DiagnosticMessage>(&encoded)
-                .expect("message should deserialize"),
-            raw
         );
     }
 
     #[test]
-    fn an_attribution_round_trips_with_and_without_a_declared_version() {
+    fn only_running_a_policy_produces_a_publishable_message() {
+        struct Truncating;
+
+        impl RedactionPolicy for Truncating {
+            fn apply(&self, text: &str) -> String {
+                text.rsplit('/').next().unwrap_or_default().to_owned()
+            }
+        }
+
+        let published = DiagnosticMessage::redacted(&Truncating, "/home/player/instance/mods");
+        assert_eq!(published.text(), "mods");
+        assert_eq!(published.redaction(), Redaction::Applied);
+        assert!(published.is_publishable());
+    }
+
+    #[test]
+    fn a_failure_reports_raw_text_and_no_borrowed_kind_by_default() {
+        let bare = Bare;
+        assert_eq!(bare.failure_kind(), None);
+        assert_eq!(bare.lifecycle_state(), LifecycleState::Discovered);
+        assert!(!bare.quotes_untrusted_text());
+        assert_eq!(bare.diagnostic().text(), "nothing worked");
+        assert_eq!(bare.diagnostic().redaction(), Redaction::Raw);
+    }
+
+    #[test]
+    fn an_attribution_serializes_with_and_without_a_declared_version() {
         for version in [
             Some("1.4.0".parse::<Version>().expect("valid version")),
             None,
         ] {
-            let failure = attribution(version);
-            let encoded = serde_json::to_string(&failure).expect("failure should serialize");
-            assert_eq!(
-                serde_json::from_str::<FailureAttribution>(&encoded)
-                    .expect("failure should deserialize"),
-                failure
+            let encoded =
+                serde_json::to_string(&attribution(version)).expect("failure should serialize");
+            assert!(
+                encoded.contains("\"missing-required-dependency\""),
+                "{encoded}"
             );
+            assert!(encoded.contains("\"redaction\":\"applied\""), "{encoded}");
         }
     }
 
@@ -312,7 +493,7 @@ mod tests {
 
         assert_eq!(
             failure.mod_id,
-            "example_mod".parse::<ModId>().expect("valid id")
+            Some("example_mod".parse::<ModId>().expect("valid id"))
         );
         assert_eq!(failure.version, Some("1.4.0".parse().expect("valid")));
         assert_eq!(
@@ -321,19 +502,21 @@ mod tests {
         );
         assert_eq!(failure.state, LifecycleState::Resolved);
         assert!(failure.state.can_transition_to(LifecycleState::Failed));
-        assert_eq!(failure.kind, FailureKind::MissingRequiredDependency);
+        assert_eq!(failure.kind, Some(FailureKind::MissingRequiredDependency));
         assert_eq!(
             failure.surface,
             Some(FailureSurface::Registry("example_mod:block".to_owned()))
         );
         assert_eq!(failure.environment, environment());
-        assert_eq!(failure.message.redaction, Redaction::Applied);
+        assert!(failure.message.is_publishable());
+    }
+
+    #[test]
+    fn an_attribution_reports_no_kind_for_a_failure_that_is_not_a_graph_outcome() {
+        let mut failure = attribution(None);
+        failure.kind = None;
 
         let encoded = serde_json::to_string(&failure).expect("failure should serialize");
-        assert_eq!(
-            serde_json::from_str::<FailureAttribution>(&encoded)
-                .expect("failure should deserialize"),
-            failure
-        );
+        assert!(encoded.contains("\"kind\":null"), "{encoded}");
     }
 }

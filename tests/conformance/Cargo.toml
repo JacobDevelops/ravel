@@ -15,9 +15,11 @@ ravel-sdk.workspace = true
 [dev-dependencies]
 ravel-core.workspace = true
 ravel-host-api.workspace = true
+ravel-observability.workspace = true
 ravel-test-mod-noop.workspace = true
 ravel-testkit.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

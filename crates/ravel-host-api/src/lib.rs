@@ -4,9 +4,7 @@
 
 use std::fmt;
 
-use ravel_core::{
-    DiagnosticMessage, FailureKind, LifecycleState, ModId, Redaction, StructuredFailure,
-};
+use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
 
 /// Why a mod refused the lifecycle step the loader asked it to take.
 ///
@@ -86,20 +84,14 @@ impl StructuredFailure for HostError {
         self.state()
     }
 
-    /// [`Self::Unsupported`] is written entirely by this crate and holds no path
-    /// and no secret, so it keeps the default [`Redaction::Applied`].
-    /// [`Self::Refused`] interpolates a sentence a mod wrote, and a mod can put
-    /// a filesystem path or a token in it, so it is tagged [`Redaction::Raw`]
-    /// for a policy to handle. Claiming otherwise would be the tag lying about
-    /// the one message nobody in this crate wrote.
-    fn diagnostic(&self) -> DiagnosticMessage {
-        DiagnosticMessage {
-            text: self.to_string(),
-            redaction: match self {
-                Self::Refused { .. } => Redaction::Raw,
-                Self::Unsupported { .. } => Redaction::Applied,
-            },
-        }
+    /// [`Self::Unsupported`] is written entirely by this crate. [`Self::Refused`]
+    /// interpolates a sentence a mod wrote, and a mod can put a filesystem path
+    /// or a token in it, which is the only message in Ravel's whole pre-world
+    /// path that nobody in this workspace authored. Both are published through a
+    /// redaction policy either way; saying which is which is how a report can
+    /// tell a player that the words came from their mod rather than from Ravel.
+    fn quotes_untrusted_text(&self) -> bool {
+        matches!(self, Self::Refused { .. })
     }
 }
 
@@ -211,11 +203,11 @@ mod tests {
 
         assert_eq!(refused.failure_kind(), None);
         assert_eq!(refused.lifecycle_state(), LifecycleState::Constructed);
-        assert!(refused.diagnostic().text.contains("constructed"));
+        assert!(refused.diagnostic().text().contains("constructed"));
     }
 
     #[test]
-    fn only_text_this_crate_wrote_is_reported_as_redacted() {
+    fn only_the_message_a_mod_wrote_is_reported_as_quoting_untrusted_text() {
         let refused = HostError::Refused {
             mod_id: "example_mod".parse().expect("valid id"),
             state: LifecycleState::Loaded,
@@ -227,9 +219,13 @@ mod tests {
         };
 
         // `detail` is a sentence a mod wrote, so nothing here can promise it
-        // holds no path and no token; the tag has to say so.
-        assert_eq!(refused.diagnostic().redaction, Redaction::Raw);
-        assert_eq!(unsupported.diagnostic().redaction, Redaction::Applied);
-        assert_eq!(unsupported.diagnostic().text, unsupported.to_string());
+        // holds no path and no token; the report has to say where it came from.
+        assert!(refused.quotes_untrusted_text());
+        assert!(!unsupported.quotes_untrusted_text());
+
+        // Neither vouches for its own text: only a policy produces `applied`.
+        assert_eq!(refused.diagnostic().redaction(), Redaction::Raw);
+        assert_eq!(unsupported.diagnostic().redaction(), Redaction::Raw);
+        assert_eq!(unsupported.diagnostic().text(), unsupported.to_string());
     }
 }

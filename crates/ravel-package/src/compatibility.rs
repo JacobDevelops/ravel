@@ -1,8 +1,47 @@
 use std::fmt;
 
-use ravel_core::{FailureKind, Version, VersionRange};
+use ravel_core::{FailureKind, StructuredFailure, Version, VersionRange};
 
-use crate::{Compatibility, PackageFailure};
+use crate::{Compatibility, PackageManifest};
+
+impl PackageManifest {
+    /// Checks the declared targets against the platform and architecture that
+    /// are running.
+    ///
+    /// `SPEC.md` §9.2 requires an unsupported target to be reported before
+    /// world access, and this is the whole of that check: a package is
+    /// supported here when one of its declared targets names both the running
+    /// platform and the running architecture. Nothing is selected. Which target
+    /// a host would load, what its artifacts are for, and how any of it
+    /// executes are ADG-2's questions and ADG-2 is deferred to M3, so this
+    /// opens no file and reads no `role`.
+    ///
+    /// Both values are supplied rather than discovered, for the same reason
+    /// `compatibility.minecraft` is checked against a supplied string: a
+    /// version-neutral crate that read them from the process it happened to be
+    /// compiled for could not be tested against any other host.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TargetError`] when no declared target names both.
+    pub fn check_target(&self, platform: &str, architecture: &str) -> Result<(), TargetError> {
+        let supported = self.targets.iter().any(|target| {
+            target.platform.as_str() == platform && target.architecture.as_str() == architecture
+        });
+        if supported {
+            return Ok(());
+        }
+        Err(TargetError {
+            declared: self
+                .targets
+                .iter()
+                .map(|target| format!("{}/{}", target.platform, target.architecture))
+                .collect(),
+            platform: platform.to_owned(),
+            architecture: architecture.to_owned(),
+        })
+    }
+}
 
 impl Compatibility {
     /// Checks the declared Ravel range against the running Ravel version.
@@ -96,23 +135,76 @@ impl fmt::Display for CompatibilityError {
 
 impl std::error::Error for CompatibilityError {}
 
-impl PackageFailure for CompatibilityError {
+impl StructuredFailure for CompatibilityError {
     /// Both variants are the `SPEC.md` §9.2 incompatible-version outcome.
     fn failure_kind(&self) -> Option<FailureKind> {
         Some(FailureKind::IncompatibleVersion)
     }
 }
 
+/// A package ships for no target that matches the running host.
+///
+/// The error carries every target the package declares alongside the one that
+/// is running, because `SPEC.md` §9.1 requires a report to name the platform and
+/// architecture and a player cannot act on "unsupported" alone. A target is a
+/// platform and an architecture name, so there is no filesystem path in it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TargetError {
+    /// Every `platform/architecture` combination the package declares.
+    pub declared: Vec<String>,
+    /// The platform that is running.
+    pub platform: String,
+    /// The architecture that is running.
+    pub architecture: String,
+}
+
+impl fmt::Display for TargetError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            declared,
+            platform,
+            architecture,
+        } = self;
+        write!(
+            formatter,
+            "the package ships for {}, but {platform}/{architecture} is running",
+            declared.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for TargetError {}
+
+impl StructuredFailure for TargetError {
+    /// This is the `SPEC.md` §9.2 unsupported-target outcome, and the only
+    /// place Ravel reports it.
+    fn failure_kind(&self) -> Option<FailureKind> {
+        Some(FailureKind::UnsupportedTarget)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use ravel_core::{FailureKind, LifecycleState, Redaction, Version};
+    use ravel_core::{FailureKind, LifecycleState, Redaction, StructuredFailure, Version};
 
-    use super::CompatibilityError;
-    use crate::{PackageFailure, PackageManifest};
+    use super::{CompatibilityError, TargetError};
+    use crate::PackageManifest;
 
     const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-    fn manifest(ravel: &str, minecraft: &str) -> PackageManifest {
+    const ONE_TARGET: &str = r#"[{
+      "platform": "linux",
+      "architecture": "x86_64",
+      "artifacts": [
+        {
+          "path": "artifacts/mod.bin",
+          "role": "module",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      ]
+    }]"#;
+
+    fn manifest_with(ravel: &str, minecraft: &str, targets: &str) -> PackageManifest {
         let document = format!(
             r#"{{
               "schemaVersion": 1,
@@ -120,13 +212,7 @@ mod tests {
               "version": "1.4.0",
               "compatibility": {{ "ravel": "{ravel}", "minecraft": {minecraft} }},
               "sides": ["client"],
-              "targets": [{{
-                "platform": "linux",
-                "architecture": "x86_64",
-                "artifacts": [
-                  {{ "path": "artifacts/mod.bin", "role": "module", "sha256": "{DIGEST}" }}
-                ]
-              }}],
+              "targets": {targets},
               "authors": [{{ "name": "Example" }}],
               "license": "MIT",
               "source": "https://example.invalid/example_mod",
@@ -134,6 +220,10 @@ mod tests {
             }}"#
         );
         PackageManifest::parse(&document).expect("a valid manifest")
+    }
+
+    fn manifest(ravel: &str, minecraft: &str) -> PackageManifest {
+        manifest_with(ravel, minecraft, ONE_TARGET)
     }
 
     fn version(text: &str) -> Version {
@@ -173,7 +263,8 @@ mod tests {
         );
         assert_eq!(error.failure_kind(), Some(FailureKind::IncompatibleVersion));
         assert_eq!(error.lifecycle_state(), LifecycleState::Discovered);
-        assert_eq!(error.diagnostic().redaction, Redaction::Applied);
+        assert_eq!(error.diagnostic().redaction(), Redaction::Raw);
+        assert!(!error.quotes_untrusted_text());
     }
 
     #[test]
@@ -213,6 +304,80 @@ mod tests {
             error.to_string(),
             "the package supports Minecraft 26.0.0, 26.0.1, but Minecraft 25.0.0 is running"
         );
-        assert_eq!(error.diagnostic().text, error.to_string());
+        assert_eq!(error.diagnostic().text(), error.to_string());
+    }
+
+    #[test]
+    fn a_declared_target_matching_the_running_host_is_accepted() {
+        let manifest = manifest("*", r#"["26.0.0"]"#);
+        assert_eq!(manifest.check_target("linux", "x86_64"), Ok(()));
+    }
+
+    #[test]
+    fn a_host_no_declared_target_names_is_refused_as_an_unsupported_target() {
+        let manifest = manifest("*", r#"["26.0.0"]"#);
+        for (platform, architecture) in [
+            ("linux", "aarch64"),
+            ("macos", "x86_64"),
+            ("windows", "aarch64"),
+        ] {
+            let error = manifest
+                .check_target(platform, architecture)
+                .expect_err("the package ships for neither");
+            assert_eq!(
+                error,
+                TargetError {
+                    declared: vec!["linux/x86_64".to_owned()],
+                    platform: platform.to_owned(),
+                    architecture: architecture.to_owned(),
+                }
+            );
+            assert_eq!(error.failure_kind(), Some(FailureKind::UnsupportedTarget));
+            assert_eq!(error.lifecycle_state(), LifecycleState::Discovered);
+            assert!(
+                error
+                    .diagnostic()
+                    .text()
+                    .ends_with(&format!("but {platform}/{architecture} is running")),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_platform_and_an_architecture_have_to_match_on_the_same_target() {
+        let manifest = manifest_with(
+            "*",
+            r#"["26.0.0"]"#,
+            &format!(
+                r#"[
+                  {{
+                    "platform": "linux",
+                    "architecture": "x86_64",
+                    "artifacts": [
+                      {{ "path": "linux/mod.bin", "role": "module", "sha256": "{DIGEST}" }}
+                    ]
+                  }},
+                  {{
+                    "platform": "macos",
+                    "architecture": "aarch64",
+                    "artifacts": [
+                      {{ "path": "macos/mod.bin", "role": "module", "sha256": "{DIGEST}" }}
+                    ]
+                  }}
+                ]"#
+            ),
+        );
+
+        assert_eq!(manifest.check_target("linux", "x86_64"), Ok(()));
+        assert_eq!(manifest.check_target("macos", "aarch64"), Ok(()));
+
+        let error = manifest
+            .check_target("linux", "aarch64")
+            .expect_err("no target crosses the two");
+        assert_eq!(
+            error.to_string(),
+            "the package ships for linux/x86_64, macos/aarch64, but linux/aarch64 is running"
+        );
     }
 }

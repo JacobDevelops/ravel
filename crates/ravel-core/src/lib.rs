@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 pub use diagnostics::{
     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
-    Redaction, StructuredFailure,
+    Redaction, RedactionPolicy, StructuredFailure,
 };
 pub use identity::{ModId, ModIdError};
 /// An exact released version of a mod or of Ravel itself.

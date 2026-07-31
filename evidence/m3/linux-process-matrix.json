@@ -1,0 +1,232 @@
+{
+  "artifacts": [
+    {
+      "name": "game-stdout.log",
+      "reproducible": false,
+      "sha256": "52dd548bf0f2893cdc1f3e3a7a7aeddce0c510a91ebefdfe933a512130d11c60"
+    },
+    {
+      "name": "libravel_bootstrap.so",
+      "reproducible": false,
+      "sha256": "943057f863063573248637ef931e896bbc61e087a5e4b2d931407a933806bc39"
+    },
+    {
+      "name": "ravel-agent.jar",
+      "reproducible": true,
+      "sha256": "49d0a72b3d14d84fe4d4b1c0d8fc4ea958590ffe79407d78d7b5ecb6102909c9"
+    },
+    {
+      "name": "ravel-screen.jar",
+      "reproducible": true,
+      "sha256": "52067ffceb94bd2b18055288b440c88adbf055ad5ba86959cdcb28a6bc5afa3d"
+    }
+  ],
+  "deviations": [
+    {
+      "classification": "non-blocking",
+      "summary": "The launcher rebuilds the instance's natives directory during launch preparation and puts its own -Djava.library.path after the instance's, which evidence/m2/prism-launch.json already recorded. The native library was therefore staged from the wrapper command, which runs after that rebuild and immediately before the JVM. That is a capture aid: it adds no component and changes no launch argument."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The agent reports what it rewrote from a JVM shutdown hook, and the launcher shows that stream in a console window it writes to no file. These launches used a stock WrapperCommand that tees the process's own output and stages the library. It changes no launch argument and starts nothing else."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The rewrite launch carried -verbose:class, a stock JVM diagnostic flag, so that which reviewed classes the client loads could be measured rather than inferred. It changes no rewrite and no Ravel behaviour, and the counts it sits beside match the launch taken without it."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The runs were ended with SIGTERM at the title screen rather than by quitting the game. The JVM runs its shutdown hooks either way, which is where the agent's report is printed. No world was created, opened, or saved, so this record proves nothing about world lifecycle."
+    },
+    {
+      "classification": "blocking",
+      "summary": "No world was opened. Prism 11.0.3's JoinWorldOnLaunch setting did not reach the client as a quick-play argument on this instance, and no other route to a world exists that does not inject input. The four reviewed classes listed under reviewedTargets.neverLoaded are therefore unmeasured, and so is every surface that only exists once a world does."
+    }
+  ],
+  "gameDirectory": {
+    "answers": "Whether Ravel's game-directory resolution holds under the launcher that actually starts the game.",
+    "clientWroteItsMarkerDuringTheLaunch": true,
+    "detail": "crates/ravel-bootstrap/src/game_directory.rs resolves the game directory as the process working directory, on the footing that the pinned client declares --gameDir with defaultsTo(new File(\".\")). That footing is wrong in exactly one case: a launcher that passes a --gameDir different from the directory it spawned the process in. Prism was expected to set the working directory to the instance game root and had never been measured doing it. It does. The measurement is the process's own working directory, read from outside the process, on a launch with no agent attached and no wrapper configured.",
+    "markerPresentInWorkingDirectory": true,
+    "method": "the game process's working directory, read from outside the process",
+    "unchangedBetweenStartAndTitleScreen": true,
+    "why": "The marker file is not merely present, it was rewritten during the launch. The client's constructor calls Options.save() into the directory it resolved --gameDir to, so a marker whose contents are that launch's is the client's own resolution agreeing with the working directory rather than a file that happened to be sitting there. That is what turns the footing from an expectation into a measurement.",
+    "workingDirectoryIsInstanceGameRoot": true
+  },
+  "identity": {
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1",
+    "hardwareProfileSha256": "532b589e5763a650ce154bfe6ebb9c77d615cb160bcc83e3627a3b3bb539c96c",
+    "java": "25.0.1",
+    "minecraft": "26.1.2",
+    "platform": "linux",
+    "prism": "11.0.3"
+  },
+  "instance": {
+    "components": [
+      {
+        "uid": "org.lwjgl3",
+        "version": "3.4.1"
+      },
+      {
+        "uid": "net.minecraft",
+        "version": "26.1.2"
+      }
+    ],
+    "coreModFiles": 0,
+    "detail": "The instance's own component list and mod directories, read after the launches. M3-W7's row asks for a scan proving no other loader is present, and this is it: two stock components, no mod payload, and no jar anywhere under the game root. Ravel installs neither a component nor a file here; it is two JVM arguments, and the screen jar sits beside the agent jar outside the instance.",
+    "jarsUnderGameRoot": 0,
+    "modFiles": 0,
+    "otherLoaderComponents": [],
+    "withoutAnotherLoader": true
+  },
+  "launchBlockingDefect": {
+    "detail": "Agent.premain passes System.getProperty(\"ravel.profiling\") straight into the native switch. A launch that did not ask for profiling — which is every ordinary launch — hands that export null. The export read it as text, that threw, the throw left premain, and the JVM treats a premain that threw as fatal. The client never started. The last launch on record before this work predates the profiling wiring, which is why nothing had noticed.",
+    "firstFoundBy": "jvm/harness/run-harness.sh, before any launch",
+    "gateThatNowCatchesIt": {
+      "detail": "ravel-verify-jvm builds the adapter, the native library and the agent jar, then runs the harness. It is the only thing in the gate graph that starts a JVM, so it is the only thing that runs premain at all. It is in ravel:verify's `after` list and in nix/ci.nix's enterTest, so the local gate and CI agree.",
+      "provenAgainstTheDefect": "The null check was reverted and the whole of ravel:verify was run. It exits 1, and the reason in the log is the premain abort. In that same run all 760 unit tests passed, which is the point: a green test suite sitting on top of a client that cannot boot is exactly the state this work package found, and this is the check that now refuses it. Restored, the gate exits 0.",
+      "task": "ravel:verify-jvm"
+    },
+    "howItEscaped": "run-harness.sh is listed in the scaffold contract as a file that must exist, and nothing executed it. Nothing in ravel:verify started a JVM, so the one check that exercises premain end to end ran only when somebody ran it by hand.",
+    "notPresentInTheDeliveredStack": "The null check has been folded into the change that introduced the switch rather than appended as a later fix, which is what this repository's history contract asks for. So the delivered stack never carries the defect, and a reader diffing it will not find the broken state described here. What the diff cannot show, and what this section is for, is that the state existed and that no check in the repository would have reported it.",
+    "summary": "In the stack as M3-W7 received it, no Ravel launch could start the game at all. The process matrix found it in the harness, before reaching the launcher. The durable finding is not the null check; it is that a whole work package shipped a client that could not boot without one gate going red.",
+    "symptom": "SIGABRT during premain: java.lang.instrument reports agent load/premain call failed"
+  },
+  "launchTimeCaller": {
+    "detail": "M3-W7 was briefed to give install_settings and Screens.open their first callers. It cannot, and the reason is three missing pieces rather than a missing moment. Recording them here because a later reader will otherwise assume the callers were simply not written.",
+    "measuredInTheClient": {
+      "detail": "dev.ravel.jvm.Screens was loaded in the real client, so the append ran, and zero classes were defined out of ravel-screen.jar — no dev.ravel.jvm.screen class exists in a launched game. That is the gap stated as a measurement rather than as an absence of code: the screen artifact reaches the loader's search path and is never defined, because defining it is lazy behind a caller that does not exist.",
+      "screenClassesDefined": 0,
+      "screensClassLoaded": true
+    },
+    "provenInARunningJvm": {
+      "detail": "The harness runs these against a real JVM through the generated JNI exports, with nothing installed, and asserts the exact answers. That is the whole of what a launch can prove today: the crossings are reachable from Java and answer correctly when the store is empty. It is not the round trip, because nothing fills the store.",
+      "surfaces": [
+        "Hook.ravelSettingsDocument returns null when no configuration is installed",
+        "Hook.ravelSaveSettings returns a structured refusal rather than throwing",
+        "Hook.ravelModSurface returns null when no runtime is installed",
+        "the rewritten call path reaches native code and the shutdown report counts it"
+      ]
+    },
+    "whatBlocksIt": [
+      {
+        "blocker": "Nothing constructs a Vec<Box<dyn HostMod>> outside #[cfg(test)]. No dynamic loading, no static registry; test mods are plain rlibs exporting no foreign symbol.",
+        "closedBy": "ADG-2's implementation, which chose source compiled on the player's machine and which nothing has built"
+      },
+      {
+        "blocker": "The only end-to-end pipeline driver lives in ravel-testkit, which production crates may not depend on, and it returns a PipelineRun rather than the driven LifecycleMachine that install takes.",
+        "closedBy": "a production pipeline driver, which is not M3's"
+      },
+      {
+        "blocker": "LayeredConfiguration::resolve takes a declaration, a pack override document and a player document. Only the player document has a disk reader (ravel-config's file::read). There is no reader for a pack override, and no source for a declaration at all.",
+        "closedBy": "M4-W5, which is where pack declarations arrive"
+      }
+    ],
+    "whatWasNotDone": "No production caller was invented. Linking a test mod into ravel-bootstrap would have made the proof pass and would have been picking ADG-2's answer, which is not this work package's to pick."
+  },
+  "milestone": "M3",
+  "openWorld": {
+    "decisionBelongsTo": "the maintainer, not this work package",
+    "detail": "M3-W7 was to be the first thing that opens a world for real, and it did not open one. Prism 11.0.3's JoinWorldOnLaunch setting does not reach the client as a quick-play argument on this instance, with or without OverrideMiscellaneous, and the supported focus-free route cannot attach Ravel: the nested probe sets OverrideCommands=false, and the wrapper it thereby disables is the only thing that stages the native library after the launcher rebuilds the instance's natives directory.",
+    "notAnsweredHere": true,
+    "question": "whether open_world takes what a world holds — the saved-data decision is modelled and not plugged in",
+    "whatOpeningAWorldWouldHaveShown": "Nothing about this question. open_world has no caller inside a game process, because nothing in a game process holds a loader, so a world that opened would not have reached it. That is the same missing launch-time caller recorded under launchTimeCaller rather than a second gap.",
+    "whatIsNowKnownWithoutAWorld": {
+      "constraint": "The decision must stay computable without the SavedDataStorage hooks, which docs/architecture/m3-hook-targets.md states and which the never-loaded class list above shows is not merely theoretical — those hooks did not load in a real client.",
+      "declaredHalfIsAlreadyInTheMachine": "LifecycleEntry carries saved_data_versions, so the declared half needs no new input.",
+      "missingArgument": "the stored half — per owning mod, an optional saved-data version, which is exactly the second argument SavedDataPlan::open already takes",
+      "permittedByAcceptedDecisions": "ADG-4 excludes ravel-save's own state from the handle question, so a stored-version argument crossing into open_world is permitted by the accepted decisions rather than blocked by them.",
+      "whatItConsultsToday": "whether the PreWorldReport's refusal list is non-empty, and each entry's lifecycle state. Neither touches saved data, and a refusal reaching the gate carries only a count and a rendered first line, so the gate cannot tell a saved-data refusal from any other."
+    }
+  },
+  "record": "m3-w7-linux-process-matrix",
+  "redaction": {
+    "detail": "No line of the game's or the launcher's output reaches this record. The raw logs are written outside the repository, hashed, and left there; the digests are the only thing that crosses. The launch command is recorded as a hash over a placeholder argument vector rather than the one that ran, because the real one names an account.",
+    "recordsOnlyDigest": true,
+    "removed": [
+      "the account profile the launcher was given, which never entered a recorded value",
+      "every filesystem path, including the isolated launcher root and the instance directory"
+    ]
+  },
+  "reviewedTargets": {
+    "callableTargetsInInventory": 31,
+    "classesInInventory": 15,
+    "detail": "Which reviewed classes a real client loads, measured with -verbose:class rather than reasoned about. It matters because a rewrite count on its own cannot distinguish a target that failed to match from one the client never loaded, and 126 different subsets of ten classes sum to the twenty-four methods the agent reported.",
+    "loadedByTheClient": {
+      "classes": 11,
+      "methodsThoseClassesCarry": 25
+    },
+    "neverLoaded": {
+      "classes": [
+        {
+          "class": "net.minecraft.commands.Commands",
+          "targets": [
+            "command.perform-prefixed"
+          ]
+        },
+        {
+          "class": "net.minecraft.server.ReloadableServerResources",
+          "targets": [
+            "resource.load-server-resources"
+          ]
+        },
+        {
+          "class": "net.minecraft.world.item.crafting.RecipeManager",
+          "targets": [
+            "recipe.apply"
+          ]
+        },
+        {
+          "class": "net.minecraft.world.level.storage.SavedDataStorage",
+          "targets": [
+            "save.compute-if-absent",
+            "save.try-write",
+            "save.save-and-join"
+          ]
+        }
+      ],
+      "detail": "All four exist only once a world does. They are not failures; they are the part of the matrix this record could not run, and they are why the blocking deviation above is blocking.",
+      "methods": 6
+    },
+    "unaccountedFor": {
+      "classes": 1,
+      "detail": "The client loaded eleven reviewed classes carrying twenty-five methods, all of them after the transformer was installed at 0.108s and all of them from the client jar rather than a shared archive. The agent reports rewriting ten classes and twenty-four methods. One class, carrying one method, was loaded and not counted. Which one is not established: the transformer counts what it rewrote but does not name it, and no diagnostic in the tree can say. The transformer throwing is ruled out — nothing in the launch output names dev.ravel or the classfile API — which leaves the class never reaching transform at all.",
+      "methods": 1,
+      "resolved": false
+    }
+  },
+  "rewrite": {
+    "classesRewritten": 10,
+    "detail": "The agent's own shutdown report, from two launches. The class and method counts were identical across both; the invocation count is not expected to be stable and was not. Both runs reached the title screen and were ended there.",
+    "methodsRewritten": 24,
+    "nativeInvocations": 18136,
+    "nativeInvocationsSecondRun": 18914,
+    "reachedGameProcess": true,
+    "reachedNativeCode": true,
+    "runs": 2
+  },
+  "schemaVersion": 1,
+  "summary": "Ravel's game-directory resolution is measured correct under stock Prism, the agent reaches the official client and rewrites twenty-four methods in ten classes there, the instance carries no other loader, and the harness that would have caught a launch-blocking defect now runs in the gate. The matrix is not complete: no world could be opened without injecting input, one loaded hook class is unaccounted for, and the loader still has no caller inside a running game because three pieces ADG-2 and M4 own do not exist yet.",
+  "trial": {
+    "commandSha256": "8c58f39aea93e048663b2ae499ccacc510807f46669aefe66cc3f267c0218894",
+    "revision": {
+      "changeId": "unzwykzzsxmmmnnnkrlpruppprnoszkl",
+      "dirty": true,
+      "id": "1b1373d391c3a53a024fc617adaff628a3d5210e"
+    },
+    "startedAt": "2026-07-31T23:11:26Z"
+  },
+  "whatThisDoesNotSay": [
+    "Nothing here says the process matrix passed. Four reviewed classes were never loaded, one loaded class is unaccounted for, and the surfaces that only exist once a world does were not exercised at all.",
+    "Nothing here gives install_settings, Screens.open, Screens.openMods or Screens.openProfiling a caller. They still have none, so the load half of the configuration round trip has still never run in a game and no Ravel screen has ever been drawn in one. What is proven is narrower and is stated as such: the crossings answer correctly in a real JVM with nothing installed, and the screen jar reaches the loader and is never defined.",
+    "Nothing here answers whether open_world takes what a world holds. That decision is the maintainer's; this record states what is now known about it and stops. No signature was changed.",
+    "The game-directory result is Prism 11.0.3's behaviour on this instance. It says nothing about another launcher, and the case the resolution is wrong in — a launcher passing a --gameDir different from the working directory it spawned the process in — remains undetectable from inside the process.",
+    "The rewrite counts are a title-screen launch's. A class the game loads later, or a class a modded instance introduces, would not appear in them.",
+    "The invocation counts are two samples of a number that moves with how long the client sat at the title screen. They bound nothing and are here only to show native code was reached.",
+    "The instance scan is this vanilla instance's. The ATM11 instance was not launched and was not scanned.",
+    "The launch-blocking defect is fixed and gated, but the gate proves one path: that premain completes and the rewrite reaches native code against a stub class. It does not start a client, so a defect that only appears against the real game is still found by launching and by nothing else.",
+    "Nothing here was measured on a modded instance. The ATM11 instance was neither launched nor scanned."
+  ],
+  "workPackage": "M3-W7"
+}

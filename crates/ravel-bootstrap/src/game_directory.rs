@@ -30,9 +30,22 @@
 //! It is wrong in exactly one case: a launcher that passes a `--gameDir`
 //! different from the directory it spawned the process in. Ravel cannot detect
 //! that case, because under Prism the arguments never reach the process table at
-//! all. Prism is *expected* to set the working directory to the instance game
-//! root, which would make the two agree — **Ravel has not confirmed that**, and
-//! M3-W7 launches for real and can confirm it for free.
+//! all. Prism was *expected* to set the working directory to the instance game
+//! root, which makes the two agree, and M3-W7 measured it doing so:
+//! `evidence/m3/linux-process-matrix.json` records the game process's own
+//! working directory, read from outside the process on a launch with no agent
+//! attached, and it is the instance game root.
+//!
+//! The measurement is stronger than the guard below needs, and deliberately so.
+//! A marker sitting in the working directory only proves the client has run
+//! there at some point. What was recorded is that the client rewrote
+//! `options.txt` **during that launch** — its constructor calls `Options.save()`
+//! into the directory it resolved `--gameDir` to, so the file's contents being
+//! that launch's is the client's own resolution agreeing with the working
+//! directory. The footing is measured rather than expected.
+//!
+//! That result is Prism 11.0.3's. The undetectable case has not gone away; no
+//! launcher Ravel has run under exhibits it.
 //!
 //! The process's own working directory is read rather than the `user.dir`
 //! property: it needs no call into the JVM, and it is the same thing the game's
@@ -57,14 +70,30 @@
 //!    result is a mirror, and a mirror needs a measurement, a staleness argument
 //!    and an ADR. A configuration writer holding a path is a copy that stays.
 //!
-//! # The load half has no caller yet
+//! # The load half still has no caller, and M3-W7 is where that stopped being a
+//! scheduling gap
 //!
 //! Nothing calls [`crate::install_settings`], so there is no moment in a launch
 //! where a player's configuration is read back off disk — the same shape as
-//! `Screens.open` having no caller. Both wait for whatever wires the loader into
-//! the game at launch, which is M3-W7's, since the process matrix is the first
-//! thing that starts for real. The round trip is proven in tests; it is not yet
-//! proven in a game.
+//! `Screens.open` having no caller. This paragraph used to say both were waiting
+//! for M3-W7, since the process matrix is the first thing that starts for real.
+//! M3-W7 ran, and they are not waiting on a work package. They are waiting on a
+//! mechanism nothing has accepted:
+//!
+//! - A screen is opened by putting a `Screen` object into the game's screen
+//!   stack, and that is Ravel calling **into** Minecraft. ADG-1 established
+//!   Java-to-Rust only, and the transformer prepends one `void` static call and
+//!   reads nothing back, so there is no shape a caller could take.
+//!   `docs/architecture/m3-hook-targets.md` says this outright and assigns it to
+//!   ADG-6; ADG-6 names the hooks a screen would use and does not provide the
+//!   mechanism, so the question is open rather than answered.
+//! - `install_settings` needs no call into the game, only a moment at launch
+//!   that resolves configurations and installs them. That moment does not exist
+//!   either: [`crate::install`] has no caller for the same reason, so no launch
+//!   has ever held a loader.
+//!
+//! The round trip is proven in tests; it is not proven in a game, and closing
+//! that is a decision rather than an implementation.
 
 use std::path::{Path, PathBuf};
 

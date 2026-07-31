@@ -7,6 +7,7 @@ milestone manifest that admits them is written when M3 closes.
 | --- | --- | --- |
 | [`pack-compile.json`](pack-compile.json) | ADG-2 | What compiling a pack-sized set of mods with real bodies costs — cold, warm after one mod changes, in peak memory, and on disk. |
 | [`profiling-overhead.json`](profiling-overhead.json) | M3-W6 | What opt-in profiling costs a tick when nobody turned it on, what it can and cannot attribute to a mod, and which metrics it cannot measure at all. |
+| [`linux-process-matrix.json`](linux-process-matrix.json) | M3-W7 | What a real Linux launch proves about the game directory, the rewrite, and the instance — and, at least as importantly, what it could not reach. |
 
 `pack-compile.json` comes from `devenv tasks run ravel:measure-pack-compile` and
 is the measurement ADG-2 named as deciding its open mechanism: whether an
@@ -64,3 +65,41 @@ assertion over one would fail on scheduler noise.
 stated as an assumption everywhere it appears. `overhead.breakEven` beside it
 rests on no assumption and is what answers the budget outright once the real
 per-tick crossing count is recorded.
+
+## `linux-process-matrix.json`
+
+It comes from launches rather than from a task, because the thing it measures is
+a launcher starting a game and no task can stand in for that. Three of its
+sections are measurements — the game directory, the rewrite, and the instance
+scan — and each says how it was taken.
+
+**It is not a passing gate, and it is written so that cannot be misread.** M3-W7's
+row asks that every required surface pass natively; this record carries a
+*blocking* deviation, an `unaccountedFor` section whose `resolved` is `false`,
+and a `whatThisDoesNotSay` list that opens by saying the matrix did not pass. A
+later reader deciding whether M3 closes should start at those three.
+
+The one thing it settles outright is the game directory.
+`crates/ravel-bootstrap/src/game_directory.rs` was written against a footing —
+that Prism sets the working directory to the instance game root — which had
+never been measured and which, if wrong, would have invalidated the module
+rather than merely failed. It is right, and the evidence is stronger than
+presence of the marker: the client rewrote `options.txt` into that directory
+during the launch, which is its own `gameDirectory` resolution agreeing with the
+working directory rather than a file that happened to be there.
+
+`launchBlockingDefect` is in the record rather than only in a commit message
+because it is the most useful thing this work package found, and because the
+history deliberately does not show it. The null check was folded into the change
+that introduced the switch, which is what this repository's contract asks for, so
+the delivered stack never carries the defect and a reader diffing it will find
+nothing. What the diff cannot say is that the state existed and that no check in
+the repository would have gone red for it. That is now closed:
+`ravel:verify-jvm` runs the harness inside `ravel:verify` and in CI, and it was
+proven against the defect rather than assumed — reverting the null check turns
+the task red, restoring it turns the task green.
+
+`launchTimeCaller` and `openWorld` are the two sections a reader should not skim.
+Both record a gap that M3-W7 was briefed to close and did not, both say exactly
+what blocks it and who owns the decision, and neither was closed by inventing a
+caller to make a proof pass.

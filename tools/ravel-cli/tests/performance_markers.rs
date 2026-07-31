@@ -632,6 +632,151 @@ fn socket_recorder_survives_bad_wire_requests_and_reads_one_line() {
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
+/// The endpoint is published already protected, so its private staging name is
+/// as reserved as the socket path itself.
+#[test]
+fn socket_recorder_refuses_an_endpoint_another_bind_is_holding() {
+    let root = temporary_root("record-markers-staging");
+    let socket = root.join("markers.sock");
+    let csv = root.join("markers.csv");
+    let staging = socket.with_extension("pending");
+    fs::write(&staging, "another bind holds this").expect("staging path should be writable");
+
+    assert!(matches!(
+        record_initial_performance_markers(&socket, &csv),
+        Err(PerformanceError::Io(_))
+    ));
+    assert_eq!(
+        fs::read_to_string(&staging).expect("staging path should remain readable"),
+        "another bind holds this"
+    );
+    assert!(!socket.exists());
+    assert!(!csv.exists());
+
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+/// A connected client that says nothing must end the recorder, not outlast it.
+///
+/// The recorder answers the silent peer and returns, rather than writing
+/// `error:` and polling on for a command that is never coming.
+#[test]
+fn socket_recorder_gives_up_on_a_client_that_never_writes() {
+    let root = temporary_root("record-markers-silent-client");
+    let socket = root.join("markers.sock");
+    let csv = root.join("markers.csv");
+    let server_socket = socket.clone();
+    let server_csv = csv.clone();
+    let server =
+        thread::spawn(move || record_initial_performance_markers(&server_socket, &server_csv));
+
+    wait_for_socket(&socket);
+    let mut silent_client = UnixStream::connect(&socket).expect("silent client should connect");
+
+    let error = server
+        .join()
+        .expect("server thread should join")
+        .expect_err("a client that says nothing must not hold the recorder open");
+    assert!(error.to_string().contains("did not arrive"), "{error}");
+
+    let mut response = String::new();
+    silent_client
+        .read_to_string(&mut response)
+        .expect("silent client should read its refusal");
+    assert!(response.starts_with("error:"), "{response}");
+    assert!(!socket.exists());
+    assert!(!csv.exists());
+
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+/// A request that arrives late is still a request.
+///
+/// The client here connects and then stalls far longer than one read timeout,
+/// which is what a descheduled process does under load. The recorder retries
+/// the read rather than refusing a command it has not seen yet.
+#[test]
+fn socket_recorder_answers_a_client_that_writes_late() {
+    let root = temporary_root("record-markers-late-client");
+    let socket = root.join("markers.sock");
+    let csv = root.join("markers.csv");
+    let server_socket = socket.clone();
+    let server_csv = csv.clone();
+    let server =
+        thread::spawn(move || record_initial_performance_markers(&server_socket, &server_csv));
+
+    wait_for_socket(&socket);
+    let mut late_client = UnixStream::connect(&socket).expect("late client should connect");
+    late_client
+        .set_read_timeout(Some(Duration::from_secs(1)))
+        .expect("late client timeout should configure");
+    thread::sleep(Duration::from_millis(50));
+    late_client
+        .write_all(b"process-start,\n")
+        .expect("late request should write");
+    let mut response = [0_u8; 3];
+    late_client
+        .read_exact(&mut response)
+        .expect("a late request should still be answered");
+    assert_eq!(&response, b"ok\n");
+
+    assert!(matches!(
+        send_initial_performance_marker(&socket, &InitialPerformanceMarkerCommand::ProcessExit),
+        Err(PerformanceError::InvalidPerformanceMarkerCsv(_))
+    ));
+    assert!(matches!(
+        server.join().expect("server thread should join"),
+        Err(PerformanceError::InvalidPerformanceMarkerCsv(_))
+    ));
+    assert!(!socket.exists());
+    assert!(!csv.exists());
+
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+/// The combined recorder is the one the gate strands, so it gets the same proof.
+///
+/// A capture that answered `error:` and kept polling held its thread until
+/// nextest killed the run at two minutes. It now returns, and takes its
+/// endpoint with it.
+#[test]
+fn combined_linux_recorder_gives_up_on_a_client_that_never_writes() {
+    let root = temporary_root("record-markers-linux-silent-client");
+    let proc_root = root.join("proc");
+    write_proc_snapshot(&proc_root, 42);
+    let socket = root.join("markers.sock");
+    let markers_csv = root.join("markers.csv");
+    let memory_csv = root.join("linux-memory.csv");
+    let server_socket = socket.clone();
+    let server_markers = markers_csv.clone();
+    let server_memory = memory_csv.clone();
+    let server_proc = proc_root.clone();
+    let server = thread::spawn(move || {
+        record_initial_linux_performance(
+            &server_socket,
+            &server_markers,
+            &server_memory,
+            &server_proc,
+            4096,
+            Duration::from_secs(1),
+        )
+    });
+
+    wait_for_socket(&socket);
+    let _silent_client = UnixStream::connect(&socket).expect("silent client should connect");
+
+    let error = server
+        .join()
+        .expect("combined server thread should join")
+        .expect_err("a client that says nothing must not hold the recorder open");
+    assert!(error.to_string().contains("did not arrive"), "{error}");
+    assert!(!socket.exists());
+    assert!(!markers_csv.exists());
+    assert!(!memory_csv.exists());
+
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
 #[test]
 fn combined_linux_recorder_cleans_partial_memory_after_marker_order_failure() {
     let root = temporary_root("record-markers-linux-memory");

@@ -16,8 +16,17 @@ const WARM_UP_NS: u64 = 300 * SECOND_NS;
 const MEASUREMENT_NS: u64 = 900 * SECOND_NS;
 const COOL_DOWN_NS: u64 = 120 * SECOND_NS;
 const SOCKET_POLL_INTERVAL: Duration = Duration::from_millis(1);
-const SOCKET_REQUEST_TIMEOUT: Duration = Duration::from_millis(1);
+const SOCKET_REQUEST_BUDGET: Duration = Duration::from_millis(250);
 const TERMINAL_MARKER_PRIORITY_NS: u64 = 3_000_000;
+/// The longest a recorder may wait before it gives up on the capture.
+///
+/// A recorder is not a server. It exists to serve exactly one profile, and that
+/// profile's own schedule fixes its length: a warm-up, a measured route, and a
+/// cool-down. The five minutes on top cover the one interval the schedule does
+/// not describe, between the recorder starting and the launcher sending
+/// `process-start`. Past that there is nobody driving the capture, and waiting
+/// longer only turns a failed run into a hung one.
+const CAPTURE_DEADLINE_NS: u64 = WARM_UP_NS + MEASUREMENT_NS + COOL_DOWN_NS + 300 * SECOND_NS;
 const MAX_MARKER_REQUEST_BYTES: u64 = 1_024;
 const SCHEDULED_MARKER_OFFSETS_SECONDS: [u64; 7] = [300, 300, 480, 720, 840, 1_020, 1_200];
 
@@ -395,6 +404,14 @@ impl InitialPerformanceMarkerRecorder {
         &self.events
     }
 
+    /// Names the event the stream still owes, for a give-up message.
+    fn awaiting(&self) -> String {
+        EXPECTED_KINDS.get(self.events.len()).map_or_else(
+            || "nothing; the stream is already complete".to_owned(),
+            |kind| format!("event {} (`{}`)", self.events.len(), kind.as_str()),
+        )
+    }
+
     /// Creates and verifies a CSV from a complete recorder stream.
     ///
     /// # Errors
@@ -753,6 +770,7 @@ pub fn record_initial_performance_markers(
     let mut recorder = InitialPerformanceMarkerRecorder::new();
     loop {
         let elapsed_ns = instant_elapsed_ns(origin)?;
+        validate_capture_deadline(&recorder, elapsed_ns)?;
         validate_recorder_wake_deadline(&recorder, elapsed_ns)?;
         recorder.advance_to(elapsed_ns)?;
         if should_defer_socket_accept(&recorder, elapsed_ns)? {
@@ -766,6 +784,7 @@ pub fn record_initial_performance_markers(
                     Ok(command) => command,
                     Err(error) => {
                         let _ = writeln!(stream, "error:{error}");
+                        refuse_request(error)?;
                         continue;
                     }
                 };
@@ -835,6 +854,7 @@ pub fn record_initial_linux_performance(
     let mut memory = None;
     loop {
         let elapsed_ns = instant_elapsed_ns(origin)?;
+        validate_capture_deadline(&markers, elapsed_ns)?;
         advance_combined_linux_markers(&mut markers, elapsed_ns)?;
         if should_defer_socket_accept(&markers, elapsed_ns)? {
             thread::sleep(SOCKET_POLL_INTERVAL);
@@ -847,6 +867,7 @@ pub fn record_initial_linux_performance(
                     Ok(command) => command,
                     Err(error) => {
                         let _ = writeln!(stream, "error:{error}");
+                        refuse_request(error)?;
                         continue;
                     }
                 };
@@ -1181,6 +1202,24 @@ fn validate_partial_event(
     Ok(())
 }
 
+/// Refuses a capture that has outlived the profile it was started for.
+///
+/// The message names the event the recorder was still waiting for, because a
+/// recorder that gives up silently is the same bug with a shorter fuse.
+fn validate_capture_deadline(
+    recorder: &InitialPerformanceMarkerRecorder,
+    elapsed_ns: u64,
+) -> Result<(), PerformanceError> {
+    if elapsed_ns <= CAPTURE_DEADLINE_NS {
+        return Ok(());
+    }
+    Err(PerformanceError::Io(format!(
+        "performance marker recorder gave up at {elapsed_ns} ns, past its \
+         {CAPTURE_DEADLINE_NS} ns capture deadline, while waiting for {}",
+        recorder.awaiting()
+    )))
+}
+
 fn validate_recorder_wake_deadline(
     recorder: &InitialPerformanceMarkerRecorder,
     elapsed_ns: u64,
@@ -1269,6 +1308,31 @@ fn should_reserve_terminal_marker_priority(
     })
 }
 
+/// Decides whether the recorder keeps serving after refusing one request.
+///
+/// A protocol violation costs the client its own request and nothing more, so
+/// the recorder stays up: the next client is unaffected. A transport failure is
+/// different in kind, because no command was read at all. The peer has already
+/// been answered `error:` and will not ask again, so polling on would be the
+/// recorder waiting for a client that is finished with it.
+fn refuse_request(error: PerformanceError) -> Result<(), PerformanceError> {
+    if matches!(error, PerformanceError::Io(_)) {
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// Whether a failed read means the peer is still connected with nothing said.
+///
+/// A socket read timeout surfaces as `WouldBlock` on Linux; the other two are
+/// the same answer from a different direction and cost nothing to accept.
+fn is_retryable_read(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted
+    )
+}
+
 fn read_marker_command(
     stream: &mut UnixStream,
 ) -> Result<InitialPerformanceMarkerCommand, PerformanceError> {
@@ -1283,11 +1347,18 @@ fn read_linux_marker_command(
     parse_initial_linux_performance_marker_command(&kind, value.as_deref())
 }
 
+/// Reads one newline-terminated request from a connected client.
+///
+/// The read timeout is the retry granularity rather than the request's budget.
+/// A peer that has connected and written nothing yet is descheduled, not
+/// hostile, so a timed-out read is retried until [`SOCKET_REQUEST_BUDGET`] is
+/// spent. Answering `error:` to a request that was merely late is what left the
+/// recorder polling for a client that had already been told no.
 fn read_marker_fields(
     stream: &mut UnixStream,
 ) -> Result<(String, Option<String>), PerformanceError> {
     stream
-        .set_read_timeout(Some(SOCKET_REQUEST_TIMEOUT))
+        .set_read_timeout(Some(SOCKET_POLL_INTERVAL))
         .map_err(|error| {
             PerformanceError::Io(format!(
                 "cannot configure performance marker request timeout: {error}"
@@ -1295,13 +1366,7 @@ fn read_marker_fields(
         })?;
     let mut bytes = Vec::new();
     let request_started = Instant::now();
-    for _ in 0..=MAX_MARKER_REQUEST_BYTES {
-        if request_started.elapsed() >= SOCKET_REQUEST_TIMEOUT {
-            return Err(PerformanceError::Io(format!(
-                "performance marker request exceeded {} ms",
-                SOCKET_REQUEST_TIMEOUT.as_millis()
-            )));
-        }
+    while u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= MAX_MARKER_REQUEST_BYTES {
         let mut byte = [0_u8; 1];
         match stream.read(&mut byte) {
             Ok(0) => break,
@@ -1311,11 +1376,20 @@ fn read_marker_fields(
                     break;
                 }
             }
+            Err(error) if is_retryable_read(&error) => {}
             Err(error) => {
                 return Err(PerformanceError::Io(format!(
                     "cannot read performance marker request: {error}"
                 )));
             }
+        }
+        if request_started.elapsed() >= SOCKET_REQUEST_BUDGET {
+            return Err(PerformanceError::Io(format!(
+                "performance marker request did not arrive within {} ms; the recorder was \
+                 waiting for the rest of a request and read {} of its bytes",
+                SOCKET_REQUEST_BUDGET.as_millis(),
+                bytes.len()
+            )));
         }
     }
     let request = String::from_utf8(bytes).map_err(|error| {
@@ -1509,17 +1583,44 @@ fn bind_marker_socket(
             socket_path.display()
         )));
     }
-    let listener = UnixListener::bind(socket_path).map_err(|error| {
-        PerformanceError::Io(format!(
-            "cannot bind performance marker socket {}: {error}",
-            socket_path.display()
-        ))
+    let staging_path = socket_path.with_extension("pending");
+    if staging_path.exists() {
+        return Err(PerformanceError::Io(format!(
+            "performance marker socket is already being bound: {}",
+            staging_path.display()
+        )));
+    }
+    let listener = stage_marker_socket(&staging_path, socket_path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&staging_path);
     })?;
     let socket_guard = MarkerSocketGuard {
         path: socket_path,
         identity: socket_identity(socket_path)?,
     };
-    std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600)).map_err(
+    Ok((listener, socket_guard))
+}
+
+/// Binds the endpoint under a private name and publishes it already protected.
+///
+/// `bind` takes the socket's mode from the process umask, so binding straight
+/// onto the watched path publishes an endpoint that is briefly group- and
+/// world-readable. An owner-only parent is what stops another user reaching it
+/// in that window, but a client watching for the path still sees the loose mode
+/// and the recorder should not depend on the directory to make its own endpoint
+/// private. Renaming a protected socket into place closes the window: the
+/// listener keeps the inode it bound, so the published path is connectable and
+/// owner-only from the moment it exists.
+fn stage_marker_socket(
+    staging_path: &Path,
+    socket_path: &Path,
+) -> Result<UnixListener, PerformanceError> {
+    let listener = UnixListener::bind(staging_path).map_err(|error| {
+        PerformanceError::Io(format!(
+            "cannot bind performance marker socket {}: {error}",
+            socket_path.display()
+        ))
+    })?;
+    std::fs::set_permissions(staging_path, std::fs::Permissions::from_mode(0o600)).map_err(
         |error| {
             PerformanceError::Io(format!(
                 "cannot protect performance marker socket {}: {error}",
@@ -1533,7 +1634,13 @@ fn bind_marker_socket(
             socket_path.display()
         ))
     })?;
-    Ok((listener, socket_guard))
+    std::fs::rename(staging_path, socket_path).map_err(|error| {
+        PerformanceError::Io(format!(
+            "cannot publish performance marker socket {}: {error}",
+            socket_path.display()
+        ))
+    })?;
+    Ok(listener)
 }
 
 fn require_owner_only_socket_parent(socket_path: &Path) -> Result<(), PerformanceError> {
@@ -1786,14 +1893,40 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        ALIGNMENT_TOLERANCE_NS, InitialLinuxPerformanceMarkerCommand,
+        ALIGNMENT_TOLERANCE_NS, CAPTURE_DEADLINE_NS, InitialLinuxPerformanceMarkerCommand,
         InitialPerformanceMarkerCommand, InitialPerformanceMarkerRecorder, MarkerSocketGuard,
         SECOND_NS, TERMINAL_MARKER_PRIORITY_NS, acknowledge_completion,
-        finish_combined_linux_capture, sample_combined_linux_memory,
-        sample_combined_linux_memory_for_command, should_defer_socket_accept,
-        should_reserve_terminal_marker_priority, socket_identity,
+        finish_combined_linux_capture, invalid_marker, refuse_request,
+        sample_combined_linux_memory, sample_combined_linux_memory_for_command,
+        should_defer_socket_accept, should_reserve_terminal_marker_priority, socket_identity,
+        validate_capture_deadline,
     };
-    use crate::LinuxMemoryCsvRecorder;
+    use crate::{LinuxMemoryCsvRecorder, PerformanceError};
+
+    #[test]
+    fn a_recorder_that_outlives_its_profile_gives_up_and_says_what_it_waited_for() {
+        let recorder = InitialPerformanceMarkerRecorder::new();
+
+        validate_capture_deadline(&recorder, CAPTURE_DEADLINE_NS)
+            .expect("a capture inside its deadline should continue");
+
+        let error = validate_capture_deadline(&recorder, CAPTURE_DEADLINE_NS + 1)
+            .expect_err("a capture past its deadline should end");
+        let message = error.to_string();
+        assert!(message.contains("gave up"), "{message}");
+        assert!(message.contains("event 0 (`process-start`)"), "{message}");
+    }
+
+    #[test]
+    fn a_request_the_recorder_could_not_read_ends_the_capture_and_a_bad_one_does_not() {
+        refuse_request(invalid_marker("unsupported event kind"))
+            .expect("a protocol violation should leave the recorder serving");
+
+        assert!(matches!(
+            refuse_request(PerformanceError::Io("request did not arrive".to_owned())),
+            Err(PerformanceError::Io(_))
+        ));
+    }
 
     #[test]
     fn socket_accepts_reserve_the_alignment_window_for_scheduled_markers() {

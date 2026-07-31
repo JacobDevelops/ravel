@@ -15,11 +15,13 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni.workspace = true
+ravel-config.workspace = true
 ravel-core.workspace = true
 ravel-host-api.workspace = true
 ravel-loader.workspace = true
 ravel-minecraft.workspace = true
 ravel-minecraft-adapter.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

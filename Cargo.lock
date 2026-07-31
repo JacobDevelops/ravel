@@ -763,11 +763,13 @@ name = "ravel-bootstrap"
 version = "0.0.0"
 dependencies = [
  "jni",
+ "ravel-config",
  "ravel-core",
  "ravel-host-api",
  "ravel-loader",
  "ravel-minecraft",
  "ravel-minecraft-adapter",
+ "serde_json",
 ]
 
 [[package]]

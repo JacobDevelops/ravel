@@ -3,13 +3,16 @@
 //! JVM entry point binding the generated hook surface to Ravel.
 
 mod dispatch;
+mod game_directory;
 mod guard;
 mod report;
 mod runtime;
+mod settings;
 
 pub use dispatch::register;
 pub use guard::HookError;
 pub use runtime::{LoaderRuntime, install};
+pub use settings::install as install_settings;
 
 /// The generated JNI exports, one per hook shape.
 ///

@@ -14,6 +14,7 @@
 
 mod declaration;
 mod document;
+pub mod file;
 mod layered;
 mod schema;
 

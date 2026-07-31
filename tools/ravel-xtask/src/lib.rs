@@ -100,6 +100,7 @@ const ROOT_FILES: &[&str] = &[
     "jvm/harness/Main.java",
     "jvm/harness/net/minecraft/util/StringUtil.java",
     "jvm/harness/run-harness.sh",
+    "jvm/screen/src/dev/ravel/jvm/screen/RavelModsScreen.java",
     "jvm/screen/src/dev/ravel/jvm/screen/RavelSettingsScreen.java",
     "jvm/screen/src/dev/ravel/jvm/screen/Wire.java",
     "minecraft/README.md",

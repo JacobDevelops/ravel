@@ -49,6 +49,9 @@ b
 simple=ab
 valid=true
 transformed=1 methods=4
+settings=null
+saved=1:10:46:the settings the screen sent could not be read
+mods=null
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 
 printf '%s\n' "$observed"

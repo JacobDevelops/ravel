@@ -39,6 +39,7 @@ public final class Agent {
         // is loaded from Hook's own initializer, which is what binds it to the
         // loader that declares the native methods.
         Hook.initialize();
+        Screens.append(instrumentation);
 
         Transformer installed = new Transformer(Hook.TARGETS);
         transformer = installed;
@@ -56,6 +57,23 @@ public final class Agent {
     public static int rewrittenMethods() {
         Transformer installed = transformer;
         return installed == null ? 0 : installed.rewrittenMethods();
+    }
+
+    /**
+     * The loader that loaded the first rewritten class, or {@code null}.
+     *
+     * <p>Reported only when {@code -Dravel.report.loader=true} is set. It is off
+     * by default because an ordinary launch prints exactly the one line
+     * {@code evidence/m2/prism-launch.json} recorded, and because the identity
+     * hashes in this line differ on every run, which an exact-output contract
+     * cannot hold. A measurement run turns it on and reads it once.
+     */
+    private static String loaderIdentity() {
+        Transformer installed = transformer;
+        if (installed == null || !Boolean.getBoolean("ravel.report.loader")) {
+            return null;
+        }
+        return installed.loaderIdentity();
     }
 
     /**
@@ -82,6 +100,10 @@ public final class Agent {
         String line = "[ravel] rewrote " + transformedClasses() + " classes and "
                 + rewrittenMethods() + " methods; " + invocations
                 + " hook invocations reached native code\n";
+        String loaders = loaderIdentity();
+        if (loaders != null) {
+            line = line + "[ravel] " + loaders + "\n";
+        }
         // Not closed: the descriptor is the process's, and closing it would take
         // standard output away from whatever else is still shutting down.
         OutputStream out = new FileOutputStream(FileDescriptor.out);

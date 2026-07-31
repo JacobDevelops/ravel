@@ -1,0 +1,450 @@
+package dev.ravel.jvm.screen;
+
+import dev.ravel.jvm.Hook;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.client.gui.components.Button;
+// The binary name is the type's name here. The pinned version reaches every
+// interactive widget through a nested type, and the stubs declare each one as a
+// top-level class carrying the binary name the JVM links on, so this is the same
+// class the game loads at runtime.
+import net.minecraft.client.gui.components.Button$OnPress;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+
+/**
+ * Ravel's generated settings screen.
+ *
+ * <p>ADG-6 declares configuration in data and draws it in Java: a mod author
+ * writes a declaration, `ravel-config` resolves it through the author's default,
+ * the pack's override and the player's value, and this class turns the result
+ * into widgets. Ravel never renders from Rust, so nothing here calls back the
+ * other way and no drawing happens outside this class.
+ *
+ * <p>This class ships in {@code ravel-screen.jar}, beside the agent's own jar
+ * rather than inside it: ADG-1 keeps the agent jar naming no game type, and this
+ * one names several. {@code dev.ravel.jvm.Screens} appends the jar at
+ * {@code premain} and {@link #open} is what first loads this class, which is why
+ * definition is lazy — a {@code Screen} subclass cannot be defined without
+ * loading {@code Screen}, and doing that at {@code premain} would drag the game's
+ * screen stack in before the client bootstraps.
+ *
+ * <p>It declares no native method. ADG-1 gives Ravel one exported symbol surface
+ * and it is {@code dev.ravel.jvm.Hook}; a screen with its own natives would be a
+ * second one. Both crossings this screen makes are that class's:
+ * {@code ravelSettingsDocument} once when it opens, and {@code ravelSaveSettings}
+ * once when it closes. That is ADG-6's budget of two batched crossings per
+ * session, and it is why the document is read into fields here rather than asked
+ * for again per widget or per frame.
+ *
+ * <p><b>Every widget here is one the game can build without this class drawing
+ * anything.</b> {@code AbstractButton} looks like the obvious base for the button
+ * rows and it is not available: it declares
+ * {@code protected abstract void extractContents(GuiGraphicsExtractor, int, int,
+ * float)}, so subclassing it means implementing render-state extraction. ADG-6's
+ * omission of {@code extractRenderState} is not an oversight, it is the decision
+ * — <i>Ravel never draws</i> — and a screen that implemented that method would be
+ * drawing whatever else the architecture said. {@code AbstractSliderButton} is
+ * subclassed instead, and only because the two methods the jar declares abstract
+ * on it are {@code updateMessage} and {@code applyValue}, neither of which is an
+ * extraction.
+ */
+public final class RavelSettingsScreen extends Screen {
+
+    /** Where the first row sits, below the title. */
+    private static final int TOP = 40;
+
+    /** The distance between one row and the next. */
+    private static final int ROW = 24;
+
+    private static final int WIDGET_WIDTH = 200;
+    private static final int WIDGET_HEIGHT = 20;
+
+    /**
+     * The owner whose settings this screen shows.
+     *
+     * <p>One screen shows one mod's settings, because a setting's identity in
+     * `ravel-config` is an owner plus a key and a screen mixing owners would
+     * have no single thing to save back.
+     */
+    private final String owner;
+
+    /** The rows read at open, in the order the declaration states them. */
+    private final List<Row> rows = new ArrayList<>();
+
+    /** What the last save refused, kept so a player can be told. */
+    private String refused = "";
+
+    private RavelSettingsScreen(String owner) {
+        super(Component.translatable("ravel.config.title"));
+        this.owner = owner;
+    }
+
+    /**
+     * Builds the screen for one owner.
+     *
+     * <p>Called reflectively by {@code dev.ravel.jvm.Screens}, which cannot name
+     * this type: {@code Screens} lives in the agent jar and ADG-1 forbids that
+     * jar naming a game type, which this class's supertype is.
+     *
+     * @param owner the canonical mod id whose settings to show
+     * @return a screen the caller hands to the game
+     */
+    public static Screen open(String owner) {
+        return new RavelSettingsScreen(owner);
+    }
+
+    /** The mod whose settings this screen shows. */
+    public String owner() {
+        return owner;
+    }
+
+    /** What the last save refused, empty when every edit landed. */
+    public String refused() {
+        return refused;
+    }
+
+    /**
+     * Builds one widget per setting, from the document read at open.
+     *
+     * <p>A document this process has nothing for reads as {@code null}, which is
+     * a mod with nothing to configure rather than a failure: the screen draws its
+     * title and a done button and nothing else. A document that does not read is
+     * treated the same way, because a payload this screen did not understand is a
+     * Ravel bug and drawing half of one would hide it.
+     */
+    @Override
+    protected void init() {
+        super.init();
+        rows.clear();
+        rows.addAll(read(Hook.ravelSettingsDocument(owner)));
+
+        int y = TOP;
+        for (Row row : rows) {
+            addRenderableWidget(row.build(this, y));
+            y += ROW;
+        }
+        addRenderableWidget(
+                Button.builder(Component.translatable("gui.done"), new Button$OnPress() {
+                            @Override
+                            public void onPress(Button pressed) {
+                                onClose();
+                            }
+                        })
+                        .bounds(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .build());
+    }
+
+    /** Reads a settings document into rows, or into nothing if it does not read. */
+    private static List<Row> read(String document) {
+        if (document == null) {
+            return List.of();
+        }
+        Wire wire = new Wire(document);
+        if (!Wire.VERSION.equals(wire.field()) || wire.field() == null || wire.field() == null) {
+            return List.of();
+        }
+        int count = wire.count();
+        if (count < 0) {
+            return List.of();
+        }
+        List<Row> read = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            Row row = Row.read(wire);
+            if (row == null) {
+                return List.of();
+            }
+            read.add(row);
+        }
+        return wire.finished() ? read : List.of();
+    }
+
+    /**
+     * Hands back what the player changed, once, and keeps what was refused.
+     *
+     * <p>Only changed rows travel, which is what ADG-6 means by saving handing
+     * back the settings that changed. The answer names every value the owning mod
+     * refused and why, so a player is told rather than finding the old value the
+     * next time they open the screen.
+     */
+    @Override
+    public void onClose() {
+        List<Row> changed = new ArrayList<>();
+        for (Row row : rows) {
+            if (row.changed()) {
+                changed.add(row);
+            }
+        }
+        if (!changed.isEmpty()) {
+            StringBuilder edits = new StringBuilder();
+            Wire.write(edits, Wire.VERSION);
+            Wire.write(edits, owner);
+            Wire.write(edits, Integer.toString(changed.size()));
+            for (Row row : changed) {
+                Wire.write(edits, row.key);
+                Wire.write(edits, row.value);
+            }
+            refused = describe(Hook.ravelSaveSettings(edits.toString()));
+        }
+        super.onClose();
+    }
+
+    /** Turns a save answer into one line a player can be shown. */
+    private static String describe(String answer) {
+        if (answer == null) {
+            return "";
+        }
+        Wire wire = new Wire(answer);
+        int count = wire.count();
+        if (count <= 0) {
+            return "";
+        }
+        StringBuilder said = new StringBuilder();
+        for (int index = 0; index < count; index++) {
+            String key = wire.field();
+            String reason = wire.field();
+            if (key == null || reason == null) {
+                return "";
+            }
+            if (index > 0) {
+                said.append("; ");
+            }
+            said.append(key).append(": ").append(reason);
+        }
+        return said.toString();
+    }
+
+    private int centre() {
+        return (width - WIDGET_WIDTH) / 2;
+    }
+
+    private static double number(String text, double fallback) {
+        try {
+            return Double.parseDouble(text);
+        } catch (NumberFormatException notANumber) {
+            return fallback;
+        }
+    }
+
+    /** One setting, and the widget standing for it. */
+    private static final class Row {
+
+        private final String key;
+        private final String label;
+        private final String widget;
+        private final String original;
+        private final boolean editable;
+        private final boolean restartRequired;
+        private final List<String> choices;
+        private final double minimum;
+        private final double maximum;
+        private final boolean whole;
+
+        private String value;
+        private EditBox box;
+
+        private Row(
+                String key,
+                String label,
+                String widget,
+                String kind,
+                String value,
+                boolean editable,
+                boolean restartRequired,
+                double minimum,
+                double maximum,
+                List<String> choices) {
+            this.key = key;
+            this.label = label;
+            this.widget = widget;
+            this.original = value;
+            this.value = value;
+            this.editable = editable;
+            this.restartRequired = restartRequired;
+            this.minimum = minimum;
+            this.maximum = maximum;
+            this.choices = choices;
+            this.whole = "integer".equals(kind);
+        }
+
+        /** Reads one row, or {@code null} if the payload does not carry one. */
+        static Row read(Wire wire) {
+            String key = wire.field();
+            String label = wire.field();
+            String description = wire.field();
+            String widget = wire.field();
+            String kind = wire.field();
+            String value = wire.field();
+            String source = wire.field();
+            String editable = wire.field();
+            String restartRequired = wire.field();
+            String restartPending = wire.field();
+            String minimum = wire.field();
+            String maximum = wire.field();
+            if (key == null
+                    || label == null
+                    || description == null
+                    || widget == null
+                    || kind == null
+                    || value == null
+                    || source == null
+                    || editable == null
+                    || restartRequired == null
+                    || restartPending == null
+                    || minimum == null
+                    || maximum == null) {
+                return null;
+            }
+            int count = wire.count();
+            if (count < 0) {
+                return null;
+            }
+            List<String> choices = new ArrayList<>(count);
+            for (int index = 0; index < count; index++) {
+                String choice = wire.field();
+                if (choice == null) {
+                    return null;
+                }
+                choices.add(choice);
+            }
+            return new Row(
+                    key,
+                    label,
+                    widget,
+                    kind,
+                    value,
+                    Boolean.parseBoolean(editable),
+                    Boolean.parseBoolean(restartRequired),
+                    number(minimum, 0),
+                    number(maximum, 1),
+                    choices);
+        }
+
+        /**
+         * Builds the widget for this row.
+         *
+         * <p>A row the player may not change is drawn as an ordinary row that
+         * cannot be edited rather than as a marked-out one. Whether a pack may
+         * fix a client-side setting is an open question, and a screen that drew
+         * that combination differently would answer it by implementation.
+         */
+        private GuiEventListener build(RavelSettingsScreen screen, int y) {
+            int x = screen.centre();
+            if (!editable) {
+                EditBox drawn = text(screen, x, y);
+                drawn.setEditable(false);
+                return drawn;
+            }
+            switch (widget) {
+                case "toggle":
+                    return cycle(x, y, List.of("true", "false"));
+                case "choice":
+                    return cycle(x, y, choices);
+                case "slider":
+                    return new Slider(this, x, y);
+                default:
+                    return text(screen, x, y);
+            }
+        }
+
+        private EditBox text(RavelSettingsScreen screen, int x, int y) {
+            box = new EditBox(
+                    screen.font, x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.literal(caption()));
+            box.setMaxLength(1024);
+            box.setValue(value);
+            return box;
+        }
+
+        /**
+         * A button that steps through a fixed set of values.
+         *
+         * <p>A toggle and a closed choice are the same widget over different
+         * lists, so one button covers both. Nothing here is a checkbox or a cycle
+         * button because the pinned version reaches both of those through their
+         * own nested builders, and a second builder buys no behaviour this does
+         * not have.
+         */
+        private Button cycle(int x, int y, List<String> values) {
+            return Button.builder(Component.literal(caption()), new Button$OnPress() {
+                        @Override
+                        public void onPress(Button pressed) {
+                            if (!values.isEmpty()) {
+                                int at = values.indexOf(value);
+                                value = values.get((at + 1) % values.size());
+                            }
+                            pressed.setMessage(Component.literal(caption()));
+                        }
+                    })
+                    .bounds(x, y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                    .build();
+        }
+
+        /** The label a widget carries, with the value and any warning on it. */
+        private String caption() {
+            String shown = label + ": " + value;
+            if (restartRequired && changed()) {
+                return shown + " (next launch)";
+            }
+            return shown;
+        }
+
+        /**
+         * Whether the player moved this row away from what it opened with.
+         *
+         * <p>A text field is read at the moment the question is asked rather than
+         * on every keystroke, because nothing observes it until the screen closes.
+         */
+        private boolean changed() {
+            if (box != null) {
+                value = box.getValue();
+            }
+            return !value.equals(original);
+        }
+    }
+
+    /**
+     * A slider over one bounded number.
+     *
+     * <p>This is the only widget the screen subclasses, and the class doc says
+     * why it is this one and not {@code AbstractButton}.
+     */
+    private static final class Slider extends AbstractSliderButton {
+
+        private final Row row;
+
+        Slider(Row row, int x, int y) {
+            super(
+                    x,
+                    y,
+                    WIDGET_WIDTH,
+                    WIDGET_HEIGHT,
+                    Component.literal(row.caption()),
+                    fraction(row));
+            this.row = row;
+        }
+
+        /** Where the row's current value sits between its bounds. */
+        private static double fraction(Row row) {
+            double span = row.maximum - row.minimum;
+            if (span <= 0) {
+                return 0;
+            }
+            double at = number(row.value, row.minimum);
+            return Math.min(1, Math.max(0, (at - row.minimum) / span));
+        }
+
+        @Override
+        protected void updateMessage() {
+            setMessage(Component.literal(row.caption()));
+        }
+
+        @Override
+        protected void applyValue() {
+            double at = row.minimum + value * (row.maximum - row.minimum);
+            row.value = row.whole ? Long.toString(Math.round(at)) : Double.toString(at);
+        }
+    }
+}

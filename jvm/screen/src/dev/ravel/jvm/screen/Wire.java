@@ -1,0 +1,91 @@
+package dev.ravel.jvm.screen;
+
+/**
+ * The screen's half of the settings payload format.
+ *
+ * <p>Every field is {@code <length>:<that many chars>}, and a payload is a
+ * sequence of fields in a fixed order. That is the whole format, and it is
+ * length-prefixed for one reason: a setting's title, description and value are
+ * free-form text a mod author writes, so any delimiter can appear inside one.
+ * A delimited format would need escaping, and so would JSON — which the screen
+ * cannot parse with the game's own library anyway, because it compiles against
+ * stubs generated from the pinned client jar and that jar carries no
+ * {@code com.google.gson}. A length says where a field ends whatever is inside
+ * it, so there is nothing to escape and nothing to get wrong about escaping.
+ *
+ * <p>A payload that does not read is refused rather than read as far as it goes.
+ * A length running past the end returns {@code null} from {@link #field}, and
+ * every caller treats that as "this is not a payload I produced". Nothing here
+ * allocates from a length before checking it against what is actually present.
+ */
+final class Wire {
+
+    /** The contract this screen is written against. */
+    static final String VERSION = "1";
+
+    private final String text;
+    private int at;
+
+    Wire(String text) {
+        this.text = text;
+        this.at = 0;
+    }
+
+    /**
+     * Reads the next field.
+     *
+     * @return the field, or {@code null} if the payload does not continue with
+     *     one
+     */
+    String field() {
+        int separator = text.indexOf(':', at);
+        if (separator < 0) {
+            return null;
+        }
+        int length;
+        try {
+            length = Integer.parseInt(text, at, separator, 10);
+        } catch (NumberFormatException notALength) {
+            return null;
+        }
+        int start = separator + 1;
+        if (length < 0 || length > text.length() - start) {
+            return null;
+        }
+        at = start + length;
+        return text.substring(start, at);
+    }
+
+    /**
+     * Reads the next field as a count.
+     *
+     * @return the count, or {@code -1} if the field is missing or is not one
+     */
+    int count() {
+        String read = field();
+        if (read == null) {
+            return -1;
+        }
+        try {
+            int value = Integer.parseInt(read);
+            return value < 0 ? -1 : value;
+        } catch (NumberFormatException notACount) {
+            return -1;
+        }
+    }
+
+    /** Whether the payload ended exactly where its fields did. */
+    boolean finished() {
+        return at == text.length();
+    }
+
+    /**
+     * Appends one field.
+     *
+     * @param out where to write it
+     * @param value the field's text
+     */
+    static void write(StringBuilder out, String value) {
+        out.append(value.length()).append(':').append(value);
+    }
+}

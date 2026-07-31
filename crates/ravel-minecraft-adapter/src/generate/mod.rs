@@ -325,6 +325,9 @@ mod tests {
         // declared its own natives would be a second one.
         assert!(java.contains("public static native String ravelSettingsDocument(String owner);"));
         assert!(java.contains("public static native String ravelSaveSettings(String payload);"));
+        assert!(java.contains("public static native String ravelModSurface();"));
+        assert!(java.contains("public static native void ravelEnableProfiling(String value);"));
+        assert!(java.contains("public static native String ravelProfilingReport();"));
 
         let _ = std::fs::remove_dir_all(&out);
     }

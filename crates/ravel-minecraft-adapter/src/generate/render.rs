@@ -585,7 +585,36 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
          \x20    *\n\
          \x20    * @return the mod list, or {{@code null}} when no set is installed\n\
          \x20    */\n\
-         \x20   public static native String ravelModSurface();\n\
+         \x20   public static native String ravelModSurface();\n\n\
+         \x20   /**\n\
+         \x20    * Records whether this launch asked for opt-in profiling.\n\
+         \x20    *\n\
+         \x20    * <p>Called once from {{@code premain}}, before any mod exists.\n\
+         \x20    * The property is read here because Java is where a system\n\
+         \x20    * property is, and ADG-1 gives Java a way to call Rust and\n\
+         \x20    * nothing the other way, so this is the direction the switch can\n\
+         \x20    * travel in. Reading it once is what lets the collectors hold a\n\
+         \x20    * plain flag instead of an atomic on every crossing.\n\
+         \x20    *\n\
+         \x20    * @param value {{@code System.getProperty(\"ravel.profiling\")}},\n\
+         \x20    *     or {{@code null}} when the launch set nothing\n\
+         \x20    */\n\
+         \x20   public static native void ravelEnableProfiling(String value);\n\n\
+         \x20   /**\n\
+         \x20    * What opt-in profiling collected, and what it could not.\n\
+         \x20    *\n\
+         \x20    * <p>The third read on this framing, and the same mechanism as\n\
+         \x20    * the other two: one batched read, nothing per row and nothing\n\
+         \x20    * per frame.\n\
+         \x20    *\n\
+         \x20    * <p>The numbers cross with the sentences that qualify them, and\n\
+         \x20    * every metric crosses rather than only the measured ones. A\n\
+         \x20    * metric a collector cannot measure and one that measured zero\n\
+         \x20    * look identical if the first is simply left out.\n\
+         \x20    *\n\
+         \x20    * @return the report, or {{@code null}} when no set is installed\n\
+         \x20    */\n\
+         \x20   public static native String ravelProfilingReport();\n\
          }}"
     );
     text

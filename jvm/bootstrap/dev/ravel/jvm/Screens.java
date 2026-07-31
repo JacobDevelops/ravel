@@ -114,6 +114,20 @@ final class Screens {
     }
 
     /**
+     * Builds the opt-in profiling report screen.
+     *
+     * <p>M3-W6's report is ADG-6's mechanism a third time, so it loads the same
+     * lazy way, out of the same jar, through the same reflection, for the same
+     * ADG-1 reason.
+     *
+     * @return the screen as an {@code Object} for the caller to hand to the
+     *     game, or {@code null} if there is no screen jar or it could not be used
+     */
+    static Object openProfiling() {
+        return build("dev.ravel.jvm.screen.RavelProfilingScreen", null);
+    }
+
+    /**
      * Loads one screen class and calls its {@code open}.
      *
      * <p>Reflection rather than a direct reference, because this class is in the

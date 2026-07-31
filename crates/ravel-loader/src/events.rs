@@ -2,6 +2,7 @@ use std::fmt;
 
 use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, StructuredFailure};
 use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod};
+use ravel_observability::{CallKind, Profiler};
 
 use crate::lifecycle::LifecycleMachine;
 
@@ -219,6 +220,34 @@ pub fn broadcast(
     mods: &mut [&mut (dyn HostMod + '_)],
     event: GameEvent,
 ) -> Result<Delivery, DispatchRefused> {
+    broadcast_profiled(machine, mods, event, &mut Profiler::off())
+}
+
+/// The same broadcast, attributed to each mod that received it.
+///
+/// Separate from [`broadcast`] rather than a fourth parameter on it, because
+/// almost every caller is not profiling and `&mut Profiler::off()` at every one
+/// of them would be noise standing for nothing. The two share a body: this is
+/// the body, and [`broadcast`] is it with the collectors off.
+///
+/// A profiler that is off costs one flag test per mod entered and reads no
+/// clock. `evidence/m3/profiling-overhead.json` is what that costs, measured,
+/// and the budget it is held to.
+///
+/// # Errors
+///
+/// The same as [`broadcast`].
+///
+/// # Panics
+///
+/// Never, and for the same reason [`broadcast`] never does: the audience is
+/// checked against the supplied values before anything is delivered.
+pub fn broadcast_profiled(
+    machine: &LifecycleMachine,
+    mods: &mut [&mut (dyn HostMod + '_)],
+    event: GameEvent,
+    profiler: &mut Profiler,
+) -> Result<Delivery, DispatchRefused> {
     let audience = machine.audience(event);
     for mod_id in &audience {
         let state = machine.state(mod_id).map_err(|_| DispatchRefused::Absent {
@@ -243,7 +272,8 @@ pub fn broadcast(
             .iter_mut()
             .find(|host| host.id() == &mod_id)
             .expect("the audience was checked against the supplied values");
-        if let Err(failure) = host.observe(event) {
+        let observed = profiler.measure(&mod_id, CallKind::Event, || host.observe(event));
+        if let Err(failure) = observed {
             return Ok(Delivery {
                 received,
                 failure: Some(failure),
@@ -273,6 +303,23 @@ pub fn route(
     mods: &mut [&mut (dyn HostMod + '_)],
     invocation: &CommandInvocation,
 ) -> Result<Delivery, DispatchRefused> {
+    route_profiled(machine, mods, invocation, &mut Profiler::off())
+}
+
+/// The same routing, attributed to the mod that owns the command.
+///
+/// Split from [`route`] for the reason [`broadcast_profiled`] is split from
+/// [`broadcast`].
+///
+/// # Errors
+///
+/// The same as [`route`].
+pub fn route_profiled(
+    machine: &LifecycleMachine,
+    mods: &mut [&mut (dyn HostMod + '_)],
+    invocation: &CommandInvocation,
+    profiler: &mut Profiler,
+) -> Result<Delivery, DispatchRefused> {
     let owner = machine
         .owner_of(&invocation.key)
         .ok_or_else(|| DispatchRefused::Unclaimed {
@@ -300,7 +347,7 @@ pub fn route(
             mod_id: owner.clone(),
         })?;
 
-    match host.run_command(invocation) {
+    match profiler.measure(&owner, CallKind::Command, || host.run_command(invocation)) {
         Ok(()) => Ok(Delivery {
             received: vec![owner],
             failure: None,

@@ -8,7 +8,7 @@ mod registry;
 mod surface;
 mod world;
 
-pub use events::{Delivery, DispatchRefused, broadcast, route};
+pub use events::{Delivery, DispatchRefused, broadcast, broadcast_profiled, route, route_profiled};
 pub use lifecycle::{
     LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,
     executes_mod_code,

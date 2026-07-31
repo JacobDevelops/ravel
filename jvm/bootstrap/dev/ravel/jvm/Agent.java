@@ -39,6 +39,11 @@ public final class Agent {
         // is loaded from Hook's own initializer, which is what binds it to the
         // loader that declares the native methods.
         Hook.initialize();
+        // Opt-in profiling, off unless this launch asked for it. Handed across
+        // once, here, because a system property is Java's to read and the
+        // collectors are Rust's to hold; reading it once is what lets the off
+        // path stay a single branch rather than an atomic on every crossing.
+        Hook.ravelEnableProfiling(System.getProperty("ravel.profiling"));
         Screens.append(instrumentation);
 
         Transformer installed = new Transformer(Hook.TARGETS);

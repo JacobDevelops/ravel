@@ -56,8 +56,9 @@ use ravel_core::{
     StructuredFailure,
 };
 use ravel_host_api::{CommandInvocation, GameEvent, HostMod};
-use ravel_loader::{Delivery, LifecycleMachine, ModSurface, broadcast, route};
+use ravel_loader::{Delivery, LifecycleMachine, ModSurface, broadcast_profiled, route_profiled};
 use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
+use ravel_observability::{Profiler, ProfilingReport};
 
 use crate::guard::HookError;
 
@@ -89,6 +90,8 @@ pub struct LoaderRuntime {
 struct Inner {
     machine: LifecycleMachine,
     mods: Vec<Box<dyn HostMod>>,
+    /// The collectors, off unless the launch asked for them.
+    profiler: Profiler,
 }
 
 /// What one hook invocation asks the loader to do.
@@ -105,9 +108,53 @@ impl LoaderRuntime {
     /// a runtime that also drove the lifecycle would be two things.
     #[must_use]
     pub fn new(machine: LifecycleMachine, mods: Vec<Box<dyn HostMod>>) -> Self {
+        Self::profiling(machine, mods, Profiler::off())
+    }
+
+    /// The same runtime with the collectors the launch asked for.
+    ///
+    /// Separate from [`Self::new`] because profiling is opt-in and the default
+    /// is what almost every caller wants. `crate::profiling` reads the switch
+    /// once, here, and never again: the flag is a plain field rather than an
+    /// atomic precisely because nothing toggles it while the game runs, which
+    /// is what keeps the off path to one branch.
+    #[must_use]
+    pub fn profiling(
+        machine: LifecycleMachine,
+        mods: Vec<Box<dyn HostMod>>,
+        profiler: Profiler,
+    ) -> Self {
         Self {
-            inner: Mutex::new(Inner { machine, mods }),
+            inner: Mutex::new(Inner {
+                machine,
+                mods,
+                profiler,
+            }),
         }
+    }
+
+    /// Builds the profiling report from the collectors as they stand now.
+    ///
+    /// Read live and under the same short lock the mod surface takes, for the
+    /// same reason: a report assembled at launch would go on saying a mod costs
+    /// nothing after it started costing something.
+    ///
+    /// The registry footprint is read out of the machine here rather than
+    /// accumulated by a collector, which is why it is exact.
+    #[must_use]
+    pub(crate) fn profiling_report(&self) -> ProfilingReport {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let claims = inner
+            .machine
+            .order()
+            .map(|mod_id| (mod_id.clone(), inner.machine.registry_claims(mod_id)))
+            .collect::<Vec<_>>();
+        for (mod_id, count) in claims {
+            inner
+                .profiler
+                .registry_claims(&mod_id, count.try_into().unwrap_or(u64::MAX));
+        }
+        inner.profiler.report()
     }
 
     /// Builds the mod list's model from the set as it stands right now.
@@ -176,10 +223,15 @@ impl HookObserver for Shared {
 /// Returns [`HookError::Unavailable`] when the observer registry cannot be
 /// written, which happens only after a previous holder panicked inside it.
 pub fn install(machine: LifecycleMachine, mods: Vec<Box<dyn HostMod>>) -> Result<(), HookError> {
-    let runtime = Arc::new(LoaderRuntime::new(machine, mods));
-    // One installation point for both readers, so there is no launch in which
-    // hooks reach the mod set but the mod list screen finds nothing.
+    let runtime = Arc::new(LoaderRuntime::profiling(
+        machine,
+        mods,
+        Profiler::from_switch(crate::profiling::requested()),
+    ));
+    // One installation point for every reader, so there is no launch in which
+    // hooks reach the mod set but a screen finds nothing.
     crate::mods::install(Arc::clone(&runtime));
+    crate::profiling::install(Arc::clone(&runtime));
     crate::dispatch::register(Box::new(Shared(runtime)))
 }
 
@@ -267,8 +319,12 @@ impl Inner {
             let mut borrowed: Vec<&mut dyn HostMod> =
                 self.mods.iter_mut().map(|host| &mut **host).collect();
             match work {
-                Work::Event(event) => broadcast(&self.machine, &mut borrowed, *event),
-                Work::Command(invocation) => route(&self.machine, &mut borrowed, invocation),
+                Work::Event(event) => {
+                    broadcast_profiled(&self.machine, &mut borrowed, *event, &mut self.profiler)
+                }
+                Work::Command(invocation) => {
+                    route_profiled(&self.machine, &mut borrowed, invocation, &mut self.profiler)
+                }
             }
         };
 

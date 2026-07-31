@@ -284,6 +284,20 @@ impl LifecycleMachine {
         self.claims.get(identifier)
     }
 
+    /// Returns how many registry identifiers one mod owns.
+    ///
+    /// This is `SPEC.md` §9.3's registry footprint, and it is a reading of the
+    /// claim table rather than something a collector accumulates: the table is
+    /// exact whether or not anything is profiling, and counting it here means
+    /// the number cannot drift from what the barrier actually admitted.
+    #[must_use]
+    pub fn registry_claims(&self, mod_id: &ModId) -> usize {
+        self.claims
+            .values()
+            .filter(|owner| *owner == mod_id)
+            .count()
+    }
+
     /// Moves one mod to its next state.
     ///
     /// # Errors

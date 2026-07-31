@@ -6,6 +6,7 @@ mod dispatch;
 mod game_directory;
 mod guard;
 mod mods;
+mod profiling;
 mod report;
 mod runtime;
 mod settings;

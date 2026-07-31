@@ -1,6 +1,6 @@
 # Agent instructions
 
-Ravel is a Minecraft: Java Edition 26.1.2 mod loader and SDK for precompiled Rust mods. It hosts itself
+Ravel is a Minecraft: Java Edition 26.1.2 mod loader and SDK for natively compiled Rust mods. It hosts itself
 inside the official game runtime and is not built on Fabric, NeoForge, Forge, or Quilt.
 
 This file is the single source of agent instructions. Codex reads `AGENTS.md`; Claude Code reads it through

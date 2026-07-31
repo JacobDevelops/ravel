@@ -8,7 +8,7 @@ Last updated: 2026-07-30
 ## 1. Capability
 
 Ravel is a general-purpose Minecraft: Java Edition mod loader and SDK for
-building safe, precompiled mods in Rust.
+building safe, natively compiled mods in Rust.
 
 Ravel initially hosts Rust mods inside the official Minecraft runtime. It does
 not load NeoForge, Fabric, or other Java mods. The first large-scale proof is a
@@ -21,6 +21,19 @@ progression without hundreds of resident Java mods. Apple Silicon support and
 official-server interoperability are later phases after that Linux outcome.
 Building a reusable Rust modding ecosystem is a required means to the outcome
 and a valuable secondary result.
+
+**Ravel exists to make a large modpack cost significantly less RAM and CPU than
+the same pack costs on the Java mod ecosystem today.** That is why a new loader
+is worth building rather than writing mods for an existing one. The resident
+cost of hundreds of Java mods is the problem being solved, and a loader that
+merely matched that cost would have no reason to exist, however good its
+authoring model was.
+
+Everything else in this document is subordinate to that. Safe Rust, the SDK, the
+authoring model, and the counterpart library are how the goal is reached and are
+worth having on their own; they are not what the project is for. §6 states the
+thresholds a shippable product clears. This paragraph states the direction, and
+the two are not the same thing.
 
 ## 2. Product principles
 
@@ -110,21 +123,32 @@ and a valuable secondary result.
 
 ### 3.4 Mod packaging
 
-- A package may contain target-specific binaries, resources, metadata, and
-  schemas.
-- **The execution and distribution models are both open, and M3 decides them.**
-  ADG-2 measured four bindings and deliberately does not choose between them: the
-  deciding considerations are properties of a loader that does not exist yet, and
-  the gate selected two different mechanisms on the same evidence before that
-  became clear. The measurements are in
-  [`evidence/m1/spikes/adg-2/`](evidence/m1/spikes/adg-2/) and the trade each one
-  makes is in [ADG-2](docs/decisions/adg-2-mod-execution.md).
-- Until M3 decides, this document states no requirement about local compilation,
-  about whether a mod ships as its own binary, or about what a package contains.
-  Anything elsewhere in this repository that assumes a per-target mod binary —
-  including `schemas/package.schema.json`, which requires per-target artifacts and
-  is enforced by the gate — is a recorded assumption inherited from the original
-  draft, not a settled contract.
+- **A mod is distributed as Rust source and compiled on the installing machine
+  by a toolchain Ravel ships.** A package carries source, resources, metadata,
+  and schemas. It does not carry a compiled mod artifact, and Ravel does not
+  accept one: not a static library, not a dynamic library, not an executable.
+- **Ravel therefore owes no ABI.** Because Ravel compiles every mod it runs, the
+  loader-to-mod contract is a source-level Rust API rather than a binary
+  interface, and `HostMod`, the registrar, and the handle types stay free to
+  change without breaking an installed mod. No model in which mods ship as
+  binaries can say this: each one pins a version of `jni` into every mod's
+  dependency graph permanently and unremovably.
+- **The reversible direction was taken deliberately.** Binary distribution can be
+  added later if something ever demands it. A compatibility surface cannot be
+  withdrawn once mods depend on it, so the two directions are not symmetric and
+  the recoverable one comes first.
+- The costs are accepted rather than discovered: a Rust toolchain of about
+  196 MB on the player's machine, a build cache that has to stay resident for a
+  rebuild to be warm, and Ravel owning mod compile failures as a support burden
+  rather than the author's.
+  [`evidence/m3/pack-compile.json`](evidence/m3/pack-compile.json) prices them
+  and [ADG-2](docs/decisions/adg-2-mod-execution.md) records the decision.
+- **`schemas/package.schema.json` now contradicts this document and has to
+  change.** It makes `targets` required, requires at least one, and requires each
+  to carry a `platform`, an `architecture`, and at least one artifact with a
+  `role`. A source-distributed mod has none of those. The schema is not merely a
+  stale assumption that has stopped being needed — it is enforced by the gate,
+  and it now enforces the opposite of what this section requires.
 - The package model must support at least:
   - stable mod identity and version;
   - Minecraft and Ravel compatibility ranges;
@@ -199,6 +223,35 @@ Vanilla datapacks and resource packs must continue to work unchanged.
 - The public mod API remains experimental and may break until the complete
   ATM11-equivalent proof workload passes.
 
+### 3.8 Intrusiveness
+
+- Ravel may be as intrusive in the game process as §1's goal requires. Deeper
+  hooks, taking over more of the game's behaviour, and owning more of the
+  process are all admissible, and none of them has to be justified as minimal.
+  Minimal intrusion is not a value this project holds.
+- What licenses a specific intrusion is a measurement showing it buys
+  performance. This is permission to act on evidence, not permission to assume:
+  an intrusion nobody measured is not authorized by this section, and an
+  expectation that something will be faster is not a measurement.
+- This section repeals nothing. §3.3's safe-Rust boundary, the empty exception
+  table in
+  [`docs/architecture/safety-boundary.md`](docs/architecture/safety-boundary.md),
+  the layering in
+  [`docs/architecture/dependency-rules.md`](docs/architecture/dependency-rules.md),
+  and every accepted decision gate bind exactly as they did before it was
+  written. Intrusiveness governs how much of the game Ravel may touch. It does
+  not govern what Ravel may be made of, and the two must not be confused.
+- Where an intrusion would cross one of those boundaries, the boundary wins and
+  §3.3's last rule applies: the project pauses for an explicit decision instead
+  of weakening the rule quietly. A measurement showing the intrusion pays is
+  what makes that decision worth taking. It is not what makes it unnecessary.
+- Intrusiveness is itself a cost, paid in compatibility with future game
+  versions, in how much breaks when Mojang changes something, and in how much of
+  a failure is attributable to Ravel rather than to the game. §6.5 already
+  re-examines hook and boundary overhead when the contract fails; the same
+  review asks whether each intrusion earned what it cost, and an intrusion that
+  did not is removed rather than kept for having once been justified.
+
 ## 4. Users and surfaces
 
 ### 4.1 Player
@@ -218,7 +271,8 @@ The player:
 The mod author:
 
 - uses the Ravel SDK and safe Rust APIs;
-- builds platform-specific packages through supported tooling;
+- publishes a package of Rust source, resources, and metadata through supported
+  tooling, and builds no per-platform artifact;
 - declares capabilities, dependencies, sides, resources, configuration, and
   saved data;
 - tests against deterministic loader and Minecraft harnesses;
@@ -274,32 +328,57 @@ class only. Windows, Linux ARM, and Intel macOS are not initial requirements.
 
 ### 5.3 Distribution targets
 
-Precompiled mods initially build for `linux-x86_64`. After Linux M10 passes,
-the Apple Silicon expansion adds `macos-aarch64` to the package manifest's
-`platform` and `architecture` values. No other combination is part of this
-plan.
+Ravel initially compiles mods for `linux-x86_64`. After Linux M10 passes, the
+Apple Silicon expansion adds `macos-aarch64`. No other combination is part of
+this plan.
+
+These are compilation targets rather than package variants. Because §3.4
+distributes source, a package declares no platform and no architecture, and one
+package serves every target Ravel can compile for.
 
 The macOS target carries a signing obligation that the Linux target does not.
-Because Apple Silicon refuses to load unsigned executable code, every macOS
-artifact must be signed before it can run, and notarization becomes relevant
-separately where downloaded files are quarantined. Requiring mod authors to sign
-their own builds would put an Apple Developer enrolment between an author and
-their first release, which conflicts with the reason for shipping precompiled
-mods at all.
+Apple Silicon refuses to load unsigned executable code, so every macOS artifact
+must be signed before it can run, and notarization becomes relevant separately
+where downloaded files are quarantined.
 
-This whole passage assumes a per-mod artifact, which §3.4 no longer decides. If
-M3 selects linked mods, the thing needing a signature is a loader binary produced
-per mod set, which means either signing on the installing machine after a local
-link, or signing a binary that contains third-party mod code. Both are larger
-obligations than what follows, and M3 owns reconciling them.
+**ADG-2 dissolved that obligation rather than resolving it.** Because a mod is
+distributed as source and compiled on the installing machine, the binary needing
+a signature is produced on the machine that will run it, and there is no other
+machine it could have been signed on. Ravel ad-hoc signs what it compiled. A mod
+author never enrols with Apple, never signs anything, and never has to know the
+obligation exists. Ravel never signs a binary containing third-party mod code
+either, because what it signs is what it just compiled from source the player
+already has.
 
-The recorded candidate is therefore for Ravel to ad-hoc sign macOS artifacts on
-the installing machine rather than for authors to sign at build time. Signing
-without a full Xcode toolchain present appears feasible, which would keep the
-user-side toolchain requirement at zero. This is a candidate to prove or
-discard at the open question 2 gate, not a settled design.
+An earlier version of this passage recorded that it assumed a per-mod artifact
+which §3.4 did not yet decide, and named signing on the installing machine as
+one of two ways out. It anticipated the answer correctly, and the escape it
+named is now the only thing that can happen rather than one option of two. That
+is worth recording, because the alternative it feared — signing a binary
+containing third-party mod code — is precisely what the decision removes.
+
+What remains open is narrow and technical: whether ad-hoc signing is feasible
+without a full Xcode toolchain present. It no longer keeps the user-side
+toolchain requirement at zero, because §3.4 already accepts a Rust toolchain on
+the player's machine; the question is only whether macOS adds Xcode on top of
+it. That is a thing to prove or discard in the Apple Silicon phase rather than a
+design decision.
 
 ## 6. Performance contract
+
+The numbers in this section are thresholds, not the goal. They are the floor a
+shippable product clears: 30 FPS sustained and 8 GiB steady-state RSS are the
+point at which Ravel is playable, not the point at which it has done what §1
+says it exists to do.
+
+The two are measured by different things. A threshold is met by a Ravel run on
+its own. The goal is visible only in the pair §6.1 requires — one official-pack
+run and one Ravel-pack run on the same profile — because "significantly less"
+is a comparison and nothing measured in isolation can show it.
+
+A Ravel run that clears every threshold below and still costs what the official
+pack costs has met this contract and missed the point. §6.6 records what is owed
+about that, and who owes it.
 
 ### 6.1 Target workload
 
@@ -373,6 +452,31 @@ memory and frame-time contracts, the project pauses to re-evaluate:
 
 The current spec does not pre-authorize relaxing targets or building a native
 client.
+
+### 6.6 The improvement target
+
+The improvement §1 requires is **not yet a number**, and stating one now would
+be inventing it rather than deriving it. No Java baseline has been measured: the
+official-pack figure Ravel would be improving on does not exist, because the
+pair §6.1 requires cannot be recorded until the Ravel pack exists to be the
+other half of it. A target chosen before the baseline would be a guess this
+document would then be stuck defending.
+
+**M9 sets it**, against that pair, and owns it. Recording both runs is M9-W4;
+turning them into the figure this section is missing is part of the same
+milestone and is not optional to it.
+
+Until then, judging "significantly less" is a human decision rather than a gate,
+and this document says so rather than letting the thresholds imply otherwise.
+They do not cover it. §6.5 fires when the contract cannot be met, never when it
+is met without improvement, so nothing in §6.1 to §6.5 detects the case this
+section exists to name:
+
+> A Ravel that sustains 30 FPS, holds steady-state RSS under 8 GiB, and costs
+> what the official pack costs has met every requirement in this section and
+> missed the reason the project exists.
+
+That is why M9 owes a number and not only a pair of runs.
 
 ## 7. ATM11-equivalent proof workload
 
@@ -545,9 +649,9 @@ exact measurements.
   the post-initial registry.
 - Platform code signing is a separate execution requirement and is not deferred.
   Apple Silicon requires a signature on all executable code, so an unsigned
-  precompiled artifact does not load on the constrained target at all. This
-  constrains the packaging and execution model and is an input to open
-  question 2 rather than to the registry.
+  binary does not load on the constrained target at all. §5.3 records how that
+  is met: because §3.4 compiles every mod on the installing machine, Ravel signs
+  what it just compiled, on the machine that will run it.
 - Microsoft authentication remains outside Ravel.
 - Logs and diagnostics must not collect or expose launcher tokens.
 - Fixture reconstruction must not bypass Minecraft ownership, authorized
@@ -852,7 +956,7 @@ Deliver:
 - dependency graph;
 - lifecycle state machine;
 - structured logs and failure attribution;
-- one no-op precompiled Rust test mod.
+- one no-op Rust test mod.
 
 Exit:
 

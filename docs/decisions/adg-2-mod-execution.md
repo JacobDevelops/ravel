@@ -1,10 +1,14 @@
 # ADG-2 — Rust mod execution and ABI
 
-Status: measured at M1-W3; **the distribution property is decided at M3 and the
-mechanism is not.** Mods are independently shipped and interchangeable. Whether
-an interchangeable mod arrives as a per-platform binary or as source that a
-bundled toolchain compiles turns on one measurement nobody has taken. See
-"Decision at M3" below.
+Status: measured at M1-W3; **decided at M3, in two halves.** Mods are
+independently shipped and interchangeable, decided first and on what players
+expect rather than on a number. The mechanism is decided now: a mod is
+distributed as Rust source and compiled on the player's machine by a toolchain
+Ravel ships, and Ravel accepts no compiled mod artifact — not an rlib, not a
+dynamic library. **The deciding reason is that Ravel then owes no ABI.**
+[`pack-compile.json`](../../evidence/m3/pack-compile.json) prices the mechanism
+and shows it affordable; it does not select it. `SPEC.md` §3.4 states the same
+decision in the product contract's own voice.
 
 ## What is decided and what is not
 
@@ -16,9 +20,12 @@ links a mod set, what a package contains — are all properties of a loader that
 not exist yet. A decision that flips twice before anything is built is a decision
 taken too early.
 
-M3 decides, against the loader prototype. What M1 contributes is the cost of each
+M3 decided, against the loader prototype. What M1 contributes is the cost of each
 option and the trade each one makes, which is what a later decision needs and does
-not have to re-measure.
+not have to re-measure. The two halves were taken separately and for different
+reasons, and both are recorded below: the distribution property on what a modded
+Minecraft player expects of a mod set, the mechanism on what each one obliges
+Ravel to keep stable forever.
 
 ## Decision at M3
 
@@ -27,6 +34,11 @@ not have to re-measure.
 A player adds a mod by adding one thing to an instance, removes it by removing
 that thing, and updates it by replacing it. A pack is a list of pinned mods plus
 configuration and data, not an opaque artifact.
+
+**The thing added is Rust source, and the player's machine compiles it with a
+toolchain Ravel ships.** Ravel accepts no compiled mod artifact for
+distribution — not an rlib, not a dynamic library. That half is under "The
+mechanism" below; this half is why there is anything to distribute at all.
 
 ### Why, given the measurements said otherwise
 
@@ -66,10 +78,72 @@ attempt either because it was measuring a boundary rather than designing one.
   first row in [`safety-boundary.md`](../architecture/safety-boundary.md). It does
   not arise at all if the mechanism is compiled source.
 
-### The open mechanism
+### The mechanism
 
-Interchangeability is the property. Two mechanisms deliver it and they fail
-differently.
+**A mod is distributed as Rust source. Ravel ships a toolchain and compiles the
+pack on the player's machine. Ravel accepts no compiled mod artifact.**
+
+That is the static-composition binding M1 measured, with the link performed
+locally instead of by whoever built the pack. Interchangeability survives it
+because a pack is still a list of pinned mods: adding one adds a source crate and
+recompiles, removing one removes it and recompiles, and neither is an opaque
+artifact a player cannot inspect.
+
+**The deciding reason is not performance.** It is that source compilation is the
+only mechanism that commits Ravel to nothing permanent. If Ravel compiles every
+mod, it never owes ABI stability: `HostMod`, `Registrar`, `JavaHandle`, the hook
+value types, all of it can change and the world recompiles. Rust has no stable
+ABI — this record's own limits say rlib metadata is compiler-version locked — and
+under every other mechanism that is the central problem to be managed for the
+life of the project. Under this one it stops being a problem.
+
+The concrete case is already in the tree. `ravel-minecraft` depends on `jni`,
+because a hook argument that refers to a game object is a borrowed JNI local
+reference and the lifetime that makes it safe to hold is `jni`'s.
+[`dependency-rules.md`](../architecture/dependency-rules.md) records that no mod
+can reach that crate today and that a change making it mod-reachable must seal
+`JavaHandle::new` rather than move the dependency. M3 is walking towards that
+change: hook observation is the capability mods are being built to want. Under
+source compilation, sealing the constructor later is a recompile of every
+installed mod. Under any binary mechanism it is an ABI break that cannot be
+taken, and a version-pinned `jni` sits in every published mod's dependency graph
+permanently. That is the compatibility surface source distribution avoids, and an
+rlib hatch would reintroduce it for the minority of authors who want one in an
+ecosystem that is mostly open already.
+
+**The asymmetry decides the close calls.** Source-only is reversible and binary
+distribution is not. Binary support can be added later if authors demand it,
+against real demand rather than a guess. A compatibility surface cannot be
+withdrawn once mods depend on it, so choosing it now would be choosing it
+permanently on no evidence that anyone wants it.
+
+Three further reasons, in the order they carry weight.
+
+- **Only source lets the optimizer see across mod boundaries.** A dynamic library
+  is a C ABI: every mod call is an opaque call through a resolved pointer and
+  nothing inlines through it. This record already measures the shape of that —
+  mod-to-mod is 2.34 ns linked against 2.97 ns through the dynamic library,
+  because the second hop is an ordinary call rather than a second indirection —
+  and inlining is the part the benchmark's one-arithmetic-step mod body cannot
+  show at all. `SPEC.md` §6.1 and §6.2 are the written contract this serves, and
+  §6.5 names "hook and boundary overhead" as one of the things re-examined if that
+  contract fails. A mechanism that forecloses cross-mod optimization forecloses it
+  before anyone has measured whether the pack needs it.
+- **Source and rlib both keep the safety property; the dynamic library does not.**
+  `libloading` needs two `unsafe fn` calls, and those need an accepted `SPEC.md`
+  §3.3 amendment and the first row in
+  [`safety-boundary.md`](../architecture/safety-boundary.md)'s empty table, whose
+  bar is showing that no audited dependency can hold the operation. **This
+  decision leaves that table empty.** Every crate in the mod boundary keeps
+  `#![forbid(unsafe_code)]` with no exception and no lint relaxation.
+- **Source is less work for a mod author, not more.** No per-platform build
+  matrix, no release CI, no rebuild when Ravel bumps its toolchain. Under rlibs
+  the last of those is not a courtesy: rlib metadata is compiler-version locked,
+  so every toolchain bump breaks every published mod at once, and the coordination
+  cost of that lands on Ravel rather than on the authors who caused none of it.
+
+Interchangeability is the property both mechanisms deliver. They fail
+differently, and the table is what the choice was made against.
 
 | | Per-platform binary | Source compiled by a bundled toolchain |
 | --- | --- | --- |
@@ -86,51 +160,78 @@ artifact, no ABI fragility, failure that arrives early and legibly — which is 
 experience this decision is trying not to lose. It costs a shipped toolchain and a
 build.
 
-**The deciding measurement is compile time for a realistic pack-sized mod set,
-cold and cached.** M2-W8's 880 ms is a floor from generated one-struct crates and
-its own record says so; it is not a prediction. Nothing should be built on the
-mechanism until that number exists.
+**M1 named compile time as the deciding measurement, and it was not.** The
+measurement was taken — `pack-compile.json`, under "What compiling a pack costs"
+below — and its own `whatThisDoesNotSay` says the honest thing about what it
+settles: "Nothing here selects an ADG-2 mechanism." What it did was price the
+mechanism the ABI argument selects, and clear it. 113 ms of marginal cold build
+per mod, 32.0 s for a 256-mod pack, and — the figure that actually decides whether
+a player can live with this — a 1.6 s warm rebuild, because the cold build is paid
+on install and the warm one is paid every time anything changes.
 
-Rejected mechanisms are unchanged: WebAssembly at 4.26× the call cost buys a
-restriction `SPEC.md` §10 does not want, and a helper process at 3.2 µs a call
-ends the argument for synchronous mod code.
+Had those numbers come out badly the ABI argument would not have carried the day
+on its own, so the measurement is a veto that was not exercised rather than a
+tiebreak that was. Recording it as the deciding evidence would misstate why the
+decision went the way it did, and `SPEC.md` §3.4 states the reason in the
+contract's own voice: Ravel compiles every mod, therefore Ravel owes no ABI.
 
-### What waits on the mechanism
+### Rejected
 
-[`schemas/package.schema.json`](../../schemas/package.schema.json) requires
-per-target artifacts. That suits a shipped binary and does not describe shipped
-source, so the reconciliation this milestone owes waits for the measurement rather
-than guessing which shape to write.
+- **An rlib shipped by the author.** It keeps closed-source mods possible and it
+  needs no unsafe, so it is the only mechanism that loses to source on nothing but
+  the compatibility argument. That argument is enough. An rlib is linked into the
+  loader's build, so the crate boundary it links against is a published API Ravel
+  can never change without breaking every mod compiled before the change — the
+  permanent surface described above, bought for a minority of authors. It also
+  reintroduces the per-platform build matrix and release CI that source
+  distribution removes, and rlib metadata is compiler-version locked, so a
+  toolchain bump invalidates every published artifact at once.
+- **A native dynamic library.** The only candidate that breaks the safety
+  boundary: `libloading` needs two `unsafe fn` calls, and an unsafe call is not
+  something an attribute can generate away. That takes a `SPEC.md` §3.3 amendment
+  and the first row in `safety-boundary.md`, whose bar is showing that no audited
+  dependency can hold the operation rather than that none was found — the same
+  rule on which ADG-1 rejected JVMTI at four calls and the hosted VM at two. It
+  also dies with any mod that panics, because a panic crossing the C ABI is
+  undefined behaviour rather than a catchable event, and its symbol-by-name check
+  cannot notice a changed signature. It is rejected, not deferred.
+- **Whole-pack link-time optimization as a default.** Fat LTO with one codegen
+  unit costs 43× on the warm path — 77.4 s against 1.79 s at 256 mods — which
+  turns every mod update into the cold path and then some. It halves the binary,
+  and that is worth having as something a player runs deliberately once a pack is
+  settled. As a default it would make the mechanism unusable, so it is an opt-in
+  action and not a build profile.
+- **WebAssembly and a helper process** are rejected on M1's evidence and nothing
+  here revisits them: 4.26× the call cost buys a restriction `SPEC.md` §10 does
+  not want, and 3.2 µs a call ends the argument for synchronous mod code.
 
-**The leading candidate is a mod linked into the loader**, on this evidence: 2.50 ns
-a call, no maintained unsafe anywhere in the mod boundary, a panicking mod the host
-survives, contract drift that fails the build, and cheaper mod-to-mod calls than
-any alternative. What it gives up is independent per-mod distribution, and that is
-exactly the property no one has tested yet.
+### What this closes and what it does not
 
-**The alternative to beat it is a native dynamic library**: 0.625 ns faster, and it
-buys drop-in per-mod binaries for two maintained unsafe calls and a process that
-dies whenever any mod panics. Neither WebAssembly nor a helper process is close on
-call cost, and both stay recorded for the day their reason for existing arrives.
+This closes ADG-2. Both halves are decided and no part of the gate is deferred.
 
-That alternative is retained under a bar it has not cleared. The M1 measurement
-gate's failure actions reject a candidate requiring a maintained unsafe *call*, and
-`libloading` needs two — the same rule on which ADG-1 rejected JVMTI at four and
-the hosted VM at two. This gate does not reject the dynamic library, because M3
-decides the execution model and rejecting the only drop-in candidate now would
-decide it here. Choosing it at M3 therefore costs more than a preference: it takes
-an accepted `SPEC.md` §3.3 amendment and a row in
-[`safety-boundary.md`](../architecture/safety-boundary.md), whose bar is showing
-that no audited dependency can hold the operation rather than that none was found.
-Two `unsafe fn` calls in a crate that exists do not obviously clear it. A reader
-should treat the dynamic library as measured and retained, not as equally
-available.
+It does not close the schema reconciliation the gate was blocking, and that
+reconciliation is more urgent than "stale assumption" suggests.
+[`schemas/package.schema.json`](../../schemas/package.schema.json) requires a
+`targets` array of at least one entry, each carrying a `platform`, an
+`architecture`, and artifacts with a `path`, a `role`, and a `sha256`. Shipped
+source has none of those. **The schema does not refuse a source package, though —
+it forces one to be described as something it is not.** `platform` and
+`architecture` are bare non-empty strings with no enumeration, and `role` admits
+`other`, so a source package validates by writing `platform: "any"` and declaring
+its source files as artifacts. A schema that refused would at least fail loudly.
+This one passes and records a per-target binary that does not exist, which is
+worse, and it is enforced by `ravel:verify` so every package built between now and
+the fix carries the misdescription.
 
-Deferring has a consequence worth stating: several documents in this repository
-still assume the dynamic-library shape, including `schemas/package.schema.json`,
-which requires per-target artifacts and is enforced by `ravel:verify`. Those are
-now recorded assumptions rather than settled contracts, and M3 owns reconciling
-them with whatever it picks.
+What this decision contributes is the shape to write instead of leaving the
+reconciliation guessing: a package declares portable source and its integrity, and
+the per-target structure goes. That is a schema edit and a `ravel-package` change,
+and this ADR makes neither.
+
+`SPEC.md` §3.4 says the execution and distribution models are both open and that
+the document states no requirement about local compilation. That sentence is now
+wrong in the other direction and needs amending to state the requirement. §3.3 is
+untouched, which is one of the reasons this mechanism was chosen.
 
 ## Context
 
@@ -139,15 +240,25 @@ execution model allows, with sandboxing explicitly not an initial requirement. S
 the question ADG-2 answers is not "how do we contain a mod" but "what does it cost
 to call one, and what does its contract cost to keep stable".
 
-`SPEC.md` §3.4 also said users install precompiled mod packages and never compile
-Rust locally. That was an assumption written before anything was built, and this
-gate is the first evidence bearing on it. The measurements say the packaging model
-is not free: buying per-mod binaries costs the safety property and the failure
-containment, and it buys them back from a distribution convenience nobody has
-tested yet. §3.4 is amended to record the open question rather than the
-assumption.
+`SPEC.md` §3.4 also said users install mod packages that arrive already built and
+never compile Rust locally. That was an assumption written before anything was
+built, and this gate is the first evidence bearing on it. The measurements say the
+packaging model is not free: buying per-mod binaries costs the safety property and
+the failure containment, and it buys them back from a distribution convenience
+nobody has tested yet. §3.4 was amended to record the open question rather than
+the assumption, and M3 answers it against that assumption: a player does compile
+Rust locally, and no package arrives built. §3.4 now states that in the product
+contract's own voice, with the ABI obligation as the deciding reason, so this
+record and the spec argue the decision the same way rather than the spec citing
+this one.
 
 ## Evidence
+
+Two measurements, taken at different milestones for different questions. M1's
+four-binding spike priced the mod-execution boundary and decided nothing; M3's
+pack compile priced the mechanism this record selects.
+
+### The four bindings (M1-W3)
 
 Measured on `x86_64-linux`, hardware profile `linux-reference-v1`. Reproduce with:
 
@@ -218,6 +329,67 @@ What the numbers say:
   loading anything. All four refused an absent entry point before calling it,
   because the host asks first.
 
+### What compiling a pack costs (M3)
+
+Measured on the same `x86_64-linux` profile, `rustc` 1.95.0, release profile,
+sixteen build jobs unless a variant says otherwise. Reproduce with:
+
+```console
+devenv tasks run ravel:measure-pack-compile
+devenv tasks run ravel:measure-pack-compile-variants
+```
+
+The result is [`pack-compile.json`](../../evidence/m3/pack-compile.json). The mod
+is generated but not trivial: 1,161 lines, eleven derived types, sixteen
+monomorphizations, eight feature blocks and twenty-four registry claims, sized
+against `test-mods/registries` by derives and generic instantiations rather than
+by lines, because that is what Rust charges for. It is still a floor, and a far
+higher one than M2-W8's one-struct crates.
+
+| Pack size | Cold | Cold less baseline | Warm after one mod changes | Build cache | Binary |
+| --- | --- | --- | --- | --- | --- |
+| 0 (host only) | 2.53 s | — | — | 33.9 MB | 0.45 MB |
+| 1 | 3.13 s | 0.60 s | 0.96 s | 46.5 MB | 0.66 MB |
+| 16 | 4.55 s | 2.02 s | 0.90 s | 88.1 MB | 2.33 MB |
+| 64 | 9.82 s | 7.29 s | 1.05 s | 221 MB | 7.68 MB |
+| 256 | 32.0 s | 29.5 s | 1.63 s | 754 MB | 29.0 MB |
+
+What the numbers say:
+
+- **The marginal cost of a mod is 113 ms cold**, a secant across the whole
+  measured range rather than a fitted slope, and it is amortized throughput on a
+  sixteen-thread host rather than what one mod costs to compile. From sixteen
+  mods up the per-mod figure is flat — 126 ms, 114 ms, 115 ms — so the curve is
+  linear and a pack twice the size costs twice as much and nothing worse. The
+  one-mod point at 604 ms is fixed cost that has not yet been amortized, not a
+  steeper slope.
+- **The warm path is what makes the mechanism livable, and it is nearly flat.**
+  Changing one mod and rebuilding costs 0.96 s at one mod and 1.63 s at 256 — a
+  1.7× rise across a 256-fold change in pack size, because cargo rebuilds the
+  changed crate and relinks and nothing else. Adding a mod is between the warm and
+  cold figures and was not measured.
+- **A four-core player pays 73.8 s cold at 256 mods against 32.0 s**, and pays it
+  in a smaller memory footprint, not a larger one: peak resident memory over the
+  cargo process tree is 754 MB at four jobs against 2.85 GB at sixteen. Build
+  memory is set by how many `rustc` processes run at once, so the machine least
+  able to afford the wall-clock time is the one least at risk of failing the build
+  outright.
+- **A dependency graph costs little cold and a great deal warm.** A sixteen-deep
+  spine at 256 mods builds cold in 33.2 s against the control's 30.5 s, +8.9%,
+  because a deep graph converts parallel work into serial work. Changing a leaf
+  stays warm at 1.76 s. Changing the spine's root costs 29.8 s against 1.79 s,
+  which is the cold path in all but name. That is the honest worst case of this
+  mechanism: updating a popular library mod recompiles everything that depends on
+  it.
+- **Whole-pack link-time optimization is not affordable as a default.** Fat LTO
+  with one codegen unit halves the binary, 14.2 MB against 29.0 MB, and costs
+  104 s cold and 77.4 s warm against 30.5 s and 1.79 s. 43× on the warm path is
+  why it is an opt-in action rather than a profile.
+- **The shipped toolchain is 196 MB** — the `rustc` sysroot, its standard library
+  for the target, and cargo, excluding the linker and C runtime, which come from
+  the system. Apparent size summed per path, so a shipped toolchain would
+  compress.
+
 ## Why linking
 
 Against the dynamic library, the dynamic library is 0.625 ns faster per call and
@@ -232,14 +404,15 @@ version check the C ABI needs a hand-written symbol to approximate.
 
 The dynamic library's advantage is entirely in distribution: a mod can be built by
 its author, shipped alone, and dropped into an existing install. That is a real
-property and it is why the candidate stays measured. It is not a property anything
-has yet tested, and it costs the two safety properties above to hold. The order
-this repository works in is that the loader teaches us what mods need, so the
-convenience is deferred rather than bought on credit.
+property, and the mechanism above buys most of it back without the safety cost — a
+mod is still shipped alone and added alone, and what it ships is source. What is
+genuinely given up is dropping in a file and playing immediately.
 
 What linking costs is that the mod set has to be linked, by somebody, before it
-runs — and per-mod hot reload is gone, since replacing a mod means relinking. Both
-land on M2, which is where a loader capable of feeling them exists.
+runs — and per-mod hot reload is gone, since replacing a mod means relinking. M3
+answers the first: the player's machine links, from source, with a toolchain Ravel
+ships, and the M3 measurement above is what that costs. The second is not
+recovered and is recorded under "Consequences".
 
 Against WebAssembly, the sandbox's advantages are containment and a typed
 contract.
@@ -284,35 +457,66 @@ on every call and the dynamic-library host cannot, because a panic crossing the 
 ABI is undefined behaviour rather than a catchable event. The gap is the price of
 the containment, and it is the containment that was the sandbox's best argument.
 
-## What follows if the leading candidate wins
+## Consequences
 
-Nothing here is decided. These are the consequences M3 would be accepting by
-choosing linked mods, stated so the choice can be made with them in view.
-
-- **No maintained unsafe operation would exist in the mod boundary.** No
-  `libloading`, no symbol resolution, no `extern "C"`, so every crate on the mod
-  side keeps `#![forbid(unsafe_code)]`. The dynamic library is the candidate this
-  costs: it needs two.
-- **The unit of distribution would be a linked set.** Either the installing machine
-  links a pinned toolchain's output, or a pack is built once and installed as a
-  binary. `SPEC.md` §3.4 records this as open, and picking now would be picking
-  without the loader that has to live with it.
-- **Replacing one mod would mean relinking the set.** No per-mod hot reload, no
-  dropping a file into a directory. That puts a requirement on M2's tooling —
-  relinking has to be cheap enough to iterate on — rather than on the mod format.
-- **A panicking mod would not end the game on the host-to-mod path.** The loader
+- **No maintained unsafe operation exists in the mod boundary.** No `libloading`,
+  no symbol resolution, no `extern "C"`, so every crate on the mod side keeps
+  `#![forbid(unsafe_code)]` and `safety-boundary.md`'s table stays empty.
+- **Ravel owes no ABI stability.** The mod-facing API is a source API. Changing
+  `HostMod`, `Registrar` or a handle type breaks builds, not installations, and a
+  breaking change is a recompile rather than a migration. This is the property the
+  decision was made for and it is also the obligation it creates: nothing else in
+  the repository may quietly start treating a compiled artifact as an interface.
+- **Ravel owns compile failures.** When a mod does not build on a player's
+  machine, that is a Ravel bug report and not the author's, whatever the cause. It
+  is an operational cost with no technical mitigation on this side of the choice:
+  the diagnostics, the toolchain pinning, the reproduction of a failure on
+  hardware nobody on the project owns. It is the largest cost of this decision and
+  it is paid in support rather than in milliseconds.
+- **A player installs 196 MB of toolchain and keeps a build cache resident.** The
+  cache is 754 MB at 256 mods and it is not optional: it is what makes an update
+  cost 1.6 s instead of 32 s, so evicting it turns every subsequent change into a
+  cold build. Together with the 29 MB pack binary that is about a gigabyte of disk
+  for a large pack, before the game.
+- **The macOS signing obligation dissolves rather than being solved.** Apple
+  Silicon refuses to load unsigned executable code, and `SPEC.md` §5.3 carried
+  that as an open cost from the day it was written. Because the binary is produced
+  on the machine that will run it, there is no other machine it could have been
+  signed on: Ravel ad-hoc signs what it just compiled, a mod author never enrols
+  with Apple, and Ravel never signs a binary containing third-party code. §5.3
+  records the residue, which is narrow and technical — whether ad-hoc signing
+  needs a full Xcode toolchain present. This decision did not set out to solve
+  that problem and solved it anyway, which is worth noticing rather than claiming.
+- **`package.schema.json` is now wrong in a way that validates.** Recorded under
+  "What this closes and what it does not" and repeated here because it is a
+  consequence and not a footnote: the gate-enforced schema admits a source package
+  by letting it misdescribe itself, so this decision creates open work that has to
+  land before packages built under it mean anything.
+- **First install costs a minute on a modest machine**, and more on a slow one:
+  73.8 s at 256 mods with four build jobs. That is a one-off, and it is a one-off
+  the player experiences before they have played anything.
+- **Replacing one mod means relinking the set.** No per-mod hot reload and no
+  dropping a file into a directory. The measurement is what makes that acceptable
+  — 1.6 s for an ordinary mod — and the honest exception is a library mod that
+  much of the pack depends on, measured at 29.8 s.
+- **A panicking mod does not end the game on the host-to-mod path.** The loader
   catches it and names it, so M2-W7's crash attribution reports a caught failure
-  rather than reading a core dump. A mod that aborts still ends the process, and
-  that is the residual cost recorded above. The measured mod-to-mod path has no
-  such guard: `StaticMod::peer` calls through `host_peer`, an `extern "C" fn`, so a
-  panic there unwinds out of an `extern "C"` frame and aborts exactly as the
-  dynamic library does. Production would have to guard that path too, and this gate
-  never measured what that costs.
-- **The SDK would own the whole boundary and it would be ordinary Rust.** No mod
-  author writes `extern "C"`; `ravel-sdk-macros` generates registration, and a
-  contract change that breaks a mod breaks its build.
+  rather than reading a core dump. A mod that aborts still ends the process. The
+  measured mod-to-mod path has no such guard: `StaticMod::peer` calls through
+  `host_peer`, an `extern "C" fn`, so a panic there unwinds out of an `extern "C"`
+  frame and aborts exactly as the dynamic library does. Production has to guard
+  that path too, and this gate never measured what that costs.
+- **The SDK owns the whole boundary and it is ordinary Rust.** No mod author
+  writes `extern "C"`; `ravel-sdk-macros` generates registration, and a contract
+  change that breaks a mod breaks its build.
+- **Closed-source mods are not supported.** Source distribution means the source
+  is distributed. That is a product consequence rather than a technical one, and
+  it is the one this decision would be reopened for if the ecosystem turns out to
+  need it — which is what the reversibility above is for.
 
 ## Limits of this evidence
+
+### The four bindings
 
 - These trials host no JVM. What they measure is the mod-execution boundary on
   its own; reaching it from the game costs what ADG-1 measured, and the two add.
@@ -332,17 +536,54 @@ choosing linked mods, stated so the choice can be made with them in view.
   candidate. No runtime cost is quoted anywhere in this record, because the binary
   built without the WebAssembly runtime was never recorded. The runtime's share of
   the 13.8 MiB is an unrecorded observation, not evidence.
-- The linked trial links one mod. Nothing here measures link time, binary growth,
-  or compile time for a pack-sized set, and those are exactly the numbers the
-  distribution question turns on. They are M2's to measure, and they are the reason
-  this record does not also choose who links.
+- The linked trial links one mod. It measures no link time, binary growth, or
+  compile time for a pack-sized set; the M3 measurement is what supplies those.
 - Rust has no stable ABI and rlib metadata is compiler-version locked, so every
   mod in a set must be built by the same toolchain as the loader. Inside one link
-  that is automatic. It is only a constraint on whoever performs the link, which is
-  the open question above rather than a property of the mod call.
+  that is automatic, and shipping the toolchain is what makes it automatic on a
+  player's machine too.
 - The single-call and mod-to-mod figures are not guarded the same way. The linked
   single call at 2.50 ns runs inside `catch_unwind`; the 2.34 ns mod-to-mod figure
   does not, because `StaticMod::peer` calls straight through. That is why a path
   crossing the boundary twice measures *less* than one crossing it once, and it
   means the mod-to-mod row compares an unguarded linked call against the dynamic
   library. Guarding it would cost something this gate did not measure.
+
+### The pack compile
+
+The record's own `whatThisDoesNotSay` list is the source for these, and it is part
+of the measurement rather than commentary on it.
+
+- **The mods are generated, so they are alike, and none depends on another.** A
+  real pack has mods of different sizes and a real dependency graph, and cargo
+  cannot start a dependent crate until its dependency finishes, so a real set of
+  the same total size parallelizes worse than this one. The chain variant is one
+  graph, sixteen deep with uniform fan-out; a real pack's depth is unknown and its
+  hub libraries differ wildly in popularity.
+- **Nothing depends on anything outside serde and two Ravel crates.** Real mods
+  pull real dependency trees, compiled once per pack rather than once per mod.
+  That cost is omitted entirely rather than underestimated, and it lands on the
+  cold path — which is the path this decision can least afford to be wrong about.
+- **Every figure is a floor.** The synthetic mod is 1,161 lines against a real
+  large mod's thousands, and each figure is a median of three runs on one machine
+  on one afternoon. Three runs is not a distribution and nothing here is a
+  percentile.
+- **The four-core figure limits cargo's job count on a sixteen-thread machine.**
+  It is not a four-core machine: the cores are the same fast cores, the cache is
+  the whole chip's, and memory bandwidth is not contended the way a smaller part
+  would contend it. Read it as the parallelism a player has, not as the machine.
+- **Peak memory is a 25-millisecond sampled sum over the process tree**, so a
+  spike shorter than the interval is missed and the true peak is at or above what
+  is recorded. It understates the LTO variant most, whose peak is one short-lived
+  process rather than a plateau.
+- **The build ran against a warm cargo registry and a warm page cache and
+  downloaded nothing.** A first install also fetches and unpacks the dependency
+  crates, and that is not in the 73.8 s.
+- **The warm rebuild changes a mod; it does not add one.** Adding a mod compiles a
+  crate that was never compiled and relinks, which is between the warm and cold
+  figures and is not measured.
+- **This is the release profile with cargo's defaults.** A cheaper profile would
+  compile faster and produce a slower game, and nothing here prices that trade.
+- **Fat LTO is the expensive end of link-time optimization.** Thin LTO would cost
+  less and buy less, and is not measured, so the opt-in above is specified against
+  the only variant that has a number.

@@ -1,18 +1,25 @@
 # Ravel
 
 Ravel is an experimental Minecraft: Java Edition mod loader and SDK for safe,
-precompiled Rust mods. The first target is Minecraft 26.1.2 hosted by the
+natively compiled Rust mods. The first target is Minecraft 26.1.2 hosted by the
 official game runtime. Ravel does not load Java mods and does not use NeoForge,
 Fabric, Forge, Quilt, or another mod loader as its bootstrap.
+
+Ravel exists to make a large modpack cost significantly less RAM and CPU than
+the same pack costs on the Java mod ecosystem. Safe Rust mods compiled to native
+code are how it gets there.
 
 The canonical repository is
 [`tangled.org/jacobdevelops.tngl.sh/ravel`](https://tangled.org/jacobdevelops.tngl.sh/ravel).
 Continuous integration uses the Tangled Spindle workflow under
 `.tangled/workflows/`.
 
-The repository is at the M0 scaffold stage. Interfaces and package formats are
-not stable, and the runtime architecture remains subject to the evidence gates
-in the roadmap.
+The repository is at M3, the credible loader prototype. A milestone is closed
+when [`evidence/`](evidence/) holds its `manifest.json`, so that directory is
+the current answer to what has passed rather than this sentence. Interfaces and
+package formats are not stable, and which parts of the architecture are still
+behind an open decision gate is recorded in
+[`docs/decisions/README.md`](docs/decisions/README.md).
 
 ## Project contract
 

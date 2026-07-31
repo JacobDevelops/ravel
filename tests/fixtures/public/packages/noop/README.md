@@ -1,6 +1,6 @@
 # No-op package
 
-The precompiled no-op package M2-W6 drives through the loader pipeline. It is
+The prebuilt no-op package M2-W6 drives through the loader pipeline. It is
 original Ravel content, holds no third-party code or assets, and names no local
 path.
 

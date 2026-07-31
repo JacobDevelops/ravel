@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ravel:schema:package:1",
   "title": "Ravel package manifest",
-  "description": "Metadata validated before a precompiled Ravel mod can execute.",
+  "description": "Metadata validated before a Ravel mod can execute.",
   "type": "object",
   "additionalProperties": false,
   "required": [

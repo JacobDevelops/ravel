@@ -1,7 +1,7 @@
 //! The no-op package driven through the whole loader pipeline, and the record
 //! of that run kept under `evidence/`.
 //!
-//! `ROADMAP.md`'s M2-W6 row asks for recorded evidence that a precompiled no-op
+//! `ROADMAP.md`'s M2-W6 row asks for recorded evidence that a prebuilt no-op
 //! package goes through validate, resolve, load, construct, register, run and
 //! stop in deterministic order. A passing assertion is not a record, so the run
 //! is written to `evidence/m2/noop-pipeline.json` and this test regenerates it

@@ -7,13 +7,15 @@ Last updated: 2026-07-30
 
 ## Capability
 
-Ravel enables a player to run a complete, precompiled Rust modpack inside
+Ravel enables a player to run a complete, natively compiled Rust modpack inside
 official Minecraft: Java Edition, initially for Minecraft 26.1.2, without
 another Java mod loader. Initial completion means that the separate private
 ATM11-equivalent pack passes its automated compatibility suites, meets the
 Linux performance contract, and completes the pinned progression path in a
 fresh Ravel world. Apple Silicon support is a separate phase after that complete
-Linux result.
+Linux result. The reason to build it is resource cost: a complete Rust pack
+should cost significantly less RAM and CPU than the equivalent Java pack, and
+[`SPEC.md`](SPEC.md) §1 states that goal against §6's thresholds.
 
 The public `ravel` repository owns the reusable loader, SDK, package contracts,
 tooling, unrestricted test mods, and sanitized evidence. Rights-sensitive
@@ -597,19 +599,48 @@ spec decision.
 
 ### M2 — Loader skeleton
 
-**Purpose:** prove the complete pre-world loader pipeline with one no-op
-precompiled Rust package.
+**Purpose:** prove the complete pre-world loader pipeline with one no-op Rust
+package, prebuilt as a binary because M2 ran before ADG-2 chose source
+distribution.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
 | M2-W1 | Implement canonical IDs, sides, versions and diagnostics | M1 | `ravel-core` | unit/property tests cover valid and invalid values |
-| M2-W2 | Implement package schema, targets and integrity | M2-W1 | `ravel-package` and JSON schema | valid packages round-trip; tamper and schema failures precede code execution. Target-specific failure modes wait on ADG-2, which M3 decides, so this package implements identity, integrity and compatibility only. |
+| M2-W2 | Implement package schema, targets and integrity | M2-W1 | `ravel-package` and JSON schema | valid packages round-trip; tamper and schema failures precede code execution. Target-specific failure modes waited on ADG-2, which M3 has now decided, so this package implements identity, integrity and compatibility only and the target model it defers to is source distribution. |
 | M2-W3 | Implement dependency resolution and load plans | M2-W2 | `ravel-resolve` | required/optional/incompatible/discouraged, cycles, duplicates, ranges and deterministic-order cases pass |
 | M2-W4 | Implement lifecycle state machine | M2-W1 | loader state machine | every legal and illegal transition plus every spec invariant is tested |
 | M2-W5 | Implement selected bootstrap and adapter shell | M1 ADRs, M2-W4 | bootstrap, host API, shared adapter plus 26.1.2 version data | official 26.1.2 process reaches Ravel without another loader |
-| M2-W6 | Package and execute no-op test mod | M2-W2..W5 | precompiled no-op package | recorded evidence shows validate/resolve/load/construct/register/run/stop in deterministic order |
+| M2-W6 | Package and execute no-op test mod | M2-W2..W5 | prebuilt no-op package | recorded evidence shows validate/resolve/load/construct/register/run/stop in deterministic order |
 | M2-W7 | Add world-access and structured-failure gates | M2-W3..W6 | pre-world UI/log diagnostic path | invalid packages, sides, integrity and graphs cannot open a world; reports redact secrets/paths |
-| M2-W8 | Measure loader overhead and set regression budget | M2-W6..W7 | Linux no-op loader benchmark and review | the measured loader cost establishes the numeric regression budget used from M3 onward; M2 gate passes |
+| M2-W8 | Measure loader overhead and set regression budget | M2-W6..W7 | Linux no-op loader benchmark and review | the measured loader cost establishes the numeric regression budget used from M3 onward; M2 gate passes. Three of its six limits have since expired — see below |
+
+**Three of that budget's six limits have expired, on the budget's own terms.**
+[`loader-overhead.json`](evidence/m2/loader-overhead.json) carries a
+`budget.expiry` clause stating that its three build limits describe a linked
+pack, and that if M3 selected anything other than linking they "describe a shape
+that no longer exists and are remeasured rather than carried". M3 selected source
+compiled on the player's machine, which is not linking, so the condition fired
+exactly as written. `build.packCompile`, `build.relink` and
+`build.binaryGrowthPerMod` are void.
+
+This is the record executing a rule it was written with, not a budget being
+relaxed because it became inconvenient. The record itself is unchanged and stays
+that way: a recorded measurement is not edited after the fact, and the clause
+inside it is what does the voiding.
+
+**No remeasurement is owed.** The build cost of source distribution is
+[`pack-compile.json`](evidence/m3/pack-compile.json), which already exists and
+prices a pack-sized set of mods with real bodies at 113.34 ms per mod against the
+3.44 ms the M2 figure implied.
+
+**The three loader limits are unaffected and stand.** Their metric is pinned to
+the no-op package, which registers no content, so the registry barrier M3-W1
+added cannot contribute to it and a later run remains a like-for-like comparison.
+
+One thing worth carrying into any future budget: those build figures were
+declared floors in the record's own `whatThisDoesNotSay` and then used as limits,
+and a headroom factor calibrated against run-to-run variance cannot absorb a
+category error about what was measured.
 
 ### M3 — Credible loader prototype
 
@@ -625,16 +656,27 @@ resolves the repository's two incompatible readings of "pack override" in favour
 of the per-setting model, and names three schema changes M3-W3 makes rather than
 making them.
 
-**M3 also closes ADG-2, and has closed half of it.** The distribution property is
-decided — mods are independently shipped and interchangeable, and a pack is not
-one binary — and it was decided on what players expect of a mod set rather than
-on a measurement. The execution mechanism is still open, between a shipped
-per-platform binary and source a bundled toolchain compiles. The measurement
-ADG-2 named as deciding it now exists in
-[`pack-compile.json`](evidence/m3/pack-compile.json), which prices a pack-sized
-set of mods with real bodies; the mechanism has not been selected against it.
-`schemas/package.schema.json` and anything else assuming a per-target mod binary
-is reconciled with whatever ADG-2 selects.
+**M3 closes ADG-2.** Mods are independently shipped and interchangeable and a
+pack is not one binary, decided on what players expect of a mod set rather than
+on a measurement. The execution mechanism is decided with it: **a mod is
+distributed as Rust source and compiled on the player's machine by a toolchain
+Ravel ships**, and no compiled artifact is accepted — not an rlib and not a
+dylib.
+
+What decides it is not performance. Compiling every mod commits Ravel to no ABI,
+so `HostMod`, `Registrar` and the handle types stay free to change. No model that
+links mods against `ravel-minecraft` can say that, because each one pins a
+version of `jni` into every mod's dependency graph permanently and unremovably.
+Source-only is also the reversible choice: binary support can be added later, and
+a compatibility surface cannot be withdrawn once mods depend on it. The costs
+accepted are a toolchain of about 196 MB, a build cache that has to stay
+resident, and Ravel owning compile failures as a support burden.
+[`pack-compile.json`](evidence/m3/pack-compile.json) is what prices them.
+
+`schemas/package.schema.json` requires per-target artifacts and cannot express a
+source-distributed mod at all, so reconciling it is live work rather than a
+blocked dependency. `SPEC.md` §3.4 is the contract that moves first, because it
+is what currently promises the question is open.
 
 Two accepted records were amended for M3, and neither changed what it decided.
 ADG-4 admits an opaque handle to an object the *game* owns, which is what lets
@@ -762,8 +804,8 @@ contract without silently reducing scope or settings.
 | M9-W1 | Freeze comparable performance inputs | M8, M0 profile | exact build, world, route and profile hashes | verifier rejects any unrecorded setting or content drift |
 | M9-W2 | Attribute current costs | M9-W1 | per-mod/boundary/JVM/GPU/memory profile | exact vs estimated metrics are labelled; profiling overhead is separately measured |
 | M9-W3 | Optimize without behavioural regression | M9-W2 | reviewed loader/SDK/counterpart changes | relevant M4, M7 and M8 suites remain green after every optimization |
-| M9-W4 | Run final Linux acceptance pair | M9-W3 | one official-pack result and one Ravel-pack result | both use the same profile hash; all fixed FPS/RSS/pressure/swap and frame/tick reporting requirements pass |
-| M9-W5 | Independent performance review | M9-W4 | result and raw-artifact review | reviewer confirms settings, hashes, calculations, and comparison integrity; no rerun is required |
+| M9-W4 | Run final Linux acceptance pair | M9-W3 | one official-pack result and one Ravel-pack result, and the RAM/CPU improvement between them | both use the same profile hash; all fixed FPS/RSS/pressure/swap and frame/tick reporting requirements pass. `SPEC.md` §6.6 defers the improvement figure to this row, so the pair is recorded *and* the improvement is stated |
+| M9-W5 | Independent performance review | M9-W4 | result and raw-artifact review | reviewer confirms settings, hashes, calculations, and comparison integrity; no rerun is required. The reviewer also rules on whether the improvement is significant, because §6.6 makes that a judgement rather than a threshold |
 
 If M9-W4 cannot pass with the complete workload, open ADG-8. Do not mark M9
 complete, relax the profile, remove required content, or begin a native client
@@ -851,10 +893,11 @@ distribution, rollback, and private-history isolation.
 | --- | --- | --- |
 | Exact fixture reference total and authoritative hashes | M0-W4 | discharged; M0 closed on `evidence/m0/manifest.json` |
 | Canonical workload duration and metric definitions | M9-W1 | blocks M9 |
+| Numeric RAM/CPU improvement target over the Java pack | M9-W4 | blocks M9 acceptance; `SPEC.md` §6.6 defers it because no Java baseline exists until the pair is run |
 | Game Java runtime required by pinned metadata | M0-W6 | discharged; M0 closed |
 | Architecture comparison metrics and failure actions | M0-W8 | discharged; M1 selected against it |
 | JVM hook mechanism | ADG-1 / M1 | discharged; amended before M3-W3 on what enters the game process |
-| Rust execution/package/ABI model | ADG-2 / M1 **and M3** | half open: the distribution property is settled, the execution mechanism is not, and it blocks reconciling `package.schema.json` |
+| Rust execution/package/ABI model | ADG-2 / M1 **and M3** | discharged at M3: source distribution, compiled on the player's machine. Reconciling `package.schema.json` and `SPEC.md` §3.4 is now live work |
 | Binding extraction and generation | ADG-3 / M1 | discharged |
 | Java/Rust state ownership | ADG-4 / M1 | discharged; amended at M3-W0 to admit opaque handles |
 | Stock Prism versus minimal patch | ADG-5 / M1 | discharged, with a correction outstanding: the library-path argument does not work and choosing the fix amends ADG-5 |

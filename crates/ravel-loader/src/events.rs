@@ -207,9 +207,16 @@ impl LifecycleMachine {
 /// Never. The audience is checked against the supplied values before anything
 /// is delivered, so the lookup during delivery is asking about a mod the check
 /// already found.
+///
+/// `mods` writes the trait object's own lifetime bound rather than letting it
+/// default to the borrow's. Elision would tie the two together, and `&mut` is
+/// invariant in what it points at, so a caller holding `Box<dyn HostMod>` —
+/// which is `dyn HostMod + 'static` — could not lend them for anything shorter
+/// than `'static`. That is exactly what a runtime owning its mods does, and the
+/// bound is what lets it.
 pub fn broadcast(
     machine: &LifecycleMachine,
-    mods: &mut [&mut dyn HostMod],
+    mods: &mut [&mut (dyn HostMod + '_)],
     event: GameEvent,
 ) -> Result<Delivery, DispatchRefused> {
     let audience = machine.audience(event);
@@ -263,7 +270,7 @@ pub fn broadcast(
 /// the caller supplied no value for it.
 pub fn route(
     machine: &LifecycleMachine,
-    mods: &mut [&mut dyn HostMod],
+    mods: &mut [&mut (dyn HostMod + '_)],
     invocation: &CommandInvocation,
 ) -> Result<Delivery, DispatchRefused> {
     let owner = machine

@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni.workspace = true
+ravel-core.workspace = true
 ravel-host-api.workspace = true
 ravel-loader.workspace = true
 ravel-minecraft.workspace = true

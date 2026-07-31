@@ -5,9 +5,11 @@
 mod dispatch;
 mod guard;
 mod report;
+mod runtime;
 
 pub use dispatch::register;
 pub use guard::HookError;
+pub use runtime::{LoaderRuntime, install};
 
 /// The generated JNI exports, one per hook shape.
 ///

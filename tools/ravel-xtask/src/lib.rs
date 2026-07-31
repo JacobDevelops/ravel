@@ -48,6 +48,7 @@ const EXPERIMENT_NAMES: &[&str] = &[
     "adg-3-bindings",
     "adg-4-state",
     "adg-5-prism",
+    "m2-loader-overhead",
     "spike-harness",
 ];
 
@@ -83,6 +84,7 @@ const ROOT_FILES: &[&str] = &[
     "docs/architecture/m1-measurement-gate.md",
     "docs/decisions/README.md",
     "evidence/m1/README.md",
+    "evidence/m2/README.md",
     "docs/runbooks/darwin-verification.md",
     "experiments/README.md",
     "flake.lock",
@@ -92,6 +94,9 @@ const ROOT_FILES: &[&str] = &[
     "jvm/bootstrap/dev/ravel/jvm/HookTarget.java",
     "jvm/bootstrap/dev/ravel/jvm/Transformer.java",
     "jvm/build/build-agent.sh",
+    "jvm/harness/Main.java",
+    "jvm/harness/net/minecraft/util/StringUtil.java",
+    "jvm/harness/run-harness.sh",
     "minecraft/README.md",
     "minecraft/versions/26.1.2/README.md",
     "minecraft/versions/26.1.2/adapter.toml",
@@ -397,7 +402,7 @@ fn verify_spike_result(root: &Path, path: &Path, gate: &str, violations: &mut Ve
         }
     }
 
-    verify_manifest_redaction(path, violations);
+    verify_redaction(path, &label, violations);
 }
 
 fn spike_schema_matches(root: &Path, result: &Path) -> Result<bool, String> {
@@ -512,7 +517,7 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
         }
         Err(error) => violations.push(error),
     }
-    verify_manifest_redaction(manifest_path, &mut violations);
+    verify_redaction(manifest_path, "milestone manifest", &mut violations);
     if !jq_matches(manifest_path, ".schemaVersion == 1").unwrap_or(false) {
         violations.push("manifest schemaVersion must equal 1".to_owned());
     }
@@ -528,6 +533,9 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
     }
     if milestone == "M1" {
         verify_m1_manifest(root, manifest_path, &mut violations);
+    }
+    if milestone == "M2" {
+        verify_m2_manifest(root, manifest_path, &mut violations);
     }
 
     violations
@@ -704,6 +712,120 @@ fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
     }
 }
 
+/// Checks what closing M2 requires beyond the rules every milestone shares.
+///
+/// M2 builds the pre-world loader, so its closure is about the pipeline having
+/// been run rather than described. The manifest names the work; the records
+/// under `evidence/m2/` are what happened, and each one is asked here for the
+/// claim `ROADMAP.md`'s M2 rows make of it. A manifest that says the loader
+/// works and a record that does not show it working is the failure this
+/// catches.
+fn verify_m2_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        manifest_path,
+        ".workPackages | sort == [\"M2-W1\", \"M2-W2\", \"M2-W3\", \"M2-W4\", \"M2-W5\", \"M2-W6\", \"M2-W7\", \"M2-W8\"]",
+        "M2 manifest must include every work package from M2-W1 through M2-W8 exactly once",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        ".benchmarks.protocolVersion == \"m2-loader-budget-v1\" and (.benchmarks.results | length > 0)",
+        "M2 manifest must record its results under the m2-loader-budget-v1 protocol",
+        violations,
+    );
+    // M2-W5's launch is operator-run, so a person says it happened. The record
+    // it points at is checked below; this is the claim that someone stands
+    // behind it.
+    require_manifest_rule(
+        manifest_path,
+        r#".attestations | any(.platform == "linux" and .architecture == "x86_64")"#,
+        "M2 closure requires a native Linux attestation for the operator-run launch",
+        violations,
+    );
+
+    for (file, rule, requirement) in M2_RECORDS {
+        let path = root.join("evidence/m2").join(file);
+        if !path.is_file() {
+            violations.push(format!("M2 closure requires the record evidence/m2/{file}"));
+            continue;
+        }
+        if !jq_matches(&path, rule).unwrap_or(false) {
+            violations.push(format!("M2 closure requires {requirement}"));
+        }
+        // The records carry what a launcher log and a machine produced, so they
+        // are held to the same redaction rule as the manifest rather than to
+        // the reader's attention. The two generated records have a conformance
+        // test of their own; the overhead and launch records have only this.
+        verify_redaction(&path, &format!("evidence/m2/{file}"), violations);
+    }
+}
+
+/// The records M2 cannot close without, and what each one has to say.
+const M2_RECORDS: &[(&str, &str, &str)] = &[
+    (
+        "noop-pipeline.json",
+        // `all(.repeatedRunIsIdentical)` would be a truthiness test, and every
+        // non-null value but `false` is truthy in jq, so the string "no" would
+        // pass it. The comparison is what makes the field mean what it says.
+        ".runs | length > 0 and all(.repeatedRunIsIdentical == true)",
+        "a no-op pipeline record whose run is identical when repeated",
+    ),
+    (
+        "pre-world-gate.json",
+        ".gate.refusesWorldAccess == true and .gate.ranModCode == false",
+        "a pre-world gate record showing invalid packages refused before any mod code ran",
+    ),
+    (
+        "loader-overhead.json",
+        // A budget is only a budget if each line says which metric it bounds, in
+        // what unit, and sits above the measurement it was derived from. A bare
+        // positive number bounds nothing, and two lines naming the same metric
+        // are a limit and a contradiction rather than two limits.
+        r#".budget.limits
+            | length > 0
+            and all(
+                (.metric | type == "string" and length > 0)
+                and (.unit | type == "string" and length > 0)
+                and .operator == "less-than-or-equal"
+                and (.measured | type == "number")
+                and .measured > 0
+                and (.limit | type == "number")
+                and .limit > .measured
+            )
+            and (map(.metric) | unique | length) == length"#,
+        "a loader overhead record whose budget lines each name one metric and a unit, and set an \
+         upper limit above the positive measurement that limit was derived from",
+    ),
+    (
+        "prism-launch.json",
+        // The rewrite count and the native invocation count are what M2's launch
+        // added over M1's, which could show the client started and nothing more.
+        // Each count is type-checked before it is compared: jq orders strings
+        // above numbers, so an unguarded `> 0` accepts "not measured". The
+        // objection has to be present and null, because a missing key reads as
+        // null too and would let a record drop its own objection to pass.
+        // `stockLauncher` is the operator's word rather than a measurement, so
+        // the record labels it attested and the gate asks for it under that name.
+        r#".launch.provesStockLaunch == true
+            and (.launch | has("objection"))
+            and .launch.objection == null
+            and .launch.attestation.stockLauncher == true
+            and .ravel.reachedGameProcess == true
+            and .ravel.rewrite.reported == true
+            and .ravel.rewrite.reachedRavel == true
+            and (.ravel.rewrite.classesRewritten | type == "number")
+            and .ravel.rewrite.classesRewritten > 0
+            and (.ravel.rewrite.methodsRewritten | type == "number")
+            and .ravel.rewrite.methodsRewritten > 0
+            and (.ravel.rewrite.nativeInvocations | type == "number")
+            and .ravel.rewrite.nativeInvocations > 0
+            and .instance.withoutAnotherLoader == true"#,
+        "a launch record showing the official client reaching Ravel from an attested stock Prism, \
+         with the transformer's own count of what it rewrote inside that process and of the hook \
+         invocations that reached native code, and no other loader present",
+    ),
+];
+
 /// Decision records M1 cannot close without.
 const M1_DECISIONS: &[&str] = &[
     "adg-1-jvm-entry.md",
@@ -758,10 +880,16 @@ fn m0_platform_filter(platform: &str, architecture: &str, hardware_profile: &str
     )
 }
 
-fn verify_manifest_redaction(manifest_path: &Path, violations: &mut Vec<String>) {
+/// Refuses a document that carries a local path, a credential, or a secret field.
+///
+/// Every tracked evidence document is held to this, not just the manifest: a
+/// record built from a launcher log or a machine's output is where leakage would
+/// actually come from. `subject` names the document in the violation, so a
+/// reader is told which file to look at.
+fn verify_redaction(document: &Path, subject: &str, violations: &mut Vec<String>) {
     let output = Command::new("jq")
         .args(["--raw-output", ".. | strings"])
-        .arg(manifest_path)
+        .arg(document)
         .output();
     let lower = output
         .ok()
@@ -796,7 +924,7 @@ fn verify_manifest_redaction(manifest_path: &Path, violations: &mut Vec<String>)
     .iter()
     .any(|pattern| lower.contains(pattern));
     let credential_fields_absent = jq_matches(
-        manifest_path,
+        document,
         r#"[paths(strings) as $path
             | select(
                 any(
@@ -810,7 +938,7 @@ fn verify_manifest_redaction(manifest_path: &Path, violations: &mut Vec<String>)
     .unwrap_or(false);
 
     if contains_local_data || contains_credential_value || !credential_fields_absent {
-        violations.push("milestone manifest contains sensitive or local data".to_owned());
+        violations.push(format!("{subject} contains sensitive or local data"));
     }
 }
 

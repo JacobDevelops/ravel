@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "native",
+  "milestone": "M2",
+  "workPackages": [
+    "M2-W1",
+    "M2-W2",
+    "M2-W3",
+    "M2-W4",
+    "M2-W5",
+    "M2-W6",
+    "M2-W7",
+    "M2-W8"
+  ],
+  "revision": {
+    "id": "93772540cf84400f7f2eb0b5d9ae71490851ca65",
+    "changeId": "pumzmwvxrmlouknqzzpwmwqluusnmooo",
+    "dirty": false
+  },
+  "versions": {
+    "minecraft": "26.1.2",
+    "neoforge": "26.1.2.78",
+    "prism": "11.0.3",
+    "fixture": "ATM11 0.2.1",
+    "java": "25.0.1",
+    "rust": "1.95.0",
+    "nix": "2.33.3",
+    "devenv": "2.1.2"
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1",
+    "settings": {
+      "scope": "the complete pre-world loader pipeline on one no-op package",
+      "budgetProtocol": "m2-loader-budget-v1",
+      "launchObserved": true,
+      "modExecutionModelSelected": false
+    }
+  },
+  "inputs": [
+    {
+      "name": "schemas/package.schema.json",
+      "sha256": "a7f8584e295f765c6852c92402f0a3d026a9980e9a026be00f0017b78fba08fd"
+    },
+    {
+      "name": "minecraft/versions/26.1.2/hooks.toml",
+      "sha256": "2c27691d5bee0d0f3556efcbb02706c76e490f85691151f71a1a6b59f0b432fa"
+    },
+    {
+      "name": "minecraft/versions/26.1.2/mappings.lock",
+      "sha256": "8c5965a8c9f25a73823e7400032e5a737c359abc36c9de2c25c8f2be06f327c2"
+    },
+    {
+      "name": "tests/performance/hardware/linux-reference.toml",
+      "sha256": "532b589e5763a650ce154bfe6ebb9c77d615cb160bcc83e3627a3b3bb539c96c"
+    },
+    {
+      "name": "tests/fixtures/public/packages/noop/package.json",
+      "sha256": "a8ed66bc434cdd2494685647b3f3d7c204fa23ba52d0e72bfb691379ffd5e9f2"
+    }
+  ],
+  "commands": [
+    {
+      "command": "devenv tasks run ravel:verify",
+      "argvSha256": "a36230a5336c48fd96b4c6b4bf599a12ce95121ad5442ed30ae4353293d7dd05",
+      "startedAt": "2026-07-31T04:26:03Z",
+      "durationMs": 9726,
+      "exitStatus": 0,
+      "logSha256": "f8872433dbe75c944a6418cdfa3a162d0ad4e9d937fed5380902ccac64c42788"
+    }
+  ],
+  "tests": {
+    "total": 429,
+    "passed": 429,
+    "failed": 0,
+    "skipped": 0,
+    "lineCoveragePercent": 86.43
+  },
+  "benchmarks": {
+    "protocolVersion": "m2-loader-budget-v1",
+    "results": [
+      {
+        "name": "noop-pipeline.json",
+        "sha256": "d4dcf5afa8ffd845170f2e6656d176a72332343c469042e4a99f6c31d0aac19b"
+      },
+      {
+        "name": "pre-world-gate.json",
+        "sha256": "1577b23dd48ebaf7c9c7511faac91d8db7e2eb325e44f12432da62f8c6b5678d"
+      },
+      {
+        "name": "loader-overhead.json",
+        "sha256": "19e8b019eb9bbbc84827e25055e54327a0863d58910b02ca5d888012b2c4e3b0"
+      },
+      {
+        "name": "prism-launch.json",
+        "sha256": "2896719be6c77b695cec0262ecd1facfbae02f57c7836bdadab2637a568fa9b6"
+      }
+    ]
+  },
+  "deviations": [
+    {
+      "summary": "Prism 11.0.3 places its own -Djava.library.path=<instance>/natives after the instance's JvmArgs and the last one wins, so the appended library directory ADG-5 describes has no effect, and the launcher deletes that natives directory when a launch ends. M2's launch put the native library there immediately before starting. Ravel is still switched off by removing the -javaagent argument, because nothing loads the library without it. Choosing between a System.load path given by a -D property and an installer that owns the natives directory is an ADG-5 amendment and is not M2's to make.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The premain agent reports what it rewrote from a JVM shutdown hook, and the game replaces System.out with a logger that has stopped by then, so the report reached nothing until it was written to the process's own standard output instead. M2's first launch is what found that. The launch also used a stock WrapperCommand that only tees the process's output to a file, because the launcher shows that stream in a console window it writes to no file and closes with the game. The wrapper changes no launch argument and adds no component.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "crates/ravel-bootstrap/src/guard.rs sits at 54.55% lines and stays there. Covering enter and text needs a live in-process JVM, which means either the jni crate's invocation feature, the exact shape ADG-1 rejected because the JVM launches Ravel rather than the other way round, or a harness that makes the gate depend on a Minecraft-adjacent runtime. The delegated logic is at 100% and 80%, and the path is verified by the JVM harness and by the recorded launch: evidence rather than coverage.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The loader-overhead figures are wall-clock measurements and move between runs within the same order, which is why every budget limit carries a factor of two. They hold on the linux-reference-v1 hardware profile and a different machine remeasures rather than reinterprets them.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The pack-build figures come from generated one-struct mod crates and two cold builds whose difference is divided by the pack size, so they assume linear cost and are floors rather than predictions for a set of real mods.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The digest of the redacted launcher log cannot be recomputed by a reader, because the log is deleted once it is hashed. That is the same trade M0 and M1 made, and it is what keeps the account's session arguments out of the repository.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "schemas/package.schema.json still requires per-target artifacts, which is an assumption inherited from before ADG-2 was deferred rather than a settled contract. M2 implements identity, integrity and compatibility only, and M3 reconciles the schema with whatever ADG-2 selects.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The independent review found three defects in the launch record, all of them in what the record concluded rather than in what it measured, and all three are corrected. The provesStockLaunch conclusion no longer rests on the library-path argument that the deviation above shows was inert; it rests on the -javaagent argument, which is what loads Ravel. The stockLauncher and launcherChangedLines fields now sit under an attestation the record labels as the operator's word, because nothing in the runner reads the launcher binary. The third instance setting, the wrapper command that captured the agent's shutdown report, is named in the record's own detail strings instead of only in a deviation. No derived value changed and the record was not regenerated: the launcher log it was built from is deleted by design, so a unit test holds the record's prose and its attested pair against the generator that would write them.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The lifecycle residual in the overhead record is the whole pipeline's 99th percentile less the sum of three stage 99th percentiles from separate runs. A difference of percentiles is not a percentile: it understates the remainder and a negative result is clamped to zero. The record says so and the field is named in nanoseconds rather than as a percentile, but it remains an order of magnitude rather than a measurement.",
+      "classification": "non-blocking"
+    }
+  ],
+  "risks": [
+    {
+      "summary": "ADG-2 is still open. Nothing in M2 selects a mod execution or distribution model, and the pack figures describe a linked set because a linked set is the only shape available while the gate is deferred, not because it was chosen. M3 decides, and reconciles the package schema with the decision.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Mod calls per tick are zero in M2, because the pipeline is pre-world and no per-tick hook exists yet. The count ADG-2's comparison turns on is therefore still unmeasured; M3 produces the first non-zero one and this budget is where it lands.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Everything measured here runs against one no-op package and the five pinned hook targets. A dependency graph with real edges, a mod body that does work, and a cold page cache are all outside the numbers, so every loader figure is a floor.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "ADG-6 has not started, and the configuration crate remains an empty boundary placeholder. M3 selects it.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Nothing enforces the budget automatically. The milestone gate checks that each limit is a named number above the measurement it came from; comparing a later run against it is M3's to build, and until then the rule is a sentence. The measurement now takes an output path so a re-run need not overwrite the baseline it is being compared against.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Three of the six budget limits describe a linked pack's build cost. M3 both consumes this budget and closes ADG-2, so if it selects anything other than linking those three limits describe a shape that no longer exists and are remeasured rather than carried. The record states this.",
+      "classification": "non-blocking"
+    }
+  ],
+  "review": {
+    "reviewer": "independent Claude reviewer (M2 closure, adversarial pass over records, budget method, and launch evidence)",
+    "independent": true,
+    "result": "pass",
+    "record": {
+      "name": "M2 independent closure review",
+      "sha256": "abc003fdd77ede9be08f0ddf36c0b10e381431ff684c8bb7a874420513abea78"
+    }
+  },
+  "attestations": [
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "workloads": [
+        "vanilla",
+        "ravel"
+      ],
+      "statement": "The pinned official Minecraft 26.1.2 client was launched from the pinned stock Prism Launcher with Ravel's premain agent attached, on the linux-reference-v1 machine. It reached a loaded world, accepted typed input, and exited cleanly. Ravel's agent rewrote 2 classes and 5 methods inside that process and 144 hook invocations reached the native library. The instance carried no other mod loader: its component list is LWJGL and Minecraft, and its mods and coremods directories are empty.",
+      "attestedBy": "Ravel maintainer, operator-run launch",
+      "attestedAt": "2026-07-31T03:12:00Z"
+    }
+  ],
+  "platformEvidence": []
+}

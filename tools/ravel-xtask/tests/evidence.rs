@@ -369,3 +369,394 @@ fn every_platform_record_requires_its_own_versions_and_settings() {
     );
     fs::remove_file(path).expect("altered fixture should be removable");
 }
+
+/// The smallest set of M2 records the gate accepts, so a test can break one.
+const VALID_M2_RECORDS: &[(&str, &str)] = &[
+    (
+        "noop-pipeline.json",
+        r#"{"runs": [{"repeatedRunIsIdentical": true}]}"#,
+    ),
+    (
+        "pre-world-gate.json",
+        r#"{"gate": {"refusesWorldAccess": true, "ranModCode": false}}"#,
+    ),
+    (
+        "loader-overhead.json",
+        r#"{"budget": {"limits": [{"metric": "loader.noopPackage.pipeline.p99",
+                                   "unit": "nanoseconds",
+                                   "operator": "less-than-or-equal",
+                                   "measured": 7084.0,
+                                   "limit": 14168.0}]}}"#,
+    ),
+    (
+        "prism-launch.json",
+        r#"{"launch": {"provesStockLaunch": true,
+                       "objection": null,
+                       "attestation": {"stockLauncher": true, "derived": false}},
+            "ravel": {"reachedGameProcess": true,
+                      "rewrite": {"reported": true,
+                                  "reachedRavel": true,
+                                  "classesRewritten": 2,
+                                  "methodsRewritten": 5,
+                                  "nativeInvocations": 144}},
+            "instance": {"withoutAnotherLoader": true}}"#,
+    ),
+];
+
+fn valid_m2_record(file: &str) -> &'static str {
+    VALID_M2_RECORDS
+        .iter()
+        .find_map(|(name, body)| (*name == file).then_some(*body))
+        .expect("the record must be one M2 closure asks for")
+}
+
+/// An evidence root holding that set with one record replaced by a broken one.
+fn m2_record_root(broken: &str, body: &str) -> PathBuf {
+    let root = temporary_root();
+    fs::create_dir_all(root.join("evidence/m2")).expect("evidence directory should be creatable");
+    for (file, valid) in VALID_M2_RECORDS {
+        let content = if *file == broken { body } else { *valid };
+        fs::write(root.join("evidence/m2").join(file), content).expect("record should be writable");
+    }
+    root
+}
+
+fn m2_violations(root: &Path) -> Vec<String> {
+    let violations = verify_evidence_manifest(root, &fixture("complete-m2.json"), "M2");
+    fs::remove_dir_all(root).expect("evidence root should be removable");
+    violations
+}
+
+#[test]
+fn m2_closure_accepts_the_recorded_loader_evidence() {
+    // Checked against the real repository, so this test states M2's status: the
+    // pipeline, gate, overhead and launch records all exist, all say what their
+    // roadmap rows require, and none of them names a path or a secret.
+    let violations =
+        verify_evidence_manifest(repository_root(), &fixture("complete-m2.json"), "M2");
+
+    for unmet in ["M2 closure requires", "M2 manifest must", "evidence/m2/"] {
+        assert!(
+            !violations
+                .iter()
+                .any(|violation| violation.starts_with(unmet)),
+            "{unmet} should be satisfied, got {violations:?}"
+        );
+    }
+}
+
+#[test]
+fn m2_closure_is_refused_when_the_launch_record_does_not_show_ravel_running() {
+    // The rule has to still bite, so this drives it with the shape the launch
+    // record had while M2-W5's criterion was outstanding: a client that ran and
+    // an agent that proved nothing.
+    let root = m2_record_root(
+        "prism-launch.json",
+        r#"{"launch": {"provesStockLaunch": true,
+                       "objection": null,
+                       "attestation": {"stockLauncher": true}},
+            "ravel": {"reachedGameProcess": false,
+                      "rewrite": {"reported": false,
+                                  "reachedRavel": false,
+                                  "classesRewritten": 0,
+                                  "methodsRewritten": 0,
+                                  "nativeInvocations": -1}},
+            "instance": {"withoutAnotherLoader": true}}"#,
+    );
+
+    let violations = m2_violations(&root);
+
+    assert!(
+        violations.iter().any(|violation| violation.starts_with(
+            "M2 closure requires a launch record showing the official client reaching Ravel"
+        )),
+        "expected the unproven launch to be reported, got {violations:?}"
+    );
+}
+
+#[test]
+fn a_launch_that_only_started_the_client_cannot_close_m2() {
+    // M1's launch could prove the JVM accepted both arguments and the client
+    // ran. Each field below is one of the things M2 added, removed on its own.
+    for (missing, record) in [
+        (
+            "the rewrite report",
+            valid_m2_record("prism-launch.json")
+                .replace(r#""reported": true"#, r#""reported": false"#),
+        ),
+        (
+            "the count of rewritten classes",
+            valid_m2_record("prism-launch.json")
+                .replace(r#""classesRewritten": 2"#, r#""classesRewritten": 0"#),
+        ),
+        (
+            "the hook invocations that reached native code",
+            valid_m2_record("prism-launch.json")
+                .replace(r#""nativeInvocations": 144"#, r#""nativeInvocations": -1"#),
+        ),
+        (
+            "the attested stock launcher",
+            valid_m2_record("prism-launch.json")
+                .replace(r#""stockLauncher": true"#, r#""stockLauncher": false"#),
+        ),
+    ] {
+        let root = m2_record_root("prism-launch.json", &record);
+
+        let violations = m2_violations(&root);
+
+        assert!(
+            violations.iter().any(|violation| violation.starts_with(
+                "M2 closure requires a launch record showing the official client reaching Ravel"
+            )),
+            "a launch record without {missing} was accepted, got {violations:?}"
+        );
+    }
+}
+
+#[test]
+fn a_launch_record_whose_counts_are_not_numbers_cannot_close_m2() {
+    // jq orders strings above every number, so an unguarded `> 0` reads
+    // "not measured" as a count above zero. A hand-edited record that answers
+    // the three counts in words is the shape that would otherwise close M2
+    // without anything having been counted.
+    for (defect, record) in [
+        (
+            "every count written in words",
+            valid_m2_record("prism-launch.json")
+                .replace(
+                    r#""classesRewritten": 2"#,
+                    r#""classesRewritten": "not measured""#,
+                )
+                .replace(
+                    r#""methodsRewritten": 5"#,
+                    r#""methodsRewritten": "not measured""#,
+                )
+                .replace(
+                    r#""nativeInvocations": 144"#,
+                    r#""nativeInvocations": "not measured""#,
+                ),
+        ),
+        (
+            "one count written in words",
+            valid_m2_record("prism-launch.json").replace(
+                r#""methodsRewritten": 5"#,
+                r#""methodsRewritten": "several""#,
+            ),
+        ),
+        (
+            "a count given as a string of digits",
+            valid_m2_record("prism-launch.json").replace(
+                r#""nativeInvocations": 144"#,
+                r#""nativeInvocations": "144""#,
+            ),
+        ),
+        (
+            "no objection field at all",
+            valid_m2_record("prism-launch.json").replace(r#""objection": null,"#, ""),
+        ),
+    ] {
+        let root = m2_record_root("prism-launch.json", &record);
+
+        let violations = m2_violations(&root);
+
+        assert!(
+            violations.iter().any(|violation| violation.starts_with(
+                "M2 closure requires a launch record showing the official client reaching Ravel"
+            )),
+            "a launch record with {defect} was accepted, got {violations:?}"
+        );
+    }
+}
+
+#[test]
+fn a_pipeline_record_that_does_not_say_the_rerun_matched_cannot_close_m2() {
+    // Every jq value but `false` and `null` is truthy, so the field has to be
+    // read as the boolean it claims to be rather than as something present.
+    for (defect, record) in [
+        (
+            "a run that says it differed",
+            r#"{"runs": [{"repeatedRunIsIdentical": false}]}"#,
+        ),
+        (
+            "the answer written as a word",
+            r#"{"runs": [{"repeatedRunIsIdentical": "no"}]}"#,
+        ),
+        (
+            "one run of two that differed",
+            r#"{"runs": [{"repeatedRunIsIdentical": true}, {"repeatedRunIsIdentical": false}]}"#,
+        ),
+        ("a run that does not answer at all", r#"{"runs": [{}]}"#),
+        ("no runs at all", r#"{"runs": []}"#),
+    ] {
+        let root = m2_record_root("noop-pipeline.json", record);
+
+        let violations = m2_violations(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation
+                    .starts_with("M2 closure requires a no-op pipeline record")),
+            "a pipeline record with {defect} was accepted, got {violations:?}"
+        );
+    }
+}
+
+#[test]
+fn a_gate_record_that_let_a_world_open_cannot_close_m2() {
+    // The gate's whole claim is that the refusal came before any mod code, so
+    // either half missing is the failure it exists to catch.
+    for (defect, record) in [
+        (
+            "a world opened anyway",
+            r#"{"gate": {"refusesWorldAccess": false, "ranModCode": false}}"#,
+        ),
+        (
+            "mod code that ran first",
+            r#"{"gate": {"refusesWorldAccess": true, "ranModCode": true}}"#,
+        ),
+        (
+            "the refusal written as a word",
+            r#"{"gate": {"refusesWorldAccess": "yes", "ranModCode": false}}"#,
+        ),
+        ("no gate at all", "{}"),
+    ] {
+        let root = m2_record_root("pre-world-gate.json", record);
+
+        let violations = m2_violations(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation
+                    .starts_with("M2 closure requires a pre-world gate record")),
+            "a gate record with {defect} was accepted, got {violations:?}"
+        );
+    }
+}
+
+#[test]
+fn a_budget_limit_that_bounds_nothing_cannot_close_m2() {
+    // A limit is only a limit against a named metric it sits above. Each of
+    // these is a budget line that reads like one and is not.
+    for (defect, budget) in [
+        (
+            "a bare positive number",
+            r#"{"budget": {"limits": [{"limit": 14168.0}]}}"#,
+        ),
+        (
+            "a limit at or below its own measurement",
+            r#"{"budget": {"limits": [{"metric": "loader.noopPackage.pipeline.p99",
+                                       "unit": "nanoseconds",
+                                       "operator": "less-than-or-equal",
+                                       "measured": 7084.0,
+                                       "limit": 7084.0}]}}"#,
+        ),
+        (
+            "an unnamed metric",
+            r#"{"budget": {"limits": [{"metric": "",
+                                       "unit": "nanoseconds",
+                                       "operator": "less-than-or-equal",
+                                       "measured": 7084.0,
+                                       "limit": 14168.0}]}}"#,
+        ),
+        (
+            "a measurement of zero standing in for one never taken",
+            r#"{"budget": {"limits": [{"metric": "loader.noopPackage.pipeline.p99",
+                                       "unit": "nanoseconds",
+                                       "operator": "less-than-or-equal",
+                                       "measured": 0,
+                                       "limit": 14168.0}]}}"#,
+        ),
+        (
+            "a number the unit does not name",
+            r#"{"budget": {"limits": [{"metric": "loader.noopPackage.pipeline.p99",
+                                       "operator": "less-than-or-equal",
+                                       "measured": 7084.0,
+                                       "limit": 14168.0}]}}"#,
+        ),
+        (
+            "two lines claiming the same metric",
+            r#"{"budget": {"limits": [{"metric": "loader.noopPackage.pipeline.p99",
+                                       "unit": "nanoseconds",
+                                       "operator": "less-than-or-equal",
+                                       "measured": 7084.0,
+                                       "limit": 14168.0},
+                                      {"metric": "loader.noopPackage.pipeline.p99",
+                                       "unit": "nanoseconds",
+                                       "operator": "less-than-or-equal",
+                                       "measured": 3000.0,
+                                       "limit": 6000.0}]}}"#,
+        ),
+        ("no limits at all", r#"{"budget": {"limits": []}}"#),
+    ] {
+        let root = m2_record_root("loader-overhead.json", budget);
+
+        let violations = m2_violations(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation
+                    .starts_with("M2 closure requires a loader overhead record")),
+            "a budget with {defect} was accepted, got {violations:?}"
+        );
+    }
+}
+
+#[test]
+fn an_m2_record_naming_a_local_path_cannot_close_m2() {
+    // The pipeline and gate records are byte-compared by conformance tests that
+    // assert this themselves. These two are not: one is a machine measurement
+    // and the other is built from an operator's launcher log, which is where a
+    // path or a session argument would come from.
+    for file in ["loader-overhead.json", "prism-launch.json"] {
+        let leaked = valid_m2_record(file).replacen(
+            '{',
+            r#"{"capturedFrom": "/home/alice/prism/instances/ravel", "#,
+            1,
+        );
+        let root = m2_record_root(file, &leaked);
+
+        let violations = m2_violations(&root);
+
+        assert!(
+            violations.iter().any(|violation| *violation
+                == format!("evidence/m2/{file} contains sensitive or local data")),
+            "a local path in {file} was accepted, got {violations:?}"
+        );
+    }
+}
+
+#[test]
+fn m2_closure_is_refused_when_a_record_is_missing_altogether() {
+    let root = temporary_root();
+    fs::create_dir_all(root.join("evidence/m2")).expect("evidence directory should be creatable");
+
+    let violations = verify_evidence_manifest(&root, &fixture("complete-m2.json"), "M2");
+
+    fs::remove_dir_all(&root).expect("evidence root should be removable");
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation
+                == "M2 closure requires the record evidence/m2/prism-launch.json"),
+        "expected the absent record to be reported, got {violations:?}"
+    );
+}
+
+#[test]
+fn m2_work_packages_must_cover_the_whole_milestone() {
+    let source =
+        fs::read_to_string(fixture("complete-m2.json")).expect("the M2 fixture must be readable");
+    let duplicated = source.replace("\"M2-W8\"", "\"M2-W1\"");
+    assert_ne!(source, duplicated, "fixture mutation must replace content");
+    let altered = std::env::temp_dir().join(format!("ravel-m2-short-{}.json", std::process::id()));
+    fs::write(&altered, duplicated).expect("altered fixture must be writable");
+
+    let violations = verify_evidence_manifest(repository_root(), &altered, "M2");
+
+    assert!(violations.iter().any(|violation| violation
+        == "M2 manifest must include every work package from M2-W1 through M2-W8 exactly once"));
+    fs::remove_file(altered).expect("altered fixture should be removable");
+}

@@ -247,7 +247,11 @@ mod tests {
 
     #[test]
     fn a_refused_claim_stops_registration_and_names_the_identifier() {
-        for kind in ContentKind::ALL {
+        // The kinds this mod claims, not every kind that exists. A command is a
+        // `ContentKind` this mod deliberately does not register, and iterating
+        // the whole enum would assert that a refusal this mod never provokes
+        // stops a registration it never starts.
+        for (kind, _) in CLAIMS {
             let mut registries = RegistriesMod::new();
             let mut registrar = Refusing {
                 kind,

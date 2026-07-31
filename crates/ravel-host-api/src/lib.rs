@@ -4,7 +4,105 @@
 
 use std::fmt;
 
-use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, StructuredFailure};
+use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure};
+
+/// Something the game did that a mod may react to.
+///
+/// Every variant names an occurrence and carries no payload **today**, and that
+/// is unstarted work rather than a boundary. `docs/decisions/adg-4-state-ownership.md`
+/// refuses a copy that *stays* — one that can go stale while nothing notices —
+/// and a value marshalled at dispatch and dropped when the call returns is not
+/// one: `ravel-minecraft`'s `HookValue::Text` already copies a `java.lang.String`
+/// out of the JVM on the current inventory, and nothing has called that a mirror.
+///
+/// What is missing is a projection from `HookValue` to this type, and a
+/// per-target decision about which of a hook's parameters are worth carrying.
+/// Both land with the wiring that connects a hook to the loader, because both
+/// need the same join.
+///
+/// The list is closed for the same reason [`ravel_core::ContentKind`] is: an
+/// unknown event names something no version adapter has resolved a hook for.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum GameEvent {
+    /// The integrated or dedicated server finished a tick.
+    ServerTick,
+    /// The client finished a frame's tick.
+    ClientTick,
+    /// The game finished reloading resource or data packs.
+    ResourcesReloaded,
+}
+
+impl GameEvent {
+    /// Every event, in the order this enum declares them.
+    pub const ALL: [Self; 3] = [Self::ServerTick, Self::ClientTick, Self::ResourcesReloaded];
+
+    /// Returns the event's canonical lowercase name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ServerTick => "server-tick",
+            Self::ClientTick => "client-tick",
+            Self::ResourcesReloaded => "resources-reloaded",
+        }
+    }
+
+    /// Returns whether `side` is a side this event can happen on.
+    ///
+    /// A client tick has no meaning on a dedicated server and a server tick
+    /// happens on both sides of single-player, because an integrated server is
+    /// still a server. This is what makes the side case in `ROADMAP.md`'s M3-W2
+    /// row testable without a running game: a set on the wrong side receives
+    /// nothing rather than receiving an event it must learn to ignore.
+    #[must_use]
+    pub const fn happens_on(self, side: Side) -> bool {
+        match self {
+            Self::ServerTick => side.is_server(),
+            Self::ClientTick => matches!(side, Side::Client),
+            Self::ResourcesReloaded => true,
+        }
+    }
+}
+
+impl fmt::Display for GameEvent {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// One run of a command a mod owns.
+///
+/// The loader routes an invocation to the single mod that claimed the root
+/// literal, which is why this carries no recipient: the registration barrier
+/// already decided who owns the name and a second answer here could disagree
+/// with it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CommandInvocation {
+    /// The claimed key whose root literal was typed.
+    pub key: RegistryKey,
+    /// The side the command ran on.
+    pub side: Side,
+    /// What followed the root literal, split on whitespace and not otherwise
+    /// interpreted.
+    ///
+    /// This is text a player typed, so it is the second thing in Ravel that no
+    /// one in this workspace authored — [`HostError::Refused`]'s `detail` is
+    /// the first. A mod parses it; nothing before the mod does, because a
+    /// loader that understood arguments would be defining a command grammar
+    /// that `SPEC.md` leaves to the mod.
+    pub arguments: Vec<String>,
+}
+
+impl CommandInvocation {
+    /// Records an invocation of `key` on `side` with `arguments`.
+    #[must_use]
+    pub fn new(key: RegistryKey, side: Side, arguments: Vec<String>) -> Self {
+        Self {
+            key,
+            side,
+            arguments,
+        }
+    }
+}
 
 /// Why a mod refused the lifecycle step the loader asked it to take.
 ///
@@ -143,6 +241,56 @@ pub trait HostMod: Send {
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
         let _ = registrar;
         Ok(())
+    }
+
+    /// Reacts to something the game did.
+    ///
+    /// The loader broadcasts an event to every running mod in resolved load
+    /// order, so a mod that cares about ordering gets the same order every run.
+    /// A mod that does not load on the running side is not called, and neither
+    /// is one before the set is [`LifecycleState::Running`] or after it leaves
+    /// [`LifecycleState::Stopping`].
+    ///
+    /// Broadcast rather than subscription is deliberate. A subscription table
+    /// would be a second thing to keep in step with the lifecycle, and it would
+    /// buy nothing a `match` on [`GameEvent`] does not: the events are a closed
+    /// set and ignoring one costs an arm.
+    ///
+    /// The default ignores every event, which is what a mod that observes
+    /// nothing does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the mod fails while reacting. The loader stops the
+    /// broadcast there, so a mod later in load order does not see an event the
+    /// set has already failed on.
+    fn observe(&mut self, event: GameEvent) -> Result<(), HostError> {
+        let _ = event;
+        Ok(())
+    }
+
+    /// Runs a command this mod claimed.
+    ///
+    /// The loader calls this only on the mod that owns the root literal, which
+    /// [`Registrar::claim`] decided during the registration window. A mod is
+    /// never asked to run a command it does not own, so there is nothing to
+    /// check here and no way to answer for another mod.
+    ///
+    /// The default refuses with [`HostError::Unsupported`], because a mod that
+    /// claimed a command name and cannot run it has told a player the command
+    /// exists. Silently accepting would leave the player typing a command that
+    /// does nothing and reports nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HostError::Unsupported`] by default, and whatever the mod
+    /// raises otherwise.
+    fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), HostError> {
+        let _ = invocation;
+        Err(HostError::Unsupported {
+            mod_id: self.id().clone(),
+            state: LifecycleState::Running,
+        })
     }
 }
 

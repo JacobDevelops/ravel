@@ -787,6 +787,8 @@ name = "ravel-config"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -794,12 +796,19 @@ name = "ravel-conformance-tests"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "ravel-data",
  "ravel-host-api",
+ "ravel-loader",
  "ravel-observability",
  "ravel-package",
  "ravel-resolve",
+ "ravel-save",
  "ravel-sdk",
+ "ravel-test-mod-commands",
+ "ravel-test-mod-events",
  "ravel-test-mod-noop",
+ "ravel-test-mod-resources",
+ "ravel-test-mod-saved-data",
  "ravel-testkit",
  "serde_json",
  "sha2 0.11.0",
@@ -1015,6 +1024,8 @@ dependencies = [
 name = "ravel-test-mod-commands"
 version = "0.0.0"
 dependencies = [
+ "ravel-core",
+ "ravel-host-api",
  "ravel-sdk",
 ]
 
@@ -1043,6 +1054,8 @@ dependencies = [
 name = "ravel-test-mod-events"
 version = "0.0.0"
 dependencies = [
+ "ravel-core",
+ "ravel-host-api",
  "ravel-sdk",
 ]
 
@@ -1089,6 +1102,10 @@ dependencies = [
 name = "ravel-test-mod-resources"
 version = "0.0.0"
 dependencies = [
+ "ravel-core",
+ "ravel-data",
+ "ravel-host-api",
+ "ravel-package",
  "ravel-sdk",
 ]
 
@@ -1096,6 +1113,9 @@ dependencies = [
 name = "ravel-test-mod-saved-data"
 version = "0.0.0"
 dependencies = [
+ "ravel-core",
+ "ravel-host-api",
+ "ravel-save",
  "ravel-sdk",
 ]
 

@@ -11,8 +11,9 @@ const NAMESPACE_SEPARATOR: char = ':';
 /// A kind of registered content.
 ///
 /// `SPEC.md` §14 makes registry identifiers immutable after one registration
-/// barrier, and `ROADMAP.md`'s M3-W1 row names the three kinds the prototype
-/// registers. The kind is part of the identity rather than a property of it,
+/// barrier. `ROADMAP.md`'s M3-W1 row names the three world-content kinds and
+/// M3-W2 adds commands. The kind is part of the identity rather than a property
+/// of it,
 /// because the game keeps one registry per kind: a block and an item may share
 /// the name `example_mod:copper` without either claim conflicting with the
 /// other, and a barrier keyed on the path alone would refuse the second.
@@ -29,11 +30,24 @@ pub enum ContentKind {
     Item,
     /// A recipe that converts items.
     Recipe,
+    /// A command a player types, named by its root literal.
+    ///
+    /// A command is here rather than in a surface of its own because the
+    /// property that matters is the one every other kind has: exactly one mod
+    /// owns the name, and the second claim on it is a conflict. Two mods cannot
+    /// both own `/home` any more than they can both own `example_mod:copper`,
+    /// so the registration barrier M3-W1 built is already the right answer and
+    /// a parallel one would be a second table that can disagree with it.
+    ///
+    /// The path is the root literal alone. Arguments and subcommands are the
+    /// owning mod's to parse, and nothing about them is claimed: `/home set`
+    /// and `/home list` belong to whoever owns `home`.
+    Command,
 }
 
 impl ContentKind {
     /// Every kind, in the order this enum declares them.
-    pub const ALL: [Self; 3] = [Self::Block, Self::Item, Self::Recipe];
+    pub const ALL: [Self; 4] = [Self::Block, Self::Item, Self::Recipe, Self::Command];
 
     /// Returns the kind's canonical lowercase name.
     ///
@@ -45,6 +59,7 @@ impl ContentKind {
             Self::Block => "block",
             Self::Item => "item",
             Self::Recipe => "recipe",
+            Self::Command => "command",
         }
     }
 }

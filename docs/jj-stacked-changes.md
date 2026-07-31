@@ -29,6 +29,21 @@ jj commit <paths>                          # close it and open the next one, sco
 Describe the change before you write code. The message is the plan; if you cannot write it, the change is not
 one purposeful unit yet.
 
+## Planning a work package
+
+Plan the whole package first: build the stack out of empty changes, each already carrying its conventional
+message, then fill them in from the bottom.
+
+```console
+jj new -m "feat: add package resolver"       # the first slot
+jj new -m "test: cover resolver conflicts"   # the next slot on top of it
+jj new -A <change> -m "docs: ..."            # insert a slot into the middle later
+jj edit <change>                             # drop into a slot and write the code
+```
+
+An empty change with a conventional message is a plan and the gate accepts it. An empty change with no
+message is litter; abandon it.
+
 ## Revising
 
 The change id in the left column of `jj log` is the handle for everything below.
@@ -76,7 +91,8 @@ pushes of a revised change are expected and produce a new review round with an i
 - `git commit`, `git rebase`, `git cherry-pick`, `git commit --amend`, `git push`.
 - `git diff` or `git log` for reading history; use `jj diff`, `jj log`, `jj show`, `jj evolog`.
 - Changes named `wip`, `fixup`, `squash!`, `address review`, or `review comments`.
-- Empty changes left in the stack behind `@`.
-- Undescribed changes that hold real work.
+- Undescribed changes anywhere behind `@`, empty or not. An empty change with a conventional message is a
+  planned slot; an empty change with no message is litter, so abandon it (`jj abandon <change>`).
 
-`devenv tasks run ravel:verify-stack` checks the last four and runs as part of `ravel:verify`.
+`devenv tasks run ravel:verify-stack` checks the last two, plus unresolved conflicts, and runs as part of
+`ravel:verify`.

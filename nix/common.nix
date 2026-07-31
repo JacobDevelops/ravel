@@ -304,12 +304,10 @@ in
           status=1
         fi
 
-        report "::@ & mutable() & ~empty() & ~description(regex:'$conventional')" \
-          "describe each change up front with a conventional message (jj describe -m ...):"
+        report "::@ & mutable() & ~(@ & empty()) & ~description(regex:'$conventional')" \
+          "describe each change up front, planned empty ones included (jj describe -m ...):"
         report "::@ & mutable() & description(regex:'$fixup')" \
           "revise the change that is wrong instead of stacking a follow-up (jj squash --into <change>):"
-        report "::@ & mutable() & empty() & ~@" \
-          "abandon empty changes instead of leaving them in the stack (jj abandon <change>):"
         report "::@ & mutable() & conflicts()" \
           "resolve conflicts inside the change that carries them (jj resolve):"
 

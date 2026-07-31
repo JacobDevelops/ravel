@@ -1,3 +1,11 @@
 # Save and reload tests
 
-M3 adds world persistence and saved-data migration scenarios here.
+World persistence and saved-data migration are tested from
+[`tests/conformance/tests/saved_data.rs`](../conformance/tests/saved_data.rs),
+against the world fixtures in
+[`tests/fixtures/public/worlds/`](../fixtures/public/worlds/).
+
+They are there rather than here because this directory sits outside the
+workspace `members` globs. A crate in it would need a `members` entry and a
+`ravel-xtask` scaffold entry to buy nothing, since the saved-data tests compose
+the same crates every other conformance test does.

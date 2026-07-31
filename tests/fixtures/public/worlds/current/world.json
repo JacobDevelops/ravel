@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "current",
+  "savedData": [
+    {
+      "owner": "saved_data",
+      "version": 3,
+      "state": {
+        "visits": 4,
+        "waypoints": [
+          "spawn",
+          "mine"
+        ]
+      }
+    }
+  ]
+}

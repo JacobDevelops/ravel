@@ -151,6 +151,33 @@ impl SavedDataPlan {
         })
     }
 
+    /// Decides whether an existing world opens when it may hold nothing at all.
+    ///
+    /// `stored` is what the world holds for this mod, and `None` is a world
+    /// that holds nothing for it. This is the entry point for opening a world
+    /// that already exists; [`SavedDataPlan::resolve`] is for one whose version
+    /// is already known.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SavedDataError::MissingRequiredData`] for `None`, and whatever
+    /// [`SavedDataPlan::resolve`] returns otherwise. A mod that declares saved
+    /// data is a mod that writes some, so a world it was installed for and that
+    /// holds none of it has lost the data rather than never having had it.
+    /// Opening that world anyway would write a fresh state over whatever is
+    /// still there, which is the silent continuation `SPEC.md` §14 forbids.
+    pub fn open(
+        declaration: &SavedDataDeclaration,
+        stored: Option<SavedDataVersion>,
+    ) -> Result<Self, SavedDataError> {
+        let Some(stored) = stored else {
+            return Err(SavedDataError::MissingRequiredData {
+                owner: declaration.owner.clone(),
+            });
+        };
+        Self::resolve(declaration, stored)
+    }
+
     /// Returns the mod whose data this plan is for.
     #[must_use]
     pub const fn owner(&self) -> &ModId {
@@ -187,6 +214,11 @@ pub enum SavedDataError {
         /// The newest version this build writes.
         current: SavedDataVersion,
     },
+    /// An existing world holds no data for a mod that owns some.
+    MissingRequiredData {
+        /// The mod whose data the world does not hold.
+        owner: ModId,
+    },
     /// The declared versions have a gap the world cannot be stepped across.
     NoMigrationPath {
         /// The mod whose data cannot be migrated.
@@ -204,6 +236,7 @@ impl SavedDataError {
     pub const fn owner(&self) -> &ModId {
         match self {
             Self::NoVersionsDeclared { owner }
+            | Self::MissingRequiredData { owner }
             | Self::FutureVersion { owner, .. }
             | Self::NoMigrationPath { owner, .. } => owner,
         }
@@ -216,6 +249,11 @@ impl fmt::Display for SavedDataError {
             Self::NoVersionsDeclared { owner } => write!(
                 formatter,
                 "`{owner}` owns saved data and declares no version of it"
+            ),
+            Self::MissingRequiredData { owner } => write!(
+                formatter,
+                "the world holds no `{owner}` saved data, which a world written with `{owner}` \
+                 installed would carry"
             ),
             Self::FutureVersion {
                 owner,
@@ -366,9 +404,36 @@ mod tests {
     }
 
     #[test]
+    fn an_existing_world_holding_none_of_this_mods_data_fails_closed() {
+        let error = SavedDataPlan::open(&declaring(&[1, 2, 3]), None)
+            .expect_err("a world that lost this mod's data is not one to write over");
+
+        assert_eq!(
+            error,
+            SavedDataError::MissingRequiredData { owner: owner() }
+        );
+        assert!(error.to_string().contains("holds no `example_mod`"));
+    }
+
+    #[test]
+    fn opening_a_world_that_holds_a_version_decides_exactly_as_resolving_it_does() {
+        // `open` is the entry point for a world that may hold nothing; it must
+        // not become a second, softer set of rules for one that holds
+        // something.
+        let declaration = declaring(&[1, 2, 3]);
+        for stored in [version(1), version(3), version(7)] {
+            assert_eq!(
+                SavedDataPlan::open(&declaration, Some(stored)),
+                SavedDataPlan::resolve(&declaration, stored)
+            );
+        }
+    }
+
+    #[test]
     fn every_refusal_reports_the_phase_it_failed_in_and_no_dependency_outcome() {
         for error in [
             SavedDataError::NoVersionsDeclared { owner: owner() },
+            SavedDataError::MissingRequiredData { owner: owner() },
             SavedDataError::FutureVersion {
                 owner: owner(),
                 stored: version(5),

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "name": "migratable",
+  "savedData": [
+    {
+      "owner": "saved_data",
+      "version": 1,
+      "state": {
+        "visits": 4
+      }
+    }
+  ]
+}

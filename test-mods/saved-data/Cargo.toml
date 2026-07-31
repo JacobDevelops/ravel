@@ -8,6 +8,9 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+ravel-core.workspace = true
+ravel-host-api.workspace = true
+ravel-save.workspace = true
 ravel-sdk.workspace = true
 
 [lints]

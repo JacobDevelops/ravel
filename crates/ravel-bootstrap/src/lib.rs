@@ -5,9 +5,11 @@
 mod dispatch;
 mod game_directory;
 mod guard;
+mod mods;
 mod report;
 mod runtime;
 mod settings;
+mod wire;
 
 pub use dispatch::register;
 pub use guard::HookError;

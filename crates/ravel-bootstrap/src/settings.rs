@@ -50,7 +50,6 @@
 //! and no game object on either side of it, so ADG-4 has nothing to say here.
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
@@ -64,12 +63,7 @@ use serde_json::Value;
 
 use crate::game_directory;
 use crate::guard::{HookError, text};
-
-/// The wire contract the screen is written against.
-///
-/// A screen built against another one is reading fields under rules this side
-/// never agreed to, so a payload that does not open with this is refused whole.
-const WIRE_VERSION: &str = "1";
+use crate::wire::{VERSION as WIRE_VERSION, field};
 
 /// One process's resolved configurations, or nothing before they are installed.
 static STORE: Mutex<Option<Store>> = Mutex::new(None);
@@ -130,11 +124,6 @@ fn install_in(
 /// screen that is blank for the rest of the run.
 fn lock() -> std::sync::MutexGuard<'static, Option<Store>> {
     STORE.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// Writes one field, prefixed by the length the other side reads it with.
-fn field(out: &mut String, value: &str) {
-    let _ = write!(out, "{}:{value}", value.encode_utf16().count());
 }
 
 /// Reads a payload one length-prefixed field at a time.

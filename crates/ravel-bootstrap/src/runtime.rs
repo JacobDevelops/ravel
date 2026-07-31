@@ -49,14 +49,14 @@
 //!
 //! [`dispatch`]: crate::dispatch
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use ravel_core::{
     ContentId, ContentKind, DiagnosticMessage, FailureAttribution, FailureEnvironment, RegistryKey,
     StructuredFailure,
 };
 use ravel_host_api::{CommandInvocation, GameEvent, HostMod};
-use ravel_loader::{Delivery, LifecycleMachine, broadcast, route};
+use ravel_loader::{Delivery, LifecycleMachine, ModSurface, broadcast, route};
 use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
 
 use crate::guard::HookError;
@@ -109,6 +109,64 @@ impl LoaderRuntime {
             inner: Mutex::new(Inner { machine, mods }),
         }
     }
+
+    /// Builds the mod list's model from the set as it stands right now.
+    ///
+    /// The lock is taken to walk the machine and released with the value, so a
+    /// screen opening costs one short contention with the tick rather than
+    /// holding anything while it draws. Reading live rather than from a snapshot
+    /// is what stops a diagnostics screen reporting a set as healthy after
+    /// something in it has failed.
+    ///
+    /// A poisoned lock is recovered for the same reason [`Self::observe`]
+    /// recovers one: the panic that poisoned it happened in a mod's delivery,
+    /// before anything wrote the machine, and refusing here would leave a player
+    /// with no way to see why their mods are broken at exactly the moment they
+    /// need it.
+    #[must_use]
+    pub(crate) fn surface(&self) -> ModSurface {
+        ModSurface::of(
+            &self
+                .inner
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .machine,
+        )
+    }
+}
+
+#[cfg(test)]
+impl LoaderRuntime {
+    /// Fails one mod on the held machine, as a delivery would.
+    ///
+    /// Exists so a test can change the set *after* something has already read
+    /// it, which is the only way to tell a live read from a snapshot.
+    pub(crate) fn fail_while_running(
+        &self,
+        mod_id: &ravel_core::ModId,
+        attribution: FailureAttribution,
+    ) {
+        self.inner
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .machine
+            .fail(mod_id, attribution)
+            .expect("a mod the machine holds can fail");
+    }
+}
+
+/// A runtime that both the hook registry and the mod list screen hold.
+///
+/// The registry takes ownership of a `Box<dyn HookObserver>` and the screen
+/// needs the same object rather than a second one, so the shared handle is what
+/// is installed. The newtype exists only because neither the trait nor `Arc` is
+/// this crate's to implement the other for.
+struct Shared(Arc<LoaderRuntime>);
+
+impl HookObserver for Shared {
+    fn observe(&self, target: &HookTarget, values: &[HookValue<'_>]) -> HookOutcome {
+        self.0.observe(target, values)
+    }
 }
 
 /// Installs a driven mod set so every hook invocation reaches it.
@@ -118,7 +176,11 @@ impl LoaderRuntime {
 /// Returns [`HookError::Unavailable`] when the observer registry cannot be
 /// written, which happens only after a previous holder panicked inside it.
 pub fn install(machine: LifecycleMachine, mods: Vec<Box<dyn HostMod>>) -> Result<(), HookError> {
-    crate::dispatch::register(Box::new(LoaderRuntime::new(machine, mods)))
+    let runtime = Arc::new(LoaderRuntime::new(machine, mods));
+    // One installation point for both readers, so there is no launch in which
+    // hooks reach the mod set but the mod list screen finds nothing.
+    crate::mods::install(Arc::clone(&runtime));
+    crate::dispatch::register(Box::new(Shared(runtime)))
 }
 
 impl HookObserver for LoaderRuntime {

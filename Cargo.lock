@@ -769,6 +769,7 @@ dependencies = [
  "ravel-loader",
  "ravel-minecraft",
  "ravel-minecraft-adapter",
+ "ravel-observability",
  "serde_json",
 ]
 

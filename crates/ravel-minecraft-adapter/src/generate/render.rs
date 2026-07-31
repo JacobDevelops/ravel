@@ -568,7 +568,24 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
          \x20    * @return the refused keys and their reasons, empty when every edit\n\
          \x20    *     landed\n\
          \x20    */\n\
-         \x20   public static native String ravelSaveSettings(String payload);\n\
+         \x20   public static native String ravelSaveSettings(String payload);\n\n\
+         \x20   /**\n\
+         \x20    * The installed mod set, in resolved load order.\n\
+         \x20    *\n\
+         \x20    * <p>M3-W5's mod list is ADG-6's mechanism rather than a second one,\n\
+         \x20    * so it is one batched read on the same framing: the whole list and\n\
+         \x20    * every failure's attribution arrive together, and nothing crosses\n\
+         \x20    * per row or per frame.\n\
+         \x20    *\n\
+         \x20    * <p>A failure crosses as attribution rather than as a sentence —\n\
+         \x20    * kind, surface, dependency chain, the state it failed in — and the\n\
+         \x20    * screen composes what it shows from those. The detail text has\n\
+         \x20    * already been through the loader's redaction policy, which is what\n\
+         \x20    * makes it something a player may be shown at all.\n\
+         \x20    *\n\
+         \x20    * @return the mod list, or {{@code null}} when no set is installed\n\
+         \x20    */\n\
+         \x20   public static native String ravelModSurface();\n\
          }}"
     );
     text

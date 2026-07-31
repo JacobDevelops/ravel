@@ -36,8 +36,140 @@ class = "net/minecraft/client/gui/Font"
 flags = 33
 
 [[stub]]
+class = "net/minecraft/client/gui/components/AbstractSliderButton"
+flags = 1057
+extends = "net/minecraft/client/gui/components/AbstractWidget"
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(IIIILnet/minecraft/network/chat/Component;D)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "applyValue"
+descriptor = "()V"
+flags = 1028
+method = true
+
+[[stub.member]]
+name = "updateMessage"
+descriptor = "()V"
+flags = 1028
+method = true
+
+[[stub.member]]
+name = "value"
+descriptor = "D"
+flags = 4
+method = false
+
+[[stub]]
+class = "net/minecraft/client/gui/components/AbstractWidget"
+flags = 1057
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "setMessage"
+descriptor = "(Lnet/minecraft/network/chat/Component;)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/Button"
+flags = 1057
+extends = "net/minecraft/client/gui/components/AbstractWidget"
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "builder"
+descriptor = "(Lnet/minecraft/network/chat/Component;Lnet/minecraft/client/gui/components/Button$OnPress;)Lnet/minecraft/client/gui/components/Button$Builder;"
+flags = 9
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/Button$Builder"
+flags = 33
+
+[[stub.member]]
+name = "bounds"
+descriptor = "(IIII)Lnet/minecraft/client/gui/components/Button$Builder;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "build"
+descriptor = "()Lnet/minecraft/client/gui/components/Button;"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/Button$OnPress"
+flags = 1537
+
+[[stub.member]]
+name = "onPress"
+descriptor = "(Lnet/minecraft/client/gui/components/Button;)V"
+flags = 1025
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/EditBox"
+flags = 33
+extends = "net/minecraft/client/gui/components/AbstractWidget"
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/client/gui/Font;IIIILnet/minecraft/client/gui/components/EditBox;Lnet/minecraft/network/chat/Component;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/client/gui/Font;IIIILnet/minecraft/network/chat/Component;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/client/gui/Font;IILnet/minecraft/network/chat/Component;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "getValue"
+descriptor = "()Ljava/lang/String;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setEditable"
+descriptor = "(Z)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setMaxLength"
+descriptor = "(I)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setValue"
+descriptor = "(Ljava/lang/String;)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/events/GuiEventListener"
+flags = 1537
+
+[[stub]]
 class = "net/minecraft/client/gui/screens/Screen"
 flags = 1057
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
 
 [[stub.member]]
 name = "<init>"
@@ -52,6 +184,24 @@ flags = 4
 method = true
 
 [[stub.member]]
+name = "addRenderableWidget"
+descriptor = "(Lnet/minecraft/client/gui/components/events/GuiEventListener;)Lnet/minecraft/client/gui/components/events/GuiEventListener;"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "font"
+descriptor = "Lnet/minecraft/client/gui/Font;"
+flags = 20
+method = false
+
+[[stub.member]]
+name = "height"
+descriptor = "I"
+flags = 1
+method = false
+
+[[stub.member]]
 name = "init"
 descriptor = "()V"
 flags = 4
@@ -63,9 +213,27 @@ descriptor = "(II)V"
 flags = 17
 method = true
 
+[[stub.member]]
+name = "onClose"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "width"
+descriptor = "I"
+flags = 1
+method = false
+
 [[stub]]
 class = "net/minecraft/network/chat/Component"
 flags = 1537
+
+[[stub.member]]
+name = "literal"
+descriptor = "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;"
+flags = 9
+method = true
 
 [[stub.member]]
 name = "translatable"

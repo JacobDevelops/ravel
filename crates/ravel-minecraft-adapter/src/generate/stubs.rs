@@ -114,7 +114,7 @@ pub(super) fn from_jar(archive: &jar::Archive, seeds: &Seeds) -> Result<Vec<Stub
             // descriptor into the seed list, which is the transcription this
             // generator exists to avoid.
             for member in matched {
-                referenced.extend(names_in(&member.descriptor)?);
+                referenced.extend(names_in(&member.descriptor));
                 selected.push(Member {
                     name: member.name.clone(),
                     descriptor: member.descriptor.clone(),
@@ -307,10 +307,21 @@ fn hierarchy_of(
 
 /// Every internal class name a descriptor mentions that is not already provided.
 ///
-/// A nested class is refused rather than emitted. Reproducing one means emitting
-/// it inside its enclosing stub, and no member the screen needs names one yet;
-/// building that now would be building a shape nothing has asked for.
-pub(super) fn names_in(descriptor: &str) -> Result<Vec<String>, GenerateError> {
+/// A nested class arrives here under its binary name — `Button$Builder` — and is
+/// kept under it. The pinned version builds every interactive widget through
+/// one: `Button` is
+/// abstract and reached through `Button.builder`, which returns `Button$Builder`
+/// and takes a `Button$OnPress`, so a stub set that refused them would compile a
+/// screen with no button on it.
+///
+/// The stub for one is an ordinary top-level class that happens to have a `$` in
+/// its name, which Java permits in an identifier. That is the same reasoning the
+/// stubs rest on everywhere else: what the JVM links on is the binary name, the
+/// class file javac writes for `class Button$Builder` carries exactly the binary
+/// name the game's nested class has, and the source shape a human would write is
+/// not what the linkage is against. Emitting it nested inside its enclosing stub
+/// would produce the same class file from more machinery.
+pub(super) fn names_in(descriptor: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut rest = descriptor;
     while let Some(start) = rest.find('L') {
@@ -322,16 +333,11 @@ pub(super) fn names_in(descriptor: &str) -> Result<Vec<String>, GenerateError> {
         // `L` also opens a class name inside an array descriptor, and both write
         // the name the same way, so one scan finds every one of them.
         if !name.is_empty() && !PROVIDED.iter().any(|package| name.starts_with(package)) {
-            if name.contains('$') {
-                return Err(GenerateError::Unsupported(format!(
-                    "{descriptor} names the nested class {name}, which no stub can declare"
-                )));
-            }
             names.push(name.to_owned());
         }
         rest = &after[end + 1..];
     }
-    Ok(names)
+    names
 }
 
 #[cfg(test)]
@@ -406,13 +412,31 @@ mod tests {
                 .clone()
         };
 
+        // Six types sit above `Screen` in the jar and one of them is stubbed, so
+        // the stub declares that one and drops the other five. The edge is not
+        // decoration: it is what makes a screen assignable where the game asks
+        // for a listener.
         let screen = stub("net/minecraft/client/gui/screens/Screen");
         assert_eq!(screen.extends, None);
-        assert!(
-            screen.implements.is_empty(),
-            "nothing above Screen is stubbed, so the stub declares nothing above it"
+        assert_eq!(
+            screen.implements,
+            ["net/minecraft/client/gui/components/events/GuiEventListener"]
         );
         assert!(screen.is_abstract());
+
+        // The same rule under the widgets: each one reaches the stubbed listener
+        // through ancestors that are not stubbed themselves.
+        for widget in [
+            "net/minecraft/client/gui/components/Button",
+            "net/minecraft/client/gui/components/EditBox",
+            "net/minecraft/client/gui/components/AbstractSliderButton",
+        ] {
+            assert_eq!(
+                stub(widget).extends.as_deref(),
+                Some("net/minecraft/client/gui/components/AbstractWidget"),
+                "{widget} has to reach the widget base the screen adds it through"
+            );
+        }
 
         let mutable = stub("net/minecraft/network/chat/MutableComponent");
         assert_eq!(
@@ -473,27 +497,23 @@ mod tests {
     #[test]
     fn a_descriptor_names_the_classes_a_stub_has_to_carry_and_no_others() {
         assert_eq!(
-            names_in("(Lnet/minecraft/network/chat/Component;)V").expect("valid"),
+            names_in("(Lnet/minecraft/network/chat/Component;)V"),
             ["net/minecraft/network/chat/Component"]
         );
         assert_eq!(
-            names_in("(Ljava/lang/String;[Ljava/lang/Object;)Lnet/minecraft/A;").expect("valid"),
+            names_in("(Ljava/lang/String;[Ljava/lang/Object;)Lnet/minecraft/A;"),
             ["net/minecraft/A"],
             "a provided package is on every class path already, array or not"
         );
-        assert_eq!(names_in("(II)V").expect("valid"), Vec::<String>::new());
-        assert_eq!(
-            names_in("([[Lnet/minecraft/B;)V").expect("valid"),
-            ["net/minecraft/B"]
-        );
+        assert_eq!(names_in("(II)V"), Vec::<String>::new());
+        assert_eq!(names_in("([[Lnet/minecraft/B;)V"), ["net/minecraft/B"]);
     }
 
     #[test]
-    fn a_nested_class_is_refused_rather_than_emitted_wrongly() {
-        let error = names_in("()Lnet/minecraft/core/Holder$Reference;")
-            .expect_err("a nested class must be refused");
+    fn a_nested_class_is_carried_under_the_binary_name_that_names_it() {
+        let named = names_in("()Lnet/minecraft/core/Holder$Reference;");
 
-        assert!(error.to_string().contains("nested class"), "{error}");
+        assert_eq!(named, ["net/minecraft/core/Holder$Reference"]);
     }
 
     #[test]

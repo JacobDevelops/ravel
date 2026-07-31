@@ -22,12 +22,73 @@ schemaVersion = 1
 minecraft = "26.1.2"
 
 [[stub]]
-# The screen's superclass. `<init>` is the constructor it calls through, and
-# `init` is the method it overrides to build its widgets.
+# The screen's superclass. `<init>` is the constructor it calls through, `init`
+# is the method it overrides to build its widgets, `addRenderableWidget` is how
+# each one is added, and `onClose` is what the done button calls. `font`, `width`
+# and `height` are the fields a widget is positioned and measured against.
 class = "net.minecraft.client.gui.screens.Screen"
-members = ["<init>", "init"]
+members = [
+  "<init>",
+  "init",
+  "addRenderableWidget",
+  "onClose",
+  "font",
+  "width",
+  "height",
+]
 
 [[stub]]
-# The screen's title crosses as one of these.
+# The screen's title and every widget label cross as one of these.
 class = "net.minecraft.network.chat.Component"
-members = ["translatable"]
+members = ["translatable", "literal"]
+
+[[stub]]
+# What `addRenderableWidget` takes. It is seeded with no member because nothing
+# calls one: it is here so the widget classes below declare it as a supertype and
+# are assignable to that parameter, which is the erased type the jar declares.
+class = "net.minecraft.client.gui.components.events.GuiEventListener"
+members = []
+
+[[stub]]
+# The base every widget below extends, and the class that carries the
+# `GuiEventListener` edge. `setMessage` is what a widget that changes its own
+# label calls.
+class = "net.minecraft.client.gui.components.AbstractWidget"
+members = ["setMessage"]
+
+[[stub]]
+# Toggles and choices are both buttons that cycle a value and relabel themselves,
+# so one button covers both and no checkbox or cycle button is seeded. 26.1.2
+# makes `Button` abstract and reaches it through `builder`, which is why the two
+# nested types below are here.
+class = "net.minecraft.client.gui.components.Button"
+members = ["builder"]
+
+[[stub]]
+class = "net.minecraft.client.gui.components.Button$Builder"
+members = ["bounds", "build"]
+
+[[stub]]
+# Seeded for its method rather than only for its name: the screen implements this
+# interface for every button it builds.
+class = "net.minecraft.client.gui.components.Button$OnPress"
+members = ["onPress"]
+
+[[stub]]
+# A bounded number is the only thing a slider can honestly draw, and this is the
+# only widget the screen subclasses. `value` is the position it reads, and
+# `updateMessage` and `applyValue` are what the jar declares abstract.
+#
+# `AbstractButton` is deliberately not here, and adding it would be a mistake
+# that compiles. It declares `extractContents(GuiGraphicsExtractor, int, int,
+# float)` abstract, so subclassing it means implementing render-state
+# extraction — and ADG-6 omits `extractRenderState` on purpose: Ravel never
+# draws. This class is subclassed instead precisely because the two methods it
+# declares abstract are neither of them an extraction.
+class = "net.minecraft.client.gui.components.AbstractSliderButton"
+members = ["<init>", "value", "updateMessage", "applyValue"]
+
+[[stub]]
+# Everything a slider or a choice cannot constrain is typed into one of these.
+class = "net.minecraft.client.gui.components.EditBox"
+members = ["<init>", "getValue", "setValue", "setEditable", "setMaxLength"]

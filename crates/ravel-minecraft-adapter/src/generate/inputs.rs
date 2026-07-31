@@ -327,14 +327,28 @@ mod tests {
             "every entry carries the sentence its human review needs"
         );
         assert_eq!(pinned.seeds.minecraft, pinned.adapter.minecraft);
-        assert!(
-            pinned
-                .seeds
-                .stubs
-                .iter()
-                .all(|seed| !seed.members.is_empty()),
-            "a seed with no members would stub a class nothing can be called on"
-        );
+
+        // A seed with no members earns its place only as a supertype. Nothing
+        // calls a member on it, so the one thing it can be doing is making the
+        // classes under it assignable to a parameter that names it — which is
+        // what an erased widget parameter does. Anything else is a seed that
+        // stubs a class nothing can be called on.
+        let lock = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
+            .expect("the tracked stub lock should be readable");
+        for seed in &pinned.seeds.stubs {
+            if !seed.members.is_empty() {
+                continue;
+            }
+            let internal = seed.class.replace('.', "/");
+            assert!(
+                lock.lines().any(|line| {
+                    (line.starts_with("extends") || line.starts_with("implements"))
+                        && line.contains(&internal)
+                }),
+                "{} is seeded with no members and nothing declares it above them",
+                seed.class
+            );
+        }
     }
 
     #[test]

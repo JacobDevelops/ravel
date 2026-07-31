@@ -530,10 +530,45 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
         );
     }
 
+    // Written rather than generated, like the count below them: these belong to
+    // the bootstrap rather than to any version's hook surface. They are declared
+    // here because ADG-1 gives Ravel one exported symbol surface and it is this
+    // class — a screen with natives of its own would be a second one.
     let _ = writeln!(
         text,
         "    /** Hook invocations the native side has counted. */\n\
-         \x20   public static native long nativeInvocations();\n\
+         \x20   public static native long nativeInvocations();\n\n\
+         \x20   /**\n\
+         \x20    * One mod's settings, as the screen draws them.\n\
+         \x20    *\n\
+         \x20    * <p>ADG-6 budgets two batched crossings per screen session and this is\n\
+         \x20    * the first: everything a screen needs to build its widgets arrives in\n\
+         \x20    * one document, so nothing crosses per widget and nothing per frame.\n\
+         \x20    *\n\
+         \x20    * <p>Both payloads are length-prefixed fields rather than JSON. A\n\
+         \x20    * setting's title, description and value are free-form text, so a\n\
+         \x20    * delimited format would need escaping and the screen has no JSON\n\
+         \x20    * parser it may borrow; a length says where a field ends whatever is\n\
+         \x20    * inside it.\n\
+         \x20    *\n\
+         \x20    * @param owner the canonical mod id whose settings to read\n\
+         \x20    * @return the settings document, or {{@code null}} when this process\n\
+         \x20    *     holds no configuration for that owner\n\
+         \x20    */\n\
+         \x20   public static native String ravelSettingsDocument(String owner);\n\n\
+         \x20   /**\n\
+         \x20    * Records what the player changed, and answers what was refused.\n\
+         \x20    *\n\
+         \x20    * <p>The second of the two crossings. A value the owning mod refuses\n\
+         \x20    * leaves the previous one in place, and the answer says which keys\n\
+         \x20    * those were and why, so the screen can tell the player rather than\n\
+         \x20    * letting an edit vanish between one open and the next.\n\
+         \x20    *\n\
+         \x20    * @param payload the player's values for one owner\n\
+         \x20    * @return the refused keys and their reasons, empty when every edit\n\
+         \x20    *     landed\n\
+         \x20    */\n\
+         \x20   public static native String ravelSaveSettings(String payload);\n\
          }}"
     );
     text
@@ -745,10 +780,11 @@ fn modifiers(flags: u16, interface: bool, method: bool) -> String {
 }
 
 /// Splits an internal class name into its package and its simple name.
+/// Splits an internal class name into its package and the name Java declares.
+///
+/// A nested class keeps its `$`: the declared name is the binary one, which is
+/// what the JVM links against and what javac writes into the class file.
 fn split(class: &str) -> Result<(String, &str), String> {
-    if class.contains('$') {
-        return Err(format!("{class} is a nested class, which no stub declares"));
-    }
     let (package, simple) = class
         .rsplit_once('/')
         .ok_or_else(|| format!("{class} is in the default package"))?;
@@ -807,9 +843,6 @@ fn java_type(descriptor: &str) -> Result<(String, &str), String> {
             let name = &descriptor[1..end];
             if name.is_empty() {
                 return Err(format!("{descriptor} names no class between L and ;"));
-            }
-            if name.contains('$') {
-                return Err(format!("{name} is a nested class, which no stub declares"));
             }
             Ok((source_name(name), &descriptor[end + 1..]))
         }
@@ -1244,7 +1277,6 @@ mod tests {
     fn a_stub_that_cannot_be_written_down_is_refused_rather_than_written_wrongly() {
         for (broken, expected) in [
             (stub("Toplevel", 1, &[]), "is in the default package"),
-            (stub("a/Holder$Reference", 1, &[]), "is a nested class"),
             (
                 stub("a/B", 0x0201, &[("VALUE", "I", 0x0019, false)]),
                 "field on an interface",
@@ -1257,6 +1289,39 @@ mod tests {
             let error = stub_java(&adapter(), &broken).expect_err("this must not render");
             assert!(error.to_string().contains(expected), "{error}");
         }
+    }
+
+    /// The pinned version reaches every interactive widget through a nested type,
+    /// so a stub
+    /// set that could not name one would compile a screen with no button on it.
+    /// The stub is a top-level class carrying the binary name, because the binary
+    /// name is what the JVM links the screen against at runtime.
+    #[test]
+    fn a_nested_class_is_declared_under_the_binary_name_the_jvm_links_on() {
+        let builder = stub(
+            "net/minecraft/client/gui/components/Button$Builder",
+            0x0021,
+            &[(
+                "bounds",
+                "(IIII)Lnet/minecraft/client/gui/components/Button$Builder;",
+                1,
+                true,
+            )],
+        );
+
+        let (path, java) = stub_java(&adapter(), &builder).expect("renders");
+
+        assert!(
+            path.ends_with("net/minecraft/client/gui/components/Button$Builder.java"),
+            "{path}"
+        );
+        assert!(java.contains("public class Button$Builder"), "{java}");
+        assert!(
+            java.contains(
+                "public net.minecraft.client.gui.components.Button$Builder bounds(int argument0,"
+            ),
+            "a nested type is named the same way wherever it appears: {java}"
+        );
     }
 
     #[test]

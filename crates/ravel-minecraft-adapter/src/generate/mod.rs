@@ -320,6 +320,11 @@ mod tests {
         let java = std::fs::read_to_string(&generated.java).expect("readable");
         assert!(java.contains("System.loadLibrary(LIBRARY);"));
         assert!(java.contains("public static native long nativeInvocations();"));
+        // The screen's two crossings are declared on this class and nowhere
+        // else: ADG-1 gives Ravel one exported symbol surface, so a screen that
+        // declared its own natives would be a second one.
+        assert!(java.contains("public static native String ravelSettingsDocument(String owner);"));
+        assert!(java.contains("public static native String ravelSaveSettings(String payload);"));
 
         let _ = std::fs::remove_dir_all(&out);
     }

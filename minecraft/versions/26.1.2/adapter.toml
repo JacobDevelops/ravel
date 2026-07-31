@@ -34,5 +34,5 @@ bytes = 11756
 
 [inputs.stubSeeds]
 path = "minecraft/versions/26.1.2/stubs.toml"
-sha256 = "7237d859d8ff16042ca8133d2557c0503b3831d6c2c09ed835a98787b9d088c7"
-bytes = 1442
+sha256 = "f275936e10d02deea0238487c61fa99747c6df7a0a8cd5a22587ed950220d487"
+bytes = 4024

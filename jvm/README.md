@@ -83,6 +83,20 @@ A launch is the only thing that proves Ravel reaches the official client, and
 provable without it, and `harness/` is where:
 
 ```console
+devenv tasks run ravel:verify-jvm
+```
+
+That runs all four steps and is inside `ravel:verify`, so the harness is a gate
+rather than something to remember. It did not used to be, and M3-W7 is what
+changed it: the harness sat here passing nothing, and a null
+`System.getProperty("ravel.profiling")` reaching a native method aborted every
+launch for a whole work package without a single check going red. This is the
+only thing in the gate graph that starts a JVM, so it is the only thing that runs
+`premain` at all.
+
+The four steps, when one of them is what you want on its own:
+
+```console
 cargo build -p ravel-minecraft-adapter
 cargo build -p ravel-bootstrap --release
 ./jvm/build/build-agent.sh

@@ -199,6 +199,27 @@ in
       '';
     };
 
+    # The only check in the graph that starts a JVM, and the only one that runs
+    # `premain` at all. Everything else here tests Rust that a JVM would call;
+    # this tests the path the JVM actually takes to reach it, which is where a
+    # launch fails when it fails. M3-W7 found that path broken by a null
+    # `System.getProperty` reaching a native method — every launch aborted, and
+    # no gate noticed, because this script existed and nothing ran it.
+    #
+    # It builds rather than requiring artifacts, because a check that fails on a
+    # clean checkout with instructions is a check nobody runs.
+    ravel-verify-jvm = {
+      description = "Run Ravel's agent, transformer and native library against a real JVM.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+        cargo build --locked -p ravel-minecraft-adapter
+        cargo build --locked -p ravel-bootstrap --release
+        ./jvm/build/build-agent.sh
+        ./jvm/harness/run-harness.sh
+      '';
+    };
+
     ravel-spike-adg-1 = {
       description = "Measure the ADG-1 JVM entry candidates and record their evidence.";
       exec = ''
@@ -465,6 +486,7 @@ in
     "ravel:audit".exec = "ravel-audit";
     "ravel:verify-scaffold".exec = "ravel-verify-scaffold";
     "ravel:verify-spikes".exec = "ravel-verify-spikes";
+    "ravel:verify-jvm".exec = "ravel-verify-jvm";
     "ravel:spike-adg-1".exec = "ravel-spike-adg-1";
     "ravel:spike-adg-2".exec = "ravel-spike-adg-2";
     "ravel:spike-adg-3".exec = "ravel-spike-adg-3";
@@ -491,6 +513,7 @@ in
         "ravel:audit"
         "ravel:verify-scaffold"
         "ravel:verify-spikes"
+        "ravel:verify-jvm"
         "ravel:verify-budget"
         "ravel:verify-stack"
       ];

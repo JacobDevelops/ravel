@@ -10,5 +10,6 @@ _:
     ravel-audit
     ravel-verify-scaffold
     ravel-verify-spikes
+    ravel-verify-jvm
   '';
 }

@@ -686,6 +686,23 @@ milestone's work. ADG-1 records that three artifacts
 enter the game process rather than two, and that the screen ADG-6 decided is not
 the agent jar's to carry.
 
+**M3-W6's budget is decided rather than derived.** Every limit in
+[`loader-overhead.json`](evidence/m2/loader-overhead.json) is its own measurement
+doubled. The normal-mode profiling limit is not: profiling being off costs at
+most one per cent of a tick, which at 20 TPS is 500 µs per tick summed across
+every crossing in it, and that number was fixed before anything was measured.
+What a player is promised is that profiling costs them nothing when it is off,
+and that promise is a fraction of a tick rather than whatever today's code
+happens to do — so a measurement far under the limit is the expected result and
+not a sign the limit is wrong. It is stated per tick rather than per crossing so
+that it does not wait on the per-tick crossing count, which nothing has recorded
+yet; [`profiling-overhead.json`](evidence/m3/profiling-overhead.json) carries the
+crossing count it assumed, says it is an assumption, and carries beside it the
+count at which the budget would actually be reached. Profiling-*on* is recorded
+there and deliberately not bounded: what the collectors cost while they run
+depends on how many mods and collectors are attached, and M9 is where that
+number meets a real pack.
+
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
 | M3-W0 | Grow the 26.1.2 hook inventory to M3's targets | M2, ADG-4 | resolved target record, `hooks.toml` entries, re-pinned `adapter.toml` hash and regenerated `mappings.lock` | targets are resolved against the pinned jar by two independent passes and recorded in [`m3-hook-targets.md`](docs/architecture/m3-hook-targets.md); the inventory edit that lands them is separate and is what the hash re-pin and lock regeneration gate |

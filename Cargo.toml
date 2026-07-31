@@ -10,6 +10,7 @@ members = [
   "experiments/adg-5-prism",
   "experiments/m2-loader-overhead",
   "experiments/m3-pack-compile",
+  "experiments/m3-profiling-overhead",
   "experiments/spike-harness",
   "test-mods/*",
   "tests/conformance",

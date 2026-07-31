@@ -1,0 +1,25 @@
+[package]
+name = "ravel-spike-m3-profiling-overhead"
+description = "M3-W6 opt-in profiling overhead measurement and the normal-mode budget it is held to"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ravel-core.workspace = true
+ravel-host-api.workspace = true
+ravel-observability.workspace = true
+ravel-spike-harness.workspace = true
+serde_json.workspace = true
+
+# This experiment times safe Rust and shells out to nothing; the measurement
+# boundary's allowance for unsafe is not needed, so it keeps the workspace's
+# forbid.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"
+pedantic = "deny"

@@ -1,0 +1,179 @@
+{
+  "budget": {
+    "anchoredToTheTick": "Per tick rather than per loader pipeline, because profiling is sampled per tick; and a per-tick total rather than a per-crossing limit, so that it does not depend on the crossings-per-tick count, which is not recorded yet.",
+    "decidedNotDerived": "The M2 limits are each their own measurement doubled. This one is not: it was fixed before the measurement, because what a player is promised is that profiling costs them nothing when it is off, and that promise is a fraction of a tick rather than whatever today's code happens to do. A measurement far under its limit is the expected result and not a sign the limit is wrong.",
+    "enforcement": "`cargo xtask verify budget` compares a run against this and runs inside `ravel:verify`. Re-running this measurement writes a new record, so pass an output path rather than overwriting the one the limit is read from.",
+    "hardwareProfile": "linux-reference-v1",
+    "limits": [
+      {
+        "limit": 500000.0,
+        "measured": 510.05,
+        "metric": "profiling.off.perTick",
+        "operator": "less-than-or-equal",
+        "unit": "nanoseconds"
+      }
+    ],
+    "profilingOnIsNotBounded": "Only the off figure is limited. What profiling costs while it runs is recorded above and gated at M9, against a real pack, because its cost depends on how many mods and collectors are attached and none of that exists at M3.",
+    "protocol": "m2-loader-budget-v1",
+    "restatement": "This limit holds on linux-reference-v1 only. A different machine remeasures rather than reinterprets it, because a budget without the machine it was measured on is not a budget.",
+    "rule": "A measurement above its limit on this hardware profile is a regression and stops the milestone that produced it. This limit is one per cent of a tick: at 20 TPS a tick is 50 ms, so 500 µs of added time per tick, summed across every crossing in that tick, measured with profiling not enabled."
+  },
+  "collectors": {
+    "attributionAccuracy": [
+      "A mod is charged for host work it calls back into. The window is entry to return, so a mod that asks Ravel to resolve a registry key is charged for the lookup as well as for its own code.",
+      "A mod is charged for time it did not run. A scheduler preemption, a JVM safepoint, or a garbage-collection pause that lands inside the window is inside the number, and none of them is the mod's doing.",
+      "A mod is not charged for work it defers. Anything it schedules onto another thread or onto a later tick is charged to whatever runs it, and if nothing Ravel drives runs it, to nobody.",
+      "A mod that calls another mod's service is charged for it. The inner call is inside the outer window, so the same nanoseconds appear once in the caller's total and once in the callee's, and the column does not sum to the run.",
+      "Nothing here is memory. No number in this report is bytes a mod allocated or still holds, and the two memory metrics say so rather than reading as zero.",
+      "The numbers are from a profiled run and not from a normal one. Reading a clock twice per callback costs something, so a mod's measured time includes being measured."
+    ],
+    "crate": "ravel-observability",
+    "default": "off",
+    "metrics": [
+      {
+        "detail": "Rust attributes no allocation to a mod. Every mod is compiled into the host process under ADG-2, so its allocations come from the same global allocator as Ravel's and carry no identity; separating them needs a `GlobalAlloc` shim, and implementing that trait is unsafe, which every maintained crate here forbids.",
+        "metric": "retained-memory",
+        "support": "unsupported",
+        "unit": "bytes"
+      },
+      {
+        "detail": "The same reason retained memory is unsupported. A running total would need the same per-mod allocator hook, and counting only the allocations Ravel's own API makes on a mod's behalf would report a number far below the truth under a name that promises the whole of it.",
+        "metric": "allocated-memory",
+        "support": "unsupported",
+        "unit": "bytes"
+      },
+      {
+        "detail": "A per-thread processor clock is an operating-system call this workspace cannot reach: it needs libc, and no maintained crate holds unsafe code. `inclusive-time` is measured instead and is reported under its own name, because wall-clock time inside a callback is not an imprecise CPU time but a different quantity that scheduling, garbage collection, and blocking make arbitrarily larger.",
+        "metric": "cpu-time",
+        "support": "unsupported",
+        "unit": "nanoseconds"
+      },
+      {
+        "detail": "The clock reading is exact and the attribution is not. The window is entry to return on the calling thread, so it charges a mod for host work it calls back into, for time the scheduler gives to something else, and for any JVM pause that lands inside it; and it charges a mod nothing for work it defers to another thread or a later tick.",
+        "metric": "inclusive-time",
+        "support": "approximate",
+        "unit": "nanoseconds"
+      },
+      {
+        "detail": "Counted per mod rather than per crossing. One game-hook invocation fans out to every mod in the audience and is counted once for each of them, so this column sums to more than the number of crossings the process actually made.",
+        "metric": "hook-calls",
+        "support": "approximate",
+        "unit": "count"
+      },
+      {
+        "metric": "event-calls",
+        "support": "exact",
+        "unit": "count"
+      },
+      {
+        "detail": "A count of exact comparisons against an inexact number. The threshold is compared against `inclusive-time`, so a callback that waited rather than worked is counted as slow.",
+        "metric": "slow-callbacks",
+        "support": "approximate",
+        "unit": "count"
+      },
+      {
+        "detail": "Equal to `hook-calls` and inexact the same way. Every call that reaches a mod from the game at M3 arrives through a rewritten call site and Ravel makes none in the other direction, so the only crossings are hooks — but a crossing shared by an audience is charged to each of them.",
+        "metric": "boundary-calls",
+        "support": "approximate",
+        "unit": "count"
+      },
+      {
+        "detail": "A hook carries primitives and borrowed handles rather than a buffer. A primitive has a width but is not transferred — the call site passes it in registers — and a handle refers to an object the JVM owns whose size Ravel cannot ask for without the call into Minecraft no accepted ADR provides. Summing argument widths would be a number about the descriptor, not about traffic.",
+        "metric": "transferred-bytes",
+        "support": "unsupported",
+        "unit": "bytes"
+      },
+      {
+        "metric": "registry-footprint",
+        "support": "exact",
+        "unit": "count"
+      },
+      {
+        "detail": "The loader records which saved-data versions a mod declares, not how many bytes a world holds for it. Moving bytes in a world is the half of M3-W4 that is still open, so there is nothing to size, and reporting the declared version count under the word `footprint` would answer a different question.",
+        "metric": "saved-data-footprint",
+        "support": "unsupported",
+        "unit": "bytes"
+      }
+    ],
+    "reportSurface": "A screen drawn in Java from a payload built in Rust, the way ADG-6 draws every screen Ravel owns. Rust renders nothing.",
+    "switch": "-Dravel.profiling=true",
+    "switchDetail": "Opt-in, and opt-in at startup. The collectors are chosen when the host reads the property and never toggled afterwards, which is what lets the off path be one branch on a plain flag rather than an atomic load on every crossing. The precedent is `-Dravel.report.loader=true`, the measurement switch `evidence/m3/class-loader-identity.json` was taken under.",
+    "unsupported": [
+      "retained-memory",
+      "allocated-memory",
+      "cpu-time",
+      "transferred-bytes",
+      "saved-data-footprint"
+    ]
+  },
+  "identity": {
+    "buildProfile": "release",
+    "clock": "monotonic",
+    "hardwareProfile": "linux-reference-v1",
+    "hardwareProfileSha256": "532b589e5763a650ce154bfe6ebb9c77d615cb160bcc83e3627a3b3bb539c96c",
+    "minecraft": "26.1.2",
+    "target": "x86_64-linux"
+  },
+  "milestone": "M3",
+  "overhead": {
+    "breakEven": {
+      "crossingsPerTick": 9803920.59,
+      "detail": "How many crossings one tick would need before profiling being off costs a whole per cent of it. This is the figure that rests on no assumption, and it is what answers the budget outright once the real crossing count is recorded: compare the two numbers."
+    },
+    "clamping": "A sample whose instrumented batch finished ahead of its control is recorded as zero rather than as a negative time, so the figure is biased upward. That is the safe direction for a limit.",
+    "method": "paired batches. One sample times a thousand instrumented calls and a thousand bare calls and records the gap between them, alternating which of the two runs first. A gap is therefore the distribution of the overhead itself rather than a difference between two runs' percentiles, which would not be a percentile of anything.",
+    "off": {
+      "detail": "The whole normal-mode cost. With the collectors off, a crossing tests one flag and calls the mod, and a tick boundary tests the same flag; no clock is read, no map is touched, and nothing is allocated.",
+      "perCrossing": {
+        "median": 0.04,
+        "p95": 0.05,
+        "p99": 0.05,
+        "samples": 5000
+      },
+      "perTickBoundary": {
+        "median": 0.0,
+        "p95": 0.01,
+        "p99": 0.05,
+        "samples": 5000
+      }
+    },
+    "on": {
+      "detail": "Recorded and not bounded. What profiling costs while it is running depends on how many mods and collectors are attached, and none of that exists yet; M9 is where the number is set against a real pack.",
+      "perCrossing": {
+        "median": 42.67,
+        "p95": 43.84,
+        "p99": 45.39,
+        "samples": 5000
+      }
+    },
+    "perTick": {
+      "assumedCrossingsPerTick": 10000,
+      "assumptionDetail": "An assumption, not a measurement. The real per-tick crossing count is its own open work — the M2 record puts it at zero for M2 and says M3 is where the first non-zero one is taken — and this budget is deliberately written per tick rather than per crossing so that it does not wait on it. Ten thousand is a ceiling rather than a prediction: a 256-mod set would have to be entered thirty-nine times each in one tick to reach it.",
+      "formula": "one tick boundary plus the assumed crossings, each at its 99th percentile",
+      "nanoseconds": 510.05
+    },
+    "unit": "nanoseconds"
+  },
+  "record": "m3-w6-profiling-overhead",
+  "schemaVersion": 1,
+  "summary": "What Ravel's opt-in profiling collectors cost a tick when nobody turned them on, what they can and cannot attribute to a mod, and the normal-mode budget the first of those is held to.",
+  "trial": {
+    "commandSha256": "46ee56e16c0245ce843a63885b55e2310806f53a50e5ffb8358fbc2bc7dc7636",
+    "revision": {
+      "changeId": "ozywquyrzkolywquwrnyxlnrkruynrru",
+      "dirty": true,
+      "id": "c9e6733ad92f0413f7ad9118460a834eb730c53d"
+    },
+    "startedAt": "2026-07-31T22:25:18Z"
+  },
+  "whatThisDoesNotSay": [
+    "The crossings measured here are safe Rust calls through a trait object in one process. A hook crossing from the game costs what ADG-1 measured, and this figure is what profiling adds to a crossing rather than what a crossing costs.",
+    "The per-tick figure multiplies a per-crossing cost by an assumed crossing count. The count is not measured anywhere yet, so the per-tick number inherits whatever that assumption is wrong by; the break-even count beside it does not.",
+    "Nothing here runs a JVM, opens a world, or ticks a server. The tick is arithmetic over measured per-call costs, not an observed tick.",
+    "The mod body is one wrapping increment. A real callback is slower, which makes the *relative* overhead smaller than it looks here and the absolute overhead the same.",
+    "The profiling-on figure is one mod, one collector, and a map with one entry in it. It is a floor, and it is recorded rather than bounded for exactly that reason.",
+    "Nothing here measures the accuracy of an attribution. The metric table states what each number can and cannot tell apart, and this run times the collectors rather than checking them.",
+    "The off path is a flag on a struct rather than an atomic, which is only sound because the switch is read once at startup. A future that lets a player turn profiling on mid-session changes the thing measured here and has to remeasure it."
+  ],
+  "workPackage": "M3-W6"
+}

@@ -1,0 +1,397 @@
+package dev.ravel.jvm.screen;
+
+import dev.ravel.jvm.Hook;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.client.gui.components.Button;
+// The binary name is the type's name here, for the reason RavelSettingsScreen
+// records: the pinned version reaches every interactive widget through a nested
+// type and the stubs carry the binary name the JVM links on.
+import net.minecraft.client.gui.components.Button$OnPress;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+
+/**
+ * Ravel's mod list and dependency diagnostics screen.
+ *
+ * <p>{@code ROADMAP.md}'s M3-W5 row asks for a mod list and diagnostics UI over
+ * the model {@code ravel-loader} already holds, ordered by resolved load order,
+ * and for valid and invalid graphs to render deterministic, actionable messages.
+ * ADG-6 settled the drawing half before this screen existed: it names M3-W5's
+ * mod list as <i>the same mechanism</i> as the settings screen rather than a
+ * second one. So this is that mechanism again — one batched read on the same
+ * length-prefixed framing, the same widget vocabulary, and no drawing outside
+ * this class.
+ *
+ * <p><b>One crossing, not two.</b> A mod list is read and never written, so the
+ * session makes a single call: {@code Hook.ravelModSurface} in {@link #init}.
+ * Nothing crosses per row and nothing per frame.
+ *
+ * <p><b>The sentence is composed here.</b> A failure arrives as attribution —
+ * kind, surface, dependency chain, the state it failed in, the detail — rather
+ * than as text already flattened into a sentence, because flattening it on the
+ * Rust side would have taken the choice of what to show away from the only part
+ * of Ravel that knows what a player is looking at. The composing is
+ * {@link Entry#lines}, and it is the only place a message is built.
+ *
+ * <p><b>Actionable and reportable are drawn differently on purpose.</b> A failed
+ * required mod is actionable: the set cannot open a world without it, so it is
+ * marked and counted in the summary. A failed optional mod is reported and not
+ * marked, because the plan already tolerates its absence and telling a player to
+ * fix it would be asking for work the loader does not need done. That is the
+ * difference between a diagnostic and a nag, and it is the loader's distinction
+ * rather than this screen's — {@code ModEntry.is_actionable} decides it and this
+ * screen only draws what it decided.
+ *
+ * <p><b>Rows are drawn actionable-first, and every row states its load
+ * position.</b> The two go together and the second is what makes the first safe.
+ * The model stays in resolved load order — that is what {@code surface.rs}
+ * promises and nothing here changes it — but with a row cap, drawing in strict
+ * order means a large set cuts off exactly the failures this screen exists to
+ * show, and a diagnostic screen that can hide the diagnostic has failed at its
+ * only job. Grouping is still deterministic: the same set always draws the same
+ * screen. The position is numbered on every row, not only on moved ones, so a
+ * player reads the load order from the numbers rather than inferring it from
+ * where a row happens to sit. Without the numbers this reordering would not be
+ * defensible.
+ *
+ * <p><b>Known limit: no scrolling.</b> A scroll container in the pinned version
+ * is another nested builder and another stub seed, and this is the first pass
+ * rather than the last. A set larger than {@link #MAX_ROWS} rows draws the first
+ * {@code MAX_ROWS} and a line saying how many were not drawn, with actionable
+ * entries ordered first so the ones a player has to act on are never the ones
+ * cut. Seeding a scroll widget is the fix when a real set outgrows this.
+ *
+ * <p>Every widget here is one the game builds without this class drawing
+ * anything, for the reason {@link RavelSettingsScreen} records at length:
+ * {@code AbstractButton} declares {@code extractContents} and implementing it
+ * would be drawing, which is the one thing ADG-6 forbids. Rows are uneditable
+ * text fields, which is the same choice a pack-fixed settings row makes and
+ * needs no seed this repository does not already have.
+ */
+public final class RavelModsScreen extends Screen {
+
+    /** Where the first row sits, below the title. */
+    private static final int TOP = 32;
+
+    /** The distance between one row and the next. */
+    private static final int ROW = 22;
+
+    private static final int WIDGET_WIDTH = 320;
+    private static final int WIDGET_HEIGHT = 20;
+
+    /** How many rows fit before the screen would draw past its own bottom. */
+    private static final int MAX_ROWS = 12;
+
+    /** The mod set as it stood when this screen opened. */
+    private final List<Entry> entries = new ArrayList<>();
+
+    /** How many entries the loader says a player has to act on. */
+    private int actionable;
+
+    /** The side the set is running on, as the loader reported it. */
+    private String side = "";
+
+    /** Whether the payload read at all. */
+    private boolean read;
+
+    private RavelModsScreen() {
+        super(Component.translatable("ravel.mods.title"));
+    }
+
+    /**
+     * Builds the screen.
+     *
+     * <p>Called reflectively by {@code dev.ravel.jvm.Screens}, which cannot name
+     * this type: {@code Screens} lives in the agent jar and ADG-1 forbids that
+     * jar naming a game type, which this class's supertype is.
+     *
+     * @return a screen the caller hands to the game
+     */
+    public static Screen open() {
+        return new RavelModsScreen();
+    }
+
+    /** The mod set this screen read, in resolved load order. */
+    public List<Entry> entries() {
+        return List.copyOf(entries);
+    }
+
+    /** How many entries a player has to act on. */
+    public int actionable() {
+        return actionable;
+    }
+
+    /**
+     * Reads the mod set once and builds one row per mod.
+     *
+     * <p>A payload that does not read leaves the list empty and says so rather
+     * than drawing part of one. Half a mod list is worse than none: it looks
+     * like the set is smaller than it is, which is the opposite of a diagnostic.
+     */
+    @Override
+    protected void init() {
+        super.init();
+        entries.clear();
+        read = parse(Hook.ravelModSurface());
+
+        int y = TOP;
+        addRenderableWidget(label(summary(), y));
+        y += ROW;
+
+        List<Entry> drawn = ordered();
+        for (int index = 0; index < drawn.size() && index < MAX_ROWS; index++) {
+            for (String line : drawn.get(index).lines()) {
+                addRenderableWidget(label(line, y));
+                y += ROW;
+            }
+        }
+        int undrawn = drawn.size() - Math.min(drawn.size(), MAX_ROWS);
+        if (undrawn > 0) {
+            addRenderableWidget(
+                    label(plural(undrawn, "more mod", "more mods") + " not shown", y));
+            y += ROW;
+        }
+
+        addRenderableWidget(
+                Button.builder(Component.translatable("gui.done"), new Button$OnPress() {
+                            @Override
+                            public void onPress(Button pressed) {
+                                onClose();
+                            }
+                        })
+                        .bounds(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .build());
+    }
+
+    /**
+     * The set with actionable entries first, each group keeping load order.
+     *
+     * <p>Load order is what the row asks the list to be in, and it still is
+     * within each group. Putting the entries a player has to act on at the top is
+     * what stops the no-scrolling limit above cutting off exactly the rows the
+     * screen exists to show.
+     */
+    private List<Entry> ordered() {
+        List<Entry> sorted = new ArrayList<>();
+        for (Entry entry : entries) {
+            if (entry.actionable) {
+                sorted.add(entry);
+            }
+        }
+        for (Entry entry : entries) {
+            if (!entry.actionable) {
+                sorted.add(entry);
+            }
+        }
+        return sorted;
+    }
+
+    /** The line above the list, saying what the player is looking at. */
+    private String summary() {
+        if (!read) {
+            return "The mod list could not be read.";
+        }
+        if (entries.isEmpty()) {
+            return "No mods are installed.";
+        }
+        String counted = plural(entries.size(), "mod", "mods") + " on " + side;
+        if (actionable == 0) {
+            return counted + ", none needing attention";
+        }
+        return counted + ", " + plural(actionable, "needs", "need") + " attention";
+    }
+
+    /** One uneditable text field, which is how this screen shows a line. */
+    private EditBox label(String text, int y) {
+        EditBox box =
+                new EditBox(font, centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.literal(text));
+        box.setMaxLength(1024);
+        box.setValue(text);
+        box.setEditable(false);
+        return box;
+    }
+
+    private int centre() {
+        return (width - WIDGET_WIDTH) / 2;
+    }
+
+    /** A count and the word that agrees with it. */
+    private static String plural(int count, String one, String many) {
+        return count + " " + (count == 1 ? one : many);
+    }
+
+    /**
+     * Reads the payload into entries.
+     *
+     * @return whether the whole payload read
+     */
+    private boolean parse(String payload) {
+        if (payload == null) {
+            return false;
+        }
+        Wire wire = new Wire(payload);
+        String version = wire.field();
+        if (version == null || !version.equals(Wire.VERSION)) {
+            return false;
+        }
+        String reportedSide = wire.field();
+        int reportedActionable = wire.count();
+        int count = wire.count();
+        if (reportedSide == null || reportedActionable < 0 || count < 0) {
+            return false;
+        }
+
+        List<Entry> pending = new ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            Entry entry = Entry.read(wire);
+            if (entry == null) {
+                return false;
+            }
+            pending.add(entry);
+        }
+        if (!wire.finished()) {
+            return false;
+        }
+
+        side = reportedSide;
+        actionable = reportedActionable;
+        entries.addAll(pending);
+        return true;
+    }
+
+    /** One mod, as the loader described it. */
+    public static final class Entry {
+
+        int position;
+        String modId = "";
+        String state = "";
+        String requirement = "";
+        boolean loadsHere;
+        boolean actionable;
+        boolean failed;
+        String kind = "";
+        String surfaceKind = "";
+        String surfaceName = "";
+        String failedIn = "";
+        String version = "";
+        List<String> chain = List.of();
+        String detail = "";
+
+        /** Reads one entry, or {@code null} if the payload runs out. */
+        static Entry read(Wire wire) {
+            Entry entry = new Entry();
+            entry.position = wire.count();
+            entry.modId = wire.field();
+            entry.state = wire.field();
+            entry.requirement = wire.field();
+            String here = wire.field();
+            String act = wire.field();
+            int failures = wire.count();
+            if (entry.position < 0
+                    || entry.modId == null
+                    || entry.state == null
+                    || entry.requirement == null
+                    || here == null
+                    || act == null
+                    || failures < 0) {
+                return null;
+            }
+            entry.loadsHere = here.equals("true");
+            entry.actionable = act.equals("true");
+            if (failures == 0) {
+                return entry;
+            }
+
+            entry.failed = true;
+            entry.kind = wire.field();
+            entry.surfaceKind = wire.field();
+            entry.surfaceName = wire.field();
+            entry.failedIn = wire.field();
+            entry.version = wire.field();
+            int links = wire.count();
+            if (entry.kind == null
+                    || entry.surfaceKind == null
+                    || entry.surfaceName == null
+                    || entry.failedIn == null
+                    || entry.version == null
+                    || links < 0) {
+                return null;
+            }
+            List<String> chain = new ArrayList<>();
+            for (int index = 0; index < links; index++) {
+                String link = wire.field();
+                if (link == null) {
+                    return null;
+                }
+                chain.add(link);
+            }
+            entry.chain = chain;
+            entry.detail = wire.field();
+            return entry.detail == null ? null : entry;
+        }
+
+        /**
+         * Where this mod sits in the resolved load order, numbered from one.
+         *
+         * <p>Every row states it, which is what lets this screen draw actionable
+         * entries first without taking the load order away from a player: the
+         * order is read from the numbers rather than inferred from where a row
+         * happens to sit.
+         */
+        public int position() {
+            return position;
+        }
+
+        /** The mod id this entry describes. */
+        public String modId() {
+            return modId;
+        }
+
+        /** Whether a player has to act on this entry. */
+        public boolean isActionable() {
+            return actionable;
+        }
+
+        /**
+         * The lines this entry draws, composed from its structured fields.
+         *
+         * <p>This is the only place in Ravel where a failure becomes a sentence.
+         * Everything above it — the loader, the crossing, the wire — carries
+         * attribution, so that this method can decide what a player sees without
+         * anything having decided for it.
+         */
+        public List<String> lines() {
+            StringBuilder head = new StringBuilder();
+            head.append(position).append(". ").append(modId);
+            if (!version.isEmpty()) {
+                head.append(' ').append(version);
+            }
+            head.append(" — ").append(state);
+            if (requirement.equals("optional")) {
+                head.append(" (optional)");
+            }
+            if (!loadsHere) {
+                head.append(" (not on this side)");
+            }
+            if (!failed) {
+                return List.of(head.toString());
+            }
+            head.append(actionable ? "  [needs attention]" : "  [reported]");
+
+            StringBuilder why = new StringBuilder("    ");
+            why.append(kind.isEmpty() ? "failed in " + failedIn : kind);
+            if (!surfaceKind.isEmpty()) {
+                why.append(" at ").append(surfaceKind).append(' ').append(surfaceName);
+            }
+            if (chain.size() > 1) {
+                why.append(" via ").append(String.join(" -> ", chain));
+            }
+            if (!detail.isEmpty()) {
+                why.append(": ").append(detail);
+            }
+            return List.of(head.toString(), why.toString());
+        }
+    }
+}

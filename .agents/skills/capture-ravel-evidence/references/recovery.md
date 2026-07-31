@@ -212,6 +212,48 @@ restore the instance configuration afterwards.
 A launch driven this way must not use the nested probe, which disables
 `OverrideCommands` for its own setup launch. Keep the two paths separate.
 
+## The shutdown report is missing and the log stops mid-startup
+
+Symptom: a wrapper-captured launch ends with no `[ravel]` line, and the captured
+log stops partway through startup with no error. The game process is often still
+running afterwards, orphaned.
+
+The cause is process selection, not the agent. Under a `WrapperCommand` the
+launcher runs `wrapper.sh <java> <args...>`, so the wrapper shell's own command
+line *contains the java path* and `pgrep -f <java-path>` matches both. The
+wrapper is started first, so `| head -1` picks it. Terminating that kills the
+capture pipe, leaves the JVM orphaned, and loses the shutdown report the launch
+existed to produce.
+
+Select on `comm` rather than on the command line:
+
+```bash
+pid=$(for candidate in $(pgrep -f "$JAVA_PATH"); do
+  [ "$(cat "/proc/$candidate/comm" 2>/dev/null)" = "java" ] && echo "$candidate"
+done | head -1)
+```
+
+Check for orphans before every run — a leftover JVM holds the instance and
+silently invalidates the next launch.
+
+## Prism 11.0.3 will not open a world from `JoinWorldOnLaunch`
+
+The key exists in `instance.cfg` and setting it changes nothing: no
+`quickPlay` argument reaches the client, with or without
+`OverrideMiscellaneous=true`, and the game stops at the title screen. Do not
+spend a launch on it.
+
+There is no route to a loaded world that does not inject input. The nested probe
+is the supported one, and note that it **cannot currently attach Ravel**: it sets
+`OverrideCommands=false`, and the wrapper it thereby disables is the only thing
+that stages `libravel_bootstrap.so` into the instance's natives directory after
+the launcher rebuilds it. `RAVEL_PROBE_JVM_ARGS` with a `-javaagent` therefore
+aborts the JVM on a missing library. Staging has to move into the probe before
+that path works.
+
+Do not confirm launcher capabilities with `strings` on the AppImage. It is a
+compressed squashfs image, so a missing string proves nothing.
+
 ## Focus-free rule
 
 Background process launch and localhost Tracy collection are allowed. Global

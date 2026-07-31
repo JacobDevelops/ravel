@@ -794,9 +794,12 @@ name = "ravel-conformance-tests"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "ravel-host-api",
  "ravel-package",
  "ravel-resolve",
  "ravel-sdk",
+ "ravel-test-mod-noop",
+ "ravel-testkit",
  "serde_json",
 ]
 
@@ -1042,6 +1045,8 @@ dependencies = [
 name = "ravel-test-mod-noop"
 version = "0.0.0"
 dependencies = [
+ "ravel-core",
+ "ravel-host-api",
  "ravel-sdk",
 ]
 
@@ -1071,10 +1076,13 @@ name = "ravel-testkit"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "ravel-host-api",
  "ravel-loader",
  "ravel-package",
  "ravel-resolve",
  "ravel-sdk",
+ "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]

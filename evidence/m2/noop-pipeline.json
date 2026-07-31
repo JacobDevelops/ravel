@@ -1,0 +1,204 @@
+{
+  "host": {
+    "minecraft": "26.1.2",
+    "ravel": "0.0.0"
+  },
+  "milestone": "M2",
+  "mod": {
+    "crate": "ravel-test-mod-noop",
+    "executionModel": "A safe Rust value the loader owns and drives in process. ADG-2 selects the mod execution and distribution model and is deferred to M3, so nothing here loads a library, starts a guest runtime, spawns a process, or exports a foreign symbol."
+  },
+  "modExecutesIn": [
+    "loaded",
+    "constructed",
+    "registered",
+    "running",
+    "stopping"
+  ],
+  "package": {
+    "artifacts": [
+      {
+        "file": "noop.artifact",
+        "role": "other",
+        "sha256": "14c7bf54265b5934c192fe83ddfde7de558106782322f0a44a274ce780c4ba9e"
+      }
+    ],
+    "compatibility": {
+      "minecraft": [
+        "26.1.2"
+      ],
+      "ravel": ">=0.0.0, <1.0.0"
+    },
+    "id": "noop",
+    "provenance": {
+      "file": "provenance.json",
+      "sha256": "0db5e4619d6b96b11012a6f33a35237ece6a365ebb0769721695f942b64fa42e"
+    },
+    "sides": [
+      "client",
+      "integrated-server",
+      "dedicated-server"
+    ],
+    "version": "0.0.0"
+  },
+  "phases": [
+    "validated",
+    "resolved",
+    "loaded",
+    "constructed",
+    "registered",
+    "running",
+    "stopping",
+    "stopped"
+  ],
+  "record": "m2-w6-noop-pipeline",
+  "runs": [
+    {
+      "loadOrder": [
+        "noop"
+      ],
+      "modEntered": [
+        "loaded",
+        "constructed",
+        "registered",
+        "running",
+        "stopping"
+      ],
+      "repeatedRunIsIdentical": true,
+      "side": "client",
+      "transcript": [
+        {
+          "mod": "noop",
+          "state": "validated"
+        },
+        {
+          "mod": "noop",
+          "state": "resolved"
+        },
+        {
+          "mod": "noop",
+          "state": "loaded"
+        },
+        {
+          "mod": "noop",
+          "state": "constructed"
+        },
+        {
+          "mod": "noop",
+          "state": "registered"
+        },
+        {
+          "mod": "noop",
+          "state": "running"
+        },
+        {
+          "mod": "noop",
+          "state": "stopping"
+        },
+        {
+          "mod": "noop",
+          "state": "stopped"
+        }
+      ]
+    },
+    {
+      "loadOrder": [
+        "noop"
+      ],
+      "modEntered": [
+        "loaded",
+        "constructed",
+        "registered",
+        "running",
+        "stopping"
+      ],
+      "repeatedRunIsIdentical": true,
+      "side": "integrated-server",
+      "transcript": [
+        {
+          "mod": "noop",
+          "state": "validated"
+        },
+        {
+          "mod": "noop",
+          "state": "resolved"
+        },
+        {
+          "mod": "noop",
+          "state": "loaded"
+        },
+        {
+          "mod": "noop",
+          "state": "constructed"
+        },
+        {
+          "mod": "noop",
+          "state": "registered"
+        },
+        {
+          "mod": "noop",
+          "state": "running"
+        },
+        {
+          "mod": "noop",
+          "state": "stopping"
+        },
+        {
+          "mod": "noop",
+          "state": "stopped"
+        }
+      ]
+    },
+    {
+      "loadOrder": [
+        "noop"
+      ],
+      "modEntered": [
+        "loaded",
+        "constructed",
+        "registered",
+        "running",
+        "stopping"
+      ],
+      "repeatedRunIsIdentical": true,
+      "side": "dedicated-server",
+      "transcript": [
+        {
+          "mod": "noop",
+          "state": "validated"
+        },
+        {
+          "mod": "noop",
+          "state": "resolved"
+        },
+        {
+          "mod": "noop",
+          "state": "loaded"
+        },
+        {
+          "mod": "noop",
+          "state": "constructed"
+        },
+        {
+          "mod": "noop",
+          "state": "registered"
+        },
+        {
+          "mod": "noop",
+          "state": "running"
+        },
+        {
+          "mod": "noop",
+          "state": "stopping"
+        },
+        {
+          "mod": "noop",
+          "state": "stopped"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 1,
+  "summary": "The no-op package validated, resolved, and ran through every SPEC.md section 14 state, in the same order on every side it declares.",
+  "workPackage": "M2-W6"
+}

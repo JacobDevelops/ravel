@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "kind": "ravel-package",
+    "id": "noop",
+    "version": "0.0.0"
+  },
+  "implementationMethod": "original",
+  "sources": [],
+  "rights": [
+    {
+      "surface": "code",
+      "status": "cleared",
+      "basis": "Original Ravel code written for this repository and licensed under MIT OR Apache-2.0."
+    },
+    {
+      "surface": "behaviour",
+      "status": "not-applicable",
+      "basis": "The mod implements no behaviour; it accepts every lifecycle step and does nothing."
+    }
+  ],
+  "attribution": [],
+  "publication": {
+    "status": "cleared",
+    "reviewedBy": "ravel-maintainers",
+    "notes": "Original test fixture containing no third-party code, assets, branding, or paths."
+  }
+}

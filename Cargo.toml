@@ -42,6 +42,7 @@ ravel-sdk-macros = { path = "crates/ravel-sdk-macros", version = "0.0.0" }
 ravel-spike-adg-2-guest = { path = "experiments/adg-2-guest", version = "0.0.0" }
 ravel-spike-adg-3-bindings = { path = "experiments/adg-3-bindings", version = "0.0.0" }
 ravel-spike-harness = { path = "experiments/spike-harness", version = "0.0.0" }
+ravel-test-mod-noop = { path = "test-mods/noop", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
 rustix = { version = "1.1.4", default-features = false, features = ["process"] }
 semver = { version = "1.0.28", features = ["serde"] }

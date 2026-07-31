@@ -1,0 +1,653 @@
+//! The loader pipeline composed end to end, over packages written to disk.
+//!
+//! These tests build their own packages rather than reading a fixture, because
+//! what they check is the composition: which crate refuses what, in which
+//! order, and what a completed run records. The no-op package M2-W6 delivers is
+//! driven by `tests/conformance/tests/noop_pipeline.rs`, which is where the
+//! recorded evidence lives.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use ravel_core::{LifecycleState, ModId, Side, Version};
+use ravel_host_api::{HostError, HostMod};
+use ravel_loader::LifecycleError;
+use ravel_package::{CompatibilityError, IntegrityError, ManifestError, Sha256Digest};
+use ravel_resolve::ResolutionError;
+use ravel_testkit::{
+    DiscoveredPackage, Host, PipelineError, PipelineRun, executed_states, run, run_order,
+};
+use serde_json::{Value, json};
+
+const RUNNING_RAVEL: &str = "0.1.0";
+const RUNNING_MINECRAFT: &str = "26.0.0";
+
+/// A mod that records what it was asked to do, and optionally refuses one step.
+struct Recording {
+    id: ModId,
+    entered: Vec<LifecycleState>,
+    refuses: Option<LifecycleState>,
+}
+
+impl Recording {
+    fn new(id: &str) -> Self {
+        Self {
+            id: id.parse().expect("a valid mod id"),
+            entered: Vec::new(),
+            refuses: None,
+        }
+    }
+
+    fn refusing(id: &str, state: LifecycleState) -> Self {
+        Self {
+            refuses: Some(state),
+            ..Self::new(id)
+        }
+    }
+}
+
+impl HostMod for Recording {
+    fn id(&self) -> &ModId {
+        &self.id
+    }
+
+    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+        if self.refuses == Some(state) {
+            return Err(HostError::Refused {
+                mod_id: self.id.clone(),
+                state,
+                detail: "this mod was built to decline".to_owned(),
+            });
+        }
+        self.entered.push(state);
+        Ok(())
+    }
+}
+
+fn id(name: &str) -> ModId {
+    name.parse().expect("a valid mod id")
+}
+
+fn host() -> Host {
+    Host {
+        ravel: RUNNING_RAVEL.parse().expect("a valid version"),
+        minecraft: RUNNING_MINECRAFT.to_owned(),
+    }
+}
+
+fn digest_of(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut digest = [0_u8; 32];
+    digest.copy_from_slice(&Sha256::digest(bytes));
+    Sha256Digest::from_bytes(digest).to_string()
+}
+
+/// A scratch directory this test owns outright.
+fn scratch(label: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("ravel-testkit-{label}-{}", std::process::id()));
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("a stale directory should be removable");
+    }
+    fs::create_dir_all(&root).expect("the directory should be creatable");
+    root
+}
+
+/// Writes a package whose files match the digests its manifest declares.
+fn write_package(parent: &Path, name: &str, dependencies: &Value) -> DiscoveredPackage {
+    let root = parent.join(name);
+    let artifact = format!("the {name} artifact").into_bytes();
+    let record = format!("{{\"package\":\"{name}\"}}").into_bytes();
+    fs::create_dir_all(root.join("artifacts")).expect("the package should be creatable");
+    fs::write(root.join("artifacts/mod.bin"), &artifact).expect("artifact written");
+    fs::write(root.join("provenance.json"), &record).expect("record written");
+
+    let document = json!({
+        "schemaVersion": 1,
+        "id": name,
+        "version": "1.0.0",
+        "compatibility": { "ravel": ">=0.1.0, <1.0.0", "minecraft": [RUNNING_MINECRAFT] },
+        "sides": ["client"],
+        "dependencies": dependencies,
+        "targets": [{
+            "platform": "linux",
+            "architecture": "x86_64",
+            "artifacts": [{
+                "path": "artifacts/mod.bin",
+                "role": "other",
+                "sha256": digest_of(&artifact)
+            }]
+        }],
+        "authors": [{ "name": "Example" }],
+        "license": "MIT",
+        "source": "https://example.invalid/package",
+        "provenance": { "record": "provenance.json", "sha256": digest_of(&record) }
+    })
+    .to_string();
+    fs::write(root.join(DiscoveredPackage::MANIFEST_FILE), &document).expect("manifest written");
+
+    DiscoveredPackage::new(root, document)
+}
+
+/// The whole successful path, over one mod that depends on nothing.
+fn single(label: &str) -> (PathBuf, Vec<DiscoveredPackage>) {
+    let parent = scratch(label);
+    let packages = vec![write_package(&parent, "example_mod", &json!([]))];
+    (parent, packages)
+}
+
+/// Two mods where the dependency forces an order the discovery order does not.
+fn pair(label: &str) -> (PathBuf, Vec<DiscoveredPackage>) {
+    let parent = scratch(label);
+    let packages = vec![
+        write_package(
+            &parent,
+            "example_mod",
+            &json!([{ "id": "example_library", "relationship": "required", "version": "^1.0.0" }]),
+        ),
+        write_package(&parent, "example_library", &json!([])),
+    ];
+    (parent, packages)
+}
+
+fn transcript_of(run: &PipelineRun) -> Vec<(String, LifecycleState)> {
+    run.transcript()
+        .iter()
+        .map(|event| (event.mod_id.to_string(), event.state))
+        .collect()
+}
+
+#[test]
+fn a_valid_package_reaches_every_spec_state_in_order() {
+    let (parent, packages) = single("ordered");
+    let mut noop = Recording::new("example_mod");
+
+    let completed = run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [&mut noop as &mut dyn HostMod],
+    )
+    .expect("a valid package completes the pipeline");
+
+    assert_eq!(completed.plan().side(), Side::Client);
+    assert_eq!(completed.plan().order(), [id("example_mod")]);
+    assert!(completed.plan().discouraged().is_empty());
+    assert_eq!(
+        completed.states_of(&id("example_mod")),
+        [
+            LifecycleState::Validated,
+            LifecycleState::Resolved,
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
+            LifecycleState::Stopping,
+            LifecycleState::Stopped,
+        ],
+        "the run covers validate, resolve, load, construct, register, run and stop"
+    );
+    assert_eq!(completed.states_of(&id("other_mod")), []);
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn mod_code_runs_only_in_the_states_the_loader_admits_it() {
+    let (parent, packages) = single("executed");
+    let mut noop = Recording::new("example_mod");
+
+    run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [&mut noop as &mut dyn HostMod],
+    )
+    .expect("a valid package completes the pipeline");
+
+    assert_eq!(noop.entered, executed_states());
+    assert_eq!(
+        noop.entered,
+        [
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
+            LifecycleState::Stopping,
+        ],
+        "no mod code runs before validation and resolution, or after the process stops"
+    );
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn the_run_order_is_the_spec_states_a_successful_run_passes_through() {
+    assert_eq!(
+        run_order(),
+        [
+            LifecycleState::Validated,
+            LifecycleState::Resolved,
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
+            LifecycleState::Stopping,
+            LifecycleState::Stopped,
+        ]
+    );
+    assert!(!run_order().contains(&LifecycleState::Discovered));
+    assert!(!run_order().contains(&LifecycleState::Failed));
+    assert!(
+        executed_states()
+            .iter()
+            .all(|state| run_order().contains(state))
+    );
+}
+
+#[test]
+fn the_same_package_set_produces_the_same_transcript_however_it_was_discovered() {
+    let (parent, packages) = pair("deterministic");
+    let reversed: Vec<DiscoveredPackage> = packages.iter().rev().cloned().collect();
+
+    let mut first_a = Recording::new("example_mod");
+    let mut first_b = Recording::new("example_library");
+    let first = run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [
+            &mut first_a as &mut dyn HostMod,
+            &mut first_b as &mut dyn HostMod,
+        ],
+    )
+    .expect("the pair resolves");
+
+    let mut second_a = Recording::new("example_library");
+    let mut second_b = Recording::new("example_mod");
+    let second = run(
+        &reversed,
+        &host(),
+        Side::Client,
+        &mut [
+            &mut second_a as &mut dyn HostMod,
+            &mut second_b as &mut dyn HostMod,
+        ],
+    )
+    .expect("the reversed pair resolves");
+
+    assert_eq!(
+        first.plan().order(),
+        [id("example_library"), id("example_mod")],
+        "the dependency loads first regardless of discovery order"
+    );
+    assert_eq!(first.plan(), second.plan());
+    assert_eq!(transcript_of(&first), transcript_of(&second));
+    assert_eq!(first, second);
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn a_set_advances_together_so_no_mod_reaches_a_state_alone() {
+    let (parent, packages) = pair("together");
+    let mut library = Recording::new("example_library");
+    let mut consumer = Recording::new("example_mod");
+
+    let completed = run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [
+            &mut library as &mut dyn HostMod,
+            &mut consumer as &mut dyn HostMod,
+        ],
+    )
+    .expect("the pair resolves");
+
+    let states: Vec<LifecycleState> = completed
+        .transcript()
+        .iter()
+        .map(|event| event.state)
+        .collect();
+    let expected: Vec<LifecycleState> = run_order()
+        .into_iter()
+        .flat_map(|state| [state, state])
+        .collect();
+    assert_eq!(
+        states, expected,
+        "each state is entered by both mods before the next"
+    );
+    assert_eq!(
+        completed.states_of(&id("example_library")),
+        completed.states_of(&id("example_mod"))
+    );
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn a_document_that_is_not_a_manifest_stops_the_run_before_anything_else() {
+    let parent = scratch("unparseable");
+    let packages = vec![DiscoveredPackage::new(&parent, "not json at all")];
+    let mut noop = Recording::new("example_mod");
+
+    let error = run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [&mut noop as &mut dyn HostMod],
+    )
+    .expect_err("the document is not a manifest");
+
+    assert!(
+        matches!(error, PipelineError::Manifest(ManifestError::Syntax(_))),
+        "{error}"
+    );
+    assert!(error.to_string().starts_with("validation failed"));
+    assert!(noop.entered.is_empty(), "no mod code ran");
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn an_altered_artifact_stops_the_run_before_any_mod_code() {
+    let (parent, packages) = single("tampered");
+    fs::write(
+        packages[0].root.join("artifacts/mod.bin"),
+        b"something else entirely",
+    )
+    .expect("artifact rewritten");
+    let mut noop = Recording::new("example_mod");
+
+    let error = run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [&mut noop as &mut dyn HostMod],
+    )
+    .expect_err("the artifact was altered");
+
+    assert!(
+        matches!(
+            error,
+            PipelineError::Integrity(IntegrityError::Mismatch { .. })
+        ),
+        "{error}"
+    );
+    assert!(!error.to_string().contains('/'), "{error}");
+    assert!(noop.entered.is_empty(), "no mod code ran");
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn a_package_written_for_another_host_is_refused_on_either_version() {
+    let (parent, packages) = single("incompatible");
+
+    for (ravel, minecraft, expected) in [
+        ("9.9.9", RUNNING_MINECRAFT, "Ravel"),
+        (RUNNING_RAVEL, "25.0.0", "Minecraft"),
+    ] {
+        let elsewhere = Host {
+            ravel: ravel.parse().expect("a valid version"),
+            minecraft: minecraft.to_owned(),
+        };
+        let mut noop = Recording::new("example_mod");
+        let error = run(
+            &packages,
+            &elsewhere,
+            Side::Client,
+            &mut [&mut noop as &mut dyn HostMod],
+        )
+        .expect_err("the package does not support this host");
+
+        match (&error, expected) {
+            (PipelineError::Compatibility(CompatibilityError::Ravel { .. }), "Ravel")
+            | (PipelineError::Compatibility(CompatibilityError::Minecraft { .. }), "Minecraft") => {
+            }
+            _ => panic!("{expected} mismatch reported as {error}"),
+        }
+        assert!(noop.entered.is_empty(), "no mod code ran");
+    }
+
+    // The same package on the host it was written for, so the two refusals
+    // above are the versions and not the package.
+    let mut noop = Recording::new("example_mod");
+    run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [&mut noop as &mut dyn HostMod],
+    )
+    .expect("the running host is supported");
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn an_unresolvable_graph_stops_the_run_before_any_mod_code() {
+    let parent = scratch("unresolvable");
+    let packages = vec![write_package(
+        &parent,
+        "example_mod",
+        &json!([{ "id": "example_library", "relationship": "required", "version": "^1.0.0" }]),
+    )];
+    let mut noop = Recording::new("example_mod");
+
+    let error = run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [&mut noop as &mut dyn HostMod],
+    )
+    .expect_err("the required dependency is not installed");
+
+    assert!(
+        matches!(
+            error,
+            PipelineError::Resolution(ResolutionError::MissingDependency { .. })
+        ),
+        "{error}"
+    );
+    assert!(error.to_string().starts_with("resolution failed"));
+    assert!(noop.entered.is_empty(), "no mod code ran");
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn a_mod_that_declines_a_step_stops_the_run_at_that_step() {
+    let (parent, packages) = single("refusing");
+    let mut noop = Recording::refusing("example_mod", LifecycleState::Registered);
+
+    let error = run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [&mut noop as &mut dyn HostMod],
+    )
+    .expect_err("the mod declines to register");
+
+    assert!(matches!(error, PipelineError::Host(_)), "{error}");
+    assert!(error.to_string().starts_with("the run failed"));
+    assert_eq!(
+        noop.entered,
+        [LifecycleState::Loaded, LifecycleState::Constructed],
+        "the mod ran up to the step it declined and no further"
+    );
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn the_plan_cannot_reach_a_mod_the_caller_did_not_supply() {
+    let (parent, packages) = single("missing");
+
+    let error = run(&packages, &host(), Side::Client, &mut []).expect_err("no mod was supplied");
+
+    assert_eq!(
+        error,
+        PipelineError::MissingMod {
+            mod_id: id("example_mod"),
+            state: LifecycleState::Loaded,
+        },
+        "the plan first needs a value where mod code starts running"
+    );
+    assert!(error.to_string().contains("no mod was supplied to enter"));
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn a_mod_the_plan_never_ordered_is_refused_before_the_run_starts() {
+    let (parent, packages) = single("unexpected");
+    let mut planned = Recording::new("example_mod");
+    let mut stranger = Recording::new("other_mod");
+
+    let error = run(
+        &packages,
+        &host(),
+        Side::Client,
+        &mut [
+            &mut planned as &mut dyn HostMod,
+            &mut stranger as &mut dyn HostMod,
+        ],
+    )
+    .expect_err("the plan does not order `other_mod`");
+
+    assert_eq!(
+        error,
+        PipelineError::UnexpectedMod {
+            mod_id: id("other_mod")
+        }
+    );
+    assert!(planned.entered.is_empty(), "nothing ran");
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn a_package_is_read_from_its_manifest_file_or_reported_by_name() {
+    let (parent, packages) = single("read");
+
+    let read = DiscoveredPackage::read(&packages[0].root).expect("the manifest is readable");
+    assert_eq!(read, packages[0]);
+
+    let error = DiscoveredPackage::read(parent.join("absent")).expect_err("there is no package");
+    assert!(
+        matches!(error, PipelineError::Unreadable { ref file, .. } if file == "package.json"),
+        "{error}"
+    );
+    assert!(
+        error
+            .to_string()
+            .starts_with("`package.json` could not be read")
+    );
+    assert!(!error.to_string().contains("absent"), "{error}");
+
+    fs::remove_dir_all(&parent).expect("cleanup");
+}
+
+#[test]
+fn every_forwarded_failure_names_its_stage_and_keeps_the_error_that_raised_it() {
+    use std::error::Error;
+
+    for (error, stage) in [
+        (
+            PipelineError::Manifest(ManifestError::Syntax("not a document".to_owned())),
+            "validation failed: ",
+        ),
+        (
+            PipelineError::Integrity(IntegrityError::Missing {
+                file: "mod.bin".to_owned(),
+            }),
+            "validation failed: ",
+        ),
+        (
+            PipelineError::Compatibility(CompatibilityError::Ravel {
+                declared: ">=0.1.0, <1.0.0".parse().expect("a valid range"),
+                running: "9.9.9".parse().expect("a valid version"),
+            }),
+            "validation failed: ",
+        ),
+        (
+            PipelineError::Resolution(ResolutionError::DuplicateIdentity {
+                id: id("example_mod"),
+            }),
+            "resolution failed: ",
+        ),
+        (
+            PipelineError::Lifecycle(LifecycleError::UnknownMod {
+                mod_id: id("example_mod"),
+            }),
+            "the run failed: ",
+        ),
+        (
+            PipelineError::Host(HostError::Unsupported {
+                mod_id: id("example_mod"),
+                state: LifecycleState::Stopping,
+            }),
+            "the run failed: ",
+        ),
+    ] {
+        let source = error
+            .source()
+            .unwrap_or_else(|| panic!("{error:?} forwards another crate's failure"));
+        assert_eq!(error.to_string(), format!("{stage}{source}"));
+    }
+
+    for own in [
+        PipelineError::Unreadable {
+            file: "package.json".to_owned(),
+            detail: "No such file or directory (os error 2)".to_owned(),
+        },
+        PipelineError::MissingMod {
+            mod_id: id("example_mod"),
+            state: LifecycleState::Loaded,
+        },
+        PipelineError::UnexpectedMod {
+            mod_id: id("other_mod"),
+        },
+    ] {
+        assert!(
+            own.source().is_none(),
+            "this harness wrote that message: {own:?}"
+        );
+    }
+}
+
+#[test]
+fn no_refusal_this_harness_writes_names_a_path_or_a_directory() {
+    for error in [
+        PipelineError::Unreadable {
+            file: "package.json".to_owned(),
+            detail: "No such file or directory (os error 2)".to_owned(),
+        },
+        PipelineError::MissingMod {
+            mod_id: id("example_mod"),
+            state: LifecycleState::Loaded,
+        },
+        PipelineError::UnexpectedMod {
+            mod_id: id("example_mod"),
+        },
+    ] {
+        let rendered = error.to_string();
+        assert!(!rendered.contains('/'), "{rendered}");
+        assert!(!rendered.contains("tmp"), "{rendered}");
+    }
+}
+
+#[test]
+fn a_declared_version_the_running_host_satisfies_is_the_one_that_was_checked() {
+    let running: Version = RUNNING_RAVEL.parse().expect("a valid version");
+    assert_eq!(host().ravel, running);
+    assert_eq!(host().minecraft, RUNNING_MINECRAFT);
+    assert_ne!(
+        host(),
+        Host {
+            ravel: running,
+            minecraft: "25.0.0".to_owned(),
+        }
+    );
+}

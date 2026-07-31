@@ -6,9 +6,18 @@
 # entry against the pinned jar, and refuses to generate anything if one entry
 # does not resolve exactly once.
 #
-# This inventory is deliberately small. It exists to prove the extraction and
-# drift contract on real members, not to enumerate the hook surface; M3 onward
-# grows it as capabilities land.
+# The first six entries proved the extraction and drift contract on real members
+# while a hook could carry only primitives and strings. ADG-4's M3-W0 amendment
+# admits an opaque handle, so the rest were added once the generator could emit
+# one: they are the targets docs/architecture/m3-hook-targets.md resolved against
+# this jar, and each was re-checked against the class file's own member table for
+# name, descriptor, kind and static flag before it was written here.
+#
+# One constraint is not obvious from this file. A field's member name must not
+# appear in any method entry's capability sentence, because those sentences are
+# rendered as doc comments into the generated exports and `ravel-bootstrap`
+# asserts a field's name never reaches them. That is why the entries below say a
+# registry is "closed" rather than "frozen".
 
 schemaVersion = 1
 minecraft = "26.1.2"
@@ -60,3 +69,250 @@ member = "lastAmount"
 descriptor = "D"
 kind = "instance-field"
 capability = "Read the previous smoothed amount, proving field extraction as well as method extraction."
+
+# Registry and content registration. MappedRegistry is the only concrete writable
+# registry, so blocks, items and recipes all route through one register.
+
+[[hook]]
+id = "registry.register"
+class = "net.minecraft.core.MappedRegistry"
+member = "register"
+descriptor = "(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;"
+kind = "instance-method"
+capability = "Observe or veto one entry being added to a registry, naming the key and the value being registered."
+
+[[hook]]
+id = "registry.freeze"
+class = "net.minecraft.core.MappedRegistry"
+member = "freeze"
+descriptor = "()Lnet/minecraft/core/Registry;"
+kind = "instance-method"
+capability = "Close Ravel's registration barrier with the game's own, at the moment the registry stops accepting entries."
+
+[[hook]]
+id = "registry.closed"
+class = "net.minecraft.core.MappedRegistry"
+member = "frozen"
+descriptor = "Z"
+kind = "instance-field"
+capability = "Read whether a registry still accepts entries."
+
+[[hook]]
+id = "registry.built-in-freeze"
+class = "net.minecraft.core.registries.BuiltInRegistries"
+member = "freeze"
+descriptor = "()V"
+kind = "static-method"
+capability = "Observe the built-in registries closing, which is the last point new content can be added."
+
+[[hook]]
+id = "registry.built-in-bootstrap"
+class = "net.minecraft.core.registries.BuiltInRegistries"
+member = "bootStrap"
+descriptor = "()V"
+kind = "static-method"
+capability = "Observe the built-in registries being populated, which is the earliest point content registration is possible."
+
+[[hook]]
+id = "recipe.apply"
+class = "net.minecraft.world.item.crafting.RecipeManager"
+member = "apply"
+descriptor = "(Lnet/minecraft/world/item/crafting/RecipeMap;Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/util/profiling/ProfilerFiller;)V"
+kind = "instance-method"
+capability = "Observe the recipe set being replaced on reload. Shares a name with a bridge method and is distinguished only by descriptor."
+
+# Server and client tick.
+
+[[hook]]
+id = "server.tick"
+class = "net.minecraft.server.MinecraftServer"
+member = "tickServer"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+kind = "instance-method"
+capability = "Run once per server tick, carrying the game's own has-time-left predicate."
+
+[[hook]]
+id = "server.tick-integrated"
+class = "net.minecraft.client.server.IntegratedServer"
+member = "tickServer"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+kind = "instance-method"
+capability = "Run once per integrated-server tick. Matches the entry above on name and descriptor and differs only in class, which is what proves the resolution key includes it."
+
+[[hook]]
+id = "server.tick-count"
+class = "net.minecraft.server.MinecraftServer"
+member = "tickCount"
+descriptor = "I"
+kind = "instance-field"
+capability = "Read how many ticks the server has run."
+
+[[hook]]
+id = "server.average-tick-time"
+class = "net.minecraft.server.MinecraftServer"
+member = "getAverageTickTimeNanos"
+descriptor = "()J"
+kind = "instance-method"
+capability = "Observe the server's own averaged tick time, which opt-in profiling reports rather than recomputes."
+
+[[hook]]
+id = "server.tick-times"
+class = "net.minecraft.server.MinecraftServer"
+member = "getTickTimesNanos"
+descriptor = "()[J"
+kind = "instance-method"
+capability = "Observe the server's per-tick timing buffer. Its array return type crosses untouched, because only parameters are carried."
+
+[[hook]]
+id = "client.tick"
+class = "net.minecraft.client.Minecraft"
+member = "tick"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Run once per client tick."
+
+[[hook]]
+id = "client.run-tick"
+class = "net.minecraft.client.Minecraft"
+member = "runTick"
+descriptor = "(Z)V"
+kind = "instance-method"
+capability = "Run once per client frame, told whether the game will render this pass."
+
+# Commands. Vanilla registers every command inside the Commands constructor, so
+# the seams here are the built command table and the execution path.
+
+[[hook]]
+id = "command.table"
+class = "net.minecraft.commands.Commands"
+member = "dispatcher"
+descriptor = "Lcom/mojang/brigadier/CommandDispatcher;"
+kind = "instance-field"
+capability = "Reach the built command tree, which is where a mod's own commands are added."
+
+[[hook]]
+id = "command.perform-prefixed"
+class = "net.minecraft.commands.Commands"
+member = "performPrefixedCommand"
+descriptor = "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V"
+kind = "instance-method"
+capability = "Observe or veto one command being run, carrying its source and its text."
+
+# Resources and data reload.
+
+[[hook]]
+id = "resource.register-reload-listener"
+class = "net.minecraft.server.packs.resources.ReloadableResourceManager"
+member = "registerReloadListener"
+descriptor = "(Lnet/minecraft/server/packs/resources/PreparableReloadListener;)V"
+kind = "instance-method"
+capability = "Observe a reload listener being registered, which is how a mod joins the reload sequence."
+
+[[hook]]
+id = "resource.load-server-resources"
+class = "net.minecraft.server.ReloadableServerResources"
+member = "loadResources"
+descriptor = "(Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/core/LayeredRegistryAccess;Ljava/util/List;Lnet/minecraft/world/flag/FeatureFlagSet;Lnet/minecraft/commands/Commands$CommandSelection;Lnet/minecraft/server/permissions/PermissionSet;Ljava/util/concurrent/Executor;Ljava/util/concurrent/Executor;)Ljava/util/concurrent/CompletableFuture;"
+kind = "static-method"
+capability = "Observe the server datapack reload that also builds commands and recipes."
+
+[[hook]]
+id = "resource.reload-client-packs"
+class = "net.minecraft.client.Minecraft"
+member = "reloadResourcePacks"
+descriptor = "()Ljava/util/concurrent/CompletableFuture;"
+kind = "instance-method"
+capability = "Observe a client resource pack reload starting."
+
+# Screens and GUI. 26.1.2 has no Screen.render; screens draw through render-state
+# extraction, so extractRenderState is the per-frame seam.
+
+[[hook]]
+id = "screen.init"
+class = "net.minecraft.client.gui.screens.Screen"
+member = "init"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe a screen building its widgets, in the overridable overload."
+
+[[hook]]
+id = "screen.init-sized"
+class = "net.minecraft.client.gui.screens.Screen"
+member = "init"
+descriptor = "(II)V"
+kind = "instance-method"
+capability = "Observe a screen being sized. Shares a name with the entry above and is distinguished only by descriptor."
+
+[[hook]]
+id = "screen.tick"
+class = "net.minecraft.client.gui.screens.Screen"
+member = "tick"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Run once per tick while a screen is open."
+
+[[hook]]
+id = "screen.extract-render-state"
+class = "net.minecraft.client.gui.screens.Screen"
+member = "extractRenderState"
+descriptor = "(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V"
+kind = "instance-method"
+capability = "Observe a screen extracting its render state, carrying the extractor, the pointer position and the frame partial."
+
+[[hook]]
+id = "screen.set"
+class = "net.minecraft.client.Minecraft"
+member = "setScreen"
+descriptor = "(Lnet/minecraft/client/gui/screens/Screen;)V"
+kind = "instance-method"
+capability = "Observe the open screen changing, carrying the screen being opened."
+
+[[hook]]
+id = "screen.title-menu-options"
+class = "net.minecraft.client.gui.screens.TitleScreen"
+member = "createNormalMenuOptions"
+descriptor = "(II)I"
+kind = "instance-method"
+capability = "Observe the main menu button column being built, which is where a mods button goes."
+
+# World save and load.
+
+[[hook]]
+id = "save.compute-if-absent"
+class = "net.minecraft.world.level.storage.SavedDataStorage"
+member = "computeIfAbsent"
+descriptor = "(Lnet/minecraft/world/level/saveddata/SavedDataType;)Lnet/minecraft/world/level/saveddata/SavedData;"
+kind = "instance-method"
+capability = "Observe saved data being loaded or created, carrying the type that owns its serialization."
+
+[[hook]]
+id = "save.try-write"
+class = "net.minecraft.world.level.storage.SavedDataStorage"
+member = "tryWrite"
+descriptor = "(Lnet/minecraft/world/level/saveddata/SavedDataType;Lnet/minecraft/nbt/CompoundTag;)V"
+kind = "instance-method"
+capability = "Observe saved data being written, carrying the type and the tag it produced."
+
+[[hook]]
+id = "save.save-and-join"
+class = "net.minecraft.world.level.storage.SavedDataStorage"
+member = "saveAndJoin"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe every pending saved-data write being flushed."
+
+[[hook]]
+id = "save.set-dirty"
+class = "net.minecraft.world.level.saveddata.SavedData"
+member = "setDirty"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe saved data being marked for writing."
+
+[[hook]]
+id = "save.save-everything"
+class = "net.minecraft.server.MinecraftServer"
+member = "saveEverything"
+descriptor = "(ZZZ)Z"
+kind = "instance-method"
+capability = "Observe a full world save, told whether it is silent, flushing, and forced."

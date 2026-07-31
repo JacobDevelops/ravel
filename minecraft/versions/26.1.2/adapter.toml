@@ -29,5 +29,5 @@ upstream = "https://piston-meta.mojang.com/v1/packages/a5ba42111e0de7712d677c458
 
 [inputs.hookInventory]
 path = "minecraft/versions/26.1.2/hooks.toml"
-sha256 = "2c27691d5bee0d0f3556efcbb02706c76e490f85691151f71a1a6b59f0b432fa"
-bytes = 2104
+sha256 = "a217161105b84a5b9a6e4d19f7e4f0d7c5ce55ac80c28d02d38f874aeb766216"
+bytes = 11756

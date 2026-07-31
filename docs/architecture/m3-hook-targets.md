@@ -1,41 +1,55 @@
 # M3 hook targets for Minecraft 26.1.2
 
-Status: resolved against the pinned client jar, **not yet inventoried**. Every
-target below is real. [ADG-4](../decisions/adg-4-state-ownership.md) now admits
-opaque handles, so nothing about these targets is blocked by a decision; what
-remains is teaching the generator to carry one.
+Status: resolved against the pinned client jar and **inventoried**, except for
+one target named below. Every target here is real.
+[ADG-4](../decisions/adg-4-state-ownership.md) admits opaque handles and the
+generator carries one, so nothing here is blocked by a decision or by a missing
+shape.
 
 This file exists so that decision was made against what the game actually offers
 rather than against a guess, and so the resolution work is not repeated. It is a
 record, not a contract: `hooks.toml` remains the reviewed inventory and
 `mappings.lock` remains what pins it.
 
-## What still has to happen before these land
+## What landed, and what did not
 
-`crates/ravel-minecraft-adapter/src/generate/render.rs` accepts a hook parameter
-or return only when it is a JVM primitive or `java/lang/String`. Anything else is
-refused with:
+`crates/ravel-minecraft-adapter/src/generate/render.rs` used to accept a hook
+parameter only when it was a JVM primitive or `java/lang/String`, which is why
+the first six entries are all `StringUtil` and `SmoothDouble` carrying `(I)Z`,
+`(Ljava/lang/String;Z)Ljava/lang/String;`, `(DD)D` and `D`. It now accepts any
+reference, including an array, and renders it as `ravel_minecraft::JavaHandle` —
+a borrow of the local reference the JVM handed the exported frame, so a handle
+that outlives its call is a compile error rather than a rule. The generated Java
+declares every such parameter as `java.lang.Object`, so `Hook.java` still names
+no game type and still compiles without the client jar. What is refused now is
+only a descriptor that is not one: an unterminated class name, an array of
+nothing, or a character that is not a descriptor at all.
 
-```text
-a hook cannot carry <class> by value, and ADG-4 does not admit a handle
-```
+`hooks.toml` therefore grew from 6 entries to 35 — 31 methods and 4 fields,
+carrying 23 handle parameters between them — covering all six capabilities
+below. Every entry was re-resolved against the class file's own member table for
+name, descriptor, kind and static flag before it was written.
 
-That message is now out of date in its second clause. ADG-4 admits a handle; the
-generator has not been taught to emit one. Until it is, the inventory can hold
-only what it holds today — which is why the six current entries are all
-`StringUtil` and `SmoothDouble` carrying `(I)Z`,
-`(Ljava/lang/String;Z)Ljava/lang/String;`, `(DD)D` and `D`.
+**`Commands.<init>` is the one target deliberately left out.** It resolves: the
+class file declares `<init>` with the reviewed descriptor, so the generator's
+`<init>` handling is no longer the open question. Two other things are. The
+transformer prepends its call at the first instruction of the method, which in a
+constructor is before the `super()` call; it loads only declared parameters and
+never `this`, so the verifier should accept it, but "should" is not a claim this
+repository makes without a launch behind it. And the seam is wrong for what it
+was wanted for: vanilla registers every command inside that constructor, so a
+prepended hook fires before any registration has happened and cannot observe or
+veto one. `Commands.dispatcher` and `performPrefixedCommand` cover commands
+without either problem, and both are inventoried.
 
-Of the targets below, only `MappedRegistry.frozen` (`Z`), `Minecraft.tick`
-(`()V`), `MinecraftServer.tickCount` (`I`),
-`MinecraftServer.getAverageTickTimeNanos` (`()J`) and `BuiltInRegistries.freeze`
-(`()V`) would pass as written. A tick callback carrying nothing is useful; a
-registry hook that cannot name what is being registered is not.
+`Registry.freeze` and `WritableRegistry.register` are not candidates and are not
+inventoried: both are `public abstract` on interfaces, so neither has a body to
+rewrite.
 
-The generator work is therefore the enabling change for M3-W2 onward: a handle
-type in the rendered binding, a safe wrapper that ties a handle's life to the
-call that produced it, and the refusal message corrected to say what is actually
-unsupported.
+Two things a handle still does not do, and neither is this generator's to fix.
+It cannot be read through, which is what ADG-4 kept forbidden: reading a field
+and keeping the result is a mirror and needs its own ADR. And it cannot be used
+to call back into the game, which is ADG-6's to settle.
 
 ## How these were resolved
 
@@ -72,7 +86,8 @@ Two traps. `Registry.freeze` and `WritableRegistry.register` both exist and are
 `public abstract` on interfaces, so neither has a body to rewrite. And
 `RecipeManager.apply` is declared twice — the typed form above plus a bridge
 taking `Ljava/lang/Object;` first. Descriptor is the only discriminator, the same
-shape as the existing `filterText` pair.
+shape as the existing `filterText` pair, and it resolves: the typed form matches
+exactly once and the bridge is never reached.
 
 ## Server and client tick — M3-W2, M3-W6
 
@@ -86,8 +101,11 @@ shape as the existing `filterText` pair.
 
 The integrated server lives at `net.minecraft.client.server.IntegratedServer`.
 That pair is the first case where name *and* descriptor match and only the class
-differs; the resolution key already includes the class, so it should resolve, but
-nothing has proven it yet.
+differs. It resolves: `IntegratedServer` declares its own `tickServer` rather
+than inheriting one, so each entry reads a different class file and each matches
+exactly once. Both are inventoried, and because the override calls
+`super.tickServer`, an integrated server fires both hooks per tick — one
+invocation each, not a double count of one.
 
 Profiling anchors on `MinecraftServer`, all verified:
 `getAverageTickTimeNanos()J`, `getTickTimesNanos()[J`, `logTickMethodTime(J)V`,
@@ -106,8 +124,13 @@ constructor. So the seam is `<init>` or the dispatcher field, and
 `performPrefixedCommand(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V`
 is the execution-side alternative if interception is wanted instead.
 
-A constructor has never been used as a hook target here, so whether the generator
-handles the JVM's `<init>` name is untested and worth proving early.
+The generator's `<init>` handling is no longer the open question — the class file
+declares `<init>` with that descriptor and it resolves exactly once. What is
+still unproven is the bytecode: a prepended call sits before the `super()` call,
+where the verifier tracks `uninitializedThis`. The transformer never loads `this`
+on an instance target, so it should verify, and a launch is the only thing that
+would settle it. That, plus the seam firing before any command is registered, is
+why `<init>` is the one resolved target left out of the inventory.
 
 ## Resources and data reload — M3-W2
 

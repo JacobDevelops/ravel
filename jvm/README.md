@@ -1,7 +1,16 @@
 # Ravel's JVM side
 
-Two artefacts enter the game process, and this directory holds the Java half of
-one of them.
+Two artefacts enter the game process today — the premain agent jar and the
+native library — and this directory holds the Java sources of the first.
+
+A third arrives with M3-W3. [ADG-6](../docs/decisions/adg-6-configuration-ui.md)
+draws Ravel's screens in Java, and
+[ADG-1's amendment](../docs/decisions/adg-1-jvm-entry.md) settles that the screen
+is a separate artefact rather than something this jar grows: a screen names game
+types, and this jar deliberately compiles without the client jar and sits on the
+system loader, which does not resolve `net.minecraft.*`. Where that artefact's
+sources live, and how it reaches a loader that does resolve them, is M3-W3's to
+decide and is not this directory yet.
 
 - `bootstrap/` — the premain agent's tracked sources: the entry point, the class
   transformer, and the record the generator fills. Package `dev.ravel.jvm`.
@@ -104,9 +113,11 @@ Every line of it is a claim:
 - **Return values survive.** `filtered` keeps the newline and `simple` strips it,
   so the transformer prepended the hook call and left the body intact. A
   clobbered operand stack or a swallowed return shows up here first.
-- **One class, four methods.** The inventory pins five callable targets across
-  two classes; the harness stubs only `StringUtil`, so `SmoothDouble` is never
-  loaded. That is correct behaviour rather than a miss.
+- **One class, four methods.** The inventory pins 31 callable targets across 15
+  classes; the harness stubs only `StringUtil`, so nothing else is ever loaded
+  and nothing else is rewritten. That is correct behaviour rather than a miss,
+  and it is why these two numbers do not move when the inventory grows — they
+  count what the harness loads, not what the inventory pins.
 - **Five invocations from four calls.** `filterText(String)` delegates to
   `filterText(String, boolean)` and both are rewritten, so the delegating call
   fires a second hook. Four would mean the one-arg overload matched and the
@@ -123,8 +134,10 @@ nm -D --defined-only target/release/libravel_bootstrap.so | grep -c ' T Java_'
 ```
 
 The jar hash is unchanged by rebuilding, which is what `jar --date` and the
-sorted entry list buy. The symbol count is 6 and every name is a `Hook` method:
-five generated exports and one hand-written counter.
+sorted entry list buy. The symbol count is 32 and every name is a `Hook` method:
+31 generated exports and one hand-written counter. It tracks the reviewed
+inventory, so it moves whenever `hooks.toml` gains or loses a method entry —
+fields are not call targets and never appear here.
 
 ## Three questions M2-W5 owed by name
 

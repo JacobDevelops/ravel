@@ -45,3 +45,177 @@ class = "net/minecraft/util/SmoothDouble"
 member = "lastAmount"
 descriptor = "D"
 static = false
+
+[target."registry.register"]
+class = "net/minecraft/core/MappedRegistry"
+member = "register"
+descriptor = "(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;"
+static = false
+
+[target."registry.freeze"]
+class = "net/minecraft/core/MappedRegistry"
+member = "freeze"
+descriptor = "()Lnet/minecraft/core/Registry;"
+static = false
+
+[target."registry.closed"]
+class = "net/minecraft/core/MappedRegistry"
+member = "frozen"
+descriptor = "Z"
+static = false
+
+[target."registry.built-in-freeze"]
+class = "net/minecraft/core/registries/BuiltInRegistries"
+member = "freeze"
+descriptor = "()V"
+static = true
+
+[target."registry.built-in-bootstrap"]
+class = "net/minecraft/core/registries/BuiltInRegistries"
+member = "bootStrap"
+descriptor = "()V"
+static = true
+
+[target."recipe.apply"]
+class = "net/minecraft/world/item/crafting/RecipeManager"
+member = "apply"
+descriptor = "(Lnet/minecraft/world/item/crafting/RecipeMap;Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/util/profiling/ProfilerFiller;)V"
+static = false
+
+[target."server.tick"]
+class = "net/minecraft/server/MinecraftServer"
+member = "tickServer"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+static = false
+
+[target."server.tick-integrated"]
+class = "net/minecraft/client/server/IntegratedServer"
+member = "tickServer"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+static = false
+
+[target."server.tick-count"]
+class = "net/minecraft/server/MinecraftServer"
+member = "tickCount"
+descriptor = "I"
+static = false
+
+[target."server.average-tick-time"]
+class = "net/minecraft/server/MinecraftServer"
+member = "getAverageTickTimeNanos"
+descriptor = "()J"
+static = false
+
+[target."server.tick-times"]
+class = "net/minecraft/server/MinecraftServer"
+member = "getTickTimesNanos"
+descriptor = "()[J"
+static = false
+
+[target."client.tick"]
+class = "net/minecraft/client/Minecraft"
+member = "tick"
+descriptor = "()V"
+static = false
+
+[target."client.run-tick"]
+class = "net/minecraft/client/Minecraft"
+member = "runTick"
+descriptor = "(Z)V"
+static = false
+
+[target."command.table"]
+class = "net/minecraft/commands/Commands"
+member = "dispatcher"
+descriptor = "Lcom/mojang/brigadier/CommandDispatcher;"
+static = false
+
+[target."command.perform-prefixed"]
+class = "net/minecraft/commands/Commands"
+member = "performPrefixedCommand"
+descriptor = "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V"
+static = false
+
+[target."resource.register-reload-listener"]
+class = "net/minecraft/server/packs/resources/ReloadableResourceManager"
+member = "registerReloadListener"
+descriptor = "(Lnet/minecraft/server/packs/resources/PreparableReloadListener;)V"
+static = false
+
+[target."resource.load-server-resources"]
+class = "net/minecraft/server/ReloadableServerResources"
+member = "loadResources"
+descriptor = "(Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/core/LayeredRegistryAccess;Ljava/util/List;Lnet/minecraft/world/flag/FeatureFlagSet;Lnet/minecraft/commands/Commands$CommandSelection;Lnet/minecraft/server/permissions/PermissionSet;Ljava/util/concurrent/Executor;Ljava/util/concurrent/Executor;)Ljava/util/concurrent/CompletableFuture;"
+static = true
+
+[target."resource.reload-client-packs"]
+class = "net/minecraft/client/Minecraft"
+member = "reloadResourcePacks"
+descriptor = "()Ljava/util/concurrent/CompletableFuture;"
+static = false
+
+[target."screen.init"]
+class = "net/minecraft/client/gui/screens/Screen"
+member = "init"
+descriptor = "()V"
+static = false
+
+[target."screen.init-sized"]
+class = "net/minecraft/client/gui/screens/Screen"
+member = "init"
+descriptor = "(II)V"
+static = false
+
+[target."screen.tick"]
+class = "net/minecraft/client/gui/screens/Screen"
+member = "tick"
+descriptor = "()V"
+static = false
+
+[target."screen.extract-render-state"]
+class = "net/minecraft/client/gui/screens/Screen"
+member = "extractRenderState"
+descriptor = "(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V"
+static = false
+
+[target."screen.set"]
+class = "net/minecraft/client/Minecraft"
+member = "setScreen"
+descriptor = "(Lnet/minecraft/client/gui/screens/Screen;)V"
+static = false
+
+[target."screen.title-menu-options"]
+class = "net/minecraft/client/gui/screens/TitleScreen"
+member = "createNormalMenuOptions"
+descriptor = "(II)I"
+static = false
+
+[target."save.compute-if-absent"]
+class = "net/minecraft/world/level/storage/SavedDataStorage"
+member = "computeIfAbsent"
+descriptor = "(Lnet/minecraft/world/level/saveddata/SavedDataType;)Lnet/minecraft/world/level/saveddata/SavedData;"
+static = false
+
+[target."save.try-write"]
+class = "net/minecraft/world/level/storage/SavedDataStorage"
+member = "tryWrite"
+descriptor = "(Lnet/minecraft/world/level/saveddata/SavedDataType;Lnet/minecraft/nbt/CompoundTag;)V"
+static = false
+
+[target."save.save-and-join"]
+class = "net/minecraft/world/level/storage/SavedDataStorage"
+member = "saveAndJoin"
+descriptor = "()V"
+static = false
+
+[target."save.set-dirty"]
+class = "net/minecraft/world/level/saveddata/SavedData"
+member = "setDirty"
+descriptor = "()V"
+static = false
+
+[target."save.save-everything"]
+class = "net/minecraft/server/MinecraftServer"
+member = "saveEverything"
+descriptor = "(ZZZ)Z"
+static = false

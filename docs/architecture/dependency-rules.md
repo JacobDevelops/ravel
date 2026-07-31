@@ -31,6 +31,14 @@ stable contracts toward concrete host internals.
   rules, and `DiagnosticMessage::redacted` earns the tag by running a policy
   rather than by being told one ran. Every failure in the workspace reports its
   own text as `Redaction::Raw`; the report surface redacts it on the way in.
+- `ravel-observability` also owns the opt-in profiling coordinator, and owns the
+  statement of what it can attribute. `Metric::support` is one table naming, per
+  metric, whether a collector measures it exactly, approximately, or not at all,
+  and the evidence record, the in-game report, and the tests all read that table
+  rather than restating it — so a metric cannot be supported in one of them and
+  not the others. The coordinator names no JVM type and no loader type: it is
+  told the answer to the opt-in switch rather than reading it, because the switch
+  is a JVM system property and this crate is version-neutral.
 - Testkit may depend on the loader and public contracts to construct process
   harnesses, but production libraries never depend on testkit. Restricted fixtures
   are never package or source dependencies.
@@ -45,5 +53,6 @@ stable contracts toward concrete host internals.
 Architecture-gated crates may exist as empty boundaries before a decision, but
 production code must not select an ADG-1 through ADG-5 mechanism until its ADR
 is accepted. ADG-1, ADG-3, ADG-4 and ADG-5 are accepted; see
-[`docs/decisions/`](../decisions/). ADG-2 is measured but deferred to M3, so no
-production code may select a mod execution model yet. ADG-6 has not started.
+[`docs/decisions/`](../decisions/). ADG-2 and ADG-6 are accepted too; a mod is
+distributed as source the player's machine compiles, and every screen Ravel owns
+is declared in data and drawn in Java.

@@ -12,6 +12,17 @@ stable contracts toward concrete host internals.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data.
   General crates must remain buildable against a synthetic second adapter.
+- `ravel-minecraft` is the highest crate that may name a JNI type, and
+  `JavaHandle` is the only one it names. A hook argument that refers to a game
+  object is a borrowed JNI local reference, and the lifetime that makes it safe
+  to hold is `jni`'s rather than one Ravel could invent; modelling it here would
+  be a second scheme with the same job and no borrow checker behind it. Nothing
+  above this crate names `JObject` — an observer sees a handle's declared class
+  and whether it is null, and no JNI type at all. Only `JavaHandle::new` names
+  one, and it is public solely because the generated exports that call it are
+  compiled into `ravel-bootstrap`. The SDK does not depend on this crate and a
+  mod cannot reach it; a change that makes it mod-reachable must seal that
+  constructor rather than move the dependency.
 - Feature crates for configuration, data, saves, networking, observability, and
   packs depend on public contracts rather than concrete hook implementations.
 - `ravel-observability` owns the redaction policy `SPEC.md` §9.1 requires, and it

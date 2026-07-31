@@ -25,10 +25,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * runtime on a game update.
  *
  * <p>The injected sequence loads the target's own arguments and calls one static
- * hook that returns nothing. It passes values, never the receiver: ADG-4 decided
- * the game keeps its state, so a hook sees what the call site was given rather
- * than a handle onto the object holding it. A hook that has to stop the call
- * throws, which unwinds the target without any branch here.
+ * hook that returns nothing. It passes the declared arguments and never the
+ * receiver: ADG-4 decided the game keeps its state, so a hook sees what the call
+ * site was given rather than the object holding it. A reference among those
+ * arguments is passed as it stands, and the generated hook declares it as
+ * {@code Object}, which is the opaque handle that gate's M3-W0 amendment admits.
+ * A hook that has to stop the call throws, which unwinds the target without any
+ * branch here.
  */
 public final class Transformer implements ClassFileTransformer {
 

@@ -850,6 +850,7 @@ dependencies = [
 name = "ravel-minecraft"
 version = "0.0.0"
 dependencies = [
+ "jni",
  "ravel-core",
 ]
 
@@ -999,6 +1000,14 @@ dependencies = [
  "ravel-spike-harness",
  "ravel-test-mod-noop",
  "ravel-testkit",
+ "serde_json",
+]
+
+[[package]]
+name = "ravel-spike-m3-pack-compile"
+version = "0.0.0"
+dependencies = [
+ "ravel-spike-harness",
  "serde_json",
 ]
 

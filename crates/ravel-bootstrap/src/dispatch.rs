@@ -46,7 +46,7 @@ pub(crate) fn is_observed() -> bool {
 }
 
 /// Shows one invocation to every observer, stopping at the first refusal.
-pub(crate) fn deliver(target: &HookTarget, values: &[HookValue]) -> Result<(), HookError> {
+pub(crate) fn deliver(target: &HookTarget, values: &[HookValue<'_>]) -> Result<(), HookError> {
     let observers = registry().read().map_err(|_| HookError::Unavailable)?;
     for observer in observers.iter() {
         if let HookOutcome::Veto(reason) = observer.observe(target, values) {
@@ -69,7 +69,7 @@ mod tests {
     struct Watching;
 
     impl HookObserver for Watching {
-        fn observe(&self, _target: &HookTarget, _values: &[HookValue]) -> HookOutcome {
+        fn observe(&self, _target: &HookTarget, _values: &[HookValue<'_>]) -> HookOutcome {
             HookOutcome::Proceed
         }
     }
@@ -77,7 +77,7 @@ mod tests {
     struct Refusing;
 
     impl HookObserver for Refusing {
-        fn observe(&self, target: &HookTarget, _values: &[HookValue]) -> HookOutcome {
+        fn observe(&self, target: &HookTarget, _values: &[HookValue<'_>]) -> HookOutcome {
             HookOutcome::Veto(format!("{} is not allowed here", target.member()))
         }
     }

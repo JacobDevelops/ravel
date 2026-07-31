@@ -67,16 +67,41 @@ impl From<jni::errors::Error> for HookError {
 
 /// Runs one hook invocation under the panic guard.
 ///
-/// `collect` turns the JVM's arguments into owned values, and is only called
-/// when something is listening: ADG-4 says a hook carries values, and copying a
-/// string out of the JVM is the one place that costs anything, so it is not paid
-/// when no observer would see the result.
-pub(crate) fn enter<'local, Collect>(
+/// `collect` turns the JVM's arguments into what an observer is shown, and is
+/// only called when something is listening: copying a string out of the JVM is
+/// the one place that costs anything, so it is not paid when no observer would
+/// see the result.
+///
+/// `'handle` is the exported frame's own borrow of the references the JVM passed
+/// it, and it is shorter than `'local`, which `'local: 'handle` states.
+///
+/// **That split buys compilability, not safety, and nothing here is what stops a
+/// handle escaping.** It exists so the closure may return values borrowed from
+/// the frame at all; one lifetime would force the borrow to last as long as the
+/// JNI frame and would not compile. A caller is free to instantiate `'handle` as
+/// `'static`, and the signature does not stop it.
+///
+/// What actually confines a handle is two things, neither of them in this file:
+///
+/// - [`dispatch`]'s registry holds `Box<dyn HookObserver>`, which is `'static`,
+///   so an observer has no field that could name a shorter lifetime to store a
+///   handle into.
+/// - `HookObserver::observe` takes `values: &[HookValue<'_>]` with the lifetime
+///   *elided*, so it is late-bound and every call gets a fresh region the
+///   implementor cannot name, unify with `&self`, or return.
+///
+/// Both are load-bearing and neither is obvious from reading this function.
+/// Changing `observe` to `fn observe<'a>(&'a self, …, values: &'a [HookValue<'a>])`
+/// would tie the values to the borrow of the observer and break the scheme while
+/// leaving every lifetime in this signature exactly as it is, which is why the
+/// invariant is written down at `observe` as well as here.
+pub(crate) fn enter<'local, 'handle, Collect>(
     mut env: EnvUnowned<'local>,
     target: &'static HookTarget,
     collect: Collect,
 ) where
-    Collect: FnOnce(&mut Env<'local>) -> Result<Vec<HookValue>, HookError>,
+    'local: 'handle,
+    Collect: FnOnce(&mut Env<'local>) -> Result<Vec<HookValue<'handle>>, HookError>,
 {
     report::record_invocation();
     if !dispatch::is_observed() {
@@ -101,7 +126,59 @@ pub(crate) fn text(env: &mut Env<'_>, value: &JString<'_>) -> Result<String, Hoo
 
 #[cfg(test)]
 mod tests {
+    use ravel_minecraft::{HookValue, JavaHandle};
+
     use super::HookError;
+
+    /// One generated export, written out verbatim and compiled here.
+    ///
+    /// This is the emitted form rather than an approximation of it: the
+    /// `jni_mangle` attribute that supplies the ABI and the exported name, the
+    /// `'local` lifetime, one `JObject` per reference the target declares, and a
+    /// handle borrowed from each. It matches a real inventory entry —
+    /// `registry.register` resolves to `MappedRegistry::register`, whose
+    /// descriptor declares a `ResourceKey`, an `Object` and a `RegistrationInfo`
+    /// — so the three parameters are the three that target actually carries.
+    ///
+    /// Nothing calls it: an `EnvUnowned` is a live JNI attachment and there is no
+    /// way to build one without a JVM. Compiling is the whole test. Its value is
+    /// that a change to `enter`'s lifetimes, to `JavaHandle::new`, or to what
+    /// `jni_mangle` does to a signature fails here, in source someone can read,
+    /// instead of only inside a generated file.
+    #[::jni::jni_mangle("dev.ravel.jvm.Hook", "ravelGeneratedShapeProbe")]
+    pub fn generated_export<'local>(
+        env: ::jni::EnvUnowned<'local>,
+        _class: ::jni::objects::JClass<'local>,
+        argument0: ::jni::objects::JObject<'local>,
+        argument1: ::jni::objects::JObject<'local>,
+        argument2: ::jni::objects::JObject<'local>,
+    ) {
+        crate::guard::enter(
+            env,
+            &::ravel_minecraft_adapter::pinned::REGISTRY_REGISTER,
+            |_env| {
+                Ok(::std::vec![
+                    HookValue::Handle(JavaHandle::new(
+                        "net/minecraft/resources/ResourceKey",
+                        &argument0,
+                    )),
+                    HookValue::Handle(JavaHandle::new("java/lang/Object", &argument1)),
+                    HookValue::Handle(JavaHandle::new(
+                        "net/minecraft/core/RegistrationInfo",
+                        &argument2,
+                    )),
+                ])
+            },
+        );
+    }
+
+    #[test]
+    fn the_generated_export_shape_type_checks_against_the_guard() {
+        // Compiling is the test. Naming the function is what keeps it from being
+        // dead code; there is nothing about a function pointer's value worth
+        // asserting, and an assertion here would only look like one.
+        let _ = generated_export;
+    }
 
     #[test]
     fn every_refusal_names_the_hook_or_says_why_it_could_not_decide() {

@@ -8,6 +8,10 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# A handle is a borrowed JNI local reference and nothing else, so the lifetime
+# that makes it safe is `jni`'s own. Modelling it here instead would be a second
+# scheme with the same job and no borrow checker behind it.
+jni.workspace = true
 ravel-core.workspace = true
 
 [lints]

@@ -12,12 +12,13 @@ use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY};
 
 /// A JVM type a hook argument can carry across the boundary.
 ///
-/// ADG-4 says a hook receives values. A `java.lang.String` is admitted because
-/// it is immutable and copying it cannot go stale; every other reference type is
-/// refused rather than passed as an opaque handle, because a handle onto a live
-/// game object is the mirror ADG-4 rejected and nothing has measured what one
-/// costs.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// ADG-4 says a hook receives what the game owns rather than a copy Ravel keeps.
+/// Primitives satisfy that by being values; a `java.lang.String` is copied
+/// because it is immutable and a copy of one cannot go stale; and every other
+/// reference — an ordinary object or an array alike — crosses as the opaque
+/// handle the gate's M3-W0 amendment admits, borrowed for the call and readable
+/// through nothing.
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum JavaType {
     Boolean,
     Byte,
@@ -28,11 +29,20 @@ enum JavaType {
     Float,
     Double,
     Text,
+    /// A reference, carrying the internal class name its descriptor declared.
+    Handle(String),
 }
 
 impl JavaType {
-    /// The JVM descriptor of this type.
-    const fn descriptor(self) -> &'static str {
+    /// The JVM descriptor of this type *in the generated hook's signature*.
+    ///
+    /// A handle erases to `java.lang.Object` here, and only here: the target's
+    /// own descriptor keeps the declared class, because that is what the agent
+    /// matches a method on, while the hook it calls takes the widest reference
+    /// there is. That erasure is the opacity, expressed on the Java side rather
+    /// than only promised by a doc comment — a generated hook that named a game
+    /// class could offer a field, and one taking `Object` cannot.
+    const fn descriptor(&self) -> &'static str {
         match self {
             Self::Boolean => "Z",
             Self::Byte => "B",
@@ -43,11 +53,15 @@ impl JavaType {
             Self::Float => "F",
             Self::Double => "D",
             Self::Text => "Ljava/lang/String;",
+            Self::Handle(_) => "Ljava/lang/Object;",
         }
     }
 
     /// How the generated Java declares a parameter of this type.
-    const fn java(self) -> &'static str {
+    ///
+    /// Nothing here names a game type, which is what lets `Hook.java` compile
+    /// without the client jar on its class path, exactly as the transformer does.
+    const fn java(&self) -> &'static str {
         match self {
             Self::Boolean => "boolean",
             Self::Byte => "byte",
@@ -58,11 +72,12 @@ impl JavaType {
             Self::Float => "float",
             Self::Double => "double",
             Self::Text => "String",
+            Self::Handle(_) => "Object",
         }
     }
 
     /// How the generated Rust declares a parameter of this type.
-    const fn rust(self) -> &'static str {
+    const fn rust(&self) -> &'static str {
         match self {
             Self::Boolean => "::jni::sys::jboolean",
             Self::Byte => "::jni::sys::jbyte",
@@ -73,11 +88,17 @@ impl JavaType {
             Self::Float => "::jni::sys::jfloat",
             Self::Double => "::jni::sys::jdouble",
             Self::Text => "::jni::objects::JString<'local>",
+            Self::Handle(_) => "::jni::objects::JObject<'local>",
         }
     }
 
     /// How the generated Rust turns a parameter into a hook value.
-    fn value(self, name: &str) -> String {
+    ///
+    /// A handle *borrows* its parameter rather than moving it. The exported
+    /// frame keeps ownership of the local reference the JVM gave it, so the
+    /// borrow checker ends the handle with the frame and no rule has to be
+    /// remembered for it to.
+    fn value(&self, name: &str) -> String {
         match self {
             Self::Boolean => format!("::ravel_minecraft::HookValue::Boolean({name})"),
             Self::Byte => format!("::ravel_minecraft::HookValue::Byte({name})"),
@@ -90,6 +111,10 @@ impl JavaType {
             Self::Text => {
                 format!("::ravel_minecraft::HookValue::Text(crate::guard::text(env, &{name})?)")
             }
+            Self::Handle(class) => format!(
+                "::ravel_minecraft::HookValue::Handle(\
+                 ::ravel_minecraft::JavaHandle::new(\"{class}\", &{name}))"
+            ),
         }
     }
 }
@@ -170,43 +195,77 @@ pub(super) fn shapes(
 
 /// Reads the parameter types out of a JVM method descriptor.
 fn parameters(descriptor: &str) -> Result<Vec<JavaType>, String> {
-    let inner = descriptor
+    let mut rest = descriptor
         .strip_prefix('(')
         .and_then(|rest| rest.split(')').next())
         .ok_or_else(|| format!("{descriptor} is not a method descriptor"))?;
 
     let mut parameters = Vec::new();
-    let mut characters = inner.chars();
-    while let Some(character) = characters.next() {
-        parameters.push(match character {
-            'Z' => JavaType::Boolean,
-            'B' => JavaType::Byte,
-            'C' => JavaType::Char,
-            'S' => JavaType::Short,
-            'I' => JavaType::Int,
-            'J' => JavaType::Long,
-            'F' => JavaType::Float,
-            'D' => JavaType::Double,
-            'L' => {
-                let name = characters
-                    .by_ref()
-                    .take_while(|next| *next != ';')
-                    .collect::<String>();
-                if name == "java/lang/String" {
-                    JavaType::Text
-                } else {
-                    return Err(format!(
-                        "a hook cannot carry {name} by value, and ADG-4 does not admit a handle"
-                    ));
-                }
-            }
-            '[' => {
-                return Err("a hook cannot carry an array by value".to_owned());
-            }
-            other => return Err(format!("{other} is not a parameter descriptor")),
-        });
+    while !rest.is_empty() {
+        let (parameter, remainder) = parameter(rest)?;
+        parameters.push(parameter);
+        rest = remainder;
     }
     Ok(parameters)
+}
+
+/// Reads one parameter descriptor, returning it and whatever follows it.
+///
+/// Splitting one parameter off the front rather than stepping character by
+/// character is what makes an array readable: `[` is a prefix on another
+/// descriptor, so it needs the rest parsed before it knows where it ends.
+fn parameter(descriptor: &str) -> Result<(JavaType, &str), String> {
+    let first = descriptor
+        .chars()
+        .next()
+        .ok_or_else(|| "a parameter descriptor is empty".to_owned())?;
+    let primitive = match first {
+        'Z' => Some(JavaType::Boolean),
+        'B' => Some(JavaType::Byte),
+        'C' => Some(JavaType::Char),
+        'S' => Some(JavaType::Short),
+        'I' => Some(JavaType::Int),
+        'J' => Some(JavaType::Long),
+        'F' => Some(JavaType::Float),
+        'D' => Some(JavaType::Double),
+        _ => None,
+    };
+    if let Some(kind) = primitive {
+        return Ok((kind, &descriptor[1..]));
+    }
+
+    match first {
+        'L' => {
+            let end = descriptor
+                .find(';')
+                .ok_or_else(|| format!("{descriptor} names a class that is never terminated"))?;
+            let name = &descriptor[1..end];
+            // The inventory's descriptor is written by hand and reviewed, so a
+            // slip that names no class at all is worth catching here rather than
+            // rendering a handle onto nothing.
+            if name.is_empty() {
+                return Err(format!("{descriptor} names no class between L and ;"));
+            }
+            let kind = if name == "java/lang/String" {
+                // A string is copied rather than handled: it is immutable, so a
+                // copy of one cannot go stale, and an owned `String` is what a
+                // hook wants to look at anyway.
+                JavaType::Text
+            } else {
+                JavaType::Handle(name.to_owned())
+            };
+            Ok((kind, &descriptor[end + 1..]))
+        }
+        '[' => {
+            // An array is an object, so it crosses as a handle like any other.
+            // The element descriptor is parsed only to find where this one ends
+            // and to refuse an array of nothing valid.
+            let (_, after) = parameter(&descriptor[1..])?;
+            let end = descriptor.len() - after.len();
+            Ok((JavaType::Handle(descriptor[..end].to_owned()), after))
+        }
+        other => Err(format!("{other} is not a parameter descriptor")),
+    }
 }
 
 /// Turns a hook identifier into a Rust constant name.
@@ -480,7 +539,70 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{JavaType, constant_name, java_name, parameters, rust_name};
+    use super::super::inputs::{Adapter, Hook, Input, Inputs, Inventory, Kind};
+    use super::super::resolve::Resolved;
+    use super::{
+        JavaType, constant_name, exports, hook_java, java_name, parameters, rust_name, shapes,
+    };
+
+    /// Adapter inputs standing in for the tracked ones.
+    ///
+    /// Rendering needs a version string and nothing else from them, and building
+    /// one here is what keeps a candidate hook out of `hooks.toml`: growing the
+    /// reviewed inventory is a separate, deliberate step that re-pins a hash and
+    /// regenerates the lock, and proving the generator can carry a shape is not.
+    fn adapter() -> Adapter {
+        let unpinned = || Input {
+            path: String::new(),
+            sha256: None,
+            bytes: None,
+            upstream: None,
+        };
+        Adapter {
+            schema_version: 1,
+            minecraft: "0.0.0-test".to_owned(),
+            mapping_source: "unobfuscated-class-files".to_owned(),
+            inputs: Inputs {
+                client_jar: unpinned(),
+                version_manifest: unpinned(),
+                hook_inventory: unpinned(),
+            },
+        }
+    }
+
+    /// An inventory and its resolution, from entries written the same way the
+    /// tracked ones are.
+    fn reviewed(entries: &[(&str, &str, &str, &str)]) -> (Inventory, Vec<Resolved>) {
+        let hooks = entries
+            .iter()
+            .map(|(id, class, member, descriptor)| Hook {
+                id: (*id).to_owned(),
+                class: (*class).to_owned(),
+                member: (*member).to_owned(),
+                descriptor: (*descriptor).to_owned(),
+                kind: Kind::InstanceMethod,
+                capability: format!("A candidate {id} hook."),
+            })
+            .collect::<Vec<_>>();
+        let resolved = hooks
+            .iter()
+            .map(|hook| Resolved {
+                id: hook.id.clone(),
+                internal_class: hook.class.replace('.', "/"),
+                member: hook.member.clone(),
+                descriptor: hook.descriptor.clone(),
+                is_static: false,
+            })
+            .collect();
+        (
+            Inventory {
+                schema_version: 1,
+                minecraft: "0.0.0-test".to_owned(),
+                hooks,
+            },
+            resolved,
+        )
+    }
 
     #[test]
     fn a_primitive_descriptor_reads_back_as_the_arguments_it_declares() {
@@ -506,24 +628,63 @@ mod tests {
     }
 
     #[test]
-    fn a_string_argument_is_admitted_and_every_other_reference_is_refused() {
+    fn a_string_is_copied_and_every_other_reference_becomes_a_handle() {
         assert_eq!(
             parameters("(Ljava/lang/String;Z)Ljava/lang/String;").expect("valid"),
             vec![JavaType::Text, JavaType::Boolean]
         );
+        assert_eq!(
+            parameters("(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;)V")
+                .expect("ADG-4 admits a handle onto an object the game owns"),
+            vec![
+                JavaType::Handle("net/minecraft/resources/ResourceKey".to_owned()),
+                JavaType::Handle("java/lang/Object".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_array_is_an_object_and_crosses_as_a_handle_naming_its_own_descriptor() {
+        assert_eq!(
+            parameters("([J[[ILjava/lang/String;)V").expect("valid"),
+            vec![
+                JavaType::Handle("[J".to_owned()),
+                JavaType::Handle("[[I".to_owned()),
+                JavaType::Text,
+            ]
+        );
+        assert_eq!(
+            parameters("([Ljava/lang/String;)V").expect("valid"),
+            vec![JavaType::Handle("[Ljava/lang/String;".to_owned())],
+            "an array of strings is an array, and an array is never copied"
+        );
+    }
+
+    #[test]
+    fn a_descriptor_that_is_not_one_is_refused_and_says_what_about_it_is_wrong() {
         assert!(
-            parameters("(Lnet/minecraft/world/entity/Entity;)V")
-                .expect_err("a game reference must be refused")
-                .contains("ADG-4")
+            parameters("(Lnet/minecraft/core/Registry)V")
+                .expect_err("an unterminated class name must be refused")
+                .contains("never terminated")
         );
         assert!(
-            parameters("([I)V")
-                .expect_err("an array must be refused")
-                .contains("array")
+            parameters("([)V")
+                .expect_err("an array of nothing must be refused")
+                .contains("empty")
+        );
+        assert!(
+            parameters("(L;)V")
+                .expect_err("a class descriptor naming no class must be refused")
+                .contains("names no class")
         );
         assert!(
             parameters("(Q)V")
                 .expect_err("an unknown descriptor must be refused")
+                .contains("not a parameter descriptor")
+        );
+        assert!(
+            parameters("(V)V")
+                .expect_err("void is not a parameter")
                 .contains("not a parameter descriptor")
         );
         assert!(
@@ -534,7 +695,7 @@ mod tests {
     }
 
     #[test]
-    fn every_admitted_type_round_trips_through_its_own_descriptor() {
+    fn every_admitted_type_round_trips_through_the_hook_signature_it_renders() {
         for parameter in [
             JavaType::Boolean,
             JavaType::Byte,
@@ -545,14 +706,126 @@ mod tests {
             JavaType::Float,
             JavaType::Double,
             JavaType::Text,
+            JavaType::Handle("java/lang/Object".to_owned()),
         ] {
             let descriptor = format!("({}){}", parameter.descriptor(), parameter.descriptor());
 
-            assert_eq!(parameters(&descriptor).expect("valid"), vec![parameter]);
+            assert_eq!(
+                parameters(&descriptor).expect("valid"),
+                vec![parameter.clone()]
+            );
             assert!(!parameter.java().is_empty());
             assert!(parameter.rust().starts_with("::jni::"));
             assert!(parameter.value("x").contains("HookValue::"));
         }
+    }
+
+    #[test]
+    fn a_handle_keeps_its_declared_class_in_rust_and_loses_it_in_the_hook_signature() {
+        let registry = JavaType::Handle("net/minecraft/core/MappedRegistry".to_owned());
+
+        assert_eq!(registry.descriptor(), "Ljava/lang/Object;");
+        assert_eq!(registry.java(), "Object");
+        assert_eq!(registry.rust(), "::jni::objects::JObject<'local>");
+        assert_eq!(
+            registry.value("argument0"),
+            "::ravel_minecraft::HookValue::Handle(::ravel_minecraft::JavaHandle::new(\
+             \"net/minecraft/core/MappedRegistry\", &argument0))"
+        );
+    }
+
+    /// The real M3 targets this enables, plus one array shape the resolved set
+    /// has no parameter for yet.
+    ///
+    /// `MappedRegistry.register` is the entry that decided ADG-4's amendment: a
+    /// registry hook that cannot name what is being registered is not a hook.
+    const CANDIDATES: [(&str, &str, &str, &str); 3] = [
+        (
+            "registry.register",
+            "net.minecraft.core.MappedRegistry",
+            "register",
+            "(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;\
+             Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;",
+        ),
+        (
+            "server.tick",
+            "net.minecraft.server.MinecraftServer",
+            "tickServer",
+            "(Ljava/util/function/BooleanSupplier;)V",
+        ),
+        (
+            "server.tick-times",
+            "net.minecraft.server.MinecraftServer",
+            "logTickTimes",
+            "([JZ)V",
+        ),
+    ];
+
+    #[test]
+    fn a_candidate_carrying_objects_renders_a_borrowed_handle_per_reference() {
+        let (inventory, resolved) = reviewed(&CANDIDATES);
+
+        let shapes = shapes(&inventory, &resolved).expect("every candidate should render");
+        let rust = exports(&shapes);
+
+        assert_eq!(shapes.len(), 3);
+        assert!(
+            rust.contains("argument0: ::jni::objects::JObject<'local>,"),
+            "{rust}"
+        );
+        assert!(
+            rust.contains(
+                "::ravel_minecraft::JavaHandle::new(\"net/minecraft/resources/ResourceKey\", \
+                 &argument0)"
+            ),
+            "{rust}"
+        );
+        assert!(
+            rust.contains("::ravel_minecraft::JavaHandle::new(\"[J\", &argument0)"),
+            "an array is an object and names its own descriptor: {rust}"
+        );
+        assert!(
+            rust.contains("|_env|"),
+            "no handle needs the environment, so no export asks for it: {rust}"
+        );
+    }
+
+    #[test]
+    fn the_generated_java_takes_object_and_names_no_game_type() {
+        let (inventory, resolved) = reviewed(&CANDIDATES);
+
+        let shapes = shapes(&inventory, &resolved).expect("every candidate should render");
+        let java = hook_java(&adapter(), &shapes);
+
+        assert!(
+            java.contains(
+                "public static native void registryRegister(Object argument0, \
+                 Object argument1, Object argument2);"
+            ),
+            "{java}"
+        );
+        assert!(
+            java.contains("\"(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V\""),
+            "the hook descriptor the agent injects erases every class: {java}"
+        );
+        assert!(
+            java.contains("\"(Ljava/lang/Object;Z)V\""),
+            "an array is one parameter and erases to Object beside the boolean: {java}"
+        );
+        for declaration in java.lines().filter(|line| line.contains("static native")) {
+            assert!(
+                !declaration.contains("minecraft"),
+                "Hook.java compiles without the client jar, so no declaration names a \
+                 game type: {declaration}"
+            );
+        }
+        assert!(
+            java.contains(
+                "\"(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;\
+                 Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;\""
+            ),
+            "the target keeps its own descriptor, which is what the agent matches on: {java}"
+        );
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 //! Version-neutral identity, version, side, lifecycle, and diagnostic types.
 
+mod content;
 mod diagnostics;
 mod identity;
 mod sides;
@@ -9,6 +10,9 @@ mod states;
 
 use serde::{Deserialize, Serialize};
 
+pub use content::{
+    ContentId, ContentIdError, ContentKind, ContentKindError, RegistryKey, RegistryKeyError,
+};
 pub use diagnostics::{
     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
     Redaction, RedactionPolicy, StructuredFailure,

@@ -197,6 +197,9 @@ pub fn run(
         if executes_mod_code(state) {
             enter_all(&plan, mods, state)?;
         }
+        if state == LifecycleState::Constructed {
+            register_all(&plan, mods, &mut machine)?;
+        }
     }
 
     Ok(PipelineRun {
@@ -302,6 +305,47 @@ fn enter_all(
                 state,
             })?;
         host.enter(state).map_err(PipelineError::Host)?;
+    }
+    Ok(())
+}
+
+/// Opens the registration window for every mod, in resolved order.
+///
+/// This is the whole of `SPEC.md` §14's registration barrier as a package set
+/// experiences it: the set is [`LifecycleState::Constructed`], each mod claims
+/// what it owns, and nothing advances to [`LifecycleState::Registered`] until
+/// every one of them has had the chance. Claiming in resolved order is what
+/// makes a contested identifier go to the same mod every run, which is the
+/// deterministic-order invariant the same section requires.
+///
+/// A mod that refuses is reported as it refused. A refusal the mod could not
+/// see the whole of — a claim from outside the window — is reported as the
+/// loader's own [`LifecycleError`], because that is the accurate account and
+/// the mod only ever received a summary of it.
+fn register_all(
+    plan: &LoadPlan,
+    mods: &mut [&mut dyn HostMod],
+    machine: &mut LifecycleMachine,
+) -> Result<(), PipelineError> {
+    for id in plan.order() {
+        let host = mods
+            .iter_mut()
+            .find(|host| host.id() == id)
+            .ok_or_else(|| PipelineError::MissingMod {
+                mod_id: id.clone(),
+                state: LifecycleState::Registered,
+            })?;
+
+        let mut window = machine
+            .registration_window(id)
+            .map_err(PipelineError::Lifecycle)?;
+        let outcome = host.register(&mut window);
+        let unexpected = window.unexpected().cloned();
+
+        if let Some(error) = unexpected {
+            return Err(PipelineError::Lifecycle(error));
+        }
+        outcome.map_err(PipelineError::Host)?;
     }
     Ok(())
 }

@@ -1071,6 +1071,8 @@ dependencies = [
 name = "ravel-test-mod-registries"
 version = "0.0.0"
 dependencies = [
+ "ravel-core",
+ "ravel-host-api",
  "ravel-sdk",
 ]
 

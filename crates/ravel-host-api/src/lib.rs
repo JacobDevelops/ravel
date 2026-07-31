@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
+use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, StructuredFailure};
 
 /// Why a mod refused the lifecycle step the loader asked it to take.
 ///
@@ -116,13 +116,303 @@ pub trait HostMod: Send {
     ///
     /// Returns an error when the mod declines the step or does not implement it.
     fn enter(&mut self, state: LifecycleState) -> Result<(), HostError>;
+
+    /// Claims the registry identifiers this mod owns.
+    ///
+    /// The loader calls this once, while the mod is
+    /// [`LifecycleState::Constructed`] and before the set advances to
+    /// [`LifecycleState::Registered`]. That is the whole registration window:
+    /// `SPEC.md` §14 makes identifiers immutable after one barrier for the load,
+    /// so a mod that claims nothing here claims nothing ever.
+    ///
+    /// Registration is a separate method rather than a `Constructed` case
+    /// inside [`HostMod::enter`] because it is the only step that hands the mod
+    /// something. The phases differ in what they offer, and a signature that
+    /// passed every phase a capability it cannot use would be describing a
+    /// contract Ravel does not have.
+    ///
+    /// The default claims nothing, which is what a mod that registers no
+    /// content does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the mod declines to register. A refused claim
+    /// reaches the mod as a [`RegistrationRefused`] and it is the mod's to
+    /// convert: a mod that treats a conflict as fatal returns
+    /// [`HostError::Refused`], and a mod that has an alternative may carry on.
+    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
+        let _ = registrar;
+        Ok(())
+    }
+}
+
+/// What the loader offers a mod during the registration window.
+///
+/// This is the mod-facing half of the registration barrier. The loader-facing
+/// half is `ravel-loader`'s lifecycle machine, which owns the claim table and
+/// decides every refusal; this trait exists so a mod can reach that decision
+/// without naming the loader, which `docs/architecture/dependency-rules.md`
+/// forbids it from depending on.
+///
+/// The trait is object-safe and takes `&mut dyn Registrar`, so the mechanism
+/// that produced the mod value is still ADG-2's question and still unanswered
+/// here.
+pub trait Registrar {
+    /// Claims `key` for the mod currently registering.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistrationRefused`] when the identifier is already owned, or
+    /// when the barrier has closed.
+    fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused>;
+
+    /// Returns the identifiers this mod has already claimed, in claim order.
+    fn claimed(&self) -> &[RegistryKey];
+}
+
+/// Why the loader refused a registration claim.
+///
+/// The loader's own error type carries more than a mod can act on — which mod
+/// owns the conflicting identifier, and what lifecycle state the claimant was
+/// in. This is the part a mod can do something about, so it is what crosses the
+/// boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RegistrationRefused {
+    /// Another mod already owns the identifier.
+    Conflict {
+        /// The contested identifier.
+        key: RegistryKey,
+        /// The mod that claimed it first.
+        owner: ModId,
+    },
+    /// The registration window is not open, so no claim can be accepted.
+    ///
+    /// A mod reaching this has called [`Registrar::claim`] outside the call the
+    /// loader made to [`HostMod::register`], by holding the registrar past its
+    /// window or by claiming after the set closed the barrier.
+    Closed {
+        /// The identifier that arrived too late.
+        key: RegistryKey,
+    },
+}
+
+impl RegistrationRefused {
+    /// The identifier the refusal is about.
+    #[must_use]
+    pub const fn key(&self) -> &RegistryKey {
+        match self {
+            Self::Conflict { key, .. } | Self::Closed { key } => key,
+        }
+    }
+}
+
+impl fmt::Display for RegistrationRefused {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Conflict { key, owner } => {
+                write!(formatter, "`{key}` is already registered by `{owner}`")
+            }
+            Self::Closed { key } => write!(
+                formatter,
+                "`{key}` arrived after the registration barrier closed"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for RegistrationRefused {}
+
+impl StructuredFailure for RegistrationRefused {
+    /// A contested identifier is `SPEC.md` §9.2's conflicting registry claim.
+    /// A late claim is not: nothing is contested, the window is simply shut, so
+    /// it reports no kind rather than borrowing one.
+    fn failure_kind(&self) -> Option<FailureKind> {
+        match self {
+            Self::Conflict { .. } => Some(FailureKind::ConflictingRegistryClaim),
+            Self::Closed { .. } => None,
+        }
+    }
+
+    fn lifecycle_state(&self) -> LifecycleState {
+        LifecycleState::Constructed
+    }
+
+    /// Every word of both messages is written by this crate, and both
+    /// interpolate identifiers that `ravel-core` has already validated against
+    /// a charset holding no path separator and no whitespace.
+    fn quotes_untrusted_text(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{LifecycleState, ModId, Redaction, StructuredFailure};
+    use ravel_core::{
+        ContentKind, FailureKind, LifecycleState, ModId, Redaction, RegistryKey, StructuredFailure,
+    };
 
-    use super::{HostError, HostMod};
+    use super::{HostError, HostMod, Registrar, RegistrationRefused};
+
+    /// A registrar that accepts anything nobody has claimed yet.
+    ///
+    /// The real refusals belong to the loader's claim table. This one exists so
+    /// the trait's own contract — that a refusal reaches the mod, and that the
+    /// mod decides what it means — can be tested without a loader.
+    #[derive(Default)]
+    struct Table {
+        claimed: Vec<RegistryKey>,
+        owned: Vec<(RegistryKey, ModId)>,
+        closed: bool,
+    }
+
+    impl Registrar for Table {
+        fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused> {
+            if self.closed {
+                return Err(RegistrationRefused::Closed { key });
+            }
+            if let Some((_, owner)) = self.owned.iter().find(|(owned, _)| owned == &key) {
+                return Err(RegistrationRefused::Conflict {
+                    key,
+                    owner: owner.clone(),
+                });
+            }
+            self.claimed.push(key);
+            Ok(())
+        }
+
+        fn claimed(&self) -> &[RegistryKey] {
+            &self.claimed
+        }
+    }
+
+    fn key(kind: ContentKind, id: &str) -> RegistryKey {
+        RegistryKey::new(kind, id.parse().expect("a legal content id"))
+    }
+
+    /// A mod that claims one block and one item, and gives up on a conflict.
+    struct Registering {
+        id: ModId,
+    }
+
+    impl HostMod for Registering {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            Ok(())
+        }
+
+        fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
+            for kind in [ContentKind::Block, ContentKind::Item] {
+                registrar
+                    .claim(key(kind, "example_mod:copper"))
+                    .map_err(|refused| HostError::Refused {
+                        mod_id: self.id.clone(),
+                        state: LifecycleState::Constructed,
+                        detail: refused.to_string(),
+                    })?;
+            }
+            Ok(())
+        }
+    }
+
+    fn registering() -> Registering {
+        Registering {
+            id: "example_mod".parse().expect("valid id"),
+        }
+    }
+
+    #[test]
+    fn a_mod_that_registers_nothing_needs_no_implementation() {
+        let mut table = Table::default();
+        let mut host = counting();
+
+        host.register(&mut table)
+            .expect("the default claims nothing");
+        assert!(table.claimed().is_empty());
+    }
+
+    #[test]
+    fn one_mod_claims_the_same_name_in_two_registries_without_conflicting() {
+        let mut table = Table::default();
+
+        registering()
+            .register(&mut table)
+            .expect("a block and an item are different claims");
+        assert_eq!(
+            table.claimed(),
+            [
+                key(ContentKind::Block, "example_mod:copper"),
+                key(ContentKind::Item, "example_mod:copper"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_contested_identifier_reaches_the_mod_naming_who_owns_it() {
+        let owner: ModId = "other_mod".parse().expect("valid id");
+        let mut table = Table {
+            owned: vec![(key(ContentKind::Block, "example_mod:copper"), owner.clone())],
+            ..Table::default()
+        };
+
+        let error = registering()
+            .register(&mut table)
+            .expect_err("the block is taken");
+        assert_eq!(error.mod_id().as_str(), "example_mod");
+        assert_eq!(error.state(), LifecycleState::Constructed);
+        assert!(error.to_string().contains("other_mod"), "{error}");
+
+        // The mod gave up on the first refusal, so it never reached the item.
+        assert!(table.claimed().is_empty());
+    }
+
+    #[test]
+    fn a_claim_after_the_barrier_is_refused_as_late_rather_than_as_contested() {
+        let mut table = Table {
+            closed: true,
+            ..Table::default()
+        };
+        let contested = key(ContentKind::Block, "example_mod:copper");
+
+        let refused = table
+            .claim(contested.clone())
+            .expect_err("the barrier shut");
+        assert_eq!(refused, RegistrationRefused::Closed { key: contested });
+        assert!(
+            refused
+                .to_string()
+                .contains("after the registration barrier")
+        );
+    }
+
+    #[test]
+    fn only_a_contested_claim_reports_a_dependency_graph_outcome() {
+        let contested = key(ContentKind::Recipe, "example_mod:smelting/copper");
+        let conflict = RegistrationRefused::Conflict {
+            key: contested.clone(),
+            owner: "other_mod".parse().expect("valid id"),
+        };
+        let closed = RegistrationRefused::Closed {
+            key: contested.clone(),
+        };
+
+        assert_eq!(
+            conflict.failure_kind(),
+            Some(FailureKind::ConflictingRegistryClaim)
+        );
+        assert_eq!(closed.failure_kind(), None);
+        assert_eq!(conflict.key(), &contested);
+        assert_eq!(closed.key(), &contested);
+        assert_eq!(conflict.lifecycle_state(), LifecycleState::Constructed);
+
+        // Both messages are this crate's own words about validated identifiers.
+        assert!(!conflict.quotes_untrusted_text());
+        assert!(!closed.quotes_untrusted_text());
+        assert_eq!(conflict.diagnostic().redaction(), Redaction::Raw);
+        assert_ne!(conflict, closed);
+    }
 
     struct Counting {
         id: ModId,

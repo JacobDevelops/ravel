@@ -20,6 +20,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use ravel_core::{FailureEnvironment, FailureKind, LifecycleState, ModId, Side, StructuredFailure};
 use ravel_host_api::{HostError, HostMod};
@@ -76,8 +77,25 @@ fn id(name: &str) -> ModId {
 }
 
 /// A fresh directory the whole case is built inside.
+///
+/// The counter is what keeps two directories apart, not the label. Several
+/// tests each build the whole set of cases, so the label repeats, and the
+/// process id only separates them under a runner that gives every test its own
+/// process. `cargo nextest` does; `cargo test` runs them as threads in one
+/// process, where two tests would share a directory and delete each other's
+/// fixtures partway through. That presents as the gate refusing the wrong
+/// thing, which is a much more expensive thing to read than a harness artefact.
+///
+/// The process id stays because the counter restarts every run, and the
+/// existence check stays because a case that panics leaks its directory.
 fn workspace(label: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("ravel-pre-world-{label}-{}", std::process::id()));
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    let unique = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "ravel-pre-world-{label}-{}-{unique}",
+        std::process::id()
+    ));
     if root.exists() {
         fs::remove_dir_all(&root).expect("a stale workspace should be removable");
     }

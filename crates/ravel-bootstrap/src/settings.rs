@@ -59,6 +59,7 @@ use ravel_config::{
     LayeredConfiguration, ResolvedSetting, SettingKey, ValueDocument, ValueKind, ValueSource, file,
 };
 use ravel_core::{ModId, Side};
+use ravel_observability::redact;
 use serde_json::Value;
 
 use crate::game_directory;
@@ -73,12 +74,12 @@ struct Store {
     /// The side this process runs as, which decides what a screen may show.
     side: Side,
     configurations: BTreeMap<ModId, LayeredConfiguration>,
-    /// Where a player's file is written, or why this process cannot name one.
+    /// A directory stated by a test, or `None` for production resolution at save.
     ///
-    /// Resolved once, when the configurations are installed, rather than on
-    /// every save: it is a fact about the process rather than about the edit,
-    /// and asking once means a screen close costs no syscall to find out.
-    game_directory: Result<PathBuf, String>,
+    /// Premain installs this store before the client creates `options.txt`. The
+    /// marker exists by the time a settings screen can close, so production must
+    /// not cache that expected early refusal.
+    game_directory: Option<Result<PathBuf, String>>,
 }
 
 /// Installs the configurations a screen may read and edit.
@@ -92,7 +93,7 @@ struct Store {
 /// pipeline's work; this crate is the JVM entry and receives configurations
 /// already resolved, the same way it receives a machine already driven.
 pub fn install(side: Side, configurations: Vec<LayeredConfiguration>) {
-    install_in(side, configurations, game_directory::resolve());
+    install_in(side, configurations, None);
 }
 
 /// Installs configurations against a stated game directory.
@@ -102,7 +103,7 @@ pub fn install(side: Side, configurations: Vec<LayeredConfiguration>) {
 fn install_in(
     side: Side,
     configurations: Vec<LayeredConfiguration>,
-    game_directory: Result<PathBuf, String>,
+    game_directory: Option<Result<PathBuf, String>>,
 ) {
     let installed = configurations
         .into_iter()
@@ -386,9 +387,10 @@ fn apply(reader: &mut Reader) -> Option<String> {
     let directory = store.game_directory.clone();
     drop(guard);
 
+    let directory = directory.unwrap_or_else(game_directory::resolve);
     if let Err(reason) = persist(directory.as_deref(), &document) {
         refusals += 1;
-        entry(&mut refused, "", &reason);
+        entry(&mut refused, "", redact(&reason).text());
     }
 
     let mut out = String::with_capacity(refused.len() + 8);
@@ -591,7 +593,7 @@ mod tests {
 
     /// Installs against that directory, so a save writes somewhere a test owns.
     fn install_here(configurations: Vec<LayeredConfiguration>) {
-        install_in(Side::Client, configurations, Ok(game()));
+        install_in(Side::Client, configurations, Some(Ok(game())));
     }
 
     fn installed(pack: Option<&ValueDocument>, player: Option<&ValueDocument>) -> Vec<Row> {
@@ -820,7 +822,7 @@ mod tests {
         install_in(
             Side::Client,
             vec![configuration],
-            Err("no game directory here".to_owned()),
+            Some(Err("no game directory here".to_owned())),
         );
 
         let answer = save(&edits("example_mod", &[("render.distance", "8")]));
@@ -829,6 +831,54 @@ mod tests {
         assert_eq!(refused.len(), 1, "{answer}");
         assert_eq!(refused[0].0, "", "a whole-file failure names no key");
         assert_eq!(refused[0].1, "no game directory here");
+    }
+
+    #[test]
+    fn a_file_save_failure_does_not_expose_its_private_path_to_the_screen() {
+        let blocked = game().join("not-a-directory");
+        std::fs::write(&blocked, "blocked").expect("the blocking file should be writable");
+        let configuration = LayeredConfiguration::resolve(declaration(), None, None)
+            .expect("the layers should resolve");
+        install_in(Side::Client, vec![configuration], Some(Ok(blocked.clone())));
+
+        let answer = save(&edits("example_mod", &[("render.distance", "8")]));
+
+        let refused = refusals(&answer);
+        assert_eq!(refused.len(), 1, "{answer}");
+        assert!(!refused[0].1.is_empty(), "a refusal still says what failed");
+        assert!(
+            !refused[0].1.contains(&blocked.display().to_string()),
+            "the screen received a private path: {}",
+            refused[0].1
+        );
+    }
+
+    #[test]
+    fn a_game_directory_failure_is_redacted_before_the_screen_can_read_it() {
+        let private = game();
+        let configuration = LayeredConfiguration::resolve(declaration(), None, None)
+            .expect("the layers should resolve");
+        install_in(
+            Side::Client,
+            vec![configuration],
+            Some(Err(format!(
+                "`{}` is not the game directory",
+                private.display()
+            ))),
+        );
+
+        let answer = save(&edits("example_mod", &[("render.distance", "8")]));
+
+        let refused = refusals(&answer);
+        assert_eq!(refused.len(), 1, "{answer}");
+        assert!(
+            refused[0]
+                .1
+                .contains(private.file_name().unwrap().to_str().unwrap()),
+            "the reduced error still names the failing directory: {}",
+            refused[0].1
+        );
+        assert!(!refused[0].1.contains(&private.display().to_string()));
     }
 
     #[test]

@@ -11,7 +11,8 @@ build = "build.rs"
 # `System.loadLibrary` resolves a shared object, so the crate has to produce one.
 # The rlib is what this crate's own tests link against.
 [lib]
-crate-type = ["cdylib", "rlib"]
+name = "ravel_bootstrap_runtime"
+crate-type = ["rlib"]
 
 [dependencies]
 jni.workspace = true

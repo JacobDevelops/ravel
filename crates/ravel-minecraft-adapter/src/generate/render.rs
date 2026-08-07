@@ -536,7 +536,9 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
     // class — a screen with natives of its own would be a second one.
     let _ = writeln!(
         text,
-        "    /** Hook invocations the native side has counted. */\n\
+        "    /** Constructs, configures, drives, and installs the statically composed mod set. */\n\
+         \x20   public static native void ravelInitialize();\n\n\
+         \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\
          \x20    * One mod's settings, as the screen draws them.\n\

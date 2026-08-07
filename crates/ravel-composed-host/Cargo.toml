@@ -1,0 +1,27 @@
+[package]
+name = "ravel-composed-host"
+description = "Player-local generated host for a statically composed Ravel mod set"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "ravel_bootstrap"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni.workspace = true
+ravel-bootstrap-runtime = { package = "ravel-bootstrap", path = "../ravel-bootstrap", version = "0.0.0" }
+ravel-config.workspace = true
+ravel-core.workspace = true
+ravel-host-api.workspace = true
+ravel-loader.workspace = true
+ravel-test-mod-configuration.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

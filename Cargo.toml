@@ -52,6 +52,7 @@ ravel-test-mod-events = { path = "test-mods/events", version = "0.0.0" }
 ravel-test-mod-noop = { path = "test-mods/noop", version = "0.0.0" }
 ravel-test-mod-resources = { path = "test-mods/resources", version = "0.0.0" }
 ravel-test-mod-saved-data = { path = "test-mods/saved-data", version = "0.0.0" }
+ravel-composed-host = { path = "crates/ravel-composed-host", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }
 rustix = { version = "1.1.4", default-features = false, features = ["process"] }
 semver = { version = "1.0.28", features = ["serde"] }

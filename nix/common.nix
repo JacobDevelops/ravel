@@ -214,7 +214,7 @@ in
         set -euo pipefail
         cd "$DEVENV_ROOT"
         cargo build --locked -p ravel-minecraft-adapter
-        cargo build --locked -p ravel-bootstrap --release
+        cargo build --locked -p ravel-composed-host --release
         ./jvm/build/build-agent.sh
         ./jvm/harness/run-harness.sh
       '';

@@ -787,6 +787,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-composed-host"
+version = "0.0.0"
+dependencies = [
+ "jni",
+ "ravel-bootstrap",
+ "ravel-config",
+ "ravel-core",
+ "ravel-host-api",
+ "ravel-loader",
+ "ravel-test-mod-configuration",
+ "serde_json",
+]
+
+[[package]]
 name = "ravel-config"
 version = "0.0.0"
 dependencies = [
@@ -799,6 +813,8 @@ dependencies = [
 name = "ravel-conformance-tests"
 version = "0.0.0"
 dependencies = [
+ "ravel-composed-host",
+ "ravel-config",
  "ravel-core",
  "ravel-data",
  "ravel-host-api",
@@ -809,6 +825,7 @@ dependencies = [
  "ravel-save",
  "ravel-sdk",
  "ravel-test-mod-commands",
+ "ravel-test-mod-configuration",
  "ravel-test-mod-events",
  "ravel-test-mod-noop",
  "ravel-test-mod-resources",

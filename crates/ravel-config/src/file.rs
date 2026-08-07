@@ -48,8 +48,20 @@ pub fn path(game_directory: &Path, owner: &ModId) -> PathBuf {
 /// [`FileError::Document`] when it is not a document this crate accepts, and
 /// [`FileError::Owner`] when it is a valid document belonging to somebody else.
 pub fn read(game_directory: &Path, owner: &ModId) -> Result<Option<ValueDocument>, FileError> {
-    let file = path(game_directory, owner);
-    let text = match fs::read_to_string(&file) {
+    read_path(&path(game_directory, owner), owner)
+}
+
+/// Reads one owner's values from an explicitly selected document path.
+///
+/// This is the pack-facing counterpart to [`read`]: a generated composition
+/// resolves the relative path pinned by its selected pack manifest, while this
+/// crate keeps document parsing and owner validation identical for both layers.
+///
+/// # Errors
+///
+/// Returns the same errors as [`read`].
+pub fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, FileError> {
+    let text = match fs::read_to_string(file) {
         Ok(text) => text,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {

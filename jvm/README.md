@@ -98,10 +98,14 @@ The four steps, when one of them is what you want on its own:
 
 ```console
 cargo build -p ravel-minecraft-adapter
-cargo build -p ravel-bootstrap --release
+cargo build -p ravel-composed-host --release
 ./jvm/build/build-agent.sh
 ./jvm/harness/run-harness.sh
 ```
+
+`ravel-composed-host` is the player-local generated boundary that produces
+`libravel_bootstrap.so`; the generic `ravel-bootstrap` runtime is an rlib and
+contains no selected mod set.
 
 `harness/net/minecraft/util/StringUtil.java` is a stub carrying the internal
 name, member names and exact descriptors the reviewed inventory pins, with

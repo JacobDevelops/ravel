@@ -70,30 +70,13 @@
 //!    result is a mirror, and a mirror needs a measurement, a staleness argument
 //!    and an ADR. A configuration writer holding a path is a copy that stays.
 //!
-//! # The load half still has no caller, and M3-W7 is where that stopped being a
-//! scheduling gap
+//! # When configuration uses this answer
 //!
-//! Nothing calls [`crate::install_settings`], so there is no moment in a launch
-//! where a player's configuration is read back off disk — the same shape as
-//! `Screens.open` having no caller. This paragraph used to say both were waiting
-//! for M3-W7, since the process matrix is the first thing that starts for real.
-//! M3-W7 ran, and they are not waiting on a work package. They are waiting on a
-//! mechanism nothing has accepted:
-//!
-//! - A screen is opened by putting a `Screen` object into the game's screen
-//!   stack, and that is Ravel calling **into** Minecraft. ADG-1 established
-//!   Java-to-Rust only, and the transformer prepends one `void` static call and
-//!   reads nothing back, so there is no shape a caller could take.
-//!   `docs/architecture/m3-hook-targets.md` says this outright and assigns it to
-//!   ADG-6; ADG-6 names the hooks a screen would use and does not provide the
-//!   mechanism, so the question is open rather than answered.
-//! - `install_settings` needs no call into the game, only a moment at launch
-//!   that resolves configurations and installs them. That moment does not exist
-//!   either: [`crate::install`] has no caller for the same reason, so no launch
-//!   has ever held a loader.
-//!
-//! The round trip is proven in tests; it is not proven in a game, and closing
-//! that is a decision rather than an implementation.
+//! Premain reads player configuration from the working directory while it builds
+//! the statically composed set. It also installs the settings store then, but does
+//! not run this marker check yet: on a brand-new instance the client constructor
+//! has not created `options.txt`. Saving resolves and admits the directory after a
+//! screen can exist, when the constructor guarantee above holds.
 
 use std::path::{Path, PathBuf};
 

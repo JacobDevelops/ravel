@@ -40,7 +40,8 @@ public final class Agent {
         // loader that declares the native methods.
         Hook.initialize();
 
-        Transformer installed = new Transformer(Hook.TARGETS);
+        boolean reportTargets = Boolean.getBoolean("ravel.report.targets");
+        Transformer installed = new Transformer(Hook.TARGETS, reportTargets);
         transformer = installed;
         instrumentation.addTransformer(installed, false);
 
@@ -83,6 +84,11 @@ public final class Agent {
         return installed.loaderIdentity();
     }
 
+    private static String rewrittenTargets() {
+        Transformer installed = transformer;
+        return installed == null ? null : installed.rewrittenTargets();
+    }
+
     /**
      * Prints what this launch actually did.
      *
@@ -110,6 +116,10 @@ public final class Agent {
         String loaders = loaderIdentity();
         if (loaders != null) {
             line = line + "[ravel] " + loaders + "\n";
+        }
+        String targets = rewrittenTargets();
+        if (targets != null) {
+            line = line + "[ravel] rewritten targets: " + targets + "\n";
         }
         write(FileDescriptor.out, line);
     }

@@ -65,12 +65,67 @@ javac -cp "$work" -d "$work" \
 	"$root/jvm/harness/TitleMenuMissingMain.java"
 javac -cp "$work:$jar:$screen" -d "$work" "$root/jvm/harness/SettingsScreenMain.java"
 
+order="$work/initialization-order"
+order_agent="$order/agent/ravel-agent.jar"
+mkdir -p "$order/classes" "$(dirname "$order_agent")" "$order/agent-classes"
+javac -Xlint:all -Werror -d "$order/agent-classes" \
+	"$root/jvm/bootstrap/dev/ravel/jvm/Agent.java" \
+	"$root/jvm/bootstrap/dev/ravel/jvm/HookTarget.java" \
+	"$root/jvm/bootstrap/dev/ravel/jvm/Screens.java" \
+	"$root/jvm/bootstrap/dev/ravel/jvm/Transformer.java" \
+	"$root/jvm/harness/initialization/dev/ravel/jvm/Hook.java"
+javac -cp "$work:$order/agent-classes" -d "$order/classes" \
+	"$root/jvm/harness/InitializationOrderMain.java"
+printf 'Premain-Class: dev.ravel.jvm.Agent\nCan-Retransform-Classes: false\n' >"$order/agent.manifest"
+mapfile -d '' order_compiled < <(cd "$order/agent-classes" && find . -name '*.class' -print0 | sort -z)
+order_entries=()
+for class in "${order_compiled[@]}"; do
+	order_entries+=(-C "$order/agent-classes" "${class#./}")
+done
+jar --create --file "$order_agent" --manifest "$order/agent.manifest" \
+	--date 1980-01-01T00:00:02Z "${order_entries[@]}"
+order_stdout="$order/stdout"
+order_stderr="$order/stderr"
+(cd "$order/classes" && java \
+	-javaagent:"$order_agent" \
+	-cp ".:$work" InitializationOrderMain >"$order_stdout" 2>"$order_stderr")
+order_observed="$(<"$order_stdout")"
+order_diagnostic="$(grep '^\[ravel\]' "$order_stderr")"
+order_expected='allowed=true
+filtered=a
+b
+simple=ab
+valid=true
+transformed=1 methods=4
+[ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
+order_expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
+
+printf '%s\n' "$order_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$order_stderr"
+
+if [ "$order_observed" != "$order_expected" ]; then
+	echo >&2
+	echo "a target loaded during production initialization escaped the transformer; expected:" >&2
+	printf '%s\n' "$order_expected" >&2
+	exit 1
+fi
+
+if [ "$order_diagnostic" != "$order_expected_diagnostic" ]; then
+	echo >&2
+	echo "the initialization-order harness did not produce the recorded diagnostic; expected:" >&2
+	printf '%s\n' "$order_expected_diagnostic" >&2
+	exit 1
+fi
+
 # `java.library.path` is the directory holding the library, not the file.
 stdout="$work/stdout"
 stderr="$work/stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
 	-Djava.library.path="$library" \
+	-Dravel.report.targets=true \
 	-cp . Main >"$stdout" 2>"$stderr")
 observed="$(<"$stdout")"
 diagnostic="$(grep '^\[ravel\]' "$stderr")"
@@ -88,7 +143,8 @@ invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting 
 clientAfter=false:player:false
 commonAfter=quiet:default:true
 mods=1:16:client1:01:11:113:configuration7:running8:required4:true5:false1:0
-[ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
+[ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code
+[ravel] rewritten targets: net.minecraft.util.StringUtil=4'
 expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
 
 printf '%s\n' "$observed"

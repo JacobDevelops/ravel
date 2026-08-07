@@ -16,6 +16,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -45,19 +48,22 @@ public final class Transformer implements ClassFileTransformer {
     private final Map<String, List<HookTarget>> byClass;
     private final AtomicInteger transformedClasses = new AtomicInteger();
     private final AtomicInteger rewrittenMethods = new AtomicInteger();
+    private final ConcurrentMap<String, Integer> rewrittenByClass;
     private final AtomicReference<String> loaderIdentity = new AtomicReference<>();
 
     /**
      * Indexes the generated targets by the class each one lives in.
      *
      * @param targets every target the generator emitted
+     * @param collectTargets whether to retain per-class evidence
      */
-    public Transformer(HookTarget[] targets) {
+    public Transformer(HookTarget[] targets, boolean collectTargets) {
         Map<String, List<HookTarget>> index = new HashMap<>();
         for (HookTarget target : targets) {
             index.computeIfAbsent(target.internalClass(), key -> new ArrayList<>()).add(target);
         }
         this.byClass = Map.copyOf(index);
+        this.rewrittenByClass = collectTargets ? new ConcurrentHashMap<>() : null;
     }
 
     /** Gives transformed game code a public path to the package-private screen loader. */
@@ -73,6 +79,22 @@ public final class Transformer implements ClassFileTransformer {
     /** Methods this transformer rewrote. */
     public int rewrittenMethods() {
         return rewrittenMethods.get();
+    }
+
+    /** Names each rewritten class and the methods matched inside it, or {@code null} when disabled. */
+    public String rewrittenTargets() {
+        if (rewrittenByClass == null) {
+            return null;
+        }
+        Map<String, Integer> sorted = new TreeMap<>(rewrittenByClass);
+        StringBuilder report = new StringBuilder();
+        for (Map.Entry<String, Integer> entry : sorted.entrySet()) {
+            if (!report.isEmpty()) {
+                report.append(',');
+            }
+            report.append(entry.getKey()).append('=').append(entry.getValue());
+        }
+        return report.toString();
     }
 
     /**
@@ -135,6 +157,7 @@ public final class Transformer implements ClassFileTransformer {
         loaderIdentity.compareAndSet(null, describe(loader));
 
         ClassFile context = ClassFile.of();
+        AtomicInteger classMethods = rewrittenByClass == null ? null : new AtomicInteger();
         byte[] rewritten = classfile;
         for (HookTarget target : targets) {
             // One pass per target rather than one predicate over all of them:
@@ -148,9 +171,16 @@ public final class Transformer implements ClassFileTransformer {
                                             model.methodName().equalsString(target.member())
                                                     && model.methodType()
                                                             .equalsString(target.descriptor()),
-                                    MethodTransform.transformingCode(prepend(target))));
+                                    MethodTransform.transformingCode(
+                                            prepend(target, classMethods))));
         }
         transformedClasses.incrementAndGet();
+        if (classMethods != null) {
+            int matched = classMethods.get();
+            if (matched > 0) {
+                rewrittenByClass.put(internalName.replace('/', '.'), matched);
+            }
+        }
         return rewritten;
     }
 
@@ -160,7 +190,7 @@ public final class Transformer implements ClassFileTransformer {
                 && target.descriptor().equals("(II)I");
     }
 
-    private CodeTransform prepend(HookTarget target) {
+    private CodeTransform prepend(HookTarget target, AtomicInteger classMethods) {
         MethodTypeDesc targetType = MethodTypeDesc.ofDescriptor(target.descriptor());
         MethodTypeDesc hookType = MethodTypeDesc.ofDescriptor(target.hookDescriptor());
         return new CodeTransform() {
@@ -179,6 +209,9 @@ public final class Transformer implements ClassFileTransformer {
                         slot += kind.slotSize();
                     }
                     builder.invokestatic(HOOK, target.hookMethod(), hookType);
+                    if (classMethods != null) {
+                        classMethods.incrementAndGet();
+                    }
                     rewrittenMethods.incrementAndGet();
                 }
                 if (isTitleMenu(target)

@@ -1,14 +1,31 @@
 package dev.ravel.jvm;
 
 public final class Hook {
-    public static final HookTarget[] TARGETS = {
-        new HookTarget(
-                "net/minecraft/util/StringUtil",
-                "isAllowedChatCharacter",
-                "(I)Z",
-                true,
-                "chatAllowedCharacter",
-                "(I)V"),
+    public static final HookTarget[] TARGETS = Boolean.getBoolean("ravel.test.transform.failure")
+            ? new HookTarget[] {
+                new HookTarget(
+                        "net/minecraft/util/StringUtil",
+                        "isAllowedChatCharacter",
+                        "(I)Z",
+                        true,
+                        "chatAllowedCharacter",
+                        "(I)V"),
+                new HookTarget(
+                        "net/minecraft/util/StringUtil",
+                        "broken",
+                        "not-a-descriptor",
+                        true,
+                        "broken",
+                        "()V"),
+            }
+            : new HookTarget[] {
+                new HookTarget(
+                        "net/minecraft/util/StringUtil",
+                        "isAllowedChatCharacter",
+                        "(I)Z",
+                        true,
+                        "chatAllowedCharacter",
+                        "(I)V"),
         new HookTarget(
                 "net/minecraft/util/StringUtil",
                 "filterText",

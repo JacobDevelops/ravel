@@ -119,6 +119,45 @@ if [ "$order_diagnostic" != "$order_expected_diagnostic" ]; then
 	exit 1
 fi
 
+failure_stdout="$order/failure-stdout"
+failure_stderr="$order/failure-stderr"
+(cd "$order/classes" && java \
+	-javaagent:"$order_agent" \
+	-Dravel.test.transform.failure=true \
+	-cp ".:$work" InitializationOrderMain >"$failure_stdout" 2>"$failure_stderr")
+failure_observed="$(<"$failure_stdout")"
+failure_diagnostic="$(grep '^\[ravel\]' "$failure_stderr")"
+failure_expected='allowed=true
+filtered=a
+b
+simple=ab
+valid=true
+transformed=0 methods=0
+[ravel] rewrote 0 classes and 0 methods; 0 hook invocations reached native code
+[ravel] failed to transform 1 classes
+[ravel] failed target: net.minecraft.util.StringUtil=java.lang.IllegalArgumentException'
+failure_expected_diagnostic='[ravel] failed to transform net.minecraft.util.StringUtil (java.lang.IllegalArgumentException)
+[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
+
+printf '%s\n' "$failure_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$failure_stderr"
+
+if [ "$failure_observed" != "$failure_expected" ]; then
+	echo >&2
+	echo "a failed transformation did not preserve the original class and report its type; expected:" >&2
+	printf '%s\n' "$failure_expected" >&2
+	exit 1
+fi
+
+if [ "$failure_diagnostic" != "$failure_expected_diagnostic" ]; then
+	echo >&2
+	echo "a failed transformation did not produce the redacted diagnostic; expected:" >&2
+	printf '%s\n' "$failure_expected_diagnostic" >&2
+	exit 1
+fi
+
 # `java.library.path` is the directory holding the library, not the file.
 stdout="$work/stdout"
 stderr="$work/stderr"

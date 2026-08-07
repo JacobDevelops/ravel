@@ -84,6 +84,11 @@ public final class Agent {
         return installed.loaderIdentity();
     }
 
+    private static String transformationFailures() {
+        Transformer installed = transformer;
+        return installed == null ? "" : installed.transformationFailures();
+    }
+
     private static String rewrittenTargets() {
         Transformer installed = transformer;
         return installed == null ? null : installed.rewrittenTargets();
@@ -121,6 +126,7 @@ public final class Agent {
         if (targets != null) {
             line = line + "[ravel] rewritten targets: " + targets + "\n";
         }
+        line = line + transformationFailures();
         write(FileDescriptor.out, line);
     }
 

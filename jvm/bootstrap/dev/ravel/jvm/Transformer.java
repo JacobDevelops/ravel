@@ -49,6 +49,7 @@ public final class Transformer implements ClassFileTransformer {
     private final AtomicInteger transformedClasses = new AtomicInteger();
     private final AtomicInteger rewrittenMethods = new AtomicInteger();
     private final ConcurrentMap<String, Integer> rewrittenByClass;
+    private final ConcurrentMap<String, String> failedByClass = new ConcurrentHashMap<>();
     private final AtomicReference<String> loaderIdentity = new AtomicReference<>();
 
     /**
@@ -79,6 +80,25 @@ public final class Transformer implements ClassFileTransformer {
     /** Methods this transformer rewrote. */
     public int rewrittenMethods() {
         return rewrittenMethods.get();
+    }
+
+    /** Reports each class whose rewrite failed and the throwable type that stopped it. */
+    public String transformationFailures() {
+        Map<String, String> sorted = new TreeMap<>(failedByClass);
+        if (sorted.isEmpty()) {
+            return "";
+        }
+        StringBuilder report = new StringBuilder("[ravel] failed to transform ")
+                .append(sorted.size())
+                .append(" classes\n");
+        for (Map.Entry<String, String> failure : sorted.entrySet()) {
+            report.append("[ravel] failed target: ")
+                    .append(failure.getKey())
+                    .append('=')
+                    .append(failure.getValue())
+                    .append('\n');
+        }
+        return report.toString();
     }
 
     /** Names each rewritten class and the methods matched inside it, or {@code null} when disabled. */
@@ -157,29 +177,39 @@ public final class Transformer implements ClassFileTransformer {
         loaderIdentity.compareAndSet(null, describe(loader));
 
         ClassFile context = ClassFile.of();
-        AtomicInteger classMethods = rewrittenByClass == null ? null : new AtomicInteger();
+        int classMethods = 0;
         byte[] rewritten = classfile;
         for (HookTarget target : targets) {
             // One pass per target rather than one predicate over all of them:
             // the code transform has to know which target it is injecting, and a
             // handful of passes over one class is not a cost anyone can measure.
-            rewritten =
-                    context.transformClass(
-                            context.parse(rewritten),
-                            ClassTransform.transformingMethods(
-                                    model ->
-                                            model.methodName().equalsString(target.member())
-                                                    && model.methodType()
-                                                            .equalsString(target.descriptor()),
-                                    MethodTransform.transformingCode(
-                                            prepend(target, classMethods))));
+            PrependTransform prepend;
+            try {
+                prepend = new PrependTransform(target);
+                rewritten =
+                        context.transformClass(
+                                context.parse(rewritten),
+                                ClassTransform.transformingMethods(
+                                        model ->
+                                                model.methodName().equalsString(target.member())
+                                                        && model.methodType()
+                                                                .equalsString(target.descriptor()),
+                                        MethodTransform.transformingCode(prepend)));
+            } catch (Throwable failure) {
+                String dottedName = internalName.replace('/', '.');
+                String failureType = failure.getClass().getName();
+                failedByClass.put(dottedName, failureType);
+                Agent.diagnose("failed to transform " + dottedName + " (" + failureType + ")");
+                return null;
+            }
+            if (prepend.matched()) {
+                classMethods++;
+            }
         }
         transformedClasses.incrementAndGet();
-        if (classMethods != null) {
-            int matched = classMethods.get();
-            if (matched > 0) {
-                rewrittenByClass.put(internalName.replace('/', '.'), matched);
-            }
+        rewrittenMethods.addAndGet(classMethods);
+        if (rewrittenByClass != null && classMethods > 0) {
+            rewrittenByClass.put(internalName.replace('/', '.'), classMethods);
         }
         return rewritten;
     }
@@ -190,40 +220,45 @@ public final class Transformer implements ClassFileTransformer {
                 && target.descriptor().equals("(II)I");
     }
 
-    private CodeTransform prepend(HookTarget target, AtomicInteger classMethods) {
-        MethodTypeDesc targetType = MethodTypeDesc.ofDescriptor(target.descriptor());
-        MethodTypeDesc hookType = MethodTypeDesc.ofDescriptor(target.hookDescriptor());
-        return new CodeTransform() {
-            private boolean injected;
+    private static final class PrependTransform implements CodeTransform {
+        private final HookTarget target;
+        private final MethodTypeDesc targetType;
+        private final MethodTypeDesc hookType;
+        private boolean injected;
 
-            @Override
-            public void accept(CodeBuilder builder, CodeElement element) {
-                if (!injected) {
-                    injected = true;
-                    // Local slot zero is the receiver on an instance method, and
-                    // the first argument on a static one.
-                    int slot = target.isStatic() ? 0 : 1;
-                    for (ClassDesc parameter : targetType.parameterList()) {
-                        TypeKind kind = TypeKind.from(parameter);
-                        builder.loadLocal(kind, slot);
-                        slot += kind.slotSize();
-                    }
-                    builder.invokestatic(HOOK, target.hookMethod(), hookType);
-                    if (classMethods != null) {
-                        classMethods.incrementAndGet();
-                    }
-                    rewrittenMethods.incrementAndGet();
+        private PrependTransform(HookTarget target) {
+            this.target = target;
+            targetType = MethodTypeDesc.ofDescriptor(target.descriptor());
+            hookType = MethodTypeDesc.ofDescriptor(target.hookDescriptor());
+        }
+
+        private boolean matched() {
+            return injected;
+        }
+
+        @Override
+        public void accept(CodeBuilder builder, CodeElement element) {
+            if (!injected) {
+                injected = true;
+                // Local slot zero is the receiver on an instance method, and
+                // the first argument on a static one.
+                int slot = target.isStatic() ? 0 : 1;
+                for (ClassDesc parameter : targetType.parameterList()) {
+                    TypeKind kind = TypeKind.from(parameter);
+                    builder.loadLocal(kind, slot);
+                    slot += kind.slotSize();
                 }
-                if (isTitleMenu(target)
-                        && element instanceof ReturnInstruction instruction
-                        && instruction.typeKind() == TypeKind.INT) {
-                    builder.aload(0);
-                    builder.swap();
-                    builder.iload(2);
-                    builder.invokestatic(TRANSFORMER, "addTitleMenu", TITLE_MENU);
-                }
-                builder.with(element);
+                builder.invokestatic(HOOK, target.hookMethod(), hookType);
             }
-        };
+            if (isTitleMenu(target)
+                    && element instanceof ReturnInstruction instruction
+                    && instruction.typeKind() == TypeKind.INT) {
+                builder.aload(0);
+                builder.swap();
+                builder.iload(2);
+                builder.invokestatic(TRANSFORMER, "addTitleMenu", TITLE_MENU);
+            }
+            builder.with(element);
+        }
     }
 }

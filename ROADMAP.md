@@ -708,7 +708,7 @@ number meets a real pack.
 | M3-W0 | Grow the 26.1.2 hook inventory to M3's targets | M2, ADG-4 | resolved target record, `hooks.toml` entries, re-pinned `adapter.toml` hash and regenerated `mappings.lock` | targets are resolved against the pinned jar by two independent passes and recorded in [`m3-hook-targets.md`](docs/architecture/m3-hook-targets.md); the inventory edit that lands them is separate and is what the hash re-pin and lock regeneration gate |
 | M3-W1 | Implement registry barrier and content registration | M2 | block/item/recipe test mods | duplicate/conflicting claims fail; IDs are immutable after registration |
 | M3-W2 | Implement commands, events, resources and data | M3-W1 | command/event/resource test mods | process tests exercise success, ordering, side and failure cases |
-| M3-W3 | Implement ADG-6 configuration and generated UI | M2, ADG-6 | the three schema edits ADG-6 names, layered config, generated Java screen and a screen test mod | file/UI edits round-trip; validation, sides, restart and per-setting pack overrides pass. Where the screen artifact loads is open: ADG-1's amendment names the two candidates and leaves the choice here |
+| M3-W3 | Implement ADG-6 configuration and generated UI | M2, ADG-6 | the three schema edits ADG-6 names, layered config, generated Java screen and a screen test mod | file/UI edits round-trip; validation, sides, restart and per-setting pack overrides pass. ADG-1 selected the agent appending the sibling screen jar through `Instrumentation.appendToSystemClassLoaderSearch`, so artifact loading no longer blocks this work |
 | M3-W4 | Implement versioned saved data | M3-W1 | save test mod and world fixture, over the deciding half `ravel-save` already models — what a version is, who owns it, and whether a world may be opened | create/save/exit/reload preserves state; incompatible/missing required data fails closed. What remains is moving bytes in a world, which needs the game objects ADG-4's amendment admits |
 | M3-W5 | Implement in-game mod/dependency surface | M2-W7, ADG-6 | mod list and diagnostics UI, over the model `ravel-loader` already holds ordered by resolved load order | valid and invalid graphs render deterministic actionable messages. The drawing half is ADG-6's mechanism rather than a second one, so what remains is a screen and not a design |
 | M3-W6 | Implement opt-in profiling | M2-W8 | collectors and profiling UI/report | per-mod attribution accuracy and unsupported metrics are explicit; normal-mode budget passes |
@@ -919,7 +919,7 @@ distribution, rollback, and private-history isolation.
 | Java/Rust state ownership | ADG-4 / M1 | discharged; amended at M3-W0 to admit opaque handles |
 | Stock Prism versus minimal patch | ADG-5 / M1 | discharged, with a correction outstanding: the library-path argument does not work and choosing the fix amends ADG-5 |
 | Configuration and UI schema | ADG-6 before M3-W3 | discharged; declared in data, drawn in Java |
-| Where the generated screen artifact loads | M3-W3 | blocks M3-W3; ADG-1's amendment names two candidates and picks neither |
+| Where the generated screen artifact loads | M3-W3 | discharged; ADG-1 records M3-W3 selecting `Instrumentation.appendToSystemClassLoaderSearch` for the sibling screen jar |
 | Per-counterpart rights and implementation method | M5 | blocks publication; may block lawful implementation |
 | Official server wire surface | ADG-7 after M10 | blocks M11 only |
 | Official host viability | ADG-8 only after M9 failure | leaves M9 incomplete |

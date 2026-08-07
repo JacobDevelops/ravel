@@ -308,12 +308,12 @@ client bootstraps, and defining the screen stays lazy behind a hook. And an entr
 appended at `premain` is still found by a `Class.forName` long afterwards, on the
 same `AppClassLoader` that loads the game.
 
-### Where the screen artifact loads is not settled here
+### The two screen-artifact candidates M3-W3 superseded
 
 The screen names game types, so it has to be loaded by a loader that resolves
 them, and it has to reach Rust, which means reaching `Hook` on the system loader.
-The delegation above gives the second for free once the first holds. How the
-artifact gets to that loader is unresolved, and this record does not pick:
+The delegation above gives the second for free once the first holds. Before the
+measurement above admitted the third mechanism, this record did not pick between:
 
 - Ship it as a jar the launcher puts on the game's class path. That works, and it
   costs [ADG-5](adg-5-prism-integration.md)'s property that Ravel adds arguments
@@ -322,9 +322,9 @@ artifact gets to that loader is unresolved, and this record does not pick:
   the `java.lang.classfile` machinery the transformer already runs. This keeps
   ADG-5 intact and is the one to try first.
 
-M3-W3 owes the choice, in the same way M2-W5 owed `System.loadLibrary` and
-answered it. It is safe Java either way, so it bears on whether the mechanism
-works rather than on the unsafe count.
+M3-W3 owed the choice, in the same way M2-W5 owed `System.loadLibrary`, and
+answered it with the appended sibling jar above. It is safe Java, so the choice
+bears on whether the mechanism works rather than on the unsafe count.
 
 > **Answered at M3-W3, and with neither of these two.** The measurement above
 > admitted a third mechanism that this list excluded on a false premise, and that

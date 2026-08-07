@@ -1,6 +1,7 @@
 package dev.ravel.jvm;
 
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeBuilder;
 import java.lang.classfile.CodeElement;
@@ -176,7 +177,9 @@ public final class Transformer implements ClassFileTransformer {
         // throws still leaves the identity of the loader that asked for it.
         loaderIdentity.compareAndSet(null, describe(loader));
 
-        ClassFile context = ClassFile.of();
+        ClassLoader resources = loader == null ? ClassLoader.getSystemClassLoader() : loader;
+        ClassFile context = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
+                ClassHierarchyResolver.ofResourceParsing(resources)));
         int classMethods = 0;
         byte[] rewritten = classfile;
         for (HookTarget target : targets) {

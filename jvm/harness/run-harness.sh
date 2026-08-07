@@ -74,8 +74,11 @@ javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Screens.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Transformer.java" \
 	"$root/jvm/harness/initialization/dev/ravel/jvm/Hook.java"
-javac -cp "$work:$order/agent-classes" -d "$order/classes" \
-	"$root/jvm/harness/InitializationOrderMain.java"
+mapfile -d '' hierarchy_sources < <(find "$root/jvm/harness/hierarchy" -name '*.java' -print0 | sort -z)
+javac -d "$order/classes" "${hierarchy_sources[@]}"
+javac -cp "$work:$order/classes:$order/agent-classes" -d "$order/classes" \
+	"$root/jvm/harness/InitializationOrderMain.java" \
+	"$root/jvm/harness/HierarchyResolutionMain.java"
 printf 'Premain-Class: dev.ravel.jvm.Agent\nCan-Retransform-Classes: false\n' >"$order/agent.manifest"
 mapfile -d '' order_compiled < <(cd "$order/agent-classes" && find . -name '*.class' -print0 | sort -z)
 order_entries=()
@@ -115,6 +118,38 @@ fi
 if [ "$order_diagnostic" != "$order_expected_diagnostic" ]; then
 	echo >&2
 	echo "the initialization-order harness did not produce the recorded diagnostic; expected:" >&2
+	printf '%s\n' "$order_expected_diagnostic" >&2
+	exit 1
+fi
+
+hierarchy_stdout="$order/hierarchy-stdout"
+hierarchy_stderr="$order/hierarchy-stderr"
+(cd "$order/classes" && java \
+	-javaagent:"$order_agent" \
+	-Dravel.test.transform.hierarchy=true \
+	-cp ".:$work" HierarchyResolutionMain >"$hierarchy_stdout" 2>"$hierarchy_stderr")
+hierarchy_observed="$(<"$hierarchy_stdout")"
+hierarchy_diagnostic="$(grep '^\[ravel\]' "$hierarchy_stderr")"
+hierarchy_expected='before=1 methods=1
+value=target
+after=2 methods=2
+[ravel] rewrote 2 classes and 2 methods; 2 hook invocations reached native code'
+
+printf '%s\n' "$hierarchy_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$hierarchy_stderr"
+
+if [ "$hierarchy_observed" != "$hierarchy_expected" ]; then
+	echo >&2
+	echo "hierarchy resolution loaded a later target before its own transformation; expected:" >&2
+	printf '%s\n' "$hierarchy_expected" >&2
+	exit 1
+fi
+
+if [ "$hierarchy_diagnostic" != "$order_expected_diagnostic" ]; then
+	echo >&2
+	echo "the hierarchy-resolution harness did not produce the recorded diagnostic; expected:" >&2
 	printf '%s\n' "$order_expected_diagnostic" >&2
 	exit 1
 fi

@@ -1,24 +1,41 @@
 package dev.ravel.jvm;
 
 public final class Hook {
-    public static final HookTarget[] TARGETS = Boolean.getBoolean("ravel.test.transform.failure")
+    public static final HookTarget[] TARGETS = Boolean.getBoolean("ravel.test.transform.hierarchy")
             ? new HookTarget[] {
                 new HookTarget(
-                        "net/minecraft/util/StringUtil",
-                        "isAllowedChatCharacter",
-                        "(I)Z",
+                        "dev/ravel/jvm/hierarchy/HierarchySource",
+                        "choose",
+                        "(Z)Ldev/ravel/jvm/hierarchy/HierarchyBase;",
                         true,
-                        "chatAllowedCharacter",
-                        "(I)V"),
+                        "hierarchySource",
+                        "(Z)V"),
                 new HookTarget(
-                        "net/minecraft/util/StringUtil",
-                        "broken",
-                        "not-a-descriptor",
-                        true,
-                        "broken",
+                        "dev/ravel/jvm/hierarchy/HierarchyTarget",
+                        "value",
+                        "()Ljava/lang/String;",
+                        false,
+                        "hierarchyTarget",
                         "()V"),
             }
-            : new HookTarget[] {
+            : Boolean.getBoolean("ravel.test.transform.failure")
+                    ? new HookTarget[] {
+                        new HookTarget(
+                                "net/minecraft/util/StringUtil",
+                                "isAllowedChatCharacter",
+                                "(I)Z",
+                                true,
+                                "chatAllowedCharacter",
+                                "(I)V"),
+                        new HookTarget(
+                                "net/minecraft/util/StringUtil",
+                                "broken",
+                                "not-a-descriptor",
+                                true,
+                                "broken",
+                                "()V"),
+                    }
+                    : new HookTarget[] {
                 new HookTarget(
                         "net/minecraft/util/StringUtil",
                         "isAllowedChatCharacter",
@@ -61,11 +78,11 @@ public final class Hook {
     }
 
     public static void ravelInitialize() {
+        String className = Boolean.getBoolean("ravel.test.transform.hierarchy")
+                ? "dev.ravel.jvm.hierarchy.HierarchySource"
+                : "net.minecraft.util.StringUtil";
         try {
-            Class.forName(
-                    "net.minecraft.util.StringUtil",
-                    true,
-                    ClassLoader.getSystemClassLoader());
+            Class.forName(className, true, ClassLoader.getSystemClassLoader());
         } catch (ClassNotFoundException absent) {
             throw new IllegalStateException(absent);
         }
@@ -88,6 +105,14 @@ public final class Hook {
     }
 
     public static void playerNameValid(String name) {
+        invocations++;
+    }
+
+    public static void hierarchySource(boolean target) {
+        invocations++;
+    }
+
+    public static void hierarchyTarget() {
         invocations++;
     }
 }

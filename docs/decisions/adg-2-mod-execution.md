@@ -228,6 +228,12 @@ reconciliation guessing: a package declares portable source and its integrity, a
 the per-target structure goes. That is a schema edit and a `ravel-package` change,
 and this ADR makes neither.
 
+**Closure, 2026-08-08:** that reconciliation has landed as a breaking
+schema-v1-in-place migration. `targets` and compiled-artifact declarations are
+refused. `source` now contains the repository and a non-empty list of portable
+source files, each with a package-relative path and SHA-256 digest; provenance
+remains independently integrity-checked.
+
 `SPEC.md` §3.4 says the execution and distribution models are both open and that
 the document states no requirement about local compilation. That sentence is now
 wrong in the other direction and needs amending to state the requirement. §3.3 is
@@ -487,11 +493,10 @@ the containment, and it is the containment that was the sandbox's best argument.
   records the residue, which is narrow and technical — whether ad-hoc signing
   needs a full Xcode toolchain present. This decision did not set out to solve
   that problem and solved it anyway, which is worth noticing rather than claiming.
-- **`package.schema.json` is now wrong in a way that validates.** Recorded under
-  "What this closes and what it does not" and repeated here because it is a
-  consequence and not a footnote: the gate-enforced schema admits a source package
-  by letting it misdescribe itself, so this decision creates open work that has to
-  land before packages built under it mean anything.
+- **`package.schema.json` was wrong in a way that validated.** The original
+  consequence is recorded under "What this closes and what it does not". The
+  2026-08-08 closure migrated schema v1 in place to source-file declarations and
+  made the old per-target form fail.
 - **First install costs a minute on a modest machine**, and more on a slow one:
   73.8 s at 256 mods with four build jobs. That is a one-off, and it is a one-off
   the player experiences before they have played anything.

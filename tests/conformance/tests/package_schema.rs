@@ -163,23 +163,21 @@ fn manifest_document(path: &str, side: &str) -> String {
             "sides": ["client"],
             "order": "after"
         }],
-        "targets": [{
-            "platform": "linux",
-            "architecture": "x86_64",
-            "artifacts": [{ "path": path, "role": "module", "sha256": DIGEST }]
-        }],
+        "source": {
+            "repository": "https://example.invalid/example_mod",
+            "files": [{ "path": path, "sha256": DIGEST }]
+        },
         "resources": ["resources/lang/en.json"],
         "savedDataVersions": [1],
         "authors": [{ "name": "Example", "url": "https://example.invalid/example" }],
         "license": "MIT OR Apache-2.0",
-        "source": "https://example.invalid/example_mod",
         "provenance": { "record": "provenance.json", "sha256": DIGEST }
     });
     document.to_string()
 }
 
 fn valid_document() -> String {
-    manifest_document("artifacts/mod.bin", "client")
+    manifest_document("src/lib.rs", "client")
 }
 
 #[test]
@@ -265,36 +263,54 @@ fn a_manifest_ravel_package_rendered_is_one_the_schema_validates() {
 #[test]
 fn a_document_ravel_package_refuses_is_one_the_schema_also_refuses() {
     let valid = valid_document();
-    let mut broken: Vec<(&str, String)> = vec![
-        (
-            "unknown-field",
-            valid.replace("\"license\":", "\"signature\":\"x\",\"license\":"),
-        ),
-        (
-            "bad-id",
-            valid.replace("\"example_mod\",", "\"Example_Mod\","),
-        ),
-        (
-            "bad-version",
-            valid.replace("\"version\":\"1.4.0\"", "\"version\":\"1.4\""),
-        ),
-        ("empty-sides", valid.replace("[\"client\"]", "[]")),
-        (
-            "bad-role",
-            valid.replace("\"role\":\"module\"", "\"role\":\"plugin\""),
-        ),
-        ("bad-digest", valid.replace(DIGEST, &DIGEST.to_uppercase())),
-    ];
+    let base: Value = serde_json::from_str(&valid).expect("the fixture is JSON");
+    let mut broken = Vec::new();
+
+    let mut document = base.clone();
+    document["signature"] = json!("x");
+    broken.push(("unknown-field", document));
+
+    let mut document = base.clone();
+    document["id"] = json!("Example_Mod");
+    broken.push(("bad-id", document));
+
+    let mut document = base.clone();
+    document["version"] = json!("1.4");
+    broken.push(("bad-version", document));
+
+    let mut document = base.clone();
+    document["sides"] = json!([]);
+    broken.push(("empty-sides", document));
+
+    let mut document = base.clone();
+    document["targets"] = json!([]);
+    broken.push(("old-targets", document));
+
+    let mut document = base.clone();
+    document["source"]["files"] = json!([]);
+    broken.push(("empty-source-files", document));
+
+    let mut document = base.clone();
+    document["source"]["files"][0]["size"] = json!(1);
+    broken.push(("unknown-source-field", document));
+
+    let mut document = base.clone();
+    document["source"]["files"][0]["sha256"] = json!(DIGEST.to_uppercase());
+    broken.push(("bad-digest", document));
+
     for (label, path) in [
-        ("absolute-path", "/artifacts/mod.bin"),
-        ("traversal-path", "../artifacts/mod.bin"),
-        ("backslash-path", "..\\..\\artifacts\\mod.bin"),
-        ("line-break-path", "artifacts/\nmod.bin"),
+        ("absolute-path", "/src/lib.rs"),
+        ("traversal-path", "../src/lib.rs"),
+        ("backslash-path", "..\\..\\src\\lib.rs"),
+        ("line-break-path", "src/\nlib.rs"),
     ] {
-        broken.push((label, manifest_document(path, "client")));
+        let mut document = base.clone();
+        document["source"]["files"][0]["path"] = json!(path);
+        broken.push((label, document));
     }
 
     for (label, document) in broken {
+        let document = document.to_string();
         assert_ne!(document, valid, "{label} should have changed the document");
         assert!(
             PackageManifest::parse(&document).is_err(),
@@ -322,7 +338,6 @@ fn the_schema_still_declares_what_ravel_package_implements() {
             "version",
             "compatibility",
             "sides",
-            "targets",
             "authors",
             "license",
             "source",
@@ -330,15 +345,16 @@ fn the_schema_still_declares_what_ravel_package_implements() {
         ])
     );
     assert_eq!(
-        schema["$defs"]["target"]["properties"]["artifacts"]["items"]["properties"]["role"]["enum"],
-        json!([
-            "executable",
-            "module",
-            "library",
-            "resource",
-            "metadata",
-            "other"
-        ])
+        schema["properties"]["source"]["required"],
+        json!(["repository", "files"])
+    );
+    assert_eq!(
+        schema["properties"]["source"]["properties"]["files"]["minItems"],
+        1
+    );
+    assert_eq!(
+        schema["$defs"]["sourceFile"]["required"],
+        json!(["path", "sha256"])
     );
     assert_eq!(
         schema["$defs"]["dependency"]["properties"]["relationship"]["enum"],

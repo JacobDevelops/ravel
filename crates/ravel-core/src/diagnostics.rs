@@ -80,21 +80,18 @@ pub enum FailureKind {
     SideMismatch,
     /// Two packages claim the same mod id.
     DuplicateIdentity,
-    /// A package does not support the running platform or architecture.
-    UnsupportedTarget,
     /// Two mods claim the same registry identifier.
     ConflictingRegistryClaim,
 }
 
 impl FailureKind {
     /// Every outcome, in the order `SPEC.md` §9.2 lists them.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 6] = [
         Self::MissingRequiredDependency,
         Self::IncompatibleVersion,
         Self::DependencyCycle,
         Self::SideMismatch,
         Self::DuplicateIdentity,
-        Self::UnsupportedTarget,
         Self::ConflictingRegistryClaim,
     ];
 
@@ -112,7 +109,6 @@ impl FailureKind {
             Self::DependencyCycle => "dependency-cycle",
             Self::SideMismatch => "side-mismatch",
             Self::DuplicateIdentity => "duplicate-identity",
-            Self::UnsupportedTarget => "unsupported-target",
             Self::ConflictingRegistryClaim => "conflicting-registry-claim",
         }
     }
@@ -395,7 +391,7 @@ mod tests {
 
     #[test]
     fn every_spec_failure_kind_round_trips_as_its_reported_name() {
-        assert_eq!(FailureKind::ALL.len(), 7);
+        assert_eq!(FailureKind::ALL.len(), 6);
         for kind in FailureKind::ALL {
             let encoded = serde_json::to_string(&kind).expect("kind should serialize");
             assert_eq!(encoded, format!("\"{}\"", kind.name()));

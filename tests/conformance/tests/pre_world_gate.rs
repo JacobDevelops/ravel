@@ -35,7 +35,7 @@ const RUNNING_MINECRAFT: &str = "26.0.0";
 const RUNNING_PLATFORM: &str = "linux";
 const RUNNING_ARCHITECTURE: &str = "x86_64";
 
-const ARTIFACT_BYTES: &[u8] = b"the artifact this package ships";
+const SOURCE_BYTES: &[u8] = b"pub fn load() {}\n";
 const RECORD_BYTES: &[u8] = b"{\"origin\":\"example\"}";
 
 const EVIDENCE_FILE: &str = "evidence/m2/pre-world-gate.json";
@@ -52,8 +52,6 @@ fn host() -> Host {
     Host {
         ravel: RUNNING_RAVEL.parse().expect("a valid version"),
         minecraft: RUNNING_MINECRAFT.to_owned(),
-        platform: RUNNING_PLATFORM.to_owned(),
-        architecture: RUNNING_ARCHITECTURE.to_owned(),
     }
 }
 
@@ -109,8 +107,6 @@ struct Declaration<'a> {
     version: &'a str,
     sides: &'a str,
     dependencies: &'a str,
-    platform: &'a str,
-    architecture: &'a str,
 }
 
 impl<'a> Declaration<'a> {
@@ -121,8 +117,6 @@ impl<'a> Declaration<'a> {
             version: "1.0.0",
             sides: r#"["client"]"#,
             dependencies: "[]",
-            platform: RUNNING_PLATFORM,
-            architecture: RUNNING_ARCHITECTURE,
         }
     }
 
@@ -136,14 +130,12 @@ impl<'a> Declaration<'a> {
         self
     }
 
-    fn document(&self, artifact_digest: &str) -> String {
+    fn document(&self, source_digest: &str) -> String {
         let Self {
             id,
             version,
             sides,
             dependencies,
-            platform,
-            architecture,
         } = self;
         let record = digest_of(RECORD_BYTES);
         format!(
@@ -154,20 +146,12 @@ impl<'a> Declaration<'a> {
               "compatibility": {{ "ravel": "*", "minecraft": ["{RUNNING_MINECRAFT}"] }},
               "sides": {sides},
               "dependencies": {dependencies},
-              "targets": [{{
-                "platform": "{platform}",
-                "architecture": "{architecture}",
-                "artifacts": [
-                  {{
-                    "path": "artifacts/mod.bin",
-                    "role": "module",
-                    "sha256": "{artifact_digest}"
-                  }}
-                ]
-              }}],
+              "source": {{
+                "repository": "https://example.invalid/{id}",
+                "files": [{{ "path": "src/lib.rs", "sha256": "{source_digest}" }}]
+              }},
               "authors": [{{ "name": "Example" }}],
               "license": "MIT",
-              "source": "https://example.invalid/{id}",
               "provenance": {{ "record": "provenance.json", "sha256": "{record}" }}
             }}"#
         )
@@ -177,10 +161,10 @@ impl<'a> Declaration<'a> {
 /// Writes one package into `parent`, with the files its manifest declares.
 fn write(parent: &Path, declaration: &Declaration<'_>) -> DiscoveredPackage {
     let root = parent.join(declaration.id);
-    fs::create_dir_all(root.join("artifacts")).expect("the package should be creatable");
-    fs::write(root.join("artifacts/mod.bin"), ARTIFACT_BYTES).expect("artifact written");
+    fs::create_dir_all(root.join("src")).expect("the package should be creatable");
+    fs::write(root.join("src/lib.rs"), SOURCE_BYTES).expect("source written");
     fs::write(root.join("provenance.json"), RECORD_BYTES).expect("record written");
-    DiscoveredPackage::new(root, declaration.document(&digest_of(ARTIFACT_BYTES)))
+    DiscoveredPackage::new(root, declaration.document(&digest_of(SOURCE_BYTES)))
 }
 
 /// A mod that records nothing and refuses nothing, so any refusal is the
@@ -292,8 +276,7 @@ fn refuse(
 fn every_refusal() -> Vec<Refused> {
     vec![
         unparsable_manifest(),
-        tampered_artifact(),
-        unsupported_target(),
+        tampered_source_file(),
         side_mismatch(),
         missing_required_dependency(),
         incompatible_pair(),
@@ -317,38 +300,18 @@ fn unparsable_manifest() -> Refused {
     )
 }
 
-fn tampered_artifact() -> Refused {
+fn tampered_source_file() -> Refused {
     let parent = workspace("tampered");
     let packages = [write(&parent, &Declaration::client("example_mod"))];
     fs::write(
-        parent.join("example_mod/artifacts/mod.bin"),
+        parent.join("example_mod/src/lib.rs"),
         b"someone else's bytes",
     )
-    .expect("artifact rewritten");
+    .expect("source rewritten");
 
     refuse(
         "digest-mismatch",
-        "an artifact whose bytes are not the bytes the manifest records",
-        &parent,
-        &packages,
-        Side::Client,
-        &Subject::of(id("example_mod")),
-    )
-}
-
-fn unsupported_target() -> Refused {
-    let parent = workspace("unsupported-target");
-    let packages = [write(
-        &parent,
-        &Declaration {
-            architecture: "aarch64",
-            ..Declaration::client("example_mod")
-        },
-    )];
-
-    refuse(
-        "unsupported-target",
-        "a package that ships for no target the running host has",
+        "a source file whose bytes are not the bytes the manifest records",
         &parent,
         &packages,
         Side::Client,
@@ -553,11 +516,6 @@ fn every_dependency_graph_outcome_is_reported_as_itself() {
             ("unparsable-manifest", None, LifecycleState::Discovered),
             ("digest-mismatch", None, LifecycleState::Discovered),
             (
-                "unsupported-target",
-                Some(FailureKind::UnsupportedTarget),
-                LifecycleState::Discovered
-            ),
-            (
                 "side-mismatch",
                 Some(FailureKind::SideMismatch),
                 LifecycleState::Validated
@@ -631,6 +589,9 @@ fn the_one_message_a_mod_wrote_loses_its_path_and_its_credential() {
 #[test]
 fn the_recorded_evidence_is_what_the_gate_does_now() {
     let path = repository_root().join(EVIDENCE_FILE);
+    if std::env::var_os("RAVEL_REGENERATE_EVIDENCE").is_some() {
+        fs::write(&path, rendered(&record())).expect("the evidence should be writable");
+    }
     let stored = fs::read_to_string(&path).unwrap_or_else(|error| {
         panic!("`{EVIDENCE_FILE}` should be readable: {error}");
     });

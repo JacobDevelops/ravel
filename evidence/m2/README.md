@@ -7,7 +7,7 @@ what it admits, and `devenv tasks run ravel:verify-milestone:m2` reads both.
 | Record | Work package | What it shows |
 | --- | --- | --- |
 | [`noop-pipeline.json`](noop-pipeline.json) | M2-W6 | The no-op package validated, resolved, and driven through every `SPEC.md` §14 state, in order, on each side it declares. |
-| [`pre-world-gate.json`](pre-world-gate.json) | M2-W7 | Seven invalid package sets refused before a world could open, each reported as its own `SPEC.md` §9.2 outcome, and what the redaction policy took out of the one message Ravel did not write. |
+| [`pre-world-gate.json`](pre-world-gate.json) | M2-W7 | Six invalid package sets refused before a world could open, each reported as its own `SPEC.md` §9.2 outcome, and what the redaction policy took out of the one message Ravel did not write. |
 | [`loader-overhead.json`](loader-overhead.json) | M2-W8 | What the loader costs on Linux for that package, what a linked pack-sized set costs to build, and the numeric budget M3 regresses against. |
 | [`prism-launch.json`](prism-launch.json) | M2-W5, M2-W8 | The official pinned client launched from stock Prism with Ravel's agent attached, rewriting its target classes inside the real game process, with no other mod loader installed. |
 
@@ -39,14 +39,14 @@ would write today, so a conclusion edited into the record and not into the runne
 fails. The raw text the redaction policy was given is never recorded — only what
 it left.
 
-The mod ran as a safe Rust value the loader owned in process. ADG-2 selects the
-mod execution and distribution model and is deferred to M3, so no record here may
-be read as evidence for a binary format: nothing loaded a library, started a guest
-runtime, spawned a process, or exported a foreign symbol.
+The mod ran as a safe Rust value the loader owned in process. At M2, ADG-2 had
+not yet selected the execution and distribution model, so no record here is
+evidence for a binary format: nothing loaded a library, started a guest runtime,
+spawned a process, or exported a foreign symbol.
 `loader-overhead.json` measures a linked pack because a linked set is the only
-shape available while ADG-2 is open, and says so in its own words. The one place
-M2 does carry a shape assumption is `schemas/package.schema.json`, which still
-requires a per-target artifact list and therefore presumes a per-target mod
-binary. That is inherited rather than chosen — `ravel-package` implements
-identity, integrity and compatibility only — and M3 reconciles the schema with
-whatever ADG-2 selects.
+shape available while ADG-2 is open, and says so in its own words. The M2 schema
+originally carried a per-target artifact assumption. ADG-2 later selected source
+distribution, and the 2026-08-08 schema-v1-in-place migration
+closed that mismatch: packages now declare integrity-protected portable source
+files and the old `targets` form is refused. The generated M2 records retain the
+historical measurements while their live fixtures use the current contract.

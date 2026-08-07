@@ -83,8 +83,7 @@ impl std::error::Error for SchemaVersionError {}
 /// A string the schema constrains with `minLength: 1`.
 ///
 /// The schema asserts a minimum length on the display name, the licence
-/// expression, an author name, a target platform, a target architecture, and
-/// every declared Minecraft version. Each one names something, and an empty
+/// expression, an author name, and every declared Minecraft version. Each one names something, and an empty
 /// name is a metadata error rather than a mod that happens to be anonymous.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(into = "String", try_from = "String")]
@@ -150,7 +149,7 @@ impl std::error::Error for EmptyText {}
 /// The trailing `.+` refuses the four characters an ECMA `.` excludes, which is
 /// where a line break in a declared path would otherwise part company with the
 /// schema. All of it is refused before anything is read, which is what keeps
-/// [`crate::verify_artifact`] a package-local operation.
+/// [`crate::verify_source_file`] a package-local operation.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(into = "String", try_from = "String")]
 pub struct RelativePath(String);
@@ -170,7 +169,7 @@ impl RelativePath {
     /// of a player's installation once it is joined to a package root. Every
     /// [`crate::IntegrityError`] therefore names a file, never a path.
     ///
-    /// The schema permits a trailing slash, and the last segment of `artifacts/`
+    /// The schema permits a trailing slash, and the last segment of `src/`
     /// is the empty string, which would render a failure as being about nothing
     /// at all. The last *non-empty* segment always exists instead: a path that
     /// is empty or starts with `/` never becomes a [`RelativePath`], so the
@@ -436,7 +435,7 @@ mod tests {
     fn a_package_path_accepts_every_shape_the_schema_pattern_does() {
         for candidate in [
             "mod.so",
-            "artifacts/linux-x86_64/mod.so",
+            "src/lib.rs",
             "resources/lang/en.json",
             "a..b/c",
             "...",
@@ -516,7 +515,7 @@ mod tests {
     fn a_file_name_is_the_last_segment_of_a_declared_path() {
         for (candidate, expected) in [
             ("mod.so", "mod.so"),
-            ("artifacts/linux-x86_64/mod.so", "mod.so"),
+            ("src/lib.rs", "lib.rs"),
             ("a/b/c/provenance.json", "provenance.json"),
         ] {
             let path = RelativePath::try_from(candidate.to_owned()).expect(candidate);
@@ -526,12 +525,7 @@ mod tests {
 
     #[test]
     fn a_trailing_slash_still_names_a_file_rather_than_nothing() {
-        for (candidate, expected) in [
-            ("artifacts/", "artifacts"),
-            ("a/b/", "b"),
-            ("a//", "a"),
-            ("a", "a"),
-        ] {
+        for (candidate, expected) in [("src/", "src"), ("a/b/", "b"), ("a//", "a"), ("a", "a")] {
             let path = RelativePath::try_from(candidate.to_owned()).expect(candidate);
             assert!(!path.file_name().is_empty(), "{candidate}");
             assert_eq!(path.file_name(), expected, "{candidate}");

@@ -362,7 +362,7 @@ ravel/
 | Crate | Owns | May depend on | Must not depend on |
 | --- | --- | --- | --- |
 | `ravel-core` | Canonical IDs, versions, side/capability descriptors, lifecycle and diagnostic value types | small general-purpose safe crates | SDK, loader, concrete Minecraft adapter |
-| `ravel-package` | Manifest parsing, compatibility ranges, target metadata, hashes, provenance fields | core, serialization, version/range libraries | loader, bootstrap, Minecraft adapter |
+| `ravel-package` | Manifest parsing, compatibility ranges, source declarations, source-file hashes, provenance fields | core, serialization, version/range libraries | loader, bootstrap, Minecraft adapter |
 | `ravel-resolve` | Required/optional/incompatible/discouraged edges, cycles, side checks, deterministic load plan | core, package, graph/solver dependencies | SDK, concrete adapter |
 | `ravel-loader` | Discovery-to-stop orchestration, registry barrier, failure policy, world-access gate | core, package, resolve, host API, Minecraft traits, feature crates | concrete 26.1.2 implementation details outside injection |
 | `ravel-sdk` | Safe public API and author-facing types | core plus public parts of config/data/save/network | loader internals, generated bindings, JNI/JVMTI |
@@ -606,11 +606,11 @@ distribution.
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
 | M2-W1 | Implement canonical IDs, sides, versions and diagnostics | M1 | `ravel-core` | unit/property tests cover valid and invalid values |
-| M2-W2 | Implement package schema, targets and integrity | M2-W1 | `ravel-package` and JSON schema | valid packages round-trip; tamper and schema failures precede code execution. Target-specific failure modes waited on ADG-2, which M3 has now decided, so this package implements identity, integrity and compatibility only and the target model it defers to is source distribution. |
+| M2-W2 | Implement package schema and integrity | M2-W1 | `ravel-package` and JSON schema | valid packages round-trip; tamper and schema failures precede code execution. The original target model reflected M2 before ADG-2; schema v1 now requires integrity-protected portable source files and refuses the old target form. |
 | M2-W3 | Implement dependency resolution and load plans | M2-W2 | `ravel-resolve` | required/optional/incompatible/discouraged, cycles, duplicates, ranges and deterministic-order cases pass |
 | M2-W4 | Implement lifecycle state machine | M2-W1 | loader state machine | every legal and illegal transition plus every spec invariant is tested |
 | M2-W5 | Implement selected bootstrap and adapter shell | M1 ADRs, M2-W4 | bootstrap, host API, shared adapter plus 26.1.2 version data | official 26.1.2 process reaches Ravel without another loader |
-| M2-W6 | Package and execute no-op test mod | M2-W2..W5 | prebuilt no-op package | recorded evidence shows validate/resolve/load/construct/register/run/stop in deterministic order |
+| M2-W6 | Package and execute no-op test mod | M2-W2..W5 | source-only no-op package | recorded evidence shows validate/resolve/load/construct/register/run/stop in deterministic order |
 | M2-W7 | Add world-access and structured-failure gates | M2-W3..W6 | pre-world UI/log diagnostic path | invalid packages, sides, integrity and graphs cannot open a world; reports redact secrets/paths |
 | M2-W8 | Measure loader overhead and set regression budget | M2-W6..W7 | Linux no-op loader benchmark and review | the measured loader cost establishes the numeric regression budget used from M3 onward; M2 gate passes. Three of its six limits have since expired — see below |
 
@@ -673,10 +673,10 @@ accepted are a toolchain of about 196 MB, a build cache that has to stay
 resident, and Ravel owning compile failures as a support burden.
 [`pack-compile.json`](evidence/m3/pack-compile.json) is what prices them.
 
-`schemas/package.schema.json` requires per-target artifacts and cannot express a
-source-distributed mod at all, so reconciling it is live work rather than a
-blocked dependency. `SPEC.md` §3.4 is the contract that moves first, because it
-is what currently promises the question is open.
+The package-schema reconciliation is now closed as a breaking schema-v1-in-place
+migration. `targets` is no longer admitted; `source` declares a repository and at
+least one portable source file with its SHA-256 digest. The old mismatch remains
+part of the M2 and ADG-2 historical record.
 
 Two accepted records were amended for M3, and neither changed what it decided.
 ADG-4 admits an opaque handle to an object the *game* owns, which is what lets
@@ -792,7 +792,7 @@ unclassified entries.
 | M7-W5 | Final 100% audit | all waves | complete library manifest | 235/235 or evidence-corrected total; zero unresolved dependencies/registries; all provenance present |
 | M7-W6 | Independent review and gate | M7-W5 | private review/evidence | all package and cluster suites pass; M7 gate passes |
 
-“Counterpart present” means its package builds for its declared targets, passes
+“Counterpart present” means its package builds for its supported compilation targets, passes
 the standard suite, implements its accepted behaviour specification, records
 provenance and rights status, and participates in dependency/registry closure.
 A stub or metadata-only placeholder does not count.

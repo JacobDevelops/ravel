@@ -6,25 +6,34 @@
   "description": "A mod that does nothing, packaged to show the loader pipeline runs in order.",
   "compatibility": {
     "ravel": ">=0.0.0, <1.0.0",
-    "minecraft": ["26.1.2"]
+    "minecraft": [
+      "26.1.2"
+    ]
   },
-  "sides": ["client", "integrated-server", "dedicated-server"],
-  "targets": [
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "authors": [
     {
-      "platform": "linux",
-      "architecture": "x86_64",
-      "artifacts": [
-        {
-          "path": "artifacts/noop.artifact",
-          "role": "other",
-          "sha256": "14c7bf54265b5934c192fe83ddfde7de558106782322f0a44a274ce780c4ba9e"
-        }
-      ]
+      "name": "Ravel"
     }
   ],
-  "authors": [{ "name": "Ravel" }],
   "license": "MIT OR Apache-2.0",
-  "source": "https://tangled.org/jacobdevelops.tngl.sh/ravel",
+  "source": {
+    "repository": "https://tangled.org/jacobdevelops.tngl.sh/ravel",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "295978be73e06ee2c1aeaae5344c2d7e32942b4fe9a9a6fb06d531584f5c113b"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "b47497df7a148c1413ac63150bca7c208530e98c9c83619b4c2cecd05edbcdbb"
+      }
+    ]
+  },
   "provenance": {
     "record": "provenance.json",
     "sha256": "0db5e4619d6b96b11012a6f33a35237ece6a365ebb0769721695f942b64fa42e"

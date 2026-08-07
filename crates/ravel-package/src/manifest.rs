@@ -22,10 +22,8 @@ use crate::values::{NonEmptyText, RelativePath, SchemaVersion, Sha256Digest};
 /// declaration.
 ///
 /// Parsing establishes identity, compatibility, and the integrity claims a
-/// package makes. It does not select a target, load an artifact, or interpret
-/// an artifact `role`: ADG-2 is deferred to M3 and
-/// `docs/architecture/dependency-rules.md` forbids production code selecting a
-/// mod execution model before it is accepted.
+/// source-only package makes. It accepts portable source declarations and no
+/// compiled target or artifact model, as selected by ADG-2.
 ///
 /// # Examples
 ///
@@ -38,22 +36,15 @@ use crate::values::{NonEmptyText, RelativePath, SchemaVersion, Sha256Digest};
 ///   "version": "1.4.0",
 ///   "compatibility": { "ravel": ">=0.1, <0.2", "minecraft": ["26.0.0"] },
 ///   "sides": ["client"],
-///   "targets": [
-///     {
-///       "platform": "linux",
-///       "architecture": "x86_64",
-///       "artifacts": [
-///         {
-///           "path": "artifacts/mod.bin",
-///           "role": "module",
-///           "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
-///         }
-///       ]
-///     }
-///   ],
 ///   "authors": [{ "name": "Example" }],
 ///   "license": "MIT OR Apache-2.0",
-///   "source": "https://example.invalid/example_mod",
+///   "source": {
+///     "repository": "https://example.invalid/example_mod",
+///     "files": [{
+///       "path": "src/lib.rs",
+///       "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+///     }]
+///   },
 ///   "provenance": {
 ///     "record": "provenance.json",
 ///     "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
@@ -88,9 +79,6 @@ pub struct PackageManifest {
     /// Declared relationships to other packages, empty when there are none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dependencies: Vec<Dependency>,
-    /// The platform and architecture combinations this package ships for.
-    #[serde(deserialize_with = "deserialize_non_empty")]
-    pub targets: Vec<Target>,
     /// Package-relative resource paths.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resources: Vec<RelativePath>,
@@ -109,12 +97,8 @@ pub struct PackageManifest {
     pub authors: Vec<Author>,
     /// An SPDX licence expression.
     pub license: NonEmptyText,
-    /// Where the package came from.
-    ///
-    /// The schema annotates this with `format: uri` and asserts nothing else,
-    /// which in draft 2020-12 is an annotation rather than a constraint, so
-    /// this crate keeps the declared text as it was written.
-    pub source: String,
+    /// The portable source tree and repository it came from.
+    pub source: Source,
     /// The provenance record and the digest that proves it was not altered.
     pub provenance: Provenance,
 }
@@ -203,50 +187,28 @@ pub enum DependencyOrder {
     After,
 }
 
-/// One platform and architecture combination a package ships for.
+/// Portable source and its author-owned repository.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Target {
-    /// The platform name, matching the value a failure report carries.
-    pub platform: NonEmptyText,
-    /// The architecture name, matching the value a failure report carries.
-    pub architecture: NonEmptyText,
-    /// The files this target ships.
+pub struct Source {
+    /// Where the source release came from.
+    ///
+    /// JSON Schema draft 2020-12 treats `format: uri` as an annotation, so the
+    /// declared text is retained exactly as written.
+    pub repository: String,
+    /// Every source file the package declares and integrity-protects.
     #[serde(deserialize_with = "deserialize_non_empty")]
-    pub artifacts: Vec<Artifact>,
+    pub files: Vec<SourceFile>,
 }
 
-/// One file a target ships, with the digest that proves it was not altered.
+/// One portable source file and the digest that proves it was not altered.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Artifact {
+pub struct SourceFile {
     /// Where the file sits inside the package.
     pub path: RelativePath,
-    /// What the package says the file is for.
-    ///
-    /// The loader records the declared role and acts on none of it. What a role
-    /// means to execution is ADG-2's question and M3 answers it.
-    pub role: ArtifactRole,
-    /// The digest [`crate::verify_artifact`] checks the file against.
+    /// The digest [`crate::verify_source_file`] checks the file against.
     pub sha256: Sha256Digest,
-}
-
-/// What a package says one of its files is for.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ArtifactRole {
-    /// A standalone executable.
-    Executable,
-    /// A loadable module.
-    Module,
-    /// A supporting library.
-    Library,
-    /// Game or mod content.
-    Resource,
-    /// Descriptive data about the package.
-    Metadata,
-    /// Anything the other roles do not name.
-    Other,
 }
 
 /// One author of a package.
@@ -403,18 +365,17 @@ mod tests {
     };
     use serde_json::{Value, json};
 
-    use super::{ArtifactRole, DependencyOrder, ManifestError, PackageManifest};
+    use super::{DependencyOrder, ManifestError, PackageManifest};
 
     const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const OTHER_DIGEST: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
 
-    const REQUIRED_FIELDS: [&str; 10] = [
+    const REQUIRED_FIELDS: [&str; 9] = [
         "schemaVersion",
         "id",
         "version",
         "compatibility",
         "sides",
-        "targets",
         "authors",
         "license",
         "source",
@@ -429,14 +390,12 @@ mod tests {
             "version": "1.4.0",
             "compatibility": { "ravel": ">=0.1, <0.2", "minecraft": ["26.0.0"] },
             "sides": ["client"],
-            "targets": [{
-                "platform": "linux",
-                "architecture": "x86_64",
-                "artifacts": [{ "path": "artifacts/mod.bin", "role": "module", "sha256": DIGEST }]
-            }],
             "authors": [{ "name": "Example" }],
             "license": "MIT OR Apache-2.0",
-            "source": "https://example.invalid/example_mod",
+            "source": {
+                "repository": "https://example.invalid/example_mod",
+                "files": [{ "path": "src/lib.rs", "sha256": DIGEST }]
+            },
             "provenance": { "record": "provenance.json", "sha256": OTHER_DIGEST }
         })
     }
@@ -464,14 +423,6 @@ mod tests {
                 },
                 { "id": "example_rival", "relationship": "incompatible", "version": "*" }
             ],
-            "targets": [{
-                "platform": "linux",
-                "architecture": "x86_64",
-                "artifacts": [
-                    { "path": "artifacts/mod.bin", "role": "module", "sha256": DIGEST },
-                    { "path": "artifacts/data.pack", "role": "resource", "sha256": OTHER_DIGEST }
-                ]
-            }],
             "resources": ["resources/lang/en.json"],
             "configurationSchemas": ["schemas/config.json"],
             "savedDataVersions": [1, 2],
@@ -480,7 +431,13 @@ mod tests {
                 { "name": "Second Example" }
             ],
             "license": "MIT OR Apache-2.0",
-            "source": "https://example.invalid/example_mod",
+            "source": {
+                "repository": "https://example.invalid/example_mod",
+                "files": [
+                    { "path": "Cargo.toml", "sha256": DIGEST },
+                    { "path": "src/lib.rs", "sha256": OTHER_DIGEST }
+                ]
+            },
             "provenance": { "record": "provenance.json", "sha256": OTHER_DIGEST }
         })
     }
@@ -584,42 +541,20 @@ mod tests {
         );
         assert_eq!(manifest.dependencies[1].sides, None);
         assert_eq!(manifest.dependencies[1].order, None);
-        assert_eq!(manifest.targets[0].platform.as_str(), "linux");
-        assert_eq!(manifest.targets[0].architecture.as_str(), "x86_64");
-        assert_eq!(manifest.targets[0].artifacts[0].role, ArtifactRole::Module);
         assert_eq!(
-            manifest.targets[0].artifacts[1].role,
-            ArtifactRole::Resource
+            manifest.source.repository,
+            "https://example.invalid/example_mod"
         );
-        assert_eq!(manifest.targets[0].artifacts[0].sha256.to_string(), DIGEST);
+        assert_eq!(manifest.source.files[0].path.as_str(), "Cargo.toml");
+        assert_eq!(manifest.source.files[1].path.as_str(), "src/lib.rs");
+        assert_eq!(manifest.source.files[0].sha256.to_string(), DIGEST);
         assert_eq!(manifest.resources[0].as_str(), "resources/lang/en.json");
         assert_eq!(manifest.configuration_schemas.len(), 1);
         assert_eq!(manifest.saved_data_versions[1].get(), 2);
         assert_eq!(manifest.authors[0].name.as_str(), "Example");
         assert_eq!(manifest.authors[1].url, None);
         assert_eq!(manifest.license.as_str(), "MIT OR Apache-2.0");
-        assert_eq!(manifest.source, "https://example.invalid/example_mod");
         assert_eq!(manifest.provenance.record.file_name(), "provenance.json");
-    }
-
-    #[test]
-    fn every_artifact_role_the_schema_names_parses() {
-        for (name, expected) in [
-            ("executable", ArtifactRole::Executable),
-            ("module", ArtifactRole::Module),
-            ("library", ArtifactRole::Library),
-            ("resource", ArtifactRole::Resource),
-            ("metadata", ArtifactRole::Metadata),
-            ("other", ArtifactRole::Other),
-        ] {
-            let mut document = minimal();
-            document["targets"][0]["artifacts"][0]["role"] = json!(name);
-            let manifest = parse(&document).expect(name);
-            assert_eq!(manifest.targets[0].artifacts[0].role, expected);
-        }
-        let mut document = minimal();
-        document["targets"][0]["artifacts"][0]["role"] = json!("plugin");
-        assert!(rejection(&document).contains("unknown variant"));
     }
 
     #[test]
@@ -685,7 +620,7 @@ mod tests {
         }
 
         let mut document = minimal();
-        document["targets"][0]["artifacts"][0]["size"] = json!(12);
+        document["source"]["files"][0]["size"] = json!(12);
         assert!(rejection(&document).contains("unknown field"));
 
         let mut document = minimal();
@@ -697,6 +632,17 @@ mod tests {
             "id": "example_library", "relationship": "optional", "version": "*", "reason": "why"
         }]);
         assert!(rejection(&document).contains("unknown field"));
+    }
+
+    #[test]
+    fn the_removed_target_model_is_refused() {
+        let mut document = minimal();
+        document["targets"] = json!([{
+            "platform": "linux",
+            "architecture": "x86_64",
+            "artifacts": [{ "path": "mod.bin", "role": "module", "sha256": DIGEST }]
+        }]);
+        assert!(rejection(&document).contains("unknown field `targets`"));
     }
 
     #[test]
@@ -716,6 +662,8 @@ mod tests {
         for (owner, field) in [
             ("compatibility", "ravel"),
             ("compatibility", "minecraft"),
+            ("source", "repository"),
+            ("source", "files"),
             ("provenance", "record"),
             ("provenance", "sha256"),
         ] {
@@ -813,7 +761,7 @@ mod tests {
             }
 
             let mut document = minimal();
-            document["targets"][0]["artifacts"][0]["path"] = json!(candidate);
+            document["source"]["files"][0]["path"] = json!(candidate);
             assert!(rejection(&document).contains("a package path"));
 
             let mut document = minimal();
@@ -826,7 +774,7 @@ mod tests {
     fn a_digest_that_is_not_the_recorded_shape_is_refused() {
         for candidate in ["", "abc", &DIGEST.to_uppercase(), &format!("{DIGEST}0")] {
             let mut document = minimal();
-            document["targets"][0]["artifacts"][0]["sha256"] = json!(candidate);
+            document["source"]["files"][0]["sha256"] = json!(candidate);
             assert!(
                 rejection(&document).contains("sha256 digest"),
                 "{candidate}"
@@ -843,17 +791,12 @@ mod tests {
 
     #[test]
     fn every_list_the_schema_requires_an_entry_in_must_have_one() {
-        for pointer in ["targets", "authors"] {
-            let mut document = minimal();
-            document[pointer] = json!([]);
-            assert!(
-                rejection(&document).contains("at least one entry"),
-                "{pointer}"
-            );
-        }
+        let mut document = minimal();
+        document["authors"] = json!([]);
+        assert!(rejection(&document).contains("at least one entry"));
 
         let mut document = minimal();
-        document["targets"][0]["artifacts"] = json!([]);
+        document["source"]["files"] = json!([]);
         assert!(rejection(&document).contains("at least one entry"));
 
         let mut document = minimal();
@@ -886,15 +829,6 @@ mod tests {
         for pointer in ["displayName", "license"] {
             let mut document = minimal();
             document[pointer] = json!("");
-            assert!(
-                rejection(&document).contains("must not be empty"),
-                "{pointer}"
-            );
-        }
-
-        for pointer in ["platform", "architecture"] {
-            let mut document = minimal();
-            document["targets"][0][pointer] = json!("");
             assert!(
                 rejection(&document).contains("must not be empty"),
                 "{pointer}"

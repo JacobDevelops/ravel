@@ -23,18 +23,9 @@ fn package(id: &str, version: &str, sides: &str, dependencies: &str) -> PackageM
   "compatibility": {{ "ravel": ">=0.1, <0.2", "minecraft": ["26.0.0"] }},
   "sides": {sides},
   "dependencies": {dependencies},
-  "targets": [
-    {{
-      "platform": "linux",
-      "architecture": "x86_64",
-      "artifacts": [
-        {{ "path": "artifacts/mod.bin", "role": "module", "sha256": "{DIGEST}" }}
-      ]
-    }}
-  ],
   "authors": [{{ "name": "Example" }}],
   "license": "MIT OR Apache-2.0",
-  "source": "https://example.invalid/{id}",
+  "source": {{ "repository": "https://example.invalid/{id}", "files": [{{ "path": "src/lib.rs", "sha256": "{DIGEST}" }}] }},
   "provenance": {{ "record": "provenance.json", "sha256": "{DIGEST}" }}
 }}"#
     );

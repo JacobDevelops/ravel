@@ -1,17 +1,17 @@
 #![forbid(unsafe_code)]
 
-//! Package contracts for precompiled Ravel mods.
+//! Package contracts for source-distributed Ravel mods.
 
 mod compatibility;
 mod integrity;
 mod manifest;
 mod values;
 
-pub use compatibility::{CompatibilityError, TargetError};
-pub use integrity::{IntegrityError, verify_artifact, verify_package, verify_provenance};
+pub use compatibility::CompatibilityError;
+pub use integrity::{IntegrityError, verify_package, verify_provenance, verify_source_file};
 pub use manifest::{
-    Artifact, ArtifactRole, Author, Compatibility, Dependency, DependencyOrder, ManifestError,
-    PackageManifest, Provenance, Target,
+    Author, Compatibility, Dependency, DependencyOrder, ManifestError, PackageManifest, Provenance,
+    Source, SourceFile,
 };
 pub use values::{
     EmptyText, NonEmptyText, RelativePath, RelativePathError, SchemaVersion, SchemaVersionError,

@@ -6,7 +6,7 @@
   "milestone": "M2",
   "mod": {
     "crate": "ravel-test-mod-noop",
-    "executionModel": "A safe Rust value the loader owns and drives in process. ADG-2 selects the mod execution and distribution model and is deferred to M3, so nothing here loads a library, starts a guest runtime, spawns a process, or exports a foreign symbol."
+    "executionModel": "A safe Rust value the loader owns and drives in process. ADG-2 selects portable source distribution; later compilation and binding work produces the value this M2 pipeline drives."
   },
   "modExecutesIn": [
     "loaded",
@@ -16,13 +16,6 @@
     "stopping"
   ],
   "package": {
-    "artifacts": [
-      {
-        "file": "noop.artifact",
-        "role": "other",
-        "sha256": "14c7bf54265b5934c192fe83ddfde7de558106782322f0a44a274ce780c4ba9e"
-      }
-    ],
     "compatibility": {
       "minecraft": [
         "26.1.2"
@@ -38,6 +31,16 @@
       "client",
       "integrated-server",
       "dedicated-server"
+    ],
+    "sourceFiles": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "295978be73e06ee2c1aeaae5344c2d7e32942b4fe9a9a6fb06d531584f5c113b"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "b47497df7a148c1413ac63150bca7c208530e98c9c83619b4c2cecd05edbcdbb"
+      }
     ],
     "version": "0.0.0"
   },

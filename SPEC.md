@@ -143,12 +143,10 @@ the two are not the same thing.
   rather than the author's.
   [`evidence/m3/pack-compile.json`](evidence/m3/pack-compile.json) prices them
   and [ADG-2](docs/decisions/adg-2-mod-execution.md) records the decision.
-- **`schemas/package.schema.json` now contradicts this document and has to
-  change.** It makes `targets` required, requires at least one, and requires each
-  to carry a `platform`, an `architecture`, and at least one artifact with a
-  `role`. A source-distributed mod has none of those. The schema is not merely a
-  stale assumption that has stopped being needed — it is enforced by the gate,
-  and it now enforces the opposite of what this section requires.
+- **The package-schema contradiction is closed.** ADG-2 exposed that the old
+  schema required per-target artifacts for source-distributed mods. Schema v1 was
+  migrated in place: `targets` is refused, and `source` now declares its repository
+  plus at least one integrity-protected portable source file.
 - The package model must support at least:
   - stable mod identity and version;
   - Minecraft and Ravel compatibility ranges;
@@ -156,7 +154,7 @@ the two are not the same thing.
   - required, optional, incompatible, and discouraged dependencies;
   - deterministic load ordering where ordering is semantically necessary;
   - declared resources, configuration schemas, and saved-data versions;
-  - target platform and architecture metadata;
+  - portable source files and their integrity declarations;
   - author, source, licence, and provenance metadata;
   - integrity verification.
 
@@ -618,7 +616,6 @@ Before world access, the UI must clearly report:
 - dependency cycles;
 - side mismatches;
 - duplicate identities;
-- unsupported targets;
 - conflicting registry claims.
 
 Ravel fails closed on an invalid required-mod graph.
@@ -822,7 +819,7 @@ human-reviewed or tolerance-based comparisons.
 The exact API is experimental, but implementations must cover these states:
 
 1. **Discovered** — package found, no code executed.
-2. **Validated** — metadata, target, integrity, and schema accepted.
+2. **Validated** — metadata, source and provenance integrity, compatibility, and schema accepted.
 3. **Resolved** — dependency graph and load order accepted.
 4. **Loaded** — code/resource package made available.
 5. **Constructed** — mod instance and declared services created.

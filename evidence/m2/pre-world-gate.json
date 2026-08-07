@@ -30,21 +30,11 @@
     {
       "case": "digest-mismatch",
       "failureKind": null,
-      "invalidInput": "an artifact whose bytes are not the bytes the manifest records",
+      "invalidInput": "a source file whose bytes are not the bytes the manifest records",
       "lifecycleState": "discovered",
       "quotesUntrustedText": false,
       "ranModCode": false,
-      "report": "refused `example_mod` at `discovered`: `mod.bin` hashes ee7ec0d8eeec2da653dfac66fef292829d000980e7629f7253b04927966ee553 but the manifest records 2e2b52bad9e77f7ab95e359ad0219809ab2489f8bfa9b03cb3808a067cbb8cfa",
-      "worldAccess": false
-    },
-    {
-      "case": "unsupported-target",
-      "failureKind": "unsupported-target",
-      "invalidInput": "a package that ships for no target the running host has",
-      "lifecycleState": "discovered",
-      "quotesUntrustedText": false,
-      "ranModCode": false,
-      "report": "refused `example_mod` at `discovered` [unsupported-target]: the package ships for linux/aarch64, but linux/x86_64 is running",
+      "report": "refused `example_mod` at `discovered`: `lib.rs` hashes ee7ec0d8eeec2da653dfac66fef292829d000980e7629f7253b04927966ee553 but the manifest records d43fb0c057531a1578825aa660a5cc1b415a10ae8eb1b42994ca7ceda27d6706",
       "worldAccess": false
     },
     {

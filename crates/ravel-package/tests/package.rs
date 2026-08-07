@@ -11,10 +11,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use ravel_core::StructuredFailure;
-use ravel_package::{ArtifactRole, IntegrityError, PackageManifest, Sha256Digest, verify_package};
+use ravel_package::{IntegrityError, PackageManifest, Sha256Digest, verify_package};
 use sha2::{Digest, Sha256};
 
-const ARTIFACT_BYTES: &[u8] = b"the artifact this package ships";
+const SOURCE_BYTES: &[u8] = b"pub fn load() {}\n";
 const RECORD_BYTES: &[u8] = b"{\"origin\":\"example\"}";
 
 fn digest_of(bytes: &[u8]) -> String {
@@ -23,7 +23,7 @@ fn digest_of(bytes: &[u8]) -> String {
     Sha256Digest::from_bytes(digest).to_string()
 }
 
-fn manifest_document(artifact_digest: &str, record_digest: &str) -> String {
+fn manifest_document(source_digest: &str, record_digest: &str) -> String {
     format!(
         r#"{{
   "schemaVersion": 1,
@@ -42,21 +42,15 @@ fn manifest_document(artifact_digest: &str, record_digest: &str) -> String {
       "order": "after"
     }}
   ],
-  "targets": [
-    {{
-      "platform": "linux",
-      "architecture": "x86_64",
-      "artifacts": [
-        {{ "path": "artifacts/mod.bin", "role": "module", "sha256": "{artifact_digest}" }}
-      ]
-    }}
-  ],
+  "source": {{
+    "repository": "https://example.invalid/example_mod",
+    "files": [{{ "path": "src/lib.rs", "sha256": "{source_digest}" }}]
+  }},
   "resources": ["resources/lang/en.json"],
   "configurationSchemas": ["schemas/config.json"],
   "savedDataVersions": [1],
   "authors": [{{ "name": "Example", "url": "https://example.invalid/example" }}],
   "license": "MIT OR Apache-2.0",
-  "source": "https://example.invalid/example_mod",
   "provenance": {{ "record": "provenance.json", "sha256": "{record_digest}" }}
 }}"#
     )
@@ -69,12 +63,12 @@ fn package(label: &str) -> (PathBuf, PackageManifest) {
     if root.exists() {
         fs::remove_dir_all(&root).expect("a stale package should be removable");
     }
-    fs::create_dir_all(root.join("artifacts")).expect("the artifact directory");
-    fs::write(root.join("artifacts/mod.bin"), ARTIFACT_BYTES).expect("artifact written");
+    fs::create_dir_all(root.join("src")).expect("the source directory");
+    fs::write(root.join("src/lib.rs"), SOURCE_BYTES).expect("source written");
     fs::write(root.join("provenance.json"), RECORD_BYTES).expect("record written");
 
     let manifest = PackageManifest::parse(&manifest_document(
-        &digest_of(ARTIFACT_BYTES),
+        &digest_of(SOURCE_BYTES),
         &digest_of(RECORD_BYTES),
     ))
     .expect("the fixture manifest should parse");
@@ -86,7 +80,7 @@ fn an_intact_package_passes_identity_integrity_and_compatibility_together() {
     let (root, manifest) = package("intact");
 
     assert_eq!(manifest.id.as_str(), "example_mod");
-    assert_eq!(manifest.targets[0].artifacts[0].role, ArtifactRole::Module);
+    assert_eq!(manifest.source.files[0].path.as_str(), "src/lib.rs");
     assert_eq!(verify_package(&root, &manifest), Ok(()));
     assert_eq!(
         manifest
@@ -115,11 +109,11 @@ fn a_manifest_round_trips_through_its_document_form_unchanged() {
 #[test]
 fn a_tampered_package_fails_integrity_while_still_parsing() {
     let (root, manifest) = package("tampered");
-    fs::write(root.join("artifacts/mod.bin"), b"someone else's bytes").expect("artifact rewritten");
+    fs::write(root.join("src/lib.rs"), b"someone else's bytes").expect("source rewritten");
 
-    let error = verify_package(&root, &manifest).expect_err("the artifact was replaced");
+    let error = verify_package(&root, &manifest).expect_err("the source file was replaced");
     assert!(matches!(error, IntegrityError::Mismatch { .. }), "{error}");
-    assert_eq!(error.file(), "mod.bin");
+    assert_eq!(error.file(), "lib.rs");
     assert_eq!(error.failure_kind(), None);
     assert!(!error.to_string().contains('/'), "{error}");
 

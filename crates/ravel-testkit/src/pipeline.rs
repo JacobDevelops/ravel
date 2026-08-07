@@ -9,7 +9,7 @@ use ravel_loader::{
     executes_mod_code,
 };
 use ravel_package::{
-    CompatibilityError, IntegrityError, ManifestError, PackageManifest, TargetError, verify_package,
+    CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
 };
 use ravel_resolve::{LoadPlan, ResolutionError, resolve};
 
@@ -85,9 +85,7 @@ impl DiscoveredPackage {
 /// Every field is supplied rather than discovered. Ravel's own version is the
 /// running loader's and the Minecraft version belongs to `minecraft/versions/`,
 /// so a version-neutral crate that guessed either would be encoding a version
-/// boundary `SPEC.md` §3.7 puts somewhere else; the platform and architecture
-/// are supplied for the same reason, and because a harness that read them from
-/// the process it happened to be compiled for could not test any other host.
+/// boundary `SPEC.md` §3.7 puts somewhere else.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Host {
     /// The Ravel version a package's `compatibility.ravel` range is checked
@@ -96,10 +94,6 @@ pub struct Host {
     /// The exact Minecraft version a package's `compatibility.minecraft` list
     /// is checked against.
     pub minecraft: String,
-    /// The platform a package's declared targets are checked against.
-    pub platform: String,
-    /// The architecture a package's declared targets are checked against.
-    pub architecture: String,
 }
 
 /// What one completed run of the pipeline did.
@@ -157,22 +151,15 @@ impl PipelineRun {
 /// all.
 ///
 /// `mods` are values the caller already holds. This function never loads,
-/// links, opens, or spawns anything to obtain one: how a mod's code arrives in
-/// the process is ADG-2's question, ADG-2 is deferred to M3, and
-/// `docs/architecture/dependency-rules.md` forbids selecting a mod execution
-/// model before then. When M3 selects one, the mechanism produces the values
-/// passed here and this function does not change.
-///
-/// Target *selection* is deliberately absent: which target a host would load is
-/// ADG-2's question and ADG-2 is deferred to M3. Reporting that a package ships
-/// for no target the host has is not selection, and validation does it.
+/// links, opens, or spawns anything to obtain one: ADG-2 selects source
+/// distribution, while the later compilation and binding mechanism produces the
+/// values passed here.
 ///
 /// # Errors
 ///
 /// Returns the first failure in pipeline order, so a package set that breaks
 /// two rules reports the earlier one: [`PipelineError::Manifest`],
-/// [`PipelineError::Integrity`], [`PipelineError::Compatibility`] and
-/// [`PipelineError::Target`] during validation,
+/// [`PipelineError::Integrity`] and [`PipelineError::Compatibility`] during validation,
 /// [`PipelineError::Resolution`] during resolution, and
 /// [`PipelineError::Host`] or [`PipelineError::Lifecycle`] while running.
 /// [`PipelineError::UnexpectedMod`] is raised before any state changes and
@@ -211,11 +198,8 @@ pub fn run(
 /// Admits every package, or none of them.
 ///
 /// The checks are what `SPEC.md` §14 requires before
-/// [`LifecycleState::Validated`]: schema, integrity, compatibility, and target.
-/// The target check asks only whether a declared target names the running host,
-/// which is the `SPEC.md` §9.2 unsupported-target report; it selects no target
-/// and reads no artifact, because that is ADG-2's question and ADG-2 is
-/// deferred to M3.
+/// [`LifecycleState::Validated`]: schema, source and provenance integrity, and
+/// compatibility.
 ///
 /// They run over the whole set before resolution begins, because a package set
 /// is admitted together and resolving a set that holds an unvalidated package
@@ -237,9 +221,6 @@ fn validate(
             .compatibility
             .check_minecraft(&host.minecraft)
             .map_err(PipelineError::Compatibility)?;
-        manifest
-            .check_target(&host.platform, &host.architecture)
-            .map_err(PipelineError::Target)?;
         manifests.push(manifest);
     }
     Ok(manifests)
@@ -352,7 +333,7 @@ fn register_all(
 
 /// Why a package set did not complete the pipeline.
 ///
-/// Six variants forward the failure the owning crate raised, kept whole rather
+/// Five variants forward the failure the owning crate raised, kept whole rather
 /// than flattened into text, so a caller can assert on the rule that was broken
 /// instead of on a sentence. The other three are this harness's own, and every
 /// one of them names a mod or a file rather than a path, for the reason
@@ -372,8 +353,6 @@ pub enum PipelineError {
     Integrity(IntegrityError),
     /// A package does not support the host it was asked to load on.
     Compatibility(CompatibilityError),
-    /// A package ships for no target that matches the running host.
-    Target(TargetError),
     /// A validated package set has no load order.
     Resolution(ResolutionError),
     /// The lifecycle refused a step of the run.
@@ -403,7 +382,6 @@ impl fmt::Display for PipelineError {
             Self::Manifest(error) => write!(formatter, "validation failed: {error}"),
             Self::Integrity(error) => write!(formatter, "validation failed: {error}"),
             Self::Compatibility(error) => write!(formatter, "validation failed: {error}"),
-            Self::Target(error) => write!(formatter, "validation failed: {error}"),
             Self::Resolution(error) => write!(formatter, "resolution failed: {error}"),
             Self::Lifecycle(error) => write!(formatter, "the run failed: {error}"),
             Self::Host(error) => write!(formatter, "the run failed: {error}"),
@@ -443,7 +421,6 @@ impl PipelineError {
             Self::Manifest(error) => Some(error),
             Self::Integrity(error) => Some(error),
             Self::Compatibility(error) => Some(error),
-            Self::Target(error) => Some(error),
             Self::Resolution(error) => Some(error),
             Self::Lifecycle(error) => Some(error),
             Self::Host(error) => Some(error),

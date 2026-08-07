@@ -9,7 +9,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ravel_core::{FailureKind, LifecycleState, ModId, Side, Version};
+use ravel_core::{LifecycleState, ModId, Side, Version};
 use ravel_host_api::{HostError, HostMod};
 use ravel_loader::LifecycleError;
 use ravel_package::{CompatibilityError, IntegrityError, ManifestError, Sha256Digest};
@@ -21,8 +21,6 @@ use serde_json::{Value, json};
 
 const RUNNING_RAVEL: &str = "0.1.0";
 const RUNNING_MINECRAFT: &str = "26.0.0";
-const RUNNING_PLATFORM: &str = "linux";
-const RUNNING_ARCHITECTURE: &str = "x86_64";
 
 /// A mod that records what it was asked to do, and optionally refuses one step.
 struct Recording {
@@ -74,8 +72,6 @@ fn host() -> Host {
     Host {
         ravel: RUNNING_RAVEL.parse().expect("a valid version"),
         minecraft: RUNNING_MINECRAFT.to_owned(),
-        platform: RUNNING_PLATFORM.to_owned(),
-        architecture: RUNNING_ARCHITECTURE.to_owned(),
     }
 }
 
@@ -100,10 +96,10 @@ fn scratch(label: &str) -> PathBuf {
 /// Writes a package whose files match the digests its manifest declares.
 fn write_package(parent: &Path, name: &str, dependencies: &Value) -> DiscoveredPackage {
     let root = parent.join(name);
-    let artifact = format!("the {name} artifact").into_bytes();
+    let source = format!("pub fn {name}() {{}}\n").into_bytes();
     let record = format!("{{\"package\":\"{name}\"}}").into_bytes();
-    fs::create_dir_all(root.join("artifacts")).expect("the package should be creatable");
-    fs::write(root.join("artifacts/mod.bin"), &artifact).expect("artifact written");
+    fs::create_dir_all(root.join("src")).expect("the package should be creatable");
+    fs::write(root.join("src/lib.rs"), &source).expect("source written");
     fs::write(root.join("provenance.json"), &record).expect("record written");
 
     let document = json!({
@@ -113,18 +109,12 @@ fn write_package(parent: &Path, name: &str, dependencies: &Value) -> DiscoveredP
         "compatibility": { "ravel": ">=0.1.0, <1.0.0", "minecraft": [RUNNING_MINECRAFT] },
         "sides": ["client"],
         "dependencies": dependencies,
-        "targets": [{
-            "platform": "linux",
-            "architecture": "x86_64",
-            "artifacts": [{
-                "path": "artifacts/mod.bin",
-                "role": "other",
-                "sha256": digest_of(&artifact)
-            }]
-        }],
+        "source": {
+            "repository": "https://example.invalid/package",
+            "files": [{ "path": "src/lib.rs", "sha256": digest_of(&source) }]
+        },
         "authors": [{ "name": "Example" }],
         "license": "MIT",
-        "source": "https://example.invalid/package",
         "provenance": { "record": "provenance.json", "sha256": digest_of(&record) }
     })
     .to_string();
@@ -355,13 +345,13 @@ fn a_document_that_is_not_a_manifest_stops_the_run_before_anything_else() {
 }
 
 #[test]
-fn an_altered_artifact_stops_the_run_before_any_mod_code() {
+fn an_altered_source_file_stops_the_run_before_any_mod_code() {
     let (parent, packages) = single("tampered");
     fs::write(
-        packages[0].root.join("artifacts/mod.bin"),
+        packages[0].root.join("src/lib.rs"),
         b"something else entirely",
     )
-    .expect("artifact rewritten");
+    .expect("source rewritten");
     let mut noop = Recording::new("example_mod");
 
     let error = run(
@@ -370,7 +360,7 @@ fn an_altered_artifact_stops_the_run_before_any_mod_code() {
         Side::Client,
         &mut [&mut noop as &mut dyn HostMod],
     )
-    .expect_err("the artifact was altered");
+    .expect_err("the source file was altered");
 
     assert!(
         matches!(
@@ -396,7 +386,6 @@ fn a_package_written_for_another_host_is_refused_on_either_version() {
         let elsewhere = Host {
             ravel: ravel.parse().expect("a valid version"),
             minecraft: minecraft.to_owned(),
-            ..host()
         };
         let mut noop = Recording::new("example_mod");
         let error = run(
@@ -566,7 +555,7 @@ fn every_forwarded_failure_names_its_stage_and_keeps_the_error_that_raised_it() 
         ),
         (
             PipelineError::Integrity(IntegrityError::Missing {
-                file: "mod.bin".to_owned(),
+                file: "lib.rs".to_owned(),
             }),
             "validation failed: ",
         ),
@@ -654,39 +643,6 @@ fn a_declared_version_the_running_host_satisfies_is_the_one_that_was_checked() {
         Host {
             ravel: running,
             minecraft: "25.0.0".to_owned(),
-            ..host()
         }
     );
-}
-
-#[test]
-fn a_package_that_ships_for_no_target_the_host_has_is_refused_before_it_resolves() {
-    let (parent, packages) = single("unsupported-target");
-    let elsewhere = Host {
-        architecture: "aarch64".to_owned(),
-        ..host()
-    };
-
-    let mut noop = Recording::new("example_mod");
-    let error = run(
-        &packages,
-        &elsewhere,
-        Side::Client,
-        &mut [&mut noop as &mut dyn HostMod],
-    )
-    .expect_err("the package ships for no target this host has");
-
-    assert!(matches!(error, PipelineError::Target(_)), "{error}");
-    assert!(
-        error.to_string().starts_with("validation failed:"),
-        "{error}"
-    );
-    let stage = error.stage().expect("the package crate raised it");
-    assert_eq!(stage.failure_kind(), Some(FailureKind::UnsupportedTarget));
-    assert_eq!(stage.lifecycle_state(), LifecycleState::Discovered);
-    assert!(
-        noop.entered.is_empty(),
-        "an unsupported target is refused before any mod code runs"
-    );
-    fs::remove_dir_all(&parent).expect("cleanup");
 }

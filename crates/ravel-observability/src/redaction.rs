@@ -372,7 +372,7 @@ mod tests {
     #[test]
     fn a_relative_path_and_a_url_are_left_alone() {
         for text in [
-            "the package declares `artifacts/mod.bin` but does not contain it",
+            "the package declares `src/lib.rs` but does not contain it",
             "the package declares `token.json` but does not contain it",
             "see https://example.invalid/example_mod for the source",
             "expected value at line 1 column 1",

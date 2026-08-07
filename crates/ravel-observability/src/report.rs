@@ -464,11 +464,11 @@ mod tests {
             );
         }
 
-        let refused = report.world_access().expect_err("seven refusals");
-        assert_eq!(refused.refusals(), 7);
+        let refused = report.world_access().expect_err("six refusals");
+        assert_eq!(refused.refusals(), 6);
         assert!(refused.first().contains("problem 0"), "{refused}");
-        assert!(refused.to_string().contains("7 problems are fixed"));
-        assert_eq!(report.lines().len(), 7);
+        assert!(refused.to_string().contains("6 problems are fixed"));
+        assert_eq!(report.lines().len(), 6);
         assert_eq!(
             report
                 .refusals()

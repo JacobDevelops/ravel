@@ -1,7 +1,7 @@
 //! The no-op package driven through the whole loader pipeline, and the record
 //! of that run kept under `evidence/`.
 //!
-//! `ROADMAP.md`'s M2-W6 row asks for recorded evidence that a prebuilt no-op
+//! `ROADMAP.md`'s M2-W6 row asks for recorded evidence that a source-only no-op
 //! package goes through validate, resolve, load, construct, register, run and
 //! stop in deterministic order. A passing assertion is not a record, so the run
 //! is written to `evidence/m2/noop-pipeline.json` and this test regenerates it
@@ -76,26 +76,10 @@ fn running_minecraft() -> String {
     declared
 }
 
-/// The platform and architecture the run is admitted against.
-///
-/// These are the process's own, because the package is checked against the host
-/// it is actually running on and Ravel ships for Linux through M10. A package
-/// that declared no target for this machine would be refused, which is the
-/// `SPEC.md` §9.2 unsupported-target outcome working as intended.
-fn running_target() -> (String, String) {
-    (
-        std::env::consts::OS.to_owned(),
-        std::env::consts::ARCH.to_owned(),
-    )
-}
-
 fn host() -> Host {
-    let (platform, architecture) = running_target();
     Host {
         ravel: RUNNING_RAVEL.parse().expect("the crate version is semver"),
         minecraft: running_minecraft(),
-        platform,
-        architecture,
     }
 }
 
@@ -119,14 +103,14 @@ fn names(states: &[LifecycleState]) -> Vec<&'static str> {
 /// The record written to `evidence/m2/noop-pipeline.json`.
 fn record() -> Value {
     let manifest = manifest();
-    let artifacts: Vec<Value> = manifest.targets[0]
-        .artifacts
+    let source_files: Vec<Value> = manifest
+        .source
+        .files
         .iter()
-        .map(|artifact| {
+        .map(|source| {
             json!({
-                "file": artifact.path.file_name(),
-                "role": artifact.role,
-                "sha256": artifact.sha256.to_string(),
+                "path": source.path.as_str(),
+                "sha256": source.sha256.to_string(),
             })
         })
         .collect();
@@ -179,7 +163,7 @@ fn record() -> Value {
                     .map(NonEmptyText::as_str)
                     .collect::<Vec<_>>(),
             },
-            "artifacts": artifacts,
+            "sourceFiles": source_files,
             "provenance": {
                 "file": manifest.provenance.record.file_name(),
                 "sha256": manifest.provenance.sha256.to_string(),
@@ -188,9 +172,8 @@ fn record() -> Value {
         "mod": {
             "crate": "ravel-test-mod-noop",
             "executionModel": "A safe Rust value the loader owns and drives in process. ADG-2 \
-                               selects the mod execution and distribution model and is deferred \
-                               to M3, so nothing here loads a library, starts a guest runtime, \
-                               spawns a process, or exports a foreign symbol.",
+                               selects portable source distribution; later compilation and binding \
+                               work produces the value this M2 pipeline drives.",
         },
         "host": {
             "ravel": RUNNING_RAVEL,
@@ -284,6 +267,9 @@ fn the_same_package_runs_the_same_way_every_time() {
 #[test]
 fn the_recorded_evidence_is_what_the_loader_does_now() {
     let path = repository_root().join(EVIDENCE_FILE);
+    if std::env::var_os("RAVEL_REGENERATE_EVIDENCE").is_some() {
+        fs::write(&path, rendered(&record())).expect("the evidence should be writable");
+    }
     let stored = fs::read_to_string(&path).unwrap_or_else(|error| {
         panic!("`{EVIDENCE_FILE}` should be readable: {error}");
     });

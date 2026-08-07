@@ -56,16 +56,9 @@ use crate::plan::{Discouraged, LoadPlan};
 /// #           "compatibility": {{ "ravel": "*", "minecraft": ["26.0.0"] }},
 /// #           "sides": ["client"],
 /// #           "dependencies": {dependencies},
-/// #           "targets": [{{
-/// #             "platform": "linux",
-/// #             "architecture": "x86_64",
-/// #             "artifacts": [
-/// #               {{ "path": "artifacts/mod.bin", "role": "module", "sha256": "{digest}" }}
-/// #             ]
-/// #           }}],
 /// #           "authors": [{{ "name": "Example" }}],
 /// #           "license": "MIT",
-/// #           "source": "https://example.invalid/{id}",
+/// #           "source": {{ "repository": "https://example.invalid/{id}", "files": [{{ "path": "src/lib.rs", "sha256": "{digest}" }}] }},
 /// #           "provenance": {{ "record": "provenance.json", "sha256": "{digest}" }}
 /// #         }}"#
 /// #     );
@@ -631,16 +624,9 @@ mod tests {
               "compatibility": {{ "ravel": "*", "minecraft": ["26.0.0"] }},
               "sides": {sides},
               "dependencies": {dependencies},
-              "targets": [{{
-                "platform": "linux",
-                "architecture": "x86_64",
-                "artifacts": [
-                  {{ "path": "artifacts/mod.bin", "role": "module", "sha256": "{DIGEST}" }}
-                ]
-              }}],
               "authors": [{{ "name": "Example" }}],
               "license": "MIT",
-              "source": "https://example.invalid/{id}",
+              "source": {{ "repository": "https://example.invalid/{id}", "files": [{{ "path": "src/lib.rs", "sha256": "{DIGEST}" }}] }},
               "provenance": {{ "record": "provenance.json", "sha256": "{DIGEST}" }}
             }}"#
         );

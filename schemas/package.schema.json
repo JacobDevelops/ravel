@@ -11,7 +11,6 @@
     "version",
     "compatibility",
     "sides",
-    "targets",
     "authors",
     "license",
     "source",
@@ -68,13 +67,6 @@
         "$ref": "#/$defs/dependency"
       }
     },
-    "targets": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "$ref": "#/$defs/target"
-      }
-    },
     "resources": {
       "type": "array",
       "default": [],
@@ -123,8 +115,22 @@
       "minLength": 1
     },
     "source": {
-      "type": "string",
-      "format": "uri"
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "files"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "format": "uri"
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sourceFile"
+          }
+        }
+      }
     },
     "provenance": {
       "type": "object",
@@ -189,45 +195,16 @@
         }
       }
     },
-    "target": {
+    "sourceFile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["platform", "architecture", "artifacts"],
+      "required": ["path", "sha256"],
       "properties": {
-        "platform": {
-          "type": "string",
-          "minLength": 1
+        "path": {
+          "$ref": "#/$defs/relativePath"
         },
-        "architecture": {
-          "type": "string",
-          "minLength": 1
-        },
-        "artifacts": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["path", "role", "sha256"],
-            "properties": {
-              "path": {
-                "$ref": "#/$defs/relativePath"
-              },
-              "role": {
-                "enum": [
-                  "executable",
-                  "module",
-                  "library",
-                  "resource",
-                  "metadata",
-                  "other"
-                ]
-              },
-              "sha256": {
-                "$ref": "#/$defs/sha256"
-              }
-            }
-          }
+        "sha256": {
+          "$ref": "#/$defs/sha256"
         }
       }
     }

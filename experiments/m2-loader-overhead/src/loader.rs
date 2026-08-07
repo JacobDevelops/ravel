@@ -316,9 +316,9 @@ fn synthetic_set(
 
 /// Copies everything the manifest's relative paths resolve against.
 fn copy_package(from: &Path, to: &Path) -> Result<(), String> {
-    fs::create_dir_all(to.join("artifacts"))
+    fs::create_dir_all(to.join("src"))
         .map_err(|error| format!("cannot create a synthetic package directory: {error}"))?;
-    for relative in ["provenance.json", "artifacts/noop.artifact"] {
+    for relative in ["Cargo.toml", "provenance.json", "src/lib.rs"] {
         let bytes = fs::read(from.join(relative))
             .map_err(|error| format!("cannot read a package file: {error}"))?;
         write(&to.join(relative), &bytes)?;
@@ -363,12 +363,7 @@ fn host(package: &DiscoveredPackage) -> Result<Host, String> {
     let ravel: Version = env!("CARGO_PKG_VERSION")
         .parse()
         .map_err(|_| "the crate version is not semver")?;
-    Ok(Host {
-        ravel,
-        minecraft,
-        platform: std::env::consts::OS.to_owned(),
-        architecture: std::env::consts::ARCH.to_owned(),
-    })
+    Ok(Host { ravel, minecraft })
 }
 
 /// The one place a count becomes a float, so the lint exception is stated once.

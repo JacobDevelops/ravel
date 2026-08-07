@@ -69,37 +69,38 @@ per-tick crossing count is recorded.
 ## `linux-process-matrix.json`
 
 It comes from launches rather than from a task, because the thing it measures is
-a launcher starting a game and no task can stand in for that. Three of its
-sections are measurements — the game directory, the rewrite, and the instance
-scan — and each says how it was taken.
+a launcher starting a game and no task can stand in for that. The accepted Linux
+trial passes M3-W7: stock Minecraft 26.1.2 reached the title screen and an
+integrated world with Ravel alone, all 15 reviewed classes and 31 callable methods
+reconciled, the production stores and three Ravel screens worked, persisted state
+survived a relaunch, and Java and Prism exited through the normal game UI.
 
-**It is not a passing gate, and it is written so that cannot be misread.** M3-W7's
-row asks that every required surface pass natively; this record carries a
-*blocking* deviation, an `unaccountedFor` section whose `resolved` is `false`,
-and a `whatThisDoesNotSay` list that opens by saying the matrix did not pass. A
-later reader deciding whether M3 closes should start at those three.
+The record separates the operator attestation — injected input followed the
+ordinary title-screen and world-selection route — from facts derived from process
+state, the shutdown report, persisted files, and the post-exit instance scan. Raw
+logs and screenshots remain private; only sanitized facts and their digests enter
+the repository.
 
-The one thing it settles outright is the game directory.
-`crates/ravel-bootstrap/src/game_directory.rs` was written against a footing —
-that Prism sets the working directory to the instance game root — which had
-never been measured and which, if wrong, would have invalidated the module
-rather than merely failed. It is right, and the evidence is stronger than
-presence of the marker: the client rewrote `options.txt` into that directory
-during the launch, which is its own `gameDirectory` resolution agreeing with the
-working directory rather than a file that happened to be there.
+Four deviations from the earlier title-only record are retained as explicit
+resolutions rather than disappearing from the audit trail:
 
-`launchBlockingDefect` is in the record rather than only in a commit message
-because it is the most useful thing this work package found, and because the
-history deliberately does not show it. The null check was folded into the change
-that introduced the switch, which is what this repository's contract asks for, so
-the delivered stack never carries the defect and a reader diffing it will find
-nothing. What the diff cannot say is that the state existed and that no check in
-the repository would have gone red for it. That is now closed:
-`ravel:verify-jvm` runs the harness inside `ravel:verify` and in CI, and it was
-proven against the defect rather than assumed — reverting the null check turns
-the task red, restoring it turns the task green.
+- **Open world — resolved.** The accepted second launch used injected input through
+  Singleplayer and the real world-selection screen, then exercised command and
+  saved-data paths, saved, relaunched, and verified the exact persisted value.
+- **Launch-time caller — resolved.** The source-composed production host populated
+  the runtime and configuration stores during premain. The Mods, settings, and
+  profiling screens opened from the title menu and consumed production `Hook`
+  data.
+- **Unaccounted target — resolved.** `lwysptxkplzu` changed class-hierarchy
+  resolution to parse resources without loading game classes. Per-class matched
+  counts and failure reporting then reconciled `TitleScreen` and every other
+  reviewed class: 15 classes, 31 callable methods, zero transformation failures.
+- **Title-only/SIGTERM — superseded.** The passing trial opened a world, used Save
+  and Quit to Title, selected Quit Game, and let Java and Prism exit naturally.
+  Earlier title-only or forced-cleanup runs remain private historical evidence and
+  are not the accepted trial.
 
-`launchTimeCaller` and `openWorld` are the two sections a reader should not skim.
-Both record a gap that M3-W7 was briefed to close and did not, both say exactly
-what blocks it and who owns the decision, and neither was closed by inventing a
-caller to make a proof pass.
+The game-directory footing is also measured directly: before Ravel was attached,
+the stock Prism launch's process working directory was the instance game root and
+remained so through the title screen. The post-exit scan found exactly the stock
+Minecraft and LWJGL components, no other loader component, and no mod JAR.

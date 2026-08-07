@@ -86,18 +86,26 @@ struct Lock {
     minecraft: String,
     extractor: String,
     client_jar_sha256: String,
+    data_fixer_jar_sha256: String,
     #[serde(rename = "stub")]
     stubs: Vec<Stub>,
 }
 
-/// Resolves every seeded class, and everything its members name, from the jar.
-pub(super) fn from_jar(archive: &jar::Archive, seeds: &Seeds) -> Result<Vec<Stub>, GenerateError> {
+/// Resolves every seeded class, and everything its members name, from the jars.
+///
+/// The archives are searched in the order the adapter inputs pin them, and the
+/// first one that carries a class is the one it is read from. The game's own jar
+/// comes first, so a library class the game shadows is still read from the game.
+pub(super) fn from_jar(
+    archives: &[&jar::Archive],
+    seeds: &Seeds,
+) -> Result<Vec<Stub>, GenerateError> {
     let mut members: BTreeMap<String, Vec<Member>> = BTreeMap::new();
     let mut referenced = BTreeSet::new();
 
     for seed in &seeds.stubs {
         let class = seed.class.replace('.', "/");
-        let declared = read_members(archive, &class)?;
+        let declared = read_members(archives, &class)?;
         let mut selected = Vec::new();
         for name in &seed.members {
             let matched = declared
@@ -143,12 +151,12 @@ pub(super) fn from_jar(archive: &jar::Archive, seeds: &Seeds) -> Result<Vec<Stub
 
     let mut hierarchies = BTreeMap::new();
     for class in &set {
-        hierarchies.insert(class.clone(), read_hierarchy(archive, class)?);
+        hierarchies.insert(class.clone(), read_hierarchy(archives, class)?);
     }
 
     let mut stubs = Vec::with_capacity(set.len());
     for class in &set {
-        let (extends, implements) = above(archive, class, &set, &hierarchies)?;
+        let (extends, implements) = above(archives, class, &set, &hierarchies)?;
         stubs.push(Stub {
             class: class.clone(),
             flags: hierarchies[class].flags,
@@ -184,6 +192,16 @@ pub(super) fn from_lock(
             "the client jar hash",
             lock.client_jar_sha256.as_str(),
             adapter.inputs.client_jar.sha256.as_deref().unwrap_or(""),
+        ),
+        (
+            "the data fixer jar hash",
+            lock.data_fixer_jar_sha256.as_str(),
+            adapter
+                .inputs
+                .data_fixer_jar
+                .sha256
+                .as_deref()
+                .unwrap_or(""),
         ),
     ] {
         if recorded != pinned {
@@ -229,19 +247,40 @@ pub(super) fn from_lock(
     Ok(lock.stubs)
 }
 
-/// Reads one class's declared members out of the jar.
+/// Whether any pinned jar carries a class file under this exact name.
+fn held(archives: &[&jar::Archive], entry: &str) -> bool {
+    archives.iter().any(|archive| archive.holds(entry))
+}
+
+/// One class's bytes, from the first pinned jar that carries it.
+///
+/// A class no jar carries is unresolved rather than extracted: the seed list
+/// named something that is in none of the sources the adapter inputs pin, and
+/// guessing a declaration for it is the transcription the stubs exist to avoid.
+fn read_class(archives: &[&jar::Archive], class: &str) -> Result<Vec<u8>, GenerateError> {
+    let entry = format!("{class}.class");
+    let archive = archives
+        .iter()
+        .find(|archive| archive.holds(&entry))
+        .ok_or_else(|| {
+            GenerateError::Unresolved(format!("no pinned jar carries {}", class.replace('/', ".")))
+        })?;
+    archive.entry(&entry)
+}
+
+/// Reads one class's declared members out of the jars.
 fn read_members(
-    archive: &jar::Archive,
+    archives: &[&jar::Archive],
     class: &str,
 ) -> Result<Vec<classfile::Member>, GenerateError> {
-    let bytes = archive.entry(&format!("{class}.class"))?;
+    let bytes = read_class(archives, class)?;
     classfile::members(&bytes)
         .map_err(|error| GenerateError::Extraction(format!("{class}: {error}")))
 }
 
-/// Reads one class's own flags and supertypes out of the jar.
-fn read_hierarchy(archive: &jar::Archive, class: &str) -> Result<Hierarchy, GenerateError> {
-    let bytes = archive.entry(&format!("{class}.class"))?;
+/// Reads one class's own flags and supertypes out of the jars.
+fn read_hierarchy(archives: &[&jar::Archive], class: &str) -> Result<Hierarchy, GenerateError> {
+    let bytes = read_class(archives, class)?;
     classfile::hierarchy(&bytes)
         .map_err(|error| GenerateError::Extraction(format!("{class}: {error}")))
 }
@@ -251,10 +290,10 @@ fn read_hierarchy(archive: &jar::Archive, class: &str) -> Result<Hierarchy, Gene
 /// The superclass slot takes the nearest stubbed ancestor on the extends chain,
 /// so a stub declares at most the one Java allows. Every other stubbed type
 /// above the class is an interface and is declared as one. A walk that leaves
-/// the jar stops: the client jar carries the game's classes and not the
-/// libraries they compile against.
+/// the pinned jars stops: they carry the game's classes and the serialization
+/// library, and not everything either of those compiles against.
 fn above(
-    archive: &jar::Archive,
+    archives: &[&jar::Archive],
     class: &str,
     set: &BTreeSet<String>,
     hierarchies: &BTreeMap<String, Hierarchy>,
@@ -262,7 +301,7 @@ fn above(
     let mut extends = None;
     let mut walk = Some(class.to_owned());
     while let Some(current) = walk {
-        let hierarchy = hierarchy_of(archive, &current, hierarchies)?;
+        let hierarchy = hierarchy_of(archives, &current, hierarchies)?;
         let Some(parent) = hierarchy.super_class else {
             break;
         };
@@ -270,7 +309,7 @@ fn above(
             extends = Some(parent);
             break;
         }
-        walk = archive.holds(&format!("{parent}.class")).then_some(parent);
+        walk = held(archives, &format!("{parent}.class")).then_some(parent);
     }
 
     let mut implements = BTreeSet::new();
@@ -280,12 +319,12 @@ fn above(
         if !seen.insert(current.clone()) {
             continue;
         }
-        let hierarchy = hierarchy_of(archive, &current, hierarchies)?;
+        let hierarchy = hierarchy_of(archives, &current, hierarchies)?;
         for supertype in hierarchy.supertypes() {
             if set.contains(supertype) && Some(supertype) != extends.as_deref() {
                 implements.insert(supertype.to_owned());
             }
-            if archive.holds(&format!("{supertype}.class")) {
+            if held(archives, &format!("{supertype}.class")) {
                 pending.push(supertype.to_owned());
             }
         }
@@ -293,15 +332,15 @@ fn above(
     Ok((extends, implements.into_iter().collect()))
 }
 
-/// The hierarchy of one class, reading the jar only for a class not already read.
+/// The hierarchy of one class, reading a jar only for a class not already read.
 fn hierarchy_of(
-    archive: &jar::Archive,
+    archives: &[&jar::Archive],
     class: &str,
     hierarchies: &BTreeMap<String, Hierarchy>,
 ) -> Result<Hierarchy, GenerateError> {
     match hierarchies.get(class) {
         Some(known) => Ok(known.clone()),
-        None => read_hierarchy(archive, class),
+        None => read_hierarchy(archives, class),
     }
 }
 
@@ -458,9 +497,20 @@ mod tests {
             .sha256
             .as_deref()
             .expect("a pinned hash");
+        let library = pinned
+            .adapter
+            .inputs
+            .data_fixer_jar
+            .sha256
+            .as_deref()
+            .expect("a pinned hash");
 
         for (broken, expected) in [
             (tracked.replace(jar, &"0".repeat(64)), "the client jar hash"),
+            (
+                tracked.replace(library, &"0".repeat(64)),
+                "the data fixer jar hash",
+            ),
             (
                 tracked.replace("extractor = \"classfile\"", "extractor = \"javap\""),
                 "javap",
@@ -533,7 +583,8 @@ mod tests {
     fn the_lock_shape_round_trips_through_the_kinds_a_stub_can_be() {
         let lock: Lock = toml::from_str(
             "schemaVersion = 1\nminecraft = \"0.0.0\"\nextractor = \"classfile\"\n\
-             clientJarSha256 = \"00\"\n\n[[stub]]\nclass = \"a/B\"\nflags = 1553\n",
+             clientJarSha256 = \"00\"\ndataFixerJarSha256 = \"01\"\n\n\
+             [[stub]]\nclass = \"a/B\"\nflags = 1553\n",
         )
         .expect("a stub with no members and no supertypes is a whole stub");
 

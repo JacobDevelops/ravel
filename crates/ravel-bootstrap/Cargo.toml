@@ -23,6 +23,8 @@ ravel-loader.workspace = true
 ravel-minecraft.workspace = true
 ravel-minecraft-adapter.workspace = true
 ravel-observability.workspace = true
+ravel-save.workspace = true
+semver.workspace = true
 serde_json.workspace = true
 
 [lints]

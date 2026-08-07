@@ -111,6 +111,10 @@ pub(super) struct Input {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Inputs {
     pub(super) client_jar: Input,
+    /// The library jar carrying the serialization types the game's signatures
+    /// name. Those classes are not in the client jar, so a stub for one has to be
+    /// read from the library that declares it rather than guessed at.
+    pub(super) data_fixer_jar: Input,
     pub(super) version_manifest: Input,
     pub(super) hook_inventory: Input,
     pub(super) stub_seeds: Input,
@@ -202,6 +206,7 @@ pub(super) fn pinned(root: &Path) -> Result<PinnedVersion, GenerateError> {
 
     for input in [
         &adapter.inputs.client_jar,
+        &adapter.inputs.data_fixer_jar,
         &adapter.inputs.version_manifest,
         &adapter.inputs.hook_inventory,
         &adapter.inputs.stub_seeds,
@@ -328,27 +333,64 @@ mod tests {
         );
         assert_eq!(pinned.seeds.minecraft, pinned.adapter.minecraft);
 
-        // A seed with no members earns its place only as a supertype. Nothing
-        // calls a member on it, so the one thing it can be doing is making the
-        // classes under it assignable to a parameter that names it — which is
-        // what an erased widget parameter does. Anything else is a seed that
-        // stubs a class nothing can be called on.
+        // A seed with no members earns its place by being named by something
+        // else in the set. Nothing calls a member on it, so the only work it can
+        // do is being a type another stub already writes down: a supertype that
+        // makes the classes under it assignable, or a descriptor that a member
+        // of another stub declares. A seed nothing names stubs a class that
+        // cannot be reached at all, which is a seed to delete.
         let lock = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
             .expect("the tracked stub lock should be readable");
         for seed in &pinned.seeds.stubs {
             if !seed.members.is_empty() {
                 continue;
             }
-            let internal = seed.class.replace('.', "/");
             assert!(
-                lock.lines().any(|line| {
-                    (line.starts_with("extends") || line.starts_with("implements"))
-                        && line.contains(&internal)
-                }),
-                "{} is seeded with no members and nothing declares it above them",
+                named_by_another_stub(&lock, &seed.class),
+                "{} is seeded with no members and nothing else in the set names it",
                 seed.class
             );
         }
+    }
+
+    /// Whether anything else in `lock` writes `class` down.
+    ///
+    /// A supertype edge or a member descriptor, and nothing else: both are lines
+    /// the generator rendered out of the jar, so neither can name a class the
+    /// jar does not agree carries that relationship.
+    fn named_by_another_stub(lock: &str, class: &str) -> bool {
+        let internal = class.replace('.', "/");
+        lock.lines().any(|line| {
+            (line.starts_with("extends")
+                || line.starts_with("implements")
+                || line.starts_with("descriptor"))
+                && line.contains(&internal)
+        })
+    }
+
+    #[test]
+    fn a_memberless_seed_nothing_else_names_is_refused_however_it_is_named() {
+        let lock = "\
+[[stub]]
+class = \"net/minecraft/Named\"
+extends = \"net/minecraft/Above\"
+
+[[stub.member]]
+name = \"take\"
+descriptor = \"(Lnet/minecraft/Parameter;)V\"
+
+[[stub]]
+class = \"net/minecraft/Unreferenced\"
+";
+
+        // The two ways a seed earns its place, and both still earn it.
+        assert!(named_by_another_stub(lock, "net.minecraft.Above"));
+        assert!(named_by_another_stub(lock, "net.minecraft.Parameter"));
+
+        // Its own declaration is not something else naming it, and neither is a
+        // class the lock never mentions.
+        assert!(!named_by_another_stub(lock, "net.minecraft.Unreferenced"));
+        assert!(!named_by_another_stub(lock, "net.minecraft.Absent"));
     }
 
     #[test]
@@ -454,6 +496,7 @@ mod tests {
 
         for input in [
             &inputs.client_jar,
+            &inputs.data_fixer_jar,
             &inputs.version_manifest,
             &inputs.hook_inventory,
             &inputs.stub_seeds,

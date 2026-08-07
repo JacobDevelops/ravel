@@ -6,6 +6,7 @@ mod dispatch;
 mod game_directory;
 mod guard;
 mod mods;
+mod persistence;
 mod profiling;
 mod report;
 mod runtime;
@@ -14,6 +15,7 @@ mod wire;
 
 pub use dispatch::register;
 pub use guard::HookError;
+pub use persistence::{OpenOutcome, SaveOutcome, save, stage};
 pub use runtime::{LoaderRuntime, install};
 pub use settings::install as install_settings;
 

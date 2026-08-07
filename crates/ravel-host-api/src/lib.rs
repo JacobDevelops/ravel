@@ -5,6 +5,7 @@
 use std::fmt;
 
 use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure};
+use ravel_save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
 
 /// Something the game did that a mod may react to.
 ///
@@ -291,6 +292,48 @@ pub trait HostMod: Send {
             mod_id: self.id().clone(),
             state: LifecycleState::Running,
         })
+    }
+
+    /// Declares the versioned world data this mod owns, when it owns any.
+    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
+        None
+    }
+
+    /// Applies one aggregate entry after [`SavedDataPlan`] admitted it.
+    ///
+    /// The default accepts absence for a stateless mod and rejects an envelope
+    /// that could only have reached the wrong owner through a host bug.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HostError::Unsupported`] from the default when an envelope
+    /// reaches a mod that declares no saved data. An implementation returns
+    /// whatever refusal reading its own state produced; a refusal here
+    /// withholds the world rather than opening it half-applied.
+    fn open_saved_data(
+        &mut self,
+        envelope: Option<&SavedDataEnvelope>,
+        plan: &SavedDataPlan,
+    ) -> Result<(), HostError> {
+        if envelope.is_none() && self.saved_data_declaration().is_none() {
+            return Ok(());
+        }
+        Err(HostError::Unsupported {
+            mod_id: plan.owner().clone(),
+            state: LifecycleState::Registered,
+        })
+    }
+
+    /// Produces this owner's complete envelope for one aggregate checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever refusal producing the envelope raised. The default
+    /// produces nothing and never fails. A failure here skips the replacement
+    /// and leaves the previous aggregate on disk; it never aborts the vanilla
+    /// save.
+    fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, HostError> {
+        Ok(None)
     }
 }
 

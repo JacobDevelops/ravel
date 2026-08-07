@@ -770,6 +770,8 @@ dependencies = [
  "ravel-minecraft",
  "ravel-minecraft-adapter",
  "ravel-observability",
+ "ravel-save",
+ "semver",
  "serde_json",
 ]
 
@@ -857,6 +859,7 @@ name = "ravel-host-api"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "ravel-save",
 ]
 
 [[package]]
@@ -944,6 +947,9 @@ name = "ravel-save"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "semver",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1153,6 +1159,8 @@ dependencies = [
  "ravel-host-api",
  "ravel-save",
  "ravel-sdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

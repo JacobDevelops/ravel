@@ -188,6 +188,21 @@ there is no read/write pair on `SavedData` to hook. `ravel-save` already models 
 deciding half of that — which versions exist and whether a world may be opened —
 and it needs none of these targets to do so.
 
+ADG-7 then selected two of these as the persistence adapter's own seams, and both
+are now reviewed inventory entries resolved against the pinned jar:
+
+| Member | Descriptor | Kind | Inventory id |
+| --- | --- | --- | --- |
+| `net.minecraft.client.Minecraft::doWorldLoad` | `(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Lnet/minecraft/server/packs/repository/PackRepository;Lnet/minecraft/server/WorldStem;Ljava/util/Optional;Z)V` | instance-method | `world.open-persistence` |
+| `net.minecraft.server.MinecraftServer::saveAllChunks` | `(ZZZ)Z` | instance-method | `world.save-persistence` |
+
+These are adapter crossings rather than observations. The entries above watch what
+the game does with saved data; these two carry Ravel's own aggregate into and out
+of it. ADG-7 records why each is the single common seam for its half —
+`doWorldLoad` is where both the creation and existing-world paths converge before
+the body's first persistent mutation, and `saveAllChunks` is the one call both
+autosave and `stopServer` reach.
+
 ## What adding any of these costs
 
 Editing `hooks.toml` means updating `inputs.hookInventory`'s `sha256` and `bytes`

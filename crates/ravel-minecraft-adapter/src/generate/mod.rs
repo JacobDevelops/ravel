@@ -123,18 +123,29 @@ pub struct Generated {
 pub fn regenerate_locks(root: &Path) -> Result<(), GenerateError> {
     let pinned = inputs::pinned(root)?;
     let jar_path = root.join(&pinned.adapter.inputs.client_jar.path);
-    if !jar_path.is_file() {
-        return Err(GenerateError::Input(format!(
-            "the pinned client jar is absent at {}; a lock cannot be rewritten from another lock",
-            pinned.adapter.inputs.client_jar.path
-        )));
+    let library_path = root.join(&pinned.adapter.inputs.data_fixer_jar.path);
+    for (path, input) in [
+        (&jar_path, &pinned.adapter.inputs.client_jar),
+        (&library_path, &pinned.adapter.inputs.data_fixer_jar),
+    ] {
+        if !path.is_file() {
+            return Err(GenerateError::Input(format!(
+                "the pinned jar is absent at {}; a lock cannot be rewritten from another lock",
+                input.path
+            )));
+        }
     }
     inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
+    inputs::verify_input(root, &pinned.adapter.inputs.data_fixer_jar)?;
     inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
 
+    // Hook targets are game members, so they are resolved against the client jar
+    // alone: a target that only the library declares would be a hook on something
+    // the game does not own.
     let archive = jar::Archive::open(&jar_path)?;
+    let library = jar::Archive::open(&library_path)?;
     let resolved = resolve::from_jar(&archive, &pinned.inventory)?;
-    let stubbed = stubs::from_jar(&archive, &pinned.seeds)?;
+    let stubbed = stubs::from_jar(&[&archive, &library], &pinned.seeds)?;
 
     write_atomically(
         &pinned.directory.join("mappings.lock"),
@@ -178,13 +189,21 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         .map_err(|error| GenerateError::Input(format!("cannot read stubs.lock: {error}")))?;
 
     let jar_path = root.join(&pinned.adapter.inputs.client_jar.path);
-    let (resolved, stubbed) = if jar_path.is_file() {
+    let library_path = root.join(&pinned.adapter.inputs.data_fixer_jar.path);
+    // Both jars or neither: a stub set read from half its sources would resolve
+    // some seeds and not others, which is a different answer rather than a
+    // fallback, and the lock is the one answer a machine without them trusts.
+    let (resolved, stubbed) = if jar_path.is_file() && library_path.is_file() {
         inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
+        inputs::verify_input(root, &pinned.adapter.inputs.data_fixer_jar)?;
         inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
         let archive = jar::Archive::open(&jar_path)?;
+        let library = jar::Archive::open(&library_path)?;
         (
+            // Hook targets are game members and are never looked for in the
+            // library jar.
             resolve::from_jar(&archive, &pinned.inventory)?,
-            stubs::from_jar(&archive, &pinned.seeds)?,
+            stubs::from_jar(&[&archive, &library], &pinned.seeds)?,
         )
     } else {
         (
@@ -267,6 +286,7 @@ fn write(
             root.join(&pins.hook_inventory.path),
             root.join(&pins.stub_seeds.path),
             root.join(&pins.client_jar.path),
+            root.join(&pins.data_fixer_jar.path),
             root.join(&pins.version_manifest.path),
         ],
         bindings,
@@ -331,7 +351,7 @@ mod tests {
         assert!(generated.exports.is_file());
         assert!(generated.java.is_file());
         assert_eq!(generated.sha256.len(), 64);
-        assert_eq!(generated.watched.len(), 7);
+        assert_eq!(generated.watched.len(), 8);
 
         let screen = generated
             .stubs

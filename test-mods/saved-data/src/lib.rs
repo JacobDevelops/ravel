@@ -6,7 +6,10 @@ use std::num::NonZero;
 
 use ravel_core::{LifecycleState, ModId};
 use ravel_host_api::{HostError, HostMod};
-use ravel_save::{SavedDataDeclaration, SavedDataError, SavedDataPlan, SavedDataVersion};
+use ravel_save::{
+    SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataPlan, SavedDataVersion,
+};
+use serde::{Deserialize, Serialize};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "saved_data";
@@ -24,7 +27,7 @@ const VERSIONS: [u32; 3] = [1, 2, 3];
 /// Ravel never looks inside this. `SPEC.md` §14 makes the owning mod the only
 /// thing that interprets its own state, so what the loader decides is whether
 /// this may be read at all, and the shape of it is this mod's business.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SavedState {
     /// How many times the world has been opened.
     pub visits: u32,
@@ -119,9 +122,9 @@ impl SavedDataMod {
     ///
     /// # Errors
     ///
-    /// Returns whatever [`SavedDataPlan::open`] refuses: a world holding none of
-    /// this mod's data, one written by a newer build, or one with no path
-    /// across a gap in the declared versions. Nothing is applied to
+    /// Returns whatever [`SavedDataPlan::open`] refuses: a world written by a
+    /// newer build or one with no path across a gap in the declared versions.
+    /// Absence initializes fresh state. Nothing is applied to
     /// [`Self::state`] unless the whole plan resolved, so a refused world leaves
     /// the mod holding what it held before.
     pub fn open(
@@ -130,10 +133,9 @@ impl SavedDataMod {
     ) -> Result<SavedDataPlan, SavedDataError> {
         let declaration = self.declaration();
         let Some((version, mut state)) = stored else {
-            // Ask the plan rather than raising the refusal here, so this mod
-            // cannot disagree with the crate that owns the decision.
-            return Err(SavedDataPlan::open(&declaration, None)
-                .expect_err("`ravel-save` refuses a world holding none of this mod's data"));
+            let plan = SavedDataPlan::open(&declaration, None)?;
+            self.state = SavedState::default();
+            return Ok(plan);
         };
 
         let plan = SavedDataPlan::resolve(&declaration, version)?;
@@ -216,6 +218,57 @@ impl HostMod for SavedDataMod {
         self.entered.push(state);
         Ok(())
     }
+
+    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
+        Some(self.declaration())
+    }
+
+    fn open_saved_data(
+        &mut self,
+        envelope: Option<&SavedDataEnvelope>,
+        plan: &SavedDataPlan,
+    ) -> Result<(), HostError> {
+        let state = envelope
+            .map(|stored| {
+                serde_json::from_value::<SavedState>(stored.payload().clone())
+                    .map(|state| (stored.data_version(), state))
+            })
+            .transpose()
+            .map_err(|error| HostError::Refused {
+                mod_id: self.id.clone(),
+                state: LifecycleState::Registered,
+                detail: error.to_string(),
+            })?;
+        let opened = self.open(state).map_err(|error| HostError::Refused {
+            mod_id: self.id.clone(),
+            state: LifecycleState::Registered,
+            detail: error.to_string(),
+        })?;
+        if opened != *plan {
+            return Err(HostError::Refused {
+                mod_id: self.id.clone(),
+                state: LifecycleState::Registered,
+                detail: "the admitted saved-data plan changed during delivery".to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, HostError> {
+        let (version, state) = self.save();
+        let payload = serde_json::to_value(state).map_err(|error| HostError::Refused {
+            mod_id: self.id.clone(),
+            state: LifecycleState::Running,
+            detail: error.to_string(),
+        })?;
+        Ok(Some(SavedDataEnvelope::new(
+            self.id.clone(),
+            version,
+            Vec::new(),
+            Some("urn:ravel:test:saved-state:1".to_owned()),
+            payload,
+        )))
+    }
 }
 
 #[cfg(test)]
@@ -224,7 +277,7 @@ mod tests {
 
     use ravel_core::{LifecycleState, ModId};
     use ravel_host_api::HostMod;
-    use ravel_save::{SavedDataError, SavedDataVersion};
+    use ravel_save::SavedDataVersion;
 
     use super::{MOD_ID, SavedDataMod, SavedState, VERSIONS};
 
@@ -322,16 +375,14 @@ mod tests {
     }
 
     #[test]
-    fn a_world_holding_none_of_this_mods_data_is_refused_by_the_crate_that_owns_the_rule() {
+    fn a_world_holding_none_of_this_mods_data_initializes_fresh_state() {
         let mut saved = SavedDataMod::new();
+        saved.visit("spawn");
 
-        let error = saved.open(None).expect_err("nothing to open");
-        assert_eq!(
-            error,
-            SavedDataError::MissingRequiredData {
-                owner: saved.id().clone()
-            }
-        );
+        let plan = saved.open(None).expect("absence is a fresh world");
+
+        assert!(plan.is_current());
+        assert_eq!(saved.state(), &SavedState::default());
     }
 
     #[test]
@@ -352,9 +403,6 @@ mod tests {
         saved
             .open(Some(at(9, SavedState::default())))
             .expect_err("newer");
-        assert_eq!(saved.state(), &before);
-
-        saved.open(None).expect_err("nothing to open");
         assert_eq!(saved.state(), &before);
     }
 

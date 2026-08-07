@@ -97,3 +97,21 @@ members = ["<init>", "value", "updateMessage", "applyValue"]
 # Everything a slider or a choice cannot constrain is typed into one of these.
 class = "net.minecraft.client.gui.components.EditBox"
 members = ["<init>", "getValue", "setValue", "setEditable", "setMaxLength"]
+
+[[stub]]
+# What a saved-data owner is registered as. Seeded for its constructor rather
+# than for a method anything calls: `SavedDataType(Identifier, Supplier<T>,
+# Codec<T>, DataFixTypes)` is the signature that names `Codec`, and a descriptor
+# read out of the jar is the only place that name can honestly come from.
+class = "net.minecraft.world.level.saveddata.SavedDataType"
+members = ["<init>"]
+
+[[stub]]
+# Not a game class: it is declared by the DataFixerUpper library the game's own
+# signatures name, which is why `adapter.toml` pins that jar as a second class
+# source. `SavedDataType` takes one in its constructor, so a saved-data type
+# cannot be written down without being able to write this down first. It is
+# seeded with no members because nothing calls one on it; the constructor above
+# is what earns it its place.
+class = "com.mojang.serialization.Codec"
+members = []

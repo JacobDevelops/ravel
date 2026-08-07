@@ -1,16 +1,17 @@
 # Generated stub provenance for Minecraft 26.1.2. Do not edit.
 #
 # Every entry below is one compile-time stub the settings screen is built
-# against, read out of the pinned client jar. Descriptors and access flags
-# are the jar's own, which is the point: a hand-written stub transcribes a
-# generic signature, and the JVM links on the erased one.
+# against, read out of the pinned jars: the client jar first, then the
+# serialization library the game's own signatures name. Descriptors and
+# access flags are the jar's own, which is the point: a hand-written stub
+# transcribes a generic signature, and the JVM links on the erased one.
 #
 # What this file does not promise:
 #
-# - It is checked only where the client jar is. A machine without the jar
+# - It is checked only where the pinned jars are. A machine without them
 #   generates from this file, so on that machine the lock is the source and
-#   cannot disagree with anything. Drift is caught where the jar exists.
-# - It pins against a jar hash, so it is only as current as that pin. A
+#   cannot disagree with anything. Drift is caught where the jars exist.
+# - It pins against jar hashes, so it is only as current as those pins. A
 #   Minecraft build nobody has re-pinned against is unchecked.
 # - It carries no hierarchy the stub set does not already hold. A supertype
 #   outside the set is dropped, so a change to one is invisible here.
@@ -26,6 +27,11 @@ schemaVersion = 1
 minecraft = "26.1.2"
 extractor = "classfile"
 clientJarSha256 = "b1b3158572666445eff01e82fad8c7de2e4953db6d354f311730d77a8359d0b0"
+dataFixerJarSha256 = "9653a39cf5c4853cc98628d902dcb23ffeb2755122ecc563bde38c8f60c0b61e"
+
+[[stub]]
+class = "com/mojang/serialization/Codec"
+flags = 1537
 
 [[stub]]
 class = "net/minecraft/client/Minecraft"
@@ -263,3 +269,21 @@ method = true
 class = "net/minecraft/network/chat/MutableComponent"
 flags = 49
 implements = ["net/minecraft/network/chat/Component"]
+
+[[stub]]
+class = "net/minecraft/resources/Identifier"
+flags = 49
+
+[[stub]]
+class = "net/minecraft/util/datafix/DataFixTypes"
+flags = 16433
+
+[[stub]]
+class = "net/minecraft/world/level/saveddata/SavedDataType"
+flags = 49
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/resources/Identifier;Ljava/util/function/Supplier;Lcom/mojang/serialization/Codec;Lnet/minecraft/util/datafix/DataFixTypes;)V"
+flags = 1
+method = true

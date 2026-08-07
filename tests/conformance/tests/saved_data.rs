@@ -2,10 +2,12 @@
 //! refusing what it may not.
 //!
 //! `ROADMAP.md`'s M3-W4 row asks that create/save/exit/reload preserve state and
-//! that incompatible or missing required data fail closed. Each world under
+//! that incompatible data fail closed. Each world under
 //! `tests/fixtures/public/worlds/` is one of those cases, and every test below
 //! reads the fixture off disk rather than building a world in memory, so what is
-//! checked is the recorded case rather than a restatement of it.
+//! checked is the recorded case rather than a restatement of it. ADG-7 settles
+//! the one case a world file cannot state: absence initializes fresh state for
+//! any world, so `absent` records an initialization rather than a refusal.
 //!
 //! The two refusals are then driven through the real gate. `SavedDataError`
 //! implements `StructuredFailure`, so a refusal goes into a
@@ -27,7 +29,7 @@ use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, SideSet, Struc
 use ravel_host_api::HostMod;
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, WorldRefused};
 use ravel_observability::{PreWorldReport, Subject};
-use ravel_save::{SavedDataError, SavedDataVersion};
+use ravel_save::{SavedDataDeclaration, SavedDataError, SavedDataPlan, SavedDataVersion};
 use ravel_test_mod_saved_data::{MOD_ID, SavedDataMod, SavedState};
 use serde_json::Value;
 
@@ -150,6 +152,29 @@ fn refusal(name: &str) -> SavedDataError {
     SavedDataMod::new()
         .open(stored(name, MOD_ID))
         .expect_err("this world does not open")
+}
+
+/// Every incompatibility that withholds a world, named for reporting.
+///
+/// Absence is not among them: ADG-7 makes it fresh initialization. What is left
+/// is a world this build cannot read, and both cases turn on the declared
+/// versions rather than on the file being there — `future` is a version above
+/// the highest declared, and a gap is a version below it with no path across.
+fn refusals() -> [(&'static str, SavedDataError); 2] {
+    let gapped = SavedDataDeclaration::new(
+        MOD_ID.parse().expect("a legal mod id"),
+        [1, 3].map(|raw| SavedDataVersion::new(raw).expect("non-zero")),
+    )
+    .expect("two versions");
+
+    [
+        ("future", refusal("future")),
+        (
+            "gapped",
+            SavedDataPlan::resolve(&gapped, SavedDataVersion::new(1).expect("non-zero"))
+                .expect_err("a gap has no migration path"),
+        ),
+    ]
 }
 
 // ------------------------------------------------------- fixture agreement ---
@@ -277,19 +302,23 @@ fn a_world_from_a_newer_build_cannot_open() {
 }
 
 #[test]
-fn a_world_holding_no_data_this_mod_owns_cannot_open() {
+fn a_world_holding_no_data_this_mod_owns_initializes_fresh_state() {
     assert!(
         entries("absent").is_empty(),
         "`absent` is the world that records an empty list rather than omitting one"
     );
     assert_eq!(stored("absent", MOD_ID), None);
 
-    assert_eq!(
-        refusal("absent"),
-        SavedDataError::MissingRequiredData {
-            owner: SavedDataMod::new().id().clone(),
-        }
-    );
+    // ADG-7 gives absence one policy for every world: it initializes rather than
+    // refusing. Treating it as corruption would invent a decision from file
+    // identity instead of asking `SavedDataPlan`.
+    let mut saved = SavedDataMod::new();
+    let plan = saved
+        .open(stored("absent", MOD_ID))
+        .expect("a world holding nothing for this mod initializes fresh state");
+
+    assert!(plan.is_current());
+    assert_eq!(saved.state(), &SavedState::default());
 }
 
 #[test]
@@ -304,9 +333,9 @@ fn neither_refusal_lets_a_world_open() {
         Ok(())
     );
 
-    for name in ["future", "absent"] {
+    for (name, error) in refusals() {
         let mut report = PreWorldReport::new(environment());
-        report.refuse(&Subject::of(saved.id().clone()), &refusal(name));
+        report.refuse(&Subject::of(saved.id().clone()), &error);
 
         let refused = machine
             .open_world(&report)
@@ -320,9 +349,7 @@ fn neither_refusal_lets_a_world_open() {
 
 #[test]
 fn every_refusal_is_decided_before_any_mod_runs() {
-    for name in ["future", "absent"] {
-        let error = refusal(name);
-
+    for (name, error) in refusals() {
         assert_eq!(
             error.lifecycle_state(),
             LifecycleState::Registered,
@@ -340,9 +367,11 @@ fn every_refusal_is_decided_before_any_mod_runs() {
 
 #[test]
 fn no_two_refusals_read_the_same_way() {
+    let [(_, future), (_, gapped)] = refusals();
+
     assert_ne!(
-        refusal("future").to_string(),
-        refusal("absent").to_string(),
+        future.to_string(),
+        gapped.to_string(),
         "two refusals a player cannot tell apart are one report"
     );
 }

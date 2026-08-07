@@ -22,6 +22,11 @@ path = "tests/fixtures/local/tooling/minecraft-26.1.2/client.jar"
 sha256 = "b1b3158572666445eff01e82fad8c7de2e4953db6d354f311730d77a8359d0b0"
 bytes = 38113927
 
+[inputs.dataFixerJar]
+path = "tests/fixtures/local/tooling/minecraft-26.1.2/datafixerupper-9.0.19.jar"
+sha256 = "9653a39cf5c4853cc98628d902dcb23ffeb2755122ecc563bde38c8f60c0b61e"
+bytes = 731440
+
 [inputs.versionManifest]
 path = "tests/fixtures/local/tooling/minecraft-26.1.2/version.json"
 sha256 = "c0befcb001356cf53de2ee7cfa8fa796afcd3e2fe4530274c66d473cc576c98b"
@@ -29,10 +34,10 @@ upstream = "https://piston-meta.mojang.com/v1/packages/a5ba42111e0de7712d677c458
 
 [inputs.hookInventory]
 path = "minecraft/versions/26.1.2/hooks.toml"
-sha256 = "a217161105b84a5b9a6e4d19f7e4f0d7c5ce55ac80c28d02d38f874aeb766216"
-bytes = 11756
+sha256 = "79b93124bcdbf497ea574e446c389a8d6b3e335a8f8cb6ba613998d5729b4a2a"
+bytes = 13073
 
 [inputs.stubSeeds]
 path = "minecraft/versions/26.1.2/stubs.toml"
-sha256 = "6d15c3a9840c221f8a0e8b60b637a68e17e8e4a4fb6b188139c79e8b4c5126d6"
-bytes = 4193
+sha256 = "bd6cd230609fab31c98a1ac359a1fe09e08d2272a33770381fa5f0256963f28e"
+bytes = 5079

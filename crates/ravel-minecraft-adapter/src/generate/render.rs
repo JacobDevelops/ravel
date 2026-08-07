@@ -635,16 +635,17 @@ pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
         "# Generated stub provenance for Minecraft {}. Do not edit.\n\
          #\n\
          # Every entry below is one compile-time stub the settings screen is built\n\
-         # against, read out of the pinned client jar. Descriptors and access flags\n\
-         # are the jar's own, which is the point: a hand-written stub transcribes a\n\
-         # generic signature, and the JVM links on the erased one.\n\
+         # against, read out of the pinned jars: the client jar first, then the\n\
+         # serialization library the game's own signatures name. Descriptors and\n\
+         # access flags are the jar's own, which is the point: a hand-written stub\n\
+         # transcribes a generic signature, and the JVM links on the erased one.\n\
          #\n\
          # What this file does not promise:\n\
          #\n\
-         # - It is checked only where the client jar is. A machine without the jar\n\
+         # - It is checked only where the pinned jars are. A machine without them\n\
          #   generates from this file, so on that machine the lock is the source and\n\
-         #   cannot disagree with anything. Drift is caught where the jar exists.\n\
-         # - It pins against a jar hash, so it is only as current as that pin. A\n\
+         #   cannot disagree with anything. Drift is caught where the jars exist.\n\
+         # - It pins against jar hashes, so it is only as current as those pins. A\n\
          #   Minecraft build nobody has re-pinned against is unchecked.\n\
          # - It carries no hierarchy the stub set does not already hold. A supertype\n\
          #   outside the set is dropped, so a change to one is invisible here.\n\
@@ -659,11 +660,18 @@ pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
          schemaVersion = {}\n\
          minecraft = \"{}\"\n\
          extractor = \"{EXTRACTOR}\"\n\
-         clientJarSha256 = \"{}\"",
+         clientJarSha256 = \"{}\"\n\
+         dataFixerJarSha256 = \"{}\"",
         adapter.minecraft,
         adapter.schema_version,
         adapter.minecraft,
-        adapter.inputs.client_jar.sha256.as_deref().unwrap_or("")
+        adapter.inputs.client_jar.sha256.as_deref().unwrap_or(""),
+        adapter
+            .inputs
+            .data_fixer_jar
+            .sha256
+            .as_deref()
+            .unwrap_or("")
     );
 
     for stub in stubs {
@@ -933,6 +941,7 @@ mod tests {
             mapping_source: "unobfuscated-class-files".to_owned(),
             inputs: Inputs {
                 client_jar: unpinned(),
+                data_fixer_jar: unpinned(),
                 version_manifest: unpinned(),
                 hook_inventory: unpinned(),
                 stub_seeds: unpinned(),
@@ -1416,8 +1425,12 @@ mod tests {
             "{lock}"
         );
         assert!(
-            lock.contains("checked only where the client jar is"),
+            lock.contains("checked only where the pinned jars are"),
             "the header has to say what the lock is worth: {lock}"
+        );
+        assert!(
+            lock.contains("dataFixerJarSha256 = "),
+            "the lock records both sources' provenance: {lock}"
         );
         assert!(
             lock.contains("different table from mappings.lock"),

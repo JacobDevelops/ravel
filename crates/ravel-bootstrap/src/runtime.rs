@@ -84,14 +84,15 @@ const COMMAND: &str = "command.perform-prefixed";
 
 /// The loader, and the mods it drives, for as long as the process runs.
 pub struct LoaderRuntime {
-    inner: Mutex<Inner>,
+    pub(crate) inner: Mutex<Inner>,
 }
 
-struct Inner {
-    machine: LifecycleMachine,
-    mods: Vec<Box<dyn HostMod>>,
+pub(crate) struct Inner {
+    pub(crate) machine: LifecycleMachine,
+    pub(crate) mods: Vec<Box<dyn HostMod>>,
     /// The collectors, off unless the launch asked for them.
     profiler: Profiler,
+    pub(crate) persistence: crate::persistence::PersistenceState,
 }
 
 /// What one hook invocation asks the loader to do.
@@ -129,6 +130,7 @@ impl LoaderRuntime {
                 machine,
                 mods,
                 profiler,
+                persistence: crate::persistence::PersistenceState::default(),
             }),
         }
     }
@@ -231,6 +233,7 @@ pub fn install(machine: LifecycleMachine, mods: Vec<Box<dyn HostMod>>) -> Result
     // One installation point for every reader, so there is no launch in which
     // hooks reach the mod set but a screen finds nothing.
     crate::mods::install(Arc::clone(&runtime));
+    crate::persistence::install(Arc::clone(&runtime));
     crate::profiling::install(Arc::clone(&runtime));
     crate::dispatch::register(Box::new(Shared(runtime)))
 }

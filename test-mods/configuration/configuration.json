@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "owner": "configuration",
+  "version": 1,
+  "settings": [
+    {
+      "key": "client.enabled",
+      "title": "Enable client behavior",
+      "description": "Whether the client-side behavior runs.",
+      "valueSchema": { "type": "boolean" },
+      "default": true,
+      "side": "client",
+      "restartRequired": false,
+      "packOverride": "allowed"
+    },
+    {
+      "key": "integrated.mob_limit",
+      "title": "Integrated mob limit",
+      "description": "The maximum number of test mobs in single-player.",
+      "valueSchema": { "type": "integer", "minimum": 1, "maximum": 100 },
+      "default": 20,
+      "side": "integrated-server",
+      "restartRequired": false,
+      "packOverride": "locked"
+    },
+    {
+      "key": "dedicated.motd",
+      "title": "Dedicated server message",
+      "description": "The message reported by the dedicated test server.",
+      "valueSchema": { "type": "string", "minLength": 1, "maxLength": 64 },
+      "default": "Ravel",
+      "side": "dedicated-server",
+      "restartRequired": false,
+      "packOverride": "required"
+    },
+    {
+      "key": "common.profile",
+      "title": "Behavior profile",
+      "description": "The behavior profile used on every side after restart.",
+      "valueSchema": { "type": "string", "enum": ["quiet", "verbose"] },
+      "default": "quiet",
+      "side": "common",
+      "restartRequired": true,
+      "packOverride": "allowed"
+    }
+  ]
+}

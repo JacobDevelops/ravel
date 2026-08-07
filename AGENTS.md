@@ -50,10 +50,10 @@ pass `ravel-format`. Report the real output. Never state that a gate passed with
 - Respect the layering in [`docs/architecture/dependency-rules.md`](docs/architecture/dependency-rules.md).
   `ravel-core` depends on no other Ravel crate, the SDK exposes no bootstrap or JVM or version internals, and
   production crates never depend on `ravel-testkit`.
-- ADG-1 to ADG-5 are accepted; read [`docs/decisions/`](docs/decisions/) before writing anything that
-  touches JVM entry, mod execution, bindings, state ownership, or launcher integration, and follow the
-  mechanism the ADR selected. ADG-6 has not started; do not commit code that picks its mechanism, and an
-  empty boundary crate remains the correct placeholder for it.
+- ADG-1 to ADG-6 are accepted; read [`docs/decisions/`](docs/decisions/) before writing anything that
+  touches JVM entry, mod execution, bindings, state ownership, launcher integration, or Ravel-owned
+  screens, and follow the mechanism the ADR selected. Configuration is declared in data and those screens
+  are drawn in Java.
 - Never track mod JARs, official Minecraft or modpack assets, credentials, private worlds, or raw captures.
   Authorized local material goes in `tests/fixtures/local/`, which is ignored. `ravel-verify-scaffold`
   enforces this and will fail the gate.

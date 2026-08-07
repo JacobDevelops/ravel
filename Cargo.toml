@@ -47,6 +47,7 @@ ravel-spike-adg-3-bindings = { path = "experiments/adg-3-bindings", version = "0
 ravel-spike-adg-5-prism = { path = "experiments/adg-5-prism", version = "0.0.0" }
 ravel-spike-harness = { path = "experiments/spike-harness", version = "0.0.0" }
 ravel-test-mod-commands = { path = "test-mods/commands", version = "0.0.0" }
+ravel-test-mod-configuration = { path = "test-mods/configuration", version = "0.0.0" }
 ravel-test-mod-events = { path = "test-mods/events", version = "0.0.0" }
 ravel-test-mod-noop = { path = "test-mods/noop", version = "0.0.0" }
 ravel-test-mod-resources = { path = "test-mods/resources", version = "0.0.0" }

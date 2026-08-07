@@ -3,6 +3,7 @@ package dev.ravel.jvm.screen;
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 // The binary name is the type's name here, for the reason RavelSettingsScreen
 // records: the pinned version reaches every interactive widget through a nested
@@ -154,6 +155,27 @@ public final class RavelModsScreen extends Screen {
             y += ROW;
         }
 
+        addRenderableWidget(
+                Button.builder(Component.literal("Configuration Settings"), new Button$OnPress() {
+                            @Override
+                            public void onPress(Button pressed) {
+                                Minecraft.getInstance()
+                                        .setScreen(RavelMenu.openSettings("configuration"));
+                            }
+                        })
+                        .bounds(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .build());
+        y += ROW;
+        addRenderableWidget(
+                Button.builder(Component.literal("Profiling"), new Button$OnPress() {
+                            @Override
+                            public void onPress(Button pressed) {
+                                Minecraft.getInstance().setScreen(RavelMenu.openProfiling());
+                            }
+                        })
+                        .bounds(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .build());
+        y += ROW;
         addRenderableWidget(
                 Button.builder(Component.translatable("gui.done"), new Button$OnPress() {
                             @Override

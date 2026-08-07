@@ -81,6 +81,7 @@ public final class RavelSettingsScreen extends Screen {
     private RavelSettingsScreen(String owner) {
         super(Component.translatable("ravel.config.title"));
         this.owner = owner;
+        rows.addAll(read(Hook.ravelSettingsDocument(owner)));
     }
 
     /**
@@ -119,8 +120,9 @@ public final class RavelSettingsScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        rows.clear();
-        rows.addAll(read(Hook.ravelSettingsDocument(owner)));
+        for (Row row : rows) {
+            row.capture();
+        }
 
         int y = TOP;
         for (Row row : rows) {
@@ -178,17 +180,15 @@ public final class RavelSettingsScreen extends Screen {
                 changed.add(row);
             }
         }
-        if (!changed.isEmpty()) {
-            StringBuilder edits = new StringBuilder();
-            Wire.write(edits, Wire.VERSION);
-            Wire.write(edits, owner);
-            Wire.write(edits, Integer.toString(changed.size()));
-            for (Row row : changed) {
-                Wire.write(edits, row.key);
-                Wire.write(edits, row.value);
-            }
-            refused = describe(Hook.ravelSaveSettings(edits.toString()));
+        StringBuilder edits = new StringBuilder();
+        Wire.write(edits, Wire.VERSION);
+        Wire.write(edits, owner);
+        Wire.write(edits, Integer.toString(changed.size()));
+        for (Row row : changed) {
+            Wire.write(edits, row.key);
+            Wire.write(edits, row.value);
         }
+        refused = describe(Hook.ravelSaveSettings(edits.toString()));
         super.onClose();
     }
 
@@ -397,10 +397,15 @@ public final class RavelSettingsScreen extends Screen {
          * <p>A text field is read at the moment the question is asked rather than
          * on every keystroke, because nothing observes it until the screen closes.
          */
-        private boolean changed() {
+        private void capture() {
             if (box != null) {
                 value = box.getValue();
+                box = null;
             }
+        }
+
+        private boolean changed() {
+            capture();
             return !value.equals(original);
         }
     }

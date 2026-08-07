@@ -7,6 +7,7 @@ import java.lang.classfile.CodeElement;
 import java.lang.classfile.CodeTransform;
 import java.lang.classfile.MethodTransform;
 import java.lang.classfile.TypeKind;
+import java.lang.classfile.instruction.ReturnInstruction;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.MethodTypeDesc;
 import java.lang.instrument.ClassFileTransformer;
@@ -37,6 +38,9 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class Transformer implements ClassFileTransformer {
 
     private static final ClassDesc HOOK = ClassDesc.of("dev.ravel.jvm.Hook");
+    private static final ClassDesc TRANSFORMER = ClassDesc.of("dev.ravel.jvm.Transformer");
+    private static final MethodTypeDesc TITLE_MENU =
+            MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;II)I");
 
     private final Map<String, List<HookTarget>> byClass;
     private final AtomicInteger transformedClasses = new AtomicInteger();
@@ -54,6 +58,11 @@ public final class Transformer implements ClassFileTransformer {
             index.computeIfAbsent(target.internalClass(), key -> new ArrayList<>()).add(target);
         }
         this.byClass = Map.copyOf(index);
+    }
+
+    /** Gives transformed game code a public path to the package-private screen loader. */
+    public static int addTitleMenu(Object titleScreen, int bottom, int spacing) {
+        return Screens.addTitleMenu(titleScreen, bottom, spacing);
     }
 
     /** Classes this transformer rewrote. */
@@ -145,6 +154,12 @@ public final class Transformer implements ClassFileTransformer {
         return rewritten;
     }
 
+    private static boolean isTitleMenu(HookTarget target) {
+        return target.internalClass().equals("net/minecraft/client/gui/screens/TitleScreen")
+                && target.member().equals("createNormalMenuOptions")
+                && target.descriptor().equals("(II)I");
+    }
+
     private CodeTransform prepend(HookTarget target) {
         MethodTypeDesc targetType = MethodTypeDesc.ofDescriptor(target.descriptor());
         MethodTypeDesc hookType = MethodTypeDesc.ofDescriptor(target.hookDescriptor());
@@ -165,6 +180,14 @@ public final class Transformer implements ClassFileTransformer {
                     }
                     builder.invokestatic(HOOK, target.hookMethod(), hookType);
                     rewrittenMethods.incrementAndGet();
+                }
+                if (isTitleMenu(target)
+                        && element instanceof ReturnInstruction instruction
+                        && instruction.typeKind() == TypeKind.INT) {
+                    builder.aload(0);
+                    builder.swap();
+                    builder.iload(2);
+                    builder.invokestatic(TRANSFORMER, "addTitleMenu", TITLE_MENU);
                 }
                 builder.with(element);
             }

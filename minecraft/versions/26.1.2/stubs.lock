@@ -31,6 +31,18 @@ clientJarSha256 = "b1b3158572666445eff01e82fad8c7de2e4953db6d354f311730d77a8359d
 class = "net/minecraft/client/Minecraft"
 flags = 33
 
+[[stub.member]]
+name = "getInstance"
+descriptor = "()Lnet/minecraft/client/Minecraft;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "setScreen"
+descriptor = "(Lnet/minecraft/client/gui/screens/Screen;)V"
+flags = 1
+method = true
+
 [[stub]]
 class = "net/minecraft/client/gui/Font"
 flags = 33

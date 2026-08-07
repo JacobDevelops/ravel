@@ -38,6 +38,11 @@ members = [
 ]
 
 [[stub]]
+# The title-menu bridge asks the running client to replace its current screen.
+class = "net.minecraft.client.Minecraft"
+members = ["getInstance", "setScreen"]
+
+[[stub]]
 # The screen's title and every widget label cross as one of these.
 class = "net.minecraft.network.chat.Component"
 members = ["translatable", "literal"]

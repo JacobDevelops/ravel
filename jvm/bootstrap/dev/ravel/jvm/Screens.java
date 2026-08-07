@@ -132,6 +132,25 @@ final class Screens {
         return build("dev.ravel.jvm.screen.RavelProfilingScreen", null);
     }
 
+    /** Adds Ravel's entry to the title screen through the optional screen jar. */
+    static int addTitleMenu(Object titleScreen, int bottom, int spacing) {
+        if (!appended) {
+            return bottom;
+        }
+        String name = "dev.ravel.jvm.screen.RavelMenu";
+        try {
+            Class<?> bridge = Class.forName(name, true, ClassLoader.getSystemClassLoader());
+            bridge.getMethod("add", Object.class, int.class, int.class)
+                    .invoke(null, titleScreen, bottom, spacing);
+            return bottom + spacing;
+        } catch (InvocationTargetException failed) {
+            diagnoseFailure(name, failed.getCause() == null ? failed : failed.getCause());
+        } catch (ReflectiveOperationException | LinkageError unusable) {
+            diagnoseFailure(name, unusable);
+        }
+        return bottom;
+    }
+
     /**
      * Loads one screen class and calls its {@code open}.
      *
@@ -163,11 +182,8 @@ final class Screens {
     }
 
     private static void diagnoseFailure(String name, Throwable failure) {
-        String detail = failure.getClass().getName();
-        if (failure.getMessage() != null) {
-            detail = detail + ": " + failure.getMessage();
-        }
-        diagnose("screen class could not be opened: " + name + " (" + detail + ")");
+        diagnose("screen class could not be opened: " + name + " ("
+                + failure.getClass().getName() + ")");
     }
 
     private static void diagnose(String message) {

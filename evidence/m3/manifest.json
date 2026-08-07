@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "native",
+  "milestone": "M3",
+  "workPackages": [
+    "M3-W0",
+    "M3-W1",
+    "M3-W2",
+    "M3-W3",
+    "M3-W4",
+    "M3-W5",
+    "M3-W6",
+    "M3-W7"
+  ],
+  "revision": {
+    "id": "77765070411d87e3415b46e6a3ed21e544a1daa7",
+    "changeId": "xqmmlnzmtkqpuuxymttpzqyvnovxtxtv",
+    "dirty": false
+  },
+  "versions": {
+    "minecraft": "26.1.2",
+    "neoforge": "26.1.2.78",
+    "prism": "11.0.3",
+    "fixture": "ATM11 0.2.1",
+    "java": "25.0.4",
+    "rust": "1.95.0",
+    "nix": "2.33.3",
+    "devenv": "2.1.2"
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1",
+    "settings": {
+      "scope": "credible Linux loader prototype with original unrestricted test mods",
+      "gateStatus": {
+        "M3-W0": {
+          "status": "closed",
+          "evidence": "docs/architecture/m3-hook-targets.md and the pinned 26.1.2 hook inventory"
+        },
+        "M3-W1": {
+          "status": "closed",
+          "evidence": "registry and content conformance suites"
+        },
+        "M3-W2": {
+          "status": "closed",
+          "evidence": "command, event, resource, and data conformance suites"
+        },
+        "M3-W3": {
+          "status": "closed",
+          "evidence": "configuration conformance suites and evidence/m3/linux-process-matrix.json"
+        },
+        "M3-W4": {
+          "status": "open",
+          "evidence": "The conformance suite proves the saved-data model and the process matrix proves the reviewed vanilla save hooks are reachable. Ravel has not yet moved its own versioned bytes through a world save and reload."
+        },
+        "M3-W5": {
+          "status": "closed",
+          "evidence": "mod-surface conformance suites and evidence/m3/linux-process-matrix.json"
+        },
+        "M3-W6": {
+          "status": "closed",
+          "evidence": "evidence/m3/profiling-overhead.json and evidence/m3/linux-process-matrix.json"
+        },
+        "M3-W7": {
+          "status": "open",
+          "evidence": "evidence/m3/linux-process-matrix.json proves the reviewed hook inventory is reachable in a native launch, along with the production screens and stores. It does not prove every required M3 surface natively while M3-W4's Ravel-owned world write remains open.",
+          "verificationLogSha256": "eb3fea4a48d839edbf3d2b7c4db1cb2c0156a3462d6cf53ce7820eb0d6f0439a"
+        },
+        "M3-W8": {
+          "status": "open",
+          "evidence": "The independent prototype review returned FAIL. Blocking findings: M3-W4 lacks a Ravel-owned versioned world write; M3-W7 did not exercise every required surface natively; schemas/package.schema.json still requires compiled artifacts despite the source-only ADG-2 contract; and the first manifest draft omitted M3-W0 from workPackages. This revision fixes only the inventory omission. Clean results: hook integrity passed, safety/layering/ADR conformance passed, and redaction passed."
+        }
+      }
+    }
+  },
+  "inputs": [
+    {
+      "name": "minecraft/versions/26.1.2/hooks.toml",
+      "sha256": "a217161105b84a5b9a6e4d19f7e4f0d7c5ce55ac80c28d02d38f874aeb766216"
+    },
+    {
+      "name": "minecraft/versions/26.1.2/mappings.lock",
+      "sha256": "368213c166da69a342fcdb498d713692320f71e3bf84ee3cc7c7a229a249f754"
+    },
+    {
+      "name": "docs/architecture/m3-hook-targets.md",
+      "sha256": "75ccb6d6299184433856e213d919b4cb3d0a6d592da70e11e86c55078dd9be63"
+    },
+    {
+      "name": "docs/decisions/adg-6-configuration-ui.md",
+      "sha256": "a06294eeecf8bc31afade065f3c4e460be6e57fa9ee4fdbdbe41d55a15ddb5a9"
+    }
+  ],
+  "commands": [
+    {
+      "command": "devenv tasks run ravel:verify",
+      "startedAt": "2026-08-07T17:33:55.912Z",
+      "durationMs": 15324,
+      "exitStatus": 0,
+      "logSha256": "eb3fea4a48d839edbf3d2b7c4db1cb2c0156a3462d6cf53ce7820eb0d6f0439a"
+    }
+  ],
+  "tests": {
+    "total": 777,
+    "passed": 777,
+    "failed": 0,
+    "skipped": 0,
+    "lineCoveragePercent": 86.44
+  },
+  "benchmarks": {
+    "protocolVersion": "m3-prototype-v1",
+    "results": [
+      {
+        "name": "class-loader-identity.json",
+        "sha256": "eb829635ac02a0359fc25b42c50db280ec05d80347c198d9a6e64ae623abe0bb"
+      },
+      {
+        "name": "pack-compile.json",
+        "sha256": "d02425147d86cd0d31ef27c0d114b69324db2be6df5df4a5b29c09836817866a"
+      },
+      {
+        "name": "profiling-overhead.json",
+        "sha256": "9cb8dfaa8c571ee8c673b766f7836d61e43c42608c8ea509388061d282347d18"
+      },
+      {
+        "name": "linux-process-matrix.json",
+        "sha256": "ed8345695f0d81153d51dbe2df8d6469f18bb5e91d4021e5d43fe33319c8c21d"
+      }
+    ]
+  },
+  "deviations": [
+    {
+      "summary": "The first M3 manifest draft omitted M3-W0 from workPackages even though its gate status appeared elsewhere in the same document. The M3-W8 review treated that as blocking; this revision resolves it by adding M3-W0 to the canonical inventory.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "M3-W8 found no hook-integrity defect: the reviewed hook inventory, generated lock, transformed-class counts, and callable-target counts reconcile.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "M3-W8 found no safety, layering, or ADR-conformance defect in the reviewed prototype stack.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "M3-W8 found no redaction defect in the tracked evidence; raw launcher, account, world, and capture material remains outside the repository.",
+      "classification": "non-blocking"
+    }
+  ],
+  "risks": [
+    {
+      "summary": "M3-W4 is open. The saved-data model and vanilla hook reachability are proven, but Ravel has not moved its own versioned bytes through an official world save, clean exit, and reload. evidence/m3/profiling-overhead.json also records saved-data footprint as unsupported because that world-write half does not exist.",
+      "classification": "blocking"
+    },
+    {
+      "summary": "M3-W7 is open. evidence/m3/linux-process-matrix.json proves all reviewed hook targets are reachable natively and supports the eventual process gate, but it cannot prove every required M3 surface passes natively while M3-W4 remains open.",
+      "classification": "blocking"
+    },
+    {
+      "summary": "schemas/package.schema.json still requires compiled per-target artifacts and cannot express the source-only distribution contract selected by ADG-2 at M3. That contract reconciliation remains a separate blocking work package.",
+      "classification": "blocking"
+    },
+    {
+      "summary": "One excluded diagnostic launch and the first W7 launch remained alive after the normal game shutdown sequence. The accepted W7 relaunch exited naturally, so the recurring post-shutdown futex hang is tracked separately and does not invalidate the matrix's supporting evidence.",
+      "classification": "non-blocking"
+    }
+  ],
+  "review": {
+    "reviewer": "independent Claude reviewer (M3-W8 prototype review)",
+    "independent": true,
+    "result": "fail"
+  },
+  "attestations": [
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "workloads": [
+        "ravel"
+      ],
+      "statement": "Injected input opened the world through the ordinary title screen, Singleplayer world selection, and Play Selected World path. No quick-play or configuration-injected auto-join route was used.",
+      "attestedBy": "Ravel maintainer, operator-run launch",
+      "attestedAt": "2026-08-07T15:47:10.749Z"
+    }
+  ],
+  "platformEvidence": []
+}

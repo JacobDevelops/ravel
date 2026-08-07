@@ -1,13 +1,36 @@
 # M3 evidence
 
-M3 is in progress. The records below are what it has produced so far; the
-milestone manifest that admits them is written when M3 closes.
+M3-W0 through M3-W3 and M3-W5 through M3-W6 are closed. M3-W4 and M3-W7 remain
+open, the package schema still contradicts M3's source-only contract, and the
+M3-W8 independent prototype review returned FAIL. M3 is not closed and does not
+authorize private inventory work.
 
 | Record | Work package | What it shows |
 | --- | --- | --- |
+| [`manifest.json`](manifest.json) | M3-W0..W8 | Which gates are closed, the W4 and W7 gaps, and the failed independent review. |
 | [`pack-compile.json`](pack-compile.json) | ADG-2 | What compiling a pack-sized set of mods with real bodies costs — cold, warm after one mod changes, in peak memory, and on disk. |
 | [`profiling-overhead.json`](profiling-overhead.json) | M3-W6 | What opt-in profiling costs a tick when nobody turned it on, what it can and cannot attribute to a mod, and which metrics it cannot measure at all. |
 | [`linux-process-matrix.json`](linux-process-matrix.json) | M3-W7 | What a real Linux launch proves about the game directory, the rewrite, and the instance — and, at least as importantly, what it could not reach. |
+
+## M3-W8 review
+
+The independent prototype review returned **FAIL** with four blocking findings:
+
+- M3-W4 has not moved Ravel-owned versioned bytes through an official world save,
+  clean exit, and reload. The matrix persisted a vanilla scoreboard instead.
+- M3-W7 has not exercised every required surface natively. Its accepted launch
+  carried the configuration mod; rewriting all 31 reviewed hooks proves
+  reachability, not native block, item, recipe, event, resource, data, and
+  Ravel-owned saved-data behaviour.
+- `schemas/package.schema.json` still requires compiled per-target artifacts and
+  cannot express the source-only distribution contract selected by ADG-2.
+- The first manifest draft omitted M3-W0 from `workPackages`. This revision fixes
+  that inventory error; the other three findings remain open work.
+
+The same review found no defect in hook integrity, safety/layering/ADR conformance,
+or evidence redaction. Those clean results do not offset the blocking gaps. M3-W8
+stays open until the implementation gates close and a later independent review
+passes.
 
 `pack-compile.json` comes from `devenv tasks run ravel:measure-pack-compile` and
 is the measurement ADG-2 named as deciding its open mechanism: whether an
@@ -70,10 +93,12 @@ per-tick crossing count is recorded.
 
 It comes from launches rather than from a task, because the thing it measures is
 a launcher starting a game and no task can stand in for that. The accepted Linux
-trial passes M3-W7: stock Minecraft 26.1.2 reached the title screen and an
-integrated world with Ravel alone, all 15 reviewed classes and 31 callable methods
-reconciled, the production stores and three Ravel screens worked, persisted state
-survived a relaunch, and Java and Prism exited through the normal game UI.
+trial is supporting evidence for M3-W7: stock Minecraft 26.1.2 reached the title
+screen and an integrated world with Ravel alone, all 15 reviewed classes and 31
+callable methods reconciled, the production stores and three Ravel screens worked,
+persisted state survived a relaunch, and Java and Prism exited through the normal
+game UI. It proves hook reachability, not every required native surface; M3-W7
+remains open while Ravel's own M3-W4 world-write path is absent.
 
 The record separates the operator attestation — injected input followed the
 ordinary title-screen and world-selection route — from facts derived from process

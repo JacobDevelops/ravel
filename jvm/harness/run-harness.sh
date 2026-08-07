@@ -17,6 +17,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 jar="$root/target/ravel-jvm/ravel-agent.jar"
 library="$root/target/release"
 work="$root/target/ravel-jvm/harness"
+agent="$work/agent/ravel-agent.jar"
 
 if [ ! -f "$jar" ]; then
 	echo "the agent jar is missing; run:" >&2
@@ -30,7 +31,8 @@ if [ ! -f "$library/libravel_bootstrap.so" ]; then
 fi
 
 rm -rf "$work"
-mkdir -p "$work"
+mkdir -p "$(dirname "$agent")"
+cp "$jar" "$agent"
 
 javac -d "$work" "$root/jvm/harness/net/minecraft/util/StringUtil.java"
 # `Main` needs the agent jar on its compile class path only for the mid-run
@@ -38,10 +40,14 @@ javac -d "$work" "$root/jvm/harness/net/minecraft/util/StringUtil.java"
 javac -cp "$work:$jar" -d "$work" "$root/jvm/harness/Main.java"
 
 # `java.library.path` is the directory holding the library, not the file.
-observed="$(cd "$work" && java \
-	-javaagent:"$jar" \
+stdout="$work/stdout"
+stderr="$work/stderr"
+(cd "$work" && java \
+	-javaagent:"$agent" \
 	-Djava.library.path="$library" \
-	-cp . Main)"
+	-cp . Main >"$stdout" 2>"$stderr")
+observed="$(<"$stdout")"
+diagnostic="$(grep '^\[ravel\]' "$stderr")"
 
 expected='allowed=true
 filtered=a
@@ -53,12 +59,23 @@ settings=null
 saved=1:10:46:the settings the screen sent could not be read
 mods=null
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
+expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
 
 printf '%s\n' "$observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$stderr"
 
 if [ "$observed" != "$expected" ]; then
 	echo >&2
 	echo "the harness did not produce the recorded output; expected:" >&2
 	printf '%s\n' "$expected" >&2
+	exit 1
+fi
+
+if [ "$diagnostic" != "$expected_diagnostic" ]; then
+	echo >&2
+	echo "the harness did not produce the recorded diagnostic; expected:" >&2
+	printf '%s\n' "$expected_diagnostic" >&2
 	exit 1
 fi

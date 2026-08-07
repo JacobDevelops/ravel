@@ -109,14 +109,22 @@ public final class Agent {
         if (loaders != null) {
             line = line + "[ravel] " + loaders + "\n";
         }
+        write(FileDescriptor.out, line);
+    }
+
+    static void diagnose(String message) {
+        write(FileDescriptor.err, "[ravel] " + message + "\n");
+    }
+
+    private static void write(FileDescriptor descriptor, String line) {
         // Not closed: the descriptor is the process's, and closing it would take
-        // standard output away from whatever else is still shutting down.
-        OutputStream out = new FileOutputStream(FileDescriptor.out);
+        // the stream away from whatever else is still using it.
+        OutputStream out = new FileOutputStream(descriptor);
         try {
             out.write(line.getBytes(StandardCharsets.UTF_8));
             out.flush();
         } catch (IOException unwritable) {
-            // A shutdown hook that cannot report has nowhere left to complain.
+            // A failed diagnostic write has nowhere more reliable to report to.
         }
     }
 }

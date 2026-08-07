@@ -2,6 +2,7 @@ package dev.ravel.jvm;
 
 import java.io.File;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URISyntaxException;
 import java.util.jar.JarFile;
 
@@ -54,17 +55,21 @@ final class Screens {
      */
     static void append(Instrumentation instrumentation) {
         File jar = beside(SCREEN_JAR);
-        if (jar == null || !jar.isFile()) {
+        if (jar == null) {
+            diagnose("could not locate " + SCREEN_JAR + " beside the agent jar");
+            return;
+        }
+        if (!jar.isFile()) {
+            diagnose(SCREEN_JAR + " is missing or not a regular file beside the agent jar");
             return;
         }
         try (JarFile opened = new JarFile(jar)) {
             instrumentation.appendToSystemClassLoaderSearch(opened);
             appended = true;
         } catch (java.io.IOException unreadable) {
-            // An unreadable jar is the same outcome as an absent one: no screen.
-            // It cannot be reported here, because the game's logger does not
-            // exist yet and this is not worth failing a launch over.
             appended = false;
+            diagnose(SCREEN_JAR + " is unreadable or invalid ("
+                    + unreadable.getClass().getName() + ")");
         }
     }
 
@@ -148,11 +153,25 @@ final class Screens {
                 return screen.getMethod("open").invoke(null);
             }
             return screen.getMethod("open", String.class).invoke(null, owner);
+        } catch (InvocationTargetException failed) {
+            diagnoseFailure(name, failed.getCause() == null ? failed : failed.getCause());
+            return null;
         } catch (ReflectiveOperationException | LinkageError unusable) {
-            // A screen that cannot be built is a game without that screen, not a
-            // game that stops. The caller decides what to show instead.
+            diagnoseFailure(name, unusable);
             return null;
         }
+    }
+
+    private static void diagnoseFailure(String name, Throwable failure) {
+        String detail = failure.getClass().getName();
+        if (failure.getMessage() != null) {
+            detail = detail + ": " + failure.getMessage();
+        }
+        diagnose("screen class could not be opened: " + name + " (" + detail + ")");
+    }
+
+    private static void diagnose(String message) {
+        Agent.diagnose(message);
     }
 
     /**

@@ -51,6 +51,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 use jni::objects::{JClass, JString};
@@ -68,6 +69,8 @@ use crate::wire::{VERSION as WIRE_VERSION, field};
 
 /// One process's resolved configurations, or nothing before they are installed.
 static STORE: Mutex<Option<Store>> = Mutex::new(None);
+static DOCUMENT_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
+static SAVE_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
 
 /// What the screen crossings read.
 struct Store {
@@ -437,6 +440,7 @@ pub fn ravel_settings_document<'local>(
     _class: JClass<'local>,
     owner: JString<'local>,
 ) -> JString<'local> {
+    DOCUMENT_CROSSINGS.fetch_add(1, Ordering::Relaxed);
     env.with_env(
         |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
             let owner = text(env, &owner)?;
@@ -460,10 +464,30 @@ pub fn ravel_save_settings<'local>(
     _class: JClass<'local>,
     payload: JString<'local>,
 ) -> JString<'local> {
+    SAVE_CROSSINGS.fetch_add(1, Ordering::Relaxed);
     env.with_env(
         |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
             let answer = save(&text(env, &payload)?);
             Ok(env.new_string(answer)?)
+        },
+    )
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+/// Reports document and save crossings for process-harness verification.
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelSettingsCrossings")]
+pub fn ravel_settings_crossings<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+) -> JString<'local> {
+    env.with_env(
+        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
+            let crossings = format!(
+                "{}:{}",
+                DOCUMENT_CROSSINGS.load(Ordering::Relaxed),
+                SAVE_CROSSINGS.load(Ordering::Relaxed)
+            );
+            Ok(env.new_string(crossings)?)
         },
     )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()

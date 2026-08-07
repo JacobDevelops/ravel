@@ -571,6 +571,8 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
          \x20    *     landed\n\
          \x20    */\n\
          \x20   public static native String ravelSaveSettings(String payload);\n\n\
+         \x20   /** Settings document and save crossings in this process. */\n\
+         \x20   public static native String ravelSettingsCrossings();\n\n\
          \x20   /**\n\
          \x20    * The installed mod set, in resolved load order.\n\
          \x20    *\n\

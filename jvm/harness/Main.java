@@ -12,16 +12,81 @@ public final class Main {
         System.out.println("transformed=" + dev.ravel.jvm.Agent.transformedClasses()
                 + " methods=" + dev.ravel.jvm.Agent.rewrittenMethods());
 
-        // The settings screen's two crossings, called with nothing installed.
-        // What this proves is the part no Rust test can: that the exported
-        // symbols the `jni_mangle` attributes name are the ones the generated
-        // declarations resolve to. A mismatch between the two is invisible until
-        // a JVM tries to link them, and it would surface in the game rather than
-        // here. The document is null because this process holds no configuration,
-        // and the save is refused for the same reason — which is itself the answer
-        // the screen would show a player.
-        System.out.println("settings=" + dev.ravel.jvm.Hook.ravelSettingsDocument("example_mod"));
-        System.out.println("saved=" + dev.ravel.jvm.Hook.ravelSaveSettings("1:11:11example_mod1:0"));
+        // These calls prove the generated Java declarations resolve to the JNI
+        // exports and that premain installed the real source-composed mod before
+        // any transformed game method ran.
+        String settings = dev.ravel.jvm.Hook.ravelSettingsDocument("configuration");
+        System.out.println("client=" + setting(settings, "client.enabled"));
+        System.out.println("common=" + setting(settings, "common.profile"));
+        String edits = field("1")
+                + field("configuration")
+                + field("2")
+                + field("client.enabled")
+                + field("false")
+                + field("common.profile")
+                + field("verbose");
+        System.out.println("saved=" + dev.ravel.jvm.Hook.ravelSaveSettings(edits));
+        String invalid = field("1")
+                + field("configuration")
+                + field("1")
+                + field("client.enabled")
+                + field("yes");
+        System.out.println("invalid=" + dev.ravel.jvm.Hook.ravelSaveSettings(invalid));
+        settings = dev.ravel.jvm.Hook.ravelSettingsDocument("configuration");
+        System.out.println("clientAfter=" + setting(settings, "client.enabled"));
+        System.out.println("commonAfter=" + setting(settings, "common.profile"));
         System.out.println("mods=" + dev.ravel.jvm.Hook.ravelModSurface());
+    }
+
+    private static String setting(String document, String wanted) {
+        Wire wire = new Wire(document);
+        wire.field();
+        wire.field();
+        wire.field();
+        int count = Integer.parseInt(wire.field());
+        for (int index = 0; index < count; index++) {
+            String key = wire.field();
+            wire.field();
+            wire.field();
+            wire.field();
+            wire.field();
+            String value = wire.field();
+            String source = wire.field();
+            wire.field();
+            wire.field();
+            String restartPending = wire.field();
+            wire.field();
+            wire.field();
+            int choices = Integer.parseInt(wire.field());
+            for (int choice = 0; choice < choices; choice++) {
+                wire.field();
+            }
+            if (wanted.equals(key)) {
+                return value + ":" + source + ":" + restartPending;
+            }
+        }
+        return "missing";
+    }
+
+    private static String field(String value) {
+        return value.length() + ":" + value;
+    }
+
+    private static final class Wire {
+        private final String payload;
+        private int at;
+
+        Wire(String payload) {
+            this.payload = payload;
+        }
+
+        String field() {
+            int colon = payload.indexOf(':', at);
+            int length = Integer.parseInt(payload.substring(at, colon));
+            at = colon + 1;
+            String value = payload.substring(at, at + length);
+            at += length;
+            return value;
+        }
     }
 }

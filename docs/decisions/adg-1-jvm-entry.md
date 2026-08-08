@@ -1,14 +1,14 @@
 # ADG-1 — JVM entry and hook mechanism
 
 Status: accepted at M1-W2; amended by [ADG-6](adg-6-configuration-ui.md) before
-M3-W3 to say what else Ravel puts into the game process, and amended again at
-M3-W3 on a measurement that found one class loader where this record described a
-delegating pair. The two amendments are recorded under "Amendment: what the agent
-jar carries" and "Amendment: there is one loader, not two" below, and each
-consequence they correct is marked where it appears. Nothing about the entry
-mechanism changed. It needs no `SPEC.md` §3.3 amendment and no unsafe exception: the
-premise that an exported symbol cannot be encapsulated turned out to be false,
-and the correction is recorded under "Unsafe surface" below.
+M3-W3 to say what else Ravel puts into the game process, amended again at M3-W3
+on a measurement that found one class loader where this record described a
+delegating pair, and amended by [ADG-7](adg-7-world-persistence.md) before M3-W4
+to admit one receiver-aware Java-adapter mode. The amendments are recorded below
+and each consequence they correct is marked where it appears. Nothing about the
+entry mechanism changed. It needs no `SPEC.md` §3.3 amendment and no unsafe
+exception: the premise that an exported symbol cannot be encapsulated turned out
+to be false, and the correction is recorded under "Unsafe surface" below.
 
 ## Decision
 
@@ -344,6 +344,26 @@ bears on whether the mechanism works rather than on the unsafe count.
 - Nothing here admits a call from Rust into the game. ADG-6 refused that, and a
   third artifact does not provide it: the screen is Java calling Java, and its
   traffic to Rust runs in the direction this ADR already established.
+
+## Amendment: one receiver-aware Java adapter
+
+Amended before M3-W4 on [ADG-7](adg-7-world-persistence.md)'s account. The
+version-specific sibling Java artifact may carry the persistence adapter as well
+as screens. This is an artifact-scope widening only: the agent jar still names no
+game type, and generated `dev.ravel.jvm.Hook` remains the sole JNI surface.
+
+The transformer may use one receiver-aware Java-adapter injection mode for
+ADG-7's save seam. That mode is distinct from ordinary native observation hooks
+and does not widen them to receive local slot zero. It extends the existing
+`HookTarget` and prepend transformation rather than creating another registry,
+transformer, or exporter.
+
+Persistence capability is required and fails closed unless its installation
+handshake proves the world-open prologue is active; finding the sibling jar or
+class is insufficient. Screens remain optional. Java still initiates the two
+batched JNI calls, and no native method is declared outside generated `Hook`.
+Nothing here selects a general mechanism for Rust to call into Minecraft or
+otherwise reverses the boundary direction ADG-1 accepted.
 
 ## Limits of this evidence
 

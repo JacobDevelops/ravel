@@ -225,9 +225,9 @@ M0 Linux launch smoke proof
                 │                                  └─> Linux initial completion
                 └─> ADG-6 configuration/UI decision before M3 closes
 
-M10 └─> ADG-7 └─> M11 official-server interoperability
+M10 └─> ADG-8 └─> M11 official-server interoperability
 M10 └─> post-Linux-M10 Apple Silicon platform expansion
-M9 failure └─> ADG-8; it does not relax M9 or authorize a native client
+M9 failure └─> ADG-9; it does not relax M9 or authorize a native client
 M12 and M13 require separately approved post-initial scope
 ```
 
@@ -709,7 +709,7 @@ number meets a real pack.
 | M3-W1 | Implement registry barrier and content registration | M2 | block/item/recipe test mods | duplicate/conflicting claims fail; IDs are immutable after registration |
 | M3-W2 | Implement commands, events, resources and data | M3-W1 | command/event/resource test mods | process tests exercise success, ordering, side and failure cases |
 | M3-W3 | Implement ADG-6 configuration and generated UI | M2, ADG-6 | the three schema edits ADG-6 names, layered config, generated Java screen and a screen test mod | file/UI edits round-trip; validation, sides, restart and per-setting pack overrides pass. ADG-1 selected the agent appending the sibling screen jar through `Instrumentation.appendToSystemClassLoaderSearch`, so artifact loading no longer blocks this work |
-| M3-W4 | Implement versioned saved data | M3-W1 | save test mod and world fixture, over the deciding half `ravel-save` already models — what a version is, who owns it, and whether a world may be opened | create/save/exit/reload preserves state; incompatible/missing required data fails closed. What remains is moving bytes in a world, which needs the game objects ADG-4's amendment admits |
+| M3-W4 | Implement versioned saved data | M3-W1, ADG-7 | save test mod and world fixture, over the deciding half `ravel-save` already models — what a version is, who owns it, and whether a world may be opened | the pinned fixer-byte regression preserves opaque bytes; create/save/exit/reload preserves state; schema, package, migration and size incompatibilities fail closed. What remains is moving the ADG-7 aggregate through the game objects ADG-4's amendment admits |
 | M3-W5 | Implement in-game mod/dependency surface | M2-W7, ADG-6 | mod list and diagnostics UI, over the model `ravel-loader` already holds ordered by resolved load order | valid and invalid graphs render deterministic actionable messages. The drawing half is ADG-6's mechanism rather than a second one, so what remains is a screen and not a design |
 | M3-W6 | Implement opt-in profiling | M2-W8 | collectors and profiling UI/report | per-mod attribution accuracy and unsupported metrics are explicit; normal-mode budget passes |
 | M3-W7 | Linux process matrix | M3-W1..W6 | Linux result bundle | every required surface passes natively on Linux; instance scan proves no other loader |
@@ -824,7 +824,7 @@ contract without silently reducing scope or settings.
 | M9-W4 | Run final Linux acceptance pair | M9-W3 | one official-pack result and one Ravel-pack result, and the RAM/CPU improvement between them | both use the same profile hash; all fixed FPS/RSS/pressure/swap and frame/tick reporting requirements pass. `SPEC.md` §6.6 defers the improvement figure to this row, so the pair is recorded *and* the improvement is stated |
 | M9-W5 | Independent performance review | M9-W4 | result and raw-artifact review | reviewer confirms settings, hashes, calculations, and comparison integrity; no rerun is required. The reviewer also rules on whether the improvement is significant, because §6.6 makes that a judgement rather than a threshold |
 
-If M9-W4 cannot pass with the complete workload, open ADG-8. Do not mark M9
+If M9-W4 cannot pass with the complete workload, open ADG-9. Do not mark M9
 complete, relax the profile, remove required content, or begin a native client
 without a new approved capability specification.
 
@@ -861,7 +861,7 @@ substitutes for that later native evidence.
 
 ### M11 — Official ATM11 server interoperability
 
-M11 begins only after initial completion and an accepted ADG-7 protocol
+M11 begins only after initial completion and an accepted ADG-8 protocol
 specification. Inventory handshake, identity/version negotiation, registry sync,
 channels, packets, and state transitions per networked counterpart. Test joining
 an unmodified pinned server, cross-client interactions, capture redaction,
@@ -902,7 +902,7 @@ distribution, rollback, and private-history isolation.
 | Pack completeness | private pack and scenarios | full inventory mapping, closure and soak |
 | Performance | performance profiles/collectors | M0 Linux launch proof and M9 single-pair Linux acceptance |
 | Progression | private checklist/world | M10 journal plus regressions |
-| Official server protocol | network plus private adapters | ADG-7 and M11 cross-client suite |
+| Official server protocol | network plus private adapters | ADG-8 and M11 cross-client suite |
 
 ## Open questions and decision deadlines
 
@@ -921,8 +921,8 @@ distribution, rollback, and private-history isolation.
 | Configuration and UI schema | ADG-6 before M3-W3 | discharged; declared in data, drawn in Java |
 | Where the generated screen artifact loads | M3-W3 | discharged; ADG-1 records M3-W3 selecting `Instrumentation.appendToSystemClassLoaderSearch` for the sibling screen jar |
 | Per-counterpart rights and implementation method | M5 | blocks publication; may block lawful implementation |
-| Official server wire surface | ADG-7 after M10 | blocks M11 only |
-| Official host viability | ADG-8 only after M9 failure | leaves M9 incomplete |
+| Official server wire surface | ADG-8 after M10 | blocks M11 only |
+| Official host viability | ADG-9 only after M9 failure | leaves M9 incomplete |
 | Registry identity/signing/moderation | separate M13 plan | no effect on initial completion |
 
 ## Immediate handoff

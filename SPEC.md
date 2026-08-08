@@ -896,13 +896,13 @@ expanding scope.
 Choose schemas and UI generation that support both files and in-game editing,
 side-aware values, restart requirements, validation, and pack overrides.
 
-### ADG-7: Official-server interoperability
+### ADG-8: Official-server interoperability
 
 After single-player completion, specify the NeoForge and per-mod wire
 compatibility surface from captures and primary implementations. This gate does
 not alter Ravel's internal API.
 
-### ADG-8: Official Minecraft host
+### ADG-9: Official Minecraft host
 
 After pack completion and constrained-device profiling, decide whether official
 Minecraft remains the final host. A native Rust client requires a new approved
@@ -1084,7 +1084,7 @@ Exit:
 - one official-pack/Ravel-pack pair shares the exact profile hash and reports
   frame-time and integrated-server tick distributions.
 
-Failure invokes ADG-8 rather than silently changing requirements.
+Failure invokes ADG-9 rather than silently changing requirements.
 
 ### M10 — Progression acceptance
 

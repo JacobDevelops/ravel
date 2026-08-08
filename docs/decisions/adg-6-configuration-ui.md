@@ -6,6 +6,8 @@ this gate, and "Evidence" below says what decided it instead and why that is not
 a thing a measurement produces. Amended when the schema edits landed, to record
 the `packOverride` encoding and one open question the gate did not settle; the
 decision is unchanged and both are under "What has to change, precisely".
+[ADG-7](adg-7-world-persistence.md) reuses this decision's Ravel-owned screen
+mechanism for persistence refusal, but persistence itself is not an ADG-6 concern.
 
 ## Decision
 

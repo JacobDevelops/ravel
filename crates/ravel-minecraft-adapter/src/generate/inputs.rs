@@ -58,6 +58,14 @@ pub(super) struct Hook {
     pub(super) descriptor: String,
     pub(super) kind: Kind,
     pub(super) capability: String,
+    /// Whether this target's prologue may return from it before its body runs.
+    ///
+    /// ADG-1's Phase C amendment bounds the power by making the opt-in generated
+    /// data rather than Java: the refusable set is exactly what this inventory
+    /// names, so widening it re-pins a hash and shows up in a diff. Absent means
+    /// false, which is what every observation hook is.
+    #[serde(default)]
+    pub(super) refuses: bool,
 }
 
 /// The tracked hook inventory.

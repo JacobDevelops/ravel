@@ -133,22 +133,33 @@ pub(super) struct Shape {
     member: String,
     descriptor: String,
     is_static: bool,
+    refuses: bool,
 }
 
 impl Shape {
-    /// The descriptor of the generated hook method, which always returns void.
+    /// The descriptor of the generated hook method.
     ///
-    /// A hook returns nothing because the injected call site then needs no
-    /// branch, no discarded value, and no invented contract for what a returned
-    /// value would mean while ADG-2 is undecided. A hook that has to stop the
-    /// call throws, which the call site honours without any bytecode of its own.
+    /// An ordinary hook returns nothing, because the injected call site then
+    /// needs no branch, no discarded value, and no invented contract for what a
+    /// returned value would mean while ADG-2 is undecided. A hook that has to
+    /// stop the call throws, which the call site honours without any bytecode of
+    /// its own.
+    ///
+    /// A target the reviewed inventory opts in returns a boolean instead, which
+    /// is ADG-1's Phase C amendment: the verdict says only whether to return
+    /// from the host method before its body runs, never what to return.
     fn hook_descriptor(&self) -> String {
         let mut text = String::from("(");
         for parameter in &self.parameters {
             text.push_str(parameter.descriptor());
         }
-        text.push_str(")V");
+        text.push_str(if self.refuses { ")Z" } else { ")V" });
         text
+    }
+
+    /// How the generated Java declares this hook's return type.
+    const fn java_returns(&self) -> &'static str {
+        if self.refuses { "boolean" } else { "void" }
     }
 }
 
@@ -162,6 +173,17 @@ pub(super) fn shapes(
         if !hook.kind.is_method() {
             continue;
         }
+        // ADG-1's amendment admits a bare early return and nothing wider. A
+        // target that returns a value would need one synthesized to leave
+        // early, and nothing has decided what it would be, so this is a hard
+        // error rather than a warning that renders anyway.
+        if hook.refuses && !target.descriptor.ends_with(")V") {
+            return Err(GenerateError::Unsupported(format!(
+                "{} may refuse its target, but {} does not return void and an early \
+                 return would have to invent a value",
+                hook.id, target.descriptor
+            )));
+        }
         shapes.push(Shape {
             capability: hook.capability.clone(),
             constant: constant_name(&hook.id),
@@ -173,6 +195,7 @@ pub(super) fn shapes(
             member: target.member.clone(),
             descriptor: target.descriptor.clone(),
             is_static: target.is_static,
+            refuses: hook.refuses,
         });
     }
 
@@ -428,14 +451,21 @@ pub(super) fn exports(shapes: &[Shape]) -> String {
             format!("::std::vec![\n            {rendered},\n        ]")
         };
 
+        // A refusing export answers the injected branch, so it returns the
+        // guard's verdict rather than discarding it.
+        let (returns, entry, terminator) = if shape.refuses {
+            (" -> ::jni::sys::jboolean", "enter_refusable", "")
+        } else {
+            ("", "enter", ";")
+        };
         let _ = writeln!(
             text,
-            ") {{\n\
-             \x20   crate::guard::enter(\n\
+            "){returns} {{\n\
+             \x20   crate::guard::{entry}(\n\
              \x20       env,\n\
              \x20       &::ravel_minecraft_adapter::pinned::{},\n\
              \x20       |{}| ::std::result::Result::Ok({values}),\n\
-             \x20   );\n\
+             \x20   ){terminator}\n\
              }}\n",
             shape.constant,
             if carries_text { "env" } else { "_env" }
@@ -454,10 +484,15 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
          /**\n\
          \x20* Hook surface the agent injects calls to.\n\
          \x20*\n\
-         \x20* <p>Every method here is static and returns void: the injected call site\n\
-         \x20* loads the target's own arguments, calls one of these, and continues. A\n\
-         \x20* hook that has to stop the call throws, which needs no bytecode of its\n\
-         \x20* own at the call site.\n\
+         \x20* <p>Every method here is static, and all but the opted-in ones return\n\
+         \x20* void: the injected call site loads the target's own arguments, calls one\n\
+         \x20* of these, and continues. A hook that has to stop the call throws, which\n\
+         \x20* needs no bytecode of its own at the call site.\n\
+         \x20*\n\
+         \x20* <p>A target the reviewed inventory opts in answers a boolean instead,\n\
+         \x20* and the call site returns from the host method when it is true. The\n\
+         \x20* verdict says only whether to return, never what to return, so a target\n\
+         \x20* that returns anything but void cannot opt in at all.\n\
          \x20*/\n\
          public final class Hook {{\n\n\
          \x20   /** Native library carrying the generated exports. */\n\
@@ -494,13 +529,15 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
              \x20               \"{}\",\n\
              \x20               {},\n\
              \x20               \"{}\",\n\
-             \x20               \"{}\"),",
+             \x20               \"{}\",\n\
+             \x20               {}),",
             shape.internal_class,
             shape.member,
             shape.descriptor,
             shape.is_static,
             shape.java_method,
-            shape.hook_descriptor()
+            shape.hook_descriptor(),
+            shape.refuses
         );
     }
 
@@ -525,8 +562,10 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
         let _ = writeln!(
             text,
             "    /** {} */\n\
-             \x20   public static native void {}({declared});\n",
-            shape.capability, shape.java_method
+             \x20   public static native {} {}({declared});\n",
+            shape.capability,
+            shape.java_returns(),
+            shape.java_method
         );
     }
 
@@ -963,6 +1002,7 @@ mod tests {
                 descriptor: (*descriptor).to_owned(),
                 kind: Kind::InstanceMethod,
                 capability: format!("A candidate {id} hook."),
+                refuses: false,
             })
             .collect::<Vec<_>>();
         let resolved = hooks
@@ -1207,6 +1247,71 @@ mod tests {
             ),
             "the target keeps its own descriptor, which is what the agent matches on: {java}"
         );
+    }
+
+    /// The reviewed inventory with one entry opted into refusing its target.
+    fn opted_in(index: usize) -> (Inventory, Vec<Resolved>) {
+        let (mut inventory, resolved) = reviewed(&CANDIDATES);
+        inventory.hooks[index].refuses = true;
+        (inventory, resolved)
+    }
+
+    #[test]
+    fn an_opted_in_target_answers_a_boolean_and_every_other_one_still_answers_nothing() {
+        // `server.tick` is the void candidate, so it is the one that may opt in.
+        let (inventory, resolved) = opted_in(1);
+
+        let shapes = shapes(&inventory, &resolved).expect("a void target may refuse");
+        let java = hook_java(&adapter(), &shapes);
+        let rust = exports(&shapes);
+
+        assert!(
+            java.contains("public static native boolean serverTick(Object argument0);"),
+            "{java}"
+        );
+        assert!(
+            java.contains(
+                "\"serverTick\",\n                \"(Ljava/lang/Object;)Z\",\n                true)"
+            ),
+            "the opt-in reaches the target table beside the descriptor it changes: {java}"
+        );
+        assert!(
+            rust.contains(") -> ::jni::sys::jboolean {\n    crate::guard::enter_refusable("),
+            "{rust}"
+        );
+
+        // The other two candidates are untouched by their neighbour's opt-in.
+        assert!(
+            java.contains(
+                "public static native void registryRegister(Object argument0, \
+                 Object argument1, Object argument2);"
+            ),
+            "{java}"
+        );
+        assert!(
+            java.contains("\"(Ljava/lang/Object;Z)V\",\n                false)"),
+            "a target nobody opted in still answers nothing and says so: {java}"
+        );
+        assert_eq!(
+            rust.matches("crate::guard::enter(").count(),
+            2,
+            "only the opted-in export takes the refusable path: {rust}"
+        );
+    }
+
+    #[test]
+    fn a_target_that_returns_a_value_is_refused_the_opt_in_rather_than_given_a_default() {
+        // `registry.register` returns a `Holder$Reference`, so an early return
+        // would have to invent one.
+        let (inventory, resolved) = opted_in(0);
+
+        let error = shapes(&inventory, &resolved)
+            .expect_err("a value-returning target must not be refusable");
+
+        let message = error.to_string();
+        assert!(message.contains("registry.register"), "{message}");
+        assert!(message.contains("does not return void"), "{message}");
+        assert!(message.contains("invent a value"), "{message}");
     }
 
     /// One stub, written the way the resolver hands them over.

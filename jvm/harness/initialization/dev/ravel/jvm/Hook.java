@@ -9,15 +9,28 @@ public final class Hook {
                         "(Z)Ldev/ravel/jvm/hierarchy/HierarchyBase;",
                         true,
                         "hierarchySource",
-                        "(Z)V"),
+                        "(Z)V",
+                        false),
                 new HookTarget(
                         "dev/ravel/jvm/hierarchy/HierarchyTarget",
                         "value",
                         "()Ljava/lang/String;",
                         false,
                         "hierarchyTarget",
-                        "()V"),
+                        "()V",
+                        false),
             }
+            : Boolean.getBoolean("ravel.test.transform.refusal")
+                    ? new HookTarget[] {
+                        new HookTarget(
+                                "dev/ravel/jvm/refusal/RefusalTarget",
+                                "record",
+                                "()V",
+                                true,
+                                "refusalRecord",
+                                "()Z",
+                                true),
+                    }
             : Boolean.getBoolean("ravel.test.transform.failure")
                     ? new HookTarget[] {
                         new HookTarget(
@@ -26,14 +39,16 @@ public final class Hook {
                                 "(I)Z",
                                 true,
                                 "chatAllowedCharacter",
-                                "(I)V"),
+                                "(I)V",
+                                false),
                         new HookTarget(
                                 "net/minecraft/util/StringUtil",
                                 "broken",
                                 "not-a-descriptor",
                                 true,
                                 "broken",
-                                "()V"),
+                                "()V",
+                                false),
                     }
                     : new HookTarget[] {
                 new HookTarget(
@@ -42,28 +57,32 @@ public final class Hook {
                         "(I)Z",
                         true,
                         "chatAllowedCharacter",
-                        "(I)V"),
+                        "(I)V",
+                        false),
         new HookTarget(
                 "net/minecraft/util/StringUtil",
                 "filterText",
                 "(Ljava/lang/String;Z)Ljava/lang/String;",
                 true,
                 "chatFilterText",
-                "(Ljava/lang/String;Z)V"),
+                "(Ljava/lang/String;Z)V",
+                false),
         new HookTarget(
                 "net/minecraft/util/StringUtil",
                 "filterText",
                 "(Ljava/lang/String;)Ljava/lang/String;",
                 true,
                 "chatFilterTextSimple",
-                "(Ljava/lang/String;)V"),
+                "(Ljava/lang/String;)V",
+                false),
         new HookTarget(
                 "net/minecraft/util/StringUtil",
                 "isValidPlayerName",
                 "(Ljava/lang/String;)Z",
                 true,
                 "playerNameValid",
-                "(Ljava/lang/String;)V"),
+                "(Ljava/lang/String;)V",
+                false),
     };
 
     private static long invocations;
@@ -78,9 +97,14 @@ public final class Hook {
     }
 
     public static void ravelInitialize() {
-        String className = Boolean.getBoolean("ravel.test.transform.hierarchy")
-                ? "dev.ravel.jvm.hierarchy.HierarchySource"
-                : "net.minecraft.util.StringUtil";
+        String className;
+        if (Boolean.getBoolean("ravel.test.transform.hierarchy")) {
+            className = "dev.ravel.jvm.hierarchy.HierarchySource";
+        } else if (Boolean.getBoolean("ravel.test.transform.refusal")) {
+            className = "dev.ravel.jvm.refusal.RefusalTarget";
+        } else {
+            className = "net.minecraft.util.StringUtil";
+        }
         try {
             Class.forName(className, true, ClassLoader.getSystemClassLoader());
         } catch (ClassNotFoundException absent) {
@@ -114,5 +138,10 @@ public final class Hook {
 
     public static void hierarchyTarget() {
         invocations++;
+    }
+
+    public static boolean refusalRecord() {
+        invocations++;
+        return Boolean.getBoolean("ravel.test.refusal.verdict");
     }
 }

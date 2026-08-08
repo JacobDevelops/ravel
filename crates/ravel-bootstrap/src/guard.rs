@@ -26,6 +26,7 @@ use std::fmt;
 
 use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::JString;
+use jni::sys::{JNI_FALSE, JNI_TRUE, jboolean};
 use jni::{Env, EnvUnowned};
 use ravel_minecraft::{HookTarget, HookValue};
 
@@ -113,6 +114,47 @@ pub(crate) fn enter<'local, 'handle, Collect>(
         dispatch::deliver(target, &values)
     });
     let () = outcome.resolve::<ThrowRuntimeExAndDefault>();
+}
+
+/// Runs one hook invocation for a target whose prologue may refuse it.
+///
+/// Same guard, same registry, same collection: the only difference is what a
+/// refusal becomes. ADG-1's Phase C amendment says an opted-in prologue answers
+/// a boolean and the injected call site returns from the host method when it is
+/// true, so a veto is reported as that verdict instead of being thrown. Throwing
+/// would unwind into game code Ravel does not author, which is the whole reason
+/// the amendment exists.
+///
+/// Everything else still throws. A collection error or a panic resolves through
+/// [`ThrowRuntimeExAndDefault`], whose default for a boolean is false, so the
+/// pending exception is what the JVM acts on rather than a verdict this frame
+/// never reached.
+///
+/// The lifetimes and what confines a handle are exactly as documented on
+/// [`enter`].
+pub(crate) fn enter_refusable<'local, 'handle, Collect>(
+    mut env: EnvUnowned<'local>,
+    target: &'static HookTarget,
+    collect: Collect,
+) -> jboolean
+where
+    'local: 'handle,
+    Collect: FnOnce(&mut Env<'local>) -> Result<Vec<HookValue<'handle>>, HookError>,
+{
+    report::record_invocation();
+    if !dispatch::is_observed() {
+        return JNI_FALSE;
+    }
+
+    let outcome = env.with_env(|env: &mut Env<'local>| -> Result<jboolean, HookError> {
+        let values = collect(env)?;
+        match dispatch::deliver(target, &values) {
+            Ok(()) => Ok(JNI_FALSE),
+            Err(HookError::Vetoed { .. }) => Ok(JNI_TRUE),
+            Err(other) => Err(other),
+        }
+    });
+    outcome.resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Copies a `java.lang.String` argument out of the JVM.

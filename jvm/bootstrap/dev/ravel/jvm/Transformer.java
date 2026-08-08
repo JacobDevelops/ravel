@@ -38,6 +38,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@code Object}, which is the opaque handle that gate's M3-W0 amendment admits.
  * A hook that has to stop the call throws, which unwinds the target without any
  * branch here.
+ *
+ * <p>A target the reviewed inventory opts in is the one exception, on ADG-1's
+ * Phase C amendment: its hook answers a boolean and the prologue returns from the
+ * host method when it is true. The opt-in arrives as generated data on
+ * {@link HookTarget}, so nothing written here can widen the set, and only a void
+ * target may carry it, so the early return invents no value.
  */
 public final class Transformer implements ClassFileTransformer {
 
@@ -252,6 +258,13 @@ public final class Transformer implements ClassFileTransformer {
                     slot += kind.slotSize();
                 }
                 builder.invokestatic(HOOK, target.hookMethod(), hookType);
+                if (target.refuses()) {
+                    // The hook left a boolean on the stack and `ifThen` branches
+                    // on IFNE, so a true verdict returns from the host method
+                    // before its body runs. Only a void target may opt in, so
+                    // this is a bare RETURN and no value is ever invented.
+                    builder.ifThen(blk -> blk.return_());
+                }
             }
             if (isTitleMenu(target)
                     && element instanceof ReturnInstruction instruction

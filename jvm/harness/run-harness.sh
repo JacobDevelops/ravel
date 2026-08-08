@@ -76,9 +76,12 @@ javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/jvm/harness/initialization/dev/ravel/jvm/Hook.java"
 mapfile -d '' hierarchy_sources < <(find "$root/jvm/harness/hierarchy" -name '*.java' -print0 | sort -z)
 javac -d "$order/classes" "${hierarchy_sources[@]}"
+mapfile -d '' refusal_sources < <(find "$root/jvm/harness/refusal" -name '*.java' -print0 | sort -z)
+javac -d "$order/classes" "${refusal_sources[@]}"
 javac -cp "$work:$order/classes:$order/agent-classes" -d "$order/classes" \
 	"$root/jvm/harness/InitializationOrderMain.java" \
-	"$root/jvm/harness/HierarchyResolutionMain.java"
+	"$root/jvm/harness/HierarchyResolutionMain.java" \
+	"$root/jvm/harness/RefusalMain.java"
 printf 'Premain-Class: dev.ravel.jvm.Agent\nCan-Retransform-Classes: false\n' >"$order/agent.manifest"
 mapfile -d '' order_compiled < <(cd "$order/agent-classes" && find . -name '*.class' -print0 | sort -z)
 order_entries=()
@@ -153,6 +156,40 @@ if [ "$hierarchy_diagnostic" != "$order_expected_diagnostic" ]; then
 	printf '%s\n' "$order_expected_diagnostic" >&2
 	exit 1
 fi
+
+# The opted-in prologue, both ways round. A refused call must skip the body it
+# precedes and nothing else, and the same rewritten method must fall through
+# untouched when the verdict is false — which is what says the early return is a
+# branch rather than a removal.
+for verdict in true false; do
+	refusal_stdout="$order/refusal-$verdict-stdout"
+	refusal_stderr="$order/refusal-$verdict-stderr"
+	(cd "$order/classes" && java \
+		-javaagent:"$order_agent" \
+		-Dravel.test.transform.refusal=true \
+		-Dravel.test.refusal.verdict="$verdict" \
+		-cp ".:$work" RefusalMain >"$refusal_stdout" 2>"$refusal_stderr")
+	refusal_observed="$(<"$refusal_stdout")"
+	if [ "$verdict" = true ]; then
+		refusal_bodies=0
+	else
+		refusal_bodies=1
+	fi
+	refusal_expected="bodies=$refusal_bodies methods=1
+[ravel] rewrote 1 classes and 1 methods; 1 hook invocations reached native code"
+
+	printf '%s\n' "$refusal_observed"
+	while IFS= read -r line; do
+		printf '%s\n' "$line" >&2
+	done <"$refusal_stderr"
+
+	if [ "$refusal_observed" != "$refusal_expected" ]; then
+		echo >&2
+		echo "a prologue verdict of $verdict did not decide whether the body ran; expected:" >&2
+		printf '%s\n' "$refusal_expected" >&2
+		exit 1
+	fi
+done
 
 failure_stdout="$order/failure-stdout"
 failure_stderr="$order/failure-stderr"

@@ -329,6 +329,11 @@ class = "net.minecraft.client.Minecraft"
 member = "doWorldLoad"
 descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Lnet/minecraft/server/packs/repository/PackRepository;Lnet/minecraft/server/WorldStem;Ljava/util/Optional;Z)V"
 kind = "instance-method"
+# The one target in this inventory whose prologue may return from it. ADG-1's
+# Phase C amendment bounds that power to the entries named here, and the entry is
+# legal only because `doWorldLoad` returns void: an early return from anything
+# else would have to invent a value, which the generator refuses outright.
+refuses = true
 capability = "Admit or refuse a world's Ravel data before the load body's first persistent mutation, carrying the storage access that names the world, the pack repository, the world stem, the selected data pack list, and the game's advisory new-world marker."
 
 [[hook]]

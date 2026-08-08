@@ -14,6 +14,8 @@ package dev.ravel.jvm;
  * @param isStatic whether the method is declared static
  * @param hookMethod name of the generated hook to call
  * @param hookDescriptor descriptor of the generated hook to call
+ * @param refuses whether the hook answers a boolean the prologue returns on,
+ *     which the reviewed inventory opts a target into and nothing else can
  */
 public record HookTarget(
         String internalClass,
@@ -21,5 +23,6 @@ public record HookTarget(
         String descriptor,
         boolean isStatic,
         String hookMethod,
-        String hookDescriptor) {
+        String hookDescriptor,
+        boolean refuses) {
 }

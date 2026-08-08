@@ -33,6 +33,28 @@ dataFixerJarSha256 = "9653a39cf5c4853cc98628d902dcb23ffeb2755122ecc563bde38c8f60
 class = "com/mojang/serialization/Codec"
 flags = 1537
 
+[[stub.member]]
+name = "fieldOf"
+descriptor = "(Ljava/lang/String;)Lcom/mojang/serialization/MapCodec;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "xmap"
+descriptor = "(Ljava/util/function/Function;Ljava/util/function/Function;)Lcom/mojang/serialization/Codec;"
+flags = 1
+method = true
+
+[[stub]]
+class = "com/mojang/serialization/MapCodec"
+flags = 1057
+
+[[stub.member]]
+name = "codec"
+descriptor = "()Lcom/mojang/serialization/Codec;"
+flags = 1
+method = true
+
 [[stub]]
 class = "net/minecraft/client/Minecraft"
 flags = 33
@@ -274,9 +296,53 @@ implements = ["net/minecraft/network/chat/Component"]
 class = "net/minecraft/resources/Identifier"
 flags = 49
 
+[[stub.member]]
+name = "fromNamespaceAndPath"
+descriptor = "(Ljava/lang/String;Ljava/lang/String;)Lnet/minecraft/resources/Identifier;"
+flags = 9
+method = true
+
+[[stub]]
+class = "net/minecraft/util/ExtraCodecs"
+flags = 33
+
+[[stub.member]]
+name = "BASE64_STRING"
+descriptor = "Lcom/mojang/serialization/Codec;"
+flags = 25
+method = false
+
 [[stub]]
 class = "net/minecraft/util/datafix/DataFixTypes"
 flags = 16433
+
+[[stub.member]]
+name = "SAVED_DATA_COMMAND_STORAGE"
+descriptor = "Lnet/minecraft/util/datafix/DataFixTypes;"
+flags = 16409
+method = false
+
+[[stub]]
+class = "net/minecraft/world/level/saveddata/SavedData"
+flags = 1057
+
+[[stub.member]]
+name = "<init>"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setDirty"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setDirty"
+descriptor = "(Z)V"
+flags = 1
+method = true
 
 [[stub]]
 class = "net/minecraft/world/level/saveddata/SavedDataType"

@@ -39,8 +39,8 @@ bytes = 13402
 
 [inputs.stubSeeds]
 path = "minecraft/versions/26.1.2/stubs.toml"
-sha256 = "bd6cd230609fab31c98a1ac359a1fe09e08d2272a33770381fa5f0256963f28e"
-bytes = 5079
+sha256 = "23ca761fff0074f12ceaa1c02c814c2dbabb2b288908ef25042a583d3d568284"
+bytes = 6726
 
 # The two locks below are generated, not fetched, and they are pinned for the
 # machines that cannot check them any other way. Without the jars there is
@@ -57,5 +57,5 @@ bytes = 7027
 
 [inputs.stubsLock]
 path = "minecraft/versions/26.1.2/stubs.lock"
-sha256 = "0921fd4be9f8e3d74fcfd226643f120fcefdceacc49e48a7a1935a894c03280d"
-bytes = 7209
+sha256 = "e4e915ba93034fcb09557835c3efd8a07d965a3736f142023a3172de5327b59e"
+bytes = 8462

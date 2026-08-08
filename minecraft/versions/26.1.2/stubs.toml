@@ -110,8 +110,46 @@ members = ["<init>"]
 # Not a game class: it is declared by the DataFixerUpper library the game's own
 # signatures name, which is why `adapter.toml` pins that jar as a second class
 # source. `SavedDataType` takes one in its constructor, so a saved-data type
-# cannot be written down without being able to write this down first. It is
-# seeded with no members because nothing calls one on it; the constructor above
-# is what earns it its place.
+# cannot be written down without being able to write this down first.
+#
+# `xmap` turns the byte codec below into one over Ravel's own saved-data class,
+# and `fieldOf` puts it under a key so the encoded form is the compound tag the
+# saved-data storage writes. A bare leaf codec would encode to a string tag and
+# the storage would have nothing to write.
 class = "com.mojang.serialization.Codec"
-members = []
+members = ["xmap", "fieldOf"]
+
+[[stub]]
+# What `fieldOf` answers. `codec` is what turns it back into a `Codec`, which is
+# the type `SavedDataType`'s constructor names.
+class = "com.mojang.serialization.MapCodec"
+members = ["codec"]
+
+[[stub]]
+# The leaf codec Ravel's aggregate crosses as. It is already `Codec<byte[]>`, so
+# nothing here hand-rolls a byte codec, and it is seeded from this class rather
+# than from `Codec` itself because the codec constants on `Codec` are fields on
+# an interface — implicitly final, and a stub cannot invent the value one would
+# need.
+class = "net.minecraft.util.ExtraCodecs"
+members = ["BASE64_STRING"]
+
+[[stub]]
+# The superclass of Ravel's one stored object. It is abstract, which is the whole
+# reason this half cannot live in the agent jar: storing a Ravel-owned saved data
+# means defining a concrete subclass of a game type, and reflection defines none.
+class = "net.minecraft.world.level.saveddata.SavedData"
+members = ["<init>", "setDirty"]
+
+[[stub]]
+# What a saved-data type is named by. The constructor is private, so the factory
+# is what a name can be built through.
+class = "net.minecraft.resources.Identifier"
+members = ["fromNamespaceAndPath"]
+
+[[stub]]
+# The fixer family `SavedDataType`'s constructor takes. Seeded for the one
+# constant Ravel names, whose byte preservation across the pinned version range
+# is what ADG-7's evidence measured.
+class = "net.minecraft.util.datafix.DataFixTypes"
+members = ["SAVED_DATA_COMMAND_STORAGE"]

@@ -6,6 +6,10 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+mod instance_scan;
+
+pub use instance_scan::{Finding, InstanceScan, scan_instance};
+
 const CRATE_NAMES: &[&str] = &[
     "ravel-core",
     "ravel-package",

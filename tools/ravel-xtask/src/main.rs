@@ -32,11 +32,42 @@ fn main() -> ExitCode {
             }
             ("budget", report.violations)
         }
+        // The report prints whether or not the instance is clean, because the
+        // sanitized facts are what an evidence record embeds and a scan that
+        // only spoke up on failure could not supply them.
+        [scan, instance, directory] if scan == "scan" && instance == "instance" => {
+            let report = ravel_xtask::scan_instance(Path::new(directory));
+            println!("{}", report.to_json());
+            let mut violations = report
+                .findings
+                .iter()
+                .map(|finding| {
+                    format!(
+                        "{} is present: {} ({})",
+                        finding.loader, finding.marker, finding.kind
+                    )
+                })
+                .collect::<Vec<_>>();
+            violations.extend(
+                report
+                    .obstacles
+                    .iter()
+                    .map(|obstacle| (*obstacle).to_owned()),
+            );
+            if report.mod_archives > 0 {
+                violations.push(format!(
+                    "the game directory holds mod archives ({}), which only another loader reads",
+                    report.mod_archives
+                ));
+            }
+            ("instance scan", violations)
+        }
         _ => {
             eprintln!(
                 "usage:\n  cargo xtask verify scaffold\n  cargo xtask verify spikes\n  \
                  cargo xtask verify milestone M<N>\n  \
-                 cargo xtask verify budget <run.json>..."
+                 cargo xtask verify budget <run.json>...\n  \
+                 cargo xtask scan instance <instance-directory>"
             );
             return ExitCode::from(2);
         }

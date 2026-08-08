@@ -131,6 +131,20 @@ in
         set -euo pipefail
         cd "$DEVENV_ROOT"
         cargo nextest run --workspace --all-features
+        # nextest gives every test its own process, so state that leaks between
+        # tests through a process global is invisible to it by construction. The
+        # plain runner shares one process across threads, and ravel-bootstrap is
+        # the crate that holds such globals.
+        #
+        # This step failed once, on 2026-08-08, with no `test result:` line, no
+        # named test and no panic — the signature of the binary dying rather than
+        # a test asserting. It did not reproduce in roughly 53 further runs,
+        # isolated, under concurrent build load, or at --test-threads=1, so it is
+        # disclosed here rather than fixed speculatively: a fix for a cause
+        # nobody has established is a guess that later reads as a guarantee. If
+        # it recurs, capture the exit status first — 134 is SIGABRT, 139 SIGSEGV,
+        # 137 an OOM kill worth checking dmesg for.
+        cargo test -p ravel-bootstrap --all-features
         cargo test --workspace --doc
         check-jsonschema --check-metaschema schemas/*.schema.json
         check-jsonschema --schemafile schemas/fixture.schema.json \

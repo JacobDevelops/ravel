@@ -14,6 +14,7 @@ use ravel_core::{EmptySideSet, Side, SideSet};
 use ravel_host_api::HostMod;
 use ravel_loader::{DriveError, LifecycleEntry, LifecycleMachine, Requirement, drive};
 use ravel_test_mod_configuration::ConfigurationMod;
+use ravel_test_mod_saved_data::SavedDataMod;
 
 /// The override path copied from the selected pack manifest into this generated host.
 pub const PACK_CONFIGURATION_PATH: &str = "ravel-pack/configuration.json";
@@ -50,8 +51,25 @@ pub fn compose(game_directory: &Path, side: Side) -> Result<Composition, LaunchE
         requirement: Requirement::Required,
         saved_data_versions: BTreeSet::new(),
     };
-    let (machine, mods) =
-        drive(side, vec![(entry, Box::new(configuration))]).map_err(LaunchError::Drive)?;
+    // The world-owning half of the composition. Until this was here no mod in a
+    // running build owned world data, so the saved-data round trip could not be
+    // observed in a launch at all.
+    let saved = SavedDataMod::new();
+    let saved_entry = LifecycleEntry {
+        mod_id: saved.id().clone(),
+        sides: SideSet::new([Side::Client, Side::DedicatedServer]).map_err(LaunchError::Sides)?,
+        requirement: Requirement::Required,
+        saved_data_versions: saved.declaration().versions().collect(),
+    };
+
+    let (machine, mods) = drive(
+        side,
+        vec![
+            (entry, Box::new(configuration) as Box<dyn HostMod>),
+            (saved_entry, Box::new(saved)),
+        ],
+    )
+    .map_err(LaunchError::Drive)?;
 
     Ok((machine, mods, vec![resolved]))
 }
@@ -169,18 +187,40 @@ mod tests {
             .expect("the tracked mod id is valid")
     }
 
+    fn saved_owner() -> ModId {
+        "saved_data".parse().expect("the tracked mod id is valid")
+    }
+
     #[test]
-    fn the_selected_composition_drives_the_configuration_mod() {
+    fn the_selected_composition_drives_both_mods() {
         let game = directory("defaults");
         let (machine, mods, configurations) =
             compose(&game, Side::Client).expect("the tracked composition should start");
 
-        assert_eq!(machine.order().collect::<Vec<_>>(), [&owner()]);
         assert_eq!(machine.state(&owner()), Ok(LifecycleState::Running));
-        assert_eq!(mods.len(), 1);
-        assert_eq!(mods[0].id(), &owner());
+        assert_eq!(machine.state(&saved_owner()), Ok(LifecycleState::Running));
+
+        let driven: Vec<&ModId> = mods.iter().map(|held| held.id()).collect();
+        assert_eq!(driven.len(), 2);
+        assert!(driven.contains(&&owner()));
+        assert!(driven.contains(&&saved_owner()));
+
+        // Only the configuration mod declares settings, so the resolved
+        // configurations stay one even though the composition is now two.
         assert_eq!(configurations.len(), 1);
         assert_eq!(configurations[0].owner(), &owner());
+    }
+
+    #[test]
+    fn the_world_owning_mod_carries_the_versions_it_declares() {
+        let game = directory("saved-versions");
+        let (machine, _, _) =
+            compose(&game, Side::Client).expect("the tracked composition should start");
+
+        assert!(
+            machine.order().any(|id| id == &saved_owner()),
+            "the world-owning mod is part of the driven load order"
+        );
     }
 
     #[test]

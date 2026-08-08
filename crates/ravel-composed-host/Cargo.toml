@@ -19,6 +19,7 @@ ravel-core.workspace = true
 ravel-host-api.workspace = true
 ravel-loader.workspace = true
 ravel-test-mod-configuration.workspace = true
+ravel-test-mod-saved-data.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

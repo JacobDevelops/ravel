@@ -799,6 +799,7 @@ dependencies = [
  "ravel-host-api",
  "ravel-loader",
  "ravel-test-mod-configuration",
+ "ravel-test-mod-saved-data",
  "serde_json",
 ]
 

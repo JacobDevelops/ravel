@@ -179,8 +179,15 @@ fn production_composition_reads_pack_and_player_files_and_drives_the_real_mod() 
         .expect("the tracked mod id is valid");
 
     assert_eq!(machine.state(&owner), Ok(LifecycleState::Running));
-    assert_eq!(mods.len(), 1);
-    assert_eq!(mods[0].id(), &owner);
+    // Found by identity rather than by position. What this test is about is the
+    // configuration mod reading its two files, and the composed host's roster is
+    // `ravel-composed-host`'s own to assert; pinning a length here made adding
+    // the world-owning mod fail a test that has nothing to say about it.
+    assert!(
+        mods.iter().any(|host| host.id() == &owner),
+        "the production composition did not drive the configuration mod"
+    );
+    // Only the configuration mod owns configuration, however many mods compose.
     assert_eq!(configurations.len(), 1);
     assert_eq!(
         configurations[0].value(&key("client.enabled")),

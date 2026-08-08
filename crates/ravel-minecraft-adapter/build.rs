@@ -9,6 +9,9 @@ mod generate;
 
 use std::path::PathBuf;
 
+/// Asks this build to rewrite the pinned locks before it generates.
+const REGENERATE: &str = "RAVEL_REGENERATE_LOCKS";
+
 fn main() {
     let manifest = PathBuf::from(
         std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"),
@@ -21,6 +24,19 @@ fn main() {
 
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=src/generate");
+    println!("cargo::rerun-if-env-changed={REGENERATE}");
+
+    // Rewriting a lock happens here because the generator refuses to build
+    // against a lock it has drifted from, so nothing that depends on this crate
+    // could run the writer. Asking for it is an explicit environment variable
+    // and a devenv task rather than a flag some ordinary build could set.
+    if std::env::var_os(REGENERATE).is_some() {
+        if let Err(error) = generate::regenerate_locks(root) {
+            println!("cargo::error=the pinned locks could not be rewritten: {error}");
+            std::process::exit(1);
+        }
+        println!("cargo::warning=rewrote mappings.lock and stubs.lock from the pinned jar");
+    }
 
     let generated = match generate::run(root, &out) {
         Ok(generated) => generated,

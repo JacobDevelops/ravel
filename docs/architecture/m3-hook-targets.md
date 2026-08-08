@@ -195,7 +195,23 @@ in `adapter.toml`, then regenerating `mappings.lock`. That is the deliberate ste
 ADG-3 designed in, and it works: an inventory edit without the hash update is
 refused, and a resolved set that differs from the lock is refused separately.
 
-Regenerating the lock currently runs the ADG-3 spike, which also rewrites
-`evidence/m1/spikes/adg-3/`. Those files are M1's record of what M1 measured and
-should be restored rather than carried forward, or the regeneration path should
-grow a mode that writes only the lock.
+Regenerating the lock no longer runs the ADG-3 spike. That spike is M1's record
+and has drifted from the adapter inputs it once read — it predates `stubSeeds`
+and refuses to parse `adapter.toml` — so rewriting a lock through it would mean
+editing M1's measurement to describe M3's inputs. The generator grew the
+lock-only mode this section asked for instead:
+
+```console
+RAVEL_REGENERATE_LOCKS=1 cargo build -p ravel-minecraft-adapter
+```
+
+It resolves against the pinned jar and writes `mappings.lock` and `stubs.lock`
+from what it found, so a lock can only be rewritten by someone holding the jar
+who asked for it. The build script is where it lives because the generator
+refuses to build against a lock it has drifted from, which leaves nothing
+downstream able to run the writer. Ordinary builds still refuse drift; nothing
+updates a lock silently.
+
+The spike route also rewrote `evidence/m1/spikes/adg-3/` on every run, so a lock
+regeneration used to arrive with M1's measurements edited underneath it. The
+lock-only mode writes two files and nothing else, which is what retires that.

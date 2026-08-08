@@ -105,6 +105,47 @@ pub struct Generated {
     pub sha256: String,
 }
 
+/// Rewrites `mappings.lock` and `stubs.lock` from the pinned jar.
+///
+/// Editing the reviewed inventory means the resolved set no longer matches what
+/// the locks pin, and [`run`] refuses that drift by design. This is the
+/// deliberate step that answers it, and it is deliberately separate: it resolves
+/// against the pinned jar and writes what it found, so a lock can only be
+/// rewritten by someone who has the jar and asked for it. The generator itself
+/// still refuses to write one, which is what keeps drift an error rather than a
+/// silent update.
+///
+/// # Errors
+///
+/// Returns an error when an input is missing or has drifted from the hash the
+/// adapter inputs pin, when the pinned jar is absent, or when an inventory entry
+/// does not resolve to exactly one member of the declared shape.
+pub fn regenerate_locks(root: &Path) -> Result<(), GenerateError> {
+    let pinned = inputs::pinned(root)?;
+    let jar_path = root.join(&pinned.adapter.inputs.client_jar.path);
+    if !jar_path.is_file() {
+        return Err(GenerateError::Input(format!(
+            "the pinned client jar is absent at {}; a lock cannot be rewritten from another lock",
+            pinned.adapter.inputs.client_jar.path
+        )));
+    }
+    inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
+    inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
+
+    let archive = jar::Archive::open(&jar_path)?;
+    let resolved = resolve::from_jar(&archive, &pinned.inventory)?;
+    let stubbed = stubs::from_jar(&archive, &pinned.seeds)?;
+
+    write_atomically(
+        &pinned.directory.join("mappings.lock"),
+        &render::lock(&pinned.adapter, &resolved),
+    )?;
+    write_atomically(
+        &pinned.directory.join("stubs.lock"),
+        &render::stub_lock(&pinned.adapter, &stubbed),
+    )
+}
+
 /// Generates every artefact of the pinned version into `out`.
 ///
 /// # Errors

@@ -16,12 +16,14 @@ and does not authorize private inventory work.
 The independent prototype review returned **FAIL** with four blocking findings.
 Two are still open:
 
-- M3-W4 has not moved Ravel-owned versioned bytes through an official world save,
-  clean exit, and reload. The matrix persisted a vanilla scoreboard instead.
-- M3-W7 has not exercised every required surface natively. Its accepted launch
-  carried the configuration mod; rewriting all 31 reviewed hooks proves
-  reachability, not native block, item, recipe, event, resource, data, and
-  Ravel-owned saved-data behaviour.
+- M3-W4 **has now moved** Ravel-owned versioned bytes through an official world
+  save, exit, and reload, and a tampered aggregate refused the load. See
+  `linux-process-matrix.json` under `worldPersistenceRoundTrip`. The finding is
+  kept here because the review that raised it has not been rerun.
+- M3-W7 has not exercised every required surface natively. Rewriting all 33
+  reviewed hooks proves reachability, not native block, item, recipe, event, and
+  resource behaviour. The Ravel-owned saved-data half of this finding is answered
+  by the current campaign; the rest is not.
 
 Two are resolved, and stay listed because a finding that disappears once it is
 fixed leaves no way to tell it from one that was never raised:
@@ -102,13 +104,47 @@ per-tick crossing count is recorded.
 ## `linux-process-matrix.json`
 
 It comes from launches rather than from a task, because the thing it measures is
-a launcher starting a game and no task can stand in for that. The accepted Linux
-trial is supporting evidence for M3-W7: stock Minecraft 26.1.2 reached the title
-screen and an integrated world with Ravel alone, all 15 reviewed classes and 31
-callable methods reconciled, the production stores and three Ravel screens worked,
-persisted state survived a relaunch, and Java and Prism exited through the normal
-game UI. It proves hook reachability, not every required native surface; M3-W7
-remains open while Ravel's own M3-W4 world-write path is absent.
+a launcher starting a game and no task can stand in for that. It now holds two
+launch campaigns, and the most useful thing in it is why the second could not
+simply extend the first.
+
+**The earlier matrix could not be carried forward.** Two ADG-7 world persistence
+seams entered the reviewed inventory — `world.open-persistence` on
+`Minecraft.doWorldLoad` and `world.save-persistence` on
+`MinecraftServer.saveAllChunks` — and the callable-target count moved from 31 to
+33 over the same 15 classes. A matrix is a claim about one set of targets in one
+build, so a count that moved invalidates the reconciliation rather than adding to
+it. The second reason is stronger still: no build the earlier campaign ran
+contained a mod that owned world data at all. `ravel-composed-host` carried only
+the configuration mod until change `uyvzkzzs` added `ravel-test-mod-saved-data`
+to it, so the ADG-7 round trip was unprovable by that campaign whatever input it
+received — which is why M3-W4 and M3-W7 stayed open through it and why its
+saved-data row persisted a vanilla scoreboard.
+
+The current campaign is three launches at 33 callable targets, and its claim is
+narrow on purpose. The rewrite of both persistence methods was already proven
+in-gate by `jvm/harness/PersistenceMain.java` over eight world lifecycles; what
+these launches add is the real game's storage on both ends of it. A world was
+created through the game UI, saved, and exited; a second launch reloaded it and
+Ravel's own versioned aggregate came back byte-identical, written by the game's
+own `SavedDataStorage` as `data/ravel/mods.dat` and carrying `saved_data` at data
+version 3. A third launch loaded the same world with that version rewritten to 9
+outside the game, and the load was refused before the integrated server started,
+with the diagnostic drawn on a Ravel screen. That third trial is what separates a
+reload that read the stored bytes from one that ignored them.
+
+The world itself is gone. It was created, hashed, verified across both the reload
+and the refusal, and then removed, which returns the instance to the single-world
+shape the M0 launch-proof summary expects. Nothing was lost by removing it: the
+digest, the reload, and the refused load are the evidence, and evidence that
+needs a private machine-local directory to survive is evidence no reviewer can
+check.
+
+The earlier campaign's rows — the three Ravel screens, the settings round trip,
+the profiling screen, the vanilla command and scoreboard — are kept and labelled
+with their provenance. They were not re-observed at 33 targets. Neither campaign
+on its own exercises every surface M3-W7 asks for, so the record's result is
+`partial` and M3-W7 stays open.
 
 The record separates the operator attestation — injected input followed the
 ordinary title-screen and world-selection route — from facts derived from process
@@ -130,6 +166,8 @@ resolutions rather than disappearing from the audit trail:
   resolution to parse resources without loading game classes. Per-class matched
   counts and failure reporting then reconciled `TitleScreen` and every other
   reviewed class: 15 classes, 31 callable methods, zero transformation failures.
+  The current campaign reconciles the same 15 classes at 33 callable methods,
+  again with zero transformation failures.
 - **Title-only/SIGTERM — superseded.** The passing trial opened a world, used Save
   and Quit to Title, selected Quit Game, and let Java and Prism exit naturally.
   Earlier title-only or forced-cleanup runs remain private historical evidence and

@@ -3,8 +3,8 @@
   "record": "m3-w7-linux-process-matrix",
   "milestone": "M3",
   "workPackage": "M3-W7",
-  "result": "pass",
-  "summary": "Stock Minecraft Java Edition 26.1.2 launched through Prism on Linux with Ravel's agent, screen artifact, and native bootstrap only. Injected input followed the ordinary title-screen and world-selection path. The accepted relaunch populated production stores, opened all three Ravel screens, loaded and rewrote every reviewed target, verified persisted settings and world saved data, saved through the game UI, and exited without a signal.",
+  "result": "partial",
+  "summary": "Stock Minecraft Java Edition 26.1.2 launched through Prism on Linux with Ravel's agent, screen artifact, and native bootstrap only. Injected input followed the ordinary title-screen and world-selection path. This record now holds two launch campaigns rather than one. The current campaign is the ADG-7 world persistence round trip at 33 callable targets: a world created, saved, exited, and reloaded with Ravel's own versioned aggregate surviving byte-identical, and a tampered aggregate refusing the load. The earlier campaign at 31 callable targets carries the screen, settings, profiling, and command observations, and those are not re-observed here. Neither campaign on its own exercises every surface M3-W7 asks for, so the work package stays open.",
   "identity": {
     "platform": "linux",
     "architecture": "x86_64",
@@ -29,13 +29,99 @@
     "authenticatedPrismSession": true,
     "normalUiExit": true,
     "javaExitedNaturally": true,
-    "prismExitedNaturally": true
+    "prismExitedNaturally": true,
+    "currentCampaign": {
+      "overrideJavaArgs": true,
+      "javaAgent": true,
+      "screenJarBesideAgentJar": true,
+      "wrapperStagesNativeImmediatelyBeforeExec": true,
+      "quickPlayDisabled": true,
+      "joinWorldOnLaunchDisabled": true,
+      "configurationBackedUpAndRestored": true,
+      "authenticatedPrismSession": true,
+      "normalUiExit": true,
+      "javaExitedNaturally": true,
+      "prismExitedNaturally": false,
+      "prismExitNote": "The launcher was terminated between launches rather than being allowed to exit on its own. Prism is single-instance, so a launcher left running makes the next `--launch` hand off and return zero having started nothing, and an exit status of zero from it is not evidence that a game ran.",
+      "instanceConfigurationRestoredAndVerifiedByReadBack": true
+    }
   },
   "operatorAttestation": {
     "worldOpenRoute": "Injected input opened the world through the ordinary title screen, Singleplayer world selection, and Play Selected World path. No quick-play or configuration-injected auto-join route was used.",
     "privateDisplayEvidenceRetainedOutsideRepository": true
   },
+  "matrixNotCarriedForward": {
+    "priorCallableTargets": 31,
+    "currentCallableTargets": 33,
+    "reason": "The earlier campaign's matrix is not this campaign's matrix, and the difference is not cosmetic. Two ADG-7 world persistence seams — `world.open-persistence` on `net.minecraft.client.Minecraft.doWorldLoad` and `world.save-persistence` on `net.minecraft.server.MinecraftServer.saveAllChunks` — entered the reviewed inventory, moving the callable-target count from 31 to 33 over the same 15 classes. A matrix is a claim about a specific set of targets in a specific build, so a count that moved invalidates the reconciliation rather than extending it.",
+    "secondReason": "The earlier campaign could not have proven the ADG-7 round trip whatever input it received, because no build it ran contained a mod that owns world data. `ravel-composed-host` carried only the configuration mod until change `uyvzkzzs` added `ravel-test-mod-saved-data` to it. That is why M3-W4 and M3-W7 stayed open through the earlier campaign and why its saved-data row persisted a vanilla scoreboard instead of anything Ravel owned.",
+    "whatThisMeansForAReviewer": "Read the screen, settings, profiling, and command rows below as the earlier campaign's findings at 31 targets, not as this campaign's. They were not re-observed here. Read the rewrite counts, the world persistence round trip, and the instance scan as this campaign's, measured at 33."
+  },
+  "worldPersistenceRoundTrip": {
+    "workPackages": ["M3-W4", "M3-W7"],
+    "decision": "ADG-7",
+    "scopeOfThisClaim": "The rewrite of both persistence methods was already proven in-gate by `jvm/harness/PersistenceMain.java` over eight world lifecycles. What these launches add, and all they add, is the real game's world storage on both ends of that rewrite: an official `SavedDataStorage` writing Ravel's object into an official world directory, and an official world load reading it back and deciding on it.",
+    "modOwningWorldData": "saved_data",
+    "declaredVersions": [1, 2, 3],
+    "versionWritten": 3,
+    "storedObject": "data/ravel/mods.dat inside the world directory, written by the game's own SavedDataStorage through dev.ravel.jvm.screen.RavelWorldData",
+    "createSaveExitReload": {
+      "worldCreatedThroughGameUi": true,
+      "freshWorldStagedWithNoRavelData": true,
+      "aggregateWrittenOnFirstSave": true,
+      "gameExitedBetweenWriteAndRead": true,
+      "aggregateReadBackOnReload": true,
+      "aggregateByteIdenticalAcrossTheRoundTrip": true,
+      "storedAggregateSha256": "91db6669d7ef31d4e5c498fa1410dd89617ef1dd5a052bb3bb03f2df6bcdc741",
+      "storedAggregateBytes": 271,
+      "decodedRecord": {
+        "formatVersion": 1,
+        "owner": "saved_data",
+        "schemaVersion": 1,
+        "dataVersion": 3,
+        "payloadSchema": "urn:ravel:test:saved-state:1",
+        "requiredPackages": []
+      },
+      "refusalsDuringTheRoundTrip": 0
+    },
+    "failClosedOnAnUnreadableWorld": {
+      "method": "The stored aggregate's `dataVersion` was rewritten from 3 to 9 outside the game — a version no build declares — and the same world was loaded again through the same Singleplayer route.",
+      "worldRefused": true,
+      "integratedServerNeverStarted": true,
+      "diagnostic": "the world holds `saved_data` saved data at version 9, newer than this build's 3",
+      "refusalScreenDrawnInGame": true,
+      "refusalScreenText": "This world was not opened. / <diagnostic> / Deleting Ravel's saved data resets Ravel for this world.",
+      "pristineAggregateRestoredAfterwards": true,
+      "whatThisProves": "The reload did not merely tolerate the stored bytes, it parsed them and decided admission on them. Without this trial, a reload that ignored the aggregate entirely and a reload that read it would look the same from outside."
+    },
+    "absentPathObservedSeparately": "A pre-existing world in the same instance held no `data/ravel` directory before these launches and none was created for it, which is the absent-aggregate case ADG-7 initializes fresh state for. It is recorded as its own result rather than folded into the round trip.",
+    "worldRemovedAfterwards": {
+      "removed": true,
+      "whenAndWhy": "The world created for this campaign was created, hashed, verified across the reload and the refusal trial, and then removed, returning the instance to the single-world shape it had before. A reader should not go looking for it.",
+      "whatSurvivesTheRemoval": "The proof does not live in that directory. It is the recorded aggregate digest above, the observed reload, and above all the refused load of a stored `dataVersion` rewritten from 3 to 9 — which is what tells a reload that read the bytes apart from one that ignored them. Evidence that needs a private machine-local directory to persist is evidence nobody else can check; a digest is not.",
+      "instanceWorldCountRestored": 1
+    }
+  },
+  "thisCampaignMachineEvidence": {
+    "launches": 3,
+    "titleScreenReached": true,
+    "titleMenuRavelModsButtonPresent": true,
+    "nativeLibraryLoadedByAgent": true,
+    "worldCreatedThroughGameUi": true,
+    "integratedWorldReached": true,
+    "serverSavedWorlds": true,
+    "renderThreadStopped": true,
+    "shutdownReportPresent": true,
+    "ravelDiagnosticsDuringTheRoundTrip": 0,
+    "exitRoutes": {
+      "first": "Save and Quit to Title completed and the world's aggregate was written. The window-manager close request was then sent and the game ignored it, continuing to render with no window; the process was terminated with SIGTERM and its shutdown hook ran. This launch is not offered as a clean-exit result.",
+      "second": "Save and Quit to Title, then Quit Game from the title menu. Java exited on its own with no signal. This is the clean-exit result.",
+      "third": "The world was refused before it opened, so nothing was loaded to quit from; the process was terminated with SIGTERM and its shutdown hook ran."
+    },
+    "harnessNote": "A window-manager close request is not a quit route for this client. Only the in-game Quit Game button was observed to end the process on its own."
+  },
   "machineEvidence": {
+    "provenance": "Earlier campaign at 31 callable targets. Not re-observed in the current campaign; see `matrixNotCarriedForward`.",
     "titleScreenReached": true,
     "integratedWorldReached": true,
     "serverSavedWorlds": true,
@@ -61,6 +147,7 @@
     }
   },
   "screens": {
+    "provenance": "Earlier campaign at 31 callable targets. Only the title-menu button was re-observed in the current campaign; no Ravel screen was opened in it.",
     "titleMenuButtonPresent": true,
     "definedAndOpened": [
       "dev.ravel.jvm.screen.RavelModsScreen",
@@ -85,6 +172,7 @@
     }
   },
   "commandAndSavedData": {
+    "provenance": "Earlier campaign at 31 callable targets. Its saved-data rows are about a vanilla scoreboard, which is the gap M3-W8 raised; `worldPersistenceRoundTrip` above is the Ravel-owned answer to it and comes from the current campaign.",
     "vanillaCommandExecutedThroughInput": true,
     "worldOwnedScoreboardCreated": true,
     "worldOwnedScoreboardMutated": true,
@@ -93,11 +181,12 @@
   },
   "rewrite": {
     "classesInInventory": 15,
-    "callableTargetsInInventory": 31,
+    "callableTargetsInInventory": 33,
     "classesRewritten": 15,
-    "methodsRewritten": 31,
-    "nativeInvocations": 24834635,
+    "methodsRewritten": 33,
+    "nativeInvocations": 749397,
     "transformationFailures": 0,
+    "measuredIn": "The three launches of this campaign each reported `rewrote 15 classes and 33 methods` in the agent's own shutdown report, with 675660, 749397, and 28845 native invocations. The figure above is the second launch, which is the one that both read a stored aggregate and exited through Quit Game.",
     "targetInventory": [
       {
         "class": "net.minecraft.client.Minecraft",
@@ -105,7 +194,8 @@
           "client.tick",
           "client.run-tick",
           "resource.reload-client-packs",
-          "screen.set"
+          "screen.set",
+          "world.open-persistence"
         ]
       },
       {
@@ -155,7 +245,8 @@
           "server.tick",
           "server.average-tick-time",
           "server.tick-times",
-          "save.save-everything"
+          "save.save-everything",
+          "world.save-persistence"
         ]
       },
       {
@@ -212,7 +303,9 @@
       "recipe.apply",
       "save.compute-if-absent",
       "save.try-write",
-      "save.save-and-join"
+      "save.save-and-join",
+      "world.open-persistence",
+      "world.save-persistence"
     ]
   },
   "resolvedDeviations": [
@@ -257,6 +350,20 @@
   "artifacts": [
     {
       "name": "ravel-agent.jar",
+      "sha256": "404740f4c466262f8be4495a29490f043ebb1df98ee4e0710995b51b33810981"
+    },
+    {
+      "name": "ravel-screen.jar",
+      "sha256": "384abeb8c275e4da451a59b622f17ee710e7a1483aa75cb4ed3aeb87629eaa16"
+    },
+    {
+      "name": "libravel_bootstrap.so",
+      "sha256": "abe56b961872ca9b018f0ed1a843927a63643a7bc1842e9848bf297ef65ed19e"
+    }
+  ],
+  "priorCampaignArtifacts": [
+    {
+      "name": "ravel-agent.jar",
       "sha256": "f12fe791d73ab8a9efd623ffd752f8ee33a434bc19ce784d718127674a476e48"
     },
     {
@@ -268,7 +375,23 @@
       "sha256": "4df393dfa16b8864bd1b4c788475a159aa972f9f2124b4664e51a80e970167fe"
     }
   ],
+  "thisCampaignPrivateEvidenceDigests": {
+    "note": "Raw game stdout and screenshots were held outside the repository and deleted when the campaign finished. The redacted logs are the sanitized form of the same streams, with paths, the player name, the instance identifier, the session environment, and the local connection identifier removed; their digests are recorded so a later reader can tell what was hashed.",
+    "createAndSaveLogRaw": "626e0c5cd8f2d01dd251ded71c3aa84e92803e68b6922159a0564b06aa2c2067",
+    "createAndSaveLogRedacted": "f43acfeca344bdfec84d45371fca2087de73de0eeac6b3d72b6d57ff9a13afc9",
+    "reloadLogRaw": "db3cbee83173ca05729a9b18c379a2f8d9171d9dd474a914d9c9f7f231190c09",
+    "reloadLogRedacted": "9828c24de099e60047d5a8105bf15ca90b60ce9c1327be9e7f0f0698a25ddb63",
+    "refusedLoadLogRaw": "008546be22d5376ff53cfb497882b83d12dd8fe1dd483c454ae1b94ef20001a3",
+    "refusedLoadLogRedacted": "5d83effe0fb427187f44e6102e30bd002efea1b7f1c23b93bd7ecaaef7f2d36b",
+    "titleWithRavelMods": "f7b6c7b6191a92a171c0ba442ac01ef6fb185d94f9e54fd9252eff4c9cd01deb",
+    "createdWorldLoaded": "f33f9002619018bf43db5b4e647083372eea8502a964f63efa06b2a2dacddf56",
+    "titleAfterSaveAndQuit": "32508a004d0cbe5e723ccfac824990f2c916ea932010ca8f51913c29ba3a63ee",
+    "reloadedWorld": "be96e736565f5e1a6769f6688ea4699ff2d54375b97628ab7667c4e0e126d21f",
+    "refusalScreen": "b1716f787a8bd75535be4686d731ee6714ce1cb3be2465491af4fbde90723b34",
+    "storedAggregate": "91db6669d7ef31d4e5c498fa1410dd89617ef1dd5a052bb3bb03f2df6bcdc741"
+  },
   "privateEvidenceDigests": {
+    "provenance": "Earlier campaign at 31 callable targets.",
     "acceptedGameStdout": "510daaa818c44325d6bc81e6d1073d706f69ef93b235f9d4a7f8eab3d30be1c2",
     "titleWithRavelMods": "25760b3f6de9760aa889f780d77b931efa632b5fe384f30a9a8fbfb7bcaefbf1",
     "modsScreen": "d0a9e7c5641bbc61458fb3ff865828630f675373e7d6ab65a73ac476343aa12a",

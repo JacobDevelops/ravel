@@ -31,6 +31,12 @@ enum JavaType {
     Float,
     Double,
     Text,
+    /// A `byte[]`, copied across as the opaque payload it is.
+    ///
+    /// ADG-7 carries a world's aggregate as bytes Java never reads, so this is
+    /// the one array that is not an opaque handle: a handle would let a hook
+    /// know a `byte[]` is there and nothing more.
+    Bytes,
     /// A reference, carrying the internal class name its descriptor declared.
     Handle(String),
 }
@@ -55,6 +61,7 @@ impl JavaType {
             Self::Float => "F",
             Self::Double => "D",
             Self::Text => "Ljava/lang/String;",
+            Self::Bytes => "[B",
             Self::Handle(_) => "Ljava/lang/Object;",
         }
     }
@@ -74,6 +81,7 @@ impl JavaType {
             Self::Float => "float",
             Self::Double => "double",
             Self::Text => "String",
+            Self::Bytes => "byte[]",
             Self::Handle(_) => "Object",
         }
     }
@@ -90,6 +98,7 @@ impl JavaType {
             Self::Float => "::jni::sys::jfloat",
             Self::Double => "::jni::sys::jdouble",
             Self::Text => "::jni::objects::JString<'local>",
+            Self::Bytes => "::jni::objects::JByteArray<'local>",
             Self::Handle(_) => "::jni::objects::JObject<'local>",
         }
     }
@@ -113,6 +122,13 @@ impl JavaType {
             Self::Text => {
                 format!("::ravel_minecraft::HookValue::Text(crate::guard::text(env, &{name})?)")
             }
+            // A byte array still reaches an observer as the handle every array
+            // is: what `Bytes` changes is the crossing's declared type, not what
+            // ADG-4 admits an observer to see.
+            Self::Bytes => format!(
+                "::ravel_minecraft::HookValue::Handle(\
+                 ::ravel_minecraft::JavaHandle::new(\"[B\", &{name}))"
+            ),
             Self::Handle(class) => format!(
                 "::ravel_minecraft::HookValue::Handle(\
                  ::ravel_minecraft::JavaHandle::new(\"{class}\", &{name}))"
@@ -286,6 +302,12 @@ fn parameter(descriptor: &str) -> Result<(JavaType, &str), String> {
             // The element descriptor is parsed only to find where this one ends
             // and to refuse an array of nothing valid.
             let (_, after) = parameter(&descriptor[1..])?;
+            // `[B` and nothing else is the exception, because ADG-7's aggregate
+            // is bytes rather than an object a hook looks at. `[[B` is still a
+            // handle: it is an array of arrays, not a payload.
+            if descriptor.len() - after.len() == 2 && descriptor.starts_with("[B") {
+                return Ok((JavaType::Bytes, after));
+            }
             let end = descriptor.len() - after.len();
             Ok((JavaType::Handle(descriptor[..end].to_owned()), after))
         }
@@ -426,10 +448,14 @@ pub(super) fn exports(shapes: &[Shape]) -> String {
             .collect::<Vec<_>>();
         let carries_text = shape.parameters.contains(&JavaType::Text);
 
+        // A refusing export answers the injected branch, so its verdict is the
+        // whole point of calling it and dropping one is a bug.
+        let must_use = if shape.refuses { "#[must_use]\n" } else { "" };
         let _ = writeln!(
             text,
             "/// {}\n\
              #[::jni::jni_mangle(\"{HOOK_CLASS}\", \"{}\")]\n\
+             {must_use}\
              pub fn {}<'local>(\n\
              \x20   env: ::jni::EnvUnowned<'local>,\n\
              \x20   _class: ::jni::objects::JClass<'local>,",
@@ -573,9 +599,17 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
     // the bootstrap rather than to any version's hook surface. They are declared
     // here because ADG-1 gives Ravel one exported symbol surface and it is this
     // class — a screen with natives of its own would be a second one.
-    let _ = writeln!(
-        text,
-        "    /** Constructs, configures, drives, and installs the statically composed mod set. */\n\
+    let _ = writeln!(text, "{}", written_declarations());
+    text
+}
+
+/// The declarations that belong to the bootstrap rather than to a hook surface.
+///
+/// They are written rather than generated, and they live here because ADG-1
+/// gives Ravel one exported symbol surface and it is this class: a screen or a
+/// world adapter with natives of its own would be a second one.
+fn written_declarations() -> &'static str {
+    "    /** Constructs, configures, drives, and installs the statically composed mod set. */\n\
          \x20   public static native void ravelInitialize();\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
@@ -593,7 +627,7 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
          \x20    * inside it.\n\
          \x20    *\n\
          \x20    * @param owner the canonical mod id whose settings to read\n\
-         \x20    * @return the settings document, or {{@code null}} when this process\n\
+         \x20    * @return the settings document, or {@code null} when this process\n\
          \x20    *     holds no configuration for that owner\n\
          \x20    */\n\
          \x20   public static native String ravelSettingsDocument(String owner);\n\n\
@@ -626,21 +660,21 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
          \x20    * already been through the loader's redaction policy, which is what\n\
          \x20    * makes it something a player may be shown at all.\n\
          \x20    *\n\
-         \x20    * @return the mod list, or {{@code null}} when no set is installed\n\
+         \x20    * @return the mod list, or {@code null} when no set is installed\n\
          \x20    */\n\
          \x20   public static native String ravelModSurface();\n\n\
          \x20   /**\n\
          \x20    * Records whether this launch asked for opt-in profiling.\n\
          \x20    *\n\
-         \x20    * <p>Called once from {{@code premain}}, before any mod exists.\n\
+         \x20    * <p>Called once from {@code premain}, before any mod exists.\n\
          \x20    * The property is read here because Java is where a system\n\
          \x20    * property is, and ADG-1 gives Java a way to call Rust and\n\
          \x20    * nothing the other way, so this is the direction the switch can\n\
          \x20    * travel in. Reading it once is what lets the collectors hold a\n\
          \x20    * plain flag instead of an atomic on every crossing.\n\
          \x20    *\n\
-         \x20    * @param value {{@code System.getProperty(\"ravel.profiling\")}},\n\
-         \x20    *     or {{@code null}} when the launch set nothing\n\
+         \x20    * @param value {@code System.getProperty(\"ravel.profiling\")},\n\
+         \x20    *     or {@code null} when the launch set nothing\n\
          \x20    */\n\
          \x20   public static native void ravelEnableProfiling(String value);\n\n\
          \x20   /**\n\
@@ -655,12 +689,57 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
          \x20    * metric a collector cannot measure and one that measured zero\n\
          \x20    * look identical if the first is simply left out.\n\
          \x20    *\n\
-         \x20    * @return the report, or {{@code null}} when no set is installed\n\
+         \x20    * @return the report, or {@code null} when no set is installed\n\
          \x20    */\n\
-         \x20   public static native String ravelProfilingReport();\n\
-         }}"
-    );
-    text
+         \x20   public static native String ravelProfilingReport();\n\n\
+         \x20   /**\n\
+         \x20    * Admits or refuses one world's Ravel aggregate.\n\
+         \x20    *\n\
+         \x20    * <p>ADG-7's open crossing. The aggregate is bytes Java never reads:\n\
+         \x20    * it is handed over as it was stored and every question about what\n\
+         \x20    * is inside it is answered natively, which is what keeps admission\n\
+         \x20    * one authority rather than two.\n\
+         \x20    *\n\
+         \x20    * <p>A null array is a world holding no Ravel data. A zero-length\n\
+         \x20    * one is not: it is data that is present and unreadable, and it\n\
+         \x20    * refuses, because treating it as absence would let a truncated file\n\
+         \x20    * silently reset the player's world.\n\
+         \x20    *\n\
+         \x20    * <p>The answer is empty when the world is admitted and carries the\n\
+         \x20    * player-facing diagnostic when it is refused. Null is neither: it is\n\
+         \x20    * what the JVM receives when the native failed, and it refuses, so a\n\
+         \x20    * panic stops a world load rather than admitting one unchecked.\n\
+         \x20    *\n\
+         \x20    * @param aggregate the stored aggregate, or {@code null} when the\n\
+         \x20    *     world holds none\n\
+         \x20    * @param identity what the game calls this world, unmassaged\n\
+         \x20    * @param freshWorld the game's advisory marker for a world being\n\
+         \x20    *     created, which is diagnostic only and never decides admission\n\
+         \x20    * @return empty when admitted, the diagnostic when refused\n\
+         \x20    */\n\
+         \x20   public static native String ravelOpenWorldPersistence(\n\
+         \x20           byte[] aggregate, String identity, boolean freshWorld);\n\n\
+         \x20   /**\n\
+         \x20    * Offers the aggregate the saving world should now store.\n\
+         \x20    *\n\
+         \x20    * <p>ADG-7's save crossing, and the opposite failure priority to the\n\
+         \x20    * open one: element zero tags the answer, the remainder is its\n\
+         \x20    * payload, and null means the native failed and nothing is written.\n\
+         \x20    * Losing one Ravel checkpoint is the safe side here, because writing\n\
+         \x20    * a guess would not be.\n\
+         \x20    *\n\
+         \x20    * <p>{@code 0x00} unchanged, and the array is exactly one byte.\n\
+         \x20    * {@code 0x01} replacement, and the remainder is the aggregate to\n\
+         \x20    * store. {@code 0x02} failed and {@code 0x03} identity mismatch,\n\
+         \x20    * and the remainder is a UTF-8 diagnostic; the two stay distinct\n\
+         \x20    * because only the second says the lifecycle is wrong rather than a\n\
+         \x20    * mod. Only {@code 0x01} writes anything.\n\
+         \x20    *\n\
+         \x20    * @param identity what the game calls the saving world, unmassaged\n\
+         \x20    * @return the tagged answer, or {@code null} when the native failed\n\
+         \x20    */\n\
+         \x20   public static native byte[] ravelSaveWorldPersistence(String identity);\n\
+         }"
 }
 
 /// Renders the stub provenance lock.
@@ -1082,6 +1161,26 @@ mod tests {
     }
 
     #[test]
+    fn a_byte_array_crosses_as_bytes_and_no_other_array_does() {
+        assert_eq!(
+            parameters("([BI)V").expect("valid"),
+            vec![JavaType::Bytes, JavaType::Int],
+            "ADG-7's aggregate is a payload rather than an object to look at"
+        );
+        assert_eq!(
+            parameters("([[B[Ljava/lang/Byte;)V").expect("valid"),
+            vec![
+                JavaType::Handle("[[B".to_owned()),
+                JavaType::Handle("[Ljava/lang/Byte;".to_owned()),
+            ],
+            "only `[B` is the payload; an array of them is an array like any other"
+        );
+        assert_eq!(JavaType::Bytes.descriptor(), "[B");
+        assert_eq!(JavaType::Bytes.java(), "byte[]");
+        assert_eq!(JavaType::Bytes.rust(), "::jni::objects::JByteArray<'local>");
+    }
+
+    #[test]
     fn a_descriptor_that_is_not_one_is_refused_and_says_what_about_it_is_wrong() {
         assert!(
             parameters("(Lnet/minecraft/core/Registry)V")
@@ -1127,6 +1226,7 @@ mod tests {
             JavaType::Float,
             JavaType::Double,
             JavaType::Text,
+            JavaType::Bytes,
             JavaType::Handle("java/lang/Object".to_owned()),
         ] {
             let descriptor = format!("({}){}", parameter.descriptor(), parameter.descriptor());

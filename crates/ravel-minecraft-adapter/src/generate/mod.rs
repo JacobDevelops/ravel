@@ -470,6 +470,18 @@ mod tests {
         assert!(java.contains("public static native String ravelModSurface();"));
         assert!(java.contains("public static native void ravelEnableProfiling(String value);"));
         assert!(java.contains("public static native String ravelProfilingReport();"));
+        // ADG-7's two crossings are declared here for the same reason the
+        // screen's are, and they carry bytes rather than a handle: the aggregate
+        // is a payload Java never reads.
+        assert!(java.contains(
+            "public static native String ravelOpenWorldPersistence(\n            \
+             byte[] aggregate, String identity, boolean freshWorld);"
+        ));
+        assert!(
+            java.contains(
+                "public static native byte[] ravelSaveWorldPersistence(String identity);"
+            )
+        );
 
         let _ = std::fs::remove_dir_all(&out);
     }

@@ -3,10 +3,16 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock, PoisonError};
 
+use jni::objects::{JByteArray, JClass, JString};
+use jni::sys::{JNI_FALSE, jboolean};
+use jni::{Env, EnvUnowned};
 use ravel_core::ModId;
-use ravel_save::{SavedDataAggregate, SavedDataDeclaration, SavedDataError, SavedDataPlan};
+use ravel_save::{
+    MAX_AGGREGATE_BYTES, SavedDataAggregate, SavedDataDeclaration, SavedDataError, SavedDataPlan,
+};
 use semver::Version;
 
+use crate::guard::{HookError, text};
 use crate::runtime::LoaderRuntime;
 
 static RUNTIME: OnceLock<Arc<LoaderRuntime>> = OnceLock::new();
@@ -22,6 +28,8 @@ struct Checkpoint {
 pub(crate) struct PersistenceState {
     live: Option<Checkpoint>,
     staged: Option<Checkpoint>,
+    /// What was worth noticing about a world that was still admitted.
+    observations: Vec<String>,
 }
 
 /// What the Java adapter should do after an open crossing.
@@ -52,14 +60,49 @@ fn runtime() -> Result<&'static Arc<LoaderRuntime>, String> {
         .ok_or_else(|| "the loader runtime is not installed".to_owned())
 }
 
+/// What counts as the same world, decided in exactly one place.
+///
+/// The game hands Ravel whichever path shape the call site had, and the two
+/// seams do not agree: a level path and a world path for one world differ by a
+/// trailing separator and a `.` segment. Normalizing both ends here is what
+/// keeps a save from missing the stage it belongs to — the failure that mode
+/// produces is invisible, because nothing errors and nothing is written.
+///
+/// It is lexical only. A save happens while the world directory is being torn
+/// down, so touching the filesystem could fail or answer differently than it did
+/// at open, and `canonicalize` is exactly that.
+fn identity(raw: &str) -> String {
+    let rooted = raw.starts_with('/') || raw.starts_with('\\');
+    let mut normalized = String::with_capacity(raw.len());
+    if rooted {
+        normalized.push('/');
+    }
+    for segment in raw
+        .split(['/', '\\'])
+        .filter(|s| !s.is_empty() && *s != ".")
+    {
+        if !normalized.is_empty() && !normalized.ends_with('/') {
+            normalized.push('/');
+        }
+        normalized.push_str(segment);
+    }
+    normalized
+}
+
 /// Replaces the staged world after admitting and delivering its aggregate.
+///
+/// `fresh_world` is the game's advisory marker for a world being created. It
+/// never decides admission: an absent aggregate initializes fresh state for any
+/// world, exactly as ADG-7 says. It is read only to tell the ordinary case apart
+/// from an existing world that used to hold Ravel data and now does not, which
+/// is worth noticing and is not worth refusing over.
 #[must_use]
-pub fn stage(identity: String, bytes: Option<&[u8]>) -> OpenOutcome {
+pub fn stage(identity_raw: &str, bytes: Option<&[u8]>, fresh_world: bool) -> OpenOutcome {
     let runtime = match runtime() {
         Ok(runtime) => runtime,
         Err(error) => return OpenOutcome::Refused(error),
     };
-    match runtime.stage_world(identity, bytes) {
+    match runtime.stage_world(identity(identity_raw), bytes, fresh_world) {
         Ok(()) => OpenOutcome::Staged,
         Err(error) => OpenOutcome::Refused(error),
     }
@@ -67,15 +110,34 @@ pub fn stage(identity: String, bytes: Option<&[u8]>) -> OpenOutcome {
 
 /// Produces the aggregate selected by the save receiver's identity.
 #[must_use]
-pub fn save(identity: &str) -> SaveOutcome {
+pub fn save(identity_raw: &str) -> SaveOutcome {
     let runtime = match runtime() {
         Ok(runtime) => runtime,
         Err(error) => return SaveOutcome::Failed(error),
     };
-    runtime.save_world(identity)
+    runtime.save_world(&identity(identity_raw))
+}
+
+/// What the open crossing noticed about worlds it admitted anyway.
+#[must_use]
+pub fn observations() -> Vec<String> {
+    runtime().map_or_else(
+        |error| vec![error],
+        |runtime| runtime.persistence_observations(),
+    )
 }
 
 impl LoaderRuntime {
+    /// What the open crossing noticed about worlds it admitted anyway.
+    pub(crate) fn persistence_observations(&self) -> Vec<String> {
+        self.inner
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .persistence
+            .observations
+            .clone()
+    }
+
     fn declarations(inner: &crate::runtime::Inner) -> Vec<SavedDataDeclaration> {
         inner
             .mods
@@ -111,8 +173,23 @@ impl LoaderRuntime {
         Ok(aggregate)
     }
 
-    pub(crate) fn stage_world(&self, identity: String, bytes: Option<&[u8]>) -> Result<(), String> {
+    pub(crate) fn stage_world(
+        &self,
+        identity: String,
+        bytes: Option<&[u8]>,
+        fresh_world: bool,
+    ) -> Result<(), String> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        // Absence initializes fresh state for any world, exactly as ADG-7 says.
+        // What the marker separates is the ordinary new world from an existing
+        // one that used to hold Ravel data and now does not, which is worth
+        // saying and is not worth refusing over.
+        if bytes.is_none() && !fresh_world {
+            inner.persistence.observations.push(format!(
+                "`{identity}` is not a new world and holds no Ravel data; \
+                 fresh state was initialized"
+            ));
+        }
         if inner.persistence.staged.is_none() && inner.persistence.live.is_some() {
             let produced = Self::produce(&inner)?;
             let live = inner.persistence.live.as_mut().expect("checked above");
@@ -210,6 +287,130 @@ impl LoaderRuntime {
     }
 }
 
+/// The stored aggregate as the JVM handed it over.
+enum Incoming {
+    /// No array at all, which is a world holding no Ravel data.
+    Absent,
+    /// An array, whatever its length. Zero-length is present and unreadable
+    /// rather than absent, which is what stops a truncated file resetting a
+    /// world.
+    Present(Vec<u8>),
+    /// Longer than Ravel reads, measured before anything was copied.
+    Oversized(String),
+}
+
+/// Reads the aggregate without ever copying more than Ravel would accept.
+///
+/// The length is asked for first and on its own. An oversized array is refused
+/// on one integer read, so a hostile one never allocates natively, and the
+/// ceiling is applied here rather than in Java because ADG-7 reserves every
+/// admission decision for Rust.
+fn incoming<'local>(
+    env: &mut Env<'local>,
+    aggregate: &JByteArray<'local>,
+) -> Result<Incoming, HookError> {
+    if aggregate.is_null() {
+        return Ok(Incoming::Absent);
+    }
+    let length = aggregate.len(env)?;
+    if length > MAX_AGGREGATE_BYTES {
+        return Ok(Incoming::Oversized(
+            SavedDataError::AggregateTooLarge {
+                limit: MAX_AGGREGATE_BYTES,
+            }
+            .to_string(),
+        ));
+    }
+    Ok(Incoming::Present(env.convert_byte_array(aggregate)?))
+}
+
+/// Admits or refuses one world's stored aggregate.
+///
+/// The answer is empty when the world is admitted and carries the diagnostic
+/// when it is refused. Null is neither, and it is not this function's to give:
+/// it is what `ThrowRuntimeExAndDefault` leaves behind when the body panicked,
+/// and Java refuses on it. Empty-means-admitted rather than null-means-admitted
+/// is the whole reason a panic here refuses a world rather than admitting one
+/// nothing checked.
+///
+/// # Panics
+///
+/// Does not panic. The guard around the body turns a panic into a thrown
+/// `RuntimeException` rather than an unwind into the JVM.
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelOpenWorldPersistence")]
+pub fn ravel_open_world_persistence<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    aggregate: JByteArray<'local>,
+    identity: JString<'local>,
+    fresh_world: jboolean,
+) -> JString<'local> {
+    env.with_env(
+        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
+            let identity = text(env, &identity)?;
+            let outcome = match incoming(env, &aggregate)? {
+                Incoming::Absent => stage(&identity, None, fresh_world != JNI_FALSE),
+                Incoming::Present(bytes) => {
+                    stage(&identity, Some(&bytes), fresh_world != JNI_FALSE)
+                }
+                Incoming::Oversized(refusal) => OpenOutcome::Refused(refusal),
+            };
+            Ok(match outcome {
+                OpenOutcome::Staged => env.new_string("")?,
+                OpenOutcome::Refused(diagnostic) => env.new_string(diagnostic)?,
+            })
+        },
+    )
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+/// Tag byte at element zero, payload in the remainder.
+const UNCHANGED: u8 = 0x00;
+const REPLACEMENT: u8 = 0x01;
+const FAILED: u8 = 0x02;
+const IDENTITY_MISMATCH: u8 = 0x03;
+
+/// One tagged answer.
+fn tagged(tag: u8, payload: &[u8]) -> Vec<u8> {
+    let mut answer = Vec::with_capacity(payload.len() + 1);
+    answer.push(tag);
+    answer.extend_from_slice(payload);
+    answer
+}
+
+/// Offers the aggregate the saving world should now store.
+///
+/// The opposite failure priority to the open crossing, and deliberately so.
+/// Null here is what a panic leaves behind and Java treats it as a failure that
+/// writes nothing, so a panic costs one Ravel checkpoint and never touches
+/// vanilla saving. Only a replacement is ever written.
+///
+/// # Panics
+///
+/// Does not panic, for the same reason as [`ravel_open_world_persistence`].
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelSaveWorldPersistence")]
+pub fn ravel_save_world_persistence<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    identity: JString<'local>,
+) -> JByteArray<'local> {
+    env.with_env(
+        |env: &mut Env<'local>| -> Result<JByteArray<'local>, HookError> {
+            let identity = text(env, &identity)?;
+            let answer = match save(&identity) {
+                SaveOutcome::Unchanged => vec![UNCHANGED],
+                SaveOutcome::Replacement(bytes) => tagged(REPLACEMENT, &bytes),
+                SaveOutcome::Failed(detail) => tagged(FAILED, detail.as_bytes()),
+                SaveOutcome::IdentityMismatch(detail) => {
+                    tagged(IDENTITY_MISMATCH, detail.as_bytes())
+                }
+            };
+            Ok(env.byte_array_from_slice(&answer)?)
+        },
+    )
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
 impl From<SavedDataError> for OpenOutcome {
     fn from(error: SavedDataError) -> Self {
         Self::Refused(error.to_string())
@@ -232,7 +433,10 @@ mod tests {
     };
     use serde_json::json;
 
-    use super::{OpenOutcome, SaveOutcome};
+    use super::{
+        FAILED, IDENTITY_MISMATCH, OpenOutcome, REPLACEMENT, SaveOutcome, UNCHANGED, identity,
+        tagged,
+    };
     use crate::runtime::LoaderRuntime;
 
     const OWNER: &str = "saved_data";
@@ -366,7 +570,7 @@ mod tests {
     fn an_absent_aggregate_stages_fresh_state_and_the_first_save_promotes_it() {
         let (runtime, held) = running();
 
-        assert_eq!(runtime.stage_world(FIRST.to_owned(), None), Ok(()));
+        assert_eq!(runtime.stage_world(FIRST.to_owned(), None, true), Ok(()));
         // Staged is not live: nothing has bound this world to save emission yet.
         held.visits.store(4, Ordering::SeqCst);
 
@@ -379,7 +583,7 @@ mod tests {
     fn an_unmatched_save_receiver_never_replaces_the_aggregate() {
         let (runtime, _held) = running();
         runtime
-            .stage_world(FIRST.to_owned(), None)
+            .stage_world(FIRST.to_owned(), None, true)
             .expect("absence stages");
 
         let outcome = runtime.save_world(SECOND);
@@ -396,7 +600,7 @@ mod tests {
     fn an_idle_autosave_leaves_the_stored_aggregate_alone() {
         let (runtime, held) = running();
         runtime
-            .stage_world(FIRST.to_owned(), None)
+            .stage_world(FIRST.to_owned(), None, true)
             .expect("absence stages");
         replacement(runtime.save_world(FIRST));
 
@@ -410,7 +614,7 @@ mod tests {
     fn a_production_failure_preserves_the_previous_aggregate() {
         let (runtime, held) = running();
         runtime
-            .stage_world(FIRST.to_owned(), None)
+            .stage_world(FIRST.to_owned(), None, true)
             .expect("absence stages");
         held.visits.store(7, Ordering::SeqCst);
         let durable = replacement(runtime.save_world(FIRST));
@@ -433,7 +637,7 @@ mod tests {
     fn the_prior_world_saves_the_state_it_held_when_the_next_world_was_staged() {
         let (runtime, held) = running();
         runtime
-            .stage_world(FIRST.to_owned(), None)
+            .stage_world(FIRST.to_owned(), None, true)
             .expect("absence stages");
         held.visits.store(3, Ordering::SeqCst);
         replacement(runtime.save_world(FIRST));
@@ -443,7 +647,7 @@ mod tests {
         // world's teardown save happens after it.
         held.visits.store(5, Ordering::SeqCst);
         runtime
-            .stage_world(SECOND.to_owned(), None)
+            .stage_world(SECOND.to_owned(), None, true)
             .expect("the second world stages");
         assert_eq!(
             held.visits.load(Ordering::SeqCst),
@@ -463,10 +667,10 @@ mod tests {
     fn each_open_replaces_the_prior_stage() {
         let (runtime, _held) = running();
         runtime
-            .stage_world(FIRST.to_owned(), None)
+            .stage_world(FIRST.to_owned(), None, true)
             .expect("absence stages");
         runtime
-            .stage_world(SECOND.to_owned(), None)
+            .stage_world(SECOND.to_owned(), None, true)
             .expect("the second world stages");
 
         let outcome = runtime.save_world(FIRST);
@@ -484,7 +688,7 @@ mod tests {
         let oversized = vec![b'\0'; MAX_AGGREGATE_BYTES + 1];
 
         let refused = runtime
-            .stage_world(FIRST.to_owned(), Some(&oversized))
+            .stage_world(FIRST.to_owned(), Some(&oversized), true)
             .expect_err("an aggregate over the ceiling does not open a world");
 
         assert!(refused.contains("limit"), "{refused}");
@@ -523,7 +727,7 @@ mod tests {
         ] {
             let (runtime, _held) = running();
             let refused = runtime
-                .stage_world(FIRST.to_owned(), Some(&bytes))
+                .stage_world(FIRST.to_owned(), Some(&bytes), true)
                 .expect_err("this aggregate does not open a world");
             assert!(!refused.is_empty(), "`{name}` refused without saying why");
             assert!(
@@ -531,6 +735,83 @@ mod tests {
                 "`{name}` was refused and staged anyway"
             );
         }
+    }
+
+    /// The two shapes one world reaches Ravel as.
+    ///
+    /// The open seam is handed the level path and the save seam the world path,
+    /// and for the same world they differ by a `.` segment and a trailing
+    /// separator. This is the load-bearing test of the pair: if these two ever
+    /// stop agreeing, every save answers `IdentityMismatch`, Ravel persists
+    /// nothing, and nothing anywhere errors — the failure is invisible.
+    #[test]
+    fn the_two_shapes_one_world_arrives_as_are_the_same_world() {
+        assert_eq!(identity("saves/world/."), identity("saves/world"));
+        assert_eq!(identity("saves/world/"), identity("saves/world"));
+        assert_eq!(identity("saves//world//."), identity("saves/world"));
+        assert_eq!(identity("/saves/world/."), identity("/saves/world"));
+        assert_eq!(
+            identity("/saves/world/."),
+            "/saves/world",
+            "a rooted path stays rooted, so two worlds under different roots stay apart"
+        );
+    }
+
+    #[test]
+    fn two_different_worlds_are_never_the_same_world() {
+        assert_ne!(identity("saves/first"), identity("saves/second"));
+        assert_ne!(identity("saves/world"), identity("other/world"));
+        assert_ne!(
+            identity("saves/world"),
+            identity("/saves/world"),
+            "one is under the game directory and one is not"
+        );
+        assert_ne!(
+            identity("saves/world"),
+            identity("saves/world/nether"),
+            "collapsing separators must not collapse a path into its parent"
+        );
+    }
+
+    #[test]
+    fn an_existing_world_that_lost_its_data_is_noticed_and_admitted_anyway() {
+        let (runtime, _held) = running();
+
+        runtime
+            .stage_world(FIRST.to_owned(), None, false)
+            .expect("absence still initializes fresh state for any world");
+
+        let observed = runtime.persistence_observations();
+        assert_eq!(observed.len(), 1, "{observed:?}");
+        assert!(observed[0].contains(FIRST), "{observed:?}");
+        assert!(observed[0].contains("holds no Ravel data"), "{observed:?}");
+        // Admission is untouched: the world staged and saves from it work.
+        replacement(runtime.save_world(FIRST));
+    }
+
+    #[test]
+    fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
+        let (runtime, _held) = running();
+
+        runtime
+            .stage_world(FIRST.to_owned(), None, true)
+            .expect("a new world stages");
+
+        assert!(runtime.persistence_observations().is_empty());
+    }
+
+    #[test]
+    fn the_save_answer_tags_what_java_should_do_and_only_one_tag_writes() {
+        assert_eq!(vec![UNCHANGED], tagged(UNCHANGED, &[]));
+        assert_eq!(tagged(REPLACEMENT, b"stored"), b"\x01stored".to_vec());
+        assert_eq!(tagged(FAILED, b"why"), b"\x02why".to_vec());
+        assert_eq!(tagged(IDENTITY_MISMATCH, b"whose"), b"\x03whose".to_vec());
+        // The four tags are distinct, which is what lets Java tell a mod's fault
+        // from a lifecycle bug rather than reporting both as one.
+        assert_eq!(
+            BTreeSet::from([UNCHANGED, REPLACEMENT, FAILED, IDENTITY_MISMATCH]).len(),
+            4
+        );
     }
 
     #[test]

@@ -15,7 +15,7 @@ mod wire;
 
 pub use dispatch::register;
 pub use guard::HookError;
-pub use persistence::{OpenOutcome, SaveOutcome, save, stage};
+pub use persistence::{OpenOutcome, SaveOutcome, observations, save, stage};
 pub use runtime::{LoaderRuntime, install};
 pub use settings::install as install_settings;
 

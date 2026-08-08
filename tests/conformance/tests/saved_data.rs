@@ -9,29 +9,44 @@
 //! the one case a world file cannot state: absence initializes fresh state for
 //! any world, so `absent` records an initialization rather than a refusal.
 //!
-//! The two refusals are then driven through the real gate. `SavedDataError`
+//! Every refusal is then driven through the real gate. `SavedDataError`
 //! implements `StructuredFailure`, so a refusal goes into a
 //! [`PreWorldReport`] like any other and
 //! [`LifecycleMachine::open_world`] withholds the world — the same path
 //! `pre_world_gate.rs` proves for invalid packages. Nothing here builds a second
 //! gate to check the first one against.
 //!
+//! Two of them turn on a stored data version, which [`SavedDataPlan`] decides on
+//! its own. The other three cannot be stated by a version at all: the format the
+//! canonical aggregate arrived in, the schema one owner's envelope was written
+//! in, and a package the stored data requires at a version this installation
+//! does not hold. Those go through [`SavedDataAggregate::open`], which is the
+//! admission the host runs over the whole stored value, and the fixtures
+//! carrying them record the fields the aggregate turns on rather than a version
+//! alone. The aggregate-format one is the only refusal here with no owner to
+//! blame, and it is reported against an unidentified subject instead of being
+//! pinned on whichever mod happened to be installed.
+//!
 //! What no test here does is move bytes inside a real world. `ravel-save`'s own
 //! documentation and the M3-W4 row both put that behind the game objects ADG-4's
 //! amendment admits, so a fixture records the versions and the state, which is
 //! what the decision turns on.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, SideSet, StructuredFailure};
+use ravel_core::{
+    FailureEnvironment, LifecycleState, ModId, Side, SideSet, StructuredFailure, Version,
+};
 use ravel_host_api::HostMod;
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, WorldRefused};
 use ravel_observability::{PreWorldReport, Subject};
-use ravel_save::{SavedDataDeclaration, SavedDataError, SavedDataPlan, SavedDataVersion};
+use ravel_save::{
+    SavedDataAggregate, SavedDataDeclaration, SavedDataError, SavedDataPlan, SavedDataVersion,
+};
 use ravel_test_mod_saved_data::{MOD_ID, SavedDataMod, SavedState};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const WORLDS: &str = "tests/fixtures/public/worlds";
 
@@ -177,13 +192,103 @@ fn refusals() -> [(&'static str, SavedDataError); 2] {
     ]
 }
 
+/// The canonical aggregate bytes `name` records, as a world holds them.
+///
+/// The fixture records the world; this builds the one value Minecraft stores out
+/// of it. It is written as bytes rather than through [`ravel_save`]'s
+/// constructors on purpose: the constructors stamp the only schemas this release
+/// writes, so a world written under any other one could not be expressed at all,
+/// and those are exactly the worlds three of these fixtures are.
+fn aggregate_bytes(name: &str) -> Vec<u8> {
+    let owners: Vec<Value> = entries(name)
+        .iter()
+        .map(|entry| {
+            json!({
+                "schemaVersion": entry
+                    .get("envelopeSchemaVersion")
+                    .cloned()
+                    .unwrap_or_else(|| json!(1)),
+                "owner": entry["owner"],
+                "dataVersion": entry["version"],
+                "requiredPackages": entry
+                    .get("requiredPackages")
+                    .cloned()
+                    .unwrap_or_else(|| json!([])),
+                "payload": entry["state"],
+            })
+        })
+        .collect();
+
+    serde_json::to_vec(&json!({
+        "formatVersion": world(name)
+            .get("aggregateFormatVersion")
+            .cloned()
+            .unwrap_or_else(|| json!(1)),
+        "owners": owners,
+    }))
+    .unwrap_or_else(|error| panic!("`{name}` should serialize as an aggregate: {error}"))
+}
+
+/// What this installation holds, which is not something a world can state.
+///
+/// One package at one version, so a world requiring another version of it is
+/// refused for the version rather than for the package being absent.
+fn installation() -> BTreeMap<ModId, Version> {
+    BTreeMap::from([(
+        "base".parse().expect("a legal mod id"),
+        Version::new(1, 0, 0),
+    )])
+}
+
+/// Admits `name` through the canonical aggregate and returns whatever refused it.
+fn admission_refusal(name: &str) -> SavedDataError {
+    SavedDataAggregate::open(
+        Some(&aggregate_bytes(name)),
+        &[SavedDataMod::new().declaration()],
+        &installation(),
+    )
+    .expect_err("this world does not open")
+}
+
+/// Every incompatibility the canonical aggregate decides, named for reporting.
+///
+/// These are the three a stored data version cannot state on its own: the format
+/// the aggregate itself arrived in, the schema one owner's envelope was written
+/// in, and a package that data requires at a version this installation does not
+/// hold. Each fixture carries a data version and a state the mod reads, so the
+/// field it exists for is the only thing that can have refused it.
+fn admission_refusals() -> [(&'static str, SavedDataError); 3] {
+    [
+        (
+            "unsupported-format",
+            admission_refusal("unsupported-format"),
+        ),
+        (
+            "unsupported-schema",
+            admission_refusal("unsupported-schema"),
+        ),
+        (
+            "conflicting-package",
+            admission_refusal("conflicting-package"),
+        ),
+    ]
+}
+
 // ------------------------------------------------------- fixture agreement ---
 
 #[test]
 fn every_fixture_world_is_written_for_the_mod_this_test_drives() {
     // The fixture README states this pairing rather than leaving it inferred,
     // so a change to either side has to break something visible.
-    for name in ["current", "migratable", "future", "absent"] {
+    for name in [
+        "current",
+        "migratable",
+        "future",
+        "absent",
+        "unsupported-format",
+        "unsupported-schema",
+        "conflicting-package",
+    ] {
         for entry in entries(name) {
             let owner = entry["owner"].as_str().expect("an owner is text");
             assert_eq!(
@@ -374,4 +479,135 @@ fn no_two_refusals_read_the_same_way() {
         gapped.to_string(),
         "two refusals a player cannot tell apart are one report"
     );
+}
+
+// ------------------------------------------- fails closed: the whole value ---
+
+#[test]
+fn an_aggregate_format_this_build_cannot_read_blames_no_mod() {
+    let error = admission_refusal("unsupported-format");
+    assert_eq!(
+        error.owner(),
+        None,
+        "the container refused the world, so no installed mod is at fault for it"
+    );
+
+    let SavedDataError::UnsupportedAggregateVersion { stored, current } = &error else {
+        panic!("`unsupported-format` is refused for its format, not for {error}");
+    };
+    assert_eq!(*stored, 2);
+    assert_eq!(
+        *current, 1,
+        "the worlds that do open are written in the format this build reads"
+    );
+}
+
+#[test]
+fn an_envelope_schema_this_build_cannot_read_blames_its_owner() {
+    let error = admission_refusal("unsupported-schema");
+
+    let SavedDataError::UnsupportedEnvelopeVersion {
+        owner,
+        stored: schema,
+        current,
+    } = &error
+    else {
+        panic!("`unsupported-schema` is refused for its envelope, not for {error}");
+    };
+    assert_eq!(owner, SavedDataMod::new().id());
+    assert_eq!(*schema, 2);
+    assert_eq!(*current, 1);
+
+    // The data version inside is one this build reads, so a plan would have
+    // admitted it. The envelope carrying it is what did not.
+    let (version, _) = stored("unsupported-schema", MOD_ID).expect("the world holds this mod");
+    let mut opened = SavedDataMod::new();
+    opened
+        .open(Some((version, SavedState::default())))
+        .expect("the data version this envelope carries opens on its own");
+}
+
+#[test]
+fn a_package_installed_at_another_version_refuses_the_data_that_requires_it() {
+    let error = admission_refusal("conflicting-package");
+
+    let SavedDataError::IncompatiblePackage(conflict) = &error else {
+        panic!("`conflicting-package` is refused for its package, not for {error}");
+    };
+    assert_eq!(&conflict.owner, SavedDataMod::new().id());
+    assert_eq!(conflict.package, "base".parse().expect("a legal mod id"));
+    assert_eq!(conflict.required, Version::new(2, 0, 0));
+    assert_eq!(
+        conflict.installed,
+        installation()
+            .get(&conflict.package)
+            .expect("the package is installed")
+            .clone(),
+        "a version this installation does not hold would be the missing-package case"
+    );
+}
+
+#[test]
+fn no_admission_refusal_lets_a_world_open() {
+    let saved = SavedDataMod::new();
+    let machine = running(&saved);
+
+    for (name, error) in admission_refusals() {
+        let mut report = PreWorldReport::new(environment());
+        // A refusal the aggregate blames nobody for is reported as the
+        // unidentified subject rather than pinned on an arbitrary installed mod.
+        let subject = error
+            .owner()
+            .cloned()
+            .map_or_else(Subject::unidentified, Subject::of);
+        report.refuse(&subject, &error);
+
+        let refused = machine
+            .open_world(&report)
+            .expect_err("a report holding a refusal withholds the world");
+        assert!(
+            matches!(refused, WorldRefused::PreWorld(_)),
+            "`{name}`: {refused}"
+        );
+    }
+}
+
+#[test]
+fn every_admission_refusal_is_decided_before_any_mod_runs() {
+    for (name, error) in admission_refusals() {
+        assert_eq!(
+            error.lifecycle_state(),
+            LifecycleState::Registered,
+            "`{name}` was refused after the point a world could already have been mutated"
+        );
+        assert_eq!(
+            error.failure_kind(),
+            None,
+            "`{name}` borrowed a dependency-graph outcome for a saved-data failure"
+        );
+        assert!(!error.quotes_untrusted_text(), "{name}");
+        assert_eq!(
+            error.diagnostic().text().contains(MOD_ID),
+            error.owner().is_some(),
+            "`{name}` names a mod exactly when one is what the refusal is about"
+        );
+    }
+}
+
+#[test]
+fn no_refusal_reads_the_same_way_as_another() {
+    let mut read: Vec<(&str, String)> = Vec::new();
+
+    for (name, error) in refusals().into_iter().chain(admission_refusals()) {
+        let text = error.to_string();
+        for (other, previous) in &read {
+            assert_ne!(
+                &text, previous,
+                "`{name}` and `{other}` are one report a player cannot tell apart"
+            );
+        }
+        read.push((name, text));
+    }
+
+    assert_eq!(read.len(), 5, "every refusal M3-W4 names belongs in here");
 }

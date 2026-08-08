@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "name": "conflicting-package",
+  "savedData": [
+    {
+      "owner": "saved_data",
+      "version": 3,
+      "requiredPackages": [
+        {
+          "id": "base",
+          "version": "2.0.0"
+        }
+      ],
+      "state": {
+        "visits": 4,
+        "waypoints": [
+          "mine",
+          "spawn"
+        ]
+      }
+    }
+  ]
+}

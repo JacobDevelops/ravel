@@ -519,8 +519,8 @@ impl StructuredFailure for SavedDataError {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_AGGREGATE_BYTES, RequiredPackage, SavedDataAggregate, SavedDataDeclaration,
-        SavedDataEnvelope, SavedDataError, SavedDataPlan, SavedDataVersion,
+        MAX_AGGREGATE_BYTES, PackageConflict, RequiredPackage, SavedDataAggregate,
+        SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataPlan, SavedDataVersion,
     };
     use ravel_core::ModId;
     use semver::Version;
@@ -597,6 +597,100 @@ mod tests {
             Err(SavedDataError::MissingPackage { .. })
         ));
     }
+    /// The bytes a world holds when it was written under other schema versions.
+    ///
+    /// [`SavedDataEnvelope::new`] stamps the only schemas this release writes,
+    /// so a stored version this build cannot read has to be written as bytes
+    /// rather than built through the constructor. That is also how such a world
+    /// actually arrives: another build wrote it.
+    fn stored_under(format_version: u8, schema_version: u8) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "formatVersion": format_version,
+            "owners": [{
+                "schemaVersion": schema_version,
+                "owner": "saved_data",
+                "dataVersion": 1,
+                "requiredPackages": [],
+                "payload": null,
+            }],
+        }))
+        .expect("an aggregate this test wrote serializes")
+    }
+
+    #[test]
+    fn an_aggregate_format_this_build_cannot_read_fails_closed() {
+        // The owner inside is one this build reads, so the container is the
+        // only thing left to have refused it.
+        SavedDataAggregate::open(
+            Some(&stored_under(1, 1)),
+            &[declaration()],
+            &BTreeMap::new(),
+        )
+        .expect("the format this build writes");
+        assert_eq!(
+            SavedDataAggregate::open(
+                Some(&stored_under(2, 1)),
+                &[declaration()],
+                &BTreeMap::new()
+            ),
+            Err(SavedDataError::UnsupportedAggregateVersion {
+                stored: 2,
+                current: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn an_envelope_schema_this_build_cannot_read_fails_closed() {
+        assert_eq!(
+            SavedDataAggregate::open(
+                Some(&stored_under(1, 2)),
+                &[declaration()],
+                &BTreeMap::new()
+            ),
+            Err(SavedDataError::UnsupportedEnvelopeVersion {
+                owner: id("saved_data"),
+                stored: 2,
+                current: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn a_required_package_installed_at_another_version_fails_closed() {
+        let mut aggregate = SavedDataAggregate::fresh();
+        aggregate.replace(SavedDataEnvelope::new(
+            id("saved_data"),
+            version(1),
+            vec![RequiredPackage {
+                id: id("base"),
+                version: Version::new(2, 0, 0),
+            }],
+            None,
+            json!(null),
+        ));
+        let bytes = aggregate.to_bytes().expect("bytes");
+
+        // Installed, and required, and not the same version: the case a partial
+        // upgrade produces rather than the missing-package one already proven.
+        let installed = BTreeMap::from([(id("base"), Version::new(1, 0, 0))]);
+        assert_eq!(
+            SavedDataAggregate::open(Some(&bytes), &[declaration()], &installed),
+            Err(SavedDataError::IncompatiblePackage(Box::new(
+                PackageConflict {
+                    owner: id("saved_data"),
+                    package: id("base"),
+                    required: Version::new(2, 0, 0),
+                    installed: Version::new(1, 0, 0),
+                }
+            )))
+        );
+
+        // The exact version it asked for is the one thing that admits it.
+        let exact = BTreeMap::from([(id("base"), Version::new(2, 0, 0))]);
+        SavedDataAggregate::open(Some(&bytes), &[declaration()], &exact).expect("an exact match");
+    }
+
     #[test]
     fn the_limit_is_enforced_before_json_parsing() {
         let oversized = vec![b' '; MAX_AGGREGATE_BYTES + 1];

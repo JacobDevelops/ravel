@@ -1,10 +1,14 @@
 import dev.ravel.jvm.screen.RavelProfilingScreen;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 
 /**
@@ -18,6 +22,18 @@ import net.minecraft.client.gui.screens.Screen;
  * every value fits the width it is drawn at, that nothing is drawn past the
  * bottom, and that the accuracy statement reads back whole from the rows it was
  * split across.
+ *
+ * <p>The second defect it stands against was a number: the summary drew a tick
+ * count next to per-mod figures that were real, and nothing in this build marks
+ * a tick, so that count was always zero. {@code ticks} is that defect — no row
+ * may state a count of ticks — and {@code named} is the other half of it, that
+ * the figure is on the report's unmeasurable list rather than gone.
+ *
+ * <p>Run with {@code driven}, the harness turns the collectors on and calls the
+ * rewritten targets first, so the report carries mods that were really entered.
+ * That is what says the fix removed an unproducible number and left the
+ * measured ones alone: a screen checked only against an off report would pass
+ * with the whole summary deleted.
  */
 public final class ProfilingScreenMain {
 
@@ -42,7 +58,28 @@ public final class ProfilingScreenMain {
      */
     private static final int[][] SIZES = {{320, 240}, {480, 270}, {640, 360}, {960, 540}};
 
+    /** How many ticks the driven run shows the mod set. */
+    private static final int TICKS = 4;
+
+    /** A row stating a count of ticks, which no build here can produce. */
+    private static final Pattern TICK_CLAIM = Pattern.compile("\\d+ ticks?\\b");
+
+    /** The call count a mod row states, which the driven run knows the value of. */
+    private static final Pattern CALLS = Pattern.compile(" in (\\d+) calls");
+
     public static void main(String[] args) throws ReflectiveOperationException {
+        boolean driven = args.length > 0 && args[0].equals("driven");
+        if (driven) {
+            // Four client ticks against the stand-in game, which is the pinned
+            // hook the loader turns into an event a client-side mod is shown.
+            // The count below is read back off the rows, so it is what says the
+            // report is of this run rather than an empty one that happens to
+            // draw.
+            for (int tick = 0; tick < TICKS; tick++) {
+                Minecraft.getInstance().tick();
+            }
+        }
+
         Method init = RavelProfilingScreen.class.getDeclaredMethod("init");
         init.setAccessible(true);
 
@@ -68,12 +105,67 @@ public final class ProfilingScreenMain {
                 }
             }
 
-            System.out.println("size=" + size[0] + "x" + size[1]
-                    + " rows=" + lines.size()
-                    + " fits=" + fits
-                    + " within=" + (bottom <= screen.height)
-                    + " caveat=" + (caveat(lines).equals(CAVEAT) ? "whole" : "truncated"));
+            // The driven run states no row count: a mod row carries a
+            // nanosecond total whose width is different on every run, so how
+            // many rows it wraps to is not a fact about the layout.
+            if (driven) {
+                System.out.println("driven=" + size[0] + "x" + size[1]
+                        + " fits=" + fits
+                        + " within=" + (bottom <= screen.height)
+                        + " ticks=" + (claimsTicks(lines) ? "claimed" : "none")
+                        + " entered=" + calls(lines));
+            } else {
+                System.out.println("size=" + size[0] + "x" + size[1]
+                        + " rows=" + lines.size()
+                        + " fits=" + fits
+                        + " within=" + (bottom <= screen.height)
+                        + " caveat=" + (caveat(lines).equals(CAVEAT) ? "whole" : "truncated")
+                        + " ticks=" + (claimsTicks(lines) ? "claimed" : "none")
+                        + " named=" + named(lines));
+            }
         }
+    }
+
+    /** Whether any row states a count of ticks. */
+    private static boolean claimsTicks(List<String> lines) {
+        for (String line : lines) {
+            if (TICK_CLAIM.matcher(line).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether a row names the tick count among what this build cannot measure. */
+    private static boolean named(List<String> lines) {
+        for (String line : lines) {
+            if (line.contains("tick-count")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The call count of every mod row drawn, smallest first.
+     *
+     * <p>Sorted because the report orders mods costliest first and which of two
+     * mods that were shown the same calls is costlier is a timing.
+     */
+    private static String calls(List<String> lines) {
+        List<Integer> counts = new ArrayList<>();
+        for (String line : lines) {
+            Matcher matcher = CALLS.matcher(line);
+            if (matcher.find()) {
+                counts.add(Integer.valueOf(matcher.group(1)));
+            }
+        }
+        Collections.sort(counts);
+        StringBuilder joined = new StringBuilder();
+        for (Integer count : counts) {
+            joined.append(joined.length() == 0 ? "" : ",").append(count);
+        }
+        return joined.length() == 0 ? "none" : joined.toString();
     }
 
     /** The statement read back out of the rows it was split across. */

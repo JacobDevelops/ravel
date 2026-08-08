@@ -604,11 +604,14 @@ profiling_observed="$(<"$profiling_stdout")"
 # `rows` climbs with the window because the report gives its spare rows away in
 # a fixed order, so the number is what says the priority ladder still holds: the
 # two smallest sizes have nothing left over and draw the summary and the
-# statement alone.
-profiling_expected='size=320x240 rows=7 fits=true within=true caveat=whole
-size=480x270 rows=8 fits=true within=true caveat=whole
-size=640x360 rows=10 fits=true within=true caveat=whole
-size=960x540 rows=10 fits=true within=true caveat=whole
+# statement alone. `ticks` is the number this build cannot produce and must
+# therefore never state, and `named` is where it went instead — onto the
+# unmeasurable list, which the two smallest windows shorten to a count and so do
+# not name.
+profiling_expected='size=320x240 rows=7 fits=true within=true caveat=whole ticks=none named=false
+size=480x270 rows=8 fits=true within=true caveat=whole ticks=none named=false
+size=640x360 rows=10 fits=true within=true caveat=whole ticks=none named=true
+size=960x540 rows=10 fits=true within=true caveat=whole ticks=none named=true
 [ravel] rewrote 1 classes and 1 methods; 4 hook invocations reached native code'
 
 printf '%s\n' "$profiling_observed"
@@ -620,6 +623,41 @@ if [ "$profiling_observed" != "$profiling_expected" ]; then
 	echo >&2
 	echo "the profiling screen did not draw every line readably; expected:" >&2
 	printf '%s\n' "$profiling_expected" >&2
+	exit 1
+fi
+
+# The same screen with the collectors on and mods really entered. The off report
+# above cannot tell a summary that dropped an unproducible number from one that
+# dropped everything, because an off report draws no numbers at all. Here each
+# rewritten target is called once before the screen is built, so each mod has
+# four deliveries charged to it: `entered` is those counts read back off the
+# rows, and `ticks` is the count that must still be absent beside them.
+driven_stdout="$work/profiling-driven-stdout"
+driven_stderr="$work/profiling-driven-stderr"
+(cd "$work" && java \
+	-javaagent:"$agent" \
+	-Djava.library.path="$library" \
+	-Dravel.profiling=true \
+	-cp ".:$screen" ProfilingScreenMain driven >"$driven_stdout" 2>"$driven_stderr")
+driven_observed="$(<"$driven_stdout")"
+# The two smallest windows spend every row on the summary and the statement, so
+# they draw no mod row to read a count off; that is the documented row budget
+# rather than a lost measurement.
+driven_expected='driven=320x240 fits=true within=true ticks=none entered=none
+driven=480x270 fits=true within=true ticks=none entered=none
+driven=640x360 fits=true within=true ticks=none entered=4,4
+driven=960x540 fits=true within=true ticks=none entered=4,4
+[ravel] rewrote 2 classes and 3 methods; 8 hook invocations reached native code'
+
+printf '%s\n' "$driven_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$driven_stderr"
+
+if [ "$driven_observed" != "$driven_expected" ]; then
+	echo >&2
+	echo "the profiled screen did not report the work the run actually did; expected:" >&2
+	printf '%s\n' "$driven_expected" >&2
 	exit 1
 fi
 
@@ -677,8 +715,8 @@ settings=dev.ravel.jvm.screen.RavelSettingsScreen
 entry=Profiling
 profiling=dev.ravel.jvm.screen.RavelProfilingScreen
 entry=gui.done
-[ravel] rewrote 3 classes and 3 methods; 7 hook invocations reached native code'
-menu_expected_diagnostic='[ravel] rewrote 3 classes and 3 methods; 7 hook invocations reached native code'
+[ravel] rewrote 3 classes and 4 methods; 7 hook invocations reached native code'
+menu_expected_diagnostic='[ravel] rewrote 3 classes and 4 methods; 7 hook invocations reached native code'
 
 printf '%s\n' "$menu_observed"
 while IFS= read -r line; do

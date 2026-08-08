@@ -35,6 +35,15 @@ import net.minecraft.network.chat.FormattedText;
  * Leaving the unsupported ones out would make them indistinguishable from
  * metrics that measured zero, which is the silence the row exists to end.
  *
+ * <p><b>A figure this build cannot produce is named, not drawn.</b> Nothing on
+ * the game's tick path marks a tick boundary at M3, so the collectors' tick
+ * counter cannot leave zero, and the summary used to draw that zero beside
+ * per-mod times that are real — which states a measurement of zero where the
+ * truth is that there was no measurement. The count is on the same list as
+ * every other metric this build cannot measure, and this screen asks the
+ * payload's metric table for it rather than deciding here, so a tick boundary
+ * wired later puts the clause back with nothing on this screen to change.
+ *
  * <p><b>The accuracy statement is part of the report.</b> A per-mod nanosecond
  * total charges a mod for host work it called into and for time the scheduler
  * gave to something else. That is not a footnote to the number, it is what the
@@ -86,6 +95,9 @@ public final class RavelProfilingScreen extends Screen {
     /** What the accuracy statement is drawn under. */
     private static final String HEADING = "What these numbers cannot tell apart:";
 
+    /** The metric the summary's tick clause is drawn from, when it is drawn. */
+    private static final String TICK_COUNT = "tick-count";
+
     /** The mods that were entered, costliest first. */
     private final List<Entry> entries = new ArrayList<>();
 
@@ -101,7 +113,7 @@ public final class RavelProfilingScreen extends Screen {
     /** The switch that turns them on, as the loader spells it. */
     private String profilingSwitch = "";
 
-    /** Ticks the collectors saw. */
+    /** Ticks the collectors saw, which is drawn only when they can see any. */
     private int ticks;
 
     /** The threshold above which a callback was counted as slow. */
@@ -299,9 +311,44 @@ public final class RavelProfilingScreen extends Screen {
             return List.of("Profiling is on and no mod has been entered yet.");
         }
         return List.of(
-                entries.size() + (entries.size() == 1 ? " mod over " : " mods over ")
-                        + ticks + (ticks == 1 ? " tick" : " ticks"),
+                entries.size() + (entries.size() == 1 ? " mod entered" : " mods entered") + over(),
                 "Slow above " + slowMicros + " us. Times are wall-clock, not CPU time.");
+    }
+
+    /**
+     * What the mod count is stated over, when the payload measures anything to
+     * state it over.
+     *
+     * <p>Empty at M3: the payload reports {@code tick-count} as unmeasurable, so
+     * the only number here would be a zero standing where a measurement is
+     * expected. The clause is decided from the payload rather than deleted so
+     * that a build whose collectors do see a tick draws it again.
+     *
+     * @return the clause to append to the mod count, which may be empty
+     */
+    private String over() {
+        if (!measurable(TICK_COUNT)) {
+            return "";
+        }
+        return " over " + ticks + (ticks == 1 ? " tick" : " ticks");
+    }
+
+    /**
+     * Whether the payload says a collector measures the named metric.
+     *
+     * <p>A metric the payload does not describe is not measurable here: this
+     * screen states only what the report it read claims.
+     *
+     * @param name the metric as {@code ravel-observability} names it
+     * @return whether a number for it can be drawn
+     */
+    private boolean measurable(String name) {
+        for (Metric metric : metrics) {
+            if (metric.name.equals(name)) {
+                return !metric.support.equals("unsupported");
+            }
+        }
+        return false;
     }
 
     /**

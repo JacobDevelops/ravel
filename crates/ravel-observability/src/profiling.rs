@@ -57,7 +57,7 @@ impl Support {
     }
 }
 
-/// One per-mod fact profiling is asked for, and what M3 can say about it.
+/// One fact profiling is asked for, and what M3 can say about it.
 ///
 /// The list is `SPEC.md` §9.3's, item for item, plus [`Self::InclusiveTime`],
 /// which is the quantity reported where §9.3 asks for CPU time and is named
@@ -65,6 +65,12 @@ impl Support {
 /// spent inside a callback is not an imprecise CPU time — it is a different
 /// quantity that can be arbitrarily larger — so labelling it "estimated CPU
 /// time" would be exactly the presentation §9.3 forbids.
+///
+/// Every entry but [`Self::TickCount`] is per mod. That one is a fact about the
+/// run rather than about a mod, and it is in this table anyway because this
+/// table is what a surface generates its "not measurable in this build" list
+/// out of: a figure the report cannot produce belongs on that list whatever its
+/// scope, and the alternative is a clause that quietly disappears.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Metric {
     /// Bytes still held by a mod's own allocations.
@@ -89,11 +95,13 @@ pub enum Metric {
     RegistryFootprint,
     /// How much saved data a mod owns in a world.
     SavedDataFootprint,
+    /// How many game ticks the collectors saw.
+    TickCount,
 }
 
 impl Metric {
     /// Every metric, in the order a record and a screen list them.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::RetainedMemory,
         Self::AllocatedMemory,
         Self::CpuTime,
@@ -105,6 +113,7 @@ impl Metric {
         Self::TransferredBytes,
         Self::RegistryFootprint,
         Self::SavedDataFootprint,
+        Self::TickCount,
     ];
 
     /// The name a record and a screen call this metric by.
@@ -122,6 +131,7 @@ impl Metric {
             Self::TransferredBytes => "transferred-bytes",
             Self::RegistryFootprint => "registry-footprint",
             Self::SavedDataFootprint => "saved-data-footprint",
+            Self::TickCount => "tick-count",
         }
     }
 
@@ -138,7 +148,8 @@ impl Metric {
             | Self::EventCalls
             | Self::SlowCallbacks
             | Self::BoundaryCalls
-            | Self::RegistryFootprint => "count",
+            | Self::RegistryFootprint
+            | Self::TickCount => "count",
         }
     }
 
@@ -207,6 +218,15 @@ impl Metric {
                  handle refers to an object the JVM owns whose size Ravel cannot ask for without \
                  the call into Minecraft no accepted ADR provides. Summing argument widths would \
                  be a number about the descriptor, not about traffic.",
+            ),
+            Self::TickCount => Support::Unsupported(
+                "Nothing marks a tick boundary. `Profiler::tick` increments a counter and no call \
+                 site on the game's tick path calls it at M3, so the number is structurally zero \
+                 rather than measured, and a zero drawn beside per-mod times that are real states \
+                 a measurement where the truth is that there was none. Wiring a boundary is a \
+                 change to what the collectors do per tick, which is the quantity \
+                 `evidence/m3/profiling-overhead.json` measures and bounds, so it is a measured \
+                 change rather than a display fix and it is not made here.",
             ),
         }
     }
@@ -472,7 +492,14 @@ impl ProfilingReport {
         self.on
     }
 
-    /// Ticks the collectors saw, which per-tick figures divide by.
+    /// Ticks the collectors saw.
+    ///
+    /// What the collectors saw is not what the run did: [`Metric::TickCount`]
+    /// records that nothing calls [`Profiler::tick`] at M3, so this is zero on
+    /// every real launch. It is here because a surface has to carry the figure
+    /// once something produces it, and it is not what a surface decides to draw
+    /// from — that decision is [`Metric::TickCount`]'s, so one table answers it
+    /// for the log line below and for the screen alike.
     #[must_use]
     pub const fn ticks(&self) -> u64 {
         self.ticks
@@ -522,12 +549,13 @@ impl ProfilingReport {
             ];
         }
 
+        // No tick count. `Metric::TickCount` is unsupported, so the only number
+        // this could print is a zero that reads as a measurement, and it is
+        // named on the unsupported list below instead of being drawn here.
         let mut lines = vec![format!(
-            "profiled {} mod{} over {} tick{}, slow above {} us",
+            "profiled {} mod{}, slow above {} us",
             self.mods.len(),
             plural(self.mods.len() as u64),
-            self.ticks,
-            plural(self.ticks),
             self.slow_callback.as_micros()
         )];
         lines.extend(self.mods.iter().map(|entry| {
@@ -712,7 +740,7 @@ mod tests {
 
     #[test]
     fn every_spec_metric_states_what_m3_can_say_about_it() {
-        assert_eq!(Metric::ALL.len(), 11);
+        assert_eq!(Metric::ALL.len(), 12);
         for metric in Metric::ALL {
             assert!(!metric.name().is_empty());
             assert!(matches!(metric.unit(), "bytes" | "nanoseconds" | "count"));
@@ -743,7 +771,8 @@ mod tests {
                 "allocated-memory",
                 "cpu-time",
                 "transferred-bytes",
-                "saved-data-footprint"
+                "saved-data-footprint",
+                "tick-count"
             ]
         );
         for (metric, _) in &unsupported {
@@ -796,7 +825,7 @@ mod tests {
 
         let lines = profiler.report().lines();
         assert!(
-            lines[0].starts_with("profiled 1 mod over 1 tick"),
+            lines[0].starts_with("profiled 1 mod, slow above "),
             "{lines:?}"
         );
         assert!(lines[1].starts_with("`example_mod` "), "{lines:?}");
@@ -805,8 +834,28 @@ mod tests {
                 .iter()
                 .filter(|line| line.contains("unsupported"))
                 .count(),
-            5
+            6
         );
+    }
+
+    #[test]
+    fn a_tick_count_nothing_produces_is_named_rather_than_drawn_as_a_zero() {
+        let mut profiler = Profiler::on(DEFAULT_SLOW_CALLBACK);
+        profiler.tick();
+        profiler.measure(&id("example_mod"), CallKind::Event, || ());
+
+        let lines = profiler.report().lines();
+        assert!(
+            !lines[0].contains("tick"),
+            "the summary states a tick count no call site produces: {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("`tick-count` is unsupported")),
+            "the count vanished instead of being named as unmeasurable: {lines:?}"
+        );
+        assert!(!Metric::TickCount.support().is_measured());
     }
 
     #[test]

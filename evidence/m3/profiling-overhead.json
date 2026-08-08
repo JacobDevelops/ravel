@@ -93,6 +93,12 @@
         "metric": "saved-data-footprint",
         "support": "unsupported",
         "unit": "bytes"
+      },
+      {
+        "detail": "Nothing marks a tick boundary. `Profiler::tick` increments a counter and no call site on the game's tick path calls it at M3, so the number is structurally zero rather than measured, and a zero drawn beside per-mod times that are real states a measurement where the truth is that there was none. Wiring a boundary is a change to what the collectors do per tick, which is the quantity `evidence/m3/profiling-overhead.json` measures and bounds, so it is a measured change rather than a display fix and it is not made here.",
+        "metric": "tick-count",
+        "support": "unsupported",
+        "unit": "count"
       }
     ],
     "reportSurface": "A screen drawn in Java from a payload built in Rust, the way ADG-6 draws every screen Ravel owns. Rust renders nothing.",
@@ -103,7 +109,8 @@
       "allocated-memory",
       "cpu-time",
       "transferred-bytes",
-      "saved-data-footprint"
+      "saved-data-footprint",
+      "tick-count"
     ]
   },
   "identity": {

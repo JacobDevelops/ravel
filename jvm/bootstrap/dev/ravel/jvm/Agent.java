@@ -61,6 +61,22 @@ public final class Agent {
         return installed == null ? 0 : installed.transformedClasses();
     }
 
+    /**
+     * Whether the target calling {@code hookMethod} was actually rewritten.
+     *
+     * <p>ADG-7's installed-prologue marker, read through the agent because the
+     * transformer instance is the agent's to hold. An agent that installed no
+     * transformer has rewritten nothing, so it answers {@code false} rather than
+     * throwing — the reader refuses a world load on a false either way, and a
+     * marker that can throw is one the open path would have to guard.
+     *
+     * @param hookMethod the generated hook name the target is rewritten to call
+     */
+    public static boolean isInstalled(String hookMethod) {
+        Transformer installed = transformer;
+        return installed != null && installed.isInstalled(hookMethod);
+    }
+
     /** Methods this agent rewrote. */
     public static int rewrittenMethods() {
         Transformer installed = transformer;

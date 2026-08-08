@@ -103,6 +103,7 @@ b
 simple=ab
 valid=true
 transformed=1 methods=4
+installed=true unknown=false
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 order_expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
 
@@ -205,6 +206,7 @@ b
 simple=ab
 valid=true
 transformed=0 methods=0
+installed=false unknown=false
 [ravel] rewrote 0 classes and 0 methods; 0 hook invocations reached native code
 [ravel] failed to transform 1 classes
 [ravel] failed target: net.minecraft.util.StringUtil=java.lang.IllegalArgumentException'

@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -56,6 +57,7 @@ public final class Transformer implements ClassFileTransformer {
     private final AtomicInteger transformedClasses = new AtomicInteger();
     private final AtomicInteger rewrittenMethods = new AtomicInteger();
     private final ConcurrentMap<String, Integer> rewrittenByClass;
+    private final Set<String> installed = ConcurrentHashMap.newKeySet();
     private final ConcurrentMap<String, String> failedByClass = new ConcurrentHashMap<>();
     private final AtomicReference<String> loaderIdentity = new AtomicReference<>();
 
@@ -106,6 +108,28 @@ public final class Transformer implements ClassFileTransformer {
                     .append('\n');
         }
         return report.toString();
+    }
+
+    /**
+     * Whether the target that calls {@code hookMethod} was actually rewritten.
+     *
+     * <p>ADG-7's installed-prologue marker. It is separate state from the
+     * counters and the reported target table above, and deliberately so: those
+     * are diagnostics that {@code -Dravel.report.targets} turns on, and a marker
+     * a launch flag can turn off is not a marker. This set is collected
+     * unconditionally and its only reader is the world-open path.
+     *
+     * <p>A target enters it only once a prepend matched the method, which is what
+     * tells a class that merely loaded apart from a seam that was actually
+     * installed. That distinction is the hole ADG-7's rejected alternative —
+     * checking only for a jar or a class — leaves open, because a transformation
+     * can return the original class or match zero methods and still leave
+     * everything present.
+     *
+     * @param hookMethod the generated hook name the target is rewritten to call
+     */
+    public boolean isInstalled(String hookMethod) {
+        return installed.contains(hookMethod);
     }
 
     /** Names each rewritten class and the methods matched inside it, or {@code null} when disabled. */
@@ -187,6 +211,12 @@ public final class Transformer implements ClassFileTransformer {
         ClassFile context = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
                 ClassHierarchyResolver.ofResourceParsing(resources)));
         int classMethods = 0;
+        // Held aside rather than published as each target matches. A later
+        // target in the same class can throw, and this method then returns the
+        // original bytes — so a marker already published would name a seam that
+        // is not in the class the JVM went on to load, which is precisely the
+        // fail-open answer the marker exists to prevent.
+        List<String> matched = new ArrayList<>();
         byte[] rewritten = classfile;
         for (HookTarget target : targets) {
             // One pass per target rather than one predicate over all of them:
@@ -212,11 +242,14 @@ public final class Transformer implements ClassFileTransformer {
                 return null;
             }
             if (prepend.matched()) {
+                matched.add(target.hookMethod());
                 classMethods++;
             }
         }
         transformedClasses.incrementAndGet();
         rewrittenMethods.addAndGet(classMethods);
+        // Published only now, when the rewritten class is the one being returned.
+        installed.addAll(matched);
         if (rewrittenByClass != null && classMethods > 0) {
             rewrittenByClass.put(internalName.replace('/', '.'), classMethods);
         }

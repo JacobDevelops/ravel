@@ -132,6 +132,23 @@ final class Screens {
         return build("dev.ravel.jvm.screen.RavelProfilingScreen", null);
     }
 
+    /**
+     * Builds the screen a refused world load leaves the player on.
+     *
+     * <p>ADG-6's mechanism a fourth time, and the one screen whose absence is
+     * not the end of the story: {@link Persistence} has already refused the
+     * world by the time it asks for this, so a {@code null} here costs the
+     * player the explanation and not the protection.
+     *
+     * @param diagnostic Rust's refusal text, which Java presents and never
+     *     composes
+     * @return the screen as an {@code Object} for the caller to hand to the
+     *     game, or {@code null} if there is no screen jar or it could not be used
+     */
+    static Object openWorldRefused(String diagnostic) {
+        return build("dev.ravel.jvm.screen.RavelWorldRefusedScreen", diagnostic);
+    }
+
     /** Adds Ravel's entry to the title screen through the optional screen jar. */
     static int addTitleMenu(Object titleScreen, int bottom, int spacing) {
         if (!appended) {

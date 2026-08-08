@@ -52,6 +52,10 @@ public final class Transformer implements ClassFileTransformer {
     private static final ClassDesc TRANSFORMER = ClassDesc.of("dev.ravel.jvm.Transformer");
     private static final MethodTypeDesc TITLE_MENU =
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;II)I");
+    private static final MethodTypeDesc WORLD_OPEN =
+            MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;Ljava/lang/Object;Z)Z");
+    private static final MethodTypeDesc WORLD_SAVE =
+            MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
 
     private final Map<String, List<HookTarget>> byClass;
     private final AtomicInteger transformedClasses = new AtomicInteger();
@@ -79,6 +83,20 @@ public final class Transformer implements ClassFileTransformer {
     /** Gives transformed game code a public path to the package-private screen loader. */
     public static int addTitleMenu(Object titleScreen, int bottom, int spacing) {
         return Screens.addTitleMenu(titleScreen, bottom, spacing);
+    }
+
+    /**
+     * Gives the rewritten world-load method a public path to ADG-7's adapter.
+     *
+     * @return whether to return from the host method before its body runs
+     */
+    public static boolean openWorldPersistence(Object access, Object stem, boolean freshWorld) {
+        return Persistence.open(access, stem, freshWorld);
+    }
+
+    /** Gives the rewritten save method a public path to ADG-7's adapter. */
+    public static void saveWorldPersistence(Object server) {
+        Persistence.save(server);
     }
 
     /** Classes this transformer rewrote. */
@@ -256,6 +274,34 @@ public final class Transformer implements ClassFileTransformer {
         return rewritten;
     }
 
+    /**
+     * ADG-7's open seam, which carries the version adapter rather than a hook.
+     *
+     * <p>Named here the way the title-menu bridge is named here: the generated
+     * hook takes what ADG-4 admits and returns a verdict, and the adapter needs
+     * two of the method's own arguments to read the world and to clean it up
+     * again. That is version-specific translation rather than a hook, so it is a
+     * second call at the same seam instead of a widened hook contract.
+     */
+    private static boolean isWorldOpen(HookTarget target) {
+        return target.internalClass().equals("net/minecraft/client/Minecraft")
+                && target.member().equals("doWorldLoad");
+    }
+
+    /**
+     * ADG-7's save seam.
+     *
+     * <p>This one needs the receiver, which no hook is given: the saving world's
+     * identity is {@code MinecraftServer.getWorldPath(ROOT)} and there is nowhere
+     * else it can come from. ADG-4 keeps that out of a hook's hands, so it is
+     * handed to the adapter instead, exactly as the title-menu bridge takes the
+     * screen it adds a button to.
+     */
+    private static boolean isWorldSave(HookTarget target) {
+        return target.internalClass().equals("net/minecraft/server/MinecraftServer")
+                && target.member().equals("saveAllChunks");
+    }
+
     private static boolean isTitleMenu(HookTarget target) {
         return target.internalClass().equals("net/minecraft/client/gui/screens/TitleScreen")
                 && target.member().equals("createNormalMenuOptions")
@@ -278,6 +324,21 @@ public final class Transformer implements ClassFileTransformer {
             return injected;
         }
 
+        /**
+         * The local slot one declared parameter arrived in.
+         *
+         * <p>Counted rather than written down, because a {@code long} or a
+         * {@code double} earlier in the list takes two slots and an index would
+         * be wrong from that point on.
+         */
+        private int slot(int parameter) {
+            int at = target.isStatic() ? 0 : 1;
+            for (int index = 0; index < parameter; index++) {
+                at += TypeKind.from(targetType.parameterList().get(index)).slotSize();
+            }
+            return at;
+        }
+
         @Override
         public void accept(CodeBuilder builder, CodeElement element) {
             if (!injected) {
@@ -297,6 +358,25 @@ public final class Transformer implements ClassFileTransformer {
                     // before its body runs. Only a void target may opt in, so
                     // this is a bare RETURN and no value is ever invented.
                     builder.ifThen(blk -> blk.return_());
+                }
+                // After the hook and its verdict, never before: the generated
+                // hook's boolean is on the stack until the branch above consumes
+                // it, and an observer that refused has already left the method.
+                if (isWorldOpen(target)) {
+                    // The storage access and the world stem are the two arguments
+                    // a refusal has to close, and the last one is the advisory
+                    // new-world marker. A refusal returns from the host method
+                    // before its body's first persistent mutation.
+                    builder.aload(slot(0));
+                    builder.aload(slot(2));
+                    builder.iload(slot(4));
+                    builder.invokestatic(TRANSFORMER, "openWorldPersistence", WORLD_OPEN);
+                    builder.ifThen(blk -> blk.return_());
+                } else if (isWorldSave(target)) {
+                    // The receiver, which is the only place the saving world's
+                    // identity can come from.
+                    builder.aload(0);
+                    builder.invokestatic(TRANSFORMER, "saveWorldPersistence", WORLD_SAVE);
                 }
             }
             if (isTitleMenu(target)

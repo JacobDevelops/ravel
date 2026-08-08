@@ -23,6 +23,10 @@ import net.minecraft.world.level.saveddata.SavedDataType;
  * or knows how many owners are inside it — {@code ravel-save} owns the aggregate
  * format and every admission decision about it. This class's entire job is to be
  * a thing Minecraft's own serialization knows how to write.
+ *
+ * <p>The three entry points are public because {@code dev.ravel.jvm.Persistence}
+ * reaches them by name from the agent jar, which is the same route every screen
+ * here is opened through and the only one ADG-1 leaves open.
  */
 public final class RavelWorldData extends SavedData {
 
@@ -46,7 +50,7 @@ public final class RavelWorldData extends SavedData {
      * codec and a supplier and nothing here is hot: it is touched twice per world
      * lifecycle, once at open and once per save.
      */
-    static SavedDataType type() {
+    public static SavedDataType type() {
         // `BASE64_STRING` is already a codec over `byte[]`, so nothing here
         // hand-rolls one. `fieldOf` puts it under a key so the encoded form is
         // the compound tag the storage writes; a bare leaf codec would encode to
@@ -64,7 +68,7 @@ public final class RavelWorldData extends SavedData {
     }
 
     /** Wraps replacement bytes as the object the storage will write. */
-    static SavedData of(byte[] aggregate) {
+    public static SavedData of(byte[] aggregate) {
         RavelWorldData held = new RavelWorldData(aggregate);
         // The pinned `SavedDataStorage.set` marks the replacement dirty exactly
         // once, so this must not do it again.
@@ -72,7 +76,7 @@ public final class RavelWorldData extends SavedData {
     }
 
     /** The stored aggregate, or {@code null} when there is no Ravel object. */
-    static byte[] bytes(Object stored) {
+    public static byte[] bytes(Object stored) {
         if (!(stored instanceof RavelWorldData held)) {
             return null;
         }

@@ -71,6 +71,7 @@ mkdir -p "$order/classes" "$(dirname "$order_agent")" "$order/agent-classes"
 javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Agent.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/HookTarget.java" \
+	"$root/jvm/bootstrap/dev/ravel/jvm/Persistence.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Screens.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Transformer.java" \
 	"$root/jvm/harness/initialization/dev/ravel/jvm/Hook.java"
@@ -191,6 +192,103 @@ for verdict in true false; do
 		exit 1
 	fi
 done
+
+# ADG-7's two world persistence seams, against a stand-in game. The adapter is
+# reflective and reaches the sibling artifact by name, so a stand-in with the
+# pinned names and descriptors exercises the real control flow: what is stood in
+# for is the game, not Ravel.
+persist="$work/persistence"
+persist_agent="$persist/agent/ravel-agent.jar"
+persist_screen="$persist/agent/ravel-screen.jar"
+mkdir -p "$persist/classes" "$persist/sibling" "$(dirname "$persist_agent")"
+mapfile -d '' persist_sources < <(find "$root/jvm/harness/persistence" -name '*.java' -print0 | sort -z)
+javac -Xlint:all -Werror -d "$persist/classes" "${persist_sources[@]}"
+# `PersistenceMain` needs the agent classes only to read the stand-in hook's
+# counters. A real launch never compiles against them.
+javac -Xlint:all -Werror -cp "$persist/classes:$order/agent-classes" -d "$persist/classes" \
+	"$root/jvm/harness/PersistenceMain.java"
+javac -Xlint:all -Werror -d "$persist/sibling" \
+	"$root/jvm/harness/sibling/dev/ravel/jvm/screen/RavelWorldData.java"
+jar --create --file "$persist_screen" --date 1980-01-01T00:00:02Z \
+	-C "$persist/sibling" dev/ravel/jvm/screen/RavelWorldData.class
+cp "$order_agent" "$persist_agent"
+
+# Each run is one world lifecycle: one open and one save. `label` is what fails
+# if the run does not produce `expected`, and the properties are the two answers
+# Rust would have given.
+persistence_run() {
+	local label="$1" open="$2" save="$3" stored="$4" expected="$5"
+	local out="$persist/$label-stdout"
+	local err="$persist/$label-stderr"
+	(cd "$persist/classes" && java \
+		-javaagent:"$persist_agent" \
+		-Dravel.test.transform.persistence=true \
+		-Dravel.test.persistence.open="$open" \
+		-Dravel.test.persistence.save="$save" \
+		-Dravel.test.persistence.stored="$stored" \
+		-cp . PersistenceMain >"$out" 2>"$err")
+	local observed
+	observed="$(<"$out")"
+	printf '%s\n' "$observed"
+	while IFS= read -r line; do
+		printf '%s\n' "$line" >&2
+	done <"$err"
+	if [ "$observed" != "$expected" ]; then
+		echo >&2
+		echo "world persistence run '$label' did not produce the recorded output; expected:" >&2
+		printf '%s\n' "$expected" >&2
+		exit 1
+	fi
+}
+
+# An admitted world runs its own body, keeps its lock and its stem, and the one
+# replacement answer reaches the storage exactly once. The stored bytes reaching
+# the crossing are what says the open path read them rather than reporting
+# absence for a world that holds data.
+persistence_run admitted empty replacement 'old-aggregate' 'loads=1 accessClosed=false stemClosed=false crossed=1 read=old-aggregate
+saves=1 writes=1 written=replaced
+[ravel] rewrote 2 classes and 2 methods; 4 hook invocations reached native code'
+
+# Null is what the JVM receives when the native failed, and it refuses. This is
+# the polarity the whole design turns on: empty admits, so a panic cannot.
+persistence_run null-verdict null unchanged '' 'loads=0 accessClosed=true stemClosed=true crossed=1 read=absent
+saves=1 writes=0 written=
+[ravel] rewrote 2 classes and 2 methods; 4 hook invocations reached native code'
+
+# A non-empty verdict is a refusal carrying the diagnostic Rust owns.
+persistence_run refused 'this world holds data Ravel cannot read' unchanged '' 'loads=0 accessClosed=true stemClosed=true crossed=1 read=absent
+saves=1 writes=0 written=
+[ravel] rewrote 2 classes and 2 methods; 4 hook invocations reached native code'
+
+# Every save answer that is not a replacement writes nothing, and vanilla saving
+# runs in each of them. Null is one of the four, because a failed native must
+# cost one Ravel checkpoint and nothing else.
+for answer in unchanged failed mismatch null; do
+	persistence_run "save-$answer" empty "$answer" '' 'loads=1 accessClosed=false stemClosed=false crossed=1 read=absent
+saves=1 writes=0 written=
+[ravel] rewrote 2 classes and 2 methods; 4 hook invocations reached native code'
+done
+
+# The sibling artifact is absent, which is deliberately the opposite of the
+# screen jar next door: an absent screen loses the settings UI and leaves a
+# working game, and an absent persistence component refuses the world load. The
+# crossing count says the refusal landed before the world was ever offered to
+# Rust.
+mv "$persist_screen" "$persist/sibling.jar"
+persistence_absent_stdout='loads=0 accessClosed=true stemClosed=true crossed=0 read=absent
+saves=1 writes=0 written=
+[ravel] rewrote 2 classes and 2 methods; 3 hook invocations reached native code'
+persistence_run absent-sibling empty unchanged '' "$persistence_absent_stdout"
+absent_diagnostic="$(grep '^\[ravel\]' "$persist/absent-sibling-stderr")"
+absent_expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar
+[ravel] refused a world load: Ravel'"'"'s world persistence component is missing from this installation.'
+if [ "$absent_diagnostic" != "$absent_expected_diagnostic" ]; then
+	echo >&2
+	echo "an absent sibling artifact did not refuse with the recorded diagnostic; expected:" >&2
+	printf '%s\n' "$absent_expected_diagnostic" >&2
+	exit 1
+fi
+mv "$persist/sibling.jar" "$persist_screen"
 
 failure_stdout="$order/failure-stdout"
 failure_stderr="$order/failure-stderr"

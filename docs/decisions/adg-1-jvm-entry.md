@@ -365,6 +365,36 @@ batched JNI calls, and no native method is declared outside generated `Hook`.
 Nothing here selects a general mechanism for Rust to call into Minecraft or
 otherwise reverses the boundary direction ADG-1 accepted.
 
+## Amendment: a prologue may refuse the method it precedes
+
+Amended before Phase C on [ADG-7](adg-7-world-persistence.md)'s account. A prepend
+injected for an opted-in target may return from the host method before the original
+body runs. Ordinary observation hooks are unchanged: they return nothing, they
+cannot branch, and they fall through unconditionally as they always have.
+
+ADG-7's open refusal has no other mechanism. It requires a refused world load to
+stop before `doWorldLoad`'s body reaches its first persistent mutation, while
+forbidding the refusal to leak a raw exception, retain the world lock, or crash the
+callback. Throwing — the stop mechanism this decision already contemplated —
+satisfies the first and violates the rest: it unwinds into game code Ravel does not
+author, and nothing there catches it. Making a throw safe would mean wrapping the
+original body in a handler, a larger rewrite of the same method for a weaker
+guarantee.
+
+The power is bounded by what carries it. The opt-in is per target and arrives as
+generated data on `HookTarget`, so the methods a prologue may refuse are exactly
+those the reviewed inventory names and the lock pins: the set is visible in a diff
+and cannot be widened by editing Java. The verdict is a boolean, so a hook says only
+whether to return and never what to return, and no value crosses back into game
+control flow. A target that returns anything but `void` cannot opt in at all. The
+transformer, the target registry, the JNI exporter, and the native declaration class
+remain one each.
+
+It grants nothing else. A prologue may not alter arguments, substitute a return
+value, resume a method it declined, or observe the receiver it was never given. Rust
+owns the decision; Java owns cleanup and presentation. Nothing here reverses the
+direction ADG-1 accepted: Java calls Rust and asks, and Rust answers.
+
 ## Limits of this evidence
 
 - The hook target is `net.minecraft.util.StringUtil.isAllowedChatCharacter`,

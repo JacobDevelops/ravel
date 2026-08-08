@@ -23,7 +23,14 @@ Two are still open:
 - M3-W7 has not exercised every required surface natively. Rewriting all 33
   reviewed hooks proves reachability, not native block, item, recipe, event, and
   resource behaviour. The Ravel-owned saved-data half of this finding is answered
-  by the current campaign; the rest is not.
+  by the world round trip campaign. The screen, settings, and command halves are
+  answered by the surface campaign that followed it, at the same 33 targets and
+  on the same build. The one surface that campaign found *failing* — opt-in
+  profiling, whose accuracy caveat was unreadable in the native client — was
+  fixed by change `npozznqz` and re-observed whole in a later launch, so the
+  matrix record now reads `pass`. See `profilingSurfaceDefect` and
+  `caveatReObservationCampaign` in `linux-process-matrix.json`. The finding is
+  kept here because the review that raised it has not been rerun.
 
 Two are resolved, and stay listed because a finding that disappears once it is
 fixed leaves no way to tell it from one that was never raised:
@@ -104,7 +111,7 @@ per-tick crossing count is recorded.
 ## `linux-process-matrix.json`
 
 It comes from launches rather than from a task, because the thing it measures is
-a launcher starting a game and no task can stand in for that. It now holds two
+a launcher starting a game and no task can stand in for that. It now holds three
 launch campaigns, and the most useful thing in it is why the second could not
 simply extend the first.
 
@@ -140,11 +147,80 @@ digest, the reload, and the refused load are the evidence, and evidence that
 needs a private machine-local directory to survive is evidence no reviewer can
 check.
 
-The earlier campaign's rows — the three Ravel screens, the settings round trip,
-the profiling screen, the vanilla command and scoreboard — are kept and labelled
-with their provenance. They were not re-observed at 33 targets. Neither campaign
-on its own exercises every surface M3-W7 asks for, so the record's result is
-`partial` and M3-W7 stays open.
+A third campaign then re-observed the rows the first had left inherited, and it
+did so against the *same build* as the world round trip: the agent jar, screen
+jar, and native library were rebuilt from the working tree and came out
+byte-identical to the digests already recorded, so there is one build and one
+33-target inventory behind both. Its three launches reported `rewrote 15 classes
+and 33 methods` once a world was open, and `11 classes and 27 methods` on the
+title-only launch — the same inventory minus the eight world-only targets, which
+is why that smaller pair is recorded with its reason beside it.
+
+Three of the four inherited row groups now stand on their own evidence. All three
+Ravel screens were opened from the title menu. The Mods screen listed two running
+client mods rather than one, because it reads the loader's runtime store and the
+composed host now carries the world-owning mod as well. The restart-required
+setting was edited to `quiet`, marked `(next launch)` on the spot, and came back
+applied and unmarked after a cold relaunch, with the player document on disk
+holding only the value that was changed. A scoreboard objective was created and
+mutated through chat in a world created for the purpose, saved through Save and
+Quit, and read back at its exact mutated value on a later launch. All three
+launches ended through the in-game Quit Game button with no signal, and the
+post-exit instance scan again found no other loader.
+
+The fourth **was reached and failed, and now passes.** Profiling is turned on by
+the `-Dravel.profiling=true` launch property rather than by a control on the
+screen, and with it on the report collects real per-mod call counts and
+wall-clock times that advance while the screen is open. But the screen drew each
+line as a fixed-width `EditBox`, and an `EditBox` scrolls to follow its cursor,
+which `setValue` leaves at the end of the string. Every line wider than the
+widget therefore showed its tail and hid its head. Enlarging the window did not
+help, because the widget width is fixed rather than derived from the screen.
+
+Both halves of what M3-W6 asks to be explicit were lost to that. The build
+declares five metrics unmeasurable — `retained-memory`, `allocated-memory`,
+`cpu-time`, `transferred-bytes`, `saved-data-footprint` — and the client showed
+`-memory, cpu-time, transferred-bytes, saved-data-footprint`, a tail that begins
+inside the word `allocated-memory`. Two of the five names never reached the
+player at all, and `-memory` names neither of them. The accuracy caveat fared
+worse: what reached the player was `y key is charged for the lookup as well as
+for its own code.`, a fragment with no subject, in place of the sentence
+explaining that a mod is charged for host work it calls back into.
+
+The defect was deliberately not patched in the same campaign that found it.
+Changing the screen jar changes its digest, and every row above was observed
+against the digest this record names; the honest way to close it is a fix
+followed by re-observation, not a patch landed underneath evidence already
+written. So it was fixed on its own — change `npozznqz`, which splits every line
+to the width it is drawn at using the game's own font and hands the window's row
+budget out in a stated order, claiming the summary and the accuracy statement
+first — and then re-observed in the real client against the fixed jar.
+
+That re-observation is the `caveatReObservationCampaign` section of the record,
+and it is deliberately narrow: one launch, claiming the profiling surface and
+nothing else. The agent jar and the native library are byte-identical to the ones
+every other row was observed against, so only the class that drew the clipped
+lines changed. With profiling on and the instance's existing world played for a
+couple of minutes first, the whole report renders: at GUI scale 1 all twelve
+lines, including both mod rows with real call counts and nanosecond totals, the
+five unmeasurable metric names in full, and the accuracy statement whole from its
+subject to its full stop. At the default scale the window has seven rows rather
+than eighteen, and the screen spends them as designed — summary, heading,
+statement — dropping the table and the metric names rather than truncating
+anything. Nothing on the screen is clipped at either scale, and this window
+offers no third one. The record's result is therefore `pass`.
+
+The `M3-W7` gate in [`manifest.json`](manifest.json) is not flipped by that on
+its own: it is written to depend on M3-W4's Ravel-owned world write as well, and
+the M3-W8 independent review that raised the finding has not been rerun.
+
+One earlier claim is corrected rather than removed. The record noted a
+pre-existing world that held no `data/ravel` directory, the absent-aggregate case
+ADG-7 initializes fresh state for. That world has since been opened with Ravel
+attached and now holds one, so the observation is no longer re-checkable by
+looking at the instance; it stands as something observed at the time, and proving
+the absent case fresh would need a world that has never been opened with Ravel
+attached.
 
 The record separates the operator attestation — injected input followed the
 ordinary title-screen and world-selection route — from facts derived from process

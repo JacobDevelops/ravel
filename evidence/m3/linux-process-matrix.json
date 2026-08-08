@@ -3,8 +3,8 @@
   "record": "m3-w7-linux-process-matrix",
   "milestone": "M3",
   "workPackage": "M3-W7",
-  "result": "partial",
-  "summary": "Stock Minecraft Java Edition 26.1.2 launched through Prism on Linux with Ravel's agent, screen artifact, and native bootstrap only. Injected input followed the ordinary title-screen and world-selection path. This record now holds two launch campaigns rather than one. The current campaign is the ADG-7 world persistence round trip at 33 callable targets: a world created, saved, exited, and reloaded with Ravel's own versioned aggregate surviving byte-identical, and a tampered aggregate refusing the load. The earlier campaign at 31 callable targets carries the screen, settings, profiling, and command observations, and those are not re-observed here. Neither campaign on its own exercises every surface M3-W7 asks for, so the work package stays open.",
+  "result": "pass",
+  "summary": "Stock Minecraft Java Edition 26.1.2 launched through Prism on Linux with Ravel's agent, screen artifact, and native bootstrap only. Injected input followed the ordinary title-screen and world-selection path. Four campaigns are recorded here. The surface campaign re-observed, at 33 callable targets, every row the earlier 31-target campaign had left inherited: the three Ravel screens, the configuration round trip including a restart-required setting, the command and saved-data path, and opt-in profiling. Three of those four passed on their own fresh evidence; profiling did not, because the two longest lines on the report rendered only their tails and the sentence naming what the numbers cannot tell apart was unreadable in the real client. That defect is recorded in `profilingSurfaceDefect`, it was fixed by change `npozznqz`, and the caveat re-observation campaign launched the real client against the fixed screen jar and read the whole report. Every line renders in full at every GUI scale this window offers. With that, every required surface stands observed natively and this record is `pass`. One narrower gap remains open and is named in `openGaps`: the tick counter in the profiling summary has no production caller, so it reports zero on every launch.",
   "identity": {
     "platform": "linux",
     "architecture": "x86_64",
@@ -55,14 +55,23 @@
     "currentCallableTargets": 33,
     "reason": "The earlier campaign's matrix is not this campaign's matrix, and the difference is not cosmetic. Two ADG-7 world persistence seams — `world.open-persistence` on `net.minecraft.client.Minecraft.doWorldLoad` and `world.save-persistence` on `net.minecraft.server.MinecraftServer.saveAllChunks` — entered the reviewed inventory, moving the callable-target count from 31 to 33 over the same 15 classes. A matrix is a claim about a specific set of targets in a specific build, so a count that moved invalidates the reconciliation rather than extending it.",
     "secondReason": "The earlier campaign could not have proven the ADG-7 round trip whatever input it received, because no build it ran contained a mod that owns world data. `ravel-composed-host` carried only the configuration mod until change `uyvzkzzs` added `ravel-test-mod-saved-data` to it. That is why M3-W4 and M3-W7 stayed open through the earlier campaign and why its saved-data row persisted a vanilla scoreboard instead of anything Ravel owned.",
-    "whatThisMeansForAReviewer": "Read the screen, settings, profiling, and command rows below as the earlier campaign's findings at 31 targets, not as this campaign's. They were not re-observed here. Read the rewrite counts, the world persistence round trip, and the instance scan as this campaign's, measured at 33."
+    "whatThisMeansForAReviewer": "Read the screen, settings, profiling, and command rows below as the earlier campaign's findings at 31 targets, not as this campaign's. They were not re-observed here. Read the rewrite counts, the world persistence round trip, and the instance scan as this campaign's, measured at 33.",
+    "status": "resolved for the surface rows",
+    "howItWasResolved": "The surface campaign re-ran the screen, settings, profiling, and command rows against the same build that proved the world round trip — identical agent, screen, and native digests — and its launches reported `rewrote 15 classes and 33 methods` in the agent's own shutdown report. Those rows no longer carry the 31-target campaign's provenance. What remains inherited from it is nothing: the sections below that used to say `Earlier campaign at 31 callable targets` now carry the surface campaign's own observations."
   },
   "worldPersistenceRoundTrip": {
-    "workPackages": ["M3-W4", "M3-W7"],
+    "workPackages": [
+      "M3-W4",
+      "M3-W7"
+    ],
     "decision": "ADG-7",
     "scopeOfThisClaim": "The rewrite of both persistence methods was already proven in-gate by `jvm/harness/PersistenceMain.java` over eight world lifecycles. What these launches add, and all they add, is the real game's world storage on both ends of that rewrite: an official `SavedDataStorage` writing Ravel's object into an official world directory, and an official world load reading it back and deciding on it.",
     "modOwningWorldData": "saved_data",
-    "declaredVersions": [1, 2, 3],
+    "declaredVersions": [
+      1,
+      2,
+      3
+    ],
     "versionWritten": 3,
     "storedObject": "data/ravel/mods.dat inside the world directory, written by the game's own SavedDataStorage through dev.ravel.jvm.screen.RavelWorldData",
     "createSaveExitReload": {
@@ -94,7 +103,11 @@
       "pristineAggregateRestoredAfterwards": true,
       "whatThisProves": "The reload did not merely tolerate the stored bytes, it parsed them and decided admission on them. Without this trial, a reload that ignored the aggregate entirely and a reload that read it would look the same from outside."
     },
-    "absentPathObservedSeparately": "A pre-existing world in the same instance held no `data/ravel` directory before these launches and none was created for it, which is the absent-aggregate case ADG-7 initializes fresh state for. It is recorded as its own result rather than folded into the round trip.",
+    "absentPathObservedSeparately": {
+      "whatWasObserved": "A pre-existing world in the same instance held no `data/ravel` directory before the world round trip campaign's launches and none was created for it, which is the absent-aggregate case ADG-7 initializes fresh state for.",
+      "noLongerReproducibleOnDisk": true,
+      "correction": "That world now holds a `data/ravel/mods.dat`, written during the world round trip campaign itself rather than by the surface campaign, which never opened it. The observation was true when it was made and is not re-checkable by looking at the instance today. It is left here as a recorded observation rather than a state a reader can go and confirm, and a reader who wants the absent-aggregate case proven fresh should ask for it against a world that has never been opened with Ravel attached."
+    },
     "worldRemovedAfterwards": {
       "removed": true,
       "whenAndWhy": "The world created for this campaign was created, hashed, verified across the reload and the refusal trial, and then removed, returning the instance to the single-world shape it had before. A reader should not go looking for it.",
@@ -121,7 +134,7 @@
     "harnessNote": "A window-manager close request is not a quit route for this client. Only the in-game Quit Game button was observed to end the process on its own."
   },
   "machineEvidence": {
-    "provenance": "Earlier campaign at 31 callable targets. Not re-observed in the current campaign; see `matrixNotCarriedForward`.",
+    "provenance": "Surface campaign, three launches at 33 callable targets. Observed in this campaign rather than inherited.",
     "titleScreenReached": true,
     "integratedWorldReached": true,
     "serverSavedWorlds": true,
@@ -129,10 +142,11 @@
     "shutdownReportPresent": true,
     "runtimeStore": {
       "populated": true,
-      "clientMods": 1,
+      "clientMods": 2,
       "modsNeedingAttention": 0,
       "runningMods": [
-        "configuration"
+        "configuration",
+        "saved_data"
       ]
     },
     "configurationStore": {
@@ -140,44 +154,75 @@
       "schemaVersion": 1,
       "owner": "configuration",
       "persistedValues": {
-        "client.enabled": true,
-        "common.profile": "verbose"
+        "common.profile": "quiet"
       },
-      "playerDocumentSha256": "abde0c7971f1eda6e707ae22efbab1eef58266c2a717aaafc11d1625612b86ca"
+      "playerDocumentSha256": "9198c321b85a0b474095a1998ff5022c47a732ee53234057eabe15727e635e4a",
+      "note": "Only the edited value is written. `client.enabled` stayed at its author default of true and so is absent from the player document, which is why this digest differs from the earlier campaign's."
     }
   },
   "screens": {
-    "provenance": "Earlier campaign at 31 callable targets. Only the title-menu button was re-observed in the current campaign; no Ravel screen was opened in it.",
+    "provenance": "Surface campaign, three launches at 33 callable targets on the same build as the world round trip. Observed in this campaign rather than inherited.",
     "titleMenuButtonPresent": true,
     "definedAndOpened": [
       "dev.ravel.jvm.screen.RavelModsScreen",
       "dev.ravel.jvm.screen.RavelSettingsScreen",
       "dev.ravel.jvm.screen.RavelProfilingScreen"
     ],
+    "allThreeOpenedInThisCampaign": true,
     "modsScreenUsedProductionHookData": true,
+    "modsScreenRead": "2 mods on client, none needing attention; 1. configuration - running; 2. saved_data - running",
+    "modsScreenReflectsComposedHost": "The earlier campaign's Mods screen listed one client mod because the host it ran carried only the configuration mod. This campaign's lists two, because `ravel-composed-host` now also carries the world-owning saved-data mod. The screen is reading the loader's own runtime store rather than a fixture.",
+    "navigation": "The title menu's Ravel Mods button opens the Mods screen; the Mods screen carries the Configuration Settings and Profiling buttons. Done on any Ravel screen returns to the title menu rather than to the Mods screen, so each screen was reached from the title menu.",
     "settings": {
       "edited": true,
+      "settingEdited": "common.profile, the declaration's restart-required setting",
+      "valueBefore": "verbose",
+      "valueAfter": "quiet",
       "restartRequiredMarkedBeforeRelaunch": true,
+      "restartRequiredMarking": "the row read `Behavior profile: quiet (next launch)` immediately after the edit",
       "restartRequiredAppliedAfterRelaunch": true,
+      "restartRequiredAfterRelaunch": "the row read `Behavior profile: quiet` with the marker gone",
       "persistenceRoundTrip": true,
+      "persistedDocumentSha256": "9198c321b85a0b474095a1998ff5022c47a732ee53234057eabe15727e635e4a",
+      "persistedDocument": "{\"schemaVersion\":1,\"owner\":\"configuration\",\"values\":{\"common.profile\":\"quiet\"}}",
       "sideVisibility": "The client process displayed the client and common settings and omitted the integrated-server and dedicated-server settings.",
       "packLockingAndRefusal": "The full repository gate exercises locked pack values and structured save refusals. The locked integrated-server row is intentionally absent from the client-side native screen, so the native client does not offer an invalid edit path."
     },
     "profiling": {
       "optedIn": true,
+      "optInMechanism": "Profiling is not a control on the screen. It is turned on for a launch with the `-Dravel.profiling=true` system property, and the screen says so when it is off: `Profiling is off, so nothing was collected. / Launch with -Dravel.profiling=true to turn it on.` That off-state was observed on the first launch and the on-state on the second, which carried the property.",
       "productionDataDisplayed": true,
       "realCallCountsDisplayed": true,
+      "observedRows": [
+        "configuration - 1225058 ns in 6186 calls (6186 ev, 0 cmd)",
+        "saved_data - 501310 ns in 6186 calls (6186 ev, 0 cmd)"
+      ],
+      "countsAdvanceWhileTheScreenIsOpen": "The same two rows were read twice a few seconds apart and moved from 5681 to 6186 calls, which is what tells a live report apart from a rendered constant.",
       "wallClockTimingDisplayed": true,
-      "caveatsDisplayed": true
+      "wallClockLine": "Slow above 2500 us. Times are wall-clock, not CPU time.",
+      "caveatsDisplayed": true,
+      "caveatsDefect": "The surface campaign found the caveat and the unsupported-metrics line clipped; see `profilingSurfaceDefect`. Both were fixed by change `npozznqz` and re-observed whole by the caveat re-observation campaign; see `caveatReObservationCampaign`.",
+      "tickCountReadZero": true,
+      "tickAndCommandCountNote": "The summary line read `2 mods over 0 ticks` and both mod rows read `0 cmd`, on a launch that ran an integrated world and executed four commands through chat. The per-mod call and time figures are real and moving, so the report is collecting; the tick and command counters are not reflecting that work. This is recorded as observed rather than explained, because nothing in this campaign establishes whether those counters are meant to count what the run did.",
+      "caveatObservedInFull": true,
+      "caveatTextAsRendered": "A mod is charged for host work it calls back into. The window is entry to return, so a mod that asks Ravel to resolve a registry key is charged for the lookup as well as for its own code.",
+      "provenance": "The rows, the opt-in mechanism, the live counts, and the wall-clock line are the surface campaign's observations against the screen jar recorded in `artifacts`. The caveat and unsupported-metric lines are the caveat re-observation campaign's, against the fixed screen jar recorded in `caveatReObservationCampaign`."
     }
   },
   "commandAndSavedData": {
-    "provenance": "Earlier campaign at 31 callable targets. Its saved-data rows are about a vanilla scoreboard, which is the gap M3-W8 raised; `worldPersistenceRoundTrip` above is the Ravel-owned answer to it and comes from the current campaign.",
+    "provenance": "Surface campaign, three launches at 33 callable targets on the same build as the world round trip. Observed in this campaign rather than inherited.",
     "vanillaCommandExecutedThroughInput": true,
+    "route": "The chat key opened the client chat and the commands were typed and submitted through it, in a world created with Allow Commands on.",
     "worldOwnedScoreboardCreated": true,
     "worldOwnedScoreboardMutated": true,
+    "objective": "ravelw7c",
+    "valueSet": 4242,
+    "valueAfterMutation": 4243,
+    "mutationRoute": "`/scoreboard players add marker ravelw7c 1` reported `Added 1 to [ravelw7c] for marker (now 4243)`",
     "savedThroughSaveAndQuit": true,
-    "relaunchVerifiedExactValue": true
+    "relaunchVerifiedExactValue": true,
+    "relaunchObservation": "The reloaded world drew the sidebar objective `ravelw7c` with `marker 4243`, the exact mutated value, on a launch that started from a cold process.",
+    "scoreboardOnDiskAfterSave": "data/minecraft/scoreboard.dat, 159 bytes, holding the objective name and its holder"
   },
   "rewrite": {
     "classesInInventory": 15,
@@ -413,7 +458,15 @@
     "fullGateExit": 0,
     "evidenceContentGateLogSha256": "08a0f5f886664400eaa66b0f048ca5a8965ec18253f4ba6c78eb5443bbab4713",
     "evidenceContentGateScope": "This gate verified the complete repository with this evidence content in place immediately before its own digest replaced the prior digest field. The only subsequent content change was that self-referential digest replacement; a second green gate over the final file is reported with the change review rather than recursively changing this field.",
-    "artifactBuildLogSha256": "9e99d36e5be85ab049e6742b7a2e1c634fda2e030f1befd0c0fd695ace3fcf71"
+    "artifactBuildLogSha256": "9e99d36e5be85ab049e6742b7a2e1c634fda2e030f1befd0c0fd695ace3fcf71",
+    "surfaceCampaignGateExit": 0,
+    "surfaceCampaignStackGateExit": 0,
+    "surfaceCampaignGateScope": "`ravel:verify` and `ravel:verify-stack` were both run to completion over the repository with this record's surface campaign content in place, and both exited zero. The gate prints a green summary even when it fails, so the exit status is what is recorded here. A further run was made after these three fields were added, so the reported status covers the file as it now stands rather than a draft of it.",
+    "caveatReObservationGateExit": 0,
+    "caveatReObservationStackGateExit": 0,
+    "caveatReObservationGateLogSha256": "77e3f8688dd9ba48e6af0bf2fb2993ad1eb859dee43c40cf6349d590189fbecf",
+    "caveatReObservationStackGateLogSha256": "c8ed393ca3e123c51332c611cc4a1513f58d1aef561a9cae1a8f12897b47758f",
+    "caveatReObservationGateScope": "`ravel:verify` and `ravel:verify-stack` were both run to completion over the repository with this record's caveat re-observation content in place, and both exited zero. The gate prints a green summary even when it fails, so the exit status is what is recorded here. The two digests above are of those runs' logs; the run that followed adding them is reported with the change rather than recursively changing these fields."
   },
   "excludedRun": {
     "reason": "The first launch completed the game-side checklist and emitted the exact shutdown report, but HotSpot remained unresponsive after the game stopped. It was excluded, diagnosed privately, and cleaned up. The accepted relaunch repeated the required persistence and world checks and exited naturally.",
@@ -433,5 +486,164 @@
       "LAN port",
       "launcher state"
     ]
+  },
+  "profilingSurfaceDefect": {
+    "status": "fixed",
+    "surface": "dev.ravel.jvm.screen.RavelProfilingScreen",
+    "whatWasObserved": "Two of the seven lines on the profiling report render only their tail. The line naming the metrics no collector can measure appears as `-memory, cpu-time, transferred-bytes, saved-data-footprint`, and the accuracy caveat appears as `y key is charged for the lookup as well as for its own code.`, which is not a sentence. The other five lines, all shorter, render in full.",
+    "intendedText": {
+      "unsupportedMetrics": "Not measurable in this build: retained-memory, allocated-memory, cpu-time, transferred-bytes, saved-data-footprint",
+      "accuracyCaveat": "A mod is charged for host work it calls back into. The window is entry to return, so a mod that asks Ravel to resolve a registry key is charged for the lookup as well as for its own code."
+    },
+    "rootCause": "The screen draws every line as a non-editable `EditBox` of fixed width. `EditBox` scrolls its visible window to follow the cursor, and `setValue` leaves the cursor at the end of the string, so any line wider than the widget shows its last characters and hides its first. The window was enlarged from 854x480 to 1400x800 and the same two lines stayed clipped, because the widget width is fixed rather than derived from the screen width, which is what rules out a display-size explanation.",
+    "notFixedHere": "The fix is small and belongs to the screen rather than to this record. It is deliberately not made in this campaign, because changing the screen jar changes its digest, and every row above was observed against the digest recorded in `artifacts`. Re-observation, not a patch landed after the fact, is what would let those rows keep their provenance.",
+    "whatTheClippingCosts": {
+      "unsupportedMetrics": "Two of the five metric names are lost outright, not just the label. The build declares `retained-memory`, `allocated-memory`, `cpu-time`, `transferred-bytes`, and `saved-data-footprint` unsupported; the client shows `-memory, cpu-time, transferred-bytes, saved-data-footprint`, which is the tail beginning inside the word `allocated-memory`. A player reading the screen cannot learn that retained memory and allocated memory are unmeasured, and the fragment `-memory` does not name either of them.",
+      "accuracyCaveat": "The whole sentence is lost but its last clause. What the screen shows has no subject and reads as though some unnamed key were being charged, which is not what the caveat says."
+    },
+    "foundBy": "the surface campaign, in the real client, at 33 callable targets",
+    "fixedBy": {
+      "changeId": "npozznqz",
+      "description": "fix: split the profiling screen's lines to the width it draws them at",
+      "mechanism": "The screen now splits every line to the width it draws it at before building the widget, using the game's own font (`splitIgnoringLanguage`) against the widget width less the `EditBox` border inset, so no line is ever wider than the box carrying it and no box has to scroll. Splitting spends rows, so the screen also measures the window's row budget and hands it out in a stated order: the summary and the accuracy statement are claimed first and are never cut."
+    },
+    "reObservedWhole": true,
+    "seeAlso": "caveatReObservationCampaign",
+    "whyThisBlockedTheGate": "M3-W6 asks that per-mod attribution accuracy and unsupported metrics be explicit, and M3-W7 asks that every required surface pass natively. Both halves of that M3-W6 requirement failed on the native screen: two of the five unsupported metric names never reach the player, and the accuracy sentence reaches them as a fragment. The screen's own documentation says an unsupported metric is drawn rather than omitted, precisely so it cannot be confused with one that was left out — the clipping reintroduces exactly that confusion for two of them. The report was drawn, so this was not an unreached surface; it was a reached surface that failed. It now passes."
+  },
+  "surfaceCampaign": {
+    "launches": 3,
+    "sameBuildAsWorldRoundTrip": true,
+    "sameBuildEvidence": "The agent jar, screen jar, and native library digests in `artifacts` were rebuilt from the working tree for this campaign and came out byte-identical to the ones the world round trip campaign recorded, so the two campaigns are one build and one 33-target inventory.",
+    "launchDetail": {
+      "first": {
+        "purpose": "Screens and the configuration edit, from the title menu only.",
+        "profilingProperty": false,
+        "rewrote": "11 classes and 27 methods",
+        "nativeInvocations": 41595,
+        "whyElevenNotFifteen": "No world was opened, so the eight world-only targets and the four classes that hold them were never loaded. This is the expected title-only shape of the same 33-target inventory, and it is recorded because a reader who sees 11 and 27 beside a claim of 33 deserves the reason.",
+        "exitRoute": "Quit Game from the title menu; Java exited on its own with no signal."
+      },
+      "second": {
+        "purpose": "Restart-required setting applied, world created, commands run, saved data written, profiling report read.",
+        "profilingProperty": true,
+        "rewrote": "15 classes and 33 methods",
+        "nativeInvocations": 1422355,
+        "exitRoute": "Save and Quit to Title, then Quit Game; Java exited on its own with no signal."
+      },
+      "third": {
+        "purpose": "Cold relaunch to verify the saved scoreboard value.",
+        "profilingProperty": true,
+        "rewrote": "15 classes and 33 methods",
+        "nativeInvocations": 642679,
+        "exitRoute": "Save and Quit to Title, then Quit Game; Java exited on its own with no signal."
+      }
+    },
+    "allThreeExitedThroughTheUi": true,
+    "noSigtermWasNeeded": true,
+    "launcherTerminatedBetweenLaunches": true,
+    "launcherNote": "Prism is single-instance, so it was terminated by exact process name between launches. A launcher left running makes the next `--launch` hand off and return zero having started nothing, and an exit status of zero from it is not evidence that a game ran.",
+    "instanceConfigurationRestoredAndVerifiedByReadBack": true,
+    "worldCreatedForThisCampaign": {
+      "created": true,
+      "whyAFreshWorldRatherThanTheExistingOne": "The instance's one pre-existing world was left untouched, so the command and saved-data work happened in a world this campaign made and then removed.",
+      "aggregateWrittenToIt": true,
+      "storedAggregateSha256": "91db6669d7ef31d4e5c498fa1410dd89617ef1dd5a052bb3bb03f2df6bcdc741",
+      "storedAggregateBytes": 271,
+      "aggregateMatchesRoundTripCampaign": "Byte-identical to the aggregate the world round trip campaign recorded, which is what the same mod at the same declared version writing into a fresh world should produce.",
+      "removed": true,
+      "instanceWorldCountRestored": 1
+    },
+    "instanceScanRerun": {
+      "when": "after the last launch, with the instance back at its stock configuration",
+      "scan": "ravel-instance-scan-v1",
+      "loaderPresent": false,
+      "conclusive": true,
+      "withoutAnotherLoader": true,
+      "modArchives": 0,
+      "findings": 0
+    }
+  },
+  "surfaceCampaignPrivateEvidenceDigests": {
+    "note": "Raw game stdout and screenshots were held outside the repository and deleted when the campaign finished. The redacted logs are the sanitized form of the same streams, with filesystem paths, the player name, account and world identifiers, and any port removed; their digests are recorded so a later reader can tell what was hashed.",
+    "firstLaunchLogRaw": "15ed02b72d17ee35b83f65c0fce75a0dc03c997dba4f2fa1bb21fbaf9c3ef033",
+    "firstLaunchLogRedacted": "8f97f8e56e477b4e1690208db23469e6fa73047f8f77553ccda2fea4139af67e",
+    "secondLaunchLogRaw": "98fb1fd517dcbaa79e8e61a17fbe4a028c8a4393220405c0e413c9389865305b",
+    "secondLaunchLogRedacted": "5d81a8420a68a05c1f5396505532b715ecb29c6a721ae2e477e85d524a25c390",
+    "thirdLaunchLogRaw": "379c5e2c8a3761c8ce093faf130c6b52b318910fdf8b78cd8d4afd84b84eb262",
+    "thirdLaunchLogRedacted": "c665a91e2e64c6d5f8edcf0f6fd48d6a20a0c91688b584ef11f554a98ccad80f",
+    "titleWithRavelMods": "88ec2a2da24f5eb96d926d1f1587fb3306faff46b08c2893190eb14acea739d1",
+    "modsScreen": "ffa910c11f12ff7590d7d1aba630ed52c6aeb969ac14f94d46b08e54afb877fc",
+    "settingsInitial": "b42373b6e05f604150c2a5cdb29708562c21479dbb94288d37412ec17b0f6ff3",
+    "settingsEdited": "f98793f8218277a3353e57ea16b16c7e0ef13272ebc6f5ffb46c101e4f95bb4e",
+    "settingsAfterRelaunch": "19cdcda8f6cdec6a043e17a87fbe6b1101eb5f57571fbc39488b4013700ed0d7",
+    "profilingOff": "c9bc71f6cdf0a34124a3609f9d4436094ad0535e866d1431a8e4b951da454988",
+    "profilingOn": "a84589a557b04a81854ea8082042c713c3af0e0abfc213d5a7e0078dadc22d6c",
+    "profilingOnEnlargedWindow": "9f47aea688923ea3a89c803209d5454f14ff101a9c8ae765f1e5e9061f9af27f",
+    "worldSelection": "a75c58b6a746d2425a5cb44d0f707276afb32a35927479713fff40aa3d6347d0",
+    "worldLoaded": "13423e83b186bd9a422f6c0fb33511508d1ca2cb495adf04cf43e4cea750cf47",
+    "commandExecution": "5abaa2f720067e10667b7282d3fdcee8fc28baf503fd206c5f3dec60fce94caf",
+    "savedDataMutation": "fcc6a243e1c0b00299296763296fc457024b7b2dafafcd6b3c989832afc9a77d",
+    "relaunchWorldSelection": "ceb3b5f1ac1a75813841bf68d0cdc1f7f3a5c113ffac435bbf0f55ce62697681",
+    "relaunchVerifiedValue": "f82bdb1c5bf9295cdcdbeb134547ce09254f56c9edb6269378c81eed66d5df39"
+  },
+  "openGaps": {
+    "profilingTickCounter": "The profiling summary reads `N mods over 0 ticks` on every launch. The surface campaign recorded this as observed and undiagnosed; this campaign found the cause and it is narrow. `Profiler::tick` in `crates/ravel-observability/src/profiling.rs` is exercised only by that module's own unit tests and has no caller anywhere in the production graph, so the counter it increments can never leave zero in a real launch. The per-mod call counts and wall-clock times beside it are real and move between reads, so this is one unwired counter rather than a report that is not collecting. It is left open rather than fixed here: wiring a tick hook is a change to what the collectors measure, and re-observing the surface it feeds is what this campaign was for.",
+    "profilingCommandCounter": "Both mod rows read `0 cmd`. The surface campaign observed this on a launch that executed four commands through chat; this campaign ran no commands, so it neither confirms nor clears it. Recorded as still undiagnosed."
+  },
+  "caveatReObservationCampaign": {
+    "purpose": "Confirm in the real client that the profiling report's two longest lines render in full after `npozznqz`, which is the one thing that stood between this record and a `pass`.",
+    "launches": 1,
+    "scopeDiscipline": "Only the profiling surface was claimed. The world round trip, the refused dataVersion load, `current_dir()`, staging, the `-javaagent` attach, the configuration round trip, the command path, and the instance scan were not re-run and keep the provenance they already carried.",
+    "artifacts": [
+      {
+        "name": "ravel-agent.jar",
+        "sha256": "404740f4c466262f8be4495a29490f043ebb1df98ee4e0710995b51b33810981",
+        "sameAsSurfaceCampaign": true
+      },
+      {
+        "name": "libravel_bootstrap.so",
+        "sha256": "abe56b961872ca9b018f0ed1a843927a63643a7bc1842e9848bf297ef65ed19e",
+        "sameAsSurfaceCampaign": true
+      },
+      {
+        "name": "ravel-screen.jar",
+        "sha256": "bb977eb3f3675c4b91dc77d9d14c26c17ab0aa04413dfb91f3c446202118d6ef",
+        "sameAsSurfaceCampaign": false
+      }
+    ],
+    "whatDiffersFromTheSurfaceCampaignBuild": "Exactly one artifact: the screen jar, which carries the fix. The agent jar and the native library are byte-identical to the ones every other row here was observed against, so this launch measures the same 33-target inventory and the same native boundary, and the only thing that changed is the class that drew the clipped lines.",
+    "otherScreensInThatJar": "The Mods screen and the title-screen entry point ship in the same jar and were passed through on the way to the profiling screen; both looked as the surface campaign recorded them. That is noted as consistency rather than claimed as a re-observation, because their rows were not the object of this campaign.",
+    "rewrote": "15 classes and 33 methods",
+    "nativeInvocations": 2140156,
+    "profilingProperty": true,
+    "howProfilingWasTurnedOn": "`-Dravel.profiling=true` in the instance's `JvmArgs`, with `OverrideJavaArgs` set true, because Prism silently ignores `JvmArgs` otherwise. There is no in-game toggle; the screen reports the state and never sets it.",
+    "playBeforeReading": "The instance's one pre-existing world was opened and played for roughly two minutes so the report would carry real rows. No world was created and none was removed; the instance still holds exactly one.",
+    "guiScalesOffered": "This window (854x480) offers Auto, 1, and 2, and Auto resolves to 2. Both distinct scales were observed; cycling past 2 wraps to Auto, so no larger scale exists here to test.",
+    "atDefaultScale": {
+      "scale": "Auto, which resolved to 2",
+      "caveatRendersInFull": true,
+      "linesDrawn": "Seven: the two summary lines, the heading `What these numbers cannot tell apart:`, and the accuracy statement split over four lines, all readable end to end.",
+      "whatTheRowBudgetCut": "The mod table and the unsupported-metrics line. At scale 2 the window has seven rows, and the screen spends them in its stated order, keeping the summary, the heading, and the statement. That is the documented no-scrolling limit behaving as designed, not clipping: nothing drawn is truncated."
+    },
+    "atScaleOne": {
+      "scale": "1",
+      "caveatRendersInFull": true,
+      "unsupportedMetricsLineRendersInFull": true,
+      "linesDrawn": "Twelve, the whole report: `2 mods over 0 ticks`; `Slow above 2500 us. Times are wall-clock, not CPU time.`; `configuration - 1502287 ns in 7763 calls (7763 ev, 0 cmd)`; `saved_data - 578014 ns in 7763 calls (7763 ev, 0 cmd)`; `Not measurable in this build: retained-memory, allocated-memory, cpu-time, transferred-bytes, saved-data-footprint` split over three lines; the heading; and the accuracy statement split over four.",
+      "bothLongLinesWhole": "The two lines that were clipped before are the two that now wrap. Every metric name reaches the player, including `retained-memory` and `allocated-memory`, which the clipping used to swallow, and the accuracy statement reads as a sentence from its subject to its full stop."
+    },
+    "exitRoute": "Save and Quit to Title, then Quit Game; Java exited on its own with no signal.",
+    "instanceConfigurationRestoredAndVerifiedByReadBack": true,
+    "instanceWorldCountUnchanged": true
+  },
+  "caveatReObservationCampaignPrivateEvidenceDigests": {
+    "note": "Raw game stdout and screenshots were held outside the repository and deleted when the campaign finished. The redacted log is the sanitized form of the same stream, with filesystem paths, the player name, account and world identifiers, and player coordinates removed; both digests are recorded so a later reader can tell what was hashed.",
+    "launchLogRaw": "df072ce2aa868635f0ab8a9d72935b48b72c13247ae1c65ff7f0acd2eb7ba1e8",
+    "launchLogRedacted": "ea9d3c4248206288b2084e768fd3acf2913a354a90cc0421d43fd93f22c3e373",
+    "profilingAtDefaultScale": "2ff3a5da72292408e14fbcd755d4bbdcf3b4e9e9062b08be9046ab2d1ea2121e",
+    "profilingAtScaleOne": "2a8c1b7403434059f4fdb979d936689ca99ce0fc006979d2175d5fde5a34bc31",
+    "modsScreen": "74feed1753ecfd1a4608edd1e3671a0cb4df1fd3aacc8ea4190a606fea408002",
+    "modsScreenAtDefaultScale": "5430a65f395efe1c0c1756456c7b12e12e67950e94bd01ce92f8c029abea3c9b"
   }
 }

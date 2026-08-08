@@ -193,6 +193,57 @@ for verdict in true false; do
 	fi
 done
 
+# The four inventory entries that pin a field, against a stand-in game. A field
+# is not a call target: the generator emits no export and no prologue for one, so
+# there is nothing to rewrite and nothing to count. What each entry claims is
+# that the class the transformer rewrote still declares that member under the
+# pinned descriptor, so each field is driven beside a method target in its own
+# class — the rewrite marker and the crossing count are what say the class going
+# past was the transformed one.
+members="$work/members"
+mkdir -p "$members/classes"
+mapfile -d '' member_sources < <(find "$root/jvm/harness/members" -name '*.java' -print0 | sort -z)
+javac -Xlint:all -Werror -d "$members/classes" "${member_sources[@]}"
+# `MembersMain` needs the agent classes only to read the rewrite marker and the
+# stand-in hook's counter. A real launch never compiles against them.
+javac -Xlint:all -Werror -cp "$members/classes:$order/agent-classes" -d "$members/classes" \
+	"$root/jvm/harness/MembersMain.java"
+members_stdout="$members/stdout"
+members_stderr="$members/stderr"
+(cd "$members/classes" && java \
+	-javaagent:"$order_agent" \
+	-Dravel.test.transform.members=true \
+	-Dravel.report.targets=true \
+	-cp . MembersMain >"$members_stdout" 2>"$members_stderr")
+members_observed="$(<"$members_stdout")"
+members_diagnostic="$(grep '^\[ravel\]' "$members_stderr")"
+members_expected='input.smooth-last-amount net.minecraft.util.SmoothDouble.lastAmount:D value=0.5 rewrote=true
+registry.closed net.minecraft.core.MappedRegistry.frozen:Z value=true rewrote=true
+command.table net.minecraft.commands.Commands.dispatcher:Lcom/mojang/brigadier/CommandDispatcher; value=1 rewrote=true
+server.tick-count net.minecraft.server.MinecraftServer.tickCount:I value=1 rewrote=true
+bodies=1 hooks=4 methods=4
+[ravel] rewrote 4 classes and 4 methods; 4 hook invocations reached native code
+[ravel] rewritten targets: net.minecraft.commands.Commands=1,net.minecraft.core.MappedRegistry=1,net.minecraft.server.MinecraftServer=1,net.minecraft.util.SmoothDouble=1'
+
+printf '%s\n' "$members_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$members_stderr"
+
+if [ "$members_observed" != "$members_expected" ]; then
+	echo >&2
+	echo "a pinned field did not survive its own class being rewritten; expected:" >&2
+	printf '%s\n' "$members_expected" >&2
+	exit 1
+fi
+
+if [ "$members_diagnostic" != "$order_expected_diagnostic" ]; then
+	echo >&2
+	echo "the pinned-member harness did not produce the recorded diagnostic; expected:" >&2
+	printf '%s\n' "$order_expected_diagnostic" >&2
+	exit 1
+fi
+
 # ADG-7's two world persistence seams, against a stand-in game. The adapter is
 # reflective and reaches the sibling artifact by name, so a stand-in with the
 # pinned names and descriptors exercises the real control flow: what is stood in

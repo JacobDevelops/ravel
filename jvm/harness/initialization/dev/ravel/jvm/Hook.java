@@ -59,6 +59,49 @@ public final class Hook {
                                 "(ZZZ)V",
                                 false),
                     }
+            : Boolean.getBoolean("ravel.test.transform.members")
+                    ? new HookTarget[] {
+                        // One method target in each of the four classes that
+                        // also carry a pinned field, with the exact internal
+                        // names, members and descriptors the inventory holds. A
+                        // field is not among them because a field is not a call
+                        // target: the generator emits no export and no prologue
+                        // for one, so what a field entry claims is that the
+                        // class the transformer rewrote still declares it under
+                        // the pinned descriptor.
+                        new HookTarget(
+                                "net/minecraft/util/SmoothDouble",
+                                "getNewDeltaValue",
+                                "(DD)D",
+                                false,
+                                "inputSmoothDelta",
+                                "(DD)V",
+                                false),
+                        new HookTarget(
+                                "net/minecraft/core/MappedRegistry",
+                                "freeze",
+                                "()Lnet/minecraft/core/Registry;",
+                                false,
+                                "registryFreeze",
+                                "()V",
+                                false),
+                        new HookTarget(
+                                "net/minecraft/commands/Commands",
+                                "performPrefixedCommand",
+                                "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V",
+                                false,
+                                "commandPerformPrefixed",
+                                "(Ljava/lang/Object;Ljava/lang/String;)V",
+                                false),
+                        new HookTarget(
+                                "net/minecraft/server/MinecraftServer",
+                                "tickServer",
+                                "(Ljava/util/function/BooleanSupplier;)V",
+                                false,
+                                "serverTick",
+                                "(Ljava/lang/Object;)V",
+                                false),
+                    }
             : Boolean.getBoolean("ravel.test.transform.failure")
                     ? new HookTarget[] {
                         new HookTarget(
@@ -134,6 +177,8 @@ public final class Hook {
             className = "dev.ravel.jvm.refusal.RefusalTarget";
         } else if (Boolean.getBoolean("ravel.test.transform.persistence")) {
             className = "net.minecraft.client.Minecraft";
+        } else if (Boolean.getBoolean("ravel.test.transform.members")) {
+            className = "net.minecraft.util.SmoothDouble";
         } else {
             className = "net.minecraft.util.StringUtil";
         }
@@ -161,6 +206,22 @@ public final class Hook {
     }
 
     public static void playerNameValid(String name) {
+        invocations++;
+    }
+
+    public static void inputSmoothDelta(double target, double scale) {
+        invocations++;
+    }
+
+    public static void registryFreeze() {
+        invocations++;
+    }
+
+    public static void commandPerformPrefixed(Object source, String command) {
+        invocations++;
+    }
+
+    public static void serverTick(Object hasTimeLeft) {
         invocations++;
     }
 

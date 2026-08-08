@@ -221,8 +221,12 @@ RAVEL_REGENERATE_LOCKS=1 cargo build -p ravel-minecraft-adapter
 ```
 
 It resolves against the pinned jar and writes `mappings.lock` and `stubs.lock`
-from what it found, so a lock can only be rewritten by someone holding the jar
-who asked for it. The build script is where it lives because the generator
+from what it found, along with the `sha256` and `bytes` that `inputs.mappingsLock`
+and `inputs.stubsLock` pin for them, so a lock can only be rewritten by someone
+holding the jar who asked for it. Those two pins are what a jar-less machine
+checks: it has nothing to resolve against, so without them, generating from a
+lock and comparing the result back to that same lock would pass any stale lock
+that is still well formed. The build script is where it lives because the generator
 refuses to build against a lock it has drifted from, which leaves nothing
 downstream able to run the writer. Ordinary builds still refuse drift; nothing
 updates a lock silently.

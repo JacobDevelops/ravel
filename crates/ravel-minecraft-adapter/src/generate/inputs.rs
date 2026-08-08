@@ -118,6 +118,10 @@ pub(super) struct Inputs {
     pub(super) version_manifest: Input,
     pub(super) hook_inventory: Input,
     pub(super) stub_seeds: Input,
+    /// The generated mapping lock, pinned to the jars that produced it.
+    pub(super) mappings_lock: Input,
+    /// The generated stub lock, pinned to the jars that produced it.
+    pub(super) stubs_lock: Input,
 }
 
 /// The tracked adapter inputs.
@@ -277,6 +281,73 @@ pub(super) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateErr
         )));
     }
     Ok(())
+}
+
+/// Rewrites what the adapter inputs pin for the two generated locks.
+///
+/// Only the generated locks are ever re-pinned, and only by the deliberate
+/// regeneration path that has just written them from the jar. An upstream pin is
+/// a claim about bytes nobody here produced, so nothing rewrites one.
+pub(super) fn repin_locks(
+    root: &Path,
+    directory: &Path,
+    inputs: &Inputs,
+) -> Result<(), GenerateError> {
+    let path = directory.join("adapter.toml");
+    let mut document = fs::read_to_string(&path)
+        .map_err(|error| GenerateError::Input(format!("cannot read adapter.toml: {error}")))?;
+    for (table, input) in [
+        ("[inputs.mappingsLock]", &inputs.mappings_lock),
+        ("[inputs.stubsLock]", &inputs.stubs_lock),
+    ] {
+        let name = file_name(&input.path);
+        let bytes = fs::read(root.join(&input.path))
+            .map_err(|error| GenerateError::Input(format!("cannot read {name}: {error}")))?;
+        document = replace_pin(&document, table, &sha256(&bytes), bytes.len() as u64)?;
+    }
+    fs::write(&path, document)
+        .map_err(|error| GenerateError::Input(format!("cannot write adapter.toml: {error}")))
+}
+
+/// Replaces the hash and length one table of the adapter inputs records.
+///
+/// The document is edited line by line rather than deserialized and written
+/// back, because every sentence of prose in `adapter.toml` explains a pin and a
+/// round trip through the parser would drop all of it.
+pub(super) fn replace_pin(
+    document: &str,
+    table: &str,
+    sha256: &str,
+    bytes: u64,
+) -> Result<String, GenerateError> {
+    let mut rewritten = String::with_capacity(document.len());
+    let mut inside = false;
+    let mut pinned_hash = false;
+    let mut pinned_length = false;
+    for line in document.lines() {
+        if line.starts_with('[') {
+            inside = line.trim() == table;
+        }
+        if inside && line.starts_with("sha256 = ") {
+            rewritten.push_str("sha256 = \"");
+            rewritten.push_str(sha256);
+            rewritten.push('"');
+            pinned_hash = true;
+        } else if inside && line.starts_with("bytes = ") {
+            rewritten.push_str("bytes = ");
+            rewritten.push_str(&bytes.to_string());
+            pinned_length = true;
+        } else {
+            rewritten.push_str(line);
+        }
+        rewritten.push('\n');
+    }
+    if !pinned_hash || !pinned_length {
+        return Err(GenerateError::Input(format!(
+            "the adapter inputs have no {table} hash and length to rewrite"
+        )));
+    }
+    Ok(rewritten)
 }
 
 /// The last path segment, which is all a recorded message may say about a file.
@@ -500,6 +571,8 @@ class = \"net/minecraft/Unreferenced\"
             &inputs.version_manifest,
             &inputs.hook_inventory,
             &inputs.stub_seeds,
+            &inputs.mappings_lock,
+            &inputs.stubs_lock,
         ] {
             assert!(
                 input.sha256.is_some() || input.bytes.is_some(),
@@ -514,6 +587,62 @@ class = \"net/minecraft/Unreferenced\"
         assert!(
             inputs.stub_seeds.sha256.is_some(),
             "the seed list decides which game types the screen compiles against"
+        );
+        for lock in [&inputs.mappings_lock, &inputs.stubs_lock] {
+            assert!(
+                lock.sha256.is_some(),
+                "{} is the only thing a jar-less machine can check the lock against",
+                file_name(&lock.path)
+            );
+        }
+    }
+
+    #[test]
+    fn repinning_rewrites_one_tables_pin_and_leaves_the_prose_alone() {
+        let document = "\
+# why the seeds are pinned
+[inputs.stubSeeds]
+path = \"stubs.toml\"
+sha256 = \"aa\"
+bytes = 1
+
+# why the lock is pinned
+[inputs.mappingsLock]
+path = \"mappings.lock\"
+sha256 = \"bb\"
+bytes = 2
+";
+
+        let rewritten = super::replace_pin(document, "[inputs.mappingsLock]", "cc", 3)
+            .expect("the table is there to rewrite");
+
+        assert!(
+            rewritten.contains("sha256 = \"cc\"\nbytes = 3\n"),
+            "{rewritten}"
+        );
+        assert!(
+            rewritten.contains("sha256 = \"aa\"\nbytes = 1\n"),
+            "{rewritten}"
+        );
+        assert!(
+            rewritten.contains("# why the lock is pinned"),
+            "{rewritten}"
+        );
+    }
+
+    #[test]
+    fn repinning_a_table_that_pins_nothing_is_refused_rather_than_appended() {
+        let error = super::replace_pin(
+            "[inputs.stubsLock]\npath = \"a\"\n",
+            "[inputs.stubsLock]",
+            "cc",
+            3,
+        )
+        .expect_err("there is no pin to rewrite");
+
+        assert!(
+            error.to_string().contains("hash and length to rewrite"),
+            "{error}"
         );
     }
 

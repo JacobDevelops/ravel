@@ -945,6 +945,8 @@ mod tests {
                 version_manifest: unpinned(),
                 hook_inventory: unpinned(),
                 stub_seeds: unpinned(),
+                mappings_lock: unpinned(),
+                stubs_lock: unpinned(),
             },
         }
     }

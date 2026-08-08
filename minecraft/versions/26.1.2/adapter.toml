@@ -41,3 +41,21 @@ bytes = 13073
 path = "minecraft/versions/26.1.2/stubs.toml"
 sha256 = "bd6cd230609fab31c98a1ac359a1fe09e08d2272a33770381fa5f0256963f28e"
 bytes = 5079
+
+# The two locks below are generated, not fetched, and they are pinned for the
+# machines that cannot check them any other way. Without the jars there is
+# nothing to resolve against, so generating from a lock and comparing the result
+# back to that same lock only proves the file is well formed. These hashes are
+# what the jars produced, so a stale lock fails on a jar-less machine too. Only
+# RAVEL_REGENERATE_LOCKS rewrites them, and it rewrites the locks in the same
+# breath.
+
+[inputs.mappingsLock]
+path = "minecraft/versions/26.1.2/mappings.lock"
+sha256 = "51ab7af6554e1d5f80327dc71a52cc015addbbd089c1b343085bb9793c899ed9"
+bytes = 7027
+
+[inputs.stubsLock]
+path = "minecraft/versions/26.1.2/stubs.lock"
+sha256 = "0921fd4be9f8e3d74fcfd226643f120fcefdceacc49e48a7a1935a894c03280d"
+bytes = 7209

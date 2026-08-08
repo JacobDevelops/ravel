@@ -10,7 +10,9 @@
 //! do not. With the jar present it resolves against the class files and then
 //! requires the result to be the tracked `mappings.lock` byte for byte, so drift
 //! fails the build wherever the jar exists. With the jar absent it generates from
-//! that same tracked lock, which already carries every name the jar resolved to.
+//! that same tracked lock, which already carries every name the jar resolved to,
+//! and it first checks the lock against the hash `adapter.toml` pins for it, so
+//! the jar-less path verifies a real pin rather than the lock against itself.
 //! Either way the lock is what a build trusts, and the lock is tracked, so a
 //! silent rename shows up in a diff.
 
@@ -154,7 +156,11 @@ pub fn regenerate_locks(root: &Path) -> Result<(), GenerateError> {
     write_atomically(
         &pinned.directory.join("stubs.lock"),
         &render::stub_lock(&pinned.adapter, &stubbed),
-    )
+    )?;
+    // The locks and the hashes that pin them are rewritten together, because a
+    // lock whose pin still describes the previous one is exactly the stale lock
+    // this pin exists to catch.
+    inputs::repin_locks(root, &pinned.directory, &pinned.adapter.inputs)
 }
 
 /// Generates every artefact of the pinned version into `out`.
@@ -187,6 +193,13 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
     let stub_path = pinned.directory.join("stubs.lock");
     let tracked_stubs = fs::read_to_string(&stub_path)
         .map_err(|error| GenerateError::Input(format!("cannot read stubs.lock: {error}")))?;
+
+    // A machine without the jars has nothing to resolve against, so generating
+    // from a lock and comparing the result back to that same lock only says the
+    // file is well formed. These pins are what the jars produced, which is what
+    // makes a stale lock fail here rather than pass a round trip against itself.
+    inputs::verify_input(root, &pinned.adapter.inputs.mappings_lock)?;
+    inputs::verify_input(root, &pinned.adapter.inputs.stubs_lock)?;
 
     let jar_path = root.join(&pinned.adapter.inputs.client_jar.path);
     let library_path = root.join(&pinned.adapter.inputs.data_fixer_jar.path);
@@ -318,7 +331,7 @@ fn write_atomically(path: &Path, content: &str) -> Result<(), GenerateError> {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{GenerateError, run};
+    use super::{GenerateError, inputs, run};
 
     fn repository_root() -> &'static Path {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -339,6 +352,74 @@ mod tests {
             .join(format!("{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&directory);
         directory
+    }
+
+    /// Copies the pinned version's tracked data into a root of its own.
+    ///
+    /// The copy holds no jars, which is the state of every machine that does not
+    /// carry the restricted fixture, so generating in it takes the lock path.
+    /// Returns the new root and its version directory.
+    fn staged(name: &str) -> (PathBuf, PathBuf) {
+        let root = output(name);
+        // The version is read from the tracked data rather than written here, so
+        // nothing outside the version data names a Minecraft version.
+        let source = inputs::pinned(repository_root())
+            .expect("the tracked version data should parse")
+            .directory;
+        let relative = source
+            .strip_prefix(repository_root())
+            .expect("the version data lives under the root");
+        let directory = root.join(relative);
+        std::fs::create_dir_all(&directory).expect("the staged version directory should be made");
+        for entry in std::fs::read_dir(&source).expect("the tracked version data should be listed")
+        {
+            let file = entry.expect("a readable entry").file_name();
+            std::fs::copy(source.join(&file), directory.join(&file)).expect("copyable");
+        }
+        (root, directory)
+    }
+
+    #[test]
+    fn a_machine_without_the_jars_generates_from_a_lock_that_matches_its_pin() {
+        let (root, _) = staged("jarless-honest");
+        let out = output("jarless-honest-out");
+
+        let generated = run(&root, &out).expect("an unedited lock still matches what is pinned");
+
+        assert!(generated.bindings.is_file());
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn a_machine_without_the_jars_refuses_a_lock_that_no_longer_matches_its_pin() {
+        let (root, directory) = staged("jarless-stale");
+        let out = output("jarless-stale-out");
+        // The lock's own bytes are left alone, so nothing but the pin can tell
+        // this apart from the honest case: parsing the lock and rendering it back
+        // still agrees with itself, which is the hole this pin closes.
+        let adapter = directory.join("adapter.toml");
+        let document = std::fs::read_to_string(&adapter).expect("readable");
+        let length = std::fs::metadata(directory.join("mappings.lock"))
+            .expect("the staged lock should be there")
+            .len();
+        let stale =
+            inputs::replace_pin(&document, "[inputs.mappingsLock]", &"0".repeat(64), length)
+                .expect("the staged adapter inputs pin the lock");
+        assert_ne!(stale, document, "the pin has to actually be made stale");
+        std::fs::write(&adapter, stale).expect("writable");
+
+        let error =
+            run(&root, &out).expect_err("a lock that is not what is pinned must be refused");
+
+        assert!(matches!(error, GenerateError::Drift(_)), "{error}");
+        let message = error.to_string();
+        assert!(message.contains("mappings.lock"), "{message}");
+        assert!(message.contains("the adapter inputs pin"), "{message}");
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
     }
 
     #[test]

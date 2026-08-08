@@ -6,6 +6,7 @@ public final class Button$Builder {
     private final Component message;
     private final Button$OnPress onPress;
     private int y;
+    private int height;
 
     Button$Builder(Component message, Button$OnPress onPress) {
         this.message = message;
@@ -14,10 +15,11 @@ public final class Button$Builder {
 
     public Button$Builder bounds(int x, int y, int width, int height) {
         this.y = y;
+        this.height = height;
         return this;
     }
 
     public Button build() {
-        return new Button(message, onPress, y);
+        return new Button(message, onPress, y, height);
     }
 }

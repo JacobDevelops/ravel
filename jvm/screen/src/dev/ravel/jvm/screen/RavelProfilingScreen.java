@@ -11,6 +11,7 @@ import net.minecraft.client.gui.components.Button$OnPress;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FormattedText;
 
 /**
  * Ravel's opt-in profiling report.
@@ -40,10 +41,27 @@ import net.minecraft.network.chat.Component;
  * number means, so it is drawn under the same heading rather than left to
  * documentation a player will not read.
  *
+ * <p><b>Every line is split to the width it is drawn at.</b> A row wider than
+ * the widget carrying it renders only its tail: {@link EditBox#setValue} parks
+ * the cursor at the end of the value and the box scrolls its display window to
+ * the cursor, so the beginning of a long line is scrolled out of sight. The
+ * accuracy statement below is the longest line here and it is the one that must
+ * be read, which makes splitting a correctness fix rather than a cosmetic one.
+ * The game's font does the splitting — {@code splitIgnoringLanguage} measures
+ * glyphs and breaks on words — because a screen that counted characters instead
+ * would be right only for scripts whose glyphs happen to be one width.
+ *
  * <p><b>Known limit: no scrolling.</b> The same limit
  * {@link RavelModsScreen} records, for the same reason and with the same
  * remedy. Mods arrive costliest first, so a set larger than {@link #MAX_ROWS}
- * loses the rows a player was least likely to be looking for.
+ * loses the rows a player was least likely to be looking for. Splitting spends
+ * rows and a player's GUI scale decides how many the window has, so that trade
+ * is now made against a measured budget rather than a fixed count: {@link #rows}
+ * measures the window, {@link #init} gives it out in a stated order, and a row
+ * drawn past the bottom is exactly as unreadable as one drawn off the side. On
+ * the smallest windows the game produces that leaves the summary and the
+ * accuracy statement alone. Seeding a scroll widget is what stops the trade
+ * having to be made at all.
  *
  * <p>Every widget here is one the game builds without this class drawing
  * anything, for the reason {@link RavelSettingsScreen} records at length.
@@ -59,8 +77,14 @@ public final class RavelProfilingScreen extends Screen {
     private static final int WIDGET_WIDTH = 320;
     private static final int WIDGET_HEIGHT = 20;
 
-    /** How many mod rows fit before the screen would draw past its own bottom. */
+    /** What a bordered {@link EditBox}'s own border takes from the text inside it. */
+    private static final int TEXT_INSET = 8;
+
+    /** The most mod rows this screen draws, before the window's height cuts it further. */
     private static final int MAX_ROWS = 8;
+
+    /** What the accuracy statement is drawn under. */
+    private static final String HEADING = "What these numbers cannot tell apart:";
 
     /** The mods that were entered, costliest first. */
     private final List<Entry> entries = new ArrayList<>();
@@ -124,6 +148,17 @@ public final class RavelProfilingScreen extends Screen {
      * <p>A payload that does not read leaves everything empty and says so rather
      * than drawing part of one. Half a profile is worse than none: it looks like
      * a mod cost less than it did.
+     *
+     * <p>Splitting spends rows and the window has a fixed number of them, so the
+     * order things are taken out in is a decision rather than an accident. The
+     * summary and the accuracy statement are claimed first and are never cut:
+     * one says what is being looked at and the other says what it means, and a
+     * number drawn without them is the misreading this screen exists to stop.
+     * What is left over goes, in order, to the heading over that statement, to
+     * the metrics no collector can measure, and to the mod table. The last two
+     * are shortened rather than dropped, because a metric silently left out
+     * reads as one that measured zero and a mod silently left out reads as one
+     * that cost nothing, which is the same silence in both cases.
      */
     @Override
     protected void init() {
@@ -132,30 +167,37 @@ public final class RavelProfilingScreen extends Screen {
         metrics.clear();
         read = parse(Hook.ravelProfilingReport());
 
+        List<String> above = wrap(summary());
+        List<String> caveat = accuracy.isEmpty() ? List.of() : wrap(List.of(accuracy.get(0)));
+        int budget = rows() - above.size() - caveat.size();
+
+        // The heading names the statement under it and the statement says the
+        // thing. A window with room for one of the two keeps the statement.
+        List<String> heading = caveat.isEmpty() || budget < 1 ? List.of() : List.of(HEADING);
+        budget -= heading.size();
+
+        List<String> unmeasurable = unmeasurable(budget);
+        budget -= unmeasurable.size();
+
         int y = TOP;
-        for (String line : summary()) {
+        for (String line : above) {
             addRenderableWidget(label(line, y));
             y += ROW;
         }
-
-        for (int index = 0; index < entries.size() && index < MAX_ROWS; index++) {
-            addRenderableWidget(label(entries.get(index).line(), y));
-            y += ROW;
-        }
-        int undrawn = entries.size() - Math.min(entries.size(), MAX_ROWS);
-        if (undrawn > 0) {
-            addRenderableWidget(label(undrawn + " cheaper mods not shown", y));
-            y += ROW;
-        }
-
-        for (String line : notMeasured()) {
+        for (String line : table(budget)) {
             addRenderableWidget(label(line, y));
             y += ROW;
         }
-        if (!accuracy.isEmpty()) {
-            addRenderableWidget(label("What these numbers cannot tell apart:", y));
+        for (String line : unmeasurable) {
+            addRenderableWidget(label(line, y));
             y += ROW;
-            addRenderableWidget(label(accuracy.get(0), y));
+        }
+        for (String line : heading) {
+            addRenderableWidget(label(line, y));
+            y += ROW;
+        }
+        for (String line : caveat) {
+            addRenderableWidget(label(line, y));
             y += ROW;
         }
 
@@ -168,6 +210,73 @@ public final class RavelProfilingScreen extends Screen {
                         })
                         .bounds(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
                         .build());
+    }
+
+    /**
+     * The mod rows that fit in what the rest of the report left, costliest first.
+     *
+     * @param budget how many rows are free between the summary and the statement
+     *     below it
+     * @return the rows to draw, ending in a line naming what was left out
+     */
+    private List<String> table(int budget) {
+        if (budget < 1) {
+            return List.of();
+        }
+        List<String> drawn = new ArrayList<>();
+        int shown = 0;
+        for (Entry entry : entries) {
+            if (shown == MAX_ROWS) {
+                break;
+            }
+            List<String> row = wrap(List.of(entry.line()));
+            // The last entry needs no line saying what was left out. Every other
+            // one might, so the row that line would take is held back until it
+            // turns out not to be needed.
+            int held = shown + 1 < entries.size() ? 1 : 0;
+            if (drawn.size() + row.size() + held > budget) {
+                break;
+            }
+            drawn.addAll(row);
+            shown++;
+        }
+        if (shown < entries.size()) {
+            drawn.add((entries.size() - shown) + " cheaper mods not shown");
+        }
+        return drawn;
+    }
+
+    /**
+     * How many rows this window has between the title and the done button.
+     *
+     * <p>Measured rather than fixed, because a player's GUI scale is what decides
+     * how tall this window is in the units everything here is placed in.
+     *
+     * @return at least one row, however small the window claims to be
+     */
+    private int rows() {
+        return Math.max(1, (height - TOP - ROW - WIDGET_HEIGHT) / ROW);
+    }
+
+    /**
+     * Every line the given strings draw, each split to the width it is drawn at.
+     *
+     * <p>The split runs against the text a box has room for rather than against
+     * the box, because {@link EditBox} spends {@link #TEXT_INSET} of its width on
+     * its own border and a line that fits the border does not fit the text.
+     *
+     * @param texts the strings to draw, one or more rows each
+     * @return the rows, in order
+     */
+    private List<String> wrap(List<String> texts) {
+        List<String> lines = new ArrayList<>();
+        for (String text : texts) {
+            for (Object piece :
+                    font.splitIgnoringLanguage(FormattedText.of(text), WIDGET_WIDTH - TEXT_INSET)) {
+                lines.add(((FormattedText) piece).getString());
+            }
+        }
+        return lines;
     }
 
     /**
@@ -203,16 +312,48 @@ public final class RavelProfilingScreen extends Screen {
      * run.
      */
     private List<String> notMeasured() {
+        List<String> names = unmeasured();
+        if (names.isEmpty()) {
+            return List.of();
+        }
+        return List.of("Not measurable in this build: " + String.join(", ", names));
+    }
+
+    /** Every metric no collector here can measure, by name. */
+    private List<String> unmeasured() {
         List<String> names = new ArrayList<>();
         for (Metric metric : metrics) {
             if (metric.support.equals("unsupported")) {
                 names.add(metric.name);
             }
         }
-        if (names.isEmpty()) {
+        return names;
+    }
+
+    /**
+     * What this window has room to say about the metrics it cannot measure.
+     *
+     * <p>Naming them is the point: a metric left out entirely reads as one that
+     * measured zero, which is the silence {@link #notMeasured} exists to end. A
+     * window with no room for the names still has room to say the names are
+     * there, and that keeps the two apart. Only a window with no room at all
+     * says nothing.
+     *
+     * @param budget how many rows are free below the summary
+     * @return the rows to draw, which may be none
+     */
+    private List<String> unmeasurable(int budget) {
+        List<String> named = wrap(notMeasured());
+        if (named.size() <= budget) {
+            return named;
+        }
+        int count = unmeasured().size();
+        if (count == 0) {
             return List.of();
         }
-        return List.of("Not measurable in this build: " + String.join(", ", names));
+        List<String> shortened = wrap(List.of(count + (count == 1 ? " metric" : " metrics")
+                + " not measurable in this build, not shown"));
+        return shortened.size() <= budget ? shortened : List.of();
     }
 
     /** One uneditable text field, which is how this screen shows a line. */

@@ -63,7 +63,9 @@ javac -cp "$work" -d "$work" "${screen_stubs[@]}"
 javac -cp "$work" -d "$work" \
 	"$root/jvm/harness/TitleMenuMain.java" \
 	"$root/jvm/harness/TitleMenuMissingMain.java"
-javac -cp "$work:$jar:$screen" -d "$work" "$root/jvm/harness/SettingsScreenMain.java"
+javac -cp "$work:$jar:$screen" -d "$work" \
+	"$root/jvm/harness/SettingsScreenMain.java" \
+	"$root/jvm/harness/ProfilingScreenMain.java"
 
 order="$work/initialization-order"
 order_agent="$order/agent/ravel-agent.jar"
@@ -582,6 +584,42 @@ if [ "$refusal_observed" != "$refusal_expected" ]; then
 	echo >&2
 	echo "the generated settings screen did not surface a redacted save refusal; expected:" >&2
 	printf '%s\n' "$refusal_expected" >&2
+	exit 1
+fi
+
+# The profiling report at the window sizes a GUI scale produces. What is checked
+# is readability rather than construction: the screen always built, and the two
+# longest lines it built still rendered only their tails, because a value wider
+# than its box scrolls to the cursor `setValue` parks at the end. `fits` is that
+# defect, `within` is the same defect downwards once splitting spends rows, and
+# `caveat` is the sentence the row exists for read back out of the rows it was
+# split across.
+profiling_stdout="$work/profiling-stdout"
+profiling_stderr="$work/profiling-stderr"
+(cd "$work" && java \
+	-javaagent:"$agent" \
+	-Djava.library.path="$library" \
+	-cp ".:$screen" ProfilingScreenMain >"$profiling_stdout" 2>"$profiling_stderr")
+profiling_observed="$(<"$profiling_stdout")"
+# `rows` climbs with the window because the report gives its spare rows away in
+# a fixed order, so the number is what says the priority ladder still holds: the
+# two smallest sizes have nothing left over and draw the summary and the
+# statement alone.
+profiling_expected='size=320x240 rows=7 fits=true within=true caveat=whole
+size=480x270 rows=8 fits=true within=true caveat=whole
+size=640x360 rows=10 fits=true within=true caveat=whole
+size=960x540 rows=10 fits=true within=true caveat=whole
+[ravel] rewrote 1 classes and 1 methods; 4 hook invocations reached native code'
+
+printf '%s\n' "$profiling_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$profiling_stderr"
+
+if [ "$profiling_observed" != "$profiling_expected" ]; then
+	echo >&2
+	echo "the profiling screen did not draw every line readably; expected:" >&2
+	printf '%s\n' "$profiling_expected" >&2
 	exit 1
 fi
 

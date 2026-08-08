@@ -477,10 +477,16 @@ mod tests {
             );
         }
 
+        // Both edges are stubbed and both are kept. The second one is why the
+        // profiling screen can hand what `Component.literal` answers to a split
+        // that takes formatted text.
         let mutable = stub("net/minecraft/network/chat/MutableComponent");
         assert_eq!(
             mutable.implements,
-            ["net/minecraft/network/chat/Component"],
+            [
+                "net/minecraft/network/chat/Component",
+                "net/minecraft/network/chat/FormattedText"
+            ],
             "the stub has to keep the edge that makes a returned value assignable"
         );
         assert!(stub("net/minecraft/network/chat/Component").is_interface());

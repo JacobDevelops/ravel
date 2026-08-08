@@ -75,6 +75,12 @@ method = true
 class = "net/minecraft/client/gui/Font"
 flags = 33
 
+[[stub.member]]
+name = "splitIgnoringLanguage"
+descriptor = "(Lnet/minecraft/network/chat/FormattedText;I)Ljava/util/List;"
+flags = 1
+method = true
+
 [[stub]]
 class = "net/minecraft/client/gui/components/AbstractSliderButton"
 flags = 1057
@@ -268,6 +274,7 @@ method = false
 [[stub]]
 class = "net/minecraft/network/chat/Component"
 flags = 1537
+implements = ["net/minecraft/network/chat/FormattedText"]
 
 [[stub.member]]
 name = "literal"
@@ -288,9 +295,35 @@ flags = 137
 method = true
 
 [[stub]]
+class = "net/minecraft/network/chat/FormattedText"
+flags = 1537
+
+[[stub.member]]
+name = "getString"
+descriptor = "()Ljava/lang/String;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "of"
+descriptor = "(Ljava/lang/String;)Lnet/minecraft/network/chat/FormattedText;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "of"
+descriptor = "(Ljava/lang/String;Lnet/minecraft/network/chat/Style;)Lnet/minecraft/network/chat/FormattedText;"
+flags = 9
+method = true
+
+[[stub]]
 class = "net/minecraft/network/chat/MutableComponent"
 flags = 49
-implements = ["net/minecraft/network/chat/Component"]
+implements = ["net/minecraft/network/chat/Component", "net/minecraft/network/chat/FormattedText"]
+
+[[stub]]
+class = "net/minecraft/network/chat/Style"
+flags = 49
 
 [[stub]]
 class = "net/minecraft/resources/Identifier"

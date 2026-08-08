@@ -99,6 +99,25 @@ class = "net.minecraft.client.gui.components.EditBox"
 members = ["<init>", "getValue", "setValue", "setEditable", "setMaxLength"]
 
 [[stub]]
+# The screen already reaches this class through `Screen.font`; this seeds the one
+# method it calls on it. A row wider than the widget drawing it renders only its
+# tail, because `EditBox.setValue` parks the cursor at the end and the box scrolls
+# its display window to the cursor. Splitting is therefore not decoration, it is
+# what makes a long row readable at all, and it is the font's job: the game
+# measures glyphs, and a screen that counted characters instead would break on
+# every script whose glyphs are not one width.
+class = "net.minecraft.client.gui.Font"
+members = ["splitIgnoringLanguage"]
+
+[[stub]]
+# What splitting takes and answers. `of` wraps one string, `getString` reads one
+# split line back out. Seeded rather than reusing `Component` because the split
+# answers this type, and a screen that had to name `Component` on the way back
+# would be asserting an edge between the two that only the jar can state.
+class = "net.minecraft.network.chat.FormattedText"
+members = ["of", "getString"]
+
+[[stub]]
 # What a saved-data owner is registered as. Seeded for its constructor rather
 # than for a method anything calls: `SavedDataType(Identifier, Supplier<T>,
 # Codec<T>, DataFixTypes)` is the signature that names `Codec`, and a descriptor

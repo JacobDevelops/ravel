@@ -68,6 +68,10 @@ use crate::guard::{HookError, text};
 use crate::wire::{VERSION as WIRE_VERSION, field};
 
 /// One process's resolved configurations, or nothing before they are installed.
+///
+/// The store is a value and both crossings are its own methods, so what a
+/// caller reads and edits is what that caller installed. This static is the one
+/// a launch installs into; a test holds its own [`Store`] instead.
 static STORE: Mutex<Option<Store>> = Mutex::new(None);
 static DOCUMENT_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
 static SAVE_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
@@ -83,6 +87,23 @@ struct Store {
     /// marker exists by the time a settings screen can close, so production must
     /// not cache that expected early refusal.
     game_directory: Option<Result<PathBuf, String>>,
+}
+
+impl Store {
+    fn new(
+        side: Side,
+        configurations: Vec<LayeredConfiguration>,
+        game_directory: Option<Result<PathBuf, String>>,
+    ) -> Self {
+        Self {
+            side,
+            configurations: configurations
+                .into_iter()
+                .map(|configuration| (configuration.owner().clone(), configuration))
+                .collect(),
+            game_directory,
+        }
+    }
 }
 
 /// Installs the configurations a screen may read and edit.
@@ -108,15 +129,7 @@ fn install_in(
     configurations: Vec<LayeredConfiguration>,
     game_directory: Option<Result<PathBuf, String>>,
 ) {
-    let installed = configurations
-        .into_iter()
-        .map(|configuration| (configuration.owner().clone(), configuration))
-        .collect();
-    *lock() = Some(Store {
-        side,
-        configurations: installed,
-        game_directory,
-    });
+    *lock() = Some(Store::new(side, configurations, game_directory));
 }
 
 /// Takes the store, recovering it from a previous panic.
@@ -186,21 +199,26 @@ impl Reader {
 /// no document draws no rows; that is a mod with nothing to configure, not a
 /// failure worth throwing into the game.
 fn document(owner: &str) -> Option<String> {
-    let owner = owner.parse::<ModId>().ok()?;
-    let store = lock();
-    let store = store.as_ref()?;
-    let configuration = store.configurations.get(&owner)?;
-    let rows = configuration.settings_on(store.side);
+    lock().as_ref()?.document(owner)
+}
 
-    let mut out = String::with_capacity(rows.len() * 256 + 64);
-    field(&mut out, WIRE_VERSION);
-    field(&mut out, owner.as_str());
-    field(&mut out, side_name(store.side));
-    field(&mut out, &rows.len().to_string());
-    for resolved in &rows {
-        row(&mut out, configuration, resolved);
+impl Store {
+    /// Renders one owner's settings, as [`document`] does for the installed store.
+    fn document(&self, owner: &str) -> Option<String> {
+        let owner = owner.parse::<ModId>().ok()?;
+        let configuration = self.configurations.get(&owner)?;
+        let rows = configuration.settings_on(self.side);
+
+        let mut out = String::with_capacity(rows.len() * 256 + 64);
+        field(&mut out, WIRE_VERSION);
+        field(&mut out, owner.as_str());
+        field(&mut out, side_name(self.side));
+        field(&mut out, &rows.len().to_string());
+        for resolved in &rows {
+            row(&mut out, configuration, resolved);
+        }
+        Some(out)
     }
-    Some(out)
 }
 
 /// Writes one resolved setting as the row a widget is built from.
@@ -338,57 +356,87 @@ const fn side_name(side: Side) -> &'static str {
 /// not fix. Both answer with one refusal naming the payload rather than silently
 /// doing nothing.
 fn save(payload: &str) -> String {
-    apply(&mut Reader::new(payload))
-        .unwrap_or_else(|| refusal("", "the settings the screen sent could not be read"))
-}
-
-/// Applies one save payload, or reports that it could not be read.
-fn apply(reader: &mut Reader) -> Option<String> {
-    if reader.field()? != WIRE_VERSION {
-        return None;
-    }
-    let owner = reader.field()?.parse::<ModId>().ok()?;
-    let count = reader.count()?;
-
-    // Read every edit before applying any, so a payload that runs out halfway
-    // leaves nothing half-applied.
-    let mut edits = Vec::new();
-    for _ in 0..count {
-        edits.push((reader.field()?, reader.field()?));
-    }
-    if !reader.finished() {
-        return None;
-    }
-
-    let mut guard = lock();
-    let store = guard.as_mut()?;
-    let side = store.side;
-    let configuration = store.configurations.get_mut(&owner)?;
-
-    let mut refused = String::new();
-    let mut refusals = 0_usize;
-    for (key, typed) in edits {
-        let Ok(parsed) = key.parse::<SettingKey>() else {
-            refusals += 1;
-            entry(&mut refused, &key, "that is not a setting name");
-            continue;
-        };
-        let kind = configuration
-            .declaration()
-            .setting(&parsed)
-            .and_then(|setting| setting.value_schema.kind);
-        if let Err(error) = configuration.set(&parsed, value_of(kind, &typed), side) {
-            refusals += 1;
-            entry(&mut refused, parsed.as_str(), &error.to_string());
-        }
-    }
-
     // Persist outside the lock. The store is taken to apply edits and released
     // before anything touches the disk, so a screen closing never holds it
     // across a syscall and the claim this module opens with stays true.
-    let document = configuration.player_document().clone();
-    let directory = store.game_directory.clone();
-    drop(guard);
+    let applied = lock()
+        .as_mut()
+        .and_then(|store| store.apply(&mut Reader::new(payload)));
+    answer(applied)
+}
+
+/// What applying a payload leaves for the caller to write and report.
+struct Applied {
+    refusals: usize,
+    refused: String,
+    document: ValueDocument,
+    directory: Option<Result<PathBuf, String>>,
+}
+
+impl Store {
+    /// Applies one save payload in memory, or reports that it could not be read.
+    ///
+    /// Nothing is written here, so a caller holding a store behind a lock can
+    /// release it before [`answer`] touches the disk.
+    fn apply(&mut self, reader: &mut Reader) -> Option<Applied> {
+        if reader.field()? != WIRE_VERSION {
+            return None;
+        }
+        let owner = reader.field()?.parse::<ModId>().ok()?;
+        let count = reader.count()?;
+
+        // Read every edit before applying any, so a payload that runs out halfway
+        // leaves nothing half-applied.
+        let mut edits = Vec::new();
+        for _ in 0..count {
+            edits.push((reader.field()?, reader.field()?));
+        }
+        if !reader.finished() {
+            return None;
+        }
+
+        let side = self.side;
+        let directory = self.game_directory.clone();
+        let configuration = self.configurations.get_mut(&owner)?;
+
+        let mut refused = String::new();
+        let mut refusals = 0_usize;
+        for (key, typed) in edits {
+            let Ok(parsed) = key.parse::<SettingKey>() else {
+                refusals += 1;
+                entry(&mut refused, &key, "that is not a setting name");
+                continue;
+            };
+            let kind = configuration
+                .declaration()
+                .setting(&parsed)
+                .and_then(|setting| setting.value_schema.kind);
+            if let Err(error) = configuration.set(&parsed, value_of(kind, &typed), side) {
+                refusals += 1;
+                entry(&mut refused, parsed.as_str(), &error.to_string());
+            }
+        }
+
+        Some(Applied {
+            refusals,
+            refused,
+            document: configuration.player_document(),
+            directory,
+        })
+    }
+}
+
+/// Writes what an applied payload produced and says what the screen was refused.
+fn answer(applied: Option<Applied>) -> String {
+    let Some(Applied {
+        mut refusals,
+        mut refused,
+        document,
+        directory,
+    }) = applied
+    else {
+        return refusal("", "the settings the screen sent could not be read");
+    };
 
     let directory = directory.unwrap_or_else(game_directory::resolve);
     if let Err(reason) = persist(directory.as_deref(), &document) {
@@ -399,7 +447,7 @@ fn apply(reader: &mut Reader) -> Option<String> {
     let mut out = String::with_capacity(refused.len() + 8);
     field(&mut out, &refusals.to_string());
     out.push_str(&refused);
-    Some(out)
+    out
 }
 
 /// Writes the player's document where the next launch will read it.
@@ -499,7 +547,10 @@ mod tests {
     use ravel_core::Side;
     use serde_json::json;
 
-    use super::{ModId, Reader, STORE, document, field, file, install_in, save};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::{ModId, Reader, Store, answer, document, field, file, save};
 
     /// One declaration covering every widget the payload can name.
     fn declaration() -> ConfigurationDeclaration {
@@ -607,24 +658,77 @@ mod tests {
 
     /// A directory this test may treat as the game's.
     ///
-    /// One per process, which is one per test: the gate runs each test in its
-    /// own process, so a saved file cannot be another test's.
-    fn game() -> std::path::PathBuf {
-        let directory = std::env::temp_dir().join(format!("ravel-settings-{}", std::process::id()));
+    /// One per screen rather than one per process. Tests share a process, so a
+    /// name only the process distinguished would hand two of them the same
+    /// file, and the second one to write it would be reading the first's.
+    fn game() -> PathBuf {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let directory = std::env::temp_dir().join(format!(
+            "ravel-settings-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         std::fs::create_dir_all(&directory).expect("a writable temporary directory");
         directory
     }
 
-    /// Installs against that directory, so a save writes somewhere a test owns.
-    fn install_here(configurations: Vec<LayeredConfiguration>) {
-        install_in(Side::Client, configurations, Some(Ok(game())));
+    /// One test's own store, and the directory its saves are written to.
+    ///
+    /// Both crossings are the store's own methods, so a test drives the store
+    /// it built rather than the process's. Nothing here is shared, which is what
+    /// makes these tests independent of each other and of their order.
+    struct Screen {
+        store: Store,
+        game: PathBuf,
     }
 
-    fn installed(pack: Option<&ValueDocument>, player: Option<&ValueDocument>) -> Vec<Row> {
+    impl Screen {
+        /// A screen saving into a directory of its own.
+        fn new(configurations: Vec<LayeredConfiguration>) -> Self {
+            let game = game();
+            Self {
+                store: Store::new(Side::Client, configurations, Some(Ok(game.clone()))),
+                game,
+            }
+        }
+
+        /// A screen whose saves reach the stated directory, or fail to.
+        fn saving_to(
+            configurations: Vec<LayeredConfiguration>,
+            directory: Result<PathBuf, String>,
+        ) -> Self {
+            Self {
+                store: Store::new(Side::Client, configurations, Some(directory)),
+                game: game(),
+            }
+        }
+
+        /// What the screen draws for the owner every test here declares.
+        fn rows(&self) -> Vec<Row> {
+            rows(
+                &self
+                    .store
+                    .document("example_mod")
+                    .expect("the owner is installed"),
+            )
+        }
+
+        /// One row, read as the screen would read it now.
+        fn row(&self, key: &str) -> Row {
+            row(&self.rows(), key)
+        }
+
+        /// Hands back what the player changed, persisting it as the crossing does.
+        fn save(&mut self, payload: &str) -> String {
+            answer(self.store.apply(&mut Reader::new(payload)))
+        }
+    }
+
+    /// A screen over the shared declaration, resolved against the given layers.
+    fn screen(pack: Option<&ValueDocument>, player: Option<&ValueDocument>) -> Screen {
         let configuration = LayeredConfiguration::resolve(declaration(), pack, player)
             .expect("the layers should resolve");
-        install_here(vec![configuration]);
-        rows(&document("example_mod").expect("the owner is installed"))
+        Screen::new(vec![configuration])
     }
 
     fn row(rows: &[Row], key: &str) -> Row {
@@ -632,13 +736,6 @@ mod tests {
             .find(|row| row.key == key)
             .unwrap_or_else(|| panic!("`{key}` should have a row"))
             .clone()
-    }
-
-    fn reread(key: &str) -> Row {
-        row(
-            &rows(&document("example_mod").expect("the owner is installed")),
-            key,
-        )
     }
 
     fn document_for(owner: &str, values: &serde_json::Value) -> ValueDocument {
@@ -708,7 +805,7 @@ mod tests {
 
     #[test]
     fn every_schema_reaches_the_widget_that_can_draw_it() {
-        let rows = installed(None, None);
+        let rows = screen(None, None).rows();
 
         assert_eq!(row(&rows, "render.distance").widget, "slider");
         assert_eq!(row(&rows, "render.fancy").widget, "toggle");
@@ -718,7 +815,7 @@ mod tests {
 
     #[test]
     fn a_schema_with_no_kind_is_a_text_field_rather_than_a_row_that_is_refused() {
-        let rows = installed(None, None);
+        let rows = screen(None, None).rows();
         let row = row(&rows, "render.name");
 
         assert_eq!(row.widget, "text");
@@ -728,7 +825,7 @@ mod tests {
 
     #[test]
     fn a_setting_with_no_title_is_labelled_by_the_key_the_declaration_names() {
-        let rows = installed(None, None);
+        let rows = screen(None, None).rows();
 
         assert_eq!(row(&rows, "render.distance").label, "Render distance");
         assert_eq!(row(&rows, "render.fancy").label, "render.fancy");
@@ -736,7 +833,7 @@ mod tests {
 
     #[test]
     fn a_slider_carries_the_bounds_it_has_to_draw_between() {
-        let rows = installed(None, None);
+        let rows = screen(None, None).rows();
         let row = row(&rows, "render.distance");
 
         assert_eq!(row.minimum, "2");
@@ -748,7 +845,7 @@ mod tests {
 
     #[test]
     fn a_choice_carries_the_values_it_may_be_cycled_through() {
-        let rows = installed(None, None);
+        let rows = screen(None, None).rows();
 
         assert_eq!(row(&rows, "render.quality").choices, ["fast", "fancy"]);
         assert!(row(&rows, "render.fancy").choices.is_empty());
@@ -756,7 +853,7 @@ mod tests {
 
     #[test]
     fn a_screen_holds_only_the_settings_the_side_it_runs_on_owns() {
-        let rows = installed(None, None);
+        let rows = screen(None, None).rows();
 
         assert_eq!(rows.len(), 4, "the server setting has no client row");
         assert!(!rows.iter().any(|row| row.key == "server.motd"));
@@ -785,9 +882,8 @@ mod tests {
         let pack = document_for("example_mod", &json!({ "render.distance": 6 }));
         let configuration = LayeredConfiguration::resolve(declaration, Some(&pack), None)
             .expect("the layers should resolve");
-        install_here(vec![configuration]);
 
-        let row = reread("render.distance");
+        let row = Screen::new(vec![configuration]).row("render.distance");
 
         // The row carries no flag of its own for this. It is an ordinary row
         // that cannot be edited, and whether a pack may fix a client setting is
@@ -799,12 +895,12 @@ mod tests {
 
     #[test]
     fn an_edit_the_player_makes_is_in_force_the_next_time_the_screen_opens() {
-        installed(None, None);
+        let mut screen = screen(None, None);
 
-        let answer = save(&edits("example_mod", &[("render.distance", "8")]));
+        let answer = screen.save(&edits("example_mod", &[("render.distance", "8")]));
 
         assert!(refusals(&answer).is_empty(), "the edit is legal");
-        let row = reread("render.distance");
+        let row = screen.row("render.distance");
         assert_eq!(row.value, "8");
         assert_eq!(row.source, "player");
         assert_eq!(row.restart_pending, "false");
@@ -812,9 +908,9 @@ mod tests {
 
     #[test]
     fn an_edit_the_player_makes_is_on_disk_and_in_force_after_a_relaunch() {
-        installed(None, None);
+        let mut screen = screen(None, None);
 
-        let answer = save(&edits("example_mod", &[("render.distance", "8")]));
+        let answer = screen.save(&edits("example_mod", &[("render.distance", "8")]));
         assert!(
             refusals(&answer).is_empty(),
             "the edit is legal and persists"
@@ -823,7 +919,7 @@ mod tests {
         // The file is what the next launch reads, so read it the way the next
         // launch would rather than trusting the store this one still holds.
         let owner: ModId = "example_mod".parse().expect("a valid mod id");
-        let written = file::read(&game(), &owner)
+        let written = file::read(&screen.game, &owner)
             .expect("the file should be readable")
             .expect("a saved edit leaves a file");
         let relaunched = LayeredConfiguration::resolve(declaration(), None, Some(&written))
@@ -843,13 +939,12 @@ mod tests {
     fn a_save_that_cannot_reach_a_game_directory_says_so_rather_than_looking_saved() {
         let configuration = LayeredConfiguration::resolve(declaration(), None, None)
             .expect("the layers should resolve");
-        install_in(
-            Side::Client,
+        let mut screen = Screen::saving_to(
             vec![configuration],
-            Some(Err("no game directory here".to_owned())),
+            Err("no game directory here".to_owned()),
         );
 
-        let answer = save(&edits("example_mod", &[("render.distance", "8")]));
+        let answer = screen.save(&edits("example_mod", &[("render.distance", "8")]));
 
         let refused = refusals(&answer);
         assert_eq!(refused.len(), 1, "{answer}");
@@ -863,9 +958,9 @@ mod tests {
         std::fs::write(&blocked, "blocked").expect("the blocking file should be writable");
         let configuration = LayeredConfiguration::resolve(declaration(), None, None)
             .expect("the layers should resolve");
-        install_in(Side::Client, vec![configuration], Some(Ok(blocked.clone())));
+        let mut screen = Screen::saving_to(vec![configuration], Ok(blocked.clone()));
 
-        let answer = save(&edits("example_mod", &[("render.distance", "8")]));
+        let answer = screen.save(&edits("example_mod", &[("render.distance", "8")]));
 
         let refused = refusals(&answer);
         assert_eq!(refused.len(), 1, "{answer}");
@@ -882,16 +977,12 @@ mod tests {
         let private = game();
         let configuration = LayeredConfiguration::resolve(declaration(), None, None)
             .expect("the layers should resolve");
-        install_in(
-            Side::Client,
+        let mut screen = Screen::saving_to(
             vec![configuration],
-            Some(Err(format!(
-                "`{}` is not the game directory",
-                private.display()
-            ))),
+            Err(format!("`{}` is not the game directory", private.display())),
         );
 
-        let answer = save(&edits("example_mod", &[("render.distance", "8")]));
+        let answer = screen.save(&edits("example_mod", &[("render.distance", "8")]));
 
         let refused = refusals(&answer);
         assert_eq!(refused.len(), 1, "{answer}");
@@ -907,12 +998,12 @@ mod tests {
 
     #[test]
     fn a_restart_required_edit_is_written_and_says_so_without_taking_effect() {
-        installed(None, None);
+        let mut screen = screen(None, None);
 
-        let answer = save(&edits("example_mod", &[("render.quality", "fancy")]));
+        let answer = screen.save(&edits("example_mod", &[("render.quality", "fancy")]));
 
         assert!(refusals(&answer).is_empty());
-        let row = reread("render.quality");
+        let row = screen.row("render.quality");
         assert_eq!(row.value, "fast", "the session keeps the old value");
         assert_eq!(row.restart_pending, "true");
         assert_eq!(row.restart_required, "true");
@@ -920,9 +1011,9 @@ mod tests {
 
     #[test]
     fn a_saved_edit_round_trips_through_the_document_it_is_written_back_as() {
-        installed(None, None);
+        let mut screen = screen(None, None);
 
-        save(&edits(
+        screen.save(&edits(
             "example_mod",
             &[("render.quality", "fancy"), ("render.distance", "8")],
         ));
@@ -930,16 +1021,12 @@ mod tests {
         // The round trip ADG-6 asks for: what the player's layer is written out
         // as, resolved again, is what the next launch shows — with the
         // restart-required edit now in force.
-        let written = {
-            let store = super::lock();
-            store
-                .as_ref()
-                .expect("installed")
-                .configurations
-                .get(&"example_mod".parse().expect("a valid id"))
-                .expect("the owner is installed")
-                .player_document()
-        };
+        let written = screen
+            .store
+            .configurations
+            .get(&"example_mod".parse().expect("a valid id"))
+            .expect("the owner is installed")
+            .player_document();
         let relaunched = LayeredConfiguration::resolve(declaration(), None, Some(&written))
             .expect("the written document should resolve");
 
@@ -956,34 +1043,34 @@ mod tests {
 
     #[test]
     fn a_value_the_schema_refuses_is_reported_and_leaves_the_one_before_it_standing() {
-        installed(None, None);
+        let mut screen = screen(None, None);
 
-        let answer = save(&edits("example_mod", &[("render.distance", "99")]));
+        let answer = screen.save(&edits("example_mod", &[("render.distance", "99")]));
 
         let refused = refusals(&answer);
         assert_eq!(refused.len(), 1);
         assert_eq!(refused[0].0, "render.distance");
         assert!(!refused[0].1.is_empty(), "a refusal says why");
-        assert_eq!(reread("render.distance").value, "12");
+        assert_eq!(screen.row("render.distance").value, "12");
     }
 
     #[test]
     fn text_that_is_not_the_declared_kind_is_refused_by_name_rather_than_stored_as_text() {
-        installed(None, None);
+        let mut screen = screen(None, None);
 
-        let answer = save(&edits("example_mod", &[("render.distance", "twelve")]));
+        let answer = screen.save(&edits("example_mod", &[("render.distance", "twelve")]));
 
         let refused = refusals(&answer);
         assert_eq!(refused.len(), 1);
         assert_eq!(refused[0].0, "render.distance");
-        assert_eq!(reread("render.distance").value, "12");
+        assert_eq!(screen.row("render.distance").value, "12");
     }
 
     #[test]
     fn a_key_the_owner_does_not_declare_is_refused_by_name() {
-        installed(None, None);
+        let mut screen = screen(None, None);
 
-        let answer = save(&edits(
+        let answer = screen.save(&edits(
             "example_mod",
             &[("render.absent", "1"), ("not a key", "1")],
         ));
@@ -996,33 +1083,34 @@ mod tests {
 
     #[test]
     fn a_payload_for_another_owner_or_one_that_does_not_read_is_refused_whole() {
-        installed(None, None);
-        let before = document("example_mod").expect("the owner is installed");
+        let mut screen = screen(None, None);
+        let before = screen
+            .store
+            .document("example_mod")
+            .expect("the owner is installed");
 
         for payload in [
             edits("other_mod", &[("render.distance", "8")]),
             "not a payload".to_owned(),
             edits("example_mod", &[("render.distance", "8")]) + "5:extra",
         ] {
-            assert_eq!(refusals(&save(&payload)).len(), 1, "{payload}");
+            assert_eq!(refusals(&screen.save(&payload)).len(), 1, "{payload}");
         }
-        assert_eq!(document("example_mod"), Some(before));
+        assert_eq!(screen.store.document("example_mod"), Some(before));
     }
 
     #[test]
     fn an_owner_this_process_does_not_hold_has_no_document_rather_than_an_empty_one() {
-        installed(None, None);
+        let screen = screen(None, None);
 
-        assert_eq!(document("other_mod"), None);
-        assert_eq!(document("not a mod id"), None);
+        assert_eq!(screen.store.document("other_mod"), None);
+        assert_eq!(screen.store.document("not a mod id"), None);
     }
 
+    /// The one test that reads the process's own store, which nothing installs
+    /// into: every other test here drives a store it owns.
     #[test]
     fn a_screen_opened_before_anything_is_installed_reads_nothing_and_saves_nothing() {
-        *STORE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-
         assert_eq!(document("example_mod"), None);
         assert_eq!(
             refusals(&save(&edits("example_mod", &[("render.distance", "8")]))).len(),
@@ -1036,7 +1124,7 @@ mod tests {
             "example_mod",
             &json!({ "render.distance": 99, "render.absent": 1 }),
         );
-        let rows = installed(None, Some(&player));
+        let rows = screen(None, Some(&player)).rows();
 
         assert_eq!(row(&rows, "render.distance").value, "12");
         assert_eq!(row(&rows, "render.distance").source, "default");

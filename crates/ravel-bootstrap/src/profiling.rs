@@ -83,8 +83,17 @@ fn lock() -> std::sync::MutexGuard<'static, Option<Arc<LoaderRuntime>>> {
 /// Returns nothing before a set is installed, which is a launch that has not
 /// got far enough to have mods to profile rather than a failure.
 fn document() -> Option<String> {
-    let runtime = lock().clone()?;
-    Some(render(&runtime.profiling_report()))
+    document_of(lock().clone().as_deref())
+}
+
+/// The report a screen reads from one runtime, or nothing without one.
+///
+/// Separate from [`document`] so the absent case is a value a caller passes
+/// rather than the state of the process's own store. A test that had to empty
+/// that store to see the case would be asserting against every other test in
+/// the process, and the plain runner shares one.
+fn document_of(runtime: Option<&LoaderRuntime>) -> Option<String> {
+    Some(render(&runtime?.profiling_report()))
 }
 
 /// Writes one report onto the wire.
@@ -221,7 +230,7 @@ mod tests {
     use ravel_minecraft::{HookId, HookKind, HookObserver, HookTarget};
     use ravel_observability::{Metric, Profiler};
 
-    use super::{RUNTIME, document, install, requested_by};
+    use super::{document_of, requested_by};
     use crate::runtime::LoaderRuntime;
 
     #[test]
@@ -324,28 +333,22 @@ mod tests {
         Arc::new(LoaderRuntime::profiling(machine, mods, profiler))
     }
 
-    /// Installs a runtime and clears it afterwards, so tests do not leak state.
-    fn with_runtime<T>(profiler: Profiler, body: impl FnOnce(&Arc<LoaderRuntime>) -> T) -> T {
-        let runtime = running(profiler);
-        install(Arc::clone(&runtime));
-        let value = body(&runtime);
-        *RUNTIME
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        value
+    /// The payload a screen reads from `runtime`, as [`document`] builds it.
+    ///
+    /// The runtime is the test's own rather than the process's, so no test here
+    /// installs anything and none of them can read another's report.
+    fn report(runtime: &LoaderRuntime) -> String {
+        document_of(Some(runtime)).expect("a runtime was handed over")
     }
 
     #[test]
     fn a_launch_with_no_set_installed_has_no_report_rather_than_an_empty_one() {
-        *RUNTIME
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        assert_eq!(document(), None);
+        assert_eq!(document_of(None), None);
     }
 
     #[test]
     fn a_report_from_a_normal_launch_says_the_collectors_were_off() {
-        let payload = with_runtime(Profiler::off(), |_| document().expect("a set is installed"));
+        let payload = report(&running(Profiler::off()));
         let read = fields(&payload);
 
         assert_eq!(read[0], "1", "the payload opens with the wire version");
@@ -359,13 +362,12 @@ mod tests {
 
     #[test]
     fn a_profiled_run_reports_each_mod_and_what_it_cost() {
-        let payload = with_runtime(Profiler::on(Duration::from_secs(1)), |runtime| {
-            let tick = target("client.tick");
-            runtime.observe(&tick, &[]);
-            runtime.observe(&tick, &[]);
-            document().expect("a set is installed")
-        });
-        let read = fields(&payload);
+        let runtime = running(Profiler::on(Duration::from_secs(1)));
+        let tick = target("client.tick");
+        runtime.observe(&tick, &[]);
+        runtime.observe(&tick, &[]);
+
+        let read = fields(&report(&runtime));
 
         assert_eq!(read[1], "true");
         assert_eq!(read[5], "1", "one mod was entered");
@@ -377,7 +379,7 @@ mod tests {
 
     #[test]
     fn every_metric_crosses_with_what_can_be_said_about_it() {
-        let payload = with_runtime(Profiler::off(), |_| document().expect("a set is installed"));
+        let payload = report(&running(Profiler::off()));
         let read = fields(&payload);
 
         // The metric table is the last block, four fields per metric.
@@ -397,7 +399,7 @@ mod tests {
 
     #[test]
     fn the_accuracy_statement_crosses_so_a_screen_can_show_it() {
-        let payload = with_runtime(Profiler::off(), |_| document().expect("a set is installed"));
+        let payload = report(&running(Profiler::off()));
         let read = fields(&payload);
 
         let sentences = ravel_observability::ProfilingReport::attribution_accuracy();

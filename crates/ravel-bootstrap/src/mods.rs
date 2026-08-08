@@ -48,6 +48,9 @@ use crate::runtime::LoaderRuntime;
 use crate::wire::{VERSION, count, field, flag};
 
 /// The installed runtime, or nothing before one is installed.
+///
+/// The payload is the runtime's own method, so what a screen reads is whichever
+/// runtime it was handed. This static is the one a launch installs into.
 static RUNTIME: Mutex<Option<Arc<LoaderRuntime>>> = Mutex::new(None);
 
 /// Makes the running mod set readable by the mod list screen.
@@ -72,20 +75,36 @@ fn lock() -> std::sync::MutexGuard<'static, Option<Arc<LoaderRuntime>>> {
 /// Returns nothing before a set is installed, which is a launch that has not got
 /// far enough to have a mod list rather than a failure.
 fn document() -> Option<String> {
-    // Take the runtime out of the store, then build the surface, then let both
-    // locks go before a single field is written. The screen holds nothing.
-    let runtime = lock().clone()?;
-    let surface = runtime.surface();
+    // Take the runtime out of the store and let the store's lock go before the
+    // surface is built. The screen holds nothing.
+    document_of(lock().clone().as_deref())
+}
 
-    let mut out = String::new();
-    field(&mut out, VERSION);
-    field(&mut out, side_name(surface.side()));
-    count(&mut out, surface.actionable().count());
-    count(&mut out, surface.entries().len());
-    for (index, entry) in surface.entries().iter().enumerate() {
-        row(&mut out, index, entry);
+/// The mod list a screen reads from one runtime, or nothing without one.
+///
+/// Separate from [`document`] so the absent case is a value a caller passes
+/// rather than the state of the process's own store. A test that had to empty
+/// that store to see the case would be asserting against every other test in
+/// the process, and the plain runner shares one.
+fn document_of(runtime: Option<&LoaderRuntime>) -> Option<String> {
+    Some(runtime?.mod_document())
+}
+
+impl LoaderRuntime {
+    /// The whole mod list this runtime holds, as one payload.
+    pub(crate) fn mod_document(&self) -> String {
+        let surface = self.surface();
+
+        let mut out = String::new();
+        field(&mut out, VERSION);
+        field(&mut out, side_name(surface.side()));
+        count(&mut out, surface.actionable().count());
+        count(&mut out, surface.entries().len());
+        for (index, entry) in surface.entries().iter().enumerate() {
+            row(&mut out, index, entry);
+        }
+        out
     }
-    Some(out)
 }
 
 /// Writes one mod's row.
@@ -210,8 +229,6 @@ pub fn ravel_mod_surface<'local>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use ravel_core::{
         DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
         LifecycleState, ModId, Side, SideSet,
@@ -219,7 +236,7 @@ mod tests {
     use ravel_host_api::HostMod;
     use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 
-    use super::{RUNTIME, document, install};
+    use super::document_of;
     use crate::runtime::LoaderRuntime;
 
     /// Reads a payload back into its fields, the way the screen does.
@@ -275,12 +292,12 @@ mod tests {
         }
     }
 
-    /// Installs a machine as the running set, so a screen can read it.
-    fn running(machine: LifecycleMachine) {
-        install(Arc::new(LoaderRuntime::new(
-            machine,
-            Vec::<Box<dyn HostMod>>::new(),
-        )));
+    /// A runtime holding that machine as its running set.
+    ///
+    /// The runtime is the test's own rather than the process's, so what one test
+    /// reads back is the set it built and no other.
+    fn running(machine: LifecycleMachine) -> LoaderRuntime {
+        LoaderRuntime::new(machine, Vec::<Box<dyn HostMod>>::new())
     }
 
     fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
@@ -289,19 +306,17 @@ mod tests {
 
     #[test]
     fn a_screen_opened_before_a_set_is_installed_reads_nothing() {
-        *RUNTIME.lock().expect("an unpoisoned lock") = None;
-
-        assert_eq!(document(), None);
+        assert_eq!(document_of(None), None);
     }
 
     #[test]
     fn a_valid_graph_lists_every_mod_in_resolved_load_order() {
-        running(machine(vec![
+        let runtime = running(machine(vec![
             entry("base_mod", Requirement::Required),
             entry("second_mod", Requirement::Optional),
         ]));
 
-        let read = fields(&document().expect("a set is installed"));
+        let read = fields(&runtime.mod_document());
 
         assert_eq!(read[0], "1", "the wire version opens the payload");
         assert_eq!(read[1], "client");
@@ -321,13 +336,13 @@ mod tests {
 
     #[test]
     fn every_row_is_numbered_and_the_numbers_are_the_resolved_load_order() {
-        running(machine(vec![
+        let runtime = running(machine(vec![
             entry("base_mod", Requirement::Required),
             entry("second_mod", Requirement::Optional),
             entry("third_mod", Requirement::Required),
         ]));
 
-        let read = fields(&document().expect("a set is installed"));
+        let read = fields(&runtime.mod_document());
 
         // Seven fields per unfailed row, after the four the payload opens with.
         let positions: Vec<&str> = (0..3).map(|row| read[4 + row * 7].as_str()).collect();
@@ -343,12 +358,12 @@ mod tests {
 
     #[test]
     fn the_same_set_produces_the_same_payload_every_time() {
-        running(machine(vec![
+        let runtime = running(machine(vec![
             entry("base_mod", Requirement::Required),
             entry("second_mod", Requirement::Required),
         ]));
 
-        assert_eq!(document(), document());
+        assert_eq!(runtime.mod_document(), runtime.mod_document());
     }
 
     #[test]
@@ -362,9 +377,8 @@ mod tests {
             ),
         )
         .expect("a mod the machine holds can fail");
-        running(plan);
 
-        let read = fields(&document().expect("a set is installed"));
+        let read = fields(&running(plan).mod_document());
 
         assert_eq!(read[2], "1", "one entry asks the player to act");
         assert_eq!(read[9], "true");
@@ -387,9 +401,8 @@ mod tests {
             attribution(LifecycleState::Loaded, None),
         )
         .expect("a mod the machine holds can fail");
-        running(plan);
 
-        let read = fields(&document().expect("a set is installed"));
+        let read = fields(&running(plan).mod_document());
 
         assert_eq!(read[2], "0", "the plan tolerates its absence");
         assert_eq!(read[9], "false", "so it is reportable and not actionable");
@@ -406,9 +419,8 @@ mod tests {
         let mut plan = machine(vec![entry("broken_mod", Requirement::Required)]);
         plan.fail(&mod_id("broken_mod"), broken)
             .expect("a mod the machine holds can fail");
-        running(plan);
 
-        let detail = fields(&document().expect("a set is installed"))
+        let detail = fields(&running(plan).mod_document())
             .last()
             .expect("the detail closes the failure block")
             .clone();
@@ -420,26 +432,17 @@ mod tests {
 
     #[test]
     fn the_screen_reads_the_set_as_it_stands_rather_than_as_it_launched() {
-        let plan = machine(vec![entry("broken_mod", Requirement::Required)]);
-        running(plan);
-        let before = fields(&document().expect("a set is installed"));
+        let runtime = running(machine(vec![entry("broken_mod", Requirement::Required)]));
+        let before = fields(&runtime.mod_document());
         assert_eq!(before[9], "false");
 
         // Fail the mod after the screen has already read the set once.
-        lock_runtime().fail_while_running(
+        runtime.fail_while_running(
             &mod_id("broken_mod"),
             attribution(LifecycleState::Loaded, Some(FailureKind::SideMismatch)),
         );
 
-        let after = fields(&document().expect("a set is installed"));
+        let after = fields(&runtime.mod_document());
         assert_eq!(after[9], "true", "the second open sees the failure");
-    }
-
-    fn lock_runtime() -> Arc<LoaderRuntime> {
-        RUNTIME
-            .lock()
-            .expect("an unpoisoned lock")
-            .clone()
-            .expect("a set is installed")
     }
 }

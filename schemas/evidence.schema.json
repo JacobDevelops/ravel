@@ -41,7 +41,7 @@
       "uniqueItems": true,
       "items": {
         "type": "string",
-        "pattern": "^M(?:[0-9]|1[0-3])-W[1-9][0-9]*$"
+        "pattern": "^M(?:[0-9]|1[0-3])-W(?:0|[1-9][0-9]*)$"
       }
     },
     "revision": {

@@ -69,7 +69,7 @@
         },
         "M3-W8": {
           "status": "open",
-          "evidence": "The independent prototype review returned FAIL. Blocking findings: M3-W4 lacks a Ravel-owned versioned world write; M3-W7 did not exercise every required surface natively; schemas/package.schema.json still requires compiled artifacts despite the source-only ADG-2 contract; and the first manifest draft omitted M3-W0 from workPackages. This revision fixes only the inventory omission. Clean results: hook integrity passed, safety/layering/ADR conformance passed, and redaction passed."
+          "evidence": "The independent prototype review returned FAIL with four findings. Two remain open: M3-W4 lacks a Ravel-owned versioned world write, and M3-W7 did not exercise every required surface natively. Two are resolved: the manifest inventory omission of M3-W0, and the package-schema contradiction, which change rkrpplvwpklskyuwvksvmuuyklkwsqlt closed by migrating schemas/package.schema.json in place so that targets is refused and source declares a repository plus integrity-protected portable files. Clean results: hook integrity passed, safety/layering/ADR conformance passed, and redaction passed. M3-W8 stays open until the two implementation gates close and a later independent review passes."
         }
       }
     }
@@ -135,6 +135,10 @@
       "classification": "non-blocking"
     },
     {
+      "summary": "The M3-W8 review found schemas/package.schema.json still required compiled per-target artifacts and could not express the source-only distribution contract ADG-2 selected. Change rkrpplvwpklskyuwvksvmuuyklkwsqlt resolved it as a breaking schema-v1-in-place migration: targets is no longer admitted, source declares a repository and at least one portable file with its SHA-256 digest, and the unsupported-target failure kind was removed with it. The finding is closed and is recorded here so the audit trail keeps it rather than losing it.",
+      "classification": "non-blocking"
+    },
+    {
       "summary": "M3-W8 found no hook-integrity defect: the reviewed hook inventory, generated lock, transformed-class counts, and callable-target counts reconcile.",
       "classification": "non-blocking"
     },
@@ -154,10 +158,6 @@
     },
     {
       "summary": "M3-W7 is open. evidence/m3/linux-process-matrix.json proves all reviewed hook targets are reachable natively and supports the eventual process gate, but it cannot prove every required M3 surface passes natively while M3-W4 remains open.",
-      "classification": "blocking"
-    },
-    {
-      "summary": "schemas/package.schema.json still requires compiled per-target artifacts and cannot express the source-only distribution contract selected by ADG-2 at M3. That contract reconciliation remains a separate blocking work package.",
       "classification": "blocking"
     },
     {

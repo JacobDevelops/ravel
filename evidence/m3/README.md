@@ -1,9 +1,8 @@
 # M3 evidence
 
 M3-W0 through M3-W3 and M3-W5 through M3-W6 are closed. M3-W4 and M3-W7 remain
-open, the package schema still contradicts M3's source-only contract, and the
-M3-W8 independent prototype review returned FAIL. M3 is not closed and does not
-authorize private inventory work.
+open and the M3-W8 independent prototype review returned FAIL. M3 is not closed
+and does not authorize private inventory work.
 
 | Record | Work package | What it shows |
 | --- | --- | --- |
@@ -14,7 +13,8 @@ authorize private inventory work.
 
 ## M3-W8 review
 
-The independent prototype review returned **FAIL** with four blocking findings:
+The independent prototype review returned **FAIL** with four blocking findings.
+Two are still open:
 
 - M3-W4 has not moved Ravel-owned versioned bytes through an official world save,
   clean exit, and reload. The matrix persisted a vanilla scoreboard instead.
@@ -22,15 +22,25 @@ The independent prototype review returned **FAIL** with four blocking findings:
   carried the configuration mod; rewriting all 31 reviewed hooks proves
   reachability, not native block, item, recipe, event, resource, data, and
   Ravel-owned saved-data behaviour.
-- `schemas/package.schema.json` still requires compiled per-target artifacts and
-  cannot express the source-only distribution contract selected by ADG-2.
-- The first manifest draft omitted M3-W0 from `workPackages`. This revision fixes
-  that inventory error; the other three findings remain open work.
+
+Two are resolved, and stay listed because a finding that disappears once it is
+fixed leaves no way to tell it from one that was never raised:
+
+- **Package schema — resolved by `rkrpplvwpklskyuwvksvmuuyklkwsqlt`.**
+  `schemas/package.schema.json` required compiled per-target artifacts and could
+  not express the source-only distribution contract ADG-2 selected. That change
+  migrated schema v1 in place: `targets` is no longer admitted, `source` declares
+  a repository and at least one portable source file with its SHA-256 digest, and
+  the `unsupported-target` failure kind went with the model it described.
+  `SPEC.md` §3.4 and `ROADMAP.md` moved with it.
+- **Manifest inventory — resolved.** The first manifest draft omitted M3-W0 from
+  `workPackages` even though its gate status appeared elsewhere in the same
+  document. It is now in the canonical inventory.
 
 The same review found no defect in hook integrity, safety/layering/ADR conformance,
-or evidence redaction. Those clean results do not offset the blocking gaps. M3-W8
-stays open until the implementation gates close and a later independent review
-passes.
+or evidence redaction. Those clean results do not offset the two remaining gaps.
+M3-W8 stays open until the implementation gates close and a later independent
+review passes.
 
 `pack-compile.json` comes from `devenv tasks run ravel:measure-pack-compile` and
 is the measurement ADG-2 named as deciding its open mechanism: whether an

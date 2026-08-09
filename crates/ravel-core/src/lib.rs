@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 
-//! Version-neutral identity, version, side, lifecycle, and diagnostic types.
+//! Version-neutral identity, version, path, side, lifecycle, and diagnostic
+//! types.
 
 mod content;
 mod diagnostics;
 mod identity;
+mod paths;
 mod sides;
 mod states;
 
@@ -18,6 +20,7 @@ pub use diagnostics::{
     Redaction, RedactionPolicy, StructuredFailure,
 };
 pub use identity::{ModId, ModIdError};
+pub use paths::{RelativePath, RelativePathError};
 /// An exact released version of a mod or of Ravel itself.
 ///
 /// The grammar is `schemas/package.schema.json`'s `version` pattern, which is

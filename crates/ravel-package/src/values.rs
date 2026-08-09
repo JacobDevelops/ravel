@@ -2,6 +2,15 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+/// A package-relative path, owned by `ravel-core`.
+///
+/// The type moved down to the crate every layer can name, because `ravel-data`
+/// needs it for a resource path and reaching into this crate for it would put
+/// this crate's SHA-256 dependency into a mod's dependency closure. The grammar
+/// is still `schemas/package.schema.json`'s `relativePath` pattern, and this
+/// crate is still where a manifest field is declared to have it.
+pub use ravel_core::{RelativePath, RelativePathError};
+
 /// The only `schemaVersion` `schemas/package.schema.json` accepts.
 const SUPPORTED_SCHEMA_VERSION: u64 = 1;
 
@@ -10,10 +19,6 @@ const DIGEST_TEXT_LENGTH: usize = 64;
 
 /// Length in bytes of a SHA-256 digest.
 const DIGEST_BYTES: usize = 32;
-
-/// The characters an ECMA `.` does not match, and so the ones the schema's
-/// `relativePath` pattern excludes by ending in `.+`.
-const LINE_TERMINATORS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
 
 /// The manifest schema a package declares itself against.
 ///
@@ -132,136 +137,6 @@ impl fmt::Display for EmptyText {
 
 impl std::error::Error for EmptyText {}
 
-/// A path inside the package directory.
-///
-/// The grammar is `schemas/package.schema.json`'s `relativePath` pattern,
-/// `^(?!/)(?!.*\\)(?!.*(?:^|/)\.\.(?:/|$)).+$`, implemented here rather than
-/// matched so the crate needs no regex engine, and checked against a real
-/// engine by the conformance suite rather than against a second hand-written
-/// copy of the pattern.
-///
-/// The lookaheads are the whole point of the type: a manifest names files the
-/// loader will open, so an absolute path would let a package address the host
-/// filesystem and a `..` component would let it climb out of its own directory.
-/// A backslash is refused outright because it is a separator on Windows and not
-/// on Linux, so `..\..\x` is one traversal to a future host and one ordinary
-/// file name to this one — the disagreement, not the character, is the danger.
-/// The trailing `.+` refuses the four characters an ECMA `.` excludes, which is
-/// where a line break in a declared path would otherwise part company with the
-/// schema. All of it is refused before anything is read, which is what keeps
-/// [`crate::verify_source_file`] a package-local operation.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(into = "String", try_from = "String")]
-pub struct RelativePath(String);
-
-impl RelativePath {
-    /// Returns the declared path.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Returns the last non-empty segment, which is all a recorded message may
-    /// say about a file.
-    ///
-    /// `SPEC.md` §9.1 requires reports to redact unnecessarily identifying
-    /// filesystem paths, and a package-relative path still discloses the layout
-    /// of a player's installation once it is joined to a package root. Every
-    /// [`crate::IntegrityError`] therefore names a file, never a path.
-    ///
-    /// The schema permits a trailing slash, and the last segment of `src/`
-    /// is the empty string, which would render a failure as being about nothing
-    /// at all. The last *non-empty* segment always exists instead: a path that
-    /// is empty or starts with `/` never becomes a [`RelativePath`], so the
-    /// first segment is never empty and there is always one to find.
-    #[must_use]
-    pub fn file_name(&self) -> &str {
-        self.0
-            .rsplit('/')
-            .find(|segment| !segment.is_empty())
-            .unwrap_or("")
-    }
-
-    fn validate(candidate: &str) -> Result<(), RelativePathError> {
-        if candidate.is_empty() {
-            return Err(RelativePathError::Empty);
-        }
-        if candidate.starts_with('/') {
-            return Err(RelativePathError::Absolute);
-        }
-        if candidate.contains('\\') {
-            return Err(RelativePathError::Backslash);
-        }
-        if candidate.contains(LINE_TERMINATORS) {
-            return Err(RelativePathError::LineBreak);
-        }
-        if candidate.split('/').any(|segment| segment == "..") {
-            return Err(RelativePathError::Traversal);
-        }
-        Ok(())
-    }
-}
-
-impl TryFrom<String> for RelativePath {
-    type Error = RelativePathError;
-
-    fn try_from(candidate: String) -> Result<Self, Self::Error> {
-        Self::validate(&candidate)?;
-        Ok(Self(candidate))
-    }
-}
-
-impl From<RelativePath> for String {
-    fn from(path: RelativePath) -> Self {
-        path.0
-    }
-}
-
-impl fmt::Display for RelativePath {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-/// Why a candidate string is not a valid [`RelativePath`].
-///
-/// No variant carries the rejected path. The rejection is reported through a
-/// deserializer that already reports the line and column, so echoing the value
-/// would add nothing except a filesystem path in a message that may be
-/// recorded.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RelativePathError {
-    /// The candidate is empty.
-    Empty,
-    /// The candidate is an absolute path.
-    Absolute,
-    /// The candidate holds a backslash.
-    Backslash,
-    /// The candidate holds a line terminator.
-    LineBreak,
-    /// The candidate holds a `..` component.
-    Traversal,
-}
-
-impl fmt::Display for RelativePathError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => formatter.write_str("a package path cannot be empty"),
-            Self::Absolute => formatter.write_str(
-                "a package path is relative to the package, so it cannot start with `/`",
-            ),
-            Self::Backslash => formatter
-                .write_str("a package path is `/`-separated, so it cannot hold a backslash"),
-            Self::LineBreak => formatter.write_str("a package path cannot hold a line terminator"),
-            Self::Traversal => formatter.write_str(
-                "a package path cannot leave the package, so it cannot hold a `..` component",
-            ),
-        }
-    }
-}
-
-impl std::error::Error for RelativePathError {}
-
 /// A SHA-256 digest as `schemas/package.schema.json` records one.
 ///
 /// The schema's `sha256` pattern is `^[0-9a-f]{64}$`, so the text form is
@@ -377,8 +252,7 @@ impl std::error::Error for Sha256Error {}
 #[cfg(test)]
 mod tests {
     use super::{
-        EmptyText, NonEmptyText, RelativePath, RelativePathError, SchemaVersion,
-        SchemaVersionError, Sha256Digest, Sha256Error,
+        EmptyText, NonEmptyText, SchemaVersion, SchemaVersionError, Sha256Digest, Sha256Error,
     };
 
     const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -429,107 +303,6 @@ mod tests {
 
         let error = serde_json::from_str::<NonEmptyText>("\"\"").expect_err("empty text");
         assert!(error.to_string().contains("must not be empty"), "{error}");
-    }
-
-    #[test]
-    fn a_package_path_accepts_every_shape_the_schema_pattern_does() {
-        for candidate in [
-            "mod.so",
-            "src/lib.rs",
-            "resources/lang/en.json",
-            "a..b/c",
-            "...",
-            "./nested/file",
-            "deep/.hidden",
-        ] {
-            let path = RelativePath::try_from(candidate.to_owned()).expect(candidate);
-            assert_eq!(path.as_str(), candidate);
-            assert_eq!(path.to_string(), candidate);
-            assert_eq!(String::from(path), candidate);
-        }
-    }
-
-    #[test]
-    fn a_package_path_refuses_escape_in_every_position() {
-        for (candidate, expected) in [
-            ("", RelativePathError::Empty),
-            ("/etc/passwd", RelativePathError::Absolute),
-            ("/", RelativePathError::Absolute),
-            ("..", RelativePathError::Traversal),
-            ("../sibling", RelativePathError::Traversal),
-            ("nested/../../escape", RelativePathError::Traversal),
-            ("nested/..", RelativePathError::Traversal),
-            ("..\\..\\escape", RelativePathError::Backslash),
-            ("\\\\server\\share", RelativePathError::Backslash),
-            ("nested\\file", RelativePathError::Backslash),
-            ("a\nb", RelativePathError::LineBreak),
-            ("a\rb", RelativePathError::LineBreak),
-            ("trailing\n", RelativePathError::LineBreak),
-            ("a\u{2028}b", RelativePathError::LineBreak),
-            ("a\u{2029}b", RelativePathError::LineBreak),
-        ] {
-            assert_eq!(
-                RelativePath::try_from(candidate.to_owned()),
-                Err(expected),
-                "{candidate}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_path_rejection_never_echoes_the_path_it_refused() {
-        for candidate in ["/etc/passwd", "../../home/player/.ssh/id_ed25519"] {
-            let error = RelativePath::try_from(candidate.to_owned()).expect_err(candidate);
-            let rendered = error.to_string();
-            assert!(!rendered.contains("passwd"), "{rendered}");
-            assert!(!rendered.contains("player"), "{rendered}");
-        }
-    }
-
-    #[test]
-    fn every_path_rejection_renders_the_rule_it_breaks() {
-        for (error, expected) in [
-            (RelativePathError::Empty, "a package path cannot be empty"),
-            (
-                RelativePathError::Absolute,
-                "a package path is relative to the package, so it cannot start with `/`",
-            ),
-            (
-                RelativePathError::Traversal,
-                "a package path cannot leave the package, so it cannot hold a `..` component",
-            ),
-            (
-                RelativePathError::Backslash,
-                "a package path is `/`-separated, so it cannot hold a backslash",
-            ),
-            (
-                RelativePathError::LineBreak,
-                "a package path cannot hold a line terminator",
-            ),
-        ] {
-            assert_eq!(error.to_string(), expected);
-        }
-    }
-
-    #[test]
-    fn a_file_name_is_the_last_segment_of_a_declared_path() {
-        for (candidate, expected) in [
-            ("mod.so", "mod.so"),
-            ("src/lib.rs", "lib.rs"),
-            ("a/b/c/provenance.json", "provenance.json"),
-        ] {
-            let path = RelativePath::try_from(candidate.to_owned()).expect(candidate);
-            assert_eq!(path.file_name(), expected);
-        }
-    }
-
-    #[test]
-    fn a_trailing_slash_still_names_a_file_rather_than_nothing() {
-        for (candidate, expected) in [("src/", "src"), ("a/b/", "b"), ("a//", "a"), ("a", "a")] {
-            let path = RelativePath::try_from(candidate.to_owned()).expect(candidate);
-            assert!(!path.file_name().is_empty(), "{candidate}");
-            assert_eq!(path.file_name(), expected, "{candidate}");
-        }
     }
 
     #[test]

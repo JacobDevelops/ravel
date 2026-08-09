@@ -1,6 +1,6 @@
 [package]
 name = "ravel-core"
-description = "Version-neutral identity, side, capability, lifecycle, and diagnostic types"
+description = "Version-neutral identity, path, side, capability, lifecycle, and diagnostic types"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true

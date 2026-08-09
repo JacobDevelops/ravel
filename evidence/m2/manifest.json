@@ -82,11 +82,11 @@
     "results": [
       {
         "name": "noop-pipeline.json",
-        "sha256": "d4dcf5afa8ffd845170f2e6656d176a72332343c469042e4a99f6c31d0aac19b"
+        "sha256": "56e39268f71e83f30d9ea0fd7a8aa1d3e225a30e69a3e39ab8b10c25b11fd93d"
       },
       {
         "name": "pre-world-gate.json",
-        "sha256": "1577b23dd48ebaf7c9c7511faac91d8db7e2eb325e44f12432da62f8c6b5678d"
+        "sha256": "23b27ca3afd12df42c80bff2e0b7e7024123f375712b985b36f73715c08a1735"
       },
       {
         "name": "loader-overhead.json",

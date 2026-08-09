@@ -10,10 +10,11 @@
     "M3-W4",
     "M3-W5",
     "M3-W6",
-    "M3-W7"
+    "M3-W7",
+    "M3-W8"
   ],
   "revision": {
-    "id": "77765070411d87e3415b46e6a3ed21e544a1daa7",
+    "id": "3c3520be104ce7fa5490e4d633941fd51dacde3b",
     "changeId": "xqmmlnzmtkqpuuxymttpzqyvnovxtxtv",
     "dirty": false
   },
@@ -51,8 +52,8 @@
           "evidence": "configuration conformance suites and evidence/m3/linux-process-matrix.json"
         },
         "M3-W4": {
-          "status": "open",
-          "evidence": "The conformance suite proves the saved-data model and the process matrix proves the reviewed vanilla save hooks are reachable. Ravel has not yet moved its own versioned bytes through a world save and reload."
+          "status": "closed",
+          "evidence": "Ravel has moved its own versioned bytes through an official world save, a clean exit, and a reload. `ravel-composed-host` carries `ravel-test-mod-saved-data` from change uyvzkzzstmrsunzxznznwqorvxslnklr, so the production composition owns world data rather than only modelling it; the game's own SavedDataStorage wrote `data/ravel/mods.dat` into a world it created, the reload read the aggregate back byte-identical, and a stored dataVersion rewritten to 9 outside the game was refused with the diagnostic drawn in the client. See evidence/m3/linux-process-matrix.json under worldPersistenceRoundTrip. The ceiling is recorded in the same place and in risks below: the live half is operator attestation, not a result a reviewer can recompute, because the world and the raw logs were deleted and only digests survive. The in-gate half — tests/conformance/tests/saved_data.rs and jvm/harness/PersistenceMain.java — runs on every gate."
         },
         "M3-W5": {
           "status": "closed",
@@ -63,13 +64,13 @@
           "evidence": "evidence/m3/profiling-overhead.json and evidence/m3/linux-process-matrix.json"
         },
         "M3-W7": {
-          "status": "open",
-          "evidence": "evidence/m3/linux-process-matrix.json proves the reviewed hook inventory is reachable in a native launch, along with the production screens and stores. It does not prove every required M3 surface natively while M3-W4's Ravel-owned world write remains open.",
-          "verificationLogSha256": "eb3fea4a48d839edbf3d2b7c4db1cb2c0156a3462d6cf53ce7820eb0d6f0439a"
+          "status": "closed",
+          "evidence": "evidence/m3/linux-process-matrix.json records result pass at 33 callable targets over 15 classes: the three Ravel screens, the configuration round trip including a restart-required setting, the command path, opt-in profiling, and the Ravel-owned world round trip that M3-W4 turns on. The one surface that failed on first observation — the profiling report's two clipped lines — was fixed by change npozznqztnvnuvuvunkmsuvvvplnvkxq and re-observed whole in a real client. The same ceiling applies as to M3-W4: this is an operator-run result, checkable by a reviewer only for its in-gate half. Two named gaps stay open inside a closed gate and are recorded in openGaps: nothing on the game's tick path marks a tick boundary, so the tick counter cannot leave zero, and the command counter, which is wired and accurate, has never been observed above zero in a real client because no launch yet combined a command-claiming mod with a namespaced command.",
+          "verificationLogSha256": "7d9944f67dee3b6688b047e4b2cddcf5b23080e8f60e87c74fa8226bf6c6938c"
         },
         "M3-W8": {
           "status": "open",
-          "evidence": "The independent prototype review returned FAIL with four findings. Two remain open: M3-W4 lacks a Ravel-owned versioned world write, and M3-W7 did not exercise every required surface natively. Two are resolved: the manifest inventory omission of M3-W0, and the package-schema contradiction, which change rkrpplvwpklskyuwvksvmuuyklkwsqlt closed by migrating schemas/package.schema.json in place so that targets is refused and source declares a repository plus integrity-protected portable files. Clean results: hook integrity passed, safety/layering/ADR conformance passed, and redaction passed. M3-W8 stays open until the two implementation gates close and a later independent review passes."
+          "evidence": "The independent prototype review returned FAIL with four findings, and all four are now answered: the manifest inventory omission of M3-W0; the package-schema contradiction, which change rkrpplvwpklskyuwvksvmuuyklkwsqlt closed by migrating schemas/package.schema.json in place so that targets is refused and source declares a repository plus integrity-protected portable files; the missing Ravel-owned versioned world write, closed under M3-W4; and the unexercised native surfaces, closed under M3-W7. A later review round found four more against the evidence set itself rather than the prototype: the manifest recorded digests nothing recomputed, it pinned a revision predating the work it covered, it contradicted the other records on whether the world round trip had happened, and one record self-declared a pass the manifest held open. Those are answered by change pqkoksqopryuyvzormzsnllylmusvtpp and by the digest check verify_evidence_records added in yuouxpsvvstnoquzxxsrwktmzrlmmlvy. Clean results: hook integrity passed, safety/layering/ADR conformance passed, and redaction passed. M3-W8 stays open because the review that must pass is an independent one, and no independent review has been run against this state."
         }
       }
     }
@@ -77,36 +78,36 @@
   "inputs": [
     {
       "name": "minecraft/versions/26.1.2/hooks.toml",
-      "sha256": "a217161105b84a5b9a6e4d19f7e4f0d7c5ce55ac80c28d02d38f874aeb766216"
+      "sha256": "fcf9a3381089702597474398b528a2c4651323d1cc8e58d114ea104b7be2a457"
     },
     {
       "name": "minecraft/versions/26.1.2/mappings.lock",
-      "sha256": "368213c166da69a342fcdb498d713692320f71e3bf84ee3cc7c7a229a249f754"
+      "sha256": "51ab7af6554e1d5f80327dc71a52cc015addbbd089c1b343085bb9793c899ed9"
     },
     {
       "name": "docs/architecture/m3-hook-targets.md",
-      "sha256": "75ccb6d6299184433856e213d919b4cb3d0a6d592da70e11e86c55078dd9be63"
+      "sha256": "f1e90b233ddf7c7f0c58b4039a9c9c586f1bd61312c1b3c2e23e4e7e25834146"
     },
     {
       "name": "docs/decisions/adg-6-configuration-ui.md",
-      "sha256": "a06294eeecf8bc31afade065f3c4e460be6e57fa9ee4fdbdbe41d55a15ddb5a9"
+      "sha256": "3c5649237112d3b027d57b4e31ffdefb3800aa93c9fd7cd4f9475ea276342705"
     }
   ],
   "commands": [
     {
       "command": "devenv tasks run ravel:verify",
-      "startedAt": "2026-08-07T17:33:55.912Z",
-      "durationMs": 15324,
+      "startedAt": "2026-08-09T00:52:25.229Z",
+      "durationMs": 21151,
       "exitStatus": 0,
-      "logSha256": "eb3fea4a48d839edbf3d2b7c4db1cb2c0156a3462d6cf53ce7820eb0d6f0439a"
+      "logSha256": "7d9944f67dee3b6688b047e4b2cddcf5b23080e8f60e87c74fa8226bf6c6938c"
     }
   ],
   "tests": {
-    "total": 777,
-    "passed": 777,
+    "total": 813,
+    "passed": 813,
     "failed": 0,
     "skipped": 0,
-    "lineCoveragePercent": 86.44
+    "lineCoveragePercent": 85.97
   },
   "benchmarks": {
     "protocolVersion": "m3-prototype-v1",
@@ -121,11 +122,11 @@
       },
       {
         "name": "profiling-overhead.json",
-        "sha256": "9cb8dfaa8c571ee8c673b766f7836d61e43c42608c8ea509388061d282347d18"
+        "sha256": "fd95bce9c4329afec209868463571170085b9ed0ec13ad76655426962705abc4"
       },
       {
         "name": "linux-process-matrix.json",
-        "sha256": "ed8345695f0d81153d51dbe2df8d6469f18bb5e91d4021e5d43fe33319c8c21d"
+        "sha256": "549410763aec59945aef5bd9205e5f2abee3d4d1fe3e3f2ee8e515d8dc109eb0"
       }
     ]
   },
@@ -136,6 +137,18 @@
     },
     {
       "summary": "The M3-W8 review found schemas/package.schema.json still required compiled per-target artifacts and could not express the source-only distribution contract ADG-2 selected. Change rkrpplvwpklskyuwvksvmuuyklkwsqlt resolved it as a breaking schema-v1-in-place migration: targets is no longer admitted, source declares a repository and at least one portable file with its SHA-256 digest, and the unsupported-target failure kind was removed with it. The finding is closed and is recorded here so the audit trail keeps it rather than losing it.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "This manifest recorded four result digests that bound nothing. Two named content no tracked file had held since a later change edited the record, and the schema could not see it because the schema constrains the shape of a digest and never its value. The cause was that no gate recomputed benchmarks.results[].sha256. verify_evidence_records in tools/ravel-xtask/src/lib.rs now hashes every recorded result and fails ravel-verify-scaffold on any mismatch, and it refuses a manifest that records its own digest, which could only ever pass on a value nobody can compute. The same check found the same rot in evidence/m2/manifest.json, whose noop-pipeline.json and pre-world-gate.json digests had gone stale when change rkrpplvwpklskyuwvksvmuuyklkwsqlt edited both records; those are recomputed too. inputs[] is deliberately outside the check: it names files outside the evidence directory that keep changing after a milestone closes, so its digests are claims about the pinned revision rather than about the working copy.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The revision block pins two different things and the schema says so: changeId is the change that holds this manifest, which the milestone gate recomputes against the change that introduced the file and which therefore stays xqmmlnzmtkqpuuxymttpzqyvnovxtxtv for as long as the file lives, while id is the commit the recorded commands ran on. That id had gone stale by several described changes, so the commands and tests blocks attested to a tree that no longer existed. They were re-run rather than re-pinned from memory, and id now names the commit the run was made on. That is circular to the extent that recording a result changes the tree that produced it: the gate was run to completion over this content, its numbers written here, and then run again over the file as it now stands, with the second run reported in the change description rather than recursively rewritten into these fields. It is the same convention evidence/m3/linux-process-matrix.json uses for its own gate digests. The inputs digests were recomputed by hand in the same pass, because a manifest that pins one revision and hashes its inputs at another is the defect in a second costume. lineCoveragePercent now takes the Lines column of cargo llvm-cov, which is what the field name says; an earlier draft took the region column, which is why the figure moved down while coverage went up.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "This manifest and the records it inventories disagreed on whether Ravel had moved its own versioned bytes through a world save and reload. The manifest said it had not; evidence/m3/linux-process-matrix.json and evidence/m3/README.md said it had. The records were right and the manifest was stale: change uyvzkzzstmrsunzxznznwqorvxslnklr put a world-owning mod in the production composition and the round trip was observed after it. Every tracked record now says the same thing, with the same ceiling attached. Relatedly, linux-process-matrix.json recorded result pass for M3-W7 while this manifest held M3-W7 open; the record was right and this manifest now closes the gate.",
       "classification": "non-blocking"
     },
     {
@@ -153,11 +166,19 @@
   ],
   "risks": [
     {
-      "summary": "M3-W4 is open. The saved-data model and vanilla hook reachability are proven, but Ravel has not moved its own versioned bytes through an official world save, clean exit, and reload. evidence/m3/profiling-overhead.json also records saved-data footprint as unsupported because that world-write half does not exist.",
-      "classification": "blocking"
+      "summary": "M3-W4 and M3-W7 close on evidence a reviewer cannot recompute. The world round trip was observed in a real client, but the world, the raw logs, and the screenshots were deleted when the campaign finished and only their digests were kept. A digest of a file that no longer exists records a claim rather than verifies one, so the live half of both gates is operator attestation. What is independently checkable is the in-gate half: tests/conformance/tests/saved_data.rs and jvm/harness/PersistenceMain.java run under ravel:verify on any machine. This is the repository's established convention for launch evidence rather than a departure from it, and it is stated here so that no reader mistakes an attested result for a recomputable one.",
+      "classification": "non-blocking"
     },
     {
-      "summary": "M3-W7 is open. evidence/m3/linux-process-matrix.json proves all reviewed hook targets are reachable natively and supports the eventual process gate, but it cannot prove every required M3 surface passes natively while M3-W4 remains open.",
+      "summary": "The absent-aggregate case ADG-7 initializes fresh state for has in-gate proof and no live proof. It was observed once, on a world that held no data/ravel directory, and the same campaign then wrote an aggregate into that world, so the observation is not re-checkable on this instance. a_world_holding_no_data_this_mod_owns_initializes_fresh_state in tests/conformance/tests/saved_data.rs is what still proves it. Proving it live again would need a world never opened with Ravel attached.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Two profiling counters have never been observed above zero in a real client. tick-count cannot leave zero at all, because nothing on the game's tick path marks a tick boundary at M3; the screen names it unmeasurable rather than stating a figure. The command counter is different: its increment path exists in the production graph and the conformance suite exercises it, and it read zero for the honest reason that the commands typed were vanilla and unnamespaced and neither mod in the composed host claims a command. Demonstrating it live is a composition change, not a collector change.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "M3 is not closed. The last independent review returned FAIL, and although every finding it raised is now answered, no independent review has been run against this state. M3-W8 is what remains, and until it closes M3 authorizes no private inventory work.",
       "classification": "blocking"
     },
     {

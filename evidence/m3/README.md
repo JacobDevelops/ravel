@@ -1,12 +1,23 @@
 # M3 evidence
 
-M3-W0 through M3-W3 and M3-W5 through M3-W6 are closed. M3-W4 and M3-W7 remain
-open and the M3-W8 independent prototype review returned FAIL. M3 is not closed
-and does not authorize private inventory work.
+M3-W0 through M3-W7 are closed. M3-W8 is open: the independent prototype review
+returned FAIL, every finding it raised has since been answered, and no
+independent review has been run against this state. M3 is not closed and does
+not authorize private inventory work.
+
+M3-W4 and M3-W7 close on operator attestation for their live half. The world
+round trip and every native surface row were observed in a real client, and the
+worlds, raw logs, and screenshots were deleted afterwards with only their digests
+kept. A digest of a file that no longer exists records a claim rather than
+verifies one, so a reviewer can recompute the in-gate half — the conformance
+suites and the JVM harness, which run under `ravel:verify` on any machine — and
+must take the operator's word for the rest. That is this repository's convention
+for launch evidence, and it is stated up front so nobody mistakes an attested
+result for a recomputable one.
 
 | Record | Work package | What it shows |
 | --- | --- | --- |
-| [`manifest.json`](manifest.json) | M3-W0..W8 | Which gates are closed, the W4 and W7 gaps, and the failed independent review. |
+| [`manifest.json`](manifest.json) | M3-W0..W8 | Which gates are closed, what each one's evidence can and cannot prove to a reviewer, and the failed independent review that keeps M3-W8 open. |
 | [`pack-compile.json`](pack-compile.json) | ADG-2 | What compiling a pack-sized set of mods with real bodies costs — cold, warm after one mod changes, in peak memory, and on disk. |
 | [`profiling-overhead.json`](profiling-overhead.json) | M3-W6 | What opt-in profiling costs a tick when nobody turned it on, what it can and cannot attribute to a mod, and which metrics it cannot measure at all. |
 | [`linux-process-matrix.json`](linux-process-matrix.json) | M3-W7 | What a real Linux launch proves about the game directory, the rewrite, and the instance — and, at least as importantly, what it could not reach. |
@@ -14,27 +25,25 @@ and does not authorize private inventory work.
 ## M3-W8 review
 
 The independent prototype review returned **FAIL** with four blocking findings.
-Two are still open:
+All four are answered, and they stay listed because a finding that disappears
+once it is fixed leaves no way to tell it from one that was never raised:
 
-- M3-W4 **has now moved** Ravel-owned versioned bytes through an official world
-  save, exit, and reload, and a tampered aggregate refused the load. See
-  `linux-process-matrix.json` under `worldPersistenceRoundTrip`. The finding is
-  kept here because the review that raised it has not been rerun.
-- M3-W7 has not exercised every required surface natively. Rewriting all 33
-  reviewed hooks proves reachability, not native block, item, recipe, event, and
-  resource behaviour. The Ravel-owned saved-data half of this finding is answered
-  by the world round trip campaign. The screen, settings, and command halves are
-  answered by the surface campaign that followed it, at the same 33 targets and
-  on the same build. The one surface that campaign found *failing* — opt-in
+- **Ravel-owned world write — answered, M3-W4 closed.** Ravel has moved its own
+  versioned bytes through an official world save, exit, and reload, and a stored
+  `dataVersion` rewritten to 9 outside the game refused the load with the
+  diagnostic drawn in the client. See `linux-process-matrix.json` under
+  `worldPersistenceRoundTrip`, and `reviewCeiling` in the same section for what a
+  reviewer can and cannot recompute.
+- **Native surfaces — answered, M3-W7 closed.** Rewriting all 33 reviewed hooks
+  proves reachability, not behaviour, so each surface was observed on its own.
+  The saved-data half is the world round trip campaign; the screen, settings, and
+  command halves are the surface campaign that followed it, at the same 33 targets
+  and on the same build. The one surface that campaign found *failing* — opt-in
   profiling, whose accuracy caveat was unreadable in the native client — was
   fixed by change `npozznqz` and re-observed whole in a later launch, so the
-  matrix record now reads `pass`. See `profilingSurfaceDefect` and
-  `caveatReObservationCampaign` in `linux-process-matrix.json`. The finding is
-  kept here because the review that raised it has not been rerun.
-
-Two are resolved, and stay listed because a finding that disappears once it is
-fixed leaves no way to tell it from one that was never raised:
-
+  matrix record reads `pass` and this gate is closed on it. See
+  `profilingSurfaceDefect` and `caveatReObservationCampaign` in
+  `linux-process-matrix.json`.
 - **Package schema — resolved by `rkrpplvwpklskyuwvksvmuuyklkwsqlt`.**
   `schemas/package.schema.json` required compiled per-target artifacts and could
   not express the source-only distribution contract ADG-2 selected. That change
@@ -47,9 +56,19 @@ fixed leaves no way to tell it from one that was never raised:
   document. It is now in the canonical inventory.
 
 The same review found no defect in hook integrity, safety/layering/ADR conformance,
-or evidence redaction. Those clean results do not offset the two remaining gaps.
-M3-W8 stays open until the implementation gates close and a later independent
-review passes.
+or evidence redaction. A later round reviewed the evidence set itself rather than
+the prototype and found four more: `manifest.json` recorded result digests nothing
+recomputed, it pinned a revision predating the work it covered, it contradicted
+the other records on whether the world round trip had happened, and
+`linux-process-matrix.json` self-declared a `pass` the manifest held open. The
+digests are recomputed, the revision and the re-run gate numbers are this state's,
+and every record now says the same thing. The cause of the digest rot is fixed
+rather than the symptom: `verify_evidence_records` in
+`tools/ravel-xtask/src/lib.rs` recomputes every recorded result digest and fails
+`ravel-verify-scaffold` on any mismatch.
+
+M3-W8 stays open. Every implementation gate is closed, but the review that has to
+pass is an *independent* one, and none has been run against this state.
 
 `pack-compile.json` comes from `devenv tasks run ravel:measure-pack-compile` and
 is the measurement ADG-2 named as deciding its open mechanism: whether an
@@ -210,9 +229,20 @@ statement — dropping the table and the metric names rather than truncating
 anything. Nothing on the screen is clipped at either scale, and this window
 offers no third one. The record's result is therefore `pass`.
 
-The `M3-W7` gate in [`manifest.json`](manifest.json) is not flipped by that on
-its own: it is written to depend on M3-W4's Ravel-owned world write as well, and
-the M3-W8 independent review that raised the finding has not been rerun.
+The `M3-W7` gate in [`manifest.json`](manifest.json) is closed on that record
+together with the world round trip M3-W4 turns on. Two counters stay named as
+gaps inside the closed gate. `tick-count` cannot leave zero, because nothing on
+the game's tick path marks a tick boundary at M3; the screen names it unmeasurable
+rather than stating a figure it cannot produce. The command counter is a different
+case and is not a defect: its increment path runs from the JNI hook entry through
+`route_profiled` to `Profiler::charge` and the conformance suite exercises it, and
+it read `0 cmd` because the commands typed were vanilla and unnamespaced —
+`ContentId::parse` refuses a root literal with no `:`, so no command work is
+constructed — and because neither mod in the composed host claims a command.
+The counter is accurate. What has never happened is a real client showing it above
+zero, and nothing here claims otherwise; demonstrating it live means putting a
+command-claiming mod in the composed host and typing a namespaced root, which is a
+composition change rather than a change to what the collectors do.
 
 One earlier claim is corrected rather than removed. The record noted a
 pre-existing world that held no `data/ravel` directory, the absent-aggregate case
@@ -220,7 +250,10 @@ ADG-7 initializes fresh state for. That world has since been opened with Ravel
 attached and now holds one, so the observation is no longer re-checkable by
 looking at the instance; it stands as something observed at the time, and proving
 the absent case fresh would need a world that has never been opened with Ravel
-attached.
+attached. The case is not unproven — it has in-gate proof and no live proof.
+`a_world_holding_no_data_this_mod_owns_initializes_fresh_state` in
+`tests/conformance/tests/saved_data.rs` runs on every gate and asserts that a
+world holding nothing this mod owns initializes fresh rather than refusing.
 
 The record separates the operator attestation — injected input followed the
 ordinary title-screen and world-selection route — from facts derived from process

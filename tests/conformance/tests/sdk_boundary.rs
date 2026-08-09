@@ -44,6 +44,9 @@ const FACADE: &str = "ravel-sdk";
 /// The example whose manifest is a mod author's manifest.
 const EXAMPLE_MANIFEST: &str = "examples/minimal-mod/Cargo.toml";
 
+/// The directory holding every crate whose manifest is an author's manifest.
+const EXAMPLES: &str = "examples";
+
 /// The compile-pass/fail suite whose cases this file stands behind.
 const EXAMPLE_SUITE: &str = "examples/minimal-mod/src/boundary.rs";
 
@@ -354,6 +357,47 @@ fn the_example_mod_declares_exactly_the_one_dependency_an_author_declares() {
 }
 
 #[test]
+fn every_example_declares_only_the_one_dependency_an_author_declares() {
+    // The test above is about the crate whose doctests are the compile-fail
+    // suite. This is about the rest: every example is a mod written against the
+    // public surface, so an example that quietly grew a second dependency would
+    // be demonstrating a manifest no author can write. The examples are
+    // discovered rather than listed, because a list is a thing the next example
+    // can be left out of.
+    let root = repository_root().join(EXAMPLES);
+    let mut examined = Vec::new();
+
+    for entry in fs::read_dir(&root)
+        .unwrap_or_else(|error| panic!("cannot read {}: {error}", root.display()))
+    {
+        let entry = entry.expect("a readable directory entry");
+        let manifest = entry.path().join("Cargo.toml");
+        if !manifest.is_file() {
+            continue;
+        }
+        let relative = format!(
+            "{EXAMPLES}/{}/Cargo.toml",
+            entry.file_name().to_string_lossy()
+        );
+        assert_eq!(
+            every_declared_dependency(&document(&relative)),
+            BTreeSet::from([AUTHOR_DEPENDENCY.to_owned()]),
+            "{relative} is an example a mod author reads as a model manifest, so it declares \
+             `{AUTHOR_DEPENDENCY}` and nothing else — in any table, including a `[target.*]` one \
+             and including a dev- or build-dependency."
+        );
+        examined.push(relative);
+    }
+
+    examined.sort();
+    assert!(
+        examined.contains(&EXAMPLE_MANIFEST.to_owned()),
+        "{EXAMPLE_MANIFEST} was not among the examples this test found, so the walk read the \
+         wrong directory and every assertion above it was vacuous. Found: {examined:?}"
+    );
+}
+
+#[test]
 fn the_facade_closure_reaches_no_crate_a_mod_is_forbidden_to_reach() {
     let reached = closure();
 
@@ -399,6 +443,17 @@ fn the_facade_closure_is_the_set_this_test_believes_it_is() {
         "proc-macro2",
         "quote",
         "ravel-core",
+        // M4-W2 put the declaration model a mod writes — registry entries, tag
+        // memberships, supplied resources, and the pack they generate — behind
+        // `content`, `tags`, `resources` and `generate`. The model is
+        // `ravel-data`'s, because `ravel-pack` reads the same declarations in
+        // M4-W5 and a model living in the facade would invert that. It reaches
+        // nothing new: `ravel-data` depends on `ravel-core` and `serde_json`,
+        // both already here. `RelativePath` moved down to `ravel-core` for that
+        // reason — `ravel-data` naming it through `ravel-package` would have put
+        // that crate's SHA-256 implementation and its `digest` subtree into every
+        // mod's build graph, for a validated path newtype.
+        "ravel-data",
         "ravel-host-api",
         "ravel-save",
         "ravel-sdk",

@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 ravel-core.workspace = true
+ravel-data.workspace = true
 ravel-host-api.workspace = true
 ravel-save.workspace = true
 ravel-sdk-macros.workspace = true

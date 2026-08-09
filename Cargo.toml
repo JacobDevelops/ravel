@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/*",
+  "examples/content-mod",
   "examples/minimal-mod",
   "experiments/adg-1-jvm-entry",
   "experiments/adg-2-guest",
@@ -33,6 +34,7 @@ ravel-bootstrap = { path = "crates/ravel-bootstrap", version = "0.0.0" }
 ravel-config = { path = "crates/ravel-config", version = "0.0.0" }
 ravel-core = { path = "crates/ravel-core", version = "0.0.0" }
 ravel-data = { path = "crates/ravel-data", version = "0.0.0" }
+ravel-example-content-mod = { path = "examples/content-mod", version = "0.0.0" }
 ravel-example-minimal-mod = { path = "examples/minimal-mod", version = "0.0.0" }
 ravel-host-api = { path = "crates/ravel-host-api", version = "0.0.0" }
 ravel-loader = { path = "crates/ravel-loader", version = "0.0.0" }

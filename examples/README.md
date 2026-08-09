@@ -7,6 +7,6 @@ has drifted stops building here first.
 
 - [`minimal-mod`](minimal-mod) — the smallest complete mod, and M4-W1's
   compile-pass/fail suite for the author boundary.
-- `content-mod` — M4-W2, once registries, tags, resources and generated data have
-  public APIs.
+- [`content-mod`](content-mod) — a mod that adds content: registry entries, tags,
+  resources and the pack M4-W2's generator produces from them.
 - `pack-module` — M4-W5, once `ravel-pack` declares and validates a pack.

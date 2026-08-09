@@ -820,6 +820,7 @@ dependencies = [
  "ravel-config",
  "ravel-core",
  "ravel-data",
+ "ravel-example-content-mod",
  "ravel-host-api",
  "ravel-loader",
  "ravel-observability",
@@ -853,7 +854,14 @@ name = "ravel-data"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
- "ravel-package",
+ "serde_json",
+]
+
+[[package]]
+name = "ravel-example-content-mod"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
 ]
 
 [[package]]
@@ -966,6 +974,7 @@ name = "ravel-sdk"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "ravel-data",
  "ravel-host-api",
  "ravel-save",
  "ravel-sdk-macros",

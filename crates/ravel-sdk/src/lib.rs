@@ -52,6 +52,25 @@
 //! implements [`Mod::observe`], and a mod that owns world data implements the
 //! saved-data methods.
 //!
+//! # What a mod declares
+//!
+//! Content is declared in one place and claimed from there. A
+//! [`content::ContentDeclaration`] holds a mod's registry entries, its tag
+//! memberships, the translations it supplies and any bytes Ravel does not
+//! generate for it; [`content::claim_all`] takes the entries to the registration
+//! barrier, and [`content::ContentDeclaration::generate`] produces the files.
+//!
+//! The three kinds of declaration behave differently once several mods are
+//! installed, and each module says so where an author will read it:
+//!
+//! - [`content`] — registry entries, which have one owner, so a second claim is
+//!   a conflict the barrier refuses;
+//! - [`tags`] — memberships, which have no owner, so contributions merge;
+//! - [`resources`] — supplied paths, which have one supplier, so the later mod
+//!   overrides and the mods it shadowed are named;
+//! - [`generate`] — the pack a declaration produces, byte for byte the same each
+//!   time it is produced.
+//!
 //! # What this crate deliberately does not expose
 //!
 //! `docs/architecture/dependency-rules.md` requires the SDK to expose no
@@ -74,7 +93,10 @@ extern crate self as ravel_sdk;
 
 pub mod content;
 pub mod events;
+pub mod generate;
+pub mod resources;
 pub mod save;
+pub mod tags;
 
 pub use ravel_core::{LifecycleState, ModId, ModIdError, Side, SideSet, Version, VersionRange};
 /// Why a mod refused the step the loader asked it to take.
@@ -144,8 +166,12 @@ pub trait Declared {
 /// assert_eq!(Example::declared_id().as_str(), "example");
 /// ```
 pub mod prelude {
-    pub use crate::content::{Registrar, RegistrationRefused, RegistryKey};
+    pub use crate::content::{
+        ContentDeclaration, ContentId, ContentKind, Registrar, RegistrationRefused, RegistryKey,
+        claim_all,
+    };
     pub use crate::events::{CommandInvocation, GameEvent};
+    pub use crate::tags::TagId;
     pub use crate::{Declared, LifecycleState, Mod, ModError, ModId, Side, declare_mod};
 }
 

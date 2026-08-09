@@ -3,12 +3,26 @@
 Dependencies point from orchestration toward stable contracts, never from
 stable contracts toward concrete host internals.
 
-- `ravel-core` owns identity, version, side, lifecycle, and diagnostic types.
-  It has no loader, SDK, or Minecraft dependency.
+- `ravel-core` owns identity, version, path, side, lifecycle, and diagnostic
+  types. It has no loader, SDK, or Minecraft dependency. `RelativePath` is here
+  rather than in `ravel-package` because two unrelated layers need a validated
+  package-relative path and only one of them reads a manifest: `ravel-data` names
+  the path a resource is supplied at and the path a generated file is written to,
+  and reaching up for the type would put `ravel-package`'s SHA-256 dependency and
+  its `digest` subtree into the dependency closure of every mod. The grammar is
+  still `schemas/package.schema.json`'s, and `ravel-package` re-exports the type
+  so a manifest field is still declared where a manifest is.
 - Package and resolver layers may depend on core and serialization or graph
   libraries. They do not depend on bootstrap, SDK, or a concrete adapter.
 - The SDK is a safe author-facing facade. It must not expose bootstrap details,
-  generated JVM types, or Minecraft-version internals.
+  generated JVM types, or Minecraft-version internals. It depends on `ravel-core`,
+  `ravel-host-api`, `ravel-save` and `ravel-data`, and
+  `tests/conformance/tests/sdk_boundary.rs` pins that closure package by package
+  from `Cargo.lock`. `ravel-data` is there because the content declaration a mod
+  writes — registry entries, tag memberships, supplied resources, and the pack
+  they generate — is that crate's model, and `ravel-pack` reads the same
+  declarations in M4-W5; a model living in the facade would make a feature crate
+  depend on the facade.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data.
   General crates must remain buildable against a synthetic second adapter.

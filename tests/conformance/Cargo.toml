@@ -16,6 +16,7 @@ ravel-sdk.workspace = true
 ravel-config.workspace = true
 ravel-core.workspace = true
 ravel-data.workspace = true
+ravel-example-content-mod.workspace = true
 ravel-host-api.workspace = true
 ravel-loader.workspace = true
 ravel-observability.workspace = true

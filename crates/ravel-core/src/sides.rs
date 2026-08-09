@@ -316,6 +316,32 @@ mod tests {
     }
 
     #[test]
+    fn the_variant_list_serde_reads_is_exactly_the_one_side_all_holds() {
+        // `ALL` is hand-written, so nothing forces a fourth variant into it and
+        // every derivation from it inherits the gap. serde's unknown-variant
+        // message enumerates the variants from the enum itself, so comparing the
+        // two is what makes `ALL` incomplete a failure rather than a silence.
+        let error = serde_json::from_str::<Side>("\"not-a-side\"")
+            .expect_err("no side is spelled that way");
+        let text = error.to_string();
+        let named = text
+            .split_once("expected one of ")
+            .expect("serde names the variants it knows")
+            .1;
+        let named = named.split(" at line").next().unwrap_or(named);
+
+        assert_eq!(
+            named,
+            Side::ALL
+                .iter()
+                .map(|side| format!("`{}`", side.name()))
+                .collect::<Vec<_>>()
+                .join(", "),
+            "`Side::ALL` and the enum disagree about which sides exist"
+        );
+    }
+
+    #[test]
     fn only_the_client_is_not_a_server_side() {
         assert!(!Side::Client.is_server());
         assert!(Side::IntegratedServer.is_server());

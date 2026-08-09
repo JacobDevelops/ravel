@@ -374,7 +374,8 @@ What the numbers say:
   1.7× rise across a 256-fold change in pack size, because cargo rebuilds the
   changed crate and relinks and nothing else. Adding a mod is between the warm and
   cold figures and was not measured.
-- **A four-core player pays 73.8 s cold at 256 mods against 32.0 s**, and pays it
+- **A four-core player pays 73.8 s cold at 256 mods against the control's
+  30.5 s**, and pays it
   in a smaller memory footprint, not a larger one: peak resident memory over the
   cargo process tree is 754 MB at four jobs against 2.85 GB at sixteen. Build
   memory is set by how many `rustc` processes run at once, so the machine least

@@ -159,10 +159,18 @@ promoted deliberately; a handle held past its frame is a use-after-free, and a
 handle promoted and never released pins an object the collector wants.
 
 That risk belongs to a safe wrapper whose type ties a handle to the call that
-produced it, so a handle that outlives its frame does not compile. It is the part
-of this amendment that needs review, and it is the part no measurement here
-covers. It is a bounded and well-understood problem, which is what distinguishes
-it from the open-ended divergence a mirror would have introduced.
+produced it, so a handle that outlives its frame does not compile. No measurement
+here covers it, and it is a bounded and well-understood problem, which is what
+distinguishes it from the open-ended divergence a mirror would have introduced.
+
+**Built and proved at M3, so this is no longer owed work.**
+`JavaHandle<'local>` in `crates/ravel-minecraft/src/lib.rs` holds
+`&'local JObject<'local>` and a declared class name and nothing else, and three
+`compile_fail` doctests beside it kill the three escapes by type rather than by
+convention: returning a handle from the frame that produced it, sending one to a
+thread, and an observer hoarding them. The wrapper's proof is where a reader
+should look for it, which is why this record points at it rather than describing
+work to be done.
 
 ### What is still forbidden
 

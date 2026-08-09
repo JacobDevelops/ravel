@@ -709,13 +709,16 @@ migration. `targets` is no longer admitted; `source` declares a repository and a
 least one portable source file with its SHA-256 digest. The old mismatch remains
 part of the M2 and ADG-2 historical record.
 
-Two accepted records were amended for M3, and neither changed what it decided.
-ADG-4 admits an opaque handle to an object the *game* owns, which is what lets
-the generator carry M3's real hook targets — essentially all of them carry game
-objects, and under the strict reading the generator admitted almost none of this
-milestone's work. ADG-1 records that three artifacts
-enter the game process rather than two, and that the screen ADG-6 decided is not
-the agent jar's to carry.
+Accepted records were amended for M3 without any of them changing what it decided,
+and each amendment is recorded in the record it amends rather than counted here —
+the `Status` line of every file in [`docs/decisions/`](docs/decisions/) is what
+says which were touched and when. ADG-4 admits an opaque handle to an object the
+*game* owns, which is what lets the generator carry M3's real hook targets —
+essentially all of them carry game objects, and under the strict reading the
+generator admitted almost none of this milestone's work. ADG-1 records that three
+artifacts enter the game process rather than two, that the screen ADG-6 decided is
+not the agent jar's to carry, and that the always-present jar declares no game
+type while naming some reflectively.
 
 **M3-W6's budget is decided rather than derived.** Every limit in
 [`loader-overhead.json`](evidence/m2/loader-overhead.json) is its own measurement
@@ -945,8 +948,8 @@ distribution, rollback, and private-history isolation.
 | Game Java runtime required by pinned metadata | M0-W6 | discharged; M0 closed |
 | Architecture comparison metrics and failure actions | M0-W8 | discharged; M1 selected against it |
 | JVM hook mechanism | ADG-1 / M1 | discharged; amended before M3-W3 on what enters the game process |
-| Rust execution/package/ABI model | ADG-2 / M1 **and M3** | discharged at M3: source distribution, compiled on the player's machine. Reconciling `package.schema.json` and `SPEC.md` §3.4 is now live work |
-| Binding extraction and generation | ADG-3 / M1 | discharged |
+| Rust execution/package/ABI model | ADG-2 / M1 **and M3** | discharged at M3: source distribution, compiled on the player's machine. Reconciling `package.schema.json` and `SPEC.md` §3.4 is closed as a breaking schema-v1-in-place migration |
+| Binding extraction and generation | ADG-3 / M1 | discharged, with one surface outside it: the agent jar's persistence adapter resolves game classes and members by name and none of them is in `stubs.toml` or `mappings.lock`, so the drift gate does not reach them. `verify_persistence_reflection` pins the class set and cannot see a rename. Bringing the whole surface — the classes, the members resolved by name and arity, the two `LevelResource` field constants, and the `SavedDataStorage` constructor arity — under `stubs.toml` and `mappings.lock` needs the stub-seed and lock re-pin ceremony against the pinned jar. **No work package owns that yet.** M3's packages are closed and none named it; M4-W1 to M4-W8 do not either. It belongs with the version-adapter re-pin work, and **M4-W6 is the first gate that cannot honestly pass without it**, because proving version isolation against a second version is exactly what an unpinned reflective surface defeats. Until a package owns it and runs it, no milestone may claim drift coverage for the agent jar's persistence adapter |
 | Java/Rust state ownership | ADG-4 / M1 | discharged; amended at M3-W0 to admit opaque handles |
 | Stock Prism versus minimal patch | ADG-5 / M1 | discharged; the library-path argument does not work and ADG-5's amendment chose the fix — `System.load` on a path given by a `-D` property. No work package owns building it, so the native half has no conformance claim until one does |
 | Configuration and UI schema | ADG-6 before M3-W3 | discharged; declared in data, drawn in Java |

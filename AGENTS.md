@@ -39,9 +39,10 @@ pass `ravel-format`. Report the real output. Never state that a gate passed with
 `ravel:verify` checks every milestone manifest for the things the repository decides: schema conformance,
 `revision.changeId` provenance, digest binding, and the recorded arithmetic. It deliberately does not ask
 whether a milestone is closed. Whether the independent review passed and whether any finding is blocking are
-verdicts, and M1, M2 and M3 record `review.result: "fail"`, so a green `ravel:verify` says the evidence is
-intact and says nothing about closure. Closure is `devenv tasks run ravel:verify-milestone:<id>`, which
-exits 1 for M1, M2 and M3 today and is expected to.
+verdicts a manifest records rather than facts the gate derives, so a green `ravel:verify` says the evidence is
+intact and says nothing about closure. Closure is `devenv tasks run ravel:verify-milestone:<id>`, and an open
+milestone exits 1 there and is expected to. Ask that task which milestones are closed; do not trust a list
+written here, and do not write one — a milestone closes and this sentence would go stale unnoticed.
 
 The gate prints a green test summary even when it fails. Judge it by the exit status.
 

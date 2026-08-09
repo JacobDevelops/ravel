@@ -21,10 +21,15 @@
 //! through [`SavedDataAggregate::open`], resolves a plan and delivers the
 //! envelope with [`HostMod::open_saved_data`]. That is the sequence
 //! `ravel-bootstrap`'s `stage_world` and `save_world` run, in the same order,
-//! and `reload` below is written against it — a serializer that dropped what it
-//! was given, or a delivery that never reached the mod, has to fail something
-//! here. What the reload deliberately does not reach is Java: the crossing and
-//! the identity-keyed staging around it are `ravel-bootstrap`'s, which no
+//! and `reload` below is written against it — so a serializer that dropped what
+//! it was given fails here. What `reload` cannot speak for is production's own
+//! delivery: it restates that sequence rather than calling it, so a
+//! `stage_world` that stopped handing the envelope over would leave every test
+//! in this file green. `ravel-bootstrap`'s
+//! `a_stored_aggregate_reaches_the_mod_that_owns_it` and
+//! `a_world_reopened_from_what_its_save_emitted_holds_the_same_state` are what
+//! constrain that, for the same reason Java is out of reach here: the crossing
+//! and the identity-keyed staging around it are `ravel-bootstrap`'s, which no
 //! maintained crate may depend on, so their own tests own that half.
 //!
 //! Refusals travel the route production has. A saved-data refusal is decided at

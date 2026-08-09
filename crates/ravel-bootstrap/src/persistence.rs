@@ -704,6 +704,74 @@ mod tests {
             .expect("the payload records a visit count")
     }
 
+    /// The bytes of a world whose one envelope records `count` visits.
+    fn stored_visits(count: u32) -> Vec<u8> {
+        let mut aggregate = SavedDataAggregate::fresh();
+        aggregate.replace(SavedDataEnvelope::new(
+            id(OWNER),
+            version(2),
+            Vec::new(),
+            None,
+            json!({ "visits": count }),
+        ));
+        aggregate.to_bytes().expect("bounded")
+    }
+
+    /// The delivery half of the crossing, which nothing else here drives.
+    ///
+    /// Every other staging test that succeeds passes absent bytes, and the ones
+    /// that pass bytes assert a refusal, so a crossing that delivered `None` to
+    /// every mod — telling each one its world holds nothing, on every open —
+    /// would satisfy all of them. This asserts the mod received what the world
+    /// stored.
+    #[test]
+    fn a_stored_aggregate_reaches_the_mod_that_owns_it() {
+        let (runtime, held) = running();
+
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), Some(&stored_visits(5)), false)
+            .expect("a readable aggregate opens its world");
+
+        assert_eq!(
+            held.visits.load(Ordering::SeqCst),
+            5,
+            "the world's stored state never reached the mod that owns it"
+        );
+    }
+
+    /// Open, save, open again, through the production pair both times.
+    ///
+    /// The second stage is handed nothing but the bytes the first world's save
+    /// emitted, so a save that wrote a mod's state and an open that discarded it
+    /// cannot both pass: the round trip is what binds the two crossings to one
+    /// value.
+    #[test]
+    fn a_world_reopened_from_what_its_save_emitted_holds_the_same_state() {
+        let (first, held) = running();
+        first
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("a new world stages");
+        held.visits.store(11, Ordering::SeqCst);
+        let stored = replacement(first.save_world(&WorldIdentity::of(FIRST)));
+
+        // A later session: the same world, opened from what its save wrote.
+        let (second, reopened) = running();
+        second
+            .stage_world(WorldIdentity::of(FIRST), Some(&stored), false)
+            .expect("the bytes a save emitted open the world they came from");
+
+        assert_eq!(
+            reopened.visits.load(Ordering::SeqCst),
+            11,
+            "the round trip lost the state the save emitted"
+        );
+        // And the reopened world writes it back rather than resetting it.
+        assert_eq!(
+            visits(&replacement(second.save_world(&WorldIdentity::of(FIRST)))),
+            11
+        );
+    }
+
     #[test]
     fn an_absent_aggregate_stages_fresh_state_and_the_first_save_promotes_it() {
         let (runtime, held) = running();

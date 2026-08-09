@@ -21,6 +21,7 @@ ravel-example-stateful-mod.workspace = true
 ravel-host-api.workspace = true
 ravel-loader.workspace = true
 ravel-observability.workspace = true
+ravel-pack.workspace = true
 ravel-save.workspace = true
 ravel-test-mod-client-only.workspace = true
 ravel-test-mod-commands.workspace = true

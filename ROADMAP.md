@@ -611,8 +611,27 @@ distribution.
 | M2-W4 | Implement lifecycle state machine | M2-W1 | loader state machine | every legal and illegal transition plus every spec invariant is tested |
 | M2-W5 | Implement selected bootstrap and adapter shell | M1 ADRs, M2-W4 | bootstrap, host API, shared adapter plus 26.1.2 version data | official 26.1.2 process reaches Ravel without another loader |
 | M2-W6 | Package and execute no-op test mod | M2-W2..W5 | source-only no-op package | recorded evidence shows validate/resolve/load/construct/register/run/stop in deterministic order |
-| M2-W7 | Add world-access and structured-failure gates | M2-W3..W6 | pre-world UI/log diagnostic path | invalid packages, sides, integrity and graphs cannot open a world; reports redact secrets/paths |
+| M2-W7 | Add world-access and structured-failure gates | M2-W3..W6 | pre-world UI/log diagnostic path | invalid packages, sides, integrity and graphs cannot open a world; reports redact secrets/paths. The gate answered that question with no caller until 2026-08-09; ADG-7's world-open crossing now asks it, and the note below says which half of it a launch can reach |
 | M2-W8 | Measure loader overhead and set regression budget | M2-W6..W7 | Linux no-op loader benchmark and review | the measured loader cost establishes the numeric regression budget used from M3 onward; M2 gate passes. Three of its six limits have since expired — see below |
+
+**M2-W7's gate is now consulted by the game process, and only one of its two
+halves can refuse there.** `LifecycleMachine::open_world` had no caller outside
+tests, so "cannot open a world" was proven as *the loader answers no when asked*
+and nothing in a launch asked. ADG-7's open crossing asks it now:
+`crates/ravel-bootstrap/src/persistence.rs` consults the gate before it touches a
+byte of world state, and a refusal becomes the diagnostic the Java adapter
+refuses the load on. The machine's half is live in a launch — a required mod that
+fails halts the set and from then on no world opens. The report's half is carried
+from `install` and holds nothing in a launch, because the pipeline that validates
+a package and orders a graph runs when a pack is compiled rather than inside the
+game process. So an invalid package cannot reach a launch to be refused in one,
+and the refusals `pre-world-gate.json` records remain the loader's own answers.
+
+**M2's closure review returns FAIL.** [`evidence/m2/review.md`](evidence/m2/review.md)
+is a cold audit of this gate, bound by digest, and `review.result` is `fail`. The
+review that originally closed M2 was recorded by title against a digest matching
+no tracked file; both it and the `pass` it carried are withdrawn. M2 does not
+close until an independent review of the repaired state passes.
 
 **Three of that budget's six limits have expired, on the budget's own terms.**
 [`loader-overhead.json`](evidence/m2/loader-overhead.json) carries a

@@ -82,7 +82,7 @@
     "results": [
       {
         "name": "noop-pipeline.json",
-        "sha256": "56e39268f71e83f30d9ea0fd7a8aa1d3e225a30e69a3e39ab8b10c25b11fd93d"
+        "sha256": "fc2d64a0a111dcc8dffd73080410a0cdc9c95529caf28fbcd3f75846e477df7b"
       },
       {
         "name": "pre-world-gate.json",
@@ -136,8 +136,36 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "M2's review.record has been withdrawn. It recorded sha256 abc003fdd77ede9be08f0ddf36c0b10e381431ff684c8bb7a874420513abea78 under the title M2 independent closure review, and that digest matches no file this repository tracks, at this revision or at the one the manifest pins. So the review that closed M2 could not be obtained, read, or hashed by anyone who did not run it, and result pass rested on a claim no reader could check. The field is withdrawn rather than renamed because a review that was never written into the repository cannot be produced after the fact; the orphaned digest is kept in this sentence so the claim itself is not lost. The consequence is deliberate: ravel:verify-milestone:m2 now reports milestone review must include a hashed record and exits non-zero, which is the true state of M2's closure. What closes this is a reviewer writing a record, not an edit to this file.",
+      "summary": "M2's original review.record was withdrawn, and the pass verdict it carried has now been withdrawn with it. The record named sha256 abc003fdd77ede9be08f0ddf36c0b10e381431ff684c8bb7a874420513abea78 under the title M2 independent closure review, and that digest matches no file this repository tracks, at this revision or at the one the manifest pins; a cold audit recomputed 728 file digests across both revisions and found no match. So the review that closed M2 could not be obtained, read, or hashed by anyone who did not run it, and result pass rested on a claim no reader could check. The first repair withdrew only the digest and left result pass standing, which is worse rather than better: a pass attributed by name to the very review the same manifest said nobody could read. That verdict is now withdrawn too. review.md is the cold audit's verdict, reproduced without softening and with nothing added; review.record binds it by path and digest, and review.result is fail. The orphaned digest is kept in this sentence so the claim itself is not lost. What closes M2 is an independent review of the repaired state that returns pass, not an edit to this file.",
       "classification": "blocking"
+    },
+    {
+      "summary": "The cold audit's F1, and the substantive finding of the review. crates/ravel-loader/src/world.rs LifecycleMachine::open_world had no caller outside tests, so M2-W7's cannot open a world was established only as the loader answering no when something asks it, and nothing in the game process asked. It is asked now. crates/ravel-bootstrap/src/persistence.rs stage_world consults open_world before it reads or writes a byte of world state, and ADG-7's open crossing ravel_open_world_persistence is what reaches it, so a refusal becomes the diagnostic that jvm/bootstrap/dev/ravel/jvm/Persistence.java refuses the world load on. The fail-closed polarity is untouched: null still refuses, only an empty string admits, and a gate refusal carries text where a native failure carries null. What the wiring reaches is stated honestly by half. The machine's half is live in a launch: a required mod that fails halts the set and from then on no world opens. The report's half is carried from install, which the composed host hands its own, and holds no refusal in this build, because the pipeline that validates a package and orders a dependency graph runs when a pack is compiled rather than inside the game process, so nothing in a launch can produce one of those refusals yet. Both halves are covered by tests that fail when the call is removed.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The cold audit's F3. Every load-bearing figure in M2-W5 is attested rather than recomputable, because the launcher capture behind it is deleted once hashed, and the split between what reconciles and what does not is exact. Two counts reconcile independently from tracked data: at the pinned revision minecraft/versions/26.1.2/hooks.toml holds exactly 6 entries across exactly 2 classes, of which 4 are static-method, 1 instance-method and 1 instance-field, which matches classesRewritten 2 and methodsRewritten 5. nativeInvocations 144 reconciles against nothing, and neither does the instance component list or the digest of the redacted launcher log. Those figures must be read as attested by an operator and not as observed by a reader.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The cold audit's F4. loader-overhead.json states that every limit is the M2 measurement times two, and loader.modCall.p99 carries limit 12.0 against a measurement of 5.51, which is 2.18 times rather than 2. The rule is what is incomplete, not the number: the generator at experiments/m2-loader-overhead/src/main.rs computes each limit as ceil(measured times two), so 5.51 gives ceil(11.02) which is 12, and loader.marginalCostPerPackage.p99 shows the same rounding at 7769.25 giving ceil(15538.5) which is 15539. Every one of the six limits is exactly ceil(measured times two). The integer ceiling is proportionally largest on the smallest metric, which is why this one limit reads as 9 percent loose. The record is a measurement and is not edited after the fact, so the rule sentence inside it stands as written and this deviation is what states the arithmetic it omits.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The cold audit's F5. This manifest describes no single tree state. revision.id pins 93772540 with dirty false and commands[0] attests a ravel:verify at 429 tests there, but noop-pipeline.json and pre-world-gate.json did not exist at that revision: both were regenerated by the schema-v1 migration on 2026-08-08, and noop-pipeline.json has been regenerated again since to correct the wording F7 found. loader-overhead.json and prism-launch.json are byte-identical to the pinned revision. So the attested run did not verify two of the four records this manifest now admits. What mitigates it is that those two are the generated records: tests/conformance/tests/noop_pipeline.rs and tests/conformance/tests/pre_world_gate.rs rerun the pipeline and the gate on every test run and fail if either file differs by a byte, so each describes today's loader rather than an archived one, which is the stronger property. The digest-to-file binding was repaired at the cost of the record-to-revision binding, and nothing in this manifest said so until this sentence.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The cold audit's F6. The schema-v1 regeneration dropped a refusal case without saying so: pre-world-gate.json went from 7 refusals to 6 when unsupported-target left with the targets schema form, and the record's summary still reads as exhaustive. Two of the remaining six carry failureKind null. Two of SPEC.md section 9.2's six conditions are absent from the record altogether: duplicate identities, which is a gap in the record rather than in the loader because it is implemented and tested at crates/ravel-resolve/src/graph.rs, and conflicting registry claims, which is legitimately M3-W1's. The dropped case is not one M2-W7 enumerates, so the row is unaffected, and the record is left as generated rather than edited to read better.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The cold audit's F7, corrected rather than carried. README.md and noop-pipeline.json both said the no-op package ran every SPEC.md section 14 state, and the transcript holds 8 of the 10 that section defines. Eight is the right number, because discovered precedes the transcript and failed cannot appear in a run that succeeded, so the wording was what was wrong. The generator's summary and the README row now say the eight states a successful run reaches and why the other two are absent, and noop-pipeline.json is regenerated from that generator, which is why its digest above differs from the one the pinned revision carried.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The cold audit's F8. Present-tense prose in this historical manifest has gone stale and is left standing rather than rewritten, so this sentence says what is true now. The deviation above about schemas/package.schema.json still requiring per-target artifacts, and its statement that M3 reconciles the schema, describe a state M3 has since changed: the schema requires integrity-protected portable source files and refuses the old target form. The risk above about ravel-config being an empty placeholder is likewise overtaken, and so is environment.settings.modExecutionModelSelected false. Separately: no property-based testing framework exists anywhere in this repository, neither proptest nor quickcheck, so M2-W1's unit/property tests row is met by exhaustive enumeration over closed sets and table-driven valid and invalid cases. For identities, sides, versions and a ten-state machine that is stronger than random generation, because the enumeration is complete rather than sampled, but the row's wording promises a technique that is not present.",
+      "classification": "non-blocking"
     }
   ],
   "risks": [
@@ -167,9 +195,13 @@
     }
   ],
   "review": {
-    "reviewer": "independent Claude reviewer (M2 closure, adversarial pass over records, budget method, and launch evidence)",
+    "reviewer": "independent cold auditor of the M2 gate, who wrote no part of the work under review; the tracked record is that audit's verdict",
     "independent": true,
-    "result": "pass"
+    "result": "fail",
+    "record": {
+      "name": "review.md",
+      "sha256": "dc8e8b688c925f338bdcb8b5788ece0de33e28621414436a85896ce79bd1cedb"
+    }
   },
   "attestations": [
     {

@@ -6,7 +6,7 @@ what it admits, and `devenv tasks run ravel:verify-milestone:m2` reads both.
 
 | Record | Work package | What it shows |
 | --- | --- | --- |
-| [`noop-pipeline.json`](noop-pipeline.json) | M2-W6 | The no-op package validated, resolved, and driven through every `SPEC.md` §14 state, in order, on each side it declares. |
+| [`noop-pipeline.json`](noop-pipeline.json) | M2-W6 | The no-op package validated, resolved, and driven through the eight `SPEC.md` §14 states a successful run reaches, in order, on each side it declares. `discovered` precedes the transcript and `failed` cannot appear in a run that succeeded, so eight is every state this run could hold. |
 | [`pre-world-gate.json`](pre-world-gate.json) | M2-W7 | Six invalid package sets refused before a world could open, each reported as its own `SPEC.md` §9.2 outcome, and what the redaction policy took out of the one message Ravel did not write. |
 | [`loader-overhead.json`](loader-overhead.json) | M2-W8 | What the loader costs on Linux for that package, what a linked pack-sized set costs to build, and the numeric budget M3 regresses against. |
 | [`prism-launch.json`](prism-launch.json) | M2-W5, M2-W8 | The official pinned client launched from stock Prism with Ravel's agent attached, rewriting its target classes inside the real game process, with no other mod loader installed. |
@@ -29,16 +29,25 @@ an operator captured outside this repository, and the log is deleted once its
 digest is taken. That digest is the one hash here nobody can recompute, which is
 the same trade M0 and M1 made for their launches.
 
-M2's independent closure review is not here, and that is now visible instead of
-hidden. `review.record` recorded a title and a sha256 that matches no file this
-repository tracks, so the review that closed M2 could not be read or hashed by
-anyone who did not run it. The field is withdrawn rather than renamed, because a
-review that was never written into the repository cannot be produced afterwards, and
-the orphaned digest is kept in the manifest's deviations so the claim is not lost.
-`ravel:verify-milestone:m2` therefore reports `milestone review must include a
-hashed record` and exits non-zero. M2's measurements are unaffected — every digest
-here is recomputable — but its closure rests on a review nobody else can confirm,
-and a reviewer writing a record is what closes that, not an edit.
+[`review.md`](review.md) is M2's closure review, and it returns FAIL. The review
+that originally closed M2 is not here and cannot be: `review.record` named a
+title and a sha256 matching no file this repository tracks, so that review could
+not be read or hashed by anyone who did not run it. Withdrawing the digest and
+keeping its `pass` verdict left the worse state of the two — a pass attributed by
+name to a review the same manifest said nobody could obtain — so the verdict is
+withdrawn as well. A cold audit has since reviewed the gate independently;
+`review.md` is its verdict, reproduced without softening, and
+`review.result` is `fail`. The orphaned digest stays in the manifest's deviations
+so the claim is not lost. M2's measurements are unaffected — every digest here is
+recomputable — and what closes M2 now is an independent review of the repaired
+state that passes.
+
+The audit's blocking finding was that `LifecycleMachine::open_world` had no
+caller outside tests, which made M2-W7's "cannot open a world" a statement about
+the loader's model rather than about the game process. ADG-7's world-open
+crossing now consults it, so a set the loader refuses opens no world in a launch
+either. The manifest's deviations record what each of the audit's eight findings
+became.
 
 The records name files, mods, states, and digests. They name no filesystem path,
 no credential, and no local directory. The conformance tests assert it over the

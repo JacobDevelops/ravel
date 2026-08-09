@@ -28,10 +28,32 @@ review that no reader can obtain is not evidence of a review. Absence is legal �
 a milestone under construction has no review yet — and the milestone gate is what
 refuses to close without one.
 
-`revision.id` identifies the source revision exercised by the recorded commands,
-and `revision.dirty` records that source tree's state at execution time. The
-revision can precede the commit that admits its manifest, because a tracked
-manifest cannot contain the hash of the commit that contains itself.
+`revision.id` is the revision every `inputs[]` digest is recomputed at, and it must
+be the commit `revision.changeId` is at and one visible history reaches.
+`verify_pinned_commit` enforces both on every `ravel:verify`. A commit id does not
+survive a rewrite — jj abandons the commit and keeps the change — so a manifest
+pinned by commit id dangles the moment its change is revised, and the dangling is
+invisible in the working copy that rewrote it because the operation log still
+resolves the abandoned commit. All four manifests were in that state until a cold
+reviewer cloned the repository and found every recorded input digest unreadable. A
+rewrite now costs a re-pin and a re-hash, which is the only way the field stays true.
+
+What `revision.id` does not identify is the tree the recorded commands ran on. A
+manifest cannot contain the hash of the commit that contains it, so `commands` and
+`tests` are recorded against an earlier commit and then the manifest is rewritten
+above it. `revision.dirty` records that source tree's state at execution time. No
+gate recomputes those figures — the arithmetic between them and the coverage floor
+are all that bind — so they are the operator's attestation that the gate ran and
+passed, and each manifest says so in a deviation. The digests are the part a reader
+recomputes.
+
+That recompute needs a jj repository, not this working copy. A clone of this
+repository reaches the pinned commits through git HEAD, which the colocated
+repository exports over the visible stack, so `jj git init --colocate` in a clone is
+enough to recompute every input digest. Without a jj repository both provenance
+checks announce that they are skipping rather than report a pass. Each manifest
+records those limits, and the fact that nothing in the stack has been pushed, as a
+deviation.
 
 `platformEvidence` records each native platform's exact versions, relevant
 settings, verification commands, and hashed launch, baseline, or validation

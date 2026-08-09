@@ -96,37 +96,47 @@ the other records on whether the world round trip had happened, and
 `linux-process-matrix.json` self-declared a `pass` the manifest held open. The
 digests are recomputed and every record now says the same thing.
 
-The revision and the gate numbers are a narrower claim than that, and an earlier
-draft of this paragraph overstated it twice: first by calling them "this state's",
-then by counting how far below the tip the pinned revision sits. Both are the same
-mistake. `revision.id` is `3c3520be`, a commit below the tip of this stack and an
-ancestor of it, under every change that landed after it. How many that is moves on
-the next commit, so the count belongs to `jj log` and not to this file; what is
-stated here is the relationship. The commit is also one that change
-`pqkoksqopryu` no longer points at, because every jj rewrite abandons the commit
-and keeps the change: `jj log` reports it hidden, and `jj file show -r` resolves it
-out of the operation log rather than out of visible history. `tests.total` is that
-revision's 813, which is not the count `ravel:verify` runs on this tip and cannot
-be, since every change above it that adds a test moves the tip's; and
-`commands[0].logSha256` names that run's log. That gap is not the drift the review
-found — it is arithmetic. Recording a gate result changes the tree that produced
-it, so `revision.id` can never be the tip commit, and a manifest asserting
-otherwise would be asserting an identity no evidence file can hold. What the
-manifest attests is therefore that these numbers are the run made on the revision
-it pins, and that the revision it pins is below the tip. The convention is to run
-the gate over the content, write the numbers, then run both gates again over the
-file as it stands and report that second run in the change description rather than
-recursively into these fields; `linux-process-matrix.json` uses the same
-convention for its own gate digests.
+The revision and the gate numbers are a narrower claim than that, and successive
+drafts of this paragraph overstated it three times: first by calling the numbers
+"this state's", then by counting how far below the tip the pinned revision sits, and
+then by pinning a commit that only this working copy could resolve. `revision.id`
+names the commit that `revision.changeId` is at, which is a commit below the tip of
+this stack and an ancestor of it. How far below moves on the next commit, so the
+count belongs to `jj log` and not to this file; what is stated here is the
+relationship. It previously named a commit jj had abandoned when it rewrote that
+change — `jj log` reported it hidden and `jj file show -r` read it out of the
+operation log rather than out of visible history — and a cold reviewer's clone,
+which carries no `refs/jj/*`, could resolve nothing. `verify_pinned_commit` now
+requires `revision.id` to be visible and to be the commit its own change is at, so
+that state fails the gate rather than passing here and failing elsewhere.
 
-Two things about that are bound rather than trusted. `verify_recorded_inputs`
-hashes every recorded input at `revision.id`, so a pinned revision that no longer
-resolves fails the gate instead of reading as verified. And
-`verify_recorded_run`, in the same file, holds every manifest's recorded run to
-its own arithmetic on every `ravel-verify-scaffold` — counts that sum to the
-total, no failures, no skips, coverage at or above the floor, and no manifest
-recording a gate run without a test result. Neither binds the log, which is
-private, and neither can bind the numbers to the tip.
+The gate numbers are an attestation and are read as one. `tests.total` and
+`commands[0].logSha256` describe the run made on the commit this manifest pinned
+before the re-pin; that is not the count `ravel:verify` reports on this tip and
+cannot be, since every change above it that adds a test moves the tip's. Recording a
+gate result changes the tree that produced it, so `revision.id` can never be the tip
+commit, and a manifest asserting otherwise would be asserting an identity no evidence
+file can hold. Nothing recomputes those numbers — the gate holds them to their own
+arithmetic and to the coverage floor, and no tracked artifact binds either to a run —
+so they are the operator's attestation that the gate passed, not evidence a reader
+re-derives. The convention is to run the gate over the content, write the numbers,
+then run both gates again over the file as it stands and report that second run in
+the change description rather than recursively into these fields;
+`linux-process-matrix.json` uses the same convention for its own gate digests.
+
+What is bound rather than trusted is narrower. `verify_recorded_inputs` hashes every
+recorded input at `revision.id`, so a pinned revision that no longer resolves fails
+the gate instead of reading as verified, and `verify_pinned_commit` refuses a pinned
+commit that visible history does not reach. And `verify_recorded_run`, in the same
+file, holds every manifest's recorded run to its own arithmetic on every
+`ravel-verify-scaffold` — counts that sum to the total, no failures, no skips,
+coverage at or above the floor, and no manifest recording a gate run without a test
+result. None of that binds the log, which is private, and none of it binds the
+numbers to the tip. A `git clone --no-local` of this repository resolves the
+re-pinned commit and recomputes every input digest there, and resolves the abandoned
+commit it replaced not at all; a checkout with no jj repository skips both provenance
+checks and says so on stdout. `manifest.json` records both limits as a deviation of
+its own, along with the fact that nothing in this stack has been pushed.
 
 The cause of the digest rot is addressed rather than the symptom, and that fix
 reaches exactly this far:
@@ -158,12 +168,14 @@ milestone under construction has no review yet; the milestone gate is what refus
 to close on it.
 
 Findings about that machinery are carried rather than fixed, and each is
-recorded as a deviation in `manifest.json`. Input provenance is pinned to
-`revision.id`, a commit every jj rewrite abandons — this milestone's already is —
-so it resolves today only out of the operation log, and a
-`jj util gc` would turn the check from binding into unconditionally failing for
-every closed milestone — fail-closed, and the opposite of the position the same
-file argues for spike results, which are pinned by change id. Nothing requires a
+recorded as a deviation in `manifest.json`. One of them is now fixed instead: input
+provenance was pinned by commit id, which every jj rewrite abandons, so it resolved
+only out of this machine's operation log and resolved nowhere in a clone. It is
+re-pinned to the commit `revision.changeId` is at and the gate refuses any pinned
+commit visible history does not reach, which turns the next rewrite into a gate
+failure and a re-pin. The residual gap — that an unpublished stack is unreachable
+from a clone whatever it pins, so the recompute is skipped rather than run there — is
+recorded as a deviation of its own. Nothing requires a
 manifest to list the records beside it, so a record added to a milestone directory
 can be bound by nothing; `evidence/m0/manifest.json` records an empty
 `benchmarks.results` beside two evidence records. And `manifest.json` here records
@@ -199,8 +211,9 @@ The fourth round found the same shape one level down and it is fixed the same wa
 `change_mismatch` treated empty output from `introducing_change` as agreement, so
 any path jj could not attribute cleared the repository's strongest provenance
 control without a word; it now announces that it cleared without a verdict. The
-same round's two remaining findings are carried as deviations: the pinned revision
-is already an abandoned commit rather than one that might become abandoned, and
+same round's two remaining findings were carried as deviations: that the pinned
+revision was already an abandoned commit rather than one that might become abandoned,
+which a later round repaired by re-pinning and by gating it, and that
 `overhead.perTick`'s derivation could not be followed from the percentiles printed
 beside it until the record stated its own rounding.
 

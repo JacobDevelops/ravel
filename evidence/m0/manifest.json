@@ -14,7 +14,7 @@
     "M0-W9"
   ],
   "revision": {
-    "id": "a0ddb78beb53d1a313047db0b5e1fc577e68653a",
+    "id": "8063edecdda3426d574fbd27d9b535095ded4d07",
     "changeId": "ssnlpqxvlrllsskqzlyrkpvzuxsryysy",
     "dirty": false
   },
@@ -109,7 +109,16 @@
     "protocolVersion": "M0 shape dry-run only",
     "results": []
   },
-  "deviations": [],
+  "deviations": [
+    {
+      "summary": "revision.id is re-pinned to 8063edecdda3426d574fbd27d9b535095ded4d07, the commit change ssnlpqxvlrllsskqzlyrkpvzuxsryysy is at now, and every input digest is re-hashed there. It named a0ddb78beb53d1a313047db0b5e1fc577e68653a before, a commit jj abandoned when it rewrote that change. That commit still resolved in this working copy, out of its operation log, and resolved nowhere else, so a cold reviewer's fresh clone found every input digest recorded here unreadable and the scaffold gate refused the clone. verify_pinned_commit in tools/ravel-xtask/src/lib.rs now requires revision.id to be a commit visible history reaches and to be the commit its own changeId is at, on every ravel:verify rather than only in the opt-in milestone task, so the next rewrite of this change fails the gate and forces a re-pin instead of dangling in silence. Re-pinning does not repair the run. commands[] and tests were recorded against a0ddb78beb53d1a313047db0b5e1fc577e68653a, so revision.id no longer names the tree they were measured on, and nothing recomputes them: tests.total and tests.lineCoveragePercent are held only to their own arithmetic and to the coverage floor, and no tracked artifact binds either figure to a gate run. They are read here as an attestation that M0's gate was run and passed at that revision, not as evidence a reader can re-derive. Binding a redacted gate summary instead was available and refused: the summary would have to come from a re-run on today's tree, whose numbers are not the ones recorded, so it would bind a different run than the one attested. What revision.id does bind is the input digests, and the gate recomputes all of them there on every run.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The recompute a reader gets outside this working copy is bounded, and both bounds were measured rather than assumed. A git clone --no-local of this repository carries no refs/jj/* at all: in that clone a0ddb78beb53d1a313047db0b5e1fc577e68653a, the commit this manifest pinned before the re-pin, does not exist as an object, while 8063edecdda3426d574fbd27d9b535095ded4d07 is visible and every input digest recorded here recomputes there. So the reachability half is repaired, and it is repaired because the colocated repository exports the visible stack to git HEAD, which a clone follows. What a clone does not get is a jj repository, and without one verify_recorded_inputs and verify_manifest_change announce on stdout that they are skipping rather than reporting a pass; the reader has to run jj git init --colocate before the provenance block means anything. What remains beyond that is publication: nothing in this stack has been pushed, so these commits live in this repository and in clones taken directly from it, and a reader working from a remote has whatever that remote carries and no more. That is disclosed rather than closed because pushing is not in this work's scope, and no claim is made that publishing is imminent. It is classified non-blocking because the provenance checks fail closed — an unresolvable or moved revision is a violation, never a silent pass — and because publishing the stack changes no evidence in this manifest.",
+      "classification": "non-blocking"
+    }
+  ],
   "risks": [],
   "review": {
     "reviewer": "independent Codex reviewer",

@@ -26,14 +26,16 @@ digest, so a reader can read the review rather than take the manifest's word tha
 one happened. The field used to record a title and a hash of nothing obtainable,
 which the same audit is what found.
 
-What M1's measurements do not mean is that everything is clean. The manifest carries
-twelve deviations and four risks, all recorded rather than repaired — including that
-the selected native binding has never run in the real game, that the last cold audit
-of this evidence returned FAIL before its findings were resolved, and that this
-manifest does not exist at the revision it pins. One of the eleven is **blocking**:
-M1-W4's Verification clause asks that a generated binding be reproducible from
-pinned inputs, and no M1 record contains a reproducibility observation. Read them
-before relying on anything here.
+What M1's measurements do not mean is that everything is clean. The manifest's
+`deviations` and `risks` are recorded rather than repaired — including that the
+selected native binding has never run in the real game, that the last cold audit of
+this evidence returned FAIL, and that the figures in `tests` are an attestation about
+a past gate run rather than something a reader can re-derive. Counting them belongs
+to `jq`, not to this paragraph. One is **blocking**: M1-W4's Verification clause asks
+that a generated binding be reproducible from pinned inputs, and no M1 record
+contains a reproducibility observation, which is why `ravel:verify-milestone:m1`
+refuses to close M1 whatever the review verdict says. Read them before relying on
+anything here.
 
 That clause is stated as unmet rather than argued closed. What is recorded is the
 drift half — both measured ADG-3 results record `driftDetected` — and a single
@@ -243,18 +245,33 @@ re-running the gate, and for ADG-5 that means another authenticated launch, so t
 honest record is this paragraph. Nothing depends on `id`: no figure, no decision,
 and no check reads it.
 
-The manifest's own `revision.id` is in the same position and was not disclosed until
-the cold audit's second reading. `909240424db4` is an abandoned predecessor state of
-change `potzkxqsxykq`, and `manifest.json` is absent from it: the manifest was
-written into `rxovtruttmyk` after that commit existed, and jj rewrote `rxovtruttmyk`
-afterwards, so no commit holding the file is reachable from the one it pins. Unlike
-the spike results, something does read this field — `verify_recorded_inputs` hashes
-all five recorded inputs at it, and all five match — so what is wrong is narrower
-than it looks: the revision is real and the inputs are bound there; the manifest
-simply is not in it. It is disclosed rather than repaired because both repairs trade
-a true statement for a false one. The recorded commands ran on `909240424db4`, so
-re-pinning to a commit that holds the file would falsify `commands` and `tests`;
-re-running the gate to make those a later tree's numbers is a re-measurement of M1
-nobody asked for, and it would land one change below whatever commit recorded it,
-which is the circularity `evidence/m3/manifest.json` carries in its own revision
-block.
+The manifest's own `revision.id` was in the same position and is repaired rather than
+disclosed. It named `909240424db4`, a commit jj abandoned when it rewrote the change
+holding this evidence. That commit resolved here, out of this working copy's
+operation log, and nowhere else, which is why the defect was invisible until a cold
+reviewer cloned the repository and every recorded input digest in every milestone
+became unreadable at once. `revision.id` now names the commit its own
+`revision.changeId` is at, the inputs are re-hashed there, and
+`verify_pinned_commit` requires both on every `ravel:verify`, so the next rewrite of
+this change fails the gate instead of dangling.
+
+What that does not repair, and what this file previously implied it did, is the run.
+`commands` and `tests` were recorded against the abandoned commit, so `revision.id`
+no longer names the tree they were measured on. Nothing recomputes them: the gate
+holds `tests` to its own arithmetic and to the coverage floor, and no tracked
+artifact binds either figure to a gate run. They are an attestation that M1's gate
+was run and passed at that revision, not evidence a reader can re-derive, and the
+manifest now says so in a deviation of its own. Binding a redacted gate summary was
+the alternative and was refused: any summary shippable today comes from a re-run on
+today's tree, whose numbers are not these, so it would bind a different run than the
+one attested.
+
+How far the recompute travels was measured, not assumed. A `git clone --no-local` of
+this repository carries no `refs/jj/*`, and in that clone `909240424db4` does not
+exist as an object while the re-pinned commit is visible and all five input digests
+recompute there — so the re-pin is what makes this evidence auditable outside the
+working copy that wrote it. What a clone does not carry is a jj repository, and
+without one the provenance checks announce that they are skipping rather than report
+a pass. Beyond that, nothing in this stack has been pushed, so these commits live
+here and in clones taken from here. `manifest.json` records both limits as a
+deviation; neither claims publishing is imminent.

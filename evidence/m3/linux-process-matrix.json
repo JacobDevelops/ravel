@@ -114,7 +114,7 @@
     "worldRemovedAfterwards": {
       "removed": true,
       "whenAndWhy": "The world created for this campaign was created, hashed, verified across the reload and the refusal trial, and then removed, returning the instance to the single-world shape it had before. A reader should not go looking for it.",
-      "whatSurvivesTheRemoval": "The proof does not live in that directory. It is the recorded aggregate digest above, the observed reload, and above all the refused load of a stored `dataVersion` rewritten from 3 to 9 — which is what tells a reload that read the bytes apart from one that ignored them. Evidence that needs a private machine-local directory to persist is evidence nobody else can check; a digest is not.",
+      "whatSurvivesTheRemoval": "A record survives, not a re-checkable artifact. What the campaign turned on is the recorded aggregate digest above, the observed reload, and above all the refused load of a stored `dataVersion` rewritten from 3 to 9, which is what tells a reload that read the bytes apart from one that ignored them. All three are now claims in this file: `reviewCeiling` above states the position this passage has to keep, that a digest of a vanished file records a claim rather than verifies one. Keeping the world would not have changed that either, because a private machine-local directory is no more checkable by another reader than a digest of one. The removal took nothing away from this record; it also bought no checkability back.",
       "instanceWorldCountRestored": 1
     }
   },
@@ -345,6 +345,7 @@
         ]
       }
     ],
+    "worldOnlyTargetsCriterion": "A target is listed below when opening a world is what puts it on the path: the six held by the four classes a title-only launch never loads — `Commands`, `ReloadableServerResources`, `RecipeManager`, and `SavedDataStorage` — plus the two ADG-7 persistence seams, which sit in classes the title screen does load and rewrite but which run only when a world is loaded or saved. That criterion is narrower than `unreachable without a world`, and the difference is worth naming: `server.tick`, `server.tick-integrated`, `save.save-everything`, and `save.set-dirty` also never execute on a title-only launch and are deliberately absent, because this list exists to account for what a title-only launch rewrites rather than to enumerate world-gated behaviour. The arithmetic is unaffected, being per class and per rewritten method rather than per reachable target: 15 − 4 = 11 classes and 33 − 6 = 27 methods.",
     "worldOnlyTargets": [
       "command.perform-prefixed",
       "resource.load-server-resources",

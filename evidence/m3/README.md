@@ -208,10 +208,12 @@ reload that read the stored bytes from one that ignored them.
 
 The world itself is gone. It was created, hashed, verified across both the reload
 and the refusal, and then removed, which returns the instance to the single-world
-shape the M0 launch-proof summary expects. Nothing was lost by removing it: the
-digest, the reload, and the refused load are the evidence, and evidence that
-needs a private machine-local directory to survive is evidence no reviewer can
-check.
+shape the M0 launch-proof summary expects. The digest, the reload, and the refused
+load are the evidence, and all three are claims rather than things a reviewer can
+recompute — the same ceiling stated at the top of this file, not an exception to
+it. Removing the world took nothing away from that and bought nothing back: a
+private machine-local directory is no more checkable by another reader than a
+digest of one.
 
 A third campaign then re-observed the rows the first had left inherited, and it
 did so against the *same build* as the world round trip: the agent jar, screen
@@ -225,7 +227,14 @@ and the six of the eight world-only targets those four hold, so 15 − 4 = 11 an
 33 − 6 = 27. The remaining two world-only targets, `world.open-persistence` and
 `world.save-persistence`, live in `Minecraft` and `MinecraftServer`, which the
 title screen loads and Ravel rewrote there, which is why the subtraction is six
-rather than eight. The reason is recorded beside the smaller pair.
+rather than eight. The reason is recorded beside the smaller pair, and so is the
+rule that decides what belongs in it: `worldOnlyTargetsCriterion` says a target is
+listed when opening a world is what puts it on the path, which is narrower than
+being unreachable at the title screen. `server.tick`, `server.tick-integrated`,
+`save.save-everything`, and `save.set-dirty` never execute on a title-only launch
+either and are deliberately not in the list, because the list accounts for what
+gets rewritten rather than for what can run. Neither reading changes the
+arithmetic, which is per class and per rewritten method.
 
 Three of the four inherited row groups now stand on their own evidence. All three
 Ravel screens were opened from the title menu. The Mods screen listed two running

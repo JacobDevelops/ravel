@@ -455,6 +455,19 @@ fn the_facade_closure_is_the_set_this_test_believes_it_is() {
         // mod's build graph, for a validated path newtype.
         "ravel-data",
         "ravel-host-api",
+        // M4-W3 put the packet model a mod writes — a contract, a direction, a
+        // version, and a codec that refuses a truncated, trailing-byte or
+        // version-mismatched payload — behind `network`, and the client-only rule
+        // behind `sides`. The packet model is `ravel-network`'s because the loader
+        // routes the same deliveries and `ravel-host-api` names one in
+        // `HostMod::receive_packet`: a model living in the facade would put a
+        // mod-facing crate under the host. The author-facing item that justifies
+        // the edge is `ravel_sdk::network::Packet`, which a mod implements for its
+        // own types. It reaches nothing new — `ravel-network` depends on
+        // `ravel-core` alone — and `ClientOnly` went into `ravel-core` beside
+        // `Side` rather than into the facade, for the same reason `RelativePath`
+        // did in W2.
+        "ravel-network",
         "ravel-save",
         "ravel-sdk",
         "ravel-sdk-macros",

@@ -71,6 +71,14 @@
 //! - [`generate`] — the pack a declaration produces, byte for byte the same each
 //!   time it is produced.
 //!
+//! # What a mod does while it runs
+//!
+//! [`events`] is what the game did and what a player typed. [`network`] is what a
+//! mod sends between a client and a server: a contract, and a value that
+//! round-trips under it or is refused. [`sides`] is which of those a mod is doing
+//! — and [`sides::ClientOnly`] is where its client-only work goes, so that work is
+//! not merely hidden on a server side but never runs there.
+//!
 //! # What this crate deliberately does not expose
 //!
 //! `docs/architecture/dependency-rules.md` requires the SDK to expose no
@@ -94,8 +102,10 @@ extern crate self as ravel_sdk;
 pub mod content;
 pub mod events;
 pub mod generate;
+pub mod network;
 pub mod resources;
 pub mod save;
+pub mod sides;
 pub mod tags;
 
 pub use ravel_core::{LifecycleState, ModId, ModIdError, Side, SideSet, Version, VersionRange};
@@ -171,6 +181,8 @@ pub mod prelude {
         claim_all,
     };
     pub use crate::events::{CommandInvocation, GameEvent};
+    pub use crate::network::{Direction, Packet, PacketContract, PacketDelivery, PacketId};
+    pub use crate::sides::ClientOnly;
     pub use crate::tags::TagId;
     pub use crate::{Declared, LifecycleState, Mod, ModError, ModId, Side, declare_mod};
 }

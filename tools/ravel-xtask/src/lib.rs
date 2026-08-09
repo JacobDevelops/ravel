@@ -212,6 +212,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
 
     verify_ignored_boundaries(root, &mut violations);
     verify_hook_inventory_document(root, &mut violations);
+    verify_campaign_inventory(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
     verify_experiment_fence(root, &mut violations);
@@ -249,6 +250,12 @@ const HOOK_INVENTORY: &str = "minecraft/versions/26.1.2/hooks.toml";
 
 /// The document that describes the inventory above, and M3-W0's closing evidence.
 const HOOK_DOCUMENT: &str = "docs/architecture/m3-hook-targets.md";
+
+/// The launch record that enumerates the inventory M3's campaigns reviewed.
+const CAMPAIGN_MATRIX: &str = "evidence/m3/linux-process-matrix.json";
+
+/// The prose that restates that record's inventory figures.
+const CAMPAIGN_DOCUMENT: &str = "evidence/m3/README.md";
 
 /// What `hooks.toml` holds, counted from `hooks.toml` and from nothing else.
 struct HookCounts {
@@ -342,6 +349,18 @@ fn hook_counts(inventory: &str) -> Result<HookCounts, String> {
 /// loosely, and *every* occurrence of that phrase is checked. A second stale
 /// sentence somewhere else in the file is the way this document went wrong the
 /// first time, so finding one right occurrence is not enough.
+///
+/// Known limit: only these four phrasings are reached. A sentence that states a
+/// count some other way — "the inventory holds 99 targets" — is not checked, and
+/// the next reader should not assume coverage this does not have. Closing it means
+/// sweeping every number the document writes against a count noun, and that sweep
+/// cannot be written here: the same file says `hooks.toml` "grew from 6 entries",
+/// a figure about the past that a current-inventory sweep would report as wrong,
+/// so telling a current claim from a historical one in arbitrary prose is the
+/// general parser this gate is deliberately not. What holds instead is that each
+/// current claim is written in one of these phrasings, and the document's own
+/// coverage table is what a new sentence should extend rather than restate.
+/// `campaign_document_violations` carries the same limit for the same reason.
 fn hook_document_violations(document: &str, counts: &HookCounts) -> Vec<String> {
     let mut violations = Vec::new();
     for (phrase, side, expected, subject) in [
@@ -414,6 +433,178 @@ fn stated_counts(document: &str, phrase: &str, side: Side) -> Vec<usize> {
         }
     }
     counts
+}
+
+/// The inventory figures one launch campaign observed.
+struct CampaignInventory {
+    /// Distinct classes the campaign's reviewed inventory held.
+    classes: usize,
+    /// Callable targets across those classes.
+    targets: usize,
+    /// Callable targets the superseded campaign's inventory held.
+    prior: usize,
+}
+
+/// Holds `evidence/m3/README.md` to the launch record whose figures it restates.
+///
+/// The same defect the hook document carried, in the place the fifth M3-W8 review
+/// round predicted it next: `33` and `15` were written into the campaign prose and
+/// into `rewrite.classesInInventory` / `rewrite.callableTargetsInInventory`, and
+/// nothing recomputed either.
+///
+/// These figures are *historical* and are checked as such. A launch campaign
+/// observed one inventory in one build, so a later hook entering `hooks.toml` does
+/// not falsify what that campaign rewrote, and deriving them from `hooks.toml` —
+/// the way `verify_hook_inventory_document` derives the architecture document's —
+/// would make the record lie about its own launches. What can go stale is the
+/// prose against the record: `rewrite.targetInventory` enumerates every class and
+/// method the campaign reviewed, so the two counts are derivable from the record
+/// itself, and the prose is derivable from them.
+///
+/// Known limit, the same one `hook_document_violations` carries: each figure is
+/// anchored on the phrase it is written in, so a sentence that states a count in
+/// some new phrasing is not reached. It is checked at *every* occurrence of each
+/// anchored phrase, which is what caught the hook document's second stale
+/// sentence, and the anchors are the ones the prose is now written to use.
+fn verify_campaign_inventory(root: &Path, violations: &mut Vec<String>) {
+    let matrix = root.join(CAMPAIGN_MATRIX);
+    if !matrix.is_file() {
+        violations.push(format!("missing required file: {CAMPAIGN_MATRIX}"));
+        return;
+    }
+    let Some(derived) = campaign_inventory(&matrix, violations) else {
+        return;
+    };
+
+    for (field, expected, subject) in [
+        (
+            "classesInInventory",
+            derived.classes,
+            "classes its own target inventory enumerates",
+        ),
+        (
+            "callableTargetsInInventory",
+            derived.targets,
+            "callable targets its own target inventory enumerates",
+        ),
+    ] {
+        match matrix_count(&matrix, &format!(".rewrite.{field}")) {
+            Ok(recorded) if recorded == expected => {}
+            Ok(recorded) => violations.push(format!(
+                "{CAMPAIGN_MATRIX} records {field} {recorded} against the {expected} {subject}"
+            )),
+            Err(error) => violations.push(error),
+        }
+    }
+
+    match fs::read_to_string(root.join(CAMPAIGN_DOCUMENT)) {
+        Ok(document) => violations.extend(campaign_document_violations(&document, &derived)),
+        Err(error) => violations.push(format!("cannot read {CAMPAIGN_DOCUMENT}: {error}")),
+    }
+}
+
+/// Derives the campaign's inventory figures from the record's own enumeration.
+fn campaign_inventory(matrix: &Path, violations: &mut Vec<String>) -> Option<CampaignInventory> {
+    // A duplicate would let `unique` absorb an inventory that lists a target
+    // twice, so the enumeration is required to be an enumeration first.
+    for (filter, subject) in [
+        (
+            "[.rewrite.targetInventory[].class]",
+            "lists a class more than once",
+        ),
+        (
+            "[.rewrite.targetInventory[].methods[]]",
+            "lists a callable target more than once",
+        ),
+    ] {
+        let listed = matrix_count(matrix, &format!("{filter} | length"));
+        let distinct = matrix_count(matrix, &format!("{filter} | unique | length"));
+        match (listed, distinct) {
+            (Ok(listed), Ok(distinct)) if listed == distinct => {}
+            (Ok(_), Ok(_)) => {
+                violations.push(format!("{CAMPAIGN_MATRIX}'s target inventory {subject}"));
+                return None;
+            }
+            (Err(error), _) | (_, Err(error)) => {
+                violations.push(error);
+                return None;
+            }
+        }
+    }
+
+    let classes = matrix_count(
+        matrix,
+        "[.rewrite.targetInventory[].class] | unique | length",
+    );
+    let targets = matrix_count(matrix, "[.rewrite.targetInventory[].methods[]] | length");
+    let prior = matrix_count(matrix, ".matrixNotCarriedForward.priorCallableTargets");
+    match (classes, targets, prior) {
+        (Ok(classes), Ok(targets), Ok(prior)) => Some(CampaignInventory {
+            classes,
+            targets,
+            prior,
+        }),
+        (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => {
+            violations.push(error);
+            None
+        }
+    }
+}
+
+/// Reads one whole number out of the launch record.
+fn matrix_count(matrix: &Path, filter: &str) -> Result<usize, String> {
+    let value = jq_value(matrix, filter)?;
+    value.parse().map_err(|_| {
+        format!("{CAMPAIGN_MATRIX} does not record a whole number at `{filter}`, but `{value}`")
+    })
+}
+
+/// Every inventory figure the campaign prose states that its record does not bear.
+fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> Vec<String> {
+    let mut violations = Vec::new();
+    // Markdown wraps where the line ran out, so an anchor phrase in the file is
+    // split by a newline as often as not. Reflowing to single spaces first is what
+    // makes the anchors survive an editor rewrapping the paragraph.
+    let document = document.split_whitespace().collect::<Vec<_>>().join(" ");
+    let document = document.as_str();
+    for (phrase, side, expected, subject) in [
+        (
+            " callable targets",
+            Side::Before,
+            derived.targets,
+            "callable targets",
+        ),
+        (
+            " classes in the reviewed inventory",
+            Side::Before,
+            derived.classes,
+            "classes in the reviewed inventory",
+        ),
+        (
+            "moved from ",
+            Side::After,
+            derived.prior,
+            "callable targets before the count moved",
+        ),
+    ] {
+        let stated = stated_counts(document, phrase, side);
+        if stated.is_empty() {
+            violations.push(format!(
+                "{CAMPAIGN_DOCUMENT} no longer writes a count against `{phrase}`, so nothing in it \
+                 is held to {CAMPAIGN_MATRIX}'s {expected} {subject}"
+            ));
+            continue;
+        }
+        for count in stated {
+            if count != expected {
+                violations.push(format!(
+                    "{CAMPAIGN_DOCUMENT} states {count} {subject} where {CAMPAIGN_MATRIX} records \
+                     {expected}"
+                ));
+            }
+        }
+    }
+    violations
 }
 
 /// Reads `name = "value"` out of one line, or nothing.
@@ -3349,9 +3540,10 @@ mod tests {
     use std::process::Command;
 
     use super::{
-        HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS, change_mismatch,
-        declares_unsafe_prohibition, hook_counts, hook_document_violations, pinned_commit_mismatch,
-        redacted_path, required_scaffold_paths, verify_evidence_records, verify_experiment_fence,
+        CampaignInventory, HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS,
+        campaign_document_violations, change_mismatch, declares_unsafe_prohibition, hook_counts,
+        hook_document_violations, pinned_commit_mismatch, redacted_path, required_scaffold_paths,
+        verify_campaign_inventory, verify_evidence_records, verify_experiment_fence,
         verify_hook_inventory_document, verify_ignored_boundaries, verify_milestone,
         verify_scaffold, verify_spikes, verify_testkit_fence, verify_tracked_contents,
         verify_tracked_paths, verify_version_boundary, visible_commit,
@@ -4723,6 +4915,91 @@ mod tests {
                 .all(|violation| violation.contains("no longer writes a count against")),
             "{violations:?}"
         );
+    }
+
+    /// The prose figures are checked at every occurrence, not the first.
+    #[test]
+    fn a_campaign_document_stating_the_wrong_inventory_anywhere_is_reported() {
+        let derived = CampaignInventory {
+            classes: 15,
+            targets: 33,
+            prior: 31,
+        };
+
+        let violations = campaign_document_violations(
+            "Rewriting all 33 callable targets, over the same 15 classes in the reviewed \
+             inventory. The count moved from 31 to 33. A later launch at 34 callable targets \
+             over 16 classes in the reviewed inventory.",
+            &derived,
+        );
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m3/README.md states 34 callable targets where \
+                 evidence/m3/linux-process-matrix.json records 33"
+                    .to_owned(),
+                "evidence/m3/README.md states 16 classes in the reviewed inventory where \
+                 evidence/m3/linux-process-matrix.json records 15"
+                    .to_owned(),
+            ]
+        );
+    }
+
+    /// A figure the markdown wrapped mid-phrase still has to be checked.
+    #[test]
+    fn a_campaign_figure_split_across_a_wrapped_line_is_still_checked() {
+        let derived = CampaignInventory {
+            classes: 15,
+            targets: 33,
+            prior: 31,
+        };
+
+        let violations = campaign_document_violations(
+            "The count moved from 31 to 33 callable targets over the same 16 classes in the\n  \
+             reviewed inventory.",
+            &derived,
+        );
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m3/README.md states 16 classes in the reviewed inventory where \
+                 evidence/m3/linux-process-matrix.json records 15"
+                    .to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_campaign_document_stating_no_count_at_all_is_not_read_as_agreement() {
+        let derived = CampaignInventory {
+            classes: 15,
+            targets: 33,
+            prior: 31,
+        };
+
+        let violations = campaign_document_violations("The campaigns are recorded.", &derived);
+
+        assert_eq!(violations.len(), 3, "{violations:?}");
+        assert!(
+            violations
+                .iter()
+                .all(|violation| violation.contains("no longer writes a count against")),
+            "{violations:?}"
+        );
+    }
+
+    #[test]
+    fn the_tracked_campaign_document_agrees_with_the_tracked_launch_record() {
+        let root = std::env::current_dir()
+            .expect("the current directory must be available")
+            .join("../..");
+        let mut violations = Vec::new();
+
+        verify_campaign_inventory(&root, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
     }
 
     #[test]

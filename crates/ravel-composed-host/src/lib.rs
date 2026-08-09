@@ -8,7 +8,7 @@ use std::path::Path;
 
 use jni::EnvUnowned;
 use jni::objects::JClass;
-use ravel_bootstrap_runtime::{HookError, install, install_settings};
+use ravel_bootstrap_runtime::{HookError, install, install_settings, pre_world_report};
 use ravel_config::{LayerError, LayeredConfiguration, file};
 use ravel_core::{EmptySideSet, Side, SideSet};
 use ravel_host_api::HostMod;
@@ -79,7 +79,15 @@ fn initialize() -> Result<(), LaunchError> {
     let side = Side::Client;
     let (machine, mods, configurations) = compose(&game_directory, side)?;
     install_settings(side, configurations);
-    install(machine, mods).map_err(LaunchError::Install)
+    // The report this host hands over holds no refusal, and that is a statement
+    // about this composition rather than an empty gesture: every stage before
+    // the machine here — reading the selected pack's document, resolving
+    // configuration, driving the set — fails this function instead of recording
+    // a refusal, and a failure here installs no runtime at all, which the open
+    // crossing already refuses on. What the report is for is the pipeline that
+    // validates packages and orders a graph, which runs when a pack is compiled
+    // and not in this process, so nothing in a launch can add to it yet.
+    install(machine, mods, pre_world_report()).map_err(LaunchError::Install)
 }
 
 /// Starts the player-local statically composed set before game methods run.

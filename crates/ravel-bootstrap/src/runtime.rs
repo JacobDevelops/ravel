@@ -58,7 +58,7 @@ use ravel_core::{
 use ravel_host_api::{CommandInvocation, GameEvent, HostMod};
 use ravel_loader::{Delivery, LifecycleMachine, ModSurface, broadcast_profiled, route_profiled};
 use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
-use ravel_observability::{Profiler, ProfilingReport};
+use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
 
 use crate::guard::HookError;
 
@@ -93,6 +93,14 @@ pub(crate) struct Inner {
     /// The collectors, off unless the launch asked for them.
     profiler: Profiler,
     pub(crate) persistence: crate::persistence::PersistenceState,
+    /// What the pipeline refused before this machine existed.
+    ///
+    /// The machine can only answer for the set it drives, and a package whose
+    /// manifest would not parse or whose graph had no order never became an
+    /// entry in any plan. `LifecycleMachine::open_world` reads both halves, so
+    /// the half no machine can see has to be carried here for it to be read at
+    /// all.
+    pub(crate) report: PreWorldReport,
 }
 
 /// What one hook invocation asks the loader to do.
@@ -107,9 +115,18 @@ impl LoaderRuntime {
     /// The machine arrives already driven. This owns the set and shows it what
     /// the game does; running the pipeline that produced it is the caller's, and
     /// a runtime that also drove the lifecycle would be two things.
+    ///
+    /// The pre-world report is empty, which is what a caller that ran no
+    /// pipeline before the machine is entitled to say. A caller that ran one
+    /// passes what it recorded to [`Self::profiling`] instead.
     #[must_use]
     pub fn new(machine: LifecycleMachine, mods: Vec<Box<dyn HostMod>>) -> Self {
-        Self::profiling(machine, mods, Profiler::off())
+        Self::profiling(
+            machine,
+            mods,
+            Profiler::off(),
+            PreWorldReport::new(environment()),
+        )
     }
 
     /// The same runtime with the collectors the launch asked for.
@@ -124,6 +141,7 @@ impl LoaderRuntime {
         machine: LifecycleMachine,
         mods: Vec<Box<dyn HostMod>>,
         profiler: Profiler,
+        report: PreWorldReport,
     ) -> Self {
         Self {
             inner: Mutex::new(Inner {
@@ -131,6 +149,7 @@ impl LoaderRuntime {
                 mods,
                 profiler,
                 persistence: crate::persistence::PersistenceState::default(),
+                report,
             }),
         }
     }
@@ -218,17 +237,37 @@ impl HookObserver for Shared {
     }
 }
 
+/// An empty pre-world report for this process, for a pipeline to record into.
+///
+/// The environment is this crate's to state, because it is the crate that knows
+/// which adapter is pinned; the refusals are the caller's, because the caller is
+/// the pipeline that ran before any machine existed.
+#[must_use]
+pub fn pre_world_report() -> PreWorldReport {
+    PreWorldReport::new(environment())
+}
+
 /// Installs a driven mod set so every hook invocation reaches it.
+///
+/// `report` is what the pipeline refused before this set was driven. It is held
+/// for the world-open crossing rather than only printed, because
+/// [`LifecycleMachine::open_world`] is what decides a world and it reads the
+/// report's half as well as the machine's.
 ///
 /// # Errors
 ///
 /// Returns [`HookError::Unavailable`] when the observer registry cannot be
 /// written, which happens only after a previous holder panicked inside it.
-pub fn install(machine: LifecycleMachine, mods: Vec<Box<dyn HostMod>>) -> Result<(), HookError> {
+pub fn install(
+    machine: LifecycleMachine,
+    mods: Vec<Box<dyn HostMod>>,
+    report: PreWorldReport,
+) -> Result<(), HookError> {
     let runtime = Arc::new(LoaderRuntime::profiling(
         machine,
         mods,
         Profiler::from_switch(crate::profiling::requested()),
+        report,
     ));
     // One installation point for every reader, so there is no launch in which
     // hooks reach the mod set but a screen finds nothing.
@@ -597,7 +636,8 @@ mod tests {
     fn an_installed_set_receives_what_the_observer_registry_delivers() {
         let (machine, mods, log) = parts(Side::DedicatedServer, Vec::new(), Behaviour::Records);
 
-        super::install(machine, mods).expect("the registry accepts an observer");
+        super::install(machine, mods, super::pre_world_report())
+            .expect("the registry accepts an observer");
         crate::dispatch::deliver(&target("server.tick"), &[]).expect("nothing here vetoes");
 
         assert_eq!(

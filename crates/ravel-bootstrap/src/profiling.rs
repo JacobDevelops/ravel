@@ -330,7 +330,12 @@ mod tests {
             machine.advance_all(state).expect("a legal step");
         }
         let mods: Vec<Box<dyn HostMod>> = vec![Box::new(Quiet(mod_id("example_mod")))];
-        Arc::new(LoaderRuntime::profiling(machine, mods, profiler))
+        Arc::new(LoaderRuntime::profiling(
+            machine,
+            mods,
+            profiler,
+            crate::runtime::pre_world_report(),
+        ))
     }
 
     /// The payload a screen reads from `runtime`, as [`document`] builds it.

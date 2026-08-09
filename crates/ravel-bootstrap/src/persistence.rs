@@ -1,4 +1,12 @@
 //! Identity-keyed world persistence owned by the installed loader runtime.
+//!
+//! This is also where the game asks whether a world may open at all. The open
+//! crossing runs before the host method's own body, so refusing here withholds
+//! the world rather than interrupting one, and `SPEC.md` §9.2's fail-closed rule
+//! needs some path in the game process to ask the loader — this is that path.
+//! [`LifecycleMachine::open_world`] answers it; nothing here decides it.
+//!
+//! [`LifecycleMachine::open_world`]: ravel_loader::LifecycleMachine::open_world
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock, PoisonError};
@@ -91,6 +99,9 @@ fn identity(raw: &str) -> String {
 
 /// Replaces the staged world after admitting and delivering its aggregate.
 ///
+/// The world-access gate is asked first, so a set the loader refuses opens no
+/// world here even when its stored aggregate is perfectly readable.
+///
 /// `fresh_world` is the game's advisory marker for a world being created. It
 /// never decides admission: an absent aggregate initializes fresh state for any
 /// world, exactly as ADG-7 says. It is read only to tell the ordinary case apart
@@ -98,10 +109,22 @@ fn identity(raw: &str) -> String {
 /// is worth noticing and is not worth refusing over.
 #[must_use]
 pub fn stage(identity_raw: &str, bytes: Option<&[u8]>, fresh_world: bool) -> OpenOutcome {
-    let runtime = match runtime() {
-        Ok(runtime) => runtime,
-        Err(error) => return OpenOutcome::Refused(error),
-    };
+    match runtime() {
+        Ok(runtime) => outcome(runtime, identity_raw, bytes, fresh_world),
+        Err(error) => OpenOutcome::Refused(error),
+    }
+}
+
+/// The same crossing against one runtime rather than the process's.
+///
+/// Split out so the polarity a refusal carries — a diagnostic rather than
+/// admission — is testable without a test claiming the process-wide runtime.
+fn outcome(
+    runtime: &LoaderRuntime,
+    identity_raw: &str,
+    bytes: Option<&[u8]>,
+    fresh_world: bool,
+) -> OpenOutcome {
     match runtime.stage_world(identity(identity_raw), bytes, fresh_world) {
         Ok(()) => OpenOutcome::Staged,
         Err(error) => OpenOutcome::Refused(error),
@@ -180,6 +203,17 @@ impl LoaderRuntime {
         fresh_world: bool,
     ) -> Result<(), String> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        // The world-access gate, asked before anything here reads or writes a
+        // byte of world state. `SPEC.md` §9.2 fails closed on an invalid
+        // required-mod graph and §14 makes a required failure withhold the
+        // world, and this crossing is where the game asks for one — so the
+        // answer has to be the loader's rather than this module's. Refusing here
+        // costs the world and nothing else: the game's own body never runs, so
+        // no state a player would lose is touched.
+        inner
+            .machine
+            .open_world(&inner.report)
+            .map_err(|refused| refused.to_string())?;
         // Absence initializes fresh state for any world, exactly as ADG-7 says.
         // What the marker separates is the ordinary new world from an existing
         // one that used to hold Ravel data and now does not, which is worth
@@ -447,6 +481,20 @@ mod tests {
         name.parse().expect("a legal mod id")
     }
 
+    /// What the runtime attributes a delivery failure to, as `record` builds one.
+    fn attribution() -> ravel_core::FailureAttribution {
+        ravel_core::FailureAttribution {
+            mod_id: Some(id(OWNER)),
+            version: None,
+            dependency_chain: Vec::new(),
+            state: LifecycleState::Running,
+            kind: None,
+            surface: None,
+            environment: crate::runtime::pre_world_report().environment().clone(),
+            message: ravel_core::DiagnosticMessage::raw("this mod stopped working"),
+        }
+    }
+
     fn version(raw: u32) -> SavedDataVersion {
         NonZero::new(raw).expect("a non-zero version")
     }
@@ -512,8 +560,38 @@ mod tests {
         }
     }
 
+    /// A refusal from a stage that runs long before any lifecycle machine.
+    ///
+    /// The pre-world half of the gate is the half no machine can see for itself:
+    /// a package whose graph had no order never became an entry in any plan.
+    #[derive(Debug)]
+    struct Unresolvable;
+
+    impl std::fmt::Display for Unresolvable {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("`example_mod` requires `example_library`, which is not installed")
+        }
+    }
+
+    impl std::error::Error for Unresolvable {}
+
+    impl ravel_core::StructuredFailure for Unresolvable {
+        fn failure_kind(&self) -> Option<ravel_core::FailureKind> {
+            Some(ravel_core::FailureKind::MissingRequiredDependency)
+        }
+
+        fn lifecycle_state(&self) -> LifecycleState {
+            LifecycleState::Validated
+        }
+    }
+
     /// A runtime holding one running mod that owns saved data.
     fn running() -> (LoaderRuntime, Arc<Held>) {
+        running_with(crate::runtime::pre_world_report())
+    }
+
+    /// The same runtime, carrying whatever the pipeline before it refused.
+    fn running_with(report: ravel_observability::PreWorldReport) -> (LoaderRuntime, Arc<Held>) {
         let held = Arc::new(Held::default());
         let host = Owning {
             id: id(OWNER),
@@ -537,7 +615,15 @@ mod tests {
         ] {
             machine.advance_all(state).expect("a legal step");
         }
-        (LoaderRuntime::new(machine, vec![Box::new(host)]), held)
+        (
+            LoaderRuntime::profiling(
+                machine,
+                vec![Box::new(host)],
+                ravel_observability::Profiler::off(),
+                report,
+            ),
+            held,
+        )
     }
 
     /// The bytes a save produced, or a panic naming what it did instead.
@@ -811,6 +897,61 @@ mod tests {
         assert_eq!(
             BTreeSet::from([UNCHANGED, REPLACEMENT, FAILED, IDENTITY_MISMATCH]).len(),
             4
+        );
+    }
+
+    /// The gate's machine half, asked by the crossing the game actually calls.
+    ///
+    /// A required mod that failed halts the set, and from then on the loader
+    /// withholds worlds. Before this crossing consulted the gate, the loader
+    /// answered that question and nothing asked it.
+    #[test]
+    fn a_halted_set_cannot_open_a_world_at_the_crossing_the_game_calls() {
+        let (runtime, _held) = running();
+        // The same set stages a world while it is healthy, which is what makes
+        // the refusal below the failure's doing rather than the fixture's.
+        runtime
+            .stage_world(FIRST.to_owned(), None, true)
+            .expect("a running set opens a world");
+
+        runtime.fail_while_running(&id(OWNER), attribution());
+
+        let refused = runtime
+            .stage_world(SECOND.to_owned(), None, true)
+            .expect_err("a halted set opens no world");
+        assert!(refused.starts_with("no world opens: "), "{refused}");
+        assert!(refused.contains(OWNER), "{refused}");
+        // Refused rather than admitted-and-empty, so Java refuses the load.
+        assert_eq!(
+            super::outcome(&runtime, SECOND, None, true),
+            OpenOutcome::Refused(refused)
+        );
+    }
+
+    /// The gate's pre-world half, which no machine can answer for.
+    #[test]
+    fn a_refusal_the_machine_never_saw_still_withholds_the_world() {
+        let mut report = crate::runtime::pre_world_report();
+        report.refuse(
+            &ravel_observability::Subject::of(id("example_mod")),
+            &Unresolvable,
+        );
+        let (runtime, _held) = running_with(report);
+
+        let refused = runtime
+            .stage_world(FIRST.to_owned(), None, true)
+            .expect_err("a report holding a refusal withholds the world");
+        assert!(
+            refused.contains("`example_mod` requires `example_library`"),
+            "{refused}"
+        );
+        // The running set alone would have opened one, which is the point: this
+        // refusal is the report's and reaches the crossing anyway.
+        assert!(
+            running()
+                .0
+                .stage_world(FIRST.to_owned(), None, true)
+                .is_ok()
         );
     }
 

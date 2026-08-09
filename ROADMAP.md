@@ -591,7 +591,7 @@ locking the workspace to an assumed runtime.
 | M1-W5 | ADG-4 state-ownership experiment | M1-W2..W4 | representative object-flow benchmark and ADR | duplicated state and boundary traffic are measured under the canonical spike |
 | M1-W6 | ADG-5 Prism integration spike | M0-W6, M1-W2 | stock launch proof or patch estimates and ADR | official Minecraft launches without another mod loader; auth tokens are absent from captures |
 | M1-W7 | Architecture synthesis | M1-W2..W6 | overview and dependency/safety boundary docs | all selected and rejected options trace to Linux evidence |
-| M1-W8 | Independent architecture review | M1-W7 | reviewer, result, and record hash claimed in the M1 manifest; the record itself is held outside the repository | reviewer confirms safe-Rust feasibility, and confirms the per-crossing costs and the rate at which they would become material; M1 gate passes |
+| M1-W8 | Independent architecture review | M1-W7 | reviewer, result, and record hash claimed in the M1 manifest, and the record tracked beside it at `evidence/m1/review.md`, whose digest the gate recomputes and whose stated verdict the gate requires `review.result` to match | reviewer confirms safe-Rust feasibility, and confirms the per-crossing costs and the rate at which they would become material; M1 gate passes |
 
 No production crate may encode a selected mechanism before its ADR is accepted.
 If safe wrappers cannot support a viable result, work stops for an explicit

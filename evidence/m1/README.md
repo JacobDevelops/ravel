@@ -14,26 +14,27 @@ prototype. The measurements below are what that decision will use.
 `devenv tasks run ravel:verify-milestone:m1` is what checks it: every gate has a
 recorded result, every gate has an accepted ADR, the spike results are hashed under
 the `spike-v1` protocol, an ADG-5 result records an observed stock launch, and the
-manifest names the change that introduced it. All of that holds. The gate does not
-pass, and says why: `review.result` records `fail`, because the last cold verdict
-against this evidence is FAIL. M1's measurements stand and M1's review does not.
+manifest names the change that introduced it. All of that holds, and so does the
+last rule to be met: `review.result` records `pass`, and the gate requires the
+record it binds to state the same verdict.
 
-That verdict is now a tracked file. [`review.md`](review.md) is the second cold
-audit's verdict as it was written — FAIL on seven findings, with the file and line
-for each, what it recomputed (45 digests, 45 matched) and what it could not, and its
-stated coverage. `review.record` names it by path and the scaffold recomputes its
-digest, so a reader can read the review rather than take the manifest's word that
-one happened. The field used to record a title and a hash of nothing obtainable,
-which the same audit is what found.
+That verdict is a tracked file. [`review.md`](review.md) is the third cold round's
+verdict as it was written — PASS on six findings, with the file and line for each,
+what it established by breaking or re-doing rather than reading, and its own list
+of what it read rather than exercised. `review.record` names it by path, the
+scaffold recomputes its digest, and `verify_recorded_verdict` compares the
+`Result:` line to `review.result`, so neither half can move without the other. The
+field used to record a title and a hash of nothing obtainable, and the two rounds
+before this one are what found that and what found the missing comparison.
 
 What M1's measurements do not mean is that everything is clean. The manifest's
 `deviations` and `risks` are recorded rather than repaired — including that the
-selected native binding has never run in the real game, that the last cold audit of
-this evidence returned FAIL, and that the figures in `tests` are an attestation about
-a past gate run rather than something a reader can re-derive. Counting them belongs
-to `jq`, not to this paragraph. None is blocking any more, and what is left blocking
-M1 is the review verdict rather than a gap in the evidence. Read them before relying
-on anything here.
+selected native binding has never run in the real game, that seven of the first
+audit's ten findings are enumerated nowhere anyone can read, and that the figures in
+`tests` are an attestation about a past gate run rather than something a reader can
+re-derive. Counting them belongs to `jq`, not to this paragraph. None is blocking,
+and a passing review is not a claim that the corpus is clean. Read them before
+relying on anything here.
 
 M1-W4's Verification clause used to be the exception. It asks that a generated
 binding be reproducible from pinned inputs and fail on drift; the drift half was
@@ -119,7 +120,10 @@ jj repository has no cleaner state to measure from.
 
 ## How the review went
 
-M1-W8 took six passes and its record is held outside this repository.
+M1-W8 ran as a sequence of passes rather than as one review, and one of them is
+tracked: [`review.md`](review.md) is the third cold round's verdict. The earlier
+passes are described below from records held outside this repository, so this
+section is attested rather than auditable.
 
 The first review ran three lenses and all three returned FAIL: the safety finding
 removed an exception `SPEC.md` §3.3 had already been drafted around, the
@@ -145,20 +149,28 @@ reject a candidate needing a maintained unsafe call and name the dynamic library
 while ADG-2 retained that candidate for M3. It also reproduced the `jni_mangle`
 zero-unsafe result from scratch rather than accepting it.
 
-Its findings were resolved and none was re-audited, so the last cold verdict
-against this evidence is FAIL, and `review.result` in the manifest now records
-`fail` to say so. That there were ten of them, and that all ten were resolved, is
-attested here and not auditable from anything tracked: the audit record is held
-outside the repository, this document names one of the ten — the M1 gate's failure
-actions rejecting the candidate ADG-2 retained — and the manifest's deviations name
-the `m1-measurement-gate.md` digest that matched the file at no revision. The rest
-are in the untracked record. The claim is narrowed to that rather than repeated as
-a round number nobody here can check. It previously recorded the iterative reviewer's pass
-beside a deviation stating the opposite, which made a recorded `pass` mean one
-thing in M1 and another in M3, where the same situation is recorded as `fail`.
-The consequence is deliberate: `ravel:verify-milestone:m1` now reports
-`milestone review must be independent and pass`, so M1's gate reads open until a
-cold auditor re-verifies this evidence.
+Its findings were resolved, and a second cold round read the result and returned
+FAIL again. That there were ten findings in the first audit, and that all ten were
+resolved, is attested here and not auditable from anything tracked: the audit
+record is held outside the repository, this document names one of the ten — the M1
+gate's failure actions rejecting the candidate ADG-2 retained — and the manifest's
+deviations name the `m1-measurement-gate.md` digest that matched the file at no
+revision. The rest are in the untracked record, and that gap is not closed by
+anything since. The claim is narrowed to that rather than repeated as a round
+number nobody here can check.
+
+A third cold round then read this evidence, and it is the one that is tracked. It
+returned PASS on six findings, conditional on the first of them being fixed in the
+change that closes M1: nothing compared `review.result` to the verdict inside the
+record it binds, and `review.result` had been set to `pass` over a record reading
+`Result: FAIL` with `verify milestone M1` exiting 0. It re-derived ADG-3's binding
+three times from the pinned inputs and got the tracked digest each time, moved the
+local fixtures away to confirm the runner cannot fabricate a measurement, and broke
+the provenance, digest, redaction and closure rules one at a time to confirm each
+fails closed. All six findings are fixed in the stack that closes M1, and
+[`review.md`](review.md) is the verdict as delivered, including the reviewer's own
+list of what it read rather than ran — the tracked-JAR rule is in that list and is
+still untested.
 
 ## What this evidence does not establish
 

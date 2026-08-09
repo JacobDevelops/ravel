@@ -71,6 +71,13 @@
               lockFile = ./Cargo.lock;
             };
             nativeBuildInputs = [
+              # `verify scaffold` shells out to both of these. `jq` was here and
+              # `check-jsonschema` was not, so every milestone manifest reported
+              # "cannot validate evidence schema" in this check and the schema
+              # rule the repository's evidence rests on ran nowhere but the
+              # devenv shell. It failed closed rather than silently, which is why
+              # the check was red rather than falsely green.
+              pkgs.check-jsonschema
               pkgs.jq
               pkgs.rustPlatform.cargoSetupHook
               shell.config.languages.rust.toolchainPackage

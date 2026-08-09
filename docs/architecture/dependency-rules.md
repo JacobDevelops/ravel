@@ -15,10 +15,15 @@ stable contracts toward concrete host internals.
 - Package and resolver layers may depend on core and serialization or graph
   libraries. They do not depend on bootstrap, SDK, or a concrete adapter.
 - The SDK is a safe author-facing facade. It must not expose bootstrap details,
-  generated JVM types, or Minecraft-version internals. It depends on `ravel-core`,
-  `ravel-host-api`, `ravel-save` and `ravel-data`, and
-  `tests/conformance/tests/sdk_boundary.rs` pins that closure package by package
-  from `Cargo.lock`. `ravel-data` is there because the content declaration a mod
+  generated JVM types, or Minecraft-version internals. Which Ravel crates it
+  depends on is not listed here: `tests/conformance/tests/sdk_boundary.rs` pins
+  that closure package by package from `Cargo.lock`, so it is the enumeration,
+  and a second one in prose is a list that goes stale the next package that adds
+  an edge — which is what happened to the list this sentence replaced. Read the
+  pinned set there and `crates/ravel-sdk/Cargo.toml` for the direct edges. Each
+  edge needs the same kind of reason the test records beside it: an author-facing
+  item a mod cannot be written without. `ravel-data` is there because the content
+  declaration a mod
   writes — registry entries, tag memberships, supplied resources, and the pack
   they generate — is that crate's model, and `ravel-pack` reads the same
   declarations in M4-W5; a model living in the facade would make a feature crate

@@ -57,6 +57,25 @@ pub enum DispatchRefused {
         /// The mod that owns the command.
         mod_id: ModId,
     },
+    /// The delivery's own side field disagrees with the side the set runs on.
+    ///
+    /// A [`PacketDelivery`]'s `side` is a claim the caller wrote, and it is the
+    /// source of truth for [`PacketDelivery::decode`] inside the mod, while the
+    /// machine's side is the source of truth here. Two answers to one question is
+    /// a defect whichever way they disagree, so the delivery is refused naming
+    /// both rather than routed on one and read on the other. Without this a
+    /// legitimate packet whose `side` was set wrong is delivered and then refused
+    /// by the mod, which fails closed but reports the wrong reason — so whatever
+    /// builds a delivery when a transport lands has to set `side` from the host,
+    /// and this is what says so at the time it gets it wrong.
+    PacketForeignSide {
+        /// The contract that was refused.
+        id: PacketId,
+        /// The side the delivery claimed to arrive on.
+        claimed: Side,
+        /// The side the set is running on.
+        running: Side,
+    },
     /// The packet travels a way this side is not an end of.
     ///
     /// A fact about the delivery rather than about the set, and checked before
@@ -103,6 +122,16 @@ impl fmt::Display for DispatchRefused {
                 formatter,
                 "`{mod_id}` owns the command and does not load on this side"
             ),
+            Self::PacketForeignSide {
+                id,
+                claimed,
+                running,
+            } => write!(
+                formatter,
+                "`{id}` arrived claiming the `{}` side and the set is running as `{}`",
+                claimed.name(),
+                running.name()
+            ),
             Self::PacketWrongSide {
                 id,
                 direction,
@@ -138,6 +167,7 @@ impl StructuredFailure for DispatchRefused {
             Self::NotReacting { state, .. } | Self::OwnerNotReacting { state, .. } => *state,
             Self::Unclaimed { .. }
             | Self::OwnerWrongSide { .. }
+            | Self::PacketForeignSide { .. }
             | Self::PacketWrongSide { .. }
             | Self::Absent { .. } => LifecycleState::Running,
         }
@@ -322,6 +352,13 @@ pub fn broadcast_profiled(
 /// [`PacketId`] is namespaced by its owner, so exactly one mod can read it and
 /// asking the others would be handing them bytes they have no contract for.
 ///
+/// The delivery's own `side` is reconciled with the machine's before anything
+/// else. `PacketDelivery::side` is what `ravel_network::PacketDelivery::decode`
+/// checks inside the mod and the machine's side is what this function checks, so
+/// a delivery whose two answers disagree is refused here rather than routed on
+/// one and read on the other. Every side check downstream then reads a side that
+/// has been agreed.
+///
 /// The side check comes first and is the point of this function. A client-bound
 /// packet arriving on a server side is refused before the owner is looked up and
 /// before any of the mod's decoding runs, which is what makes `SPEC.md` §14's
@@ -345,6 +382,13 @@ pub fn deliver_packet(
     mods: &mut [&mut (dyn HostMod + '_)],
     delivery: &PacketDelivery,
 ) -> Result<Delivery, DispatchRefused> {
+    if delivery.side != machine.side() {
+        return Err(DispatchRefused::PacketForeignSide {
+            id: delivery.id.clone(),
+            claimed: delivery.side,
+            running: machine.side(),
+        });
+    }
     if !delivery.direction.may_receive_on(machine.side()) {
         return Err(DispatchRefused::PacketWrongSide {
             id: delivery.id.clone(),
@@ -1063,6 +1107,53 @@ mod tests {
         assert!(delivered.is_complete());
         assert_eq!(second.received, [packet_id("second_mod:ping")]);
         assert!(first.received.is_empty());
+    }
+
+    #[test]
+    fn a_delivery_claiming_another_side_than_the_set_runs_on_reaches_nobody() {
+        // A legitimate server-bound packet, arriving on a dedicated server, whose
+        // own `side` field says `client`. The direction is right for both sides
+        // involved, so nothing but the disagreement can refuse it — and it must be
+        // refused here rather than routed on the machine's answer and then read on
+        // the delivery's, which is what produced a valid packet being refused
+        // inside the mod for a reason that was not true.
+        let mut host = Networked::new("example_mod");
+        let machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::DedicatedServer,
+            &mut [&mut host],
+        );
+
+        let sent = delivery("example_mod:ping", Direction::ToServer, Side::Client);
+        let refusal = deliver_packet(&machine, &mut [&mut host], &sent)
+            .expect_err("the delivery claims a side the set is not running as");
+
+        assert_eq!(
+            refusal,
+            DispatchRefused::PacketForeignSide {
+                id: packet_id("example_mod:ping"),
+                claimed: Side::Client,
+                running: Side::DedicatedServer,
+            }
+        );
+        // Both sides are named, so a reader can tell which end set it wrong.
+        let rendered = refusal.to_string();
+        assert!(rendered.contains(Side::Client.name()), "{rendered}");
+        assert!(
+            rendered.contains(Side::DedicatedServer.name()),
+            "{rendered}"
+        );
+        assert!(host.received.is_empty(), "the mod was handed the delivery");
+
+        // The same delivery with its side field agreeing does reach the mod, so
+        // the refusal above is about the disagreement and nothing else.
+        let agreeing = delivery(
+            "example_mod:ping",
+            Direction::ToServer,
+            Side::DedicatedServer,
+        );
+        deliver_packet(&machine, &mut [&mut host], &agreeing).expect("the sides agree");
+        assert_eq!(host.received, [packet_id("example_mod:ping")]);
     }
 
     #[test]

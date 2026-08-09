@@ -215,18 +215,6 @@ impl LoaderRuntime {
             .collect()
     }
 
-    /// The packages an envelope's `requiredPackages` is checked against.
-    ///
-    /// Nothing carries a package version into the runtime yet: the composed host
-    /// builds mods from source and `LifecycleEntry` holds an identity rather
-    /// than a version, so the installed set is genuinely empty here. That makes
-    /// any declared requirement refuse, which is the direction `SPEC.md` §14
-    /// asks for, and no mod this build composes declares one. The map is built
-    /// here rather than inlined so the packaged set replaces one function.
-    fn installed_packages(_inner: &crate::runtime::Inner) -> BTreeMap<ModId, Version> {
-        BTreeMap::new()
-    }
-
     fn produce(inner: &crate::runtime::Inner) -> Result<SavedDataAggregate, String> {
         inner
             .machine
@@ -278,8 +266,26 @@ impl LoaderRuntime {
         }
 
         let declarations = Self::declarations(&inner);
-        let packages = Self::installed_packages(&inner);
-        let aggregate = SavedDataAggregate::open(bytes, &declarations, &packages)
+        // No installed package set reaches this process. `install` is handed a
+        // machine, a mod set and a pre-world report; `LifecycleEntry` and
+        // `HostMod` carry an identity and no version; and the composed host
+        // builds its mods from source rather than from package manifests. So
+        // nothing here can say a package is installed, and every declared
+        // requirement refuses as missing, which is the direction `SPEC.md` §14
+        // asks for.
+        //
+        // What that costs is stated rather than hidden: the exact-version
+        // comparison `SavedDataError::IncompatiblePackage` reports cannot be
+        // reached from this crossing, because reaching it needs a package
+        // installed at some version. `ravel-save` keeps the comparison — it is
+        // reachable and asserted through that crate's own API and through
+        // tests/conformance/tests/saved_data.rs, which supplies an installed set
+        // — and the gap is that no launch supplies one. Supplying it means
+        // carrying package identity and version through composition into
+        // `install`, which is the private-inventory work M3 does not authorize
+        // yet; evidence/m3/manifest.json records it as a risk under that name.
+        let uncheckable: BTreeMap<ModId, Version> = BTreeMap::new();
+        let aggregate = SavedDataAggregate::open(bytes, &declarations, &uncheckable)
             .map_err(|error| error.to_string())?;
         for host in &mut inner.mods {
             let Some(declaration) = host.saved_data_declaration() else {
@@ -1011,6 +1017,82 @@ mod tests {
                 .contains(&format!("`worlds/w{}`", overrun - 1)),
             "the newest notice was dropped instead of the oldest: {observed:?}"
         );
+    }
+
+    /// What a world requiring a package gets, in both polarities.
+    ///
+    /// No installed package set reaches this process, so the requirement cannot
+    /// be compared and the crossing refuses rather than guessing — `SPEC.md` §14
+    /// fails closed. The other polarity is the same world without the
+    /// requirement, which is what makes the refusal the requirement's doing
+    /// rather than the envelope's. The exact-version comparison
+    /// `SavedDataError::IncompatiblePackage` reports is unreachable from here for
+    /// the same reason and is recorded as a risk rather than left looking live.
+    #[test]
+    fn a_world_requiring_a_package_is_refused_and_the_same_world_without_one_is_not() {
+        let requiring = stored_requiring(vec![ravel_save::RequiredPackage {
+            id: id("base"),
+            version: ravel_core::Version::new(2, 0, 0),
+        }]);
+        let requiring_none = stored_requiring(Vec::new());
+
+        let (runtime, _held) = running();
+        let refused = runtime
+            .stage_world(WorldIdentity::of(FIRST), Some(&requiring), true)
+            .expect_err("a requirement this process cannot check opens no world");
+        assert!(refused.contains("base"), "{refused}");
+        assert!(
+            matches!(
+                runtime.save_world(&WorldIdentity::of(FIRST)),
+                SaveOutcome::IdentityMismatch(_)
+            ),
+            "a refused world was staged anyway"
+        );
+
+        let (runtime, _held) = running();
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), Some(&requiring_none), true)
+            .expect("the same world declaring no requirement opens");
+    }
+
+    /// The bytes of a world whose one envelope declares `required`.
+    fn stored_requiring(required: Vec<ravel_save::RequiredPackage>) -> Vec<u8> {
+        let mut aggregate = SavedDataAggregate::fresh();
+        aggregate.replace(SavedDataEnvelope::new(
+            id(OWNER),
+            version(1),
+            required,
+            None,
+            json!({ "visits": 1 }),
+        ));
+        aggregate.to_bytes().expect("bounded")
+    }
+
+    #[test]
+    fn an_existing_world_that_lost_its_data_is_noticed_and_admitted_anyway() {
+        let (runtime, _held) = running();
+
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, false)
+            .expect("absence still initializes fresh state for any world");
+
+        let observed = runtime.persistence_observations();
+        assert_eq!(observed.len(), 1, "{observed:?}");
+        assert!(observed[0].contains(FIRST), "{observed:?}");
+        assert!(observed[0].contains("holds no Ravel data"), "{observed:?}");
+        // Admission is untouched: the world staged and saves from it work.
+        replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+    }
+
+    #[test]
+    fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
+        let (runtime, _held) = running();
+
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("a new world stages");
+
+        assert!(runtime.persistence_observations().is_empty());
     }
 
     #[test]

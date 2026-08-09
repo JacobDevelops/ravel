@@ -1362,3 +1362,508 @@ If B-1 is fixed by a test I can break the same way I broke everything else in th
 report — mutate `persistence.rs:300` and get a nonzero exit — then on the evidence I
 have seen, M3 closes. The machinery is there. The one thing it does not hold is the one
 thing M3-W4 exists to establish.
+
+---
+
+## Round 7 — VERDICT: FAIL
+
+This round's own heading calls itself Round 7 and names itself the eighth round
+to
+run, counting the untracked prototype round this file describes but does not
+hold.
+Under this file's numbering, which counts only the rounds it holds, it is Round
+7
+as well. Nothing else about it is renamed, and the headings it shares word for
+word
+with an earlier round carry its round number so this repository's markdown lint
+passes.
+
+Result: FAIL
+
+### M3-W8 Independent Review — Round 7 (the eighth round to run)
+
+#### VERDICT: FAIL — Round 7
+
+One blocking finding. It is the fourth visit of the same failure shape to the
+same six-line loop, and it is a different step of it: the previous round found
+the delivery of *state* unconstrained, its re-prover found *plan* and *identity*
+unconstrained, and all three are now genuinely closed — I broke each of them and
+each broke correctly. What is still constrained by nothing is the *refusal*
+direction of the same delivery. Swallowing a mod's own refusal to open its saved
+data leaves the whole gate green, including the JVM harness, and the consequence
+is that the mod runs with fresh state and the next save writes that over the
+world's stored data.
+
+Everything else I attacked failed closed, and the pin, disclosure, campaign-
+inventory and spike-record machinery added since the last round is real. I say
+that having tried to kill each piece rather than having read it.
+
+#### Method and environment — Round 7
+
+Whole repo `rsync -a --exclude target` into a private scratchpad, `.jj`
+included, `CARGO_TARGET_DIR` left unset with the copy's `target` a symlink to a
+directory on a filesystem with room (root was at 95%). Every mutation was
+applied in the copy only. At the end `diff -rq` over the whole tree excluding
+`.git`, `.jj`, `.devenv`, `target` and `logs` reports no differences from the
+real tree, and the real tree's `jj st` is "no changes" at `qzkpuwpq c35e23ad`,
+the same commit as at session start.
+
+Baseline in the copy before trusting any exit code: `cargo test --workspace`
+exit 0 (835 passed, 0 failed across unit, integration and doc tests); `ravel-
+xtask verify scaffold` exit 0; `verify spikes` exit 0; `verify milestone M3`
+exit 1 on exactly the two stated violations; the full `ravel-verify-jvm`
+sequence (adapter build, release `ravel-composed-host`, `build-agent.sh`, `run-
+harness.sh`) exit 0.
+
+Recorded provenance recomputed: all five M3 digests — the four
+`benchmarks.results[]` records and `review.md` — verify by `sha256sum -c`, 5/5
+OK. `tests` arithmetic holds: 854 = 854 + 0 + 0, coverage 86.68.
+
+---
+
+#### Blocking — Round 7
+
+##### B-1 — A mod's refusal to open its own saved data can be swallowed on the production world-open path, and the entire gate stays green
+
+**Files.** `crates/ravel-bootstrap/src/persistence.rs:300-301` (the
+propagation); `crates/ravel-bootstrap/src/persistence.rs:604-619` (the test
+double, which cannot refuse) against `:621-624` (which can, on the save side);
+`test-mods/saved-data/src/lib.rs:242-258` (the three production refusals);
+`tests/conformance/tests/saved_data.rs:331-341` (`reload`, which restates the
+sequence).
+
+**What is claimed.** `evidence/m3/manifest.json`'s `gateStatus` M3-W4 row offers
+`tests/conformance/tests/saved_data.rs` and `jvm/harness/PersistenceMain.java`
+as the half that "runs on every gate", explicitly as the reviewer-checkable
+substitute for a live half that is operator attestation. `ROADMAP.md:736`
+requires "create/save/exit/reload preserves state" and that incompatibilities
+"fail closed". `SPEC.md` §14 requires that a required dependency failure
+prevents world access, and that a failure cannot silently continue or save
+partial state. The comment at `persistence.rs:239-246` states that policy in the
+same words for the world-access gate two steps earlier.
+
+**What is actually true.** `stage_world` propagates a mod's own open refusal
+with `?`. Nothing in the repository constrains that.
+`SavedDataMod::open_saved_data` has three distinct `HostError::Refused` returns
+— an unparseable payload, the mod's own `open()` refusing, and a plan that
+changed during delivery — and no test in the workspace makes any of them fire.
+The test double's `open_saved_data` returns `Ok(())` unconditionally and has no
+refusal flag, while the same double carries `refuses_production` for the save
+side; so the propagation cannot even be expressed in the module's own tests. The
+consequence of losing it is not a diagnostic: the world opens, the mod
+initialises fresh, and `produce` then replaces the stored envelope with the
+mod's default one on the next save. That is state loss on the reload path, which
+is what M3-W4 exists to establish.
+
+**How I established it — broke it, twice, independently.**
+
+| mutation | gate step | exit |
+| --- | --- | --- |
+| `persistence.rs:300-301` `host.open_saved_data(envelope, &plan).map_err(…)?;` → `let _ = host.open_saved_data(envelope, &plan);` | `cargo test -p ravel-bootstrap` | **0** (92 passed, 0 failed) |
+| same | `cargo build -p ravel-minecraft-adapter && cargo build -p ravel-composed-host --release && ./jvm/build/build-agent.sh && ./jvm/harness/run-harness.sh` | **0** |
+| `test-mods/saved-data/src/lib.rs:247-251`, the mod's own `self.open(state)` refusal → `Err(_) => return Ok(())` | `cargo test --workspace` | **0** |
+
+The JVM harness cannot reach it for the reason the previous round established:
+`jvm/harness/initialization/dev/ravel/jvm/Hook.java` answers both crossings from
+system properties, so `PersistenceMain`'s `refused` case never reaches Rust's
+delivery. I confirmed the harness runs and passes at baseline (exit 0) and
+passes unchanged under the mutation, so this is measured rather than inferred.
+
+**Why blocking rather than moderate.** M3-W4's live half is honestly recorded as
+unrecomputable; the repository's answer to that ceiling is the in-gate half, and
+the in-gate half does not contain this step. The asymmetry with
+`refuses_production` is the tell that this is an omission and not a scope
+boundary — the double was built to express a save-side refusal and never an
+open-side one. And the failure mode is silent data loss, which is the one thing
+"preserves state" cannot be read to tolerate.
+
+**Smallest fix.** Give the double an open-side refusal flag beside
+`refuses_production`. One test in `crates/ravel-bootstrap/src/persistence.rs`'s
+module asserting that when a mod refuses, `stage_world` returns `Err`, `staged`
+is left unset, and no checkpoint exists to save. One test in
+`tests/conformance/tests/saved_data.rs` handing `SavedDataMod` a payload
+`SavedState` cannot deserialize and asserting `reload` errors. This is a handful
+of lines, the same size as the fix that closed the previous B-1.
+
+> **Editor's note, not the reviewer's text.** B-1 is answered, by the fix this
+> finding specifies. Change `qzkpuwpqyqsk` gave the test double an open-side
+> refusal flag beside `refuses_production`, added a test in
+> `crates/ravel-bootstrap/src/persistence.rs`'s module asserting that a mod
+> which
+> refuses makes `stage_world` return `Err` with nothing staged and no checkpoint
+> to
+> save, and added a conformance test in `tests/conformance/tests/saved_data.rs`
+> handing `SavedDataMod` a payload `SavedState` cannot deserialize and asserting
+> that `reload` errors. It was confirmed the way this round asks: re-applying
+> this
+> round's own mutation — swallowing the open-side refusal at the propagation
+> site —
+> and requiring a nonzero exit. Answering a blocking finding is not closure:
+> what
+> M3-W8 needs is an independent round that returns a pass, and this record holds
+> none.
+
+---
+
+#### Moderate — Round 7
+
+##### M-1 — Five recorded counts of how many review rounds have run, and how many are tracked, are false right now
+
+`evidence/m3/README.md:40` ("The five tracked independent M3-W8 rounds"), `:44`
+("Six independent rounds have run and all six returned FAIL"), `:240` ("a sixth
+independent round decides that"); `evidence/m3/manifest.json:250` ("Five of the
+six verdicts are tracked verbatim"), `:267` — the `review.reviewer` field itself
+— ("six rounds … five rounds are tracked verbatim").
+
+**True.** `grep -c '^## Round' evidence/m3/review.md` returns **6**. With the
+untracked prototype round the file describes, **seven** rounds have run and
+**six** are tracked verbatim. Every one of the five sites is stale by one, and
+`README.md:240` by two — the sixth round has run and returned FAIL.
+
+**How established:** read and counted; no mutation needed, because these are
+wrong as they stand rather than falsifiable later.
+
+This is the sixth occurrence of the recurring "absolute count a future commit
+falsifies" class, and the repository already knows the right answer to it:
+`manifest.json:86` states the convention outright — "the record itself says how
+many have run and this row does not restate it". Round 6's M-3 raised this exact
+defect; it was fixed in the `gateStatus` M3-W8 row and left in five other
+places, two of them inside the `review` block that closure reads. **Fix:**
+delete the ordinals and counts from those five sites and let `review.md` be the
+one place that counts, per the convention `manifest.json:86` already declares.
+Any number written there is falsified by the next round, including this one.
+
+> **Editor's note, not the reviewer's text.** M-1 is answered in the form this
+> finding asks for. Change `pomowrkslwxt` deleted the counts and the forward-
+> looking
+> ordinal from all five sites in `evidence/m3/README.md` and
+> `evidence/m3/manifest.json`, leaving this record as the one place the rounds
+> are
+> counted, and change `qytnmlpvluyt` gated it: `verify_review_round_counts`
+> refuses
+> a cardinal count of rounds or verdicts in either document, on every
+> `ravel:verify`, so the fix cannot be undone by prose. Reinstating a deleted
+> count
+> fails the scaffold gate, which is how the gate was established rather than
+> read.
+> The same rule now covers M2's README and manifest, which had no count to
+> remove
+> and now cannot acquire one.
+
+##### M-2 — "The verdict cannot be produced by editing a string" is stated too strongly; four coordinated string edits do close M3
+
+`evidence/m3/review.md:1236` (Round 6's heading). Its own next sentences make
+the true, narrower claim — "Closing M3 by editing the manifest alone is not
+available" — and that claim holds; the heading does not.
+
+**How established — broke it.** With `review.md`'s front-matter `Result: FAIL`
+left alone and only the manifest edited, `verify milestone M3` exits 1 with
+*"records review.result pass while the review record it binds states fail"* and
+`verify scaffold` exits 1 as well: the narrow claim is real. Editing four
+strings — `review.md`'s single front-matter `Result:` line to `PASS`,
+`review.result` to `"pass"`, the one `classification: "blocking"` risk to `"non-
+blocking"`, and rebinding `review.record.sha256` — gives `verify milestone M3`
+**exit 0** and `verify scaffold` **exit 0**. Nothing else objects.
+(Reclassifying to anything other than `non-blocking` is refused by the schema,
+which I confirmed: `"moderate"` gives *"does not conform to evidence schema"*.)
+
+This is not a defect in the machinery. Closure is an attestation gate; the
+controls available to it are that the record's bytes are digest-bound and its
+verdict line must agree with the manifest, and both work. **Fix:** state the
+boundary as it is, so a later auditor knows the gate binds *which text was
+attested*, not *that the attestation was earned*.
+
+> **Editor's note, not the reviewer's text.** M-2 is answered in the words this
+> finding gives. Change `pomowrkslwxt` states the boundary in
+> `evidence/m3/README.md` and beside the overreaching heading in this record:
+> the
+> gate binds which text was attested, not that the attestation was earned. It is
+> a
+> prose correction and no check is possible over it — no gate can decide whether
+> a
+> sentence about its own limits is honest. M2's evidence now carries the same
+> statement, on its own third audit's F3, so the limit is recorded in both
+> places a
+> reader might look.
+
+---
+
+#### Minor — Round 7
+
+##### m-1 — The document-count anchors are evaded by rewording an existing gated sentence, not only by adding a new one
+
+`tools/ravel-xtask/src/lib.rs:465-468` discloses that "a sentence that states a
+count in some new phrasing is not reached", and adds that each figure is checked
+at *every* occurrence.
+
+**How established — broke it.** Replacing one of `evidence/m3/README.md`'s three
+`33 callable targets` occurrences with `99 rewritten callables` left `verify
+scaffold` at **exit 0**: the two surviving occurrences keep the anchor alive, so
+the "no longer writes a count against" branch never fires and the false 99 is
+unreachable. Appending brand-new unanchored sentences to both gated documents
+("99 rewritten members across 42 loaded classes … 71 entries in total") also
+left **exit 0**.
+
+**Judgment.** The disclosure is adequate for the defect the gate exists to catch
+— a count left behind by a re-pin keeps its phrasing and *is* caught, at every
+occurrence: adding one method to `rewrite.targetInventory` produced the
+inventory violation plus five separate README occurrence violations. It is not
+adequate as *worded*, because it names new sentences as the residual hole when a
+reworded existing sentence is equally uncaught, and the "every occurrence"
+sentence reads as a stronger guarantee than it is. **Fix:** widen the wording,
+or assert the multiset of integers adjacent to the subject nouns rather than the
+integers attached to four fixed phrases.
+
+> **Editor's note, not the reviewer's text.** m-1 is answered by the first of
+> the
+> two fixes offered. Change `qytnmlpvluyt` widened the disclosure to name both
+> holes
+> — a count in new phrasing, and a reworded occurrence whose surviving siblings
+> keep
+> the anchor alive — and scoped the every-occurrence claim to anchored
+> phrasings,
+> which is what it was true of. The second fix is stated and declined in the
+> same
+> comment, with its reason: the noun is what identifies which figure an integer
+> is,
+> both holes change the noun, and a check that ignored the noun would flag every
+> integer near it and be a false red in prose this dense. This is a wording
+> correction, so nothing fails when it is reverted; what does fail is a stale
+> figure
+> in an anchored sentence, which this round confirmed fires.
+
+##### m-2 — "over nine world lifecycles" is ungated
+
+`evidence/m3/README.md:349` and `evidence/m3/linux-process-matrix.json:70`. I
+re-derived the nine from `jvm/harness/run-harness.sh` — `admitted`, `null-
+verdict`, `refused`, `save-{unchanged,failed,mismatch,null}`, `absent-sibling`,
+`missing-save-seam` — and it is true today. **How established — broke it:**
+appending a tenth `persistence_run` case left `verify scaffold` at **exit 0**.
+This was Round 6's reading-only ceiling item 4; it is now proved rather than
+read. **Fix:** derive it from the script, or drop the number.
+
+> **Editor's note, not the reviewer's text.** m-2 is answered by the first of
+> the
+> two fixes offered. Change `qytnmlpvluyt` made `jvm/harness/run-harness.sh`
+> declare
+> the figure once, as `persistence_lifecycles_declared`, and assert it against
+> the
+> runs the harness made, so a case added or removed there fails the harness;
+> `verify_harness_lifecycles` then binds both records that cite the figure to
+> that
+> declaration. Restating a different count in either record fails the scaffold
+> gate,
+> which is how this was established rather than read.
+
+##### m-3 — The disclosure's `reason` is unchecked against the kind of failure it excuses
+
+**How established — broke it.** Re-pinning `evidence/m2/loader-overhead.json` to
+an arbitrary real commit belonging to a different change, and updating only the
+disclosure's `id` to match, gives `verify scaffold` **exit 0** — while that
+disclosure's prose still says the pinned commit "is reachable from no visible
+head", which is now false about it. The gate prints its own computed `why`
+beside the record's `reason`, so the mismatch is visible in the gate output to
+anyone reading it, which is why this is minor. An *empty* reason is refused: the
+schema requires `minLength: 1`, and setting it to `""` gives exit 1, *"does not
+conform to the evidence schema"*.
+
+> **Editor's note, not the reviewer's text.** m-3 is answered. Change
+> `qytnmlpvluyt` refuses a disclosure whose `reason` classifies the failure
+> itself:
+> the two phrases that go stale when a pin moves are held in
+> `CLASSIFICATION_PHRASES` and rejected wherever a disclosure's prose restates
+> one,
+> which leaves exactly one statement of why a pin failed — the gate's computed
+> one,
+> printed beside the prose on every run. What a `reason` still is not checked
+> against is the judgement it makes about what a reader loses, which no gate can
+> decide. Restating a classification phrase in a disclosure fails the scaffold
+> gate.
+
+---
+
+#### What I verified by breaking, and what it establishes — Round 7
+
+Every one of these fails closed. Listed so a later auditor does not redo them.
+
+**The four delivery mutations the brief named — all caught.**
+
+| mutation at `persistence.rs` | `cargo test -p ravel-bootstrap` | which tests |
+| --- | --- | --- |
+| `host.open_saved_data(None, &plan)` | **101** (89 passed, 3 failed) | `a_stored_aggregate_reaches_the_mod_that_owns_it`, `a_world_reopened_from_what_its_save_emitted_holds_the_same_state`, `each_owner_in_one_world_receives_its_own_envelope_and_no_other` |
+| `SavedDataPlan::open(&declaration, None)` | **101** (90 passed, 2 failed) | `a_world_written_at_an_older_version_hands_the_mod_the_steps_to_reach_current`, `each_owner_…` |
+| hand each mod another owner's envelope | **101** (91 passed, 1 failed) | `each_owner_…`, and it failed for an **identity** reason, not an absence one: `` `saved_data` did not receive its own state — left: 9, right: 5 `` |
+| deliver to the first mod only (`inner.mods.iter_mut().take(1)`) | **101** (91 passed, 1 failed) | `each_owner_…` |
+
+The two-owner runtime is what makes the identity failure expressible, and the
+plan assertion carries both polarities — a version-1 world gets `[version(2)]`,
+a current world gets an empty plan — so neither assertion is satisfied by every
+plan. The previous round's fix survives the mutation it asked to be tested with,
+and the two follow-up gaps its re-prover found are closed as claimed.
+
+**The pinned-revision rule.** A genuinely bogus pin — `1234567890abcdef…`, not
+the ROOT commit — gives `verify scaffold` **exit 1**: *"admits loader-
+overhead.json, whose trial at trial.revision pins 1234567890…, and that commit
+names no commit in visible history; re-pin it … or disclose it under
+unobtainableRevisions"*. Both halves of the disclosure contract hold. It
+**cannot cover a pin it does not name**: the same run also reported *"discloses
+the pin `loader-overhead.json df717025… wxzwmy…` as unobtainable, and no record
+it admits carries it; a disclosure that names no pin excuses nothing and hides
+the next one"*. It **cannot outlive the defect**: repairing `pack-
+compile.json`'s pin to `fae2a9aaa03ddc6d…`, the commit
+`wpuqwqlrpuvttpzrvqvuxryzwmptuxyt` is actually at, and keeping the disclosure in
+sync gives **exit 1**: *"discloses pack-compile.json's pin … as unobtainable and
+it now resolves to the commit change … is at; remove the disclosure rather than
+leaving an excuse the defect has outlived"*. The escape works only when it names
+the pin exactly, and then it is announced on stdout rather than silent — exit 0
+with the `why` and the `reason` both printed.
+
+**Campaign inventory (33 targets, 15 classes) — the gate fires and the
+HISTORICAL decision is implemented as decided.** Setting
+`rewrite.callableTargetsInInventory` to 34 gives exit 1, *"records
+callableTargetsInInventory 34 against the 33 callable targets its own target
+inventory enumerates"*. Adding one method to `rewrite.targetInventory` gives
+exit 1 with the mirror-image message **plus five** separate
+`evidence/m3/README.md` occurrence violations, so the every-occurrence claim is
+true for the anchored phrasings. Adding a `[[hook]]` entry to
+`minecraft/versions/26.1.2/hooks.toml` gives exit 1 on the *document* only —
+*"m3-hook-targets.md states 37 hook entries where hooks.toml declares 38"* and
+*"33 method entries … declares 34"* — and leaves the campaign figures untouched.
+
+**On whether HISTORICAL is the right decision: yes.** A launch campaign observed
+one inventory in one build; a hook added later does not change what that
+campaign rewrote, and deriving the campaign's figures from `hooks.toml` would
+make the record misreport its own launches. The figures are now derived from the
+record's own enumeration, the enumeration is required to be an enumeration
+(duplicates refused before `unique` can absorb them), and every anchored prose
+occurrence is held to it. That is the correct shape. One residual worth a
+reader's attention rather than a finding: nothing binds
+`rewrite.targetInventory` to `hooks.toml` as of the campaign's build, and the
+matrix pins no revision at all — so there is nothing to bind it to. It says so
+in prose. Also note that the campaign's 33 and `hooks.toml`'s 33 method entries
+coincide *today* and are different quantities; after the next hook lands they
+will differ, and that is correct rather than drift.
+
+**The spike record is left to the change that introduced it.** Removing the
+`path.exists()` guard from `write_result` in `experiments/spike-
+harness/src/lib.rs` gives `cargo test -p spike-harness` **exit 101**. The test
+that catches it is inside the gate suite —
+`a_record_already_on_disk_is_not_rewritten_by_a_later_run` appears in the
+baseline `cargo test --workspace` log — so a later change can no longer claim an
+earlier change's record.
+
+**Spot-checks of what the previous round broke, re-broken.**
+`verify_recorded_verdict`: `review.result: "pass"` against a record stating FAIL
+gives exit 1 in both `verify milestone M3` and `verify scaffold`. Digest
+binding: one newline appended to `review.md` gives exit 1 naming `6da1ff7c…`
+against `b327881a…`. The `missing-save-seam` refusal: replacing `if
+(!saveSeamInstalled())` with `if (false)` at
+`jvm/bootstrap/dev/ravel/jvm/Persistence.java:104` gives the harness **exit 1**,
+so the refusal branch is production Java and is real.
+
+**`pack-compile.json`'s arithmetic, which no prior round audited — it reconciles
+completely.** Baseline 2526 is the median of `[2526, 2351, 2550]`; every
+`coldMilliseconds` is the median of its own three samples; every
+`coldMillisecondsLessBaseline` is that median less 2526 (604, 2024, 7293,
+29505); every `coldMillisecondsPerMod` is that over `packSize` including
+rounding (604.0; 126.5; 7293/64 = 113.953125 → 113.95; 29505/256 = 115.2539… →
+115.25); `marginalColdMillisecondsPerMod` 113.34 is the stated secant, (29505 −
+604) / (256 − 1) = 113.3372…; every variant figure is the faster of its two
+samples, 8/8 cold and 16/16 warm; `modSourceBytes` is `packSize × 33873` at all
+four sizes; and `syntheticMod.sourceBytes/sourceLines` agree with the `packSize:
+1` point. The `representativeness` prose also checks out against the tree rather
+than against itself: at `trial.revision.id 4c550dae…`, `test-
+mods/registries/src/lib.rs` is exactly 275 lines and 9060 bytes as recorded, and
+today `test-mods/saved-data` (440 lines) and `test-mods/commands` (327) both
+exceed it (279) — "both have since overtaken it" is true. This record carries an
+absolute claim about the current tree that nothing gates, and unlike the five in
+M-1 it happens to be true; its own next sentence scopes the consequence
+("Nothing measured here moves with that").
+
+---
+
+#### Reading-only ceiling — Round 7
+
+These I judged by reading. They are the limit on this review's strength, and a
+later round should attack them rather than re-derive what I broke.
+
+1. **The whole live half of M3-W4 and M3-W7.** Every launch row, the byte-
+   identical reload, the `dataVersion 3→9` refusal, the two GUI scales of the
+   profiling report, `nativeInvocations`, the futex hang. Unreachable by anyone
+   but the operator. The records say so; I took their word and record that the
+   gate decisions resting on it rest on that.
+2. **The hook inventory's correspondence to the pinned client jar.** The client
+   jar is restricted material I do not have. That every table row in `m3-hook-
+   targets.md` names a member that resolves against the real 26.1.2 class files,
+   I did not check at all. Only the four aggregate counts are gated, and I
+   verified those by breaking.
+3. **`evidence/m3/class-loader-identity.json`'s internals.** Read only. I did
+   not rebuild the agent jar to re-derive its `reproducible: true` digest, so
+   the previous round's m-1 on that record is neither confirmed nor withdrawn by
+   me.
+4. **`linux-process-matrix.json`'s surface and caveat campaigns, and `profiling-
+   overhead.json`'s arithmetic.** The previous round recomputed the profiling
+   figures including the derived intervals; I did not repeat it and did not
+   audit the surface campaigns' internals.
+5. **`schemas/evidence.schema.json` conformance.** I read the
+   `unobtainableRevisions` subschema and proved by breaking that the schema
+   refuses an empty `reason` and a non-enumerated `classification`. I did not
+   run a standalone validator, and I did not check the four non-manifest records
+   against the schema; `gateStatus` remains outside it entirely.
+6. **The 18 `inputs[]` digests at each manifest's pinned revision.** I relied on
+   `verify scaffold` exit 0 rather than recomputing them by hand; Round 2
+   recomputed 18/18.
+7. **The `IncompatiblePackage` unreachability risk.** Read the seam comment at
+   `persistence.rs:269-287` and the matching risk entry. I did not attempt to
+   construct a launch that supplies an installed package set.
+8. **`review.md`'s six verbatim verdicts as faithful reproductions of what those
+   rounds wrote.** Nothing in the repository would let me check this, and M-2 is
+   the reason it matters: the record's text is what the gate binds.
+9. **ADG-1 through ADG-6.** I read only ADG-7's persistence mechanism, against
+   the code. Conformance of this milestone's work to the other six decisions I
+   did not examine.
+10. **The coverage floor.** `lineCoveragePercent: 86.68` is recomputed by
+nothing I ran; I did not run `ravel-coverage`.
+11. **`ravel:verify` and `ravel:verify-stack` as wholes — not run.** Root was at
+95% and I budgeted deliberately. I ran the components that bear on my findings:
+`cargo test --workspace`, `cargo test -p <crate>`, `verify scaffold`, `verify
+spikes`, `verify milestone M3`, and the full `ravel-verify-jvm` sequence. I did
+**not** run formatting, TOML/Markdown/Nix lint, clippy, coverage, `cargo deny`,
+or `verify-stack`. In particular I did not check whether clippy notices B-1's
+mutation; the doc-comment fence and the `let _ =` idiom suggest it would not,
+but that is a reading, not a result.
+12. **Withdrawn during review, recorded here rather than as a finding.** I
+suspected the `unobtainableRevisions` escape could be abused to launder an
+arbitrary re-pin without disclosing it, or to keep excusing a pin after the pin
+was repaired. It cannot: the disclosure must name the record, commit and change
+exactly, and a disclosed pin that starts resolving is itself a violation. Both
+are proved above. What survives of the suspicion is only m-3, that the free-
+prose `reason` is not checked against the kind of failure.
+
+---
+
+#### The smallest set standing in the way — Round 7
+
+**B-1 and M-1.**
+
+B-1 is one refusal flag on the existing test double plus two tests — one in
+`crates/ravel-bootstrap/src/persistence.rs`'s module asserting that a refusing
+mod makes `stage_world` return `Err` and stage no checkpoint, and one in
+`tests/conformance/tests/saved_data.rs` making `SavedDataMod` refuse a payload
+it cannot deserialize. Break the propagation at `persistence.rs:300-301`
+afterwards and require a nonzero exit.
+
+M-1 is deleting five stale counts and letting `review.md` be the one place that
+counts, which is the convention `manifest.json:86` already states and which is
+the only form of the fix that this round does not immediately falsify again.
+
+M-2, m-1, m-2 and m-3 are four sentences and should be corrected in the same
+pass. None of them is what I am failing the milestone on.
+
+If B-1 is closed by a test that dies under the mutation above, and the five
+counts stop being restated, then on the evidence I have seen M3 closes. The pin
+rule, the disclosure contract, the campaign-inventory derivation, the spike-
+record ownership rule, the digest binding and the verdict binding are all
+genuinely fail-closed — I broke each of them and each refused correctly. What
+the in-gate half still does not hold is the direction in which a world is
+*withheld*, and that is the direction in which a player loses data.

@@ -2,7 +2,7 @@
 
 //! Repository automation for Ravel.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -515,6 +515,8 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
         verify_recorded_review(root, manifest, &tracked, &mut violations);
         verify_recorded_inputs(root, manifest, &mut violations);
         verify_recorded_run(root, manifest, &mut violations);
+        verify_admitted_revisions(root, manifest, &mut violations);
+        verify_admitted_inventory(root, manifest, &tracked, &mut violations);
     }
 
     for (relative, milestone) in MILESTONE_MANIFESTS {
@@ -682,6 +684,272 @@ fn verify_recorded_run(root: &Path, manifest_path: &Path, violations: &mut Vec<S
             violations,
         );
     }
+}
+
+/// Requires a milestone's manifest to name every record its directory holds.
+///
+/// A digest binds a record only where the manifest names it, so a record the
+/// manifest omits is bound by nothing: with `prism-launch.json` removed from
+/// `benchmarks.results`, that record's `nativeInvocations` and `classesRewritten`
+/// were rewritten to invented numbers and `verify scaffold` exited zero, because
+/// the digest that would have caught it was no longer recorded. Each milestone
+/// gate names the records its own closure requires, and neither that nor
+/// `verify_recorded_digests` can see a file nobody mentions.
+///
+/// So the comparison is a set equality in both directions. A tracked record the
+/// manifest does not name is unbound evidence; a name with no record behind it is
+/// a digest over nothing, which `verify_recorded_digests` reports by name and this
+/// leaves to it. Untracked files are not records: they are refused by the tracked
+/// boundary rules instead, and admitting them here would let an ignored file
+/// demand a digest.
+fn verify_admitted_inventory(
+    root: &Path,
+    manifest_path: &Path,
+    tracked: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let label = relative_label(root, manifest_path);
+    let Some(directory) = manifest_path.parent() else {
+        return;
+    };
+    let prefix = format!("{}/", relative_label(root, directory));
+    let held = tracked
+        .iter()
+        .filter_map(|path| path.strip_prefix(&prefix))
+        .filter(|path| {
+            Path::new(path)
+                .extension()
+                .is_some_and(|extension| extension == "json")
+                && *path != "manifest.json"
+        })
+        .collect::<BTreeSet<_>>();
+    let named = match jq_value(
+        manifest_path,
+        r".benchmarks.results[]?.name,
+          (.platformEvidence[]?.baselines[]?.result? | select(. != null) | .name)",
+    ) {
+        Ok(named) => named,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let named = named
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .collect::<BTreeSet<_>>();
+
+    for record in held.difference(&named) {
+        violations.push(format!(
+            "{label} names no record {record}, which its own milestone directory tracks; a record \
+             no manifest names is a record no digest covers"
+        ));
+    }
+}
+
+/// Every pin a record carries, wherever inside the record it sits.
+///
+/// One record holds more than one trial — `evidence/m3/pack-compile.json` pins a
+/// revision under `trial` and a second under `variants.trial` — so a filter that
+/// read `.trial.revision` alone would leave the others free to pin anything.
+const TRIAL_PINS: &str = r#"[paths(objects) as $p
+        | select(($p | length) >= 2 and ($p[-1]) == "revision" and ($p[-2]) == "trial")
+        | {at: ($p | map(tostring) | join(".")), pin: getpath($p)}]
+    | .[]
+    | .at + " " + (.pin.id // "-") + " " + (.pin.changeId // "-") + " " + (.pin.dirty | type)"#;
+
+/// Requires every pin inside an admitted record to name a tree a reader can obtain.
+///
+/// `verify_pinned_commit` applies the visible-commit and changeId-owns-id tests to
+/// a manifest's own `.revision`, and `verify_recorded_change` applies change
+/// provenance only under `evidence/m1/spikes/`. So the revision a *record* pinned
+/// was constrained by nothing anywhere: `evidence/m2/loader-overhead.json`'s
+/// `trial.revision.id` was set to forty zeroes and its `changeId` to a change that
+/// exists nowhere, the manifest digest was rebound, and `verify scaffold` exited
+/// zero. A record whose pin binds nothing is a measurement of an unnamed tree.
+///
+/// Absence and unobtainability are separated deliberately, because they are not
+/// the same claim. A record that pins no commit claims no tree, which some records
+/// legitimately do and say so in their own prose; there is nothing there to
+/// refuse, and the skip is announced rather than silent. A record that pins one
+/// makes a statement a reader can act on, and this requires it to be true: the
+/// commit has to be reachable from visible heads — the distinction `visible_commit`
+/// draws, and the one that separates a commit a clone carries from one only this
+/// working copy's operation log can see — and it has to be the commit its own
+/// change is at now.
+///
+/// The escape is a disclosure rather than a tolerance. A pin that fails is
+/// permitted only where the admitting manifest lists it under
+/// `unobtainableRevisions` quoting that record, that commit and that change, so an
+/// excuse cannot cover a pin it does not name; and a disclosed pin that starts
+/// passing is itself a violation, so the excuse cannot outlive the defect.
+fn verify_admitted_revisions(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    let label = relative_label(root, manifest_path);
+    if !root.join(".jj").exists() {
+        println!(
+            "- {label}: the pins its records carry are not recomputed, because this checkout has \
+             no jj repository to resolve them in"
+        );
+        return;
+    }
+    let Some(directory) = manifest_path.parent() else {
+        return;
+    };
+    // Both places a manifest admits a record. M0 admits its two launch records as
+    // baselines rather than as benchmark results, and a rule that read only
+    // `benchmarks.results` would leave those two free to pin anything.
+    let names = match jq_value(
+        manifest_path,
+        r".benchmarks.results[]?.name,
+          (.platformEvidence[]?.baselines[]?.result? | select(. != null) | .name)",
+    ) {
+        Ok(names) => names,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let disclosed = match disclosed_pins(manifest_path) {
+        Ok(disclosed) => disclosed,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    // One disclosure covers every pin that quotes the same record, commit and
+    // change, because one record can carry the same pin at more than one trial —
+    // `evidence/m3/pack-compile.json` does. So which disclosures were used is
+    // tracked beside them rather than by consuming them.
+    let mut used = BTreeSet::new();
+
+    for name in names.lines().filter(|name| !name.trim().is_empty()) {
+        let record = directory.join(name);
+        // An admitted record that is not there is reported by the digest rule,
+        // which is where a reader is told to put it back.
+        if !record.is_file() {
+            continue;
+        }
+        match jq_value(&record, TRIAL_PINS) {
+            Ok(pins) => {
+                for pin in pins.lines().filter(|pin| !pin.trim().is_empty()) {
+                    verify_one_pin(root, &label, name, pin, &disclosed, &mut used, violations);
+                }
+            }
+            Err(error) => violations.push(error),
+        }
+    }
+
+    for pin in disclosed.keys().filter(|pin| !used.contains(*pin)) {
+        violations.push(format!(
+            "{label} discloses the pin `{pin}` as unobtainable, and no record it admits carries \
+             it; a disclosure that names no pin excuses nothing and hides the next one"
+        ));
+    }
+}
+
+/// Holds one pin to the disclosure or to the tests, and reports which.
+fn verify_one_pin(
+    root: &Path,
+    label: &str,
+    name: &str,
+    pin: &str,
+    disclosed: &BTreeMap<String, String>,
+    used: &mut BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let fields = pin.split_whitespace().collect::<Vec<_>>();
+    let [at, id, change, dirty] = fields.as_slice() else {
+        violations.push(format!(
+            "{label} admits {name}, which records a trial revision this gate cannot read: {pin}"
+        ));
+        return;
+    };
+    // A run on a dirty tree measured something no commit holds, so whether it was
+    // dirty is part of what the pin means. Left unstated it reads as clean.
+    if *dirty != "boolean" {
+        violations.push(format!(
+            "{label} admits {name}, whose trial at {at} does not declare whether the tree it \
+             measured was dirty"
+        ));
+    }
+    if *id == "-" {
+        println!(
+            "- {label}: {name} pins no commit at {at}, so it claims no tree and none is recomputed"
+        );
+        return;
+    }
+    if *change == "-" {
+        violations.push(format!(
+            "{label} admits {name}, whose trial at {at} pins the commit {id} and no change; every \
+             rewrite abandons a commit, so a pin no change names cannot be recovered"
+        ));
+        return;
+    }
+    let key = format!("{name} {id} {change}");
+    match (pin_is_obtainable(root, id, change), disclosed.get(&key)) {
+        (Ok(()), None) => {}
+        (Ok(()), Some(_)) => {
+            // Counted as used even though it is refused, so the one defect is
+            // reported once rather than again as a disclosure nothing carries.
+            used.insert(key);
+            violations.push(format!(
+                "{label} discloses {name}'s pin {id} as unobtainable and it now resolves to the \
+                 commit change {change} is at; remove the disclosure rather than leaving an excuse \
+                 the defect has outlived"
+            ));
+        }
+        (Err(why), Some(reason)) => {
+            used.insert(key);
+            println!(
+                "- {label}: {name}'s pin {id} at {at} is disclosed rather than recomputed, \
+                 because {why}: {reason}"
+            );
+        }
+        (Err(why), None) => violations.push(format!(
+            "{label} admits {name}, whose trial at {at} pins {id}, and {why}; re-pin it to the \
+             commit change {change} is at and re-measure there, or disclose it under \
+             unobtainableRevisions with what a reader loses"
+        )),
+    }
+}
+
+/// Whether a pinned commit is one a reader can obtain under its own change.
+fn pin_is_obtainable(root: &Path, id: &str, change: &str) -> Result<(), String> {
+    let pinned = visible_commit(root, id).map_err(|error| format!("that commit {error}"))?;
+    let current =
+        visible_commit(root, change).map_err(|error| format!("its change {change} {error}"))?;
+    if pinned == current {
+        return Ok(());
+    }
+    Err(format!(
+        "change {change} is at {current} instead, so the pin names a tree that change no longer \
+         holds"
+    ))
+}
+
+/// The pins a manifest discloses as unobtainable, keyed as they are compared.
+fn disclosed_pins(manifest_path: &Path) -> Result<BTreeMap<String, String>, String> {
+    let listed = jq_value(
+        manifest_path,
+        r#".unobtainableRevisions[]? | .record + " " + .id + " " + .changeId + " " + .reason"#,
+    )?;
+    let mut disclosed = BTreeMap::new();
+    for line in listed.lines().filter(|line| !line.trim().is_empty()) {
+        let mut fields = line.splitn(4, ' ');
+        let key = match (fields.next(), fields.next(), fields.next()) {
+            (Some(record), Some(id), Some(change)) => format!("{record} {id} {change}"),
+            _ => {
+                return Err(format!(
+                    "{} discloses an unobtainable revision naming no record, commit and change: \
+                     {line}",
+                    redacted_path(manifest_path)
+                ));
+            }
+        };
+        disclosed.insert(key, fields.next().unwrap_or_default().to_owned());
+    }
+    Ok(disclosed)
 }
 
 /// Recomputes every input digest against the revision the manifest pins.
@@ -1371,12 +1639,20 @@ fn pinned_commit_mismatch(
 /// distinguishes a commit a clone would carry from one only this working copy can
 /// see. `::visible_heads()` is that distinction: it is what publishing the stack
 /// would put in a clone, and an abandoned commit is outside it.
+///
+/// The root commit is subtracted, because it is the one commit every repository
+/// has and it holds nothing: a pin there names no tree anything could have been
+/// measured on. That is not a hypothetical shape. jj's root commit *is* the
+/// all-zero commit id and the all-`z` change id, so a record whose
+/// `trial.revision` was overwritten with forty zeroes and thirty-two `z`s pinned
+/// the root, agreed with itself, and satisfied both tests — which is exactly the
+/// substituted value this resolution exists to refuse.
 fn visible_commit(root: &Path, revision: &str) -> Result<String, String> {
     let output = Command::new("jj")
         .args([
             "log",
             "-r",
-            &format!("::visible_heads() & ({revision})"),
+            &format!("(::visible_heads() & ({revision})) ~ root()"),
             "--no-graph",
             "-T",
             r#"commit_id ++ "\n""#,
@@ -1928,10 +2204,21 @@ fn verify_m2_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
         "M2 manifest must include every work package from M2-W1 through M2-W8 exactly once",
         violations,
     );
+    // The same rule M3 carries, for the reason M3 carries it: a record no manifest
+    // names is a record no digest covers. `M2_RECORDS` below asks each file to
+    // exist and to say the right thing, and neither of those is a binding — with
+    // `prism-launch.json` removed from `benchmarks.results`, its
+    // `nativeInvocations` and `classesRewritten` were rewritten to invented
+    // numbers and `verify scaffold` exited zero, because the digest that would
+    // have caught it was no longer recorded.
     require_manifest_rule(
         manifest_path,
-        ".benchmarks.protocolVersion == \"m2-loader-budget-v1\" and (.benchmarks.results | length > 0)",
-        "M2 manifest must record its results under the m2-loader-budget-v1 protocol",
+        r#".benchmarks.protocolVersion == "m2-loader-budget-v1"
+            and ([.benchmarks.results[].name] | sort
+                == ["loader-overhead.json", "noop-pipeline.json",
+                    "pre-world-gate.json", "prism-launch.json"])"#,
+        "M2 manifest must record all four M2 results under the m2-loader-budget-v1 protocol, so \
+         that each one is covered by a recomputed digest",
         violations,
     );
     // M2-W5's launch is operator-run, so a person says it happened. The record
@@ -3381,6 +3668,227 @@ mod tests {
             [
                 "evidence/m9/manifest.json records a baseline that the repository does not track, \
               so its digest binds nothing a reader can obtain: absent.json"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A jj repository with nothing in it yet, for the pin tests below.
+    fn pinned_record_root(label: &str) -> PathBuf {
+        let root = temporary_root(label);
+        let initialised = Command::new("jj")
+            .args(["git", "init"])
+            .current_dir(&root)
+            .output()
+            .expect("jj should be available");
+        assert!(initialised.status.success(), "{initialised:?}");
+        root
+    }
+
+    /// Writes one admitted record carrying `pin`, with its digest bound.
+    ///
+    /// `revision.id` is here because a manifest with no revision at all is a
+    /// violation of the input rule; it resolves nothing, because the manifest
+    /// records no inputs to hash there. What these tests are about is the pin
+    /// inside the record.
+    fn write_admitted(root: &Path, pin: &str, disclosures: &str) {
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        let record = format!("{{\"trial\":{{\"revision\":{pin}}}}}\n");
+        fs::write(milestone.join("record.json"), &record).expect("record should be writable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{{RECORDED_RUN},"revision":{{"id":"@"}},{disclosures}
+                    "benchmarks":{{"protocolVersion":"v1",
+                    "results":[{{"name":"record.json","sha256":"{}"}}]}}}}"#,
+                super::hex_digest(record.as_bytes())
+            ),
+        )
+        .expect("manifest should be writable");
+    }
+
+    /// Commits everything and answers the commit and change that now hold it.
+    ///
+    /// A described commit is what a pin can name truthfully: editing the working
+    /// copy afterwards moves `@` and leaves this one where it is.
+    fn committed_pin(root: &Path, message: &str) -> (String, String) {
+        let committed = Command::new("jj")
+            .args(["commit", "-m", message])
+            .current_dir(root)
+            .output()
+            .expect("jj should be available");
+        assert!(committed.status.success(), "{committed:?}");
+        let output = Command::new("jj")
+            .args([
+                "log",
+                "-r",
+                "@-",
+                "--no-graph",
+                "-T",
+                r#"commit_id ++ " " ++ change_id"#,
+            ])
+            .current_dir(root)
+            .output()
+            .expect("jj should be available");
+        assert!(output.status.success(), "{output:?}");
+        let resolved = String::from_utf8_lossy(&output.stdout);
+        let mut fields = resolved.split_whitespace();
+        (
+            fields.next().expect("a commit id").to_owned(),
+            fields.next().expect("a change id").to_owned(),
+        )
+    }
+
+    /// A pin naming one commit and one change, as a record records it.
+    fn pin(id: &str, change: &str) -> String {
+        format!(r#"{{"id":"{id}","changeId":"{change}","dirty":false}}"#)
+    }
+
+    /// One disclosure of an unobtainable pin, as a manifest records it.
+    fn disclosure(id: &str, change: &str, reason: &str) -> String {
+        format!(
+            r#""unobtainableRevisions":[{{"record":"record.json","id":"{id}",
+                "changeId":"{change}","reason":"{reason}"}}],"#
+        )
+    }
+
+    #[test]
+    fn a_record_pin_that_no_visible_commit_answers_is_reported() {
+        // The defect this exists for: a record a manifest admits could pin
+        // anything at all, because the visible-commit test was applied to the
+        // manifest's own revision and never to a record's.
+        let root = pinned_record_root("pin-dangles");
+        write_admitted(&root, &pin(&"1".repeat(40), &"k".repeat(32)), "");
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].starts_with("evidence/m9/manifest.json admits record.json")
+                && violations[0].contains("names no commit in visible history"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_record_pin_at_the_repository_root_is_refused() {
+        // Forty zeroes and thirty-two `z`s are not arbitrary garbage: they are jj's
+        // root commit and its change, so a pin substituted with them resolves,
+        // agrees with itself, and satisfied both tests until the root was
+        // subtracted from what counts as a visible commit.
+        let root = pinned_record_root("pin-root");
+        write_admitted(&root, &pin(&"0".repeat(40), &"z".repeat(32)), "");
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("names no commit in visible history"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_record_pin_its_own_change_has_moved_off_is_reported() {
+        let root = pinned_record_root("pin-moved");
+        write_admitted(&root, r#"{"dirty":false}"#, "");
+        let (older, _) = committed_pin(&root, "the tree the trial measured");
+        fs::write(root.join("later.txt"), "later\n").expect("a later file should be writable");
+        let (_, moved) = committed_pin(&root, "a later change");
+        // Both halves resolve and they resolve to different commits, which is the
+        // state every rewrite leaves a recorded pin in and the one a pin that
+        // merely resolves cannot be told apart from a true one.
+        write_admitted(&root, &pin(&older, &moved), "");
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(violations[0].contains("no longer holds"), "{violations:?}");
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_true_record_pin_passes_and_a_disclosure_of_it_does_not() {
+        let root = pinned_record_root("pin-true");
+        write_admitted(&root, r#"{"dirty":false}"#, "");
+        let (commit, change) = committed_pin(&root, "the tree the trial measured");
+        write_admitted(&root, &pin(&commit, &change), "");
+
+        assert!(verify_evidence_records(&root).is_empty());
+
+        // The same pin, disclosed as unobtainable while it resolves. An excuse the
+        // defect has outlived is what lets the next real one hide behind it.
+        write_admitted(
+            &root,
+            &pin(&commit, &change),
+            &disclosure(&commit, &change, "stale"),
+        );
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("remove the disclosure"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_disclosed_record_pin_is_permitted_and_a_disclosure_naming_no_pin_is_not() {
+        let dangling = pin(&"1".repeat(40), &"k".repeat(32));
+        let root = pinned_record_root("pin-disclosed");
+        write_admitted(
+            &root,
+            &dangling,
+            &disclosure(
+                &"1".repeat(40),
+                &"k".repeat(32),
+                "the trial ran on a working copy jj abandoned",
+            ),
+        );
+
+        assert!(verify_evidence_records(&root).is_empty());
+
+        // A disclosure quoting a pin no record carries excuses nothing, and
+        // leaving it would let the undisclosed pin beside it pass under its name.
+        write_admitted(
+            &root,
+            &dangling,
+            &disclosure(&"2".repeat(40), &"k".repeat(32), "quotes another commit"),
+        );
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(violations.len(), 2, "{violations:?}");
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("a disclosure that names no pin excuses")),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_tracked_record_its_manifest_does_not_name_is_reported() {
+        // With `prism-launch.json` removed from `benchmarks.results`, that record's
+        // counts were rewritten to invented numbers and the scaffold stayed at
+        // zero, because the digest that would have caught it was no longer
+        // recorded.
+        let root = pinned_record_root("record-unnamed");
+        write_admitted(&root, r#"{"dirty":false}"#, "");
+        fs::write(root.join("evidence/m9/unnamed.json"), "{}\n")
+            .expect("record should be writable");
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m9/manifest.json names no record unnamed.json, which its own milestone \
+                 directory tracks; a record no manifest names is a record no digest covers"
             ]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");

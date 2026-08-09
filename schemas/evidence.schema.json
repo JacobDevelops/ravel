@@ -65,6 +65,37 @@
         }
       }
     },
+    "unobtainableRevisions": {
+      "type": "array",
+      "description": "Pins carried by records this manifest admits that name no tree a reader can obtain. Optional, because a manifest whose records all pin obtainable trees discloses nothing; the scaffold requires this set to equal exactly the set of pins that fail, so it can neither miss one nor outlive one.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["record", "id", "changeId", "reason"],
+        "properties": {
+          "record": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The benchmarks.results[].name whose trial carries the pin."
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The commit the record pins, quoted so a disclosure cannot excuse a pin it does not name."
+          },
+          "changeId": {
+            "type": "string",
+            "pattern": "^[k-z]{32}$",
+            "description": "The change the record pins alongside that commit."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What a reader loses by this pin naming nothing obtainable."
+          }
+        }
+      }
+    },
     "versions": {
       "$ref": "#/$defs/versionSet"
     },

@@ -820,6 +820,15 @@ mod tests {
                 matches!(runtime.save_world(FIRST), SaveOutcome::IdentityMismatch(_)),
                 "`{name}` was refused and staged anyway"
             );
+            // The route a saved-data refusal actually travels: the diagnostic
+            // becomes `OpenOutcome::Refused` for Java to clean up and present. It
+            // never enters the pre-world report, which is built before any world
+            // is selected and would refuse every later world if it held this.
+            assert_eq!(
+                super::outcome(&runtime, FIRST, Some(&bytes), true),
+                OpenOutcome::Refused(refused),
+                "`{name}` reached Java as something other than a refusal"
+            );
         }
     }
 

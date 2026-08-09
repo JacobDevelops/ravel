@@ -34,9 +34,14 @@ the place `SPEC.md` reserves for things a package must satisfy.
 
 ## The worlds
 
-Each one exists for a case in M3-W4's verification column, and the seven
-together are that column: "create/save/exit/reload preserves state; schema,
-package, migration and size incompatibilities fail closed."
+Each one exists for a case in M3-W4's verification column: "create/save/exit/
+reload preserves state; schema, package, migration and size incompatibilities
+fail closed."
+
+Size is the one case not among them, and deliberately. The ceiling is a property
+of the crossing rather than of any world's contents, so recording it would mean
+tracking a megabyte of filler for one integer comparison. `saved_data.rs` builds
+those bytes where it needs them and says so.
 
 | World | Stored version | What it proves |
 | --- | --- | --- |

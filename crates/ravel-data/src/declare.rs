@@ -235,7 +235,8 @@ impl ContentDeclaration {
     /// # Errors
     ///
     /// Returns [`DeclarationError::Locale`] for a locale outside the lowercase
-    /// `language_region` shape the pack format uses,
+    /// `language` or `language_region` shape the pack format uses — the shape
+    /// [`is_locale`] states and enforces —
     /// [`DeclarationError::EmptyTranslationKey`] for an unnamed key,
     /// [`DeclarationError::DuplicateTranslation`] when this mod already gave the
     /// key text in that locale, and [`DeclarationError::ProducedPath`] when
@@ -246,11 +247,7 @@ impl ContentDeclaration {
         key: &str,
         text: &str,
     ) -> Result<(), DeclarationError> {
-        if locale.is_empty()
-            || !locale
-                .chars()
-                .all(|character| character.is_ascii_lowercase() || character == '_')
-        {
+        if !is_locale(locale) {
             return Err(DeclarationError::Locale {
                 candidate: locale.to_owned(),
             });
@@ -421,7 +418,7 @@ pub enum DeclarationError {
         /// The member declared twice.
         member: RegistryKey,
     },
-    /// The locale is outside the pack format's `language_region` shape.
+    /// The locale is outside the pack format's `language[_region]` shape.
     Locale {
         /// The rejected spelling.
         candidate: String,
@@ -470,8 +467,8 @@ impl fmt::Display for DeclarationError {
             }
             Self::Locale { candidate } => write!(
                 formatter,
-                "`{candidate}` is not a locale; a locale is lowercase `language_region`, such as \
-                 `en_us`"
+                "`{candidate}` is not a locale; a locale is a lowercase language and an optional \
+                 `_region`, such as `en_us`, `es_419` or `lzh`"
             ),
             Self::EmptyTranslationKey => {
                 formatter.write_str("a translation names a key, so the key cannot be empty")
@@ -504,6 +501,37 @@ impl std::error::Error for DeclarationError {
             _ => None,
         }
     }
+}
+
+/// Returns whether `candidate` is a locale of the shape the pack format names
+/// its language files after.
+///
+/// A language, optionally followed by `_` and a region: the language is ASCII
+/// lowercase letters and the region is ASCII lowercase letters or digits, so
+/// `en_us`, `lzh` and `es_419` are locales and `en_us_extra`, `___`, `en-US` and
+/// `en1` are not.
+///
+/// The region admits digits and neither segment carries a length, because both
+/// are the pack format's decisions rather than this crate's: a rule tighter than
+/// the format's would refuse a locale the game ships. What this refuses is a
+/// spelling the format has no reading for at all — an extra segment, an empty
+/// one, or a character that cannot appear in either.
+fn is_locale(candidate: &str) -> bool {
+    let mut segments = candidate.split('_');
+    let language = segments.next().unwrap_or_default();
+    let region = segments.next();
+    if segments.next().is_some() {
+        return false;
+    }
+    let language_is_a_language =
+        !language.is_empty() && language.chars().all(|letter| letter.is_ascii_lowercase());
+    let region_is_a_region = region.is_none_or(|region| {
+        !region.is_empty()
+            && region
+                .chars()
+                .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+    });
+    language_is_a_language && region_is_a_region
 }
 
 #[cfg(test)]
@@ -680,7 +708,21 @@ mod tests {
 
     #[test]
     fn a_locale_outside_the_pack_formats_shape_is_refused() {
-        for candidate in ["", "en-US", "EN_US", "en us", "en1"] {
+        for candidate in [
+            "",
+            "en-US",
+            "EN_US",
+            "en us",
+            "en1",
+            // A third segment, an empty one, and a digit where a language goes:
+            // the message promises a language and one optional region, so these
+            // are the spellings that promise would be a lie about.
+            "en_us_extra",
+            "___",
+            "_us",
+            "en_",
+            "419_es",
+        ] {
             let error = declaration()
                 .translation(candidate, "block.example_mod.lantern", "Lantern")
                 .expect_err(candidate);
@@ -691,6 +733,19 @@ mod tests {
                 }
             );
             assert!(error.to_string().contains("en_us"), "{error}");
+        }
+    }
+
+    #[test]
+    fn every_locale_shape_the_pack_format_ships_is_accepted() {
+        // The negative control for the test above: the refusals are a shape check
+        // rather than a list of two spellings. A region carries digits and a
+        // locale need not carry a region at all, so a rule tighter than this one
+        // would refuse a language file the game itself ships.
+        for candidate in ["en_us", "fr_fr", "pt_br", "es_419", "lzh", "enws", "nds_de"] {
+            declaration()
+                .translation(candidate, "block.example_mod.lantern", "Lantern")
+                .unwrap_or_else(|error| panic!("`{candidate}` is a locale: {error}"));
         }
     }
 

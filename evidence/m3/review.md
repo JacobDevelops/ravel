@@ -3,9 +3,9 @@
 Result: FAIL
 
 Independent rounds ran against successive states of the M3 evidence. Each reviewer
-wrote none of the work under review, and every round returned FAIL. Round 4 below
-is the standing verdict: `evidence/m3/manifest.json` records
-`review.result: "fail"` and M3-W8 stays open.
+wrote none of the work under review, and every round returned FAIL. Round 5 below
+is the standing verdict, and its blocking finding B-1 is unanswered:
+`evidence/m3/manifest.json` records `review.result: "fail"` and M3-W8 stays open.
 
 One round is not here. The earliest round of all reviewed the prototype rather than
 the evidence set, and its verdict text was never written into the repository; the
@@ -744,3 +744,203 @@ nobody; `tests.total: 813` and `lineCoveragePercent: 85.97` are attested numbers
 a private log on an abandoned commit (the tip now runs 827) and `verify_recorded_run`
 binds only their internal consistency; and the durability of all four milestones'
 input provenance rests on jj's op log retaining obsolete commits.
+
+---
+
+## Round 5 — VERDICT: FAIL
+
+VERDICT: FAIL.
+
+**BLOCKING — B-1: `evidence/m3/linux-process-matrix.json:212`, `:600`,
+`:602-618`, `:619`.** The caveat re-observation campaign binds its load-bearing
+observation to artifact digests that cannot have produced it. `atScaleOne`
+(`:637`) publishes six unmeasurable metric names — the five plus `tick-count` —
+and states the reading was made "re-observed after change `lppyxtnz` on a launch
+that stayed on the title screen". `tick-count` enters that list only in
+`lppyxtnz`, a descendant of `npozznqz`, which modified two things that both
+change a recorded digest: `crates/ravel-observability/src/profiling.rs` (where
+`ProfilingReport::unsupported()` builds the list, compiled into
+`libravel_bootstrap.so` via `ravel-bootstrap`) and
+`jvm/screen/dev/ravel/jvm/screen/RavelProfilingScreen.java` (the screen jar). But
+the campaign's `artifacts` record screen jar `bb977eb3…` and native library
+`abe56b96…` with `sameAsSurfaceCampaign: true`, and both digests were written into
+this record by change `qovlymtm` — an ancestor of `lppyxtnz` whose copy of the
+file contains `tick-count` zero times (current tip: four times). So both
+artifacts recorded as this campaign's build predate the change whose effect the
+campaign publishes as observed. Three claims are therefore false of that
+observation: `launches: 1`, `whatDiffersFromTheSurfaceCampaignBuild` ("Exactly one
+artifact: the screen jar"), and `screens.profiling.provenance` at `:212` ("The
+caveat and unsupported-metric lines are the caveat re-observation campaign's,
+against the fixed screen jar recorded in `caveatReObservationCampaign`"). At least
+two launches against at least two builds are conflated, and no digest exists for
+the build that produced the only reading proving the unsupported-metrics line
+renders in full. This is blocking rather than cosmetic because profiling was the
+one required surface that failed; `result: "pass"` and the M3-W7 closure rest on
+its re-observation, and the record's own rule at `:503` — "changing the screen jar
+changes its digest… Re-observation, not a patch landed after the fact, is what
+would let those rows keep their provenance" — is precisely the rule this breaks.
+What would make it right: record the post-`lppyxtnz` screen-jar and
+native-library digests, state the true launch count, and attribute each row to the
+build it was observed against; or re-observe the whole profiling surface once
+against one recorded build. Note `manifest.json:68` also credits only `npozznqz`
+and never mentions `lppyxtnz`.
+
+**MUST-FIX — M-1: `linux-process-matrix.json:59`.** `whatThisMeansForAReviewer`
+still reads "Read the screen, settings, profiling, and command rows below as the
+earlier campaign's findings at 31 targets, not as this campaign's. They were not
+re-observed here." That is explicitly repealed by `status` (`:60`) and
+`howItWasResolved` (`:61`) two lines later and by every row's own `provenance`.
+Delete or rewrite the passage; a reader who stops at `:59` is misled about the
+provenance of the rows M3-W7 closes on.
+
+**MUST-FIX — M-2: `linux-process-matrix.json:61`.** "its launches reported
+`rewrote 15 classes and 33 methods`" is false of one of three surface launches:
+`surfaceCampaign.launchDetail.first` (`:526`) records "11 classes and 27 methods".
+`README.md:297-298` states it correctly. Add the title-only qualifier.
+
+**MUST-FIX — M-3: `crates/ravel-observability/src/profiling.rs:198-203`,**
+mirrored to `evidence/m3/profiling-overhead.json:92` and pinned by
+`tests/conformance/tests/profiling_report.rs`. The gate asserts on every run that
+"Moving bytes in a world is the half of M3-W4 that is still open, so there is
+nothing to size" — contradicted by `manifest.json:56`, `README.md`, and
+`worldPersistenceRoundTrip`. The conclusion (metric unsupported) survives; the
+reason the gate enforces is now a falsehood. Restate the reason and regenerate the
+record.
+
+**MODERATE — D-1: `linux-process-matrix.json:237` vs `:135` and `:101`.**
+`rewrite.measuredIn` claims all three world-round-trip launches reported "rewrote
+15 classes and 33 methods", but the third launch's world "was refused before it
+opened" with `integratedServerNeverStarted: true`. By the record's own criterion
+(`:528`), `Commands`, `ReloadableServerResources` and `RecipeManager` load only
+when a world opens, so that launch cannot have rewritten 15/33 — consistent with
+its 28 845 native invocations against the others' 675 660 and 749 397.
+
+**MODERATE — D-2: `pack-compile.json:174`, `:428`;
+`profiling-overhead.json:172`.** All three measurement trials carry
+`trial.revision.dirty: true`, so no revision identifies the code measured —
+including the code behind the single M3-W6 budget limit `cargo xtask verify
+budget` enforces on every gate. No deviation or risk discloses it, while
+`verify_general_closure` requires the manifest's own revision to be clean.
+
+**MODERATE — D-3: `docs/decisions/adg-7-world-persistence.md:113-116`, `:221`;
+`jvm/bootstrap/dev/ravel/jvm/Persistence.java:104-107`.** ADG-7's save-seam
+marker refusal ("An absent marker refuses world load") has no harness case and no
+test. The "eight world lifecycles" the corpus credits reconcile exactly with the
+eight cases at `jvm/harness/run-harness.sh:301-341` (admitted, null-verdict,
+refused, four save answers, absent-sibling); this ninth polarity is not among
+them, and `saveSeamInstalled()` returns true in all eight, so the false branch
+never executes.
+
+**MODERATE — D-4: undisclosed ceiling on M3-W0.** The corpus states the
+operator-attestation ceiling for M3-W4/W7's live half but nowhere states that
+M3-W0's "targets resolved against the pinned jar by two independent passes" is
+equally unrecomputable. On a jar-less machine the chain terminates at
+`minecraft/versions/26.1.2/adapter.toml:20-23`'s `clientJarSha256`;
+`adapter.toml:44-50` says so plainly, but no M3 record does.
+
+**MODERATE — D-5: `tools/ravel-xtask/src/lib.rs:1009-1017`.** There is no
+`verify_m3_manifest`; M0, M1 and M2 each have milestone-specific closure rules and
+M3 has none. Proven by mutation: with `review.result: "pass"` and the one blocking
+risk downgraded, `verify milestone M3` exits 0 with every `gateStatus` set to
+`"failed"`, with 8 of 9 entries deleted from `workPackages`, and with
+`benchmarks.results` emptied — which additionally leaves all four M3 records
+digest-bound by nothing while `ravel-verify-scaffold` still exits 0. The recorded
+deviations at `manifest.json:159` and `:203` describe adjacent holes but not this
+one.
+
+**MINOR: `tools/ravel-xtask/src/lib.rs:181-184`.** The unsafe-prohibition check is
+a substring test, and `crates/ravel-bootstrap/src/lib.rs:31` (and `lib.rs` of
+xtask itself) carry the literal in a doc comment. Deleting the real attribute from
+`ravel-bootstrap` and adding a working `unsafe` block left `verify scaffold` at
+exit 0. The safety boundary itself is not breached — `Cargo.toml:64-65` sets
+`unsafe_code = "forbid"` workspace-wide and clippy refused the probe with
+`-F unsafe-code` — so this is a redundant control gone vacuous for two files.
+
+**MINOR: `docs/architecture/dependency-rules.md`.** "Production crates never
+depend on `ravel-testkit`" is unenforced: adding `ravel-testkit.workspace = true`
+to `crates/ravel-loader/Cargo.toml` leaves the scaffold at exit 0. No live
+violation exists.
+
+**MINOR: `README.md:365-366`.** "the window has seven rows rather than eighteen" —
+the eighteen appears nowhere in the record it documents.
+
+**MINOR:** `class-loader-identity.json:48` records `java: "25.0.1"` while
+`manifest.json:26` pins `25.0.4`; nothing notes that one inventoried record was
+measured on a different JDK patch.
+
+**MINOR:** `linux-process-matrix.json:22-33` vs `:34-48` disagree on
+`prismExitedNaturally` with no statement of which campaign the outer `launch`
+block describes.
+
+**CLEAN:** Safety and layering hold. Every maintained root carries
+`#![forbid(unsafe_code)]`; no `unsafe` exists outside `experiments/`;
+`docs/architecture/safety-boundary.md`'s table is empty; `ravel-core` depends on
+no Ravel crate; `ravel-sdk` depends only on config/core/data/network/save — no
+bootstrap, JVM or version internals; no production crate depends on
+`ravel-testkit`. Hook integrity reconciles exactly: `hooks.toml` holds 37 entries
+over 15 classes, of which 26 instance-methods + 7 static-methods = 33 callable and
+4 instance-fields; `mappings.lock` holds the same 37; the per-class breakdown in
+`rewrite.targetInventory` sums to 33; `15 − 4 = 11`, `33 − 6 = 27`, `6 + 2 = 8`
+all hold, and `worldOnlyTargetsCriterion` gives the membership rule that makes the
+subtraction six rather than eight. Mutating either a lock descriptor or
+`hooks.toml` without repinning fails the build. Arithmetic and derivation are
+sound: `profiling-overhead.json` reconciles on the unrounded pair x = 0.051,
+t = 0.05 — 0.05 + 10000 × 0.051 = 510.05 and (500000 − 0.05) / 0.051 =
+9803920.59; `overhead.rounding` states the rule and the README states the
+recoverability limit correctly. `pack-compile.json` reconciles fully — baseline
+2526 = points[0]; every `coldMillisecondsLessBaseline` and
+`coldMillisecondsPerMod`; the secant (29505 − 604)/255 = 113.34; medians of three
+for the curve and minima of two for the variants against every recorded sample;
+`modSourceBytes` scaling at ×16/×64/×256; the toolchain's 195 541 312 B against
+ROADMAP's "about 196 MB". Redaction is clean: no credential, world name, user
+path, launcher path, username or launch command in any tracked M3 record, and the
+check is real — an injected local instance path was caught.
+
+**COVERAGE:** ROADMAP's M3 gate, clause by clause. W0 hook inventory reconciles
+in-repo, jar resolution unrecomputable (D-4). W1/W2/W3/W5 conformance suites exist
+and pass; registry, command, event, resource and configuration implementations
+were read, not mutated. W4 in-gate half is non-vacuous in both halves and one
+ADG-7 polarity is untested (D-3); live half is attestation. W6 budget holds by
+exit code, the metric table is pinned to the code, and one pinned reason is false
+(M-3); the two named zero counters are honestly disclosed. W7 every required
+surface is claimed observed, and the profiling row's build binding is wrong (B-1).
+W8 is this verdict. The corpus proves what the gate demands for W0–W6 modulo the
+findings above. For W7 it proves a weaker thing than it states: not "every surface
+observed against one recorded build" but "every surface observed, one of them
+against an unrecorded build".
+
+**REVIEW CEILING.** Broken and confirmed fail-closed: `benchmarks.results[]`
+digests; `review.record` digest and path containment; `inputs[]` digests;
+`verify_recorded_run` arithmetic (total/passed/failed/skipped, coverage floor,
+`exitStatus`); `revision.changeId` provenance (milestone command only — the
+scaffold does not run it); `revision.id` resolvability; schema conformance;
+redaction; `evidenceKind`/synthetic; `ravel-save`'s `admit`, envelope-schema and
+size ceilings; `Persistence.open`'s refusal path and absent-sibling asymmetry;
+`hooks.toml`/`mappings.lock` drift; the workspace `unsafe_code = "forbid"`. Judged
+by reading, not by breaking: the entire live half of M3-W4 and M3-W7 — every
+launch row, the world round trip, the `dataVersion`→9 refusal, all three screens,
+the settings round trip, the command path, both profiling scale readings, every
+instance scan — operator attestation over deleted worlds, logs and screenshots.
+Every `logSha256`, `verificationLogSha256`, `artifacts[].sha256`,
+`hardwareProfileSha256`, and the two M0 private validation digests: unbindable by
+construction. The registry, command, event, resource and configuration
+implementations (only persistence and the digest/gate machinery were mutated). The
+`stubs.toml`/`stubs.lock` generation pipeline. `class-loader-identity.json`'s
+measurement method. `schemas/evidence.schema.json` clause by clause — reliance on
+the gate's own `check-jsonschema`, with only a dropped required field confirmed
+rejected. ADG-1 and ADG-3–ADG-6 mechanism conformance beyond the layering, ADG-2
+and ADG-7 checks named above. `cargo deny`. The M0/M1/M2 corpora beyond their
+manifest blocks. The full `ravel:verify` was not run by this reviewer; the
+caller's exit codes were taken and the scaffold, JVM-harness and relevant test
+components reproduced in a scratchpad (`ravel:verify-jvm` exit 0,
+`verify scaffold` exit 0, `verify milestone M3` exit 1 on the two known
+violations). `review.md` cannot be checked against the original round 1–4
+transcripts, which do not exist in the repository; on internal evidence the
+severities are not softened, and the untracked prototype round remains
+unrecoverable exactly as `manifest.json:175` says.
+
+**MAY M3 CLOSE?** No. B-1 survives: the M3-W7 gate's profiling row is bound to a
+build that provably cannot have produced the observation it rests on, and the
+record understates the launch count and artifact set that would let a reader see
+this. `review.result` must stay `"fail"` and the blocking risk at
+`manifest.json:225` must stand. M3 authorizes no private inventory work.

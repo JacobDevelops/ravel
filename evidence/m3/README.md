@@ -1,9 +1,9 @@
 # M3 evidence
 
 M3-W0 through M3-W7 are closed. M3-W8 is open: every independent round that has
-run returned FAIL, the findings of the latest one are answered here, and no round
-has yet run against this state. M3 is not closed and does not authorize private
-inventory work.
+run returned FAIL, and the latest round's blocking finding is unanswered — the
+M3-W7 profiling row is bound to a build that cannot have produced the observation
+it rests on. M3 is not closed and does not authorize private inventory work.
 
 M3-W4 and M3-W7 close on operator attestation for their live half. The world
 round trip and every native surface row were observed in a real client, and the
@@ -21,11 +21,12 @@ result for a recomputable one.
 | [`pack-compile.json`](pack-compile.json) | ADG-2 | What compiling a pack-sized set of mods with real bodies costs — cold, warm after one mod changes, in peak memory, and on disk. |
 | [`profiling-overhead.json`](profiling-overhead.json) | M3-W6 | What opt-in profiling costs a tick when nobody turned it on, what it can and cannot attribute to a mod, and which metrics it cannot measure at all. |
 | [`linux-process-matrix.json`](linux-process-matrix.json) | M3-W7 | What a real Linux launch proves about the game directory, the rewrite, and the instance — and, at least as importantly, what it could not reach. |
-| [`review.md`](review.md) | M3-W8 | The tracked independent M3-W8 rounds as they were written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. Every round is FAIL, and the record says which round it does not hold and why. |
+| [`review.md`](review.md) | M3-W8 | The five tracked independent M3-W8 rounds as they were written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. Every round is FAIL, and the record says which round it does not hold and why. |
 
 ## M3-W8 review
 
-[`review.md`](review.md) holds the tracked rounds verbatim and `review.record`
+Six independent rounds have run and all six returned FAIL.
+[`review.md`](review.md) holds five of them verbatim and `review.record`
 binds its digest, so those verdicts are readable rather than summarised from
 memory. They are one file rather than one file each because `review.record` binds
 one artifact per milestone and the rounds only mean anything read in order: each
@@ -175,9 +176,23 @@ is already an abandoned commit rather than one that might become abandoned, and
 `overhead.perTick`'s derivation could not be followed from the percentiles printed
 beside it until the record stated its own rounding.
 
+The fifth round found one blocking defect and it is not answered. The caveat
+re-observation campaign in `linux-process-matrix.json` records the reading that
+proves the profiling surface renders whole — six unmeasurable metric names,
+including `tick-count` — against screen-jar and native-library digests that were
+written into the record before the change whose effect that reading reports. So
+the campaign's `launches: 1` and its "exactly one artifact" claim cannot both hold,
+no digest names the build the reading actually came from, and the M3-W7 profiling
+row's provenance breaks the rule the same record states about re-observation. The
+same round raised three must-fix findings — a repealed reviewer note left standing,
+a rewrite count that is false of one of three surface launches, and a gate-pinned
+reason in `crates/ravel-observability/src/profiling.rs` that M3-W4's closure
+contradicted — five moderate ones, including that there is no M3-specific manifest
+closure rule at all, and six minor ones. None of them is answered here.
+
 M3-W8 stays open. Every implementation gate is closed, but the review that has to
-pass is an *independent* one, every round so far has returned FAIL, and no round
-has yet run against this state.
+pass is an *independent* one, every round so far has returned FAIL, and the fifth
+round's blocking finding stands.
 
 `pack-compile.json` comes from `devenv tasks run ravel:measure-pack-compile` and
 is the measurement ADG-2 named as deciding its open mechanism: whether an

@@ -4542,22 +4542,58 @@ fn require_manifest_rule(
     }
 }
 
+/// The private compatibility workspace's directory name, in two pieces.
+///
+/// The fence below sweeps every tracked file for this name, so spelling it here
+/// as one literal would make `tools/ravel-xtask/src/lib.rs` the first thing it
+/// reports. `verify_experiment_fence` has the same shape of problem and solves
+/// it the same way: a rule written inside the tree it sweeps must not itself be
+/// expressible as the thing it forbids.
+const PRIVATE_WORKSPACE_NAME: [&str; 2] = ["ravel-", "registry"];
+
+/// The name a public tracked file may not contain.
+fn private_workspace_name() -> String {
+    PRIVATE_WORKSPACE_NAME.concat()
+}
+
 /// Rejects rights-restricted, secret, and local-runtime paths from a tracked tree.
 #[must_use]
 pub fn verify_tracked_paths<'a>(paths: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let private = private_workspace_name();
     paths
         .into_iter()
-        .filter_map(|path| {
+        .flat_map(|path| {
             let normalized = path.replace('\\', "/");
-            is_forbidden_tracked_path(&normalized)
-                .then(|| format!("forbidden tracked path: {normalized}"))
+            let lower = normalized.to_ascii_lowercase();
+            let mut violations = Vec::new();
+            if is_forbidden_tracked_path(&normalized) {
+                violations.push(format!("forbidden tracked path: {normalized}"));
+            }
+            if lower.contains(&private) {
+                violations.push(format!(
+                    "tracked path names the private compatibility workspace: {normalized}"
+                ));
+            }
+            violations
         })
         .collect()
 }
 
-/// Rejects private keys and non-placeholder credential assignments in tracked text.
+/// Rejects private keys, credential assignments, and private-workspace
+/// references in tracked text.
+///
+/// The last of those is M5-W1's own verification criterion, held here rather
+/// than asserted in prose. The private compatibility workspace is a separate
+/// repository, so a leak would arrive as one of two things: a tracked file that
+/// names it, or a manifest whose path dependency walks out of this checkout to
+/// reach it. Both are refused, and the name is refused everywhere rather than
+/// only in manifests — `docs/architecture/public-private-boundary.md` describes
+/// the private workspace without naming it for exactly this reason, and a
+/// document that started naming it would be the first sign the split had
+/// stopped being a split.
 #[must_use]
 pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
+    let private = private_workspace_name();
     let mut violations = Vec::new();
     for relative in paths {
         // Reading as UTF-8 and skipping what failed meant every non-UTF-8 tracked
@@ -4593,8 +4629,97 @@ pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
                 "tracked file contains credential material: {relative}"
             ));
         }
+
+        if source.to_ascii_lowercase().contains(&private) {
+            violations.push(format!(
+                "tracked file names the private compatibility workspace: {relative}"
+            ));
+        }
+        if relative.rsplit('/').next() == Some("Cargo.toml") {
+            for value in escaping_path_dependencies(relative, &source) {
+                violations.push(format!(
+                    "tracked manifest depends on a path outside this repository: {relative} -> {value}"
+                ));
+            }
+        }
     }
     violations
+}
+
+/// Every `path = "…"` value in a Cargo manifest that resolves outside the
+/// repository root.
+///
+/// The workspace is full of legitimate `../` dependencies — one crate reaching
+/// a sibling — so the rule cannot be "no `..`". It is where the path lands:
+/// resolved lexically against the manifest's own directory, a dependency that
+/// walks above the root reaches a tree this repository does not contain, and
+/// the private workspace is a sibling directory exactly one such walk away.
+fn escaping_path_dependencies<'a>(relative_manifest: &str, source: &'a str) -> Vec<&'a str> {
+    let directory = relative_manifest
+        .rsplit_once('/')
+        .map_or("", |(head, _)| head);
+    source
+        .lines()
+        .flat_map(manifest_path_values)
+        .filter(|value| resolves_outside_root(directory, value))
+        .collect()
+}
+
+/// Reads every `path = "…"` value out of one manifest line.
+///
+/// A dependency is written inline — `ravel-core = { path = "../ravel-core" }` —
+/// so `quoted_value` cannot be reused: it anchors on the line starting with the
+/// key and on the line ending with the closing quote, and neither holds here.
+fn manifest_path_values(line: &str) -> Vec<&str> {
+    let mut values = Vec::new();
+    let mut cursor = 0;
+    while let Some(offset) = line[cursor..].find("path") {
+        let at = cursor + offset;
+        cursor = at + "path".len();
+        // `rustc-dep-of-std` and `crate-path` are not this key.
+        if line[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|character| character.is_alphanumeric() || matches!(character, '_' | '-'))
+        {
+            continue;
+        }
+        let Some(rest) = line[cursor..].trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix('"') else {
+            continue;
+        };
+        let Some(end) = rest.find('"') else {
+            continue;
+        };
+        values.push(&rest[..end]);
+    }
+    values
+}
+
+/// Whether a manifest-relative path escapes the repository root.
+fn resolves_outside_root(directory: &str, value: &str) -> bool {
+    let normalized = value.replace('\\', "/");
+    if normalized.starts_with('/') || normalized.chars().nth(1) == Some(':') {
+        return true;
+    }
+    let mut stack = directory
+        .split('/')
+        .filter(|component| !component.is_empty())
+        .collect::<Vec<_>>();
+    for component in normalized.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                if stack.pop().is_none() {
+                    return true;
+                }
+            }
+            other => stack.push(other),
+        }
+    }
+    false
 }
 
 /// Every Rust crate root the unsafe prohibition is swept over.

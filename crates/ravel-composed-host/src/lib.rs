@@ -1,6 +1,21 @@
 #![forbid(unsafe_code)]
 
 //! Player-local static composition used by the M3 configuration proof.
+//!
+//! # Open obligation: this host reads no manifest
+//!
+//! Both entries below are written here rather than derived, so the `sides` list a
+//! mod author writes in a package manifest is inert in a launched game. The
+//! mapping itself exists and is production code —
+//! [`ravel_loader::admitted`] turns a validated package set and its resolved plan
+//! into the entries the lifecycle holds, and
+//! `tests/conformance/tests/sides_and_packets.rs` drives a package declaring the
+//! client side alone through it and requires the server sides to park it — but
+//! nothing calls it here, because this host discovers no package and validates
+//! none. Closing that means discovery and validation in a launch, which is a
+//! larger change than a side declaration, and it is recorded rather than done so
+//! that a reviewer reading a green gate does not read it as a launch that honours
+//! a manifest.
 
 use std::collections::BTreeSet;
 use std::fmt;

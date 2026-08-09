@@ -118,9 +118,17 @@ impl TryFrom<BTreeSet<Side>> for SideSet {
 /// This closes that at the point the value is made rather than at the point it is
 /// used, which is the difference between hiding client-only code and not running
 /// it: [`ClientOnly::built_on`] never calls the closure on a server side, so the
-/// texture is not loaded, the screen is not laid out, and the handle is not
-/// opened. [`ClientOnly::get`] then refuses a server side a second time, so a
-/// value that reached one anyway is still not readable there.
+/// work is not done rather than done and discarded. [`ClientOnly::get`] then
+/// refuses a server side a second time, so a value that reached one anyway is
+/// still not readable there.
+///
+/// What belongs inside one is state a mod keeps only because it is on the client.
+/// A packet contract travelling `to-client` has the client as its only receiving
+/// end, and a client-only event happens on no server side, so what such a packet
+/// last carried and what such an event last counted are values a server side has
+/// no reason to hold. Drawing is not among them, and not because of this type:
+/// ADG-6 settled that every screen Ravel owns is declared in data and drawn in
+/// Java, and no accepted decision gives a mod a rendering path of its own.
 ///
 /// The two halves are deliberately independent. The constructor is what makes
 /// the claim true and the accessor is what makes it checkable, and either one
@@ -135,15 +143,18 @@ impl TryFrom<BTreeSet<Side>> for SideSet {
 /// let mut ran = false;
 /// let absent = ClientOnly::built_on(Side::DedicatedServer, || {
 ///     ran = true;
-///     "the screen"
+///     "what a client-bound packet last carried"
 /// });
 /// assert!(!ran);
 /// assert!(!absent.is_present());
 /// assert!(absent.get(Side::DedicatedServer).is_err());
 ///
 /// // On the client it runs, and only the client may read it.
-/// let present = ClientOnly::built_on(Side::Client, || "the screen");
-/// assert_eq!(present.get(Side::Client), Ok(&"the screen"));
+/// let present = ClientOnly::built_on(Side::Client, || "what a client-bound packet last carried");
+/// assert_eq!(
+///     present.get(Side::Client),
+///     Ok(&"what a client-bound packet last carried")
+/// );
 /// assert!(present.get(Side::IntegratedServer).is_err());
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -255,7 +266,7 @@ mod tests {
             let mut ran = 0_u32;
             let held = ClientOnly::built_on(side, || {
                 ran += 1;
-                "the screen"
+                "what a client-bound packet last carried"
             });
 
             assert_eq!(
@@ -309,7 +320,16 @@ mod tests {
         assert!(!Side::Client.is_server());
         assert!(Side::IntegratedServer.is_server());
         assert!(Side::DedicatedServer.is_server());
-        assert_eq!(Side::ALL.iter().filter(|side| side.is_server()).count(), 2);
+        // Derived rather than counted: a fourth side would keep an absolute
+        // figure true while making the claim in this test's name false.
+        assert_eq!(
+            Side::ALL
+                .into_iter()
+                .filter(|side| !side.is_server())
+                .collect::<Vec<_>>(),
+            [Side::Client],
+            "exactly one side is not a server side"
+        );
     }
 
     #[test]

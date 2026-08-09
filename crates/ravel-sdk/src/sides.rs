@@ -12,38 +12,48 @@
 //! the ordinary case: a mod that loads everywhere and has client-only *parts*.
 //!
 //! [`ClientOnly`] is for those parts, and it is the whole of what an author needs
-//! to write:
+//! to write.
+//!
+//! # What is a client-only part
+//!
+//! State a mod keeps only because it is on the client. A packet contract declared
+//! [`crate::network::Direction::ToClient`] has the client as its only receiving
+//! end, and [`crate::events::GameEvent::ClientTick`] happens on no server side, so
+//! what such a packet last carried and what such an event last counted are values
+//! a server side has no reason to hold.
+//!
+//! Drawing is not one of them. No accepted decision gives a mod a rendering path:
+//! ADG-6 settled that every screen Ravel owns is declared in data and drawn in
+//! Java, and nothing extends that to a mod's own. A mod's client-only state is
+//! what it *knows* on the client, not what it puts on the display.
 //!
 //! ```
 //! use ravel_sdk::sides::{ClientOnly, Side};
 //!
-//! /// Something a mod would only build where there is a screen to draw on.
-//! struct Overlay {
+//! /// What a `to-client` packet last told this mod. Only the client receives one,
+//! /// so only the client has anything to remember.
+//! #[derive(Default)]
+//! struct LatestReport {
 //!     lines: Vec<String>,
 //! }
 //!
-//! fn build_overlay() -> Overlay {
-//!     Overlay {
-//!         lines: vec!["copper lanterns: 3".to_owned()],
-//!     }
-//! }
-//!
 //! // The host tells a mod its side when it constructs it. On a server side the
-//! // closure is never called, so the overlay is not built rather than being built
+//! // closure is never called, so the value is not built rather than being built
 //! // and hidden.
-//! let server = ClientOnly::built_on(Side::DedicatedServer, build_overlay);
+//! let server = ClientOnly::built_on(Side::DedicatedServer, LatestReport::default);
 //! assert!(!server.is_present());
 //! assert!(server.get(Side::DedicatedServer).is_err());
 //!
-//! let client = ClientOnly::built_on(Side::Client, build_overlay);
+//! let mut client = ClientOnly::built_on(Side::Client, LatestReport::default);
+//! client.get_mut(Side::Client)?.lines.push("copper lanterns: 3".to_owned());
 //! assert_eq!(client.get(Side::Client)?.lines.len(), 1);
 //! # Ok::<(), ravel_sdk::sides::WrongSide>(())
 //! ```
 //!
 //! A [`WrongSide`] refusal is a mod's to convert, the way a registration refusal
-//! is: a mod that treats reaching for client-only code on a server as fatal
-//! returns [`crate::ModError::Refused`], and one that has nothing to draw carries
-//! on.
+//! is: a mod that treats reaching for client-only state on a server as fatal
+//! returns [`crate::ModError::Refused`], and one that has nothing to report
+//! carries on.
 //!
 //! # What this does not promise
 //!

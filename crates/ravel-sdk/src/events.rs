@@ -10,6 +10,19 @@
 //! literal during the registration window, so a mod is never asked to run a
 //! command it does not own and never has to check.
 //!
+//! # Why there is no `hooks` module
+//!
+//! A hook is the host-side mechanism M3 settled: a named target in a version's
+//! `hooks.toml`, resolved against that version's mappings and installed into the
+//! game by `ravel-bootstrap`. This module is its mod-facing form. A mod author
+//! never names a hook, does not choose one, and cannot be affected by one moving
+//! between versions — which is the point of `SPEC.md` §3.7's version boundary, and
+//! the reason `docs/architecture/dependency-rules.md` keeps the SDK clear of
+//! version internals. Exposing a hook here would breach that rule and hand an
+//! author a name that is only stable for one Minecraft version. So the absence is
+//! a decision rather than an omission: [`GameEvent`] is what a hook becomes by the
+//! time it reaches a mod.
+//!
 //! # Examples
 //!
 //! ```

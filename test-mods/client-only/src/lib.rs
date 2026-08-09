@@ -75,7 +75,7 @@ pub fn work_log() -> WorkLog {
     Arc::new(Mutex::new(Vec::new()))
 }
 
-/// A server telling the client what to draw.
+/// A report a server sends to the client, and only to the client.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Overlay {
     lines: Vec<String>,
@@ -140,9 +140,11 @@ pub fn overlay_id() -> PacketId {
 
 /// The client-only resources this mod would hold in a running game.
 ///
-/// A counter stands in for a screen, a texture handle, or anything else that needs
-/// a client to exist. What matters is that building it is observable and that it is
-/// built nowhere but the client.
+/// The lines a `to-client` packet last carried: the client is the only receiving
+/// end of such a link, so this is state no server side has a reason to hold. No
+/// accepted decision gives a mod a way to draw, so nothing here renders anything —
+/// what matters is that building it is observable and that it is built nowhere but
+/// the client.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Overlays {
     drawn: Vec<String>,

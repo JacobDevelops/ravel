@@ -33,6 +33,30 @@
 //! a mod whose payload needs another package installed, or which publishes a
 //! schema name for its own payload, reaches for.
 //!
+//! # The two arguments `new` adds
+//!
+//! **`required_packages`** is a `Vec<`[`RequiredPackage`]`>`, and a
+//! [`RequiredPackage`] is two public fields — `id`, the package, and `version`,
+//! the version of it this payload was written against. It is a statement about
+//! the *payload*: "the world cannot be read back without that package at that
+//! version". A mod whose payload stands alone passes an empty vector, which is
+//! what [`SavedDataEnvelope::current`] does for it. The order does not matter —
+//! `new` sorts the list, so two runs that name the same packages write the same
+//! bytes.
+//!
+//! **`payload_schema`** is an `Option<String>`, a name a mod publishes for its
+//! own payload's shape so another reader can recognise it. Ravel does not
+//! interpret it and nothing validates against it; a mod that publishes no such
+//! name passes `None`.
+//!
+//! On the way back in, an unmet requirement is refused rather than opened.
+//! [`SavedDataError::MissingPackage`] is a required package that is not installed
+//! at all, and [`SavedDataError::IncompatiblePackage`] carries a
+//! [`PackageConflict`] — the `owner` whose data asked, the `package` it asked
+//! for, the `required` version and the `installed` one — so the refusal names
+//! both versions rather than saying only that they differ. A mod never constructs
+//! a [`PackageConflict`]; it reads one out of a refusal it is reporting.
+//!
 //! # Examples
 //!
 //! ```

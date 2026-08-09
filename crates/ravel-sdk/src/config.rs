@@ -22,6 +22,33 @@
 //! in a signature, say — reaches it through the facade rather than through
 //! `serde_json`, which a mod's manifest does not list.
 //!
+//! # What a setting's value may be
+//!
+//! `schemas/configuration.schema.json` types `valueSchema` as a bare object, so
+//! the schema alone does not say. [`ValueSchema`] does, and it is a closed set:
+//!
+//! - `"type"` is one of [`ValueKind`]'s four names — `"boolean"`, `"integer"`,
+//!   `"number"`, `"string"` — or absent, which constrains the type not at all.
+//!   **There is no array, object or null setting.** A mod that wants a list makes
+//!   it a string it parses itself, or several settings.
+//! - `"enum"` is the exact values permitted, when the setting is a closed choice.
+//! - `"minimum"` and `"maximum"` bound a number, inclusive.
+//! - `"minLength"` and `"maxLength"` bound a string's length.
+//!
+//! A keyword that does not apply to the value's type constrains nothing, so a
+//! `"minimum"` beside a string says nothing about that string; `"type"` is what
+//! refuses the string in the first place.
+//!
+//! `"integer"` here means a JSON integer literal, which is narrower than JSON
+//! Schema's rule: `2` is an integer and `2.0` is not. Every document Ravel writes
+//! spells an integer as one, and the narrow reading can be widened later without
+//! invalidating anything already accepted.
+//!
+//! `"minimum"` and `"maximum"` are read as floating point whichever way they are
+//! written, so `"minimum": 1` and `"minimum": 1.0` are the same bound and both
+//! are accepted. The examples here write `1.0` only to make it obvious that the
+//! bound is not itself typed by the setting's `"type"`.
+//!
 //! # Examples
 //!
 //! ```
@@ -49,7 +76,17 @@
 //! #[declare_mod(id = "example")]
 //! impl Mod for Example {
 //!     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-//!         let _ = state;
+//!         // `configuration_declaration` can only answer `Some` or `None`, so a
+//!         // document that does not parse becomes `None` — which reads as "this
+//!         // mod declares no settings". `configure` is then never called and the
+//!         // mod runs on its own defaults with nothing said. Refusing here makes
+//!         // that loud, and does so whichever order the host settles settings and
+//!         // drives the lifecycle in.
+//!         ConfigurationDeclaration::parse(SETTINGS).map_err(|error| ModError::Refused {
+//!             mod_id: Self::declared_id().clone(),
+//!             state,
+//!             detail: error.to_string(),
+//!         })?;
 //!         Ok(())
 //!     }
 //!
@@ -73,6 +110,7 @@
 //!
 //! // With no pack and no player file, every setting is the author's default.
 //! let mut example = Example::default();
+//! example.enter(LifecycleState::Loaded)?;
 //! let declaration = example
 //!     .configuration_declaration()
 //!     .expect("the mod declares settings");

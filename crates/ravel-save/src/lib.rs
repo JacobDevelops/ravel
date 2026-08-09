@@ -158,10 +158,17 @@ impl SavedDataPlan {
 }
 
 /// One package an envelope requires to interpret its payload.
+///
+/// A statement about the payload rather than about the mod: it says this world's
+/// data cannot be read back without that package installed at that version.
+/// Absence is [`SavedDataError::MissingPackage`] and a different version is
+/// [`SavedDataError::IncompatiblePackage`], and both refuse the world.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RequiredPackage {
+    /// The package the payload cannot be read without.
     pub id: ModId,
+    /// The version of it the payload was written against.
     pub version: Version,
 }
 

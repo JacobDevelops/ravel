@@ -10,7 +10,9 @@ mod surface;
 mod world;
 
 pub use driver::{DriveError, drive};
-pub use events::{Delivery, DispatchRefused, broadcast, broadcast_profiled, route, route_profiled};
+pub use events::{
+    Delivery, DispatchRefused, broadcast, broadcast_profiled, deliver_packet, route, route_profiled,
+};
 pub use lifecycle::{
     LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,
     executes_mod_code,

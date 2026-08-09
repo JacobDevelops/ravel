@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 ravel-core.workspace = true
+ravel-network.workspace = true
 ravel-save.workspace = true
 
 [lints]

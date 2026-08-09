@@ -1,7 +1,8 @@
 use std::fmt;
 
-use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, StructuredFailure};
+use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure};
 use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod};
+use ravel_network::{Direction, PacketDelivery, PacketId};
 use ravel_observability::{CallKind, Profiler};
 
 use crate::lifecycle::LifecycleMachine;
@@ -56,6 +57,21 @@ pub enum DispatchRefused {
         /// The mod that owns the command.
         mod_id: ModId,
     },
+    /// The packet travels a way this side is not an end of.
+    ///
+    /// A fact about the delivery rather than about the set, and checked before
+    /// anything is looked up: a client-bound packet arriving on a server side is
+    /// refused without the owning mod's reading code running at all, which is
+    /// `SPEC.md` §14's requirement that client-only code never load on a server
+    /// side applied to the one path that carries bytes from outside.
+    PacketWrongSide {
+        /// The contract that was refused.
+        id: PacketId,
+        /// The way it travels.
+        direction: Direction,
+        /// The side it arrived on.
+        side: Side,
+    },
     /// The set holds no value for a mod the order names.
     ///
     /// The caller supplies mod values alongside the machine, and the two can
@@ -87,6 +103,15 @@ impl fmt::Display for DispatchRefused {
                 formatter,
                 "`{mod_id}` owns the command and does not load on this side"
             ),
+            Self::PacketWrongSide {
+                id,
+                direction,
+                side,
+            } => write!(
+                formatter,
+                "`{id}` travels {direction} and the `{}` side is not an end of that",
+                side.name()
+            ),
             Self::Absent { mod_id } => {
                 write!(formatter, "the order names `{mod_id}` and no value for it")
             }
@@ -97,10 +122,13 @@ impl fmt::Display for DispatchRefused {
 impl std::error::Error for DispatchRefused {}
 
 impl StructuredFailure for DispatchRefused {
-    /// None of these is one of `SPEC.md` §9.2's dependency-graph outcomes. A
-    /// set that is not running, a command nobody claimed, and a value the
-    /// caller did not supply are all facts about this delivery rather than
-    /// about the mod graph, so this reports no kind rather than borrowing one.
+    /// No variant here is one of `SPEC.md` §9.2's dependency-graph outcomes.
+    /// Every one is a fact about this delivery — the state the set is in, a name
+    /// nobody claimed, a side that is not an end of the link, a value the caller
+    /// did not supply — rather than a fact about the mod graph, so this reports no
+    /// kind rather than borrowing one. In particular a side refusal here is not
+    /// [`FailureKind::SideMismatch`]: that names a mod the graph would not load,
+    /// and these mods loaded.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
@@ -108,9 +136,10 @@ impl StructuredFailure for DispatchRefused {
     fn lifecycle_state(&self) -> LifecycleState {
         match self {
             Self::NotReacting { state, .. } | Self::OwnerNotReacting { state, .. } => *state,
-            Self::Unclaimed { .. } | Self::OwnerWrongSide { .. } | Self::Absent { .. } => {
-                LifecycleState::Running
-            }
+            Self::Unclaimed { .. }
+            | Self::OwnerWrongSide { .. }
+            | Self::PacketWrongSide { .. }
+            | Self::Absent { .. } => LifecycleState::Running,
         }
     }
 
@@ -287,6 +316,76 @@ pub fn broadcast_profiled(
     })
 }
 
+/// Routes `delivery` to the mod that owns the contract it names.
+///
+/// A packet is routed rather than broadcast, for the reason a command is: a
+/// [`PacketId`] is namespaced by its owner, so exactly one mod can read it and
+/// asking the others would be handing them bytes they have no contract for.
+///
+/// The side check comes first and is the point of this function. A client-bound
+/// packet arriving on a server side is refused before the owner is looked up and
+/// before any of the mod's decoding runs, which is what makes `SPEC.md` §14's
+/// requirement hold on the one path that carries bytes from outside the process.
+/// `ravel_network::PacketDelivery::decode` applies the same rule again inside the
+/// mod, and the two are independent on purpose: this one keeps the call from
+/// happening, that one keeps a call that happened anyway from reading anything.
+///
+/// There is no profiled twin. Attributing a packet's cost to a mod needs a column
+/// in `ravel_observability::ModCost`, and that shape is M3's closed profiling
+/// report; W3 does not reopen it, so a packet is unattributed today rather than
+/// counted as something it is not.
+///
+/// # Errors
+///
+/// Returns [`DispatchRefused`] when the packet reached nobody: this side is not an
+/// end of the link, the plan does not name the owner, the owner does not load on
+/// this side, the owner is not reacting, or the caller supplied no value for it.
+pub fn deliver_packet(
+    machine: &LifecycleMachine,
+    mods: &mut [&mut (dyn HostMod + '_)],
+    delivery: &PacketDelivery,
+) -> Result<Delivery, DispatchRefused> {
+    if !delivery.direction.may_receive_on(machine.side()) {
+        return Err(DispatchRefused::PacketWrongSide {
+            id: delivery.id.clone(),
+            direction: delivery.direction,
+            side: machine.side(),
+        });
+    }
+
+    let owner = delivery.id.owner().clone();
+    let state = machine.state(&owner).map_err(|_| DispatchRefused::Absent {
+        mod_id: owner.clone(),
+    })?;
+    if !machine.loads_here(&owner) {
+        return Err(DispatchRefused::OwnerWrongSide { mod_id: owner });
+    }
+    if !reacts(state) {
+        return Err(DispatchRefused::OwnerNotReacting {
+            mod_id: owner,
+            state,
+        });
+    }
+
+    let host = mods
+        .iter_mut()
+        .find(|host| host.id() == &owner)
+        .ok_or_else(|| DispatchRefused::Absent {
+            mod_id: owner.clone(),
+        })?;
+
+    match host.receive_packet(delivery) {
+        Ok(()) => Ok(Delivery {
+            received: vec![owner],
+            failure: None,
+        }),
+        Err(failure) => Ok(Delivery {
+            received: Vec::new(),
+            failure: Some(failure),
+        }),
+    }
+}
+
 /// Routes `invocation` to the one mod that claimed its root literal.
 ///
 /// A command is routed and an event is broadcast, and the difference is the
@@ -368,8 +467,9 @@ mod tests {
         StructuredFailure,
     };
     use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, Registrar};
+    use ravel_network::{Direction, PacketDelivery, PacketId};
 
-    use super::{Delivery, DispatchRefused, broadcast, route};
+    use super::{Delivery, DispatchRefused, broadcast, deliver_packet, route};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
 
     fn id(text: &str) -> ModId {
@@ -874,5 +974,272 @@ mod tests {
         assert!(!GameEvent::ClientTick.happens_on(Side::DedicatedServer));
         assert!(GameEvent::ServerTick.happens_on(Side::IntegratedServer));
         assert!(!GameEvent::ServerTick.happens_on(Side::Client));
+    }
+
+    // ------------------------------------------------------------- packets ---
+
+    /// A mod that records the packets routed to it, and can refuse one.
+    struct Networked {
+        id: ModId,
+        received: Vec<PacketId>,
+        refuses: bool,
+    }
+
+    impl Networked {
+        fn new(name: &str) -> Self {
+            Self {
+                id: id(name),
+                received: Vec::new(),
+                refuses: false,
+            }
+        }
+
+        fn refusing(name: &str) -> Self {
+            Self {
+                refuses: true,
+                ..Self::new(name)
+            }
+        }
+    }
+
+    impl HostMod for Networked {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            Ok(())
+        }
+
+        fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), HostError> {
+            if self.refuses {
+                return Err(HostError::Refused {
+                    mod_id: self.id.clone(),
+                    state: LifecycleState::Running,
+                    detail: format!("`{}` is refused by this instance", delivery.id),
+                });
+            }
+            self.received.push(delivery.id.clone());
+            Ok(())
+        }
+    }
+
+    fn packet_id(text: &str) -> PacketId {
+        PacketId::new(text.parse().expect("a legal content id"))
+    }
+
+    /// A delivery of `direction` addressed to `id`, with a body nothing decodes.
+    ///
+    /// The body is empty because every test here is about routing. What a mod
+    /// makes of the bytes is `ravel-network`'s own tests and the conformance
+    /// suite's, and a payload here would only make these tests depend on a
+    /// contract they do not care about.
+    fn delivery(id: &str, direction: Direction, side: Side) -> PacketDelivery {
+        PacketDelivery::new(packet_id(id), direction, side, Vec::new())
+    }
+
+    #[test]
+    fn a_packet_reaches_the_mod_that_owns_its_contract_and_nobody_else() {
+        let mut first = Networked::new("first_mod");
+        let mut second = Networked::new("second_mod");
+        let machine = running(
+            vec![
+                entry("first_mod", &[Side::DedicatedServer]),
+                entry("second_mod", &[Side::DedicatedServer]),
+            ],
+            Side::DedicatedServer,
+            &mut [&mut first, &mut second],
+        );
+
+        let sent = delivery(
+            "second_mod:ping",
+            Direction::ToServer,
+            Side::DedicatedServer,
+        );
+        let delivered = deliver_packet(&machine, &mut [&mut first, &mut second], &sent)
+            .expect("the owner is running here");
+
+        assert_eq!(delivered.received(), [id("second_mod")]);
+        assert!(delivered.is_complete());
+        assert_eq!(second.received, [packet_id("second_mod:ping")]);
+        assert!(first.received.is_empty());
+    }
+
+    #[test]
+    fn a_client_bound_packet_on_a_server_side_never_reaches_the_mod() {
+        // The owner loads on every side and is running, so nothing but the
+        // direction can refuse this. That is the point: `SPEC.md` §14's rule holds
+        // for a mod that is present rather than only for one the graph parked.
+        let mut host = Networked::new("example_mod");
+        let machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::DedicatedServer,
+            &mut [&mut host],
+        );
+
+        let sent = delivery(
+            "example_mod:screen",
+            Direction::ToClient,
+            Side::DedicatedServer,
+        );
+        let refusal = deliver_packet(&machine, &mut [&mut host], &sent)
+            .expect_err("a dedicated server is not an end of a client-bound link");
+
+        assert_eq!(
+            refusal,
+            DispatchRefused::PacketWrongSide {
+                id: packet_id("example_mod:screen"),
+                direction: Direction::ToClient,
+                side: Side::DedicatedServer,
+            }
+        );
+        assert!(
+            refusal.to_string().contains("dedicated-server"),
+            "{refusal}"
+        );
+        assert_eq!(refusal.lifecycle_state(), LifecycleState::Running);
+        assert!(refusal.failure_kind().is_none());
+        assert!(
+            host.received.is_empty(),
+            "the mod read a client-bound packet"
+        );
+    }
+
+    #[test]
+    fn the_same_packet_reaches_the_client_when_the_client_is_the_side_running() {
+        // The negative control for the test above. If any client-bound packet were
+        // refused, that test would pass without the direction being compared.
+        let mut host = Networked::new("example_mod");
+        let machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::Client,
+            &mut [&mut host],
+        );
+
+        let sent = delivery("example_mod:screen", Direction::ToClient, Side::Client);
+        deliver_packet(&machine, &mut [&mut host], &sent).expect("the client is the receiving end");
+        assert_eq!(host.received, [packet_id("example_mod:screen")]);
+    }
+
+    #[test]
+    fn a_packet_owned_by_a_mod_that_does_not_load_here_is_refused_rather_than_swallowed() {
+        let mut host = Networked::new("server_only");
+        let machine = running(
+            vec![entry("server_only", &[Side::DedicatedServer])],
+            Side::IntegratedServer,
+            &mut [&mut host],
+        );
+
+        // A server-bound packet may be received on an integrated server, so the
+        // direction passes and the owner's side declaration is what refuses.
+        let sent = delivery(
+            "server_only:ping",
+            Direction::ToServer,
+            Side::IntegratedServer,
+        );
+        assert_eq!(
+            deliver_packet(&machine, &mut [&mut host], &sent),
+            Err(DispatchRefused::OwnerWrongSide {
+                mod_id: id("server_only"),
+            })
+        );
+        assert!(host.received.is_empty());
+    }
+
+    #[test]
+    fn a_packet_naming_a_mod_the_plan_does_not_hold_is_refused_as_absent() {
+        let mut host = Networked::new("example_mod");
+        let machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::DedicatedServer,
+            &mut [&mut host],
+        );
+
+        let sent = delivery("other_mod:ping", Direction::ToServer, Side::DedicatedServer);
+        assert_eq!(
+            deliver_packet(&machine, &mut [&mut host], &sent),
+            Err(DispatchRefused::Absent {
+                mod_id: id("other_mod"),
+            })
+        );
+    }
+
+    #[test]
+    fn a_packet_before_the_set_reaches_running_is_refused_with_the_state_it_found() {
+        let mut host = Networked::new("example_mod");
+        let mut machine = LifecycleMachine::new(
+            Side::DedicatedServer,
+            vec![entry("example_mod", &Side::ALL)],
+        )
+        .expect("a legal plan");
+        machine
+            .advance_all(LifecycleState::Validated)
+            .expect("a legal step");
+
+        let sent = delivery(
+            "example_mod:ping",
+            Direction::ToServer,
+            Side::DedicatedServer,
+        );
+        assert_eq!(
+            deliver_packet(&machine, &mut [&mut host], &sent),
+            Err(DispatchRefused::OwnerNotReacting {
+                mod_id: id("example_mod"),
+                state: LifecycleState::Validated,
+            })
+        );
+        assert!(host.received.is_empty());
+    }
+
+    #[test]
+    fn a_set_that_holds_no_value_for_the_owner_delivers_to_nobody() {
+        let mut present = Networked::new("present_mod");
+        let machine = running(
+            vec![
+                entry("present_mod", &Side::ALL),
+                entry("absent_mod", &Side::ALL),
+            ],
+            Side::DedicatedServer,
+            &mut [&mut present],
+        );
+
+        let sent = delivery(
+            "absent_mod:ping",
+            Direction::ToServer,
+            Side::DedicatedServer,
+        );
+        assert_eq!(
+            deliver_packet(&machine, &mut [&mut present], &sent),
+            Err(DispatchRefused::Absent {
+                mod_id: id("absent_mod"),
+            })
+        );
+    }
+
+    #[test]
+    fn a_mod_that_refuses_a_packet_reports_the_refusal_and_reaches_nobody() {
+        let mut host = Networked::refusing("example_mod");
+        let machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::DedicatedServer,
+            &mut [&mut host],
+        );
+
+        let sent = delivery(
+            "example_mod:ping",
+            Direction::ToServer,
+            Side::DedicatedServer,
+        );
+        let delivered = deliver_packet(&machine, &mut [&mut host], &sent)
+            .expect("the routing succeeded and the mod declined");
+
+        assert!(delivered.received().is_empty());
+        assert!(!delivered.is_complete());
+        let failure = delivered.failure().expect("the mod refused");
+        assert_eq!(failure.mod_id(), &id("example_mod"));
+        assert!(
+            failure.to_string().contains("example_mod:ping"),
+            "{failure}"
+        );
     }
 }

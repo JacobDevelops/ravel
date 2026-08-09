@@ -828,9 +828,11 @@ dependencies = [
  "ravel-resolve",
  "ravel-save",
  "ravel-sdk",
+ "ravel-test-mod-client-only",
  "ravel-test-mod-commands",
  "ravel-test-mod-configuration",
  "ravel-test-mod-events",
+ "ravel-test-mod-networking",
  "ravel-test-mod-noop",
  "ravel-test-mod-resources",
  "ravel-test-mod-saved-data",
@@ -876,6 +878,7 @@ name = "ravel-host-api"
 version = "0.0.0"
 dependencies = [
  "ravel-core",
+ "ravel-network",
  "ravel-save",
 ]
 
@@ -976,6 +979,7 @@ dependencies = [
  "ravel-core",
  "ravel-data",
  "ravel-host-api",
+ "ravel-network",
  "ravel-save",
  "ravel-sdk-macros",
  "serde_json",
@@ -1080,6 +1084,13 @@ dependencies = [
  "ravel-observability",
  "ravel-spike-harness",
  "serde_json",
+]
+
+[[package]]
+name = "ravel-test-mod-client-only"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
 ]
 
 [[package]]

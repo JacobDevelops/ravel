@@ -5,6 +5,7 @@
 use std::fmt;
 
 use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure};
+use ravel_network::PacketDelivery;
 use ravel_save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
 
 /// Something the game did that a mod may react to.
@@ -294,6 +295,36 @@ pub trait HostMod: Send {
         })
     }
 
+    /// Reads one packet addressed to a contract this mod owns.
+    ///
+    /// A [`ravel_network::PacketId`] is namespaced by the mod that owns the
+    /// contract, so the loader routes a delivery the way it routes a command:
+    /// to the one mod the name belongs to, never by asking every mod whether it
+    /// recognises the bytes.
+    ///
+    /// The delivery carries the side it arrived on, which is the only place a mod
+    /// is handed one outside [`CommandInvocation`]. That is deliberate — a mod
+    /// that guessed the side would be guessing the thing `SPEC.md` §14 makes a
+    /// requirement — and it is what lets a client-bound handler put its work
+    /// behind `ravel_core::ClientOnly`.
+    ///
+    /// The default refuses with [`HostError::Unsupported`], for the reason
+    /// [`HostMod::run_command`]'s default does: a mod that declared a contract
+    /// and cannot read it has told the other end the packet means something.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HostError::Unsupported`] by default, and whatever the mod raises
+    /// otherwise — including a refusal to decode, which is bytes nobody in this
+    /// workspace wrote and so is a refusal rather than a panic.
+    fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), HostError> {
+        let _ = delivery;
+        Err(HostError::Unsupported {
+            mod_id: self.id().clone(),
+            state: LifecycleState::Running,
+        })
+    }
+
     /// Declares the versioned world data this mod owns, when it owns any.
     fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
         None
@@ -512,6 +543,30 @@ mod tests {
         Registering {
             id: "example_mod".parse().expect("valid id"),
         }
+    }
+
+    #[test]
+    fn a_mod_that_declared_no_packet_contract_refuses_a_delivery_rather_than_ignoring_it() {
+        use ravel_core::Side;
+        use ravel_network::{Direction, PacketDelivery, PacketId};
+
+        let delivery = PacketDelivery::new(
+            PacketId::new("example_mod:ping".parse().expect("a legal content id")),
+            Direction::ToServer,
+            Side::DedicatedServer,
+            Vec::new(),
+        );
+
+        let error = counting()
+            .receive_packet(&delivery)
+            .expect_err("the default reads no packet");
+        assert_eq!(
+            error,
+            HostError::Unsupported {
+                mod_id: "example_mod".parse().expect("valid id"),
+                state: LifecycleState::Running,
+            }
+        );
     }
 
     #[test]

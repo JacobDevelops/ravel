@@ -212,7 +212,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
         }
     }
 
-    for relative in maintained_rust_roots() {
+    for relative in maintained_rust_roots(root) {
         match fs::read_to_string(root.join(&relative)) {
             Ok(source) if declares_unsafe_prohibition(&source) => {}
             Ok(_) => violations.push(format!("missing unsafe prohibition: {relative}")),
@@ -3789,7 +3789,15 @@ pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
     violations
 }
 
-fn maintained_rust_roots() -> Vec<String> {
+/// Every Rust crate root the unsafe prohibition is swept over.
+///
+/// The three name lists drive the enumerated part. A crate's own `examples/`
+/// directory is a fourth kind of root and is read off the filesystem instead,
+/// because it is a directory an author adds a file to rather than a list an
+/// author edits: `crates/ravel-pack/examples/example_pack.rs` was the first such
+/// target and sat outside every hand-maintained list until it was discovered
+/// here.
+fn maintained_rust_roots(root: &Path) -> Vec<String> {
     CRATE_NAMES
         .iter()
         .map(|name| format!("crates/{name}/src/lib.rs"))
@@ -3810,7 +3818,28 @@ fn maintained_rust_roots() -> Vec<String> {
                 .iter()
                 .map(|name| format!("examples/{name}/src/lib.rs")),
         )
+        .chain(crate_example_roots(root))
         .collect()
+}
+
+/// Returns every `crates/<crate>/examples/*.rs` target, in path order.
+fn crate_example_roots(root: &Path) -> Vec<String> {
+    let mut roots = Vec::new();
+    for name in CRATE_NAMES {
+        let directory = root.join("crates").join(name).join("examples");
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
+                let file = entry.file_name().to_string_lossy().into_owned();
+                roots.push(format!("crates/{name}/examples/{file}"));
+            }
+        }
+    }
+    roots.sort();
+    roots
 }
 
 fn verify_ignored_boundaries(root: &Path, violations: &mut Vec<String>) {

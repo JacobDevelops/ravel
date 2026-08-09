@@ -204,6 +204,59 @@ in
       '';
     };
 
+    # `cargo test` compiles the pack example and runs nothing, so until this script
+    # existed a change that made the documented example refuse validation left every
+    # gate green. The example is the artifact M4-W5's Output column names, so running
+    # it is part of the gate rather than something a reviewer does by hand.
+    ravel-verify-example-pack = {
+      description = "Run the pack example and check the pack it writes.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        directory="$(mktemp -d)"
+        trap 'rm -rf "$directory"' EXIT
+
+        # The example refuses with a nonzero status when its pack does not hold
+        # together, so `set -e` is what turns a broken example into a failed gate.
+        reported="$(cargo run --locked -q -p ravel-pack --example example_pack -- "$directory")"
+
+        # Two comparisons rather than one. The expected list is written out here so
+        # the gate has an opinion the example cannot move, and the example's own
+        # report is compared to the tree as well, because a report that disagrees
+        # with what `write` emitted is the failure a single comparison would miss.
+        expected="$(printf '%s\n' \
+          assets/copper_mod/lang/en_us.json \
+          assets/example_pack/textures/gui/progress.png \
+          assets/lantern_mod/lang/en_us.json \
+          data/c/tags/item/ingots.json \
+          data/example_pack/recipe/copper_lantern.json \
+          ravel/config/lantern_mod.json \
+          ravel/pack.json | sort)"
+        written="$(cd "$directory" && find . -type f -printf '%P\n' | sort)"
+        announced="$(echo "$reported" | sed -n 's/^  //p' | sort)"
+
+        if [ "$written" != "$expected" ]; then
+          echo "the pack example wrote a tree this gate does not expect" >&2
+          diff <(echo "$expected") <(echo "$written") >&2 || true
+          exit 1
+        fi
+        if [ "$announced" != "$written" ]; then
+          echo "the pack example reported files it did not write, or the reverse" >&2
+          diff <(echo "$announced") <(echo "$written") >&2 || true
+          exit 1
+        fi
+
+        # `ravel/pack.json` is the reproducible manifest `SPEC.md` §4.3 asks the pack
+        # author to produce, so its absence is a different failure from a missing
+        # data file and is named separately.
+        if ! jq -e '.members | length > 0' "$directory/ravel/pack.json" >/dev/null; then
+          echo "the written pack manifest names no member" >&2
+          exit 1
+        fi
+      '';
+    };
+
     ravel-verify-spikes = {
       description = "Verify recorded architecture spike results.";
       exec = ''
@@ -499,6 +552,7 @@ in
     "ravel:coverage".exec = "ravel-coverage";
     "ravel:audit".exec = "ravel-audit";
     "ravel:verify-scaffold".exec = "ravel-verify-scaffold";
+    "ravel:verify-example-pack".exec = "ravel-verify-example-pack";
     "ravel:verify-spikes".exec = "ravel-verify-spikes";
     "ravel:verify-jvm".exec = "ravel-verify-jvm";
     "ravel:spike-adg-1".exec = "ravel-spike-adg-1";
@@ -526,6 +580,7 @@ in
         "ravel:coverage"
         "ravel:audit"
         "ravel:verify-scaffold"
+        "ravel:verify-example-pack"
         "ravel:verify-spikes"
         "ravel:verify-jvm"
         "ravel:verify-budget"

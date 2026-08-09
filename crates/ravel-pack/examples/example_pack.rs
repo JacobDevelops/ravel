@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! A complete modpack, declared and validated the way a pack author would.
 //!
 //! This is M4-W5's pack example. It lives beside `ravel-pack` rather than under the

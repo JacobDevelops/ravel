@@ -222,6 +222,14 @@ rewritten set for the save target. An absent entry refuses the world load. This
 is what closes the hole the rejected alternative names: a jar or class that is
 present but whose transformation matched zero methods.
 
+The refusal itself is exercised. `jvm/harness/run-harness.sh`'s
+`missing-save-seam` lifecycle installs the open seam and not the save seam, so
+`MinecraftServer` is present and loads while its transformation matches nothing,
+and the harness asserts the world is refused with this diagnostic before the open
+crossing is made at all. Without that case the false branch of the marker query
+never ran anywhere in the gate, and a marker check that is never observed failing
+is indistinguishable from one that always answers true.
+
 ### The crossing shape
 
 The two crossings carry an opaque `byte[]`, which is the first byte-carrying

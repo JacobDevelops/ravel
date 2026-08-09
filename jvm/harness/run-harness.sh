@@ -270,12 +270,13 @@ cp "$order_agent" "$persist_agent"
 # if the run does not produce `expected`, and the properties are the two answers
 # Rust would have given.
 persistence_run() {
-	local label="$1" open="$2" save="$3" stored="$4" expected="$5"
+	local label="$1" open="$2" save="$3" stored="$4" expected="$5" save_seam="${6:-false}"
 	local out="$persist/$label-stdout"
 	local err="$persist/$label-stderr"
 	(cd "$persist/classes" && java \
 		-javaagent:"$persist_agent" \
 		-Dravel.test.transform.persistence=true \
+		-Dravel.test.persistence.saveSeamMissing="$save_seam" \
 		-Dravel.test.persistence.open="$open" \
 		-Dravel.test.persistence.save="$save" \
 		-Dravel.test.persistence.stored="$stored" \
@@ -342,6 +343,25 @@ if [ "$absent_diagnostic" != "$absent_expected_diagnostic" ]; then
 	exit 1
 fi
 mv "$persist/sibling.jar" "$persist_screen"
+
+# The save seam is not installed, which is the other refusal ADG-7 specifies and
+# the only one that needs the marker rather than a crossing to detect it. The
+# server class is present and loads — `Persistence.saveSeamInstalled` loads it on
+# purpose — but its transformation matched no method, so the installed-prologue set
+# is empty and the world is refused before Rust is ever asked. Without this case
+# the false branch of that method never executes anywhere in the gate.
+persistence_missing_save_stdout='loads=0 accessClosed=true stemClosed=true crossed=0 read=absent
+saves=1 writes=0 written=
+[ravel] rewrote 1 classes and 1 methods; 1 hook invocations reached native code'
+persistence_run missing-save-seam empty unchanged '' "$persistence_missing_save_stdout" true
+missing_save_diagnostic="$(grep '^\[ravel\] refused' "$persist/missing-save-seam-stderr")"
+missing_save_expected_diagnostic='[ravel] refused a world load: Ravel'"'"'s world-save hook was not installed, so this world'"'"'s mod data could not be saved again.'
+if [ "$missing_save_diagnostic" != "$missing_save_expected_diagnostic" ]; then
+	echo >&2
+	echo "an uninstalled save seam did not refuse with the recorded diagnostic; expected:" >&2
+	printf '%s\n' "$missing_save_expected_diagnostic" >&2
+	exit 1
+fi
 
 failure_stdout="$order/failure-stdout"
 failure_stderr="$order/failure-stderr"

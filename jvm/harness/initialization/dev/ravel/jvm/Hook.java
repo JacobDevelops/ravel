@@ -34,31 +34,7 @@ public final class Hook {
                                 true),
                     }
             : Boolean.getBoolean("ravel.test.transform.persistence")
-                    ? new HookTarget[] {
-                        // ADG-7's two seams, with the exact internal names,
-                        // members and descriptors the pinned inventory carries.
-                        // The adapter is injected by matching those, so a
-                        // stand-in that differed anywhere would not be hooked.
-                        new HookTarget(
-                                "net/minecraft/client/Minecraft",
-                                "doWorldLoad",
-                                "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;"
-                                        + "Lnet/minecraft/server/packs/repository/PackRepository;"
-                                        + "Lnet/minecraft/server/WorldStem;Ljava/util/Optional;Z)V",
-                                false,
-                                "worldOpenPersistence",
-                                "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;"
-                                        + "Ljava/lang/Object;Z)Z",
-                                true),
-                        new HookTarget(
-                                "net/minecraft/server/MinecraftServer",
-                                "saveAllChunks",
-                                "(ZZZ)Z",
-                                false,
-                                "worldSavePersistence",
-                                "(ZZZ)V",
-                                false),
-                    }
+                    ? persistenceTargets()
             : Boolean.getBoolean("ravel.test.transform.members")
                     ? new HookTarget[] {
                         // One method target in each of the four classes that
@@ -161,6 +137,46 @@ public final class Hook {
     private static String openAggregate = "absent";
 
     private Hook() {
+    }
+
+    /**
+     * ADG-7's two seams, with the exact internal names, members and descriptors
+     * the pinned inventory carries. The adapter is injected by matching those, so
+     * a stand-in that differed anywhere would not be hooked.
+     *
+     * <p>{@code ravel.test.persistence.saveSeamMissing} keeps the open seam and
+     * drops the save seam, which is the one arrangement that makes
+     * {@code Persistence.saveSeamInstalled} answer false: the server class is
+     * present and loads, its transformation matches no method, and the
+     * installed-prologue marker stays empty. That is the hole ADG-7's rejected
+     * alternative leaves open, and without this case its false branch never runs.
+     */
+    private static HookTarget[] persistenceTargets() {
+        HookTarget open = new HookTarget(
+                "net/minecraft/client/Minecraft",
+                "doWorldLoad",
+                "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;"
+                        + "Lnet/minecraft/server/packs/repository/PackRepository;"
+                        + "Lnet/minecraft/server/WorldStem;Ljava/util/Optional;Z)V",
+                false,
+                "worldOpenPersistence",
+                "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;"
+                        + "Ljava/lang/Object;Z)Z",
+                true);
+        if (Boolean.getBoolean("ravel.test.persistence.saveSeamMissing")) {
+            return new HookTarget[] {open};
+        }
+        return new HookTarget[] {
+            open,
+            new HookTarget(
+                    "net/minecraft/server/MinecraftServer",
+                    "saveAllChunks",
+                    "(ZZZ)Z",
+                    false,
+                    "worldSavePersistence",
+                    "(ZZZ)V",
+                    false),
+        };
     }
 
     public static void initialize() {

@@ -127,19 +127,19 @@
     "results": [
       {
         "name": "class-loader-identity.json",
-        "sha256": "43243a654e00747a5d177e18c894d7f5efc9344a33516fca3c2d8d1b509ff222"
+        "sha256": "d1c7a69f8cc974ece9901401ad299d2817a5258b4f2a58e98edd403dfa99119b"
       },
       {
         "name": "pack-compile.json",
-        "sha256": "544a1b5d7e724d99dba93094f3aeed6abc4d1da4ddc594bfac24b4376f98d958"
+        "sha256": "0fcde61c4e36d5e9aa69cfa7c68b3d7323bfe84e1fe1df76633ae25727593dec"
       },
       {
         "name": "profiling-overhead.json",
-        "sha256": "baba4e97c901446c34360e170058df5f98019aec4067fa570dec23a716f17926"
+        "sha256": "9c811e87388095230e62d611d2266a03873bf731af0d2427061fb64b4cb5cf39"
       },
       {
         "name": "linux-process-matrix.json",
-        "sha256": "571e30e79d304ff1130af1be3e43d533867e2dee12b5da5a59a794b9eb4134ff"
+        "sha256": "42b0fd445ef8a140b296f3f4d3c401e159b4870f424a7134ccccab3ca8486102"
       }
     ]
   },
@@ -234,6 +234,10 @@
     },
     {
       "summary": "Every native M3 launch loaded libravel_bootstrap.so through the path ADG-5 classes as a workaround rather than a mechanism. docs/decisions/adg-5-prism-integration.md records at M2 that the appended -Djava.library.path does not work, that the natives-directory staging M2 used is a workaround, and that nothing should be built on it until choosing between two proper fixes amends that ADR. M3 built on it anyway: the library was staged into the instance's natives directory from the instance's own WrapperCommand, which is Ravel-supplied code running inside the launcher's launch sequence, and the instance carried OverrideJavaArgs, JvmArgs, WrapperCommand, OverrideCommands and ShowConsole together with a third -D argument beyond the two ADG-5's decision names. That is evidence-collection scaffolding for operator-run launches rather than a shipped mechanism, and nothing in M3 claims ADG-5 conformance for the native half: the generated Hook still calls System.loadLibrary, so the fix is unbuilt. ADG-5 now carries an amendment that chooses it -- System.load on an explicit path supplied by a -D property, which returns the instance to two settings and stops Ravel writing into a directory the launcher owns and rebuilds -- and that amendment records that no work package owns building it. Corrected in the same pass: ADG-1's amendment claimed the appended screen jar keeps ADG-5 intact because no launcher puts anything anywhere, which was false of these launches; that claim now covers the screen jar, which is the artifact the mechanism is about.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "All four of M3's result records declared schemaVersion 1 and no schema in schemas/ describes the shape of any of them. ravel-typecheck schema-validates four fixture and performance documents and metaschema-checks schemas/*.schema.json, and verify_manifest_invariants in tools/ravel-xtask/src/lib.rs validates the milestone manifests against schemas/evidence.schema.json, which is where this manifest's own schemaVersion is bound. Nothing validated these four against anything, so the field asserted conformance to a version of a document that does not exist — the same defect class as a figure nothing recomputes, in a smaller form. It is deleted rather than defined: a schema loose enough to cover a compile curve, a percentile table, a loader identity and a process matrix would bind their shared frame and none of their numbers, which is machinery for a claim nobody makes. What binds these four is stated here instead of asserted by a field. Every one is digest-bound through benchmarks.results[].sha256, which verify_evidence_records recomputes against the working copy on every ravel:verify, and their figures are held by named field checks: tests/conformance/tests/profiling_report.rs, cargo xtask verify budget over the M3-W6 budget, and verify_campaign_inventory over the matrix counts. The absence is bound by the same digest as the content — re-adding the field to any of the four changes its bytes and the recompute refuses it by name, which is proven by mutation, and re-adding it with the digest rebound passes, which is the proof that nothing governed the field. The nested schemaVersion values inside linux-process-matrix.json stay, because those are transcripts of a configuration document and a saved-data aggregate, whose schemas do define the field.",
       "classification": "non-blocking"
     }
   ],

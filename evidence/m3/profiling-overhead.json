@@ -163,7 +163,6 @@
     "unit": "nanoseconds"
   },
   "record": "m3-w6-profiling-overhead",
-  "schemaVersion": 1,
   "summary": "What Ravel's opt-in profiling collectors cost a tick when nobody turned them on, what they can and cannot attribute to a mod, and the normal-mode budget the first of those is held to.",
   "trial": {
     "commandSha256": "46ee56e16c0245ce843a63885b55e2310806f53a50e5ffb8358fbc2bc7dc7636",

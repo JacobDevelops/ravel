@@ -87,7 +87,6 @@
     "nativeInvocations": 17115,
     "reachedNativeCode": true
   },
-  "schemaVersion": 1,
   "summary": "The loader that loaded a rewritten net.minecraft class in the official game process is the same object as ClassLoader.getSystemClassLoader(), so the pinned launch has one loader where jvm/README.md describes a delegating pair.",
   "whatThisDoesNotSay": [
     "Nothing here selects between ADG-1's two candidates. It removes an objection to the second one and says nothing about whether the first is preferable on any other ground.",

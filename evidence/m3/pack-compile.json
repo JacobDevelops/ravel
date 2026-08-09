@@ -148,7 +148,6 @@
   "milestone": "M3",
   "protocol": "m3-pack-compile-v1",
   "record": "m3-adg-2-pack-compile",
-  "schemaVersion": 1,
   "summary": "What compiling a pack-sized set of mods with real bodies costs on Linux — cold, warm after one mod changes, in peak memory, and on disk — which is the measurement ADG-2 named as deciding between a shipped per-platform binary and source compiled by a bundled toolchain.",
   "syntheticMod": {
     "dependencies": [

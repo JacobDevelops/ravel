@@ -257,6 +257,19 @@ in
       '';
     };
 
+    # `examples/minimal-mod` is the package an author is told to copy, and a
+    # digest in it that no longer matches the file beside it teaches every author
+    # that a stale manifest is normal. `--check` writes nothing, so the gate
+    # reports the drift rather than papering over it.
+    ravel-verify-example-package = {
+      description = "Check the example package's manifest digests.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+        cargo run --locked -q -p ravel-xtask -- package digests --check examples/minimal-mod
+      '';
+    };
+
     ravel-verify-spikes = {
       description = "Verify recorded architecture spike results.";
       exec = ''
@@ -553,6 +566,7 @@ in
     "ravel:audit".exec = "ravel-audit";
     "ravel:verify-scaffold".exec = "ravel-verify-scaffold";
     "ravel:verify-example-pack".exec = "ravel-verify-example-pack";
+    "ravel:verify-example-package".exec = "ravel-verify-example-package";
     "ravel:verify-spikes".exec = "ravel-verify-spikes";
     "ravel:verify-jvm".exec = "ravel-verify-jvm";
     "ravel:spike-adg-1".exec = "ravel-spike-adg-1";
@@ -581,6 +595,7 @@ in
         "ravel:audit"
         "ravel:verify-scaffold"
         "ravel:verify-example-pack"
+        "ravel:verify-example-package"
         "ravel:verify-spikes"
         "ravel:verify-jvm"
         "ravel:verify-budget"

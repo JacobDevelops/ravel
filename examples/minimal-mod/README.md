@@ -27,4 +27,12 @@ copy. Every optional field this mod has nothing to say about is absent rather
 than empty, which is itself the lesson.
 `tests/conformance/tests/example_package.rs` recomputes the three things a
 hand-written manifest goes stale about: the digests, the file list, and whether
-`"id"` still agrees with `#[declare_mod]`.
+`"id"` still agrees with `#[declare_mod]`. Any edit to a declared file
+invalidates the manifest; refresh it with
+
+```console
+cargo xtask package digests examples/minimal-mod
+```
+
+which rewrites the digests and nothing else, and says so when there was nothing
+to do.

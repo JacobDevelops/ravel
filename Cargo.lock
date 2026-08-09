@@ -1231,6 +1231,7 @@ dependencies = [
 name = "ravel-xtask"
 version = "0.0.0"
 dependencies = [
+ "ravel-package",
  "sha2 0.11.0",
 ]
 

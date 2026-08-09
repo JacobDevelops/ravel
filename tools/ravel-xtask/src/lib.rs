@@ -11,8 +11,10 @@ use std::process::Command;
 use sha2::{Digest, Sha256};
 
 mod instance_scan;
+mod package_digests;
 
 pub use instance_scan::{Finding, InstanceScan, scan_instance};
+pub use package_digests::{DigestOutcome, StaleDigest, refresh_digests};
 
 const CRATE_NAMES: &[&str] = &[
     "ravel-core",

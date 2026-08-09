@@ -60,10 +60,11 @@ The gate prints a green test summary even when it fails. Judge it by the exit st
 - Respect the layering in [`docs/architecture/dependency-rules.md`](docs/architecture/dependency-rules.md).
   `ravel-core` depends on no other Ravel crate, the SDK exposes no bootstrap or JVM or version internals, and
   production crates never depend on `ravel-testkit`.
-- ADG-1 to ADG-6 are accepted; read [`docs/decisions/`](docs/decisions/) before writing anything that
-  touches JVM entry, mod execution, bindings, state ownership, launcher integration, or Ravel-owned
-  screens, and follow the mechanism the ADR selected. Configuration is declared in data and those screens
-  are drawn in Java.
+- [`docs/decisions/`](docs/decisions/) is the list of accepted decisions and each record's own `Status`
+  line says how far it is accepted and what amended it; do not enumerate them here, because the count and
+  the subjects both grow. Read the directory before writing anything a decision covers — its filename
+  names its subject — and follow the mechanism the ADR selected. Configuration is declared in data and
+  Ravel-owned screens are drawn in Java.
 - Never track mod JARs, official Minecraft or modpack assets, credentials, private worlds, or raw captures.
   Authorized local material goes in `tests/fixtures/local/`, which is ignored. `ravel-verify-scaffold`
   enforces this and will fail the gate.

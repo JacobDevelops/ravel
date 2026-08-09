@@ -4,6 +4,7 @@ members = [
   "crates/*",
   "examples/content-mod",
   "examples/minimal-mod",
+  "examples/stateful-mod",
   "experiments/adg-1-jvm-entry",
   "experiments/adg-2-guest",
   "experiments/adg-2-mod-execution",
@@ -36,6 +37,7 @@ ravel-core = { path = "crates/ravel-core", version = "0.0.0" }
 ravel-data = { path = "crates/ravel-data", version = "0.0.0" }
 ravel-example-content-mod = { path = "examples/content-mod", version = "0.0.0" }
 ravel-example-minimal-mod = { path = "examples/minimal-mod", version = "0.0.0" }
+ravel-example-stateful-mod = { path = "examples/stateful-mod", version = "0.0.0" }
 ravel-host-api = { path = "crates/ravel-host-api", version = "0.0.0" }
 ravel-loader = { path = "crates/ravel-loader", version = "0.0.0" }
 ravel-minecraft = { path = "crates/ravel-minecraft", version = "0.0.0" }
@@ -56,6 +58,7 @@ ravel-test-mod-client-only = { path = "test-mods/client-only", version = "0.0.0"
 ravel-test-mod-commands = { path = "test-mods/commands", version = "0.0.0" }
 ravel-test-mod-configuration = { path = "test-mods/configuration", version = "0.0.0" }
 ravel-test-mod-events = { path = "test-mods/events", version = "0.0.0" }
+ravel-test-mod-inter-mod-service = { path = "test-mods/inter-mod-service", version = "0.0.0" }
 ravel-test-mod-networking = { path = "test-mods/networking", version = "0.0.0" }
 ravel-test-mod-noop = { path = "test-mods/noop", version = "0.0.0" }
 ravel-test-mod-resources = { path = "test-mods/resources", version = "0.0.0" }

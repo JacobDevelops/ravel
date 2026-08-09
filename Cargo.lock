@@ -821,6 +821,7 @@ dependencies = [
  "ravel-core",
  "ravel-data",
  "ravel-example-content-mod",
+ "ravel-example-stateful-mod",
  "ravel-host-api",
  "ravel-loader",
  "ravel-observability",
@@ -832,6 +833,7 @@ dependencies = [
  "ravel-test-mod-commands",
  "ravel-test-mod-configuration",
  "ravel-test-mod-events",
+ "ravel-test-mod-inter-mod-service",
  "ravel-test-mod-networking",
  "ravel-test-mod-noop",
  "ravel-test-mod-resources",
@@ -874,12 +876,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-example-stateful-mod"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
+]
+
+[[package]]
 name = "ravel-host-api"
 version = "0.0.0"
 dependencies = [
+ "ravel-config",
  "ravel-core",
  "ravel-network",
  "ravel-save",
+ "serde_json",
 ]
 
 [[package]]
@@ -976,6 +987,7 @@ dependencies = [
 name = "ravel-sdk"
 version = "0.0.0"
 dependencies = [
+ "ravel-config",
  "ravel-core",
  "ravel-data",
  "ravel-host-api",

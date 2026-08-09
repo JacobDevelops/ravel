@@ -91,10 +91,13 @@ What follows is drawn from measurements taken for other gates and from the
   interception rather than an override; the overridable one is `protected void
   init()`. Those facts come from `m3-hook-targets.md`, resolved against the
   pinned client jar by two independent passes.
-- **`packOverride` has no semantics and no consumer.** The enum
-  `allowed | locked | required` appears exactly once in the repository, in
-  `configuration.schema.json` itself. No document defines the three values, and
-  no crate reads them.
+- **`packOverride` had no semantics and no consumer when this decision was
+  taken.** The enum `allowed | locked | required` was declared in
+  `configuration.schema.json` and nowhere else: no document defined the three
+  values and no crate read them, which is one of the things this record was
+  written to settle. It is an observation about the tree ADG-6 read, not a claim
+  about the tree now — the three schema edits below assigned the semantics to
+  M3-W3, they landed, and `crates/ravel-config` reads the field.
 
 ## Why the screen is Java
 

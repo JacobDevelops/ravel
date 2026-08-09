@@ -197,9 +197,12 @@ impl Metric {
             ),
             Self::SavedDataFootprint => Support::Unsupported(
                 "The loader records which saved-data versions a mod declares, not how many bytes a \
-                 world holds for it. Moving bytes in a world is the half of M3-W4 that is still \
-                 open, so there is nothing to size, and reporting the declared version count under \
-                 the word `footprint` would answer a different question.",
+                 world holds for it. Those bytes exist — M3-W4 moved Ravel's own aggregate through \
+                 an official world save and reload — but they are `ravel-save`'s aggregate, \
+                 written at the ADG-7 persistence seam once per world save, and this crate depends \
+                 on `ravel-core` alone and sees only what crosses a profiled callback. No stored \
+                 byte ever reaches the collector path, and reporting the declared version count \
+                 under the word `footprint` would answer a different question.",
             ),
             Self::SlowCallbacks => Support::Approximate(
                 "A count of exact comparisons against an inexact number. The threshold is \

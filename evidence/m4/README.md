@@ -77,7 +77,7 @@ work package with each implementation row closed and naming its evidence, a nati
 Linux attestation for the gate run, recorded deviations and risks, and both
 decision records M4 rests on.
 
-Two of its checks exist because a record of in-gate work is the easiest kind to
+The checks below exist because a record of in-gate work is the easiest kind to
 let drift:
 
 - `verify_m4_gate_figures` reconciles the manifest's `tests` block against the
@@ -94,7 +94,7 @@ let drift:
   M4-W8's independent review added an invented process row and flipped a row's
   exit status to 1, and the gate returned 0 for both; this is the repair.
 
-Both are proven by mutation rather than by reading, which is the only proof this
+Each is proven by mutation rather than by reading, which is the only proof this
 repository accepts that a check is not vacuous.
 
 ## The ceiling

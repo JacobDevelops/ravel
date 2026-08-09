@@ -20,8 +20,9 @@ measurement exists, a rejection is explicit, and the limits are written down.
 
 ## Reproducing the evidence
 
-Each gate that took a measurement has one task, and two of the gates did not take
-one. All of the tasks need the pinned local fixtures described in
+Every gate that took a measurement can be re-run from here; the two paragraphs
+after the block say why one of them is a script rather than a task and why one
+gate has neither. All of the tasks need the pinned local fixtures described in
 [`tests/fixtures/local/README.md`](../../tests/fixtures/local/README.md), and none
 of them authenticates or launches the game.
 

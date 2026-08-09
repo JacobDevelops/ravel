@@ -564,6 +564,50 @@ fn a_refused_world_never_reaches_the_mod_that_owns_its_data() {
     }
 }
 
+/// The refusal only the owning mod can decide, on the route production has.
+///
+/// Every other refusal here is `ravel-save`'s: the container, the envelope, the
+/// declared versions, the ceiling. This one is not decidable by anything but the
+/// owner, because `SPEC.md` §14 makes the owning mod the only thing that
+/// interprets its own payload — an admissible envelope can still hold a value
+/// that mod cannot read. So the refusal has to travel from
+/// [`HostMod::open_saved_data`] out through the crossing, and the world has to
+/// stay shut. A crossing that swallowed it would open the world with the mod
+/// holding its default state and let the next save write that default over what
+/// the world stored.
+#[test]
+fn a_payload_its_owner_cannot_read_refuses_the_world_rather_than_opening_it_fresh() {
+    // Admissible in every way `ravel-save` decides: this release's aggregate
+    // format and envelope schema, a data version this build reads, and no
+    // required package. Only the payload is unreadable — `visits` is a count.
+    let mut aggregate = SavedDataAggregate::fresh();
+    aggregate.replace(SavedDataEnvelope::new(
+        MOD_ID.parse().expect("a legal mod id"),
+        SavedDataMod::new().current(),
+        Vec::new(),
+        Some("urn:ravel:test:saved-state:1".to_owned()),
+        json!({ "visits": "many" }),
+    ));
+    let bytes = aggregate.to_bytes().expect("one small envelope is bounded");
+
+    // Admission passes it, which is what makes the refusal the owner's.
+    admit(Some(&bytes)).expect("nothing `ravel-save` decides refuses this world");
+
+    let mut saved = SavedDataMod::new();
+    reload(&mut saved, Some(&aggregate_bytes("current"))).expect("`current` opens");
+    let before = saved.state().clone();
+
+    let refused = reload(&mut saved, Some(&bytes))
+        .expect_err("a payload its owner cannot read opens no world");
+
+    assert!(refused.contains(MOD_ID), "{refused}");
+    assert_eq!(
+        saved.state(),
+        &before,
+        "a world the owner refused was delivered anyway"
+    );
+}
+
 #[test]
 fn every_refusal_is_decided_before_any_mod_runs() {
     for (name, error) in refusals() {

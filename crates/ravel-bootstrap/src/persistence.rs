@@ -560,6 +560,14 @@ mod tests {
     struct Held {
         visits: AtomicU32,
         refuses_production: AtomicBool,
+        /// Whether this mod refuses the state a world handed it.
+        ///
+        /// The counterpart of [`Held::refuses_production`] on the open side. A
+        /// mod refuses delivery for reasons only it can see — a payload it
+        /// cannot read, or its own open step declining — and a crossing that
+        /// swallowed that would initialize the mod fresh and let the next save
+        /// write the default over the stored envelope.
+        refuses_open: AtomicBool,
         /// The plan the last open handed this mod, which is otherwise unobservable.
         ///
         /// A mod that migrates reads `SavedDataPlan::steps`, so the plan is part
@@ -606,6 +614,13 @@ mod tests {
             envelope: Option<&SavedDataEnvelope>,
             plan: &SavedDataPlan,
         ) -> Result<(), HostError> {
+            if self.held.refuses_open.load(Ordering::SeqCst) {
+                return Err(HostError::Refused {
+                    mod_id: self.id.clone(),
+                    state: LifecycleState::Registered,
+                    detail: "this mod cannot read what the world stored".to_owned(),
+                });
+            }
             let visits = envelope.map_or(0, |stored| {
                 u32::try_from(stored.payload()["visits"].as_u64().unwrap_or(0)).unwrap_or(u32::MAX)
             });
@@ -922,6 +937,49 @@ mod tests {
         assert_eq!(
             visits(&replacement(second.save_world(&WorldIdentity::of(FIRST)))),
             11
+        );
+    }
+
+    /// A mod refusing delivery withholds the world instead of opening it fresh.
+    ///
+    /// This is the failure with the quietest wrong answer. The mod is the only
+    /// thing that reads its own payload, so a refusal from it is the only signal
+    /// that a world's stored state could not be understood. Dropping it opens the
+    /// world with the mod holding its default state, and the next save asks the
+    /// mod for an envelope and writes that default over what the world stored —
+    /// state loss on the reload path, with nothing reported anywhere. `SPEC.md`
+    /// §14 forbids exactly that: a failure must withhold the world rather than
+    /// continue and save partial state.
+    #[test]
+    fn a_mod_refusing_its_stored_state_withholds_the_world_and_stages_nothing() {
+        // The same mod and the same bytes open a world while delivery is
+        // accepted, so the refusal below is the mod's doing and not the
+        // fixture's.
+        let (accepting, _held) = running();
+        accepting
+            .stage_world(WorldIdentity::of(FIRST), Some(&stored_visits(5)), false)
+            .expect("a mod that accepts delivery opens its world");
+
+        let (runtime, held) = running();
+        held.refuses_open.store(true, Ordering::SeqCst);
+
+        let refused = runtime
+            .stage_world(WorldIdentity::of(FIRST), Some(&stored_visits(5)), false)
+            .expect_err("a mod that cannot read its stored state opens no world");
+        assert!(refused.contains(OWNER), "{refused}");
+        assert!(
+            refused.contains("cannot read what the world stored"),
+            "{refused}"
+        );
+
+        // `staged` was left unset, so no checkpoint exists for a save to promote
+        // and the stored aggregate is never replaced by the mod's default.
+        assert!(
+            matches!(
+                runtime.save_world(&WorldIdentity::of(FIRST)),
+                SaveOutcome::IdentityMismatch(_)
+            ),
+            "a world the mod refused was staged anyway"
         );
     }
 

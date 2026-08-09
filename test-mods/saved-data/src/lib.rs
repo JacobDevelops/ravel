@@ -282,12 +282,30 @@ mod tests {
 
     use ravel_core::{LifecycleState, ModId};
     use ravel_host_api::HostMod;
-    use ravel_save::SavedDataVersion;
+    use ravel_save::{SavedDataEnvelope, SavedDataPlan, SavedDataVersion};
+    use serde_json::json;
 
     use super::{MOD_ID, SavedDataMod, SavedState, VERSIONS};
 
     fn version(raw: u32) -> SavedDataVersion {
         NonZero::new(raw).expect("a non-zero version")
+    }
+
+    /// One envelope, as an admitted aggregate would hand it to this mod.
+    fn envelope(at: u32, payload: serde_json::Value) -> SavedDataEnvelope {
+        SavedDataEnvelope::new(
+            MOD_ID.parse().expect("a legal mod id"),
+            version(at),
+            Vec::new(),
+            Some("urn:ravel:test:saved-state:1".to_owned()),
+            payload,
+        )
+    }
+
+    /// The plan a world at `at` resolves to for this mod.
+    fn plan_from(saved: &SavedDataMod, at: Option<u32>) -> SavedDataPlan {
+        SavedDataPlan::open(&saved.declaration(), at.map(version))
+            .expect("this build reads every version these tests name")
     }
 
     /// What a world at `raw` holds, as [`SavedDataMod::open`] takes it.
@@ -409,6 +427,73 @@ mod tests {
             .open(Some(at(9, SavedState::default())))
             .expect_err("newer");
         assert_eq!(saved.state(), &before);
+    }
+
+    /// The delivery refusal this mod's own open step decides.
+    ///
+    /// Unreachable from the production crossing and asserted here anyway: the
+    /// host admits the whole stored value before delivering any envelope, so a
+    /// version this build cannot read is refused by `ravel-save` before this
+    /// method is called. That makes this the defensive half — if the two ever
+    /// stop agreeing, the mod is what refuses, and the refusal has to leave as an
+    /// `Err` rather than as a mod holding whatever it held.
+    #[test]
+    fn a_stored_version_this_build_cannot_read_refuses_delivery() {
+        let mut saved = SavedDataMod::new();
+        let current = plan_from(&saved, None);
+
+        let refused = saved
+            .open_saved_data(Some(&envelope(9, json!({ "visits": 1 }))), &current)
+            .expect_err("a world from a newer build is not delivered");
+
+        assert!(refused.to_string().contains('9'), "{refused}");
+        assert_eq!(saved.state(), &SavedState::default());
+    }
+
+    /// A plan that stopped describing the envelope beside it refuses delivery.
+    ///
+    /// The plan is what tells the mod which migrations to apply, so a plan and an
+    /// envelope that disagree would migrate a world by the wrong number of steps
+    /// and write the result back as current. This mod resolves the plan again from
+    /// what it was actually handed and refuses when the two differ.
+    #[test]
+    fn a_plan_that_disagrees_with_the_envelope_beside_it_refuses_delivery() {
+        let mut saved = SavedDataMod::new();
+        // A world already at the current version, handed the plan a version-1
+        // world would have resolved to.
+        let stale = plan_from(&saved, Some(1));
+
+        let refused = saved
+            .open_saved_data(Some(&envelope(3, json!({ "visits": 1 }))), &stale)
+            .expect_err("a plan that does not describe this envelope is not delivered");
+
+        assert!(
+            refused.to_string().contains("changed during delivery"),
+            "{refused}"
+        );
+    }
+
+    /// A payload this mod cannot read refuses delivery.
+    ///
+    /// The only refusal here that nothing but the owning mod could decide:
+    /// `SPEC.md` §14 makes the payload the mod's business, so an envelope every
+    /// admission check passed can still hold a value it cannot read.
+    #[test]
+    fn a_payload_this_mod_cannot_read_refuses_delivery() {
+        let mut saved = SavedDataMod::new();
+        saved.visit("spawn");
+        let before = saved.state().clone();
+        let current = plan_from(&saved, None);
+
+        saved
+            .open_saved_data(Some(&envelope(3, json!({ "visits": "many" }))), &current)
+            .expect_err("a payload this mod cannot read is not delivered");
+
+        assert_eq!(
+            saved.state(),
+            &before,
+            "a refused payload changed the state this mod was holding"
+        );
     }
 
     #[test]

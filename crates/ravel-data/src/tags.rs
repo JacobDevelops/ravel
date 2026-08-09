@@ -4,6 +4,7 @@ use std::fmt;
 use ravel_core::{ContentId, ContentKind, ModId, RegistryKey, RelativePath};
 
 use crate::declare::ContentDeclaration;
+use crate::generate::{GeneratedData, tag_document};
 
 /// A named group of registry entries.
 ///
@@ -247,6 +248,30 @@ impl TagSet {
     pub fn is_empty(&self) -> bool {
         self.members.is_empty()
     }
+
+    /// Produces one file per tag, holding every contribution.
+    ///
+    /// [`ContentDeclaration::generate`] renders one mod's view of a tag, which is
+    /// the right answer for one mod and the wrong one for an installation: two mods
+    /// contributing to `c:ingots` derive the same path, so writing both would make
+    /// the later file replace the earlier and lose exactly the contributions a tag
+    /// exists to collect. Merging first and rendering once is what keeps them.
+    ///
+    /// The rendering is the same function [`ContentDeclaration::generate`] uses, so
+    /// a merged tag file and a single mod's tag file cannot disagree about format.
+    #[must_use]
+    pub fn generate(&self) -> GeneratedData {
+        let mut data = GeneratedData::default();
+        for (tag, members) in &self.members {
+            let mut spellings: Vec<String> = members
+                .iter()
+                .map(|member| member.id().to_string())
+                .collect();
+            spellings.sort();
+            data.insert(tag.generated_path(), tag_document(&spellings));
+        }
+        data
+    }
 }
 
 #[cfg(test)]
@@ -399,6 +424,41 @@ mod tests {
         let set = TagSet::merged([&declaration, &declaration]);
         assert_eq!(set.members(&lanterns).len(), 1);
         assert_eq!(set.contributors(&lanterns).len(), 1);
+    }
+
+    #[test]
+    fn merging_two_contributions_generates_one_file_holding_both() {
+        // The defect this exists for: both mods derive the same path from the same
+        // tag name, so generating each mod's own view and writing both keeps the
+        // last one and silently drops the other's member.
+        let lanterns = tag(ContentKind::Item, "lanterns");
+        let first = contributor("first_mod", ContentKind::Item, "copper_lantern", &lanterns);
+        let second = contributor("second_mod", ContentKind::Item, "tin_lantern", &lanterns);
+
+        let merged = TagSet::merged([&first, &second]).generate();
+        assert_eq!(
+            merged.paths().collect::<Vec<_>>(),
+            ["data/c/tags/item/lanterns.json"]
+        );
+        let rendered = merged
+            .file(&lanterns.generated_path())
+            .expect("the tag has a file");
+        let text = String::from_utf8(rendered.bytes().to_vec()).expect("generated JSON is UTF-8");
+        assert!(text.contains("first_mod:copper_lantern"), "{text}");
+        assert!(text.contains("second_mod:tin_lantern"), "{text}");
+
+        // Neither mod's own generated file holds the other's member, which is why
+        // merging has to happen before rendering rather than after.
+        let alone = first
+            .generate()
+            .file(&lanterns.generated_path())
+            .map(|file| file.bytes().to_vec())
+            .expect("one mod's own view");
+        assert!(
+            !String::from_utf8_lossy(&alone).contains("second_mod"),
+            "one mod's view cannot hold another's contribution"
+        );
+        assert_eq!(TagSet::default().generate().len(), 0);
     }
 
     #[test]

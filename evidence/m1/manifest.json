@@ -40,7 +40,7 @@
   "inputs": [
     {
       "name": "docs/architecture/m1-measurement-gate.md",
-      "sha256": "2bfce2617e427652cdbccaec993daebdd2e9ff10f7613d442ab405010c7b6e18"
+      "sha256": "f6509fba8979224197b62471ebc985bc8aeb1740fdc6be057467d3614df8fd4f"
     },
     {
       "name": "schemas/spike-result.schema.json",
@@ -204,6 +204,10 @@
     },
     {
       "summary": "schemas/package.schema.json still requires per-target mod artifacts, which SPEC 3.4 no longer promises. It is disclosed there by name as an inherited assumption and is owned by M3.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The recorded digest of docs/architecture/m1-measurement-gate.md was taken from an intermediate state of this change and matched the file at no revision reachable from the history. It is corrected to the digest the pinned revision holds; the gate now recomputes every input digest there, so the drift cannot recur silently.",
       "classification": "non-blocking"
     },
     {

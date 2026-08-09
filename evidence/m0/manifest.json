@@ -40,19 +40,19 @@
   },
   "inputs": [
     {
-      "name": "ATM11 fixture descriptor",
+      "name": "tests/fixtures/descriptors/atm11-0.2.1.json",
       "sha256": "9b067595a5e03eb4b846de539a4e5b0bd5a0ff1f74ea713b66a8f5a6506fa675"
     },
     {
-      "name": "runtime input descriptor",
+      "name": "tests/fixtures/descriptors/runtime-inputs-26.1.2.json",
       "sha256": "d642ec717e5c2624fc1dcf009fb174db3666d0279669125d982a18660c4a513b"
     },
     {
-      "name": "Linux reference hardware profile",
+      "name": "tests/performance/hardware/linux-reference.toml",
       "sha256": "532b589e5763a650ce154bfe6ebb9c77d615cb160bcc83e3627a3b3bb539c96c"
     },
     {
-      "name": "M1 measurement gate",
+      "name": "docs/architecture/m1-measurement-gate.md",
       "sha256": "d4b5d4a4249d2411d3bd4bc55878d6311290efb0e8f286fca9424fe994f2924c"
     }
   ],

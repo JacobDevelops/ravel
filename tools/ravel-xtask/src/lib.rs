@@ -326,6 +326,12 @@ fn verify_recorded_run(root: &Path, manifest_path: &Path, violations: &mut Vec<S
 /// value there — so hashing at the change would check the wrong tree, and
 /// hashing at `@` would check a tree the milestone never saw.
 ///
+/// The revision the commands ran on need not be one the manifest exists in, and
+/// M1's is not: `evidence/m1/manifest.json` pins a commit the file is absent from,
+/// which its own deviations disclose. That is checked for exactly what it binds —
+/// the inputs, which are present there and match — and nothing here reads the
+/// pinned revision as a claim about the manifest itself.
+///
 /// The revision is resolved through jj, and a checkout without one is skipped:
 /// `revision.id` is frequently a commit no branch reaches, so a plain git tree
 /// would report every input unreadable and turn a provenance check into noise.

@@ -26,10 +26,27 @@ is a weaker guarantee than recomputing a hash and is stated so a reader knows
 which one they are getting.
 
 What M1's measurements do not mean is that everything is clean. The manifest carries
-nine deviations and four risks, all non-blocking and all recorded rather than
-repaired — including that the selected native binding has never run in the real
-game, and that the last cold audit of this evidence returned FAIL before its
-findings were resolved. Read them before relying on anything here.
+eleven deviations and four risks, all recorded rather than repaired — including that
+the selected native binding has never run in the real game, that the last cold audit
+of this evidence returned FAIL before its findings were resolved, and that this
+manifest does not exist at the revision it pins. One of the eleven is **blocking**:
+M1-W4's Verification clause asks that a generated binding be reproducible from
+pinned inputs, and no M1 record contains a reproducibility observation. Read them
+before relying on anything here.
+
+That clause is stated as unmet rather than argued closed. What is recorded is the
+drift half — both measured ADG-3 results record `driftDetected` — and a single
+`outputSha256` per candidate. The two extractors' outputs differ (`0ecc36a9` over
+3417 bytes against `8b093021` over 3413), so the cross-extractor digest is not a
+repeated run, and the "resolved all six targets identically" line below is a prose
+string with no per-target list behind it. What does enforce reproducibility is the
+instrument, not the evidence: `experiments/adg-3-bindings/src/bin/generate.rs`
+generates twice from the same resolved inventory and refuses to report if the digests
+differ, so a recorded result entails one identical repeat — an entailment from
+source, not a recorded observation, and nothing recomputes it. Recording one now is
+not available either: the generator refuses unknown adapter inputs and
+`minecraft/versions/26.1.2/adapter.toml` has since grown four, so it will not parse
+today's pinned inputs, and editing it would measure a different instrument.
 
 ## What is recorded
 
@@ -97,9 +114,15 @@ removed an exception `SPEC.md` §3.3 had already been drafted around, the
 performance finding withdrew a budget claim this evidence cannot support, and the
 evidence-integrity finding listed numbers that disagreed with the JSON. Four
 iterative passes followed, blocking findings falling from ten to three to one to
-none, checking all thirty-one recorded deviations against their ADRs along the way;
-one was unmentioned and one misattributed, and both are now stated where they
-belong.
+none, checking the recorded deviations against their ADRs along the way; one was
+unmentioned and one misattributed, and both are now stated where they belong. An
+earlier draft of this paragraph put a count on that corpus — thirty-one — that
+matched no state of it: 34 stood at the revision the manifest pins, the spike
+results hold 27 of the corpus and the manifest holds the rest, and the manifest has
+grown since. No count is put back, because the corpus grows every time a deviation
+is recorded and a fixed number in a sentence about four earlier passes is a claim
+that goes stale by itself. What the passes checked was the corpus as each pass
+found it.
 
 That reviewer then disclosed its own limit: having driven every correction, it was
 approving a corpus shaped by its own checklist, and a defect it never thought to
@@ -110,9 +133,15 @@ reject a candidate needing a maintained unsafe call and name the dynamic library
 while ADG-2 retained that candidate for M3. It also reproduced the `jni_mangle`
 zero-unsafe result from scratch rather than accepting it.
 
-All ten of its findings were resolved. None was re-audited, so the last cold
-verdict against this evidence is FAIL, and `review.result` in the manifest now
-records `fail` to say so. It previously recorded the iterative reviewer's pass
+Its findings were resolved and none was re-audited, so the last cold verdict
+against this evidence is FAIL, and `review.result` in the manifest now records
+`fail` to say so. That there were ten of them, and that all ten were resolved, is
+attested here and not auditable from anything tracked: the audit record is held
+outside the repository, this document names one of the ten — the M1 gate's failure
+actions rejecting the candidate ADG-2 retained — and the manifest's deviations name
+the `m1-measurement-gate.md` digest that matched the file at no revision. The rest
+are in the untracked record. The claim is narrowed to that rather than repeated as
+a round number nobody here can check. It previously recorded the iterative reviewer's pass
 beside a deviation stating the opposite, which made a recorded `pass` mean one
 thing in M1 and another in M3, where the same situation is recorded as `fail`.
 The consequence is deliberate: `ravel:verify-milestone:m1` now reports
@@ -205,3 +234,19 @@ itself, so that commit did not exist when the trial ran. Repairing either means
 re-running the gate, and for ADG-5 that means another authenticated launch, so the
 honest record is this paragraph. Nothing depends on `id`: no figure, no decision,
 and no check reads it.
+
+The manifest's own `revision.id` is in the same position and was not disclosed until
+the cold audit's second reading. `909240424db4` is an abandoned predecessor state of
+change `potzkxqsxykq`, and `manifest.json` is absent from it: the manifest was
+written into `rxovtruttmyk` after that commit existed, and jj rewrote `rxovtruttmyk`
+afterwards, so no commit holding the file is reachable from the one it pins. Unlike
+the spike results, something does read this field — `verify_recorded_inputs` hashes
+all five recorded inputs at it, and all five match — so what is wrong is narrower
+than it looks: the revision is real and the inputs are bound there; the manifest
+simply is not in it. It is disclosed rather than repaired because both repairs trade
+a true statement for a false one. The recorded commands ran on `909240424db4`, so
+re-pinning to a commit that holds the file would falsify `commands` and `tests`;
+re-running the gate to make those a later tree's numbers is a re-measurement of M1
+nobody asked for, and it would land one change below whatever commit recorded it,
+which is the circularity `evidence/m3/manifest.json` carries in its own revision
+block.

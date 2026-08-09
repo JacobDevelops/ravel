@@ -26,7 +26,24 @@ use crate::lifecycle::LifecycleMachine;
 /// 3. The aggregate is admitted, which is where the size ceiling, the format
 ///    marker, the required packages and the future-version rule apply.
 /// 4. Every owner's payload is migrated, all of them or none of them.
-/// 5. Each owner is handed its migrated entry, in resolved load order.
+/// 5. Each owner is handed its entry and its [`SavedDataPlan`], in resolved load
+///    order.
+///
+/// # Who applies a migration chain
+///
+/// The mod does, from the steps its plan names. That is the contract
+/// [`HostMod::open_saved_data`] states and the only one an implementor is under;
+/// `ravel-bootstrap`'s launch crossing hands over the stored envelope and the
+/// steps and migrates nothing itself.
+///
+/// Step 4 above is therefore a *strengthening* and not a second contract: on this
+/// path the aggregate is already current when step 5 runs, so the plan names no
+/// steps and the mod's own chain is a no-op. It is done here because the returned
+/// aggregate is what a caller saves from, and an aggregate holding an old envelope
+/// is one an unlucky write puts back on disk at its old version. No mod may rely
+/// on it — a mod that reads the payload without applying `plan.steps()` is
+/// correct here and silently wrong on the launch path, which is exactly the shape
+/// this section exists to forbid.
 ///
 /// # Failure closure
 ///
@@ -44,7 +61,9 @@ use crate::lifecycle::LifecycleMachine;
 /// Returns [`SaveRefused::Data`] for anything `ravel-save` refuses — an oversized
 /// or invalid aggregate, an uninstalled owner, a future version, a gap in the
 /// declared versions, a missing migration step, or a step that could not read its
-/// payload — and [`SaveRefused::Owner`] when a mod refused the entry it was handed.
+/// payload — [`SaveRefused::ForeignDeclaration`] when a mod declares data owned by
+/// another identity, and [`SaveRefused::Owner`] when a mod refused the entry it was
+/// handed.
 pub fn open_saved_data(
     machine: &LifecycleMachine,
     mods: &mut [&mut dyn HostMod],
@@ -60,6 +79,12 @@ pub fn open_saved_data(
         let Some(declaration) = host.saved_data_declaration() else {
             continue;
         };
+        if declaration.owner() != host.id() {
+            return Err(SaveRefused::ForeignDeclaration {
+                mod_id: host.id().clone(),
+                owner: declaration.owner().clone(),
+            });
+        }
         if let Some(chain) = host.saved_data_migrations() {
             chain.covers(&declaration).map_err(SaveRefused::Data)?;
             chains.push(chain);
@@ -114,6 +139,17 @@ fn loads_here(machine: &LifecycleMachine, mod_id: &ModId) -> bool {
 pub enum SaveRefused {
     /// The aggregate, a version, or a migration was refused.
     Data(SavedDataError),
+    /// A mod declared saved data owned by another identity.
+    ///
+    /// The same boundary check `open_services` makes, for the same reason: a
+    /// declaration names its owner, and a mod that names somebody else would have
+    /// another mod's envelope routed to it.
+    ForeignDeclaration {
+        /// The mod that returned it.
+        mod_id: ModId,
+        /// The identity the declaration names as its owner.
+        owner: ModId,
+    },
     /// A mod refused the entry it was handed.
     Owner {
         /// The mod that refused.
@@ -129,7 +165,7 @@ impl SaveRefused {
     pub const fn owner(&self) -> Option<&ModId> {
         match self {
             Self::Data(error) => error.owner(),
-            Self::Owner { mod_id, .. } => Some(mod_id),
+            Self::ForeignDeclaration { mod_id, .. } | Self::Owner { mod_id, .. } => Some(mod_id),
         }
     }
 }
@@ -138,6 +174,11 @@ impl fmt::Display for SaveRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Data(error) => error.fmt(formatter),
+            Self::ForeignDeclaration { mod_id, owner } => write!(
+                formatter,
+                "`{mod_id}` declared saved data owned by `{owner}`, and a mod owns only its own \
+                 world data"
+            ),
             Self::Owner { mod_id, source } => {
                 write!(formatter, "`{mod_id}` refused its saved data: {source}")
             }
@@ -149,6 +190,7 @@ impl std::error::Error for SaveRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Data(error) => Some(error),
+            Self::ForeignDeclaration { .. } => None,
             Self::Owner { source, .. } => Some(source),
         }
     }
@@ -168,6 +210,7 @@ impl StructuredFailure for SaveRefused {
     fn quotes_untrusted_text(&self) -> bool {
         match self {
             Self::Data(error) => error.quotes_untrusted_text(),
+            Self::ForeignDeclaration { .. } => false,
             Self::Owner { .. } => true,
         }
     }
@@ -219,6 +262,7 @@ mod tests {
         chain: Option<MigrationChain>,
         read: Option<Value>,
         refuses: bool,
+        declares_as: Option<ModId>,
     }
 
     impl Storing {
@@ -233,7 +277,14 @@ mod tests {
                 ),
                 read: None,
                 refuses: false,
+                declares_as: None,
             }
+        }
+
+        /// Declares world data owned by `other` rather than by this mod.
+        fn declaring_for(mut self, other: &str) -> Self {
+            self.declares_as = Some(id(other));
+            self
         }
 
         fn without_a_link(mut self) -> Self {
@@ -263,7 +314,8 @@ mod tests {
         }
 
         fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-            SavedDataDeclaration::new(self.id.clone(), self.versions.iter().copied()).ok()
+            let owner = self.declares_as.clone().unwrap_or_else(|| self.id.clone());
+            SavedDataDeclaration::new(owner, self.versions.iter().copied()).ok()
         }
 
         fn saved_data_migrations(&self) -> Option<MigrationChain> {
@@ -331,8 +383,33 @@ mod tests {
                 .expect("still present")
                 .data_version(),
             version(3),
-            "the aggregate still says the world is at the old version"
+            "the aggregate a caller saves from is current too, so an old envelope \
+             cannot be written back"
         );
+    }
+
+    #[test]
+    fn a_mod_declaring_another_mods_world_data_is_refused_before_the_aggregate_is_opened() {
+        // Without the owner check the envelope routed to `thief` is `stored`'s,
+        // and the mismatch surfaces as one mod reading another's state.
+        let bytes = world(&[("stored", 3, json!({ "counts": [7], "total": 0 }))]);
+        let mut host = Storing::new("thief").declaring_for("stored");
+        let machine = machine(vec![entry("thief", &[Side::DedicatedServer])]);
+
+        let refused = open_saved_data(&machine, &mut [&mut host], Some(&bytes), &BTreeMap::new())
+            .expect_err("a mod owns only its own world data");
+
+        assert_eq!(
+            refused,
+            SaveRefused::ForeignDeclaration {
+                mod_id: id("thief"),
+                owner: id("stored"),
+            }
+        );
+        let text = refused.to_string();
+        assert!(text.contains("thief") && text.contains("stored"), "{text}");
+        assert!(host.read.is_none(), "the refusal handed the mod nothing");
+        assert!(!refused.quotes_untrusted_text());
     }
 
     #[test]

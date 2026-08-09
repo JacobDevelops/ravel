@@ -352,6 +352,21 @@ pub trait HostMod: Send {
 
     /// Applies one aggregate entry after [`SavedDataPlan`] admitted it.
     ///
+    /// **The mod applies its own migration chain.** The envelope arrives at
+    /// whatever version the world stored it at — any version the declaration
+    /// admits, not necessarily the current one — and `plan` names the steps from
+    /// there to the current shape. An implementation reads
+    /// [`SavedDataPlan::steps`] and crosses them; one that reads the payload as
+    /// though it were already current loses every field a later version added,
+    /// and writes the loss back stamped current the next time it saves.
+    ///
+    /// A host may hand over an envelope that is already current — `ravel-loader`
+    /// migrates the aggregate first, so its plan names no steps — and that is a
+    /// guarantee stronger than this contract rather than an alternative to it.
+    /// Nothing may depend on it: `ravel-bootstrap`'s launch crossing hands over
+    /// the stored envelope and the steps, and a mod written to the stronger
+    /// reading is silently wrong in a launched game.
+    ///
     /// The default accepts absence for a stateless mod and rejects an envelope
     /// that could only have reached the wrong owner through a host bug.
     ///

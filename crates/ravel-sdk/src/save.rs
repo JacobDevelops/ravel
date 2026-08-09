@@ -7,6 +7,14 @@
 //! to run, or the world is refused. A refusal withholds the world rather than
 //! opening it half-applied.
 //!
+//! **The mod crosses those steps, not the host.** The payload a mod is handed is
+//! at whatever version the world stored, so an implementation reads
+//! [`SavedDataPlan::steps`] and applies its chain to them; one that reads the
+//! payload as though it were already current loses every field a later version
+//! added. A host is free to hand over an already-current payload, and one of them
+//! does, but that is a stronger guarantee than the contract rather than the
+//! contract itself.
+//!
 //! [`SavedDataPlan`] decides which versions a world has to cross and
 //! [`MigrationChain`] is what crosses them: one [`MigrationStep`] per version, run
 //! in order, producing a new payload rather than editing the stored one. Every

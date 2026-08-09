@@ -760,17 +760,25 @@ pack authoring surface.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
-| M4-W1 | Stabilize experimental SDK facade and macros | M3 | `ravel-sdk`, macros, minimal example | compile-pass/fail suite proves authors need no loader internals or Java |
-| M4-W2 | Complete registries, tags, resources and generated data | M4-W1 | public APIs and content example | conformance suite covers declarations, conflicts and deterministic output |
-| M4-W3 | Complete hooks, events, sides and networking abstractions | M4-W1 | public APIs and client/server test mods | client-only code never loads on server sides; packet contracts round-trip |
-| M4-W4 | Complete config, save migrations and inter-mod services | M4-W1 | public schemas/APIs and examples | migration chains, service dependencies and failure closure pass |
-| M4-W5 | Complete pack declarations and validator | M4-W2..W4 | `ravel-pack`, pack example | dependency, resource, registry and progression closure checks pass |
-| M4-W6 | Prove version isolation | M4-W1..W5 | synthetic second-version data fixture | shared adapter and general crates compile/test without 26.1.2-specific edits or a new crate |
-| M4-W7 | Agent usability acceptance | M4-W1..W6 | docs task and resulting original test mod | a fresh agent receives only public docs and builds a conforming mod without internal access |
-| M4-W8 | Linux review and gate | M4-W7 | evidence and review | global Linux gate, process matrix, SDK docs and M4 milestone gate pass |
+| M4-W1 | Stabilize experimental SDK facade and macros | M3 | `ravel-sdk`, macros, minimal example | compile-pass/fail suite proves authors need no loader internals or Java. The boundary is derived from the dependency closure `Cargo.lock` resolves for `ravel-sdk` rather than asserted, so the gate recomputes what an author may reach |
+| M4-W2 | Complete registries, tags, resources and generated data | M4-W1 | public APIs and content example | conformance suite covers declarations, conflicts and deterministic output, against the loader's own pipeline. No game process registers content in M4 |
+| M4-W3 | Complete hooks, events, sides and networking abstractions | M4-W1 | public APIs and client/server test mods | client-only code never loads on server sides; packet contracts round-trip. The row closes on the abstractions and not on delivery: a mod cannot send a packet, because nothing carries one, and the shipped host reads no manifest, so no mod's declared sides are honoured by anything that runs. Both are disclosed in `docs/guide/limits.md` and recorded in [`evidence/m4/manifest.json`](evidence/m4/manifest.json) |
+| M4-W4 | Complete config, save migrations and inter-mod services | M4-W1 | public schemas/APIs and examples | migration chains, service dependencies and failure closure pass. Composition stays fixed: the shipped host resolves a constant set of mods against a constant configuration path, so a settings document from a package it does not know is never read |
+| M4-W5 | Complete pack declarations and validator | M4-W2..W4 | `ravel-pack`, pack example | dependency, resource, registry and progression closure checks pass, and the pack example runs as its own process in the gate with the written tree compared against a list the gate holds independently. The write half only — nothing here reads a written pack, and M8 owns the reading half |
+| M4-W6 | Prove version isolation | M4-W1..W5 | synthetic second-version data fixture | the shared adapter's generator reads the second version's data through the same code path and emits only that version's names, and no file under `crates/` spells either version's name or any game class name either version's data supplies. Not proved, and not claimed: a general crate compiled or run against the second version's target table, because one build compiles one table |
+| M4-W7 | Agent usability acceptance | M4-W1..W6 | the public author's guide, the example package pair, `cargo xtask package digests`, and the resulting original test mod | a fresh agent receives only public docs and builds a conforming mod without internal access. The row assumed public author documentation existed and none did, so W7 created [`docs/guide/`](docs/guide/) before its own premise could hold, with every Rust block in it compiled by the gate; the run then found defects in the facade and in the guide, which are repaired |
+| M4-W8 | Linux review and gate | M4-W7 | evidence and review | global Linux gate, process matrix, SDK docs and M4 milestone gate pass. M4's process matrix is a table of gate processes rather than an operator-run launch — no game process was started for this milestone, which [`evidence/m4/linux-process-matrix.json`](evidence/m4/linux-process-matrix.json) records as a field |
 
 The SDK remains semver-experimental through M10 even though its behaviour is
 testable here.
+
+M4 delivers an authoring surface and not a way to run what an author builds. Every
+proof it rests on runs inside the gate; the three limits that follow from that —
+no package discovery in a launch, no packet delivery, no pack read back — are
+recorded as deviations in [`evidence/m4/manifest.json`](evidence/m4/manifest.json)
+and stated to authors in [`docs/guide/limits.md`](docs/guide/limits.md). M4 also
+claims no ADG-3 drift coverage for the agent jar, whose reflective persistence
+surface remains unpinned and owned by no work package.
 
 ### M5 — Private compatibility inventory
 

@@ -212,6 +212,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
 
     verify_ignored_boundaries(root, &mut violations);
     verify_hook_inventory_document(root, &mut violations);
+    verify_decision_hook_claims(root, &mut violations);
     verify_campaign_inventory(root, &mut violations);
     verify_review_round_counts(root, &mut violations);
     verify_manifest_percentages(root, &mut violations);
@@ -325,6 +326,157 @@ fn verify_hook_inventory_document(root: &Path, violations: &mut Vec<String>) {
         }
     };
     violations.extend(hook_document_violations(&document, &counts));
+}
+
+/// The directory holding the accepted decision records.
+const DECISION_RECORDS: &str = "docs/decisions";
+
+/// The phrase a decision record denies a hook with.
+///
+/// Two words rather than one, and in this order, because `hook` alone appears in
+/// every one of these records dozens of times and `not` alone appears in most
+/// sentences. What this reaches is the shape both stale sentences used: a denial
+/// immediately followed by the thing denied.
+const DENIAL: [&str; 2] = ["not", "hook"];
+
+/// The absolute denial of any per-frame crossing, which one hook falsifies.
+const NO_PER_FRAME: &str = "nothing crosses per frame";
+
+/// The inventory entry that makes [`NO_PER_FRAME`] false.
+const PER_FRAME_MEMBER: &str = "extractRenderState";
+
+/// Holds a decision record's claims about hooks to the inventory that declares
+/// them.
+///
+/// Two accepted decisions survived eight review rounds describing a hook surface
+/// the repository does not have. ADG-6 said the inventory omitted
+/// `extractRenderState` and that no crossing happened per frame, while
+/// `hooks.toml` had declared `screen.extract-render-state` since M3-W0 and a
+/// launch had rewritten it. The only ADR checks that existed asked whether the
+/// file was present, so a record could deny any mechanism it liked. This binds the
+/// denial to the inventory: a record may not deny a hook the inventory declares,
+/// and may not deny per-frame crossing while a per-frame member is declared.
+///
+/// Known limits, and they are narrow on purpose.
+///
+/// It reads two anchors and no more. A denial has to be written as `not hook`
+/// followed within [`COUNT_LOOKBACK`] words by a hook id or a member name the
+/// inventory declares, and the absolute per-frame denial has to be written as
+/// [`NO_PER_FRAME`]. A record that denies the same hook in some other wording —
+/// "the extraction seam is left alone" — is not reached, and no general prose
+/// parser is attempted here for the reason `hook_document_violations` gives about
+/// telling a current claim from a historical one.
+///
+/// It cannot tell a claim from a quotation. A record that quotes a withdrawn
+/// denial in order to withdraw it fails this check exactly as one that still
+/// asserts it does, so an amendment has to describe the sentence it repeals rather
+/// than reprint it. That is the cost of not parsing prose, it is paid in ADG-6's
+/// amendment, and it is the right way round: a false sentence in an accepted
+/// record is worse than an amendment that has to paraphrase.
+///
+/// It knows one per-frame member, named above. A future version whose per-frame
+/// seam is called something else needs that name added, and the check reports
+/// nothing until it is.
+fn verify_decision_hook_claims(root: &Path, violations: &mut Vec<String>) {
+    let inventory = match fs::read_to_string(root.join(HOOK_INVENTORY)) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(format!("cannot read {HOOK_INVENTORY}: {error}"));
+            return;
+        }
+    };
+    let declared = declared_hook_names(&inventory);
+    let per_frame = declared.iter().any(|name| name == PER_FRAME_MEMBER);
+
+    let mut records: Vec<PathBuf> = match fs::read_dir(root.join(DECISION_RECORDS)) {
+        Ok(entries) => entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|kind| kind == "md"))
+            .collect(),
+        Err(error) => {
+            violations.push(format!("cannot read {DECISION_RECORDS}: {error}"));
+            return;
+        }
+    };
+    records.sort();
+
+    for path in records {
+        let name = path
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        let record = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) => {
+                violations.push(format!("cannot read {DECISION_RECORDS}/{name}: {error}"));
+                continue;
+            }
+        };
+        for denied in denied_hook_names(&record, &declared) {
+            violations.push(format!(
+                "{DECISION_RECORDS}/{name} says `{denied}` is not hooked while {HOOK_INVENTORY} \
+                 declares it"
+            ));
+        }
+        if per_frame
+            && record
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_ascii_lowercase()
+                .contains(NO_PER_FRAME)
+        {
+            violations.push(format!(
+                "{DECISION_RECORDS}/{name} says \"{NO_PER_FRAME}\" while {HOOK_INVENTORY} \
+                 declares `{PER_FRAME_MEMBER}`, which the inventory itself calls the per-frame seam"
+            ));
+        }
+    }
+}
+
+/// Every hook id and member name the inventory declares.
+///
+/// Both, because a record names a hook either way: ADG-6's consequence bullet
+/// wrote the member and its section prose wrote the id.
+fn declared_hook_names(inventory: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in inventory.lines().map(str::trim) {
+        for key in ["id", "member"] {
+            if let Some(value) = line.strip_prefix(key).map(str::trim_start)
+                && let Some(value) = value.strip_prefix('=')
+            {
+                let value = value.trim().trim_matches('"');
+                if !value.is_empty() {
+                    names.push(value.to_owned());
+                }
+            }
+        }
+    }
+    names
+}
+
+/// Every declared hook a record denies within reach of a denial.
+fn denied_hook_names(record: &str, declared: &[String]) -> Vec<String> {
+    let words: Vec<&str> = record.split_whitespace().collect();
+    let mut denied = Vec::new();
+    for (at, window) in words.windows(DENIAL.len()).enumerate() {
+        let matches = DENIAL.iter().zip(window).all(|(expected, word)| {
+            word.trim_matches(|character: char| !character.is_alphanumeric())
+                .eq_ignore_ascii_case(expected)
+        });
+        if !matches {
+            continue;
+        }
+        let from = at + DENIAL.len();
+        let to = (from + COUNT_LOOKBACK).min(words.len());
+        for word in &words[from..to] {
+            let word = word.trim_matches(|character: char| !character.is_alphanumeric());
+            if declared.iter().any(|name| name == word) && !denied.iter().any(|held| held == word) {
+                denied.push(word.to_owned());
+            }
+        }
+    }
+    denied
 }
 
 /// Counts the entries, kinds and handle parameters one `hooks.toml` declares.
@@ -466,6 +618,8 @@ struct CampaignInventory {
     targets: usize,
     /// Callable targets the superseded campaign's inventory held.
     prior: usize,
+    /// Launches the surface campaign records.
+    launches: usize,
 }
 
 /// Holds `evidence/m3/README.md` to the launch record whose figures it restates.
@@ -474,6 +628,10 @@ struct CampaignInventory {
 /// round predicted it next: `33` and `15` were written into the campaign prose and
 /// into `rewrite.classesInInventory` / `rewrite.callableTargetsInInventory`, and
 /// nothing recomputed either.
+///
+/// The campaign's launch count is bound the same way and was added for the same
+/// reason: the prose wrote "three surface launches" beside figures that were
+/// checked, with nothing holding that one to `surfaceCampaign.launches`.
 ///
 /// These figures are *historical* and are checked as such. A launch campaign
 /// observed one inventory in one build, so a later hook entering `hooks.toml` does
@@ -575,13 +733,18 @@ fn campaign_inventory(matrix: &Path, violations: &mut Vec<String>) -> Option<Cam
     );
     let targets = matrix_count(matrix, "[.rewrite.targetInventory[].methods[]] | length");
     let prior = matrix_count(matrix, ".matrixNotCarriedForward.priorCallableTargets");
-    match (classes, targets, prior) {
-        (Ok(classes), Ok(targets), Ok(prior)) => Some(CampaignInventory {
+    let launches = matrix_count(matrix, ".surfaceCampaign.launches");
+    match (classes, targets, prior, launches) {
+        (Ok(classes), Ok(targets), Ok(prior), Ok(launches)) => Some(CampaignInventory {
             classes,
             targets,
             prior,
+            launches,
         }),
-        (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => {
+        (Err(error), _, _, _)
+        | (_, Err(error), _, _)
+        | (_, _, Err(error), _)
+        | (_, _, _, Err(error)) => {
             violations.push(error);
             None
         }
@@ -639,6 +802,27 @@ fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> 
                      {expected}"
                 ));
             }
+        }
+    }
+
+    // The launch count is spelled out in this document's prose rather than written
+    // in digits, so it is read word-adjacent like the round counts rather than
+    // digit-anchored like the figures above.
+    let stated = numbers_before(document, &["surface", "launches"]);
+    if stated.is_empty() {
+        violations.push(format!(
+            "{CAMPAIGN_DOCUMENT} no longer writes a count against `surface launches`, so nothing \
+             in it is held to {CAMPAIGN_MATRIX}'s {} launches in the surface campaign",
+            derived.launches
+        ));
+    }
+    for count in stated {
+        if count != derived.launches {
+            violations.push(format!(
+                "{CAMPAIGN_DOCUMENT} states {count} surface launches where {CAMPAIGN_MATRIX} \
+                 records {}",
+                derived.launches
+            ));
         }
     }
     violations
@@ -3928,9 +4112,10 @@ mod tests {
 
     use super::{
         CampaignInventory, HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS,
-        campaign_document_violations, change_mismatch, declares_unsafe_prohibition, hook_counts,
-        hook_document_violations, numbers_before, pinned_commit_mismatch, redacted_path,
-        required_scaffold_paths, verify_campaign_inventory, verify_evidence_records,
+        campaign_document_violations, change_mismatch, declared_hook_names,
+        declares_unsafe_prohibition, denied_hook_names, hook_counts, hook_document_violations,
+        numbers_before, pinned_commit_mismatch, redacted_path, required_scaffold_paths,
+        verify_campaign_inventory, verify_decision_hook_claims, verify_evidence_records,
         verify_experiment_fence, verify_harness_lifecycles, verify_hook_inventory_document,
         verify_ignored_boundaries, verify_manifest_percentages, verify_milestone,
         verify_review_round_counts, verify_scaffold, verify_spikes, verify_testkit_fence,
@@ -5313,12 +5498,13 @@ mod tests {
             classes: 15,
             targets: 33,
             prior: 31,
+            launches: 3,
         };
 
         let violations = campaign_document_violations(
             "Rewriting all 33 callable targets, over the same 15 classes in the reviewed \
-             inventory. The count moved from 31 to 33. A later launch at 34 callable targets \
-             over 16 classes in the reviewed inventory.",
+             inventory. The count moved from 31 to 33, over three surface launches. A later \
+             launch at 34 callable targets over 16 classes in the reviewed inventory.",
             &derived,
         );
 
@@ -5342,11 +5528,12 @@ mod tests {
             classes: 15,
             targets: 33,
             prior: 31,
+            launches: 3,
         };
 
         let violations = campaign_document_violations(
             "The count moved from 31 to 33 callable targets over the same 16 classes in the\n  \
-             reviewed inventory.",
+             reviewed inventory, across three surface launches.",
             &derived,
         );
 
@@ -5366,11 +5553,12 @@ mod tests {
             classes: 15,
             targets: 33,
             prior: 31,
+            launches: 3,
         };
 
         let violations = campaign_document_violations("The campaigns are recorded.", &derived);
 
-        assert_eq!(violations.len(), 3, "{violations:?}");
+        assert_eq!(violations.len(), 4, "{violations:?}");
         assert!(
             violations
                 .iter()
@@ -5463,6 +5651,56 @@ mod tests {
         verify_campaign_inventory(&root, &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
+    }
+
+    /// No accepted decision denies a hook the pinned inventory declares.
+    #[test]
+    fn the_tracked_decision_records_deny_no_hook_the_inventory_declares() {
+        let root = std::env::current_dir()
+            .expect("the current directory must be available")
+            .join("../..");
+        let mut violations = Vec::new();
+
+        verify_decision_hook_claims(&root, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    /// The two shapes the stale ADG-6 sentences had, against the names the pinned
+    /// inventory actually declares.
+    #[test]
+    fn a_denial_of_a_declared_hook_is_found_by_id_and_by_member() {
+        let inventory = "\
+            [[hook]]\n\
+            id = \"screen.extract-render-state\"\n\
+            member = \"extractRenderState\"\n";
+        let declared = declared_hook_names(inventory);
+
+        assert_eq!(
+            declared,
+            ["screen.extract-render-state", "extractRenderState"]
+        );
+        assert_eq!(
+            denied_hook_names("It does **not** hook `extractRenderState`.", &declared),
+            ["extractRenderState"]
+        );
+        assert_eq!(
+            denied_hook_names(
+                "The record does not hook screen.extract-render-state.",
+                &declared
+            ),
+            ["screen.extract-render-state"]
+        );
+        // A denial of something the inventory does not declare is the record's
+        // business, and a declared hook named without a denial is ordinary prose.
+        assert!(denied_hook_names("It does not hook `Screen.render`.", &declared).is_empty());
+        assert!(
+            denied_hook_names(
+                "The inventory carries `extractRenderState`, the per-frame seam.",
+                &declared
+            )
+            .is_empty()
+        );
     }
 
     #[test]

@@ -213,11 +213,11 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
 /// digests do not bind its own records is an index rather than evidence, and
 /// the drift is invisible precisely because every field still validates.
 ///
-/// Only the milestone's own records are checked. `inputs[]` names files outside
-/// the evidence directory that go on changing after the milestone closes, so
-/// its digests are claims about the revision the manifest pins rather than
-/// about the working copy, and recomputing them here would rewrite history
-/// instead of verifying it.
+/// `benchmarks.results[]` is recomputed against the working copy because a
+/// milestone owns those files. `inputs[]` names files outside the evidence
+/// directory that go on changing after the milestone closes, so it is
+/// recomputed against the revision the manifest pins instead; hashing it here
+/// would rewrite history rather than verify it.
 #[must_use]
 pub fn verify_evidence_records(root: &Path) -> Vec<String> {
     let mut violations = Vec::new();
@@ -232,9 +232,81 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
 
     for manifest in &manifests {
         verify_recorded_digests(root, manifest, &mut violations);
+        verify_recorded_inputs(root, manifest, &mut violations);
     }
 
     violations
+}
+
+/// Recomputes every input digest against the revision the manifest pins.
+///
+/// An input digest is a claim about one revision, so it has to be hashed there.
+/// `revision.id` is that revision: it names the commit the recorded commands
+/// ran on, which is what the milestone was measured against. `revision.changeId`
+/// names only the change that carries the manifest, which is revised long after
+/// the measurement — M3's was, and not one of its inputs hashes to its recorded
+/// value there — so hashing at the change would check the wrong tree, and
+/// hashing at `@` would check a tree the milestone never saw.
+///
+/// The revision is resolved through jj, and a checkout without one is skipped:
+/// `revision.id` is frequently a commit no branch reaches, so a plain git tree
+/// would report every input unreadable and turn a provenance check into noise.
+fn verify_recorded_inputs(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    if !root.join(".jj").exists() {
+        return;
+    }
+    let label = manifest_path
+        .strip_prefix(root)
+        .unwrap_or(manifest_path)
+        .display()
+        .to_string();
+    let revision = match jq_value(manifest_path, ".revision.id") {
+        Ok(value) if value != "null" && !value.is_empty() => value,
+        Ok(_) => {
+            violations.push(format!(
+                "{label} records inputs but no revision to hash them at"
+            ));
+            return;
+        }
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let records = match jq_value(manifest_path, r#".inputs[]? | .name + " " + .sha256"#) {
+        Ok(records) => records,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+
+    for record in records.lines().filter(|record| !record.trim().is_empty()) {
+        let Some((name, recorded)) = record.rsplit_once(' ') else {
+            violations.push(format!("{label} records an input with no digest: {record}"));
+            continue;
+        };
+        match revision_digest(root, &revision, name) {
+            Ok(actual) if actual == recorded => {}
+            Ok(actual) => violations.push(format!(
+                "{label} records input {name} as {recorded} but revision {revision} holds {actual}"
+            )),
+            Err(error) => violations.push(format!("{label} records input {name}: {error}")),
+        }
+    }
+}
+
+/// Hashes a tracked file as it stood in one revision.
+fn revision_digest(root: &Path, revision: &str, name: &str) -> Result<String, String> {
+    let output = Command::new("jj")
+        .args(["file", "show", "-r", revision, "--", name])
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("cannot read it at revision {revision}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("cannot read it at revision {revision}"));
+    }
+    Ok(hex_digest(&output.stdout))
 }
 
 /// Compares each recorded result digest against the file it names.
@@ -292,11 +364,16 @@ fn verify_recorded_digests(root: &Path, manifest_path: &Path, violations: &mut V
 fn file_digest(path: &Path) -> Result<String, String> {
     let bytes =
         fs::read(path).map_err(|error| format!("cannot read the recorded file: {error}"))?;
+    Ok(hex_digest(&bytes))
+}
+
+/// Renders the SHA-256 of some bytes the way a manifest records it.
+fn hex_digest(bytes: &[u8]) -> String {
     let mut digest = String::with_capacity(64);
     for byte in Sha256::digest(bytes) {
         write!(digest, "{byte:02x}").expect("writing to a string cannot fail");
     }
-    Ok(digest)
+    digest
 }
 
 /// Checks every recorded architecture spike result against the M1 gate rules.
@@ -1711,7 +1788,8 @@ fn has_credential_assignment(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
 
     use super::{
         change_mismatch, required_scaffold_paths, verify_evidence_records, verify_experiment_fence,
@@ -1797,6 +1875,97 @@ mod tests {
                         .expect_err("absent file cannot be read")
                 ),
             ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The digest of `hello\n`, which the pinned-input tests below record.
+    const HELLO_DIGEST: &str = "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03";
+
+    /// Initialises a jj repository holding one input and returns it with the
+    /// revision that holds it.
+    ///
+    /// The input is edited afterwards so its recorded content survives only in
+    /// the pinned revision, which is the position every closed milestone is in:
+    /// a check that hashed the working copy would see the later content.
+    fn pinned_input_root(label: &str) -> (PathBuf, String) {
+        let root = temporary_root(label);
+        let initialised = Command::new("jj")
+            .args(["git", "init"])
+            .current_dir(&root)
+            .output()
+            .expect("jj should be available");
+        assert!(initialised.status.success(), "{initialised:?}");
+        fs::write(root.join("input.txt"), "hello\n").expect("input should be writable");
+        let pinned = Command::new("jj")
+            .args(["log", "-r", "@", "--no-graph", "-T", "commit_id"])
+            .current_dir(&root)
+            .output()
+            .expect("jj should be available");
+        assert!(pinned.status.success(), "{pinned:?}");
+        fs::write(root.join("input.txt"), "moved on\n").expect("input should be rewritable");
+        (
+            root,
+            String::from_utf8_lossy(&pinned.stdout).trim().to_owned(),
+        )
+    }
+
+    /// Records one input against a pinned revision in an M9 manifest.
+    fn write_input_manifest(root: &Path, revision: &str, name: &str, digest: &str) {
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{"revision":{{"id":"{revision}"}},
+                    "inputs":[{{"name":"{name}","sha256":"{digest}"}}]}}"#
+            ),
+        )
+        .expect("manifest should be writable");
+    }
+
+    #[test]
+    fn an_input_digest_is_recomputed_against_the_revision_the_manifest_pins() {
+        let (root, revision) = pinned_input_root("inputs-match");
+        write_input_manifest(&root, &revision, "input.txt", HELLO_DIGEST);
+
+        assert!(verify_evidence_records(&root).is_empty());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn an_input_digest_that_binds_nothing_at_the_pinned_revision_is_reported() {
+        // The hole this exists for: an input digest that matched the file at no
+        // revision at all, recorded beside four that did and read as verified.
+        let (root, revision) = pinned_input_root("inputs-drift");
+        write_input_manifest(&root, &revision, "input.txt", &"0".repeat(64));
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(
+            violations,
+            [format!(
+                "evidence/m9/manifest.json records input input.txt as {} but revision {revision} \
+                 holds {HELLO_DIGEST}",
+                "0".repeat(64)
+            )]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn an_input_the_pinned_revision_does_not_hold_is_reported() {
+        let (root, revision) = pinned_input_root("inputs-absent");
+        write_input_manifest(&root, &revision, "absent.txt", HELLO_DIGEST);
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(
+            violations,
+            [format!(
+                "evidence/m9/manifest.json records input absent.txt: cannot read it at revision \
+                 {revision}"
+            )]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }

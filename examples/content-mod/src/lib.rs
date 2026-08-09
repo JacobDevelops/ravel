@@ -52,7 +52,7 @@ const MODEL: &[u8] = b"{\n  \"parent\": \"minecraft:block/lantern\"\n}\n";
 /// let content = ContentMod::new();
 /// assert_eq!(content.id().as_str(), "content");
 ///
-/// // Three registry entries, and a block and an item may share the name.
+/// // The registry entries, and a block and an item may share the name.
 /// let declaration = content.declaration();
 /// assert_eq!(
 ///     declaration
@@ -67,7 +67,8 @@ const MODEL: &[u8] = b"{\n  \"parent\": \"minecraft:block/lantern\"\n}\n";
 ///     ]
 /// );
 ///
-/// // Four files: two tags, one language file per locale, and the model.
+/// // The generated files: a tag per registry, a language file per locale, and
+/// // the model.
 /// assert_eq!(
 ///     content.generated().paths().collect::<Vec<_>>(),
 ///     [

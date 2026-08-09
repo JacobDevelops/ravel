@@ -103,7 +103,7 @@
       "refusalScreenDrawnInGame": true,
       "refusalScreenText": "This world was not opened. / <diagnostic> / Deleting Ravel's saved data resets Ravel for this world.",
       "pristineAggregateRestoredAfterwards": true,
-      "whatThisProves": "The reload did not merely tolerate the stored bytes, it parsed them and decided admission on them. Without this trial, a reload that ignored the aggregate entirely and a reload that read it would look the same from outside."
+      "whatThisShows": "The reload did not merely tolerate the stored bytes, it parsed them and decided admission on them. Without this trial, a reload that ignored the aggregate entirely and a reload that read it would look the same from outside."
     },
     "absentPathObservedSeparately": {
       "whatWasObserved": "A pre-existing world in the same instance held no `data/ravel` directory before the world round trip campaign's launches and none was created for it, which is the absent-aggregate case ADG-7 initializes fresh state for.",
@@ -524,7 +524,7 @@
         "profilingProperty": false,
         "rewrote": "11 classes and 27 methods",
         "nativeInvocations": 41595,
-        "whyElevenNotFifteen": "No world was opened, so the eight world-only targets and the four classes that hold them were never loaded. This is the expected title-only shape of the same 33-target inventory, and it is recorded because a reader who sees 11 and 27 beside a claim of 33 deserves the reason.",
+        "whyElevenNotFifteen": "No world was opened, so four of the fifteen classes were never loaded: `RecipeManager`, `Commands`, `ReloadableServerResources`, and `SavedDataStorage`. They hold six of the eight world-only targets — `recipe.apply`, `command.perform-prefixed`, `resource.load-server-resources`, and `SavedDataStorage`'s three `save.compute-if-absent`, `save.try-write`, and `save.save-and-join`. The other two world-only targets, `world.open-persistence` and `world.save-persistence`, sit in `net.minecraft.client.Minecraft` and `net.minecraft.server.MinecraftServer`, both of which were loaded and rewritten at the title screen, so they are counted among the eleven. That is the whole arithmetic: 15 − 4 = 11 classes and 33 − 6 = 27 methods, not 33 − 8. This is the expected title-only shape of the same 33-target inventory, and it is recorded because a reader who sees 11 and 27 beside a claim of 33 deserves the reason.",
         "exitRoute": "Quit Game from the title menu; Java exited on its own with no signal."
       },
       "second": {

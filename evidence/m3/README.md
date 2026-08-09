@@ -62,10 +62,30 @@ recomputed, it pinned a revision predating the work it covered, it contradicted
 the other records on whether the world round trip had happened, and
 `linux-process-matrix.json` self-declared a `pass` the manifest held open. The
 digests are recomputed, the revision and the re-run gate numbers are this state's,
-and every record now says the same thing. The cause of the digest rot is fixed
-rather than the symptom: `verify_evidence_records` in
-`tools/ravel-xtask/src/lib.rs` recomputes every recorded result digest and fails
-`ravel-verify-scaffold` on any mismatch.
+and every record now says the same thing. The cause of the digest rot is addressed
+rather than the symptom, and the fix reaches exactly this far:
+`verify_evidence_records` in `tools/ravel-xtask/src/lib.rs` recomputes every
+`benchmarks.results[]` digest and every `platformEvidence[].baselines[]` digest
+that names a tracked file against the working copy, recomputes every `inputs[]`
+digest against the revision its manifest pins, refuses a manifest that records its
+own digest, and fails `ravel-verify-scaffold` on any mismatch. Two digests in
+`evidence/m0/manifest.json` are outside that reach by construction: the private
+launch validations name captures that never enter the repository, so no gate can
+hash them and the check announces them as unbound instead of passing over them in
+silence. Their digests remain claims rather than verified values.
+
+Three findings about that machinery are carried rather than fixed, and each is
+recorded as a deviation in `manifest.json`. Input provenance is pinned to
+`revision.id`, a commit every jj rewrite abandons: it resolves today, and a
+`jj util gc` would turn the check from binding into unconditionally failing for
+every closed milestone — fail-closed, and the opposite of the position the same
+file argues for spike results, which are pinned by change id. Nothing requires a
+manifest to list the records beside it, so a record added to a milestone directory
+can be bound by nothing; `evidence/m0/manifest.json` records an empty
+`benchmarks.results` beside two evidence records. And `manifest.json` here records
+an empty `platformEvidence`, so the closure rule over
+`platformEvidence[].commands[].exitStatus` contributes nothing for M3 even though
+M3-W7 is an operator-run native Linux matrix.
 
 M3-W8 stays open. Every implementation gate is closed, but the review that has to
 pass is an *independent* one, and none has been run against this state.
@@ -172,8 +192,13 @@ jar, and native library were rebuilt from the working tree and came out
 byte-identical to the digests already recorded, so there is one build and one
 33-target inventory behind both. Its three launches reported `rewrote 15 classes
 and 33 methods` once a world was open, and `11 classes and 27 methods` on the
-title-only launch — the same inventory minus the eight world-only targets, which
-is why that smaller pair is recorded with its reason beside it.
+title-only launch. That is the same inventory minus the four classes a world loads
+— `RecipeManager`, `Commands`, `ReloadableServerResources`, `SavedDataStorage` —
+and the six of the eight world-only targets those four hold, so 15 − 4 = 11 and
+33 − 6 = 27. The remaining two world-only targets, `world.open-persistence` and
+`world.save-persistence`, live in `Minecraft` and `MinecraftServer`, which the
+title screen loads and Ravel rewrote there, which is why the subtraction is six
+rather than eight. The reason is recorded beside the smaller pair.
 
 Three of the four inherited row groups now stand on their own evidence. All three
 Ravel screens were opened from the title menu. The Mods screen listed two running

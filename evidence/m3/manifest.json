@@ -152,6 +152,26 @@
       "classification": "non-blocking"
     },
     {
+      "summary": "The review.record.sha256 field means three different things across the four manifests and no gate can tell them apart. evidence/m0/manifest.json records b225d06b3f4b, which is exactly sha256 of evidence/m0/review.md, a tracked file that nothing recomputes; evidence/m1/manifest.json and evidence/m2/manifest.json record digests that match no tracked file, because those review records are deliberately held outside the repository; this manifest records no review record at all, which is why the M3 milestone rule requiring one is among the reasons M3-W8 is open. verify_evidence_records recomputes results, baselines, and inputs and does not touch review.record, so the one digest in the corpus that names a tracked file reads exactly like the two that cannot. Recomputing M0's is cheap and is not done here, because the fix worth having is a rule about which review records are tracked rather than a hash of the one that happens to be.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "verify_evidence_records has no floor. It discovers manifests by scanning the evidence directory, so an unreadable, renamed, or absent evidence/ yields zero manifests, zero violations, and no message, and a digest check that verifies nothing is indistinguishable from one that verified everything. Every other hole in this machinery announces itself; this one is the failure mode the check cannot report on itself. A floor means naming the milestones that must be present, which is a decision about what the scaffold contract owns rather than a repair to the digest check, so it is recorded here instead.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The third M3-W8 review found that verify_recorded_change and verify_manifest_change returned silently on a checkout with no .jj repository, so on a git-only clone the control their own doc comment calls the repository's strongest provenance control evaporated without a word — unlike verify_recorded_inputs, which announces the same skip. Both now announce it. The same change added verify_recorded_run, which holds every milestone manifest's recorded gate run to its own arithmetic on every ravel-verify-scaffold rather than only at the milestone the gate is closing: counts that sum to the total, no failures, no skips, coverage at or above the floor, and no manifest recording a gate run without a test result. What no check can bind is the run itself: the log is private and the pinned revision is below the tip by construction.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "This manifest's revision, commands, and tests blocks describe the revision revision.id pins and not the state they sit in, and evidence/m3/README.md said otherwise until it was corrected. revision.id 3c3520be resolves to change pqkoksqopryu, six described changes below the tip; tests.total is that revision's 813, which is not the count the tip runs and cannot be, because every change above it that adds a test moves the tip's; commands[0].logSha256 and the M3-W7 verificationLogSha256 name that run's log. That is not drift but arithmetic: recording a gate result changes the tree that produced it, so revision.id can never be the tip commit and no manifest can claim the identity the README claimed for it. The convention is the one evidence/m3/linux-process-matrix.json uses for its own gate digests — run the gate over the content, write the numbers, then run both gates again over the file as it stands and report the second run in the change description. What is bound rather than trusted is that revision.id resolves, because verify_recorded_inputs hashes every input there, and that the recorded numbers agree with each other, because verify_recorded_run checks them on every scaffold run.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Two passages in evidence/m3/linux-process-matrix.json were reconciled rather than left contradicting each other. worldPersistenceRoundTrip.worldRemovedAfterwards.whatSurvivesTheRemoval read as though a digest restored checkability once the world was gone, while reviewCeiling in the same object says that a digest of a vanished file records a claim rather than verifies one; the passage now keeps the ceiling's position, and evidence/m3/README.md no longer echoes the old wording. rewrite.worldOnlyTargets listed eight targets with no stated membership rule, so worldOnlyTargetsCriterion now gives it: a target is listed when opening a world is what puts it on the path, which is narrower than being unreachable at the title screen, and server.tick, server.tick-integrated, save.save-everything, and save.set-dirty are named as the targets that difference excludes. The 15 − 4 = 11 and 33 − 6 = 27 arithmetic is unaffected, being per class and per rewritten method.",
+      "classification": "non-blocking"
+    },
+    {
       "summary": "M3-W8 found no hook-integrity defect: the reviewed hook inventory, generated lock, transformed-class counts, and callable-target counts reconcile.",
       "classification": "non-blocking"
     },

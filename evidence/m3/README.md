@@ -95,13 +95,19 @@ reaches exactly this far:
 `benchmarks.results[]` digest and every `platformEvidence[].baselines[]` digest
 that names a tracked file against the working copy, recomputes every `inputs[]`
 digest against the revision its manifest pins, refuses a manifest that records its
-own digest, and fails `ravel-verify-scaffold` on any mismatch. Two digests in
-`evidence/m0/manifest.json` are outside that reach by construction: the private
-launch validations name captures that never enter the repository, so no gate can
-hash them and the check announces them as unbound instead of passing over them in
-silence. Their digests remain claims rather than verified values.
+own digest, and fails `ravel-verify-scaffold` on any mismatch. Digests outside that
+reach are named rather than left to look verified. Two in
+`evidence/m0/manifest.json` are outside it by construction: the private launch
+validations name captures that never enter the repository, so no gate can hash them
+and the check announces them as unbound instead of passing over them in silence.
+The `review.record.sha256` fields are outside it too, and less obviously. M0's is
+exactly the digest of `evidence/m0/review.md`, a tracked file, and nothing
+recomputes it; M1's and M2's match no tracked file at all, because those review
+records are held outside the repository. So the same field name means a hashable
+tracked document in one manifest and an untracked one in the next, and no gate can
+tell a reader which. All of those digests remain claims rather than verified values.
 
-Three findings about that machinery are carried rather than fixed, and each is
+Findings about that machinery are carried rather than fixed, and each is
 recorded as a deviation in `manifest.json`. Input provenance is pinned to
 `revision.id`, a commit every jj rewrite abandons: it resolves today, and a
 `jj util gc` would turn the check from binding into unconditionally failing for
@@ -112,7 +118,18 @@ can be bound by nothing; `evidence/m0/manifest.json` records an empty
 `benchmarks.results` beside two evidence records. And `manifest.json` here records
 an empty `platformEvidence`, so the closure rule over
 `platformEvidence[].commands[].exitStatus` contributes nothing for M3 even though
-M3-W7 is an operator-run native Linux matrix.
+M3-W7 is an operator-run native Linux matrix. Two more were added by the third
+round. `verify_evidence_records` discovers manifests by scanning `evidence/`, so it
+has no floor: an unreadable or renamed directory yields no manifests, no
+violations, and no message, which is the one failure mode a digest check cannot
+report on itself. And the `review.record` digests above are unbound in three
+different ways under one field name.
+
+One finding from that round is fixed rather than carried.
+`verify_recorded_change` and `verify_manifest_change` returned in silence on a
+checkout with no `.jj`, so on a git-only clone the control their own doc comment
+calls the repository's strongest provenance control evaporated without a word. Both
+now announce the skip the way `verify_recorded_inputs` already did.
 
 M3-W8 stays open. Every implementation gate is closed, but the review that has to
 pass is an *independent* one, and none has been run against this state.

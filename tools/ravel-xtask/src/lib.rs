@@ -331,13 +331,20 @@ fn verify_hook_inventory_document(root: &Path, violations: &mut Vec<String>) {
 /// The directory holding the accepted decision records.
 const DECISION_RECORDS: &str = "docs/decisions";
 
-/// The phrase a decision record denies a hook with.
+/// The word a decision record denies a hook with.
 ///
-/// Two words rather than one, and in this order, because `hook` alone appears in
-/// every one of these records dozens of times and `not` alone appears in most
-/// sentences. What this reaches is the shape both stale sentences used: a denial
-/// immediately followed by the thing denied.
-const DENIAL: [&str; 2] = ["not", "hook"];
+/// Paired with [`DENIAL_VERBS`] rather than used alone, because `not` alone
+/// appears in most sentences and `hook` alone appears in every one of these
+/// records dozens of times. What the pair reaches is the shape a denial takes:
+/// the negation adjacent to a form of the verb.
+const DENIAL: &str = "not";
+
+/// The forms of `hook` a denial may be written with.
+///
+/// The inflected passive is the more natural phrasing of the sentence this check
+/// exists over — "the `extractRenderState` seam is not hooked" — and holding only
+/// the infinitive left that outside the anchor.
+const DENIAL_VERBS: [&str; 3] = ["hook", "hooked", "hooking"];
 
 /// The absolute denial of any per-frame crossing, which one hook falsifies.
 const NO_PER_FRAME: &str = "nothing crosses per frame";
@@ -359,13 +366,17 @@ const PER_FRAME_MEMBER: &str = "extractRenderState";
 ///
 /// Known limits, and they are narrow on purpose.
 ///
-/// It reads two anchors and no more. A denial has to be written as `not hook`
-/// followed within [`COUNT_LOOKBACK`] words by a hook id or a member name the
-/// inventory declares, and the absolute per-frame denial has to be written as
-/// [`NO_PER_FRAME`]. A record that denies the same hook in some other wording —
-/// "the extraction seam is left alone" — is not reached, and no general prose
-/// parser is attempted here for the reason `hook_document_violations` gives about
-/// telling a current claim from a historical one.
+/// It reads two anchors and no more. A denial has to be written as [`DENIAL`]
+/// adjacent to one of [`DENIAL_VERBS`], with a hook id or a member name the
+/// inventory declares within [`COUNT_LOOKBACK`] words on either side of that pair,
+/// and the absolute per-frame denial has to be written as [`NO_PER_FRAME`]. Both
+/// inflections and both word orders are reached, so "does not hook
+/// `extractRenderState`" and "the `extractRenderState` seam is not hooked" both
+/// fire. A record that denies the same hook without the negation and the verb —
+/// "the extraction seam is left alone", "Ravel leaves the extraction seam alone" —
+/// is not reached, and no general prose parser is attempted here for the reason
+/// `hook_document_violations` gives about telling a current claim from a
+/// historical one.
 ///
 /// It cannot tell a claim from a quotation. A record that quotes a withdrawn
 /// denial in order to withdraw it fails this check exactly as one that still
@@ -456,23 +467,31 @@ fn declared_hook_names(inventory: &str) -> Vec<String> {
 }
 
 /// Every declared hook a record denies within reach of a denial.
+///
+/// Both sides of the denial are read, because English puts the thing denied on
+/// either one: "does not hook the extraction seam" and "the extraction seam is not
+/// hooked" say the same thing.
 fn denied_hook_names(record: &str, declared: &[String]) -> Vec<String> {
+    let bare = |word: &str| {
+        word.trim_matches(|character: char| !character.is_alphanumeric())
+            .to_owned()
+    };
     let words: Vec<&str> = record.split_whitespace().collect();
     let mut denied = Vec::new();
-    for (at, window) in words.windows(DENIAL.len()).enumerate() {
-        let matches = DENIAL.iter().zip(window).all(|(expected, word)| {
-            word.trim_matches(|character: char| !character.is_alphanumeric())
-                .eq_ignore_ascii_case(expected)
-        });
-        if !matches {
+    for (at, window) in words.windows(2).enumerate() {
+        let anchored = bare(window[0]).eq_ignore_ascii_case(DENIAL)
+            && DENIAL_VERBS
+                .iter()
+                .any(|verb| bare(window[1]).eq_ignore_ascii_case(verb));
+        if !anchored {
             continue;
         }
-        let from = at + DENIAL.len();
-        let to = (from + COUNT_LOOKBACK).min(words.len());
-        for word in &words[from..to] {
-            let word = word.trim_matches(|character: char| !character.is_alphanumeric());
-            if declared.iter().any(|name| name == word) && !denied.iter().any(|held| held == word) {
-                denied.push(word.to_owned());
+        let before = at.saturating_sub(COUNT_LOOKBACK)..at;
+        let after = (at + 2)..(at + 2 + COUNT_LOOKBACK).min(words.len());
+        for word in words[before].iter().chain(&words[after]) {
+            let word = bare(word);
+            if declared.contains(&word) && !denied.contains(&word) {
+                denied.push(word);
             }
         }
     }
@@ -5778,6 +5797,22 @@ mod tests {
         assert_eq!(
             denied_hook_names(
                 "The record does not hook screen.extract-render-state.",
+                &declared
+            ),
+            ["screen.extract-render-state"]
+        );
+        // The inflected passive, and the order that puts the name first. Round 10
+        // wrote this exact sentence into ADG-6 and the gate stayed at zero.
+        assert_eq!(
+            denied_hook_names(
+                "The `extractRenderState` seam is not hooked by Ravel.",
+                &declared
+            ),
+            ["extractRenderState"]
+        );
+        assert_eq!(
+            denied_hook_names(
+                "Ravel is not hooking `screen.extract-render-state` in this version.",
                 &declared
             ),
             ["screen.extract-render-state"]

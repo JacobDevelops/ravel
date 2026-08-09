@@ -214,6 +214,8 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_hook_inventory_document(root, &mut violations);
     verify_campaign_inventory(root, &mut violations);
     verify_review_round_counts(root, &mut violations);
+    verify_manifest_percentages(root, &mut violations);
+    verify_void_limits(root, &mut violations);
     verify_harness_lifecycles(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
@@ -264,6 +266,16 @@ const M3_MANIFEST: &str = "evidence/m3/manifest.json";
 
 /// The one record that says how many independent M3-W8 rounds have run.
 const REVIEW_RECORD: &str = "evidence/m3/review.md";
+
+/// M2's evidence README, which summarises the audits its record holds.
+const M2_CAMPAIGN_DOCUMENT: &str = "evidence/m2/README.md";
+
+/// M2's admission artifact.
+const M2_MANIFEST: &str = "evidence/m2/manifest.json";
+
+/// The record that counts M2's independent audits, for the reason
+/// [`REVIEW_RECORD`] counts M3's.
+const M2_REVIEW_RECORD: &str = "evidence/m2/review.md";
 
 /// The harness whose runs are the world lifecycles M3's prose counts.
 const PERSISTENCE_HARNESS: &str = "jvm/harness/run-harness.sh";
@@ -701,7 +713,8 @@ fn numbers_before(document: &str, noun: &[&str]) -> Vec<usize> {
     found
 }
 
-/// Keeps the count of independent M3-W8 rounds in the one record that counts it.
+/// Keeps the count of a milestone's independent review rounds in the one record
+/// that counts them.
 ///
 /// Six review rounds have now found a stale count in this evidence set, and the
 /// round count itself was the recurring one: five sites restated it, a repair
@@ -717,26 +730,174 @@ fn numbers_before(document: &str, noun: &[&str]) -> Vec<usize> {
 /// record's own numbering and never drifts, so it is allowed; an ordinal naming a
 /// round that has not run yet (`a sixth independent round decides that`) does
 /// drift and is not caught here. Nothing but the record counting for itself
-/// closes that one.
+/// closes that one. `audits` is held alongside `rounds` and `verdicts` because
+/// M2's record calls its rounds audits, and a rule that missed the noun the prose
+/// uses would be the same gap in a new place.
 fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
-    if !root.join(REVIEW_RECORD).is_file() {
-        violations.push(format!("missing required file: {REVIEW_RECORD}"));
-    }
-    for relative in [CAMPAIGN_DOCUMENT, M3_MANIFEST] {
-        match fs::read_to_string(root.join(relative)) {
-            Ok(document) => {
-                // A round and its verdict are one thing counted two ways, and the
-                // stale sites used both nouns, so both are held to the record.
-                for noun in ["rounds", "verdicts"] {
-                    for count in numbers_before(&document, &[noun]) {
-                        violations.push(format!(
-                            "{relative} restates that {count} review {noun} exist; \
-                             {REVIEW_RECORD} is the one record that counts them"
-                        ));
+    // M2 is held to the same rule as M3, and for the same reason rather than by
+    // analogy: its record now carries successive audits too, its manifest and
+    // README both summarise them, and the figure that went stale in M3 went stale
+    // in five sites of exactly that kind. Applying the rule before a count is
+    // written is the only time it costs nothing.
+    for (record, documents) in [
+        (REVIEW_RECORD, [CAMPAIGN_DOCUMENT, M3_MANIFEST]),
+        (M2_REVIEW_RECORD, [M2_CAMPAIGN_DOCUMENT, M2_MANIFEST]),
+    ] {
+        if !root.join(record).is_file() {
+            violations.push(format!("missing required file: {record}"));
+        }
+        for relative in documents {
+            match fs::read_to_string(root.join(relative)) {
+                Ok(document) => {
+                    // A round and its verdict are one thing counted two ways, and
+                    // the stale sites used both nouns, so both are held to the
+                    // record.
+                    for noun in ["rounds", "verdicts", "audits"] {
+                        for count in numbers_before(&document, &[noun]) {
+                            violations.push(format!(
+                                "{relative} restates that {count} review {noun} exist; \
+                                 {record} is the one record that counts them"
+                            ));
+                        }
                     }
+                }
+                Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+            }
+        }
+    }
+}
+
+/// Keeps a percentage out of a manifest's prose, because nothing recomputes one.
+///
+/// The seventh stale absolute figure in this evidence set was a per-file line
+/// coverage percentage written in the present tense into `evidence/m2`'s guard.rs
+/// deviation — `54.55%` against a measured `28.72%` — and it was found by the
+/// review whose own job was to sweep stale prose, which had enumerated three
+/// other items and missed this one. Two more percentages sat in the same
+/// sentence.
+///
+/// Nothing in this repository recomputes a per-file percentage: `ravel-coverage`
+/// holds the workspace to a floor and no gate reads a file's own figure, so every
+/// such number in a manifest is a present-tense claim the next commit can falsify.
+/// The fix is the one [`verify_review_round_counts`] uses for the round count —
+/// forbid the figure rather than match it — because a manifest is not where a
+/// measurement belongs. The record that measured it says it, and that record is
+/// bound by digest.
+///
+/// Known limit, stated rather than implied: this bans the `%` character, so a
+/// percentage spelled out in words (`28.72 percent`) is not reached, and neither
+/// is a bare ratio. A manifest field that carries a percentage as a number —
+/// `tests.lineCoveragePercent` — is untouched and is held to its own arithmetic
+/// elsewhere; what is refused is the sign, which is only ever prose.
+fn verify_manifest_percentages(root: &Path, violations: &mut Vec<String>) {
+    for (relative, milestone) in MILESTONE_MANIFESTS {
+        match fs::read_to_string(root.join(relative)) {
+            Ok(manifest) => {
+                for line in manifest.lines().filter(|line| line.contains('%')) {
+                    let figure = line
+                        .split('%')
+                        .next()
+                        .map(|head| {
+                            head.chars()
+                                .rev()
+                                .take_while(|character| {
+                                    character.is_ascii_digit() || *character == '.'
+                                })
+                                .collect::<String>()
+                                .chars()
+                                .rev()
+                                .collect::<String>()
+                        })
+                        .filter(|figure| !figure.is_empty())
+                        .unwrap_or_else(|| "a percentage".to_owned());
+                    violations.push(format!(
+                        "{relative} writes {figure}% into {milestone}'s prose; no gate recomputes \
+                         a percentage a manifest states, so it belongs in the record that \
+                         measured it"
+                    ));
                 }
             }
             Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+        }
+    }
+}
+
+/// Holds the void set to the record that voided it and the roadmap that says so.
+///
+/// The M2 milestone gate validates all six of `loader-overhead.json`'s limits
+/// identically — each one a number above its measurement — and three of them were
+/// voided by the record's own expiry clause when ADG-2 chose source compilation
+/// over linking. Nothing inside the record marks those three dead, so a reader who
+/// runs the gate and not `ROADMAP.md` reads a green on three limits that describe a
+/// shape which no longer exists. The record is not edited, because a recorded
+/// measurement is not edited after the fact; what is bound instead is the
+/// disclosure. [`VOID_LIMITS`] is the one list, the record has to carry every
+/// metric on it, `ROADMAP.md` has to name every one of them, and it may not name a
+/// limit that still stands. Deleting the roadmap's declaration, or quietly voiding
+/// a live loader limit, is then a violation rather than a silent change of what
+/// the budget means.
+///
+/// Known limit: the declaration is the roadmap paragraph that ends in `are void`,
+/// so moving the void set into prose that does not say `are void` is not reached.
+/// That wording is what the roadmap uses, and a paragraph is the smallest unit
+/// this can be read from without a heading convention the file does not have.
+fn verify_void_limits(root: &Path, violations: &mut Vec<String>) {
+    let record = root.join(BUDGET_RECORDS[0]);
+    let recorded = match jq_value(&record, "[.budget.limits[].metric] | join(\" \")") {
+        Ok(recorded) => recorded,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let recorded: Vec<&str> = recorded.split_whitespace().collect();
+    let roadmap = match fs::read_to_string(root.join("ROADMAP.md")) {
+        Ok(roadmap) => roadmap,
+        Err(error) => {
+            violations.push(format!("cannot read ROADMAP.md: {error}"));
+            return;
+        }
+    };
+    let Some(declaration) = roadmap
+        .split("\n\n")
+        .find(|paragraph| paragraph.contains("are void"))
+        .map(str::to_owned)
+    else {
+        violations.push(
+            "ROADMAP.md declares no limit void, and evidence/m2/loader-overhead.json's expiry \
+             clause voided three of its own"
+                .to_owned(),
+        );
+        return;
+    };
+    let roadmap = declaration;
+
+    for (metric, why) in VOID_LIMITS {
+        if !recorded.contains(metric) {
+            violations.push(format!(
+                "{} is treated as void and {} carries no limit for it, so the void set describes a \
+                 record that is not there",
+                metric, BUDGET_RECORDS[0]
+            ));
+        }
+        if !roadmap.contains(metric) {
+            violations.push(format!(
+                "ROADMAP.md's declaration of which limits are void does not name {metric}, which \
+                 is {why}; a limit the gate stops comparing and the roadmap stops declaring is \
+                 indistinguishable from one that passed"
+            ));
+        }
+    }
+    for metric in recorded {
+        if VOID_LIMITS.iter().any(|(void, _)| *void == metric) {
+            continue;
+        }
+        if roadmap.contains(metric) {
+            violations.push(format!(
+                "ROADMAP.md declares {metric} void where it says which of {}'s limits are, and \
+                 that limit still stands",
+                BUDGET_RECORDS[0]
+            ));
         }
     }
 }
@@ -2643,6 +2804,18 @@ fn verify_m2_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
         violations,
     );
 
+    // The six limits below are validated identically, and three of them the
+    // record's own expiry clause voided. Said here rather than left to the
+    // roadmap, because a reader who runs this gate and not `ROADMAP.md` otherwise
+    // reads a green on three limits that describe a shape which no longer exists.
+    // `verify_void_limits` is what keeps this list and the roadmap's the same one.
+    for (metric, why) in VOID_LIMITS {
+        println!(
+            "- evidence/m2/manifest.json: the budget limit {metric} is checked for shape and not \
+             for meaning, because it is {why}"
+        );
+    }
+
     for (file, rule, requirement) in M2_RECORDS {
         let path = root.join("evidence/m2").join(file);
         if !path.is_file() {
@@ -3759,9 +3932,10 @@ mod tests {
         hook_document_violations, numbers_before, pinned_commit_mismatch, redacted_path,
         required_scaffold_paths, verify_campaign_inventory, verify_evidence_records,
         verify_experiment_fence, verify_harness_lifecycles, verify_hook_inventory_document,
-        verify_ignored_boundaries, verify_milestone, verify_review_round_counts, verify_scaffold,
-        verify_spikes, verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
-        verify_version_boundary, visible_commit,
+        verify_ignored_boundaries, verify_manifest_percentages, verify_milestone,
+        verify_review_round_counts, verify_scaffold, verify_spikes, verify_testkit_fence,
+        verify_tracked_contents, verify_tracked_paths, verify_version_boundary, verify_void_limits,
+        visible_commit,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -5235,6 +5409,34 @@ mod tests {
         let mut violations = Vec::new();
 
         verify_review_round_counts(&root, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    /// Every tracked manifest leaves its percentages to the records that measured
+    /// them, which is the state the stale guard.rs figure was removed to reach.
+    #[test]
+    fn no_tracked_manifest_writes_a_percentage_into_its_prose() {
+        let root = std::env::current_dir()
+            .expect("the current directory must be available")
+            .join("../..");
+        let mut violations = Vec::new();
+
+        verify_manifest_percentages(&root, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    /// The void set, the record it was read out of and the roadmap that declares
+    /// it agree, so no void limit is left standing and no standing limit is void.
+    #[test]
+    fn the_void_budget_limits_are_the_ones_the_roadmap_declares() {
+        let root = std::env::current_dir()
+            .expect("the current directory must be available")
+            .join("../..");
+        let mut violations = Vec::new();
+
+        verify_void_limits(&root, &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
     }

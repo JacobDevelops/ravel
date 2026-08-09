@@ -22,133 +22,133 @@
       "record": "spikes/adg-1/adg1-agent-java-callback.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-1/adg1-agent-jni-export.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-1/adg1-control-no-hook.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-1/adg1-external-bytecode-library.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-1/adg1-hosted-register-natives.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-1/adg1-jvmti-native-agent.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-2/adg2-helper-process.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "kolnlmlvyqxqwmluykymlvoxysslpvws",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-2/adg2-native-dylib.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "kolnlmlvyqxqwmluykymlvoxysslpvws",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-2/adg2-static-composition.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "kolnlmlvyqxqwmluykymlvoxysslpvws",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-2/adg2-wasm-sandbox.json",
       "id": "bdbd7a74746d40c12339868dae182ec3c8e8bb69",
       "changeId": "kolnlmlvyqxqwmluykymlvoxysslpvws",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-3/adg3-classfile-extraction-remeasured.json",
       "id": "69d85ea78237b82e9f67a8bfa26440f180540715",
       "changeId": "xyxnnvvsnknstwtzqrxtqyzlzqoqkyyx",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is visible but is not the commit its own recorded change is at, so it names a tree that change never held."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-3/adg3-classfile-extraction.json",
       "id": "e0e178f9dc6f1fecbbbb24df5156f561459622a6",
       "changeId": "ysvpslstqmmmkkzknzmozqkpnozlworn",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-3/adg3-hand-written-version-data.json",
       "id": "e0e178f9dc6f1fecbbbb24df5156f561459622a6",
       "changeId": "ysvpslstqmmmkkzknzmozqkpnozlworn",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-3/adg3-javap-extraction-remeasured.json",
       "id": "69d85ea78237b82e9f67a8bfa26440f180540715",
       "changeId": "xyxnnvvsnknstwtzqrxtqyzlzqoqkyyx",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is visible but is not the commit its own recorded change is at, so it names a tree that change never held."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-3/adg3-javap-extraction.json",
       "id": "e0e178f9dc6f1fecbbbb24df5156f561459622a6",
       "changeId": "ysvpslstqmmmkkzknzmozqkpnozlworn",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-3/adg3-official-mappings.json",
       "id": "e0e178f9dc6f1fecbbbb24df5156f561459622a6",
       "changeId": "ysvpslstqmmmkkzknzmozqkpnozlworn",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-3/adg3-runtime-reflection.json",
       "id": "e0e178f9dc6f1fecbbbb24df5156f561459622a6",
       "changeId": "ysvpslstqmmmkkzknzmozqkpnozlworn",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-3/adg3-third-party-mappings.json",
       "id": "e0e178f9dc6f1fecbbbb24df5156f561459622a6",
       "changeId": "ysvpslstqmmmkkzknzmozqkpnozlworn",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-4/adg4-java-authoritative.json",
       "id": "b301640ac217379b3319cdcc0b0f02809607dba2",
       "changeId": "qvunpvyunxpytwvonrsqotuppsmlouzn",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-4/adg4-mirrored.json",
       "id": "b301640ac217379b3319cdcc0b0f02809607dba2",
       "changeId": "qvunpvyunxpytwvonrsqotuppsmlouzn",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-4/adg4-rust-authoritative.json",
       "id": "b301640ac217379b3319cdcc0b0f02809607dba2",
       "changeId": "qvunpvyunxpytwvonrsqotuppsmlouzn",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     },
     {
       "record": "spikes/adg-5/adg5-stock-jvm-arguments.json",
       "id": "e35a894c10d25b1fa48ef4f5f7a11703fe0de872",
       "changeId": "mltvmnlltvqxoqoomxvknmovorkvslvx",
-      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "The trial ran on a dirty working copy, so no commit holds the tree it measured. What a reader can obtain is the change that introduced this result, which ravel:verify-spikes recomputes against trial.revision.changeId, and the comparison this result contributes to is readable there rather than at the tree measured."
     }
   ],
   "versions": {

@@ -266,11 +266,20 @@ jar --create --file "$persist_screen" --date 1980-01-01T00:00:02Z \
 	-C "$persist/sibling" dev/ravel/jvm/screen/RavelWorldData.class
 cp "$order_agent" "$persist_agent"
 
+# How many world lifecycles this section runs, declared in one place so
+# `evidence/m3` prose can be bound to a figure rather than restating an
+# uncounted one. It is asserted below against the runs that actually happened,
+# so adding or removing a case fails here instead of quietly falsifying the
+# records that cite it.
+persistence_lifecycles_declared=9
+persistence_lifecycles=0
+
 # Each run is one world lifecycle: one open and one save. `label` is what fails
 # if the run does not produce `expected`, and the properties are the two answers
 # Rust would have given.
 persistence_run() {
 	local label="$1" open="$2" save="$3" stored="$4" expected="$5" save_seam="${6:-false}"
+	persistence_lifecycles=$((persistence_lifecycles + 1))
 	local out="$persist/$label-stdout"
 	local err="$persist/$label-stderr"
 	(cd "$persist/classes" && java \
@@ -360,6 +369,14 @@ if [ "$missing_save_diagnostic" != "$missing_save_expected_diagnostic" ]; then
 	echo >&2
 	echo "an uninstalled save seam did not refuse with the recorded diagnostic; expected:" >&2
 	printf '%s\n' "$missing_save_expected_diagnostic" >&2
+	exit 1
+fi
+
+# The declared figure is what `evidence/m3` cites, so it has to be the figure
+# this run produced.
+if [ "$persistence_lifecycles" -ne "$persistence_lifecycles_declared" ]; then
+	echo >&2
+	echo "this harness ran $persistence_lifecycles world lifecycles and declares $persistence_lifecycles_declared; update persistence_lifecycles_declared and the evidence/m3 records that cite it" >&2
 	exit 1
 fi
 

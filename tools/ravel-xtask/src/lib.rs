@@ -213,6 +213,8 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_ignored_boundaries(root, &mut violations);
     verify_hook_inventory_document(root, &mut violations);
     verify_campaign_inventory(root, &mut violations);
+    verify_review_round_counts(root, &mut violations);
+    verify_harness_lifecycles(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
     verify_experiment_fence(root, &mut violations);
@@ -256,6 +258,15 @@ const CAMPAIGN_MATRIX: &str = "evidence/m3/linux-process-matrix.json";
 
 /// The prose that restates that record's inventory figures.
 const CAMPAIGN_DOCUMENT: &str = "evidence/m3/README.md";
+
+/// The manifest that records M3's gate state, and restates review prose.
+const M3_MANIFEST: &str = "evidence/m3/manifest.json";
+
+/// The one record that says how many independent M3-W8 rounds have run.
+const REVIEW_RECORD: &str = "evidence/m3/review.md";
+
+/// The harness whose runs are the world lifecycles M3's prose counts.
+const PERSISTENCE_HARNESS: &str = "jvm/harness/run-harness.sh";
 
 /// What `hooks.toml` holds, counted from `hooks.toml` and from nothing else.
 struct HookCounts {
@@ -461,11 +472,25 @@ struct CampaignInventory {
 /// method the campaign reviewed, so the two counts are derivable from the record
 /// itself, and the prose is derivable from them.
 ///
-/// Known limit, the same one `hook_document_violations` carries: each figure is
-/// anchored on the phrase it is written in, so a sentence that states a count in
-/// some new phrasing is not reached. It is checked at *every* occurrence of each
-/// anchored phrase, which is what caught the hook document's second stale
-/// sentence, and the anchors are the ones the prose is now written to use.
+/// Known limits, the same ones `hook_document_violations` carries, and there are
+/// two of them rather than one. Each figure is anchored on the phrase it is
+/// written in, so a sentence stating a count in *new* phrasing is not reached —
+/// and a sentence that *replaces* an anchored occurrence with different wording is
+/// not reached either, because the occurrences that survive keep the anchor alive
+/// and the check reports no missing anchor. It is checked at every occurrence *of
+/// an anchored phrase*, which is what caught the hook document's second stale
+/// sentence, and the anchors are the ones the prose is now written to use. So what
+/// this proves is that the anchored sentences agree with the record, not that
+/// every figure in the document does.
+///
+/// A multiset of the integers adjacent to the subject nouns was considered and
+/// does not close either hole: the noun is what identifies which figure an integer
+/// is, and both holes are wordings that change the noun, so a check that ignored
+/// the noun would have to flag every integer near it and would be a false red in
+/// prose this dense. Where a hole of this shape *is* closable, it is closed by
+/// forbidding the figure outright rather than by matching it —
+/// `verify_review_round_counts` does that, and it is the round count's fix
+/// precisely because no phrasing of a restated round count is wanted at all.
 fn verify_campaign_inventory(root: &Path, violations: &mut Vec<String>) {
     let matrix = root.join(CAMPAIGN_MATRIX);
     if !matrix.is_file() {
@@ -605,6 +630,167 @@ fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> 
         }
     }
     violations
+}
+
+/// How a count of things can be spelled in this repository's prose.
+const CARDINALS: [&str; 21] = [
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+];
+
+/// One word read as a number, whether it was written in digits or spelled out.
+fn numeral(word: &str) -> Option<usize> {
+    let word = word
+        .trim_matches(|character: char| !character.is_alphanumeric())
+        .to_ascii_lowercase();
+    if !word.is_empty() && word.chars().all(|character| character.is_ascii_digit()) {
+        return word.parse().ok();
+    }
+    CARDINALS.iter().position(|spelled| *spelled == word)
+}
+
+/// How far back from a noun a number counting it may sit.
+///
+/// Four, which is what the stale sites needed: the widest of them wrote `five
+/// tracked independent M3-W8 rounds`, four words between the figure and the noun
+/// it counted. Wider than that starts collecting numbers from the clause before.
+const COUNT_LOOKBACK: usize = 4;
+
+/// Every number written against `noun`, however it was spelled and whatever
+/// adjectives sit between.
+///
+/// Word-adjacent rather than phrase-anchored, so a figure survives the sentence
+/// around it being rewritten — which is the hole a phrase-anchored check leaves.
+/// What it cannot survive is the number moving further from the noun than
+/// [`COUNT_LOOKBACK`] words, and the checks that use it say so.
+fn numbers_before(document: &str, noun: &[&str]) -> Vec<usize> {
+    let words: Vec<&str> = document.split_whitespace().collect();
+    let mut found = Vec::new();
+    for (at, window) in words.windows(noun.len()).enumerate() {
+        let matches = noun.iter().zip(window).all(|(expected, word)| {
+            word.trim_matches(|character: char| !character.is_alphanumeric())
+                .eq_ignore_ascii_case(expected)
+        });
+        if !matches {
+            continue;
+        }
+        let from = at.saturating_sub(COUNT_LOOKBACK);
+        if let Some(count) = words[from..at].iter().rev().find_map(|word| numeral(word)) {
+            found.push(count);
+        }
+    }
+    found
+}
+
+/// Keeps the count of independent M3-W8 rounds in the one record that counts it.
+///
+/// Six review rounds have now found a stale count in this evidence set, and the
+/// round count itself was the recurring one: five sites restated it, a repair
+/// fixed one of them, and the other four went stale together the next time a
+/// round ran — two of them inside the `review` block the closure gate reads. The
+/// repository already declares the answer in `manifest.json`: the record says how
+/// many rounds have run and nothing else restates it. This enforces that answer
+/// instead of trusting prose to keep it.
+///
+/// Known limit, stated rather than implied: this catches a *cardinal* count of
+/// rounds, spelled either way — `six rounds`, `5 rounds`. An ordinal naming one
+/// round that has already run (`the fourth round`) is a reference into the
+/// record's own numbering and never drifts, so it is allowed; an ordinal naming a
+/// round that has not run yet (`a sixth independent round decides that`) does
+/// drift and is not caught here. Nothing but the record counting for itself
+/// closes that one.
+fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
+    if !root.join(REVIEW_RECORD).is_file() {
+        violations.push(format!("missing required file: {REVIEW_RECORD}"));
+    }
+    for relative in [CAMPAIGN_DOCUMENT, M3_MANIFEST] {
+        match fs::read_to_string(root.join(relative)) {
+            Ok(document) => {
+                // A round and its verdict are one thing counted two ways, and the
+                // stale sites used both nouns, so both are held to the record.
+                for noun in ["rounds", "verdicts"] {
+                    for count in numbers_before(&document, &[noun]) {
+                        violations.push(format!(
+                            "{relative} restates that {count} review {noun} exist; \
+                             {REVIEW_RECORD} is the one record that counts them"
+                        ));
+                    }
+                }
+            }
+            Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+        }
+    }
+}
+
+/// Holds M3's prose to the number of world lifecycles the harness actually runs.
+///
+/// `over nine world lifecycles` was true and ungated: appending a tenth
+/// `persistence_run` case left the scaffold gate green. The harness now declares
+/// the figure in one place and asserts it against the runs it made, so a case
+/// added or removed there fails the harness; this binds the two records that cite
+/// the figure to the same declaration, so a stale citation fails the scaffold.
+fn verify_harness_lifecycles(root: &Path, violations: &mut Vec<String>) {
+    let harness = match fs::read_to_string(root.join(PERSISTENCE_HARNESS)) {
+        Ok(harness) => harness,
+        Err(error) => {
+            violations.push(format!("cannot read {PERSISTENCE_HARNESS}: {error}"));
+            return;
+        }
+    };
+    let declared = harness
+        .lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix("persistence_lifecycles_declared="))
+        .and_then(|value| value.parse::<usize>().ok());
+    let Some(declared) = declared else {
+        violations.push(format!(
+            "{PERSISTENCE_HARNESS} no longer declares `persistence_lifecycles_declared`, so no \
+             record's world-lifecycle count is held to it"
+        ));
+        return;
+    };
+
+    for relative in [CAMPAIGN_DOCUMENT, CAMPAIGN_MATRIX] {
+        match fs::read_to_string(root.join(relative)) {
+            Ok(document) => {
+                let stated = numbers_before(&document, &["world", "lifecycles"]);
+                if stated.is_empty() {
+                    violations.push(format!(
+                        "{relative} no longer writes a count against `world lifecycles`, so \
+                         nothing in it is held to {PERSISTENCE_HARNESS}'s {declared}"
+                    ));
+                }
+                for count in stated {
+                    if count != declared {
+                        violations.push(format!(
+                            "{relative} states {count} world lifecycles where \
+                             {PERSISTENCE_HARNESS} declares {declared}"
+                        ));
+                    }
+                }
+            }
+            Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+        }
+    }
 }
 
 /// Reads `name = "value"` out of one line, or nothing.
@@ -975,6 +1161,21 @@ const TRIAL_PINS: &str = r#"[paths(objects) as $p
 /// `unobtainableRevisions` quoting that record, that commit and that change, so an
 /// excuse cannot cover a pin it does not name; and a disclosed pin that starts
 /// passing is itself a violation, so the excuse cannot outlive the defect.
+/// What a disclosure may not say, because the gate is what says it.
+///
+/// A disclosure's `reason` is free prose and no gate can check a judgement about
+/// what a reader loses. What it *can* check is that the prose does not also
+/// classify the failure, which is the one part of it that goes stale: a round
+/// re-pinned a record to a real commit of a different change, updated only the
+/// disclosure's `id`, and the excuse still read "reachable from no visible head"
+/// while the gate was computing a different reason entirely. Refusing the
+/// restatement leaves exactly one statement of why a pin failed — the computed one,
+/// printed beside the prose on every run — so the two cannot disagree.
+const CLASSIFICATION_PHRASES: [&str; 2] = [
+    "reachable from no visible head",
+    "the commit its own recorded change is at",
+];
+
 fn verify_admitted_revisions(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
     let label = relative_label(root, manifest_path);
     if !root.join(".jj").exists() {
@@ -1008,6 +1209,18 @@ fn verify_admitted_revisions(root: &Path, manifest_path: &Path, violations: &mut
             return;
         }
     };
+    for (pin, reason) in &disclosed {
+        for restated in CLASSIFICATION_PHRASES {
+            if reason.contains(restated) {
+                violations.push(format!(
+                    "{label} discloses the pin `{pin}` with prose that classifies the failure \
+                     itself (`{restated}`); a disclosure states what a reader loses and this gate \
+                     states why the pin failed, so prose that says why goes stale the next time \
+                     the pin moves and nothing catches it"
+                ));
+            }
+        }
+    }
     // One disclosure covers every pin that quotes the same record, commit and
     // change, because one record can carry the same pin at more than one trial —
     // `evidence/m3/pack-compile.json` does. So which disclosures were used is
@@ -1094,7 +1307,8 @@ fn verify_one_pin(
             used.insert(key);
             println!(
                 "- {label}: {name}'s pin {id} at {at} is disclosed rather than recomputed, \
-                 because {why}: {reason}"
+                 because {why}. What the record says a reader loses by it, which is prose this \
+                 gate does not check: {reason}"
             );
         }
         (Err(why), None) => violations.push(format!(
@@ -3542,11 +3756,12 @@ mod tests {
     use super::{
         CampaignInventory, HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS,
         campaign_document_violations, change_mismatch, declares_unsafe_prohibition, hook_counts,
-        hook_document_violations, pinned_commit_mismatch, redacted_path, required_scaffold_paths,
-        verify_campaign_inventory, verify_evidence_records, verify_experiment_fence,
-        verify_hook_inventory_document, verify_ignored_boundaries, verify_milestone,
-        verify_scaffold, verify_spikes, verify_testkit_fence, verify_tracked_contents,
-        verify_tracked_paths, verify_version_boundary, visible_commit,
+        hook_document_violations, numbers_before, pinned_commit_mismatch, redacted_path,
+        required_scaffold_paths, verify_campaign_inventory, verify_evidence_records,
+        verify_experiment_fence, verify_harness_lifecycles, verify_hook_inventory_document,
+        verify_ignored_boundaries, verify_milestone, verify_review_round_counts, verify_scaffold,
+        verify_spikes, verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
+        verify_version_boundary, visible_commit,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -4988,6 +5203,52 @@ mod tests {
                 .all(|violation| violation.contains("no longer writes a count against")),
             "{violations:?}"
         );
+    }
+
+    /// A count reaches its noun through the adjectives the stale sites used.
+    #[test]
+    fn a_count_is_read_against_its_noun_however_it_was_spelled_or_qualified() {
+        assert_eq!(
+            numbers_before("six independent rounds have run", &["rounds"]),
+            [6]
+        );
+        assert_eq!(
+            numbers_before("the five tracked independent M3-W8 rounds", &["rounds"]),
+            [5]
+        );
+        assert_eq!(numbers_before("5 rounds are tracked", &["rounds"]), [5]);
+        assert_eq!(
+            numbers_before("over nine world lifecycles", &["world", "lifecycles"]),
+            [9]
+        );
+        // An ordinal is a reference into the record's numbering rather than a
+        // count of it, and prose that states no figure states none.
+        assert!(numbers_before("the fourth round of review", &["round"]).is_empty());
+        assert!(numbers_before("every round returned FAIL", &["rounds"]).is_empty());
+    }
+
+    #[test]
+    fn the_tracked_m3_records_leave_the_round_count_to_the_record_that_counts() {
+        let root = std::env::current_dir()
+            .expect("the current directory must be available")
+            .join("../..");
+        let mut violations = Vec::new();
+
+        verify_review_round_counts(&root, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_tracked_m3_records_agree_with_the_harnesss_declared_world_lifecycles() {
+        let root = std::env::current_dir()
+            .expect("the current directory must be available")
+            .join("../..");
+        let mut violations = Vec::new();
+
+        verify_harness_lifecycles(&root, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
     }
 
     #[test]

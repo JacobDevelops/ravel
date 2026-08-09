@@ -22,13 +22,13 @@
       "record": "loader-overhead.json",
       "id": "df717025a48fab4f6ae5702bc481f12a222e689f",
       "changeId": "wxzwmyllqvrxvzkkyuzrkvlxoykrqoqm",
-      "reason": "M2-W5's launch attestation and M2-W8's budget rest on this trial, and it ran on a dirty working copy, so neither can be tied to a tree a reader can inspect. It cannot be repaired by regeneration: the launcher capture behind the launch record is deleted by design once hashed, and re-running would measure a different tree and report different numbers. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "M2-W5's launch attestation and M2-W8's budget rest on this trial, and it ran on a dirty working copy, so neither can be tied to a tree a reader can inspect. It cannot be repaired by regeneration: the launcher capture behind the launch record is deleted by design once hashed, and re-running would measure a different tree and report different numbers."
     },
     {
       "record": "prism-launch.json",
       "id": "df717025a48fab4f6ae5702bc481f12a222e689f",
       "changeId": "wxzwmyllqvrxvzkkyuzrkvlxoykrqoqm",
-      "reason": "M2-W5's launch attestation and M2-W8's budget rest on this trial, and it ran on a dirty working copy, so neither can be tied to a tree a reader can inspect. It cannot be repaired by regeneration: the launcher capture behind the launch record is deleted by design once hashed, and re-running would measure a different tree and report different numbers. The pinned commit is reachable from no visible head, so no clone carries it."
+      "reason": "M2-W5's launch attestation and M2-W8's budget rest on this trial, and it ran on a dirty working copy, so neither can be tied to a tree a reader can inspect. It cannot be repaired by regeneration: the launcher capture behind the launch record is deleted by design once hashed, and re-running would measure a different tree and report different numbers."
     }
   ],
   "versions": {

@@ -882,11 +882,7 @@ fn numbers_before(document: &str, noun: &[&str]) -> Vec<usize> {
     let words: Vec<&str> = document.split_whitespace().collect();
     let mut found = Vec::new();
     for (at, window) in words.windows(noun.len()).enumerate() {
-        let matches = noun.iter().zip(window).all(|(expected, word)| {
-            word.trim_matches(|character: char| !character.is_alphanumeric())
-                .eq_ignore_ascii_case(expected)
-        });
-        if !matches {
+        if !window_is_noun(noun, window) {
             continue;
         }
         let from = at.saturating_sub(COUNT_LOOKBACK);
@@ -896,6 +892,51 @@ fn numbers_before(document: &str, noun: &[&str]) -> Vec<usize> {
     }
     found
 }
+
+/// Every number written after `noun`, within the same window [`numbers_before`]
+/// reads backwards.
+///
+/// A count that follows its noun counts it exactly as one that precedes it does —
+/// `the rounds recorded here number five` is the same claim as `five rounds` — so
+/// a check that only looked backwards could be walked around by moving the figure
+/// past the word. The word immediately after the noun is skipped, which is what
+/// keeps a numeral that labels rather than counts (`Round 5`, `rounds to 0.05`)
+/// out of the window.
+fn numbers_after(document: &str, noun: &[&str]) -> Vec<usize> {
+    let words: Vec<&str> = document.split_whitespace().collect();
+    let mut found = Vec::new();
+    for (at, window) in words.windows(noun.len()).enumerate() {
+        if !window_is_noun(noun, window) {
+            continue;
+        }
+        let from = at + noun.len() + 1;
+        let to = (at + noun.len() + COUNT_LOOKBACK).min(words.len());
+        if from >= to {
+            continue;
+        }
+        if let Some(count) = words[from..to].iter().find_map(|word| numeral(word)) {
+            found.push(count);
+        }
+    }
+    found
+}
+
+/// Whether this run of words is the noun, whatever punctuation sits around it.
+fn window_is_noun(noun: &[&str], window: &[&str]) -> bool {
+    noun.iter().zip(window).all(|(expected, word)| {
+        word.trim_matches(|character: char| !character.is_alphanumeric())
+            .eq_ignore_ascii_case(expected)
+    })
+}
+
+/// Every noun this repository's prose has used for a set of independent review
+/// rounds.
+///
+/// Plural only, and that is a limit rather than an oversight: a singular round
+/// noun sits beside counts of other things all through these records — `that
+/// round found four more`, `the audit recomputed 728 file digests` — so holding
+/// the singular would report those instead of a tally of rounds.
+const ROUND_NOUNS: [&str; 5] = ["rounds", "verdicts", "audits", "reviews", "iterations"];
 
 /// Keeps the count of a milestone's independent review rounds in the one record
 /// that counts them.
@@ -909,14 +950,19 @@ fn numbers_before(document: &str, noun: &[&str]) -> Vec<usize> {
 /// instead of trusting prose to keep it.
 ///
 /// Known limit, stated rather than implied: this catches a *cardinal* count of
-/// rounds, spelled either way — `six rounds`, `5 rounds`. An ordinal naming one
-/// round that has already run (`the fourth round`) is a reference into the
-/// record's own numbering and never drifts, so it is allowed; an ordinal naming a
-/// round that has not run yet (`a sixth independent round decides that`) does
-/// drift and is not caught here. Nothing but the record counting for itself
-/// closes that one. `audits` is held alongside `rounds` and `verdicts` because
-/// M2's record calls its rounds audits, and a rule that missed the noun the prose
-/// uses would be the same gap in a new place.
+/// rounds, spelled either way and on either side of the noun — `six rounds`, `5
+/// rounds`, `the rounds recorded here number five`. An ordinal naming one round
+/// that has already run (`the fourth round`) is a reference into the record's own
+/// numbering and never drifts, so it is allowed; an ordinal naming a round that
+/// has not run yet (`a sixth independent round decides that`) does drift and is
+/// not caught here. Nothing but the record counting for itself closes that one.
+///
+/// Every word the prose has reached for is held, because a rule that missed the
+/// noun a sentence chose would be the same gap in a new place: M2's record calls
+/// its rounds audits, and a round restated as a review or an iteration is the same
+/// restatement. [`ROUND_NOUNS`] states the one limit that costs something — the
+/// noun has to be plural — and the numeral immediately after the noun is walked
+/// past for the reason [`numbers_after`] gives.
 fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
     // M2 is held to the same rule as M3, and for the same reason rather than by
     // analogy: its record now carries successive audits too, its manifest and
@@ -933,22 +979,31 @@ fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
         for relative in documents {
             match fs::read_to_string(root.join(relative)) {
                 Ok(document) => {
-                    // A round and its verdict are one thing counted two ways, and
-                    // the stale sites used both nouns, so both are held to the
-                    // record.
-                    for noun in ["rounds", "verdicts", "audits"] {
-                        for count in numbers_before(&document, &[noun]) {
-                            violations.push(format!(
-                                "{relative} restates that {count} review {noun} exist; \
-                                 {record} is the one record that counts them"
-                            ));
-                        }
+                    for (count, noun) in round_count_restatements(&document) {
+                        violations.push(format!(
+                            "{relative} restates that {count} review {noun} exist; \
+                             {record} is the one record that counts them"
+                        ));
                     }
                 }
                 Err(error) => violations.push(format!("cannot read {relative}: {error}")),
             }
         }
     }
+}
+
+/// Every count of review rounds one document states, with the noun it counted.
+fn round_count_restatements(document: &str) -> Vec<(usize, &'static str)> {
+    // A round and its verdict are one thing counted two ways, and the stale sites
+    // used both nouns, so both are held to the record.
+    ROUND_NOUNS
+        .into_iter()
+        .flat_map(|noun| {
+            let mut counts = numbers_before(document, &[noun]);
+            counts.extend(numbers_after(document, &[noun]));
+            counts.into_iter().map(move |count| (count, noun))
+        })
+        .collect()
 }
 
 /// Keeps a percentage out of a manifest's prose, because nothing recomputes one.
@@ -4115,12 +4170,12 @@ mod tests {
         campaign_document_violations, change_mismatch, declared_hook_names,
         declares_unsafe_prohibition, denied_hook_names, hook_counts, hook_document_violations,
         numbers_before, pinned_commit_mismatch, redacted_path, required_scaffold_paths,
-        verify_campaign_inventory, verify_decision_hook_claims, verify_evidence_records,
-        verify_experiment_fence, verify_harness_lifecycles, verify_hook_inventory_document,
-        verify_ignored_boundaries, verify_manifest_percentages, verify_milestone,
-        verify_review_round_counts, verify_scaffold, verify_spikes, verify_testkit_fence,
-        verify_tracked_contents, verify_tracked_paths, verify_version_boundary, verify_void_limits,
-        visible_commit,
+        round_count_restatements, verify_campaign_inventory, verify_decision_hook_claims,
+        verify_evidence_records, verify_experiment_fence, verify_harness_lifecycles,
+        verify_hook_inventory_document, verify_ignored_boundaries, verify_manifest_percentages,
+        verify_milestone, verify_review_round_counts, verify_scaffold, verify_spikes,
+        verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
+        verify_version_boundary, verify_void_limits, visible_commit,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -5587,6 +5642,42 @@ mod tests {
         // count of it, and prose that states no figure states none.
         assert!(numbers_before("the fourth round of review", &["round"]).is_empty());
         assert!(numbers_before("every round returned FAIL", &["rounds"]).is_empty());
+    }
+
+    /// The restatements an independent round walked the round-count check around.
+    ///
+    /// Each of these left the gate at zero: two called a round something the noun
+    /// set had missed, and one put its figure after the noun where a backward
+    /// window could not reach it. They are held here by the phrasing that escaped
+    /// rather than by a paraphrase of it.
+    #[test]
+    fn a_round_count_is_caught_whichever_noun_it_chose_and_whichever_side_it_sat() {
+        for restatement in [
+            "Five independent reviews have run against this milestone.",
+            "The independent rounds recorded here number five in total.",
+            "There have been five review iterations.",
+            "Five independent rounds have run.",
+            "There are 5 verdicts recorded below.",
+        ] {
+            assert_eq!(
+                round_count_restatements(restatement)
+                    .into_iter()
+                    .map(|(count, _)| count)
+                    .collect::<Vec<_>>(),
+                [5],
+                "{restatement}"
+            );
+        }
+
+        // A numeral against the noun that labels or divides rather than counts
+        // rounds, which is why the word beside the noun is walked past.
+        for innocent in [
+            "the profiling overhead rounds to `0.05` and not one digit better",
+            "Round 5 returned FAIL with four blocking findings.",
+            "every round so far has been an independent one",
+        ] {
+            assert_eq!(round_count_restatements(innocent), Vec::new(), "{innocent}");
+        }
     }
 
     #[test]

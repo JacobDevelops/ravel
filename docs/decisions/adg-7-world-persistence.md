@@ -15,7 +15,9 @@ limit; each contained envelope conforms to
 The aggregate is canonical UTF-8 JSON with aggregate format version 1 and an
 owner-sorted list of envelopes. The decompressed canonical aggregate byte sequence
 that crosses JNI is limited to exactly **1 MiB**. Before parsing, `ravel-save`
-enforces that bound with a limiting reader. It refuses an oversized incoming
+enforces that bound by measuring the complete slice — not with a limiting reader,
+which an earlier form of this sentence named and which the Phase C selection below
+rejected with its reason. It refuses an oversized incoming
 aggregate during open before it enters staged or long-lived state, and refuses an
 oversized replacement before its bytes reach Java. This is M3's fixed safety
 ceiling: large enough for the measured persistence proof without turning unbounded

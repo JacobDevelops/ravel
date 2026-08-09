@@ -620,8 +620,13 @@ tests, so "cannot open a world" was proven as *the loader answers no when asked*
 and nothing in a launch asked. ADG-7's open crossing asks it now:
 `crates/ravel-bootstrap/src/persistence.rs` consults the gate before it touches a
 byte of world state, and a refusal becomes the diagnostic the Java adapter
-refuses the load on. The machine's half is live in a launch — a required mod that
-fails halts the set and from then on no world opens. The report's half is carried
+refuses the load on. The machine's half is consulted on that crossing in a launch,
+and it has not yet refused in one: no recorded launch has a required mod fail, and
+the single recorded world refusal came from the saved-data version check inside
+`SavedDataAggregate::open` rather than from `open_world`, which admitted every
+time. What a launch shows is that the gate is asked; that a halted set withholds a
+world is proven in-gate by tests that fail when the call is removed. The report's
+half is carried
 from `install` and holds nothing in a launch, because the pipeline that validates
 a package and orders a graph runs when a pack is compiled rather than inside the
 game process. So an invalid package cannot reach a launch to be refused in one,

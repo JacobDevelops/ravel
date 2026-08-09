@@ -67,11 +67,11 @@ once it is fixed leaves no way to tell it from one that was never raised:
   diagnostic drawn in the client. See `linux-process-matrix.json` under
   `worldPersistenceRoundTrip`, and `reviewCeiling` in the same section for what a
   reviewer can and cannot recompute.
-- **Native surfaces — answered, M3-W7 closed.** Rewriting all 33 reviewed hooks
-  proves reachability, not behaviour, so each surface was observed on its own.
-  The saved-data half is the world round trip campaign; the screen, settings, and
-  command halves are the surface campaign that followed it, at the same 33 targets
-  and on the same build. The one surface that campaign found *failing* — opt-in
+- **Native surfaces — answered, M3-W7 closed.** Rewriting all 33 callable targets
+  the campaign reviewed proves reachability, not behaviour, so each surface was
+  observed on its own. The saved-data half is the world round trip campaign; the
+  screen, settings, and command halves are the surface campaign that followed it,
+  over the same inventory and on the same build. The one surface that campaign found *failing* — opt-in
   profiling, whose accuracy caveat was unreadable in the native client — was
   fixed by change `npozznqz` and re-observed whole in a later launch, so the
   matrix record reads `pass` and this gate is closed on it. See
@@ -323,16 +323,19 @@ missing.
 ## `linux-process-matrix.json`
 
 It comes from launches rather than from a task, because the thing it measures is
-a launcher starting a game and no task can stand in for that. It now holds five
-launch campaigns — the earlier 31-target matrix, the world round trip, the surface
-campaign, the caveat re-observation, and the profiling re-observation — and the
-most useful thing in it is why the second could not simply extend the first.
+a launcher starting a game and no task can stand in for that. It holds these launch
+campaigns, in order — the earlier 31-target matrix, the world round trip, the
+surface campaign, the caveat re-observation, and the profiling re-observation —
+and the most useful thing in it is why the second could not simply extend the
+first. That list is the one enumeration of them; nothing else here or in the
+record restates how many there are.
 
 **The earlier matrix could not be carried forward.** Two ADG-7 world persistence
 seams entered the reviewed inventory — `world.open-persistence` on
 `Minecraft.doWorldLoad` and `world.save-persistence` on
-`MinecraftServer.saveAllChunks` — and the callable-target count moved from 31 to
-33 over the same 15 classes. A matrix is a claim about one set of targets in one
+`MinecraftServer.saveAllChunks` — and the count moved from 31 to 33 callable
+targets over the same 15 classes in the reviewed inventory. A matrix is a claim
+about one set of targets in one
 build, so a count that moved invalidates the reconciliation rather than adding to
 it. The second reason is stronger still: no build the earlier campaign ran
 contained a mod that owned world data at all. `ravel-composed-host` carried only
@@ -341,7 +344,7 @@ to it, so the ADG-7 round trip was unprovable by that campaign whatever input it
 received — which is why M3-W4 and M3-W7 stayed open through it and why its
 saved-data row persisted a vanilla scoreboard.
 
-The world round trip campaign, the second of the four, is three launches at 33
+The world round trip campaign, the second in that list, is three launches at 33
 callable targets, and its claim is narrow on purpose. The rewrite of both persistence methods was already proven
 in-gate by `jvm/harness/PersistenceMain.java` over nine world lifecycles; what
 these launches add is the real game's storage on both ends of it. A world was
@@ -366,7 +369,8 @@ The third campaign then re-observed the rows the first had left inherited, and i
 did so against the *same build* as the world round trip: the agent jar, screen
 jar, and native library were rebuilt from the working tree and came out
 byte-identical to the digests already recorded, so there is one build and one
-33-target inventory behind both. Its three launches reported `rewrote 15 classes
+inventory of 33 callable targets behind both. Its three launches reported
+`rewrote 15 classes
 and 33 methods` once a world was open, and `11 classes and 27 methods` on the
 title-only launch. That is the same inventory minus the four classes a world loads
 — `RecipeManager`, `Commands`, `ReloadableServerResources`, `SavedDataStorage` —
@@ -506,8 +510,8 @@ resolutions rather than disappearing from the audit trail:
   resolution to parse resources without loading game classes. Per-class matched
   counts and failure reporting then reconciled `TitleScreen` and every other
   reviewed class: 15 classes, 31 callable methods, zero transformation failures.
-  The current campaign reconciles the same 15 classes at 33 callable methods,
-  again with zero transformation failures.
+  The campaigns recorded here reconcile the same 15 classes in the reviewed
+  inventory at 33 callable targets, again with zero transformation failures.
 - **Title-only/SIGTERM — superseded.** The passing trial opened a world, used Save
   and Quit to Title, selected Quit Game, and let Java and Prism exit naturally.
   Earlier title-only or forced-cleanup runs remain private historical evidence and

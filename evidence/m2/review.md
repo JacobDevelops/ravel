@@ -1,6 +1,16 @@
-# M2 Independent Closure Review — Cold Audit
+# M2 Independent Closure Review — Cold Audits
 
 Result: FAIL
+
+Two independent cold audits ran against successive states of the M2 evidence, and
+both returned FAIL. Neither reviewer wrote any part of the work under review, and
+the second had not seen the project before reviewing it. The last audit below is
+the standing verdict; the blocking findings of both are answered, and answering
+them is not closure, because what M2 needs is an independent audit that returns a
+pass. Each audit's own findings and what became of them are recorded in
+`evidence/m2/manifest.json`, and the sections below are the verdicts themselves.
+
+## The first cold audit's scope
 
 Reviewer: an independent cold auditor who wrote no part of the work under review.
 Scope: the M2 milestone gate — `ROADMAP.md`'s M2 rows and their Verification
@@ -15,17 +25,19 @@ reader could obtain; that digest is kept in the manifest's deviations and the
 verdict it carried is withdrawn. `review.result` is now `fail`, which is this
 audit's.
 
-The verdict below is the auditor's, reproduced without softening and with nothing
-added. Its long lines are re-wrapped and its headings demoted one level so this
-repository's markdown lint passes; no word is changed. Nothing in it needed
-redacting: it names no path outside this repository, no account, and no launch
-command.
+Each verdict below is its auditor's, reproduced without softening and with nothing
+added. Long lines are re-wrapped, headings are demoted one level, and where two
+audits label a section identically the later one's heading carries its audit name,
+all so this repository's markdown lint passes; no word of either verdict is changed. Nothing in either needed
+redacting: neither names a path outside this repository, an account, or a launch
+command. Where a repair or a correction belongs beside a finding it is a marked
+editor's note, outside the reviewer's text and never woven into it.
 
-Its `file:line` anchors are as of the tree the auditor read, which precedes this
-record. F1 has since been repaired by wiring the gate to the world-open crossing
-and F7 by correcting the wording, so those two anchors describe a state that has
-been changed rather than one that stands; the rest stand. What each finding
-became is recorded in `evidence/m2/manifest.json`.
+Every `file:line` anchor is as of the tree its auditor read, and each read a tree
+that precedes its own section. In the first audit, F1 has since been repaired by
+wiring the gate to the world-open crossing and F7 by correcting the wording, so
+those two anchors describe a state that has been changed rather than one that
+stands; the rest stand.
 
 ---
 
@@ -197,3 +209,264 @@ behind it is deleted by design and the only tests over it hold the record agains
 They would also be trusting the 429-test, 86.43%-coverage figures at a revision two of the admitted
 records postdate, and every loader number as a floor on one machine against one no-op package, which
 the record says plainly in `whatThisDoesNotSay`.
+
+---
+
+## Second cold audit — VERDICT: FAIL
+
+### M2 Independent Closure Review — second cold audit
+
+Result: FAIL
+
+Reviewer: an independent reviewer who wrote no part of the work under review, had not
+seen this project before this review, and judged the artifacts rather than the
+repository's account of them. All mutation work was done in a private copy of the tree;
+the repository under review was never written to (`jj st` shows the same four unrelated
+M1 files at the end as at the start).
+
+#### What I verified by breaking
+
+| Claim | Method | Result |
+| --- | --- | --- |
+| M2 is subject to `verify_recorded_verdict` | set `.review.result="pass"` and downgraded the blocking deviation, left `review.md` at `Result: FAIL` | `verify milestone M2` → exit 1, `verify scaffold` → exit 1, both reporting "records review.result pass while the review record it binds states fail". M2 **is** subject to the rule, in both gates. |
+| A record's digest binding is enforced | falsified `prism-launch.json` (`nativeInvocations` 144→999999, `classesRewritten` 2→77) with the manifest entry intact | `verify scaffold` → exit 1 on the digest mismatch. |
+| The F1 repair is real, not decorative | deleted the `open_world` call from `stage_world` in `crates/ravel-bootstrap/src/persistence.rs` | `cargo test -p ravel-bootstrap` → 2 failures, one per half (`a_halted_set_cannot_open_a_world_at_the_crossing_the_game_calls`, `a_refusal_the_machine_never_saw_still_withholds_the_world`). The manifest's "both halves are covered by tests that fail when the call is removed" is true. |
+| The two generated records are byte-bound to live runs | one-byte edit to each record | `noop_pipeline` and `pre_world_gate` each fail `the_recorded_evidence_is_what_the_{loader,gate}_does_now`. |
+| `pre-world-gate.json` describes the gate rather than a fixture | mutated `PreWorldReport::world_access` to always admit | 2 failures: `no_invalid_package_set_can_open_a_world` **and** `the_recorded_evidence_is_what_the_gate_does_now`. The record follows the code's fail-closed polarity. |
+| The redaction rule over records bites | injected a launcher-style path and a `password=` assignment into a record | `verify milestone M2` → exit 1, "evidence/m2/pre-world-gate.json contains sensitive or local data". |
+| The clone claim in the last deviation | `git clone --no-local` of the repo into a scratch directory | `refs/jj/*` empty; the abandoned `93772540…` is not an object; `aac3bfd2…` is a commit; all five `inputs[]` digests recompute there with `git show`; `evidence/m2/review.md` is absent at `aac3bfd2…` and present at clone HEAD hashing `dc8e8b68…`. |
+
+Baseline before any mutation: `verify milestone M2` → exit 1 on exactly the two
+documented violations.
+
+#### Digests and arithmetic
+
+All twelve bindings I could recompute, recomputed. Five `inputs[]` digests match at the
+pinned `aac3bfd2…` (via jj, and again via git in a clean clone). All four
+`benchmarks.results[]` digests and the `review.record` digest match the tracked files,
+both in the working copy and at clone HEAD. `revision.changeId` `pumzmwvx…` is the
+change that introduced `evidence/m2/manifest.json`, and `revision.id` is the one visible
+commit that change is at; the pinning rule (`verify_pinned_commit`) therefore holds for
+the manifest.
+
+The recorded arithmetic is true, including the parts the manifest admits are awkward:
+
+- 6 hook entries across 2 classes at `aac3bfd2…`, kinds `4 static-method / 1
+  instance-method / 1 instance-field` → `classesRewritten: 2`, `methodsRewritten: 5`.
+  This is the only independently recomputable figure behind M2-W5 and it reconciles
+  exactly. Today's inventory holds 37 entries, which is why anchoring the count to the
+  pinned revision matters and is done correctly.
+- residual `7084 − (1212 + 221 + 4318) = 1333`; secant `(1987431 − 6272)/255 =
+  7769.2509…`; binary growth `(930480 − 447744)/256 = 1885.6875` floored to 1885; pack
+  compile `(3054 − 2174)/256 = 3.4375` ms, matching the 3.44 ms quoted in the roadmap;
+  `0.625 ns × 160000 = 0.1 ms`; `429 = 429 + 0 + 0`.
+- all six budget limits are exactly `ceil(measured × 2)`, and
+  `experiments/m2-loader-overhead/src/main.rs:277` is `round((measured *
+  HEADROOM).ceil())`, so the deviation explaining the 12.0-against-5.51 limit is
+  accurate.
+- the orphaned `abc003fd…` digest matches none of the 425 tracked files at clone HEAD,
+  confirming the previous audit's orphan check at this revision.
+
+M2's substance holds. The pre-world gate is genuinely consulted on a path the game
+takes: `world.open-persistence` sits on `Minecraft.doWorldLoad` with `refuses = true`,
+`Persistence.decide` calls `Hook.ravelOpenWorldPersistence`, and `stage_world` asks
+`open_world` before it reads or writes a byte of world state, with
+null-refuses/empty-admits polarity intact. I would have accepted M2 on the state of the
+work.
+
+#### Findings — second cold audit
+
+**F1 — blocking. Two of the four admitted records pin a revision no reader can obtain,
+and no rule looks.** `evidence/m2/prism-launch.json` (`trial.revision`) and
+`evidence/m2/loader-overhead.json` (`trial.revision`) both record `id: df717025…`,
+`changeId: wxzwmyll…`, `dirty: true`. `::visible_heads() & (df717025…)` resolves to
+nothing — the commit survives only in this machine's operation log — and it is not an
+object in a fresh clone. The change `wxzwmyll…` is at a *different* commit, `72c6fecc…`,
+whose tree is not the one the launch and the measurement were made on. So M2-W5's launch
+and M2-W8's budget each name a tree that does not exist anywhere a reader can reach, and
+`dirty: true` means they were not made on any commit's tree in the first place.
+
+This is not a hypothetical hole. It is the exact defect the manifest's own last two
+deviations describe repairing — "a cold reviewer's fresh clone found every input digest
+recorded here unreadable" — and the repair (`verify_pinned_commit`) stops at the
+manifest boundary. `verify_recorded_change` exists and applies the change-provenance
+rule to `.trial.revision.changeId`, but it is called only from `verify_spikes`, over
+`evidence/m1/spikes/`. Established by breaking: I rewrote `loader-overhead.json`'s
+`trial.revision.id` to forty zeroes and its `changeId` to `zzzz…`, updated the manifest
+digest, and ran both gates — `verify scaffold` → **exit 0**, `verify milestone M2` →
+exit 1 on the two pre-existing violations only. A record can pin a commit that has never
+existed and nothing says a word.
+
+Fixing it does not require regenerating anything, and cannot: the launcher log is
+deleted by design and re-running the measurement would produce different numbers. The
+smallest fix is (a) a rule — apply the `visible_commit` test and the
+`changeId`-owns-`id` test to `.trial.revision` in every record a manifest admits, the
+way `verify_pinned_commit` already does for `.revision`, and require `dirty` to be
+declared rather than ignored; and (b) a deviation in `evidence/m2/manifest.json` stating
+that these two records name an abandoned dirty working copy, that no reader can obtain
+it, and what that costs — which is that M2-W5's attestation and M2-W8's budget cannot be
+tied to any inspectable tree. Either fix on its own leaves half the problem; the rule
+without the disclosure leaves a violation standing, and the disclosure without the rule
+leaves the next record free to do it again.
+
+> **Editor's note, not the reviewer's text.** F1 is answered, and by both halves it
+> asks for. The rule now exists: `verify_admitted_records` applies the
+> `visible_commit` and `changeId`-owns-`id` tests to `.trial.revision` in every
+> record a manifest admits, and requires `dirty` to be declared rather than
+> ignored. The disclosure exists too: `evidence/m2/manifest.json` records the two
+> records that name an abandoned dirty working copy under
+> `unobtainableRevisions`, states that no reader can obtain it, and states what it
+> costs — M2-W5's attestation and M2-W8's budget are tied to no inspectable tree.
+>
+> **A second editor's note on the demonstration, attributed to the fix rather than
+> to the reviewer.** The mutation above used forty zeroes as the commit id and
+> thirty-two `z`s as the change id. Those are not absent values: they are jj's
+> root commit and root change, and they resolve and agree with each other, so that
+> particular mutation passed the first version of the rule rather than being
+> caught by it. The finding stands on its own — the hole was real, and once the
+> rule was written correctly it condemned 27 pins across the evidence set — but
+> this one demonstration was weaker than it reads.
+
+**F2 — blocking. M2 closure does not require its four records to be named in
+`benchmarks.results`, so a one-line edit detaches a record from its digest and both
+gates stay green.** `verify_m3_manifest` requires `benchmarks.results` to name all four
+M3 records exactly, and its docstring says why: "a record no manifest names is a record
+no digest covers". `verify_m2_manifest` has no equivalent. `M2_RECORDS` requires each
+file to exist and to satisfy a content rule, which is not the same thing. Established by
+breaking: I removed the `prism-launch.json` entry from `benchmarks.results` and rewrote
+the record's `nativeInvocations` to 999999 and `classesRewritten` to 77 — `verify
+scaffold` → **exit 0**, `verify milestone M2` → exit 1 on the two pre-existing
+violations only. `cargo test -p ravel-spike-adg-5-prism` also passed 6/6 under that
+mutation, because the generator's tests hold the record's prose and its attested pair,
+not its counts. The attested figures in M2's only production-behaviour record are
+protected by exactly one thing, and that thing can be deleted by a jq edit at the moment
+the milestone closes — "the numbers a closed milestone records are exactly the ones
+nobody looks at again", as the repository's own docstring puts it. Fix: mirror M3's rule
+— require `benchmarks.results` to name `noop-pipeline.json`, `pre-world-gate.json`,
+`loader-overhead.json` and `prism-launch.json` exactly.
+
+> **Editor's note, not the reviewer's text.** F2 is answered.
+> `verify_admitted_inventory` requires `benchmarks.results` to name
+> `noop-pipeline.json`, `pre-world-gate.json`, `loader-overhead.json` and
+> `prism-launch.json` exactly, at the scaffold level rather than only at closure,
+> so removing an entry is a violation rather than a silent detachment.
+
+**F3 — minor. `evidence/m2/manifest.json` deviation F5 says two records "did not exist
+at that revision"; they existed with different bytes.** At `93772540…`,
+`noop-pipeline.json` hashes `d4dcf5af…` and `pre-world-gate.json` hashes `1577b23d…`.
+The audit record M2 binds states this correctly (regenerated, with both digest pairs);
+the manifest's restatement of it does not. The conclusion drawn from it — that the
+attested run did not verify the bytes the manifest now admits — is unaffected and true.
+Fix: say "held different bytes" rather than "did not exist".
+
+> **Editor's note, not the reviewer's text.** F3 is answered: the deviation now says
+> the two records held different bytes at that revision and gives both digests.
+
+**F4 — minor. `evidence/m2/README.md:41` says "every digest here is recomputable"; line
+29 of the same file says the opposite about one of them, and there are two.**
+`prism-launch.json` carries `redacted-instance-launch.log` and `libravel_bootstrap.so`
+at `reproducible: false`, plus `ravel-agent.jar` at `reproducible: true` whose only
+named provenance is the dirty, unobtainable revision of F1 — so in practice three. The
+sentence is in the paragraph about the review and plausibly means "every digest the
+manifest binds", which is true, but as written it contradicts the record it summarises.
+Fix: scope the sentence to the bound digests.
+
+> **Editor's note, not the reviewer's text.** F4 is answered: `evidence/m2/README.md`
+> scopes the sentence to the digests the manifest binds and names the three in
+> `prism-launch.json` that nobody can recompute.
+
+**F5 — minor. "The machine's half is live in a launch" is an inference presented as an
+observation.** `ROADMAP.md`'s M2-W7 note and the corresponding manifest deviation both
+assert that a required mod that fails halts the set so that no world opens thereafter,
+in a launch. The crossing firing in a real process is recorded —
+`evidence/m3/linux-process-matrix.json` has three launches through
+`world.open-persistence`, one of which refused a world and drew the refusal screen — but
+that refusal came from the saved-data version check inside `SavedDataAggregate::open`,
+not from `open_world`, which admitted in every recorded launch. No recorded launch has a
+required mod fail. The mechanism is connected and demonstrably firing, which is why this
+is minor rather than a repeat of F1's original shape, but the wording claims a launch
+that is not in evidence, and the cited support lives in a milestone whose own review
+records `fail`. Fix: say the gate is consulted on the crossing and that the machine half
+has not yet refused in a recorded launch.
+
+> **Editor's note, not the reviewer's text.** F5 is answered: `ROADMAP.md`'s M2-W7
+> note and the matching deviation now say the gate is consulted on the crossing and
+> that the machine half has not yet refused in a recorded launch.
+
+**F6 — minor, carried rather than new. The one budget limit that is not what the
+record's rule says it is.** `loader-overhead.json`'s `budget.rule` reads "Every limit is
+the M2 measurement times two"; `loader.modCall.p99` is 12.0 against 5.51. The true rule
+is `ceil(measured × 2)`, which I confirmed against the generator and against all six
+limits. The manifest's deviation states this and the record is deliberately left
+unedited. Correct as handled; recorded here so the next reader is not left to rediscover
+it.
+
+#### Why this is FAIL and not PASS with notes
+
+The work is proven. Every row's substance survived the checks I could run, the blocking
+finding of the previous audit is genuinely repaired and the repair is mutation-covered,
+and the two generated records are bound to live behaviour in a way I broke twice to
+confirm. What fails is closure, on two controls that a one-line edit clears — one of
+which is not merely clearable but already cleared, right now, in the two records that
+carry M2's launch attestation and the budget M3 regresses against. This project's
+standing lesson is that a control which can be greened by editing a string is not a
+control, and the milestone gate is where that lesson is supposed to be enforced. Closing
+M2 today would freeze both holes into the one milestone nobody re-examines.
+
+The path is short and fully specified: the record-level pinning rule plus its disclosure
+(F1), the four-record naming rule (F2), the three wording corrections (F3-F5), and a
+re-run of this review against the repaired state.
+
+#### Reading-only ceiling
+
+Everything below I judged by reading, not by breaking. This list is the ceiling on this
+review's strength.
+
+- **M2-W1 through M2-W4 in their entirety.** I did not read the test bodies behind
+  canonical IDs, sides, versions, diagnostics, package round-trip and tamper refusal,
+  dependency resolution cases, or the lifecycle transition table and spec invariants,
+  and I mutated none of them. I relied on the bound audit record's row-by-row citations.
+  If any of those four rows is proven by a test that would pass with its subject
+  removed, this review would not have found it. This is the largest gap in my coverage.
+- `schemas/evidence.schema.json`. I read it only through `tools/ravel-xtask/src/lib.rs`
+  and greps. I did not check that schema validation rejects a prose-named
+  `review.record`, and I did not test the `hashedArtifact` / `privateCapture` typing the
+  baseline docstring rests on.
+- `tests.total: 429` and `lineCoveragePercent: 86.43`. Not verified, and not verifiable:
+  they were recorded against an abandoned commit and nothing recomputes them. Read as an
+  attestation.
+- The unrecomputable digests, correctly declared as such:
+  `redacted-instance-launch.log`, `libravel_bootstrap.so`, `ravel-agent.jar`,
+  `commands[].logSha256`, `commands[].argvSha256`, `trial.commandSha256`.
+- The whole of M2-W5's launch. I ran no launch and read no capture. `stockLauncher`,
+  `launcherChangedLines`, the instance component list, and `nativeInvocations: 144` are
+  the operator's word; only the 2-classes/5-methods pair reconciles against tracked
+  data, and I did check that.
+- `jvm/bootstrap/dev/ravel/jvm/Persistence.java`. Read only. That a refusal string
+  actually stops the world load in a running game is code I read, not behaviour I
+  observed.
+- `evidence/m3/linux-process-matrix.json`. Read only, not audited, and it belongs to a
+  milestone recording `review.result: fail`.
+- The `verify_recorded_inputs` no-jj skip path. I confirmed the clone facts with git but
+  never ran the xtask inside a jj-less clone to see the announced skip.
+- `verify_redaction`'s pattern coverage. I broke it with one path-and-credential string;
+  I did not probe what it misses.
+- `SPEC.md` §9.2's six conditions and §14's ten states. I read the record and the
+  audit's account of the gap (two conditions absent, two refusals with `failureKind:
+  null`) and did not enumerate the spec myself.
+- Full `ravel:verify` and the whole test suite. Not run; I ran targeted packages and the
+  two xtask gates only.
+- M2-W6's "source-only" claim against the fixture's actual contents. Read from the
+  record, not checked against the package.
+- **Withdrawn findings**, recorded here rather than above. (i) That `noop-pipeline.json`
+  and `pre-world-gate.json` do not hash to their recorded digests *at the pinned
+  revision* — withdrawn once I established that record digests are bound in the working
+  copy by design and that the record-to-revision decoupling is disclosed. (ii) That
+  `review.md` does not exist at the pinned revision — withdrawn: the
+  changeId-owns-introducing-change rule makes that structural, and the digest binds a
+  tracked file that reproduces at clone HEAD. (iii) That the "eight of the ten §14
+  states" prose is a hardcoded absolute count in the generator — withdrawn as
+  immaterial: a new success-path state would break the byte comparison and force the
+  prose to be updated, and only a new terminal state would go stale silently. (iv) That
+  `verify milestone M2` alone does not recompute record digests — withdrawn: `verify
+  scaffold` does, and it runs in `ravel:verify`.

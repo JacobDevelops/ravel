@@ -38,8 +38,10 @@ name to a review the same manifest said nobody could obtain — so the verdict i
 withdrawn as well. A cold audit has since reviewed the gate independently;
 `review.md` is its verdict, reproduced without softening, and
 `review.result` is `fail`. The orphaned digest stays in the manifest's deviations
-so the claim is not lost. Every digest here is recomputable, and that is not the
-same as the measurements being unaffected: `loader-overhead.json` and
+so the claim is not lost. Every digest the manifest binds is recomputable — which is narrower than every digest
+in this directory, because `prism-launch.json` names three of its own that nobody can:
+the deleted launcher log, the native library, and the agent jar. And a recomputable
+digest is not the same as an unaffected measurement: `loader-overhead.json` and
 `prism-launch.json` both record a trial run on a dirty working copy whose commit
 no visible head reaches, so M2-W8's budget and M2-W5's launch attestation are
 readable and tied to no inspectable tree. The manifest discloses both pins under

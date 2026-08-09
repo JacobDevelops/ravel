@@ -32,6 +32,11 @@ pub struct SavedState {
     /// How many times the world has been opened.
     pub visits: u32,
     /// Named waypoints, which version 1 did not have.
+    ///
+    /// Absent rather than empty in a version-1 payload, so the field defaults on
+    /// the way in. Without that, a version-1 world would fail to deserialize at
+    /// the delivery step and never reach the migration that exists to fill this.
+    #[serde(default)]
     pub waypoints: Vec<String>,
 }
 

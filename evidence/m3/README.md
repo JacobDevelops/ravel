@@ -61,9 +61,36 @@ the prototype and found four more: `manifest.json` recorded result digests nothi
 recomputed, it pinned a revision predating the work it covered, it contradicted
 the other records on whether the world round trip had happened, and
 `linux-process-matrix.json` self-declared a `pass` the manifest held open. The
-digests are recomputed, the revision and the re-run gate numbers are this state's,
-and every record now says the same thing. The cause of the digest rot is addressed
-rather than the symptom, and the fix reaches exactly this far:
+digests are recomputed and every record now says the same thing.
+
+The revision and the gate numbers are a narrower claim than that, and an earlier
+draft of this paragraph overstated it by calling them "this state's". They are not
+and cannot be. `revision.id` is `3c3520be`, which resolves to change
+`pqkoksqopryu`, six described changes below the tip of this stack; `tests.total` is
+that revision's 813, which is not the count `ravel:verify` runs on this tip and
+cannot be, since every change above it that adds a test moves the tip's; and
+`commands[0].logSha256` names that run's log. That gap is not the drift the review
+found — it is arithmetic. Recording a gate result changes the tree that produced
+it, so `revision.id` can never be the tip commit, and a manifest asserting
+otherwise would be asserting an identity no evidence file can hold. What the
+manifest attests is therefore that these numbers are the run made on the revision
+it pins, and that the revision it pins is below the tip. The convention is to run
+the gate over the content, write the numbers, then run both gates again over the
+file as it stands and report that second run in the change description rather than
+recursively into these fields; `linux-process-matrix.json` uses the same
+convention for its own gate digests.
+
+Two things about that are bound rather than trusted. `verify_recorded_inputs`
+hashes every recorded input at `revision.id`, so a pinned revision that no longer
+resolves fails the gate instead of reading as verified. And
+`verify_recorded_run`, in the same file, holds every manifest's recorded run to
+its own arithmetic on every `ravel-verify-scaffold` — counts that sum to the
+total, no failures, no skips, coverage at or above the floor, and no manifest
+recording a gate run without a test result. Neither binds the log, which is
+private, and neither can bind the numbers to the tip.
+
+The cause of the digest rot is addressed rather than the symptom, and that fix
+reaches exactly this far:
 `verify_evidence_records` in `tools/ravel-xtask/src/lib.rs` recomputes every
 `benchmarks.results[]` digest and every `platformEvidence[].baselines[]` digest
 that names a tracked file against the working copy, recomputes every `inputs[]`
@@ -221,9 +248,10 @@ which `setValue` leaves at the end of the string. Every line wider than the
 widget therefore showed its tail and hid its head. Enlarging the window did not
 help, because the widget width is fixed rather than derived from the screen.
 
-Both halves of what M3-W6 asks to be explicit were lost to that. The build
-declares five metrics unmeasurable — `retained-memory`, `allocated-memory`,
-`cpu-time`, `transferred-bytes`, `saved-data-footprint` — and the client showed
+Both halves of what M3-W6 asks to be explicit were lost to that. The build that
+campaign ran declared five metrics unmeasurable — `retained-memory`,
+`allocated-memory`, `cpu-time`, `transferred-bytes`, `saved-data-footprint`;
+`tick-count` joined them later, in change `lppyxtnz` — and the client showed
 `-memory, cpu-time, transferred-bytes, saved-data-footprint`, a tail that begins
 inside the word `allocated-memory`. Two of the five names never reached the
 player at all, and `-memory` names neither of them. The accuracy caveat fared
@@ -247,7 +275,9 @@ every other row was observed against, so only the class that drew the clipped
 lines changed. With profiling on and the instance's existing world played for a
 couple of minutes first, the whole report renders: at GUI scale 1 all twelve
 lines, including both mod rows with real call counts and nanosecond totals, the
-five unmeasurable metric names in full, and the accuracy statement whole from its
+six unmeasurable metric names in full — the five above plus `tick-count`, which
+change `lppyxtnz` added and which the same record re-observed over the same three
+wrapped rows the five took — and the accuracy statement whole from its
 subject to its full stop. At the default scale the window has seven rows rather
 than eighteen, and the screen spends them as designed — summary, heading,
 statement — dropping the table and the metric names rather than truncating

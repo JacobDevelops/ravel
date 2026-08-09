@@ -836,12 +836,12 @@ const fn state_name(state: LifecycleState) -> &'static str {
 }
 
 /// The `SPEC.md` §3.4 name of a side, matching its serialized form.
+///
+/// A delegate for the reason [`state_name`] is one: the spelling belongs to
+/// `ravel-core` beside the type, and a second `match` here would be a second
+/// answer that can disagree with it.
 const fn side_name(side: Side) -> &'static str {
-    match side {
-        Side::Client => "client",
-        Side::IntegratedServer => "integrated-server",
-        Side::DedicatedServer => "dedicated-server",
-    }
+    side.name()
 }
 
 #[cfg(test)]

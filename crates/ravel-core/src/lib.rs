@@ -38,7 +38,7 @@ pub use semver::Version;
 /// package's `compatibility.ravel` and a dependency's `version` — and nothing
 /// else needs one, because Minecraft compatibility is an exact-string list.
 pub use semver::VersionReq as VersionRange;
-pub use sides::{EmptySideSet, Side, SideSet};
+pub use sides::{ClientOnly, EmptySideSet, Side, SideSet, WrongSide};
 pub use states::LifecycleState;
 
 /// How a declared dependency constrains the load graph (`SPEC.md` §3.4).

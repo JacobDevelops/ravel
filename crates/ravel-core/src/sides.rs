@@ -31,6 +31,20 @@ impl Side {
     pub const fn is_server(self) -> bool {
         matches!(self, Self::IntegratedServer | Self::DedicatedServer)
     }
+
+    /// Returns the `SPEC.md` §3.4 name of this side, matching its serialized form.
+    ///
+    /// One spelling, so a side reads the same in a refusal, in a report, and in
+    /// a manifest. A second `match` somewhere else is a second answer that can
+    /// disagree with this one.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Client => "client",
+            Self::IntegratedServer => "integrated-server",
+            Self::DedicatedServer => "dedicated-server",
+        }
+    }
 }
 
 /// The non-empty set of sides a mod declares.
@@ -93,6 +107,130 @@ impl TryFrom<BTreeSet<Side>> for SideSet {
     }
 }
 
+/// A value the client side holds and no server side ever does.
+///
+/// `SPEC.md` §14 requires that client-only code never loads on a server side.
+/// The load graph enforces that for a whole mod — a mod whose [`SideSet`] omits
+/// the running side is parked before its code runs — but a mod that legitimately
+/// loads on every side still has client-only parts, and nothing above this type
+/// stops those parts running where there is no client.
+///
+/// This closes that at the point the value is made rather than at the point it is
+/// used, which is the difference between hiding client-only code and not running
+/// it: [`ClientOnly::built_on`] never calls the closure on a server side, so the
+/// texture is not loaded, the screen is not laid out, and the handle is not
+/// opened. [`ClientOnly::get`] then refuses a server side a second time, so a
+/// value that reached one anyway is still not readable there.
+///
+/// The two halves are deliberately independent. The constructor is what makes
+/// the claim true and the accessor is what makes it checkable, and either one
+/// alone would leave the other's failure silent.
+///
+/// # Examples
+///
+/// ```
+/// use ravel_core::{ClientOnly, Side};
+///
+/// // On a server side the closure does not run at all.
+/// let mut ran = false;
+/// let absent = ClientOnly::built_on(Side::DedicatedServer, || {
+///     ran = true;
+///     "the screen"
+/// });
+/// assert!(!ran);
+/// assert!(!absent.is_present());
+/// assert!(absent.get(Side::DedicatedServer).is_err());
+///
+/// // On the client it runs, and only the client may read it.
+/// let present = ClientOnly::built_on(Side::Client, || "the screen");
+/// assert_eq!(present.get(Side::Client), Ok(&"the screen"));
+/// assert!(present.get(Side::IntegratedServer).is_err());
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientOnly<T> {
+    value: Option<T>,
+}
+
+impl<T> ClientOnly<T> {
+    /// Builds the value on the client side, and runs `build` nowhere else.
+    ///
+    /// `side` is the side the set is running on, which the host that composed
+    /// the mod knows and the mod is given. A mod cannot answer this question for
+    /// itself, and one that guessed would be the defect this type exists for.
+    pub fn built_on(side: Side, build: impl FnOnce() -> T) -> Self {
+        Self {
+            value: if side.is_server() {
+                None
+            } else {
+                Some(build())
+            },
+        }
+    }
+
+    /// Returns the value, when `side` is a side that may hold it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WrongSide`] on every server side, and on the client when the
+    /// value was built for a different side — which is a caller asking about one
+    /// side after building for another, and is the same answer either way: there
+    /// is no client-only value here.
+    pub fn get(&self, side: Side) -> Result<&T, WrongSide> {
+        if side.is_server() {
+            return Err(WrongSide { side });
+        }
+        self.value.as_ref().ok_or(WrongSide { side })
+    }
+
+    /// Returns the value mutably, under the same rule as [`ClientOnly::get`].
+    ///
+    /// # Errors
+    ///
+    /// The same as [`ClientOnly::get`].
+    pub fn get_mut(&mut self, side: Side) -> Result<&mut T, WrongSide> {
+        if side.is_server() {
+            return Err(WrongSide { side });
+        }
+        self.value.as_mut().ok_or(WrongSide { side })
+    }
+
+    /// Returns whether the value was built at all.
+    ///
+    /// This is the constructor's answer rather than the accessor's, so a test can
+    /// tell "the closure never ran" apart from "the value exists and this side
+    /// may not read it".
+    #[must_use]
+    pub const fn is_present(&self) -> bool {
+        self.value.is_some()
+    }
+}
+
+/// A side asked for a client-only value it may not hold.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WrongSide {
+    side: Side,
+}
+
+impl WrongSide {
+    /// The side that asked.
+    #[must_use]
+    pub const fn side(&self) -> Side {
+        self.side
+    }
+}
+
+impl fmt::Display for WrongSide {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "the `{}` side holds no client-only value; client-only code runs on the client alone",
+            self.side.name()
+        )
+    }
+}
+
+impl std::error::Error for WrongSide {}
+
 /// A side declaration named no side at all.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EmptySideSet;
@@ -109,7 +247,62 @@ impl std::error::Error for EmptySideSet {}
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{EmptySideSet, Side, SideSet};
+    use super::{ClientOnly, EmptySideSet, Side, SideSet};
+
+    #[test]
+    fn client_only_code_does_not_run_on_any_server_side() {
+        for side in Side::ALL {
+            let mut ran = 0_u32;
+            let held = ClientOnly::built_on(side, || {
+                ran += 1;
+                "the screen"
+            });
+
+            assert_eq!(
+                ran,
+                u32::from(!side.is_server()),
+                "`{}` ran the client-only closure",
+                side.name()
+            );
+            assert_eq!(held.is_present(), !side.is_server(), "{}", side.name());
+        }
+    }
+
+    #[test]
+    fn a_client_only_value_is_readable_on_the_client_and_nowhere_else() {
+        let mut held = ClientOnly::built_on(Side::Client, || 7_u32);
+        assert_eq!(held.get(Side::Client), Ok(&7));
+        *held.get_mut(Side::Client).expect("the client may hold it") += 1;
+        assert_eq!(held.get(Side::Client), Ok(&8));
+
+        for side in Side::ALL.into_iter().filter(|side| side.is_server()) {
+            let refusal = held.get(side).expect_err(side.name());
+            assert_eq!(refusal.side(), side);
+            assert!(refusal.to_string().contains(side.name()), "{refusal}");
+            assert!(held.get_mut(side).is_err(), "{}", side.name());
+        }
+    }
+
+    #[test]
+    fn a_value_that_was_never_built_is_refused_on_the_client_too() {
+        // The accessor's own answer, separate from the constructor's: a caller
+        // that built for a server side and then asked the client gets a refusal
+        // rather than a value that does not exist.
+        let absent = ClientOnly::<u32>::built_on(Side::DedicatedServer, || 7);
+        assert!(!absent.is_present());
+        assert_eq!(
+            absent.get(Side::Client).map(|_| ()),
+            Err(super::WrongSide { side: Side::Client })
+        );
+    }
+
+    #[test]
+    fn every_side_names_itself_the_way_it_serializes() {
+        for side in Side::ALL {
+            let encoded = serde_json::to_string(&side).expect("a side serializes");
+            assert_eq!(encoded, format!("\"{}\"", side.name()));
+        }
+    }
 
     #[test]
     fn only_the_client_is_not_a_server_side() {

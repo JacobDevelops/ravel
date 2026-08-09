@@ -760,3 +760,272 @@ fn m2_work_packages_must_cover_the_whole_milestone() {
         == "M2 manifest must include every work package from M2-W1 through M2-W8 exactly once"));
     fs::remove_file(altered).expect("altered fixture should be removable");
 }
+
+/// The real M3 manifest with one string replaced, written outside the repository.
+///
+/// M3's rules are about the four records under `evidence/m3/` and the manifest's
+/// own per-package gate rows, so the base document is the recorded manifest rather
+/// than a synthetic fixture: a mutation of the real thing is what the audit used
+/// to close M3, and it is what these tests refuse.
+fn altered_m3_manifest(needle: &str, replacement: &str) -> PathBuf {
+    let source = fs::read_to_string(repository_root().join("evidence/m3/manifest.json"))
+        .expect("the M3 manifest must be readable");
+    let altered = source.replace(needle, replacement);
+    assert_ne!(source, altered, "manifest mutation must replace content");
+
+    let path = std::env::temp_dir().join(format!(
+        "ravel-m3-{}-{}.json",
+        std::process::id(),
+        NEXT_PATH.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&path, altered).expect("altered manifest must be writable");
+    path
+}
+
+fn m3_violations(manifest: &Path) -> Vec<String> {
+    let violations = verify_evidence_manifest(repository_root(), manifest, "M3");
+    fs::remove_file(manifest).expect("altered manifest should be removable");
+    violations
+}
+
+#[test]
+fn m3_closure_accepts_the_recorded_prototype_evidence() {
+    // Checked against the real repository, so this test states M3's status: every
+    // gate row is closed and names its evidence, all four records exist and say
+    // what their roadmap rows require, and none of them names a path or a secret.
+    // What M3 does not have is a passing review, which is a verdict rule and not
+    // one of these.
+    let violations = verify_evidence_manifest(
+        repository_root(),
+        &repository_root().join("evidence/m3/manifest.json"),
+        "M3",
+    );
+
+    for unmet in [
+        "M3 closure requires",
+        "M3 manifest must",
+        "M3 recorded",
+        "evidence/m3/",
+    ] {
+        assert!(
+            !violations
+                .iter()
+                .any(|violation| violation.starts_with(unmet)),
+            "{unmet} should be satisfied, got {violations:?}"
+        );
+    }
+}
+
+#[test]
+fn m3_work_packages_must_cover_the_whole_milestone() {
+    // The mutation this refuses deleted eight of the nine work packages.
+    let violations = m3_violations(&altered_m3_manifest(
+        "    \"M3-W1\",\n    \"M3-W2\",\n    \"M3-W3\",\n    \"M3-W4\",\n    \"M3-W5\",\n    \
+         \"M3-W6\",\n    \"M3-W7\",\n",
+        "",
+    ));
+
+    assert!(
+        violations.iter().any(|violation| violation
+            == "M3 manifest must include every work package from M3-W0 through M3-W8 exactly once"),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn m3_closure_is_refused_when_its_recorded_results_are_emptied() {
+    // Emptying `benchmarks.results` takes all four M3 records out from under the
+    // digest binding, which is what left them bound by nothing.
+    let source = fs::read_to_string(repository_root().join("evidence/m3/manifest.json"))
+        .expect("the M3 manifest must be readable");
+    let emptied = jq_edit(&source, ".benchmarks.results = []");
+
+    let violations = m3_violations(&write_temporary(&emptied));
+
+    assert!(
+        violations.iter().any(|violation| violation.starts_with(
+            "M3 manifest must record all four M3 results under the m3-prototype-v1 protocol"
+        )),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn m3_closure_is_refused_when_a_gate_row_is_not_closed() {
+    // The mutation this refuses set every `gateStatus` row to "failed" and closed
+    // anyway, because nothing read the table.
+    let violations = m3_violations(&altered_m3_manifest(
+        "\"status\": \"closed\"",
+        "\"status\": \"failed\"",
+    ));
+
+    assert!(
+        violations.iter().any(|violation| violation
+            .starts_with("M3 closure requires a gateStatus row for every work package")),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn m3_closure_is_refused_when_the_gate_rows_are_deleted() {
+    let source = fs::read_to_string(repository_root().join("evidence/m3/manifest.json"))
+        .expect("the M3 manifest must be readable");
+    let emptied = jq_edit(&source, ".environment.settings.gateStatus = {}");
+
+    let violations = m3_violations(&write_temporary(&emptied));
+
+    assert!(
+        violations.iter().any(|violation| violation
+            .starts_with("M3 closure requires a gateStatus row for every work package")),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn m3_closure_is_refused_when_its_findings_are_deleted() {
+    // `all(. != "blocking")` is true of an empty array, so deleting the findings
+    // satisfied the shared rule. M3 recorded nineteen deviations and five risks.
+    let source = fs::read_to_string(repository_root().join("evidence/m3/manifest.json"))
+        .expect("the M3 manifest must be readable");
+    let emptied = jq_edit(&source, ".deviations = [] | .risks = []");
+
+    let violations = m3_violations(&write_temporary(&emptied));
+
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.starts_with("M3 recorded deviations and risks")),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn m3_closure_is_refused_without_the_operator_attestation() {
+    let source = fs::read_to_string(repository_root().join("evidence/m3/manifest.json"))
+        .expect("the M3 manifest must be readable");
+    let emptied = jq_edit(&source, ".attestations = []");
+
+    let violations = m3_violations(&write_temporary(&emptied));
+
+    assert!(
+        violations.iter().any(|violation| violation
+            == "M3 closure requires a native Linux attestation for the operator-run Ravel launch"),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn m3_closure_is_refused_when_a_record_does_not_show_what_its_row_requires() {
+    // The records are copied out and one claim in one of them is turned over, so
+    // nothing but the rule under test can explain the refusal.
+    let root = temporary_root();
+    fs::create_dir_all(root.join("evidence/m3")).expect("evidence directory should be creatable");
+    fs::create_dir_all(root.join("docs/decisions")).expect("decisions should be creatable");
+    for decision in ["adg-6-configuration-ui.md", "adg-7-world-persistence.md"] {
+        fs::copy(
+            repository_root().join("docs/decisions").join(decision),
+            root.join("docs/decisions").join(decision),
+        )
+        .expect("decision record should be copied");
+    }
+    for record in [
+        "class-loader-identity.json",
+        "pack-compile.json",
+        "profiling-overhead.json",
+        "linux-process-matrix.json",
+    ] {
+        fs::copy(
+            repository_root().join("evidence/m3").join(record),
+            root.join("evidence/m3").join(record),
+        )
+        .expect("M3 record should be copied");
+    }
+    let matrix = root.join("evidence/m3/linux-process-matrix.json");
+    let source = fs::read_to_string(&matrix).expect("the matrix record must be readable");
+    let control = verify_evidence_manifest(
+        &root,
+        &repository_root().join("evidence/m3/manifest.json"),
+        "M3",
+    );
+    assert!(
+        !control
+            .iter()
+            .any(|violation| violation.starts_with("M3 closure requires a Linux process-matrix")),
+        "the copied records are the control and must pass, got {control:?}"
+    );
+    fs::write(
+        &matrix,
+        jq_edit(&source, ".instance.withoutAnotherLoader = false"),
+    )
+    .expect("altered record should be writable");
+
+    let violations = verify_evidence_manifest(
+        &root,
+        &repository_root().join("evidence/m3/manifest.json"),
+        "M3",
+    );
+
+    fs::remove_dir_all(&root).expect("evidence root should be removable");
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.starts_with("M3 closure requires a Linux process-matrix")),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn m3_closure_is_refused_when_a_record_is_missing_altogether() {
+    let root = temporary_root();
+    fs::create_dir_all(root.join("evidence/m3")).expect("evidence directory should be creatable");
+
+    let violations = verify_evidence_manifest(
+        &root,
+        &repository_root().join("evidence/m3/manifest.json"),
+        "M3",
+    );
+
+    fs::remove_dir_all(&root).expect("evidence root should be removable");
+    for absent in [
+        "M3 closure requires the record evidence/m3/linux-process-matrix.json",
+        "M3 closure requires the decision record adg-7-world-persistence.md",
+    ] {
+        assert!(
+            violations.iter().any(|violation| violation == absent),
+            "expected {absent}, got {violations:?}"
+        );
+    }
+}
+
+/// Applies a jq program to a document, for a mutation a string replacement cannot
+/// express.
+fn jq_edit(source: &str, program: &str) -> String {
+    use std::io::Write as _;
+    use std::process::{Command, Stdio};
+
+    let mut jq = Command::new("jq")
+        .arg(program)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("jq should be available");
+    jq.stdin
+        .as_mut()
+        .expect("jq stdin should be piped")
+        .write_all(source.as_bytes())
+        .expect("the document should be writable to jq");
+    let output = jq.wait_with_output().expect("jq should complete");
+    assert!(output.status.success(), "{output:?}");
+    String::from_utf8(output.stdout).expect("jq output should be UTF-8")
+}
+
+/// Writes a document outside the repository and returns its path.
+fn write_temporary(body: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(format!(
+        "ravel-m3-edit-{}-{}.json",
+        std::process::id(),
+        NEXT_PATH.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&path, body).expect("altered manifest must be writable");
+    path
+}

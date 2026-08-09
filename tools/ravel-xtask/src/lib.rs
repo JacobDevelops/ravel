@@ -1258,6 +1258,9 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
     if milestone == "M2" {
         verify_m2_manifest(root, manifest_path, &mut violations);
     }
+    if milestone == "M3" {
+        verify_m3_manifest(root, manifest_path, &mut violations);
+    }
 
     violations
 }
@@ -1391,6 +1394,13 @@ fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
         "M1 manifest must record spike results under the spike-v1 protocol",
         violations,
     );
+    require_manifest_rule(
+        manifest_path,
+        "(.deviations | length) > 0 and (.risks | length) > 0",
+        "M1 recorded deviations and risks, and an empty finding set satisfies every rule phrased \
+         as a refusal, so closure requires them to still be there",
+        violations,
+    );
 
     // Every gate needs a recorded result and an accepted decision. A gate with
     // no ADR is a measurement nobody committed to.
@@ -1468,6 +1478,13 @@ fn verify_m2_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
         manifest_path,
         r#".attestations | any(.platform == "linux" and .architecture == "x86_64")"#,
         "M2 closure requires a native Linux attestation for the operator-run launch",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        "(.deviations | length) > 0 and (.risks | length) > 0",
+        "M2 recorded deviations and risks, and an empty finding set satisfies every rule phrased \
+         as a refusal, so closure requires them to still be there",
         violations,
     );
 
@@ -1553,6 +1570,196 @@ const M2_RECORDS: &[(&str, &str, &str)] = &[
          invocations that reached native code, and no other loader present",
     ),
 ];
+
+/// Checks what closing M3 requires beyond the rules every milestone shares.
+///
+/// M3 had none, which is how a mutation closed it: with `review.result` set to
+/// `"pass"` and the one blocking risk downgraded, `verify milestone M3` exited zero
+/// with every `gateStatus` row set to `"failed"`, eight of the nine work packages
+/// deleted, and `benchmarks.results` emptied — so all four M3 records were bound by
+/// nothing and the scaffold still passed. The shared rules cannot catch that,
+/// because every one of them was still true of what was left.
+///
+/// So this asks M3's own gate rows for what `ROADMAP.md` says each one produces.
+/// The manifest names the work and its own per-package status; the records under
+/// `evidence/m3/` are what happened. `benchmarks.results` is required to name all
+/// four of them exactly, which is what puts them back under the digest binding
+/// `verify_recorded_digests` already performs — a record no manifest names is a
+/// record no digest covers.
+fn verify_m3_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        manifest_path,
+        ".workPackages | sort == [\"M3-W0\", \"M3-W1\", \"M3-W2\", \"M3-W3\", \"M3-W4\", \"M3-W5\", \"M3-W6\", \"M3-W7\", \"M3-W8\"]",
+        "M3 manifest must include every work package from M3-W0 through M3-W8 exactly once",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#".benchmarks.protocolVersion == "m3-prototype-v1"
+            and ([.benchmarks.results[].name] | sort
+                == ["class-loader-identity.json", "linux-process-matrix.json",
+                    "pack-compile.json", "profiling-overhead.json"])"#,
+        "M3 manifest must record all four M3 results under the m3-prototype-v1 protocol, so that \
+         each one is covered by a recomputed digest",
+        violations,
+    );
+    // Every work package carries its own status and the evidence it rests on, and
+    // M3-W8 is the review itself, whose status is the verdict the milestone gate
+    // reads separately. Emptying the table, or reporting a row as anything but
+    // closed, is what this refuses.
+    require_manifest_rule(
+        manifest_path,
+        r#"(.environment.settings.gateStatus | type == "object")
+            and ((.workPackages - (.environment.settings.gateStatus | keys)) == [])
+            and ([.environment.settings.gateStatus | to_entries[]
+                    | select(.key != "M3-W8") | .value]
+                 | length == 8
+                 and all(.status == "closed"
+                         and (.evidence | type == "string" and length > 0)))"#,
+        "M3 closure requires a gateStatus row for every work package, each implementation row \
+         closed and naming its evidence",
+        violations,
+    );
+    // M3-W7's launch is operator-run, so a person says it happened, and the
+    // workload is Ravel itself rather than one of M0's baselines.
+    require_manifest_rule(
+        manifest_path,
+        r#".attestations | any(
+            .platform == "linux"
+            and .architecture == "x86_64"
+            and (.workloads | index("ravel") != null)
+        )"#,
+        "M3 closure requires a native Linux attestation for the operator-run Ravel launch",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        "(.deviations | length) > 0 and (.risks | length) > 0",
+        "M3 recorded deviations and risks, and an empty finding set satisfies every rule phrased \
+         as a refusal, so closure requires them to still be there",
+        violations,
+    );
+
+    for decision in M3_DECISIONS {
+        if !root.join("docs/decisions").join(decision).is_file() {
+            violations.push(format!(
+                "M3 closure requires the decision record {decision}"
+            ));
+        }
+    }
+
+    for (file, rule, requirement) in M3_RECORDS {
+        let path = root.join("evidence/m3").join(file);
+        if !path.is_file() {
+            violations.push(format!("M3 closure requires the record evidence/m3/{file}"));
+            continue;
+        }
+        if !jq_matches(&path, rule).unwrap_or(false) {
+            violations.push(format!("M3 closure requires {requirement}"));
+        }
+        verify_redaction(&path, &format!("evidence/m3/{file}"), violations);
+    }
+}
+
+/// The records M3 cannot close without, and what each one has to say.
+///
+/// Each rule is the `ROADMAP.md` M3 row it answers, read as a question the file
+/// has to satisfy rather than as a file that has to exist. Every count is
+/// type-checked before it is compared, for the reason M2's launch rule gives: jq
+/// orders strings above numbers, so an unguarded `> 0` accepts "not measured".
+const M3_RECORDS: &[(&str, &str, &str)] = &[
+    (
+        // ADG-1's second candidate rests on the loader that resolves the game's
+        // classes being the system loader. A launch that rewrote nothing would
+        // describe no rewrite, so the counts are what rule that out.
+        "class-loader-identity.json",
+        r#".milestone == "M3"
+            and .observed.sameObject == true
+            and .conclusion.candidateTwoIsAvailable == true
+            and (.rewrite.classesRewritten | type == "number")
+            and .rewrite.classesRewritten > 0
+            and (.rewrite.methodsRewritten | type == "number")
+            and .rewrite.methodsRewritten > 0
+            and .rewrite.reachedNativeCode == true
+            and (.rewrite.nativeInvocations | type == "number")
+            and .rewrite.nativeInvocations > 0"#,
+        "a class-loader identity record showing the loader that resolved a rewritten game class \
+         is the system loader, measured in a launch that rewrote classes and reached native code",
+    ),
+    (
+        // ADG-2 chose source compiled on the player's machine, and this is the
+        // record that prices it. A cost of zero would mean nothing was compiled.
+        "pack-compile.json",
+        r#".milestone == "M3"
+            and .gate == "ADG-2"
+            and .protocol == "m3-pack-compile-v1"
+            and (.compile.repeats | type == "number")
+            and .compile.repeats > 0
+            and (.compile.baselineMilliseconds | type == "number")
+            and .compile.baselineMilliseconds > 0
+            and (.compile.marginalColdMillisecondsPerMod | type == "number")
+            and .compile.marginalColdMillisecondsPerMod > 0
+            and (.disk.toolchainBytes | type == "number")
+            and .disk.toolchainBytes > 0"#,
+        "a pack-compile record pricing ADG-2's source distribution with a repeated measurement, \
+         a positive marginal per-mod cost, and the toolchain size the decision accepted",
+    ),
+    (
+        // M3-W6: profiling off has to come in under the limit that was fixed
+        // before it was measured, and the unsupported metrics have to be named
+        // rather than left implied.
+        "profiling-overhead.json",
+        r#".milestone == "M3"
+            and .workPackage == "M3-W6"
+            and .budget.protocol == "m2-loader-budget-v1"
+            and .budget.hardwareProfile == "linux-reference-v1"
+            and (.budget.limits | any(
+                .metric == "profiling.off.perTick"
+                and .operator == "less-than-or-equal"
+                and (.measured | type == "number")
+                and (.limit | type == "number")
+                and .measured > 0
+                and .measured <= .limit))
+            and (.collectors.attributionAccuracy | type == "array" and length > 0)
+            and (.collectors.unsupported | type == "array")"#,
+        "a profiling record whose off-tick measurement comes in under the limit M3-W6 fixed, with \
+         per-mod attribution accuracy stated and the unsupported metrics named",
+    ),
+    (
+        // M3-W7: the whole surface, natively, in one operator-run launch, with the
+        // instance scan proving no other loader read the mods.
+        "linux-process-matrix.json",
+        r#".milestone == "M3"
+            and .workPackage == "M3-W7"
+            and .result == "pass"
+            and .instance.withoutAnotherLoader == true
+            and .instance.stockComponentsExact == true
+            and .instance.otherLoaderComponents == 0
+            and .instance.modJars == 0
+            and .instance.recognizedLoaderModJars == 0
+            and (.rewrite.classesRewritten | type == "number")
+            and .rewrite.classesRewritten > 0
+            and .rewrite.transformationFailures == 0
+            and (.rewrite.nativeInvocations | type == "number")
+            and .rewrite.nativeInvocations > 0
+            and .screens.titleMenuButtonPresent == true
+            and .screens.allThreeOpenedInThisCampaign == true
+            and .screens.settings.persistenceRoundTrip == true
+            and .commandAndSavedData.vanillaCommandExecutedThroughInput == true
+            and .commandAndSavedData.relaunchVerifiedExactValue == true
+            and .worldPersistenceRoundTrip.createSaveExitReload
+                .aggregateByteIdenticalAcrossTheRoundTrip == true
+            and .worldPersistenceRoundTrip.failClosedOnAnUnreadableWorld.worldRefused == true
+            and .worldPersistenceRoundTrip.failClosedOnAnUnreadableWorld
+                .integratedServerNeverStarted == true"#,
+        "a Linux process-matrix record showing every M3 surface passing natively in an instance \
+         the scan proves holds no other loader, with the world round trip preserving bytes and \
+         refusing a world it cannot read",
+    ),
+];
+
+/// Decision records M3 cannot close without.
+const M3_DECISIONS: &[&str] = &["adg-6-configuration-ui.md", "adg-7-world-persistence.md"];
 
 /// Decision records M1 cannot close without.
 const M1_DECISIONS: &[&str] = &[

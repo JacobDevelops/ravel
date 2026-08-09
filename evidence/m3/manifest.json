@@ -14,7 +14,7 @@
     "M3-W8"
   ],
   "revision": {
-    "id": "3c3520be104ce7fa5490e4d633941fd51dacde3b",
+    "id": "584abc1bc1da00910b90655042befd907ea8733d",
     "changeId": "xqmmlnzmtkqpuuxymttpzqyvnovxtxtv",
     "dirty": false
   },
@@ -66,7 +66,7 @@
         "M3-W7": {
           "status": "closed",
           "evidence": "evidence/m3/linux-process-matrix.json records result pass at 33 callable targets over 15 classes: the three Ravel screens, the configuration round trip including a restart-required setting, the command path, opt-in profiling, and the Ravel-owned world round trip that M3-W4 turns on. The one surface that failed on first observation — the profiling report's two clipped lines — was fixed by change npozznqztnvnuvuvunkmsuvvvplnvkxq and re-observed whole in a real client. The same ceiling applies as to M3-W4: this is an operator-run result, checkable by a reviewer only for its in-gate half. Two named gaps stay open inside a closed gate and are recorded in openGaps: nothing on the game's tick path marks a tick boundary, so the tick counter cannot leave zero, and the command counter, which is wired and accurate, has never been observed above zero in a real client because no launch yet combined a command-claiming mod with a namespaced command.",
-          "verificationLogSha256": "7d9944f67dee3b6688b047e4b2cddcf5b23080e8f60e87c74fa8226bf6c6938c"
+          "verificationLogSha256": "35fa7613cb45abf171b86fdc638509866795a45cb5532145c191ed63c475ae36"
         },
         "M3-W8": {
           "status": "open",
@@ -86,7 +86,7 @@
     },
     {
       "name": "docs/architecture/m3-hook-targets.md",
-      "sha256": "f1e90b233ddf7c7f0c58b4039a9c9c586f1bd61312c1b3c2e23e4e7e25834146"
+      "sha256": "e576a2f533b580dd0a8c176580b0d4e6dace5e5a2b561124cdad8f3a400ab316"
     },
     {
       "name": "docs/decisions/adg-6-configuration-ui.md",
@@ -96,37 +96,37 @@
   "commands": [
     {
       "command": "devenv tasks run ravel:verify",
-      "startedAt": "2026-08-09T00:52:25.229Z",
-      "durationMs": 21151,
+      "startedAt": "2026-08-09T06:09:28.044Z",
+      "durationMs": 16883,
       "exitStatus": 0,
-      "logSha256": "7d9944f67dee3b6688b047e4b2cddcf5b23080e8f60e87c74fa8226bf6c6938c"
+      "logSha256": "35fa7613cb45abf171b86fdc638509866795a45cb5532145c191ed63c475ae36"
     }
   ],
   "tests": {
-    "total": 813,
-    "passed": 813,
+    "total": 854,
+    "passed": 854,
     "failed": 0,
     "skipped": 0,
-    "lineCoveragePercent": 85.97
+    "lineCoveragePercent": 86.68
   },
   "benchmarks": {
     "protocolVersion": "m3-prototype-v1",
     "results": [
       {
         "name": "class-loader-identity.json",
-        "sha256": "eb829635ac02a0359fc25b42c50db280ec05d80347c198d9a6e64ae623abe0bb"
+        "sha256": "dc41a2483476b610e802bbe2fdbcd8be926734cf0d59e6b60dac4a8bc817acde"
       },
       {
         "name": "pack-compile.json",
-        "sha256": "d02425147d86cd0d31ef27c0d114b69324db2be6df5df4a5b29c09836817866a"
+        "sha256": "544a1b5d7e724d99dba93094f3aeed6abc4d1da4ddc594bfac24b4376f98d958"
       },
       {
         "name": "profiling-overhead.json",
-        "sha256": "fa7282ef2df0ac1727635edd7cca9037cf7631db935d7c67793a1197110726ca"
+        "sha256": "baba4e97c901446c34360e170058df5f98019aec4067fa570dec23a716f17926"
       },
       {
         "name": "linux-process-matrix.json",
-        "sha256": "f3b1a0bc649687c88d5fcdb961119239aca0341df2a452856d801a96b640cef0"
+        "sha256": "90fe21afaf063167862a81ff7b40c576da07d564908ce6c927eaf63c5a932ced"
       }
     ]
   },
@@ -144,7 +144,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "The revision block pins two different things and the schema says so: changeId is the change that holds this manifest, which the milestone gate recomputes against the change that introduced the file and which therefore stays xqmmlnzmtkqpuuxymttpzqyvnovxtxtv for as long as the file lives, while id is the commit the recorded commands ran on. That id had gone stale by several described changes, so the commands and tests blocks attested to a tree that no longer existed. They were re-run rather than re-pinned from memory, and id now names the commit the run was made on. That is circular to the extent that recording a result changes the tree that produced it: the gate was run to completion over this content, its numbers written here, and then run again over the file as it now stands, with the second run reported in the change description rather than recursively rewritten into these fields. It is the same convention evidence/m3/linux-process-matrix.json uses for its own gate digests. The inputs digests were recomputed by hand in the same pass, because a manifest that pins one revision and hashes its inputs at another is the defect in a second costume. lineCoveragePercent now takes the Lines column of cargo llvm-cov, which is what the field name says; an earlier draft took the region column, which is why the figure moved down while coverage went up.",
+      "summary": "The revision block pins two different things and the schema says so: changeId is the change that holds this manifest, which the milestone gate recomputes against the change that introduced the file and which therefore stays xqmmlnzmtkqpuuxymttpzqyvnovxtxtv for as long as the file lives, while id is the commit the recorded commands ran on. That id had gone stale by several described changes, so the commands and tests blocks attested to a tree that no longer existed. They were re-run rather than re-pinned from memory, and id now names the commit the run was made on. That is circular to the extent that recording a result changes the tree that produced it: the gate was run to completion over this content, its numbers written here, and then run again over the file as it now stands, with the second run reported in the change description rather than recursively rewritten into these fields. It is the same convention evidence/m3/linux-process-matrix.json uses for its own gate digests. The inputs digests were recomputed by hand in the same pass, because a manifest that pins one revision and hashes its inputs at another is the defect in a second costume. lineCoveragePercent now takes the Lines column of cargo llvm-cov, which is what the field name says; an earlier draft took the region column, which is why the figure moved down while coverage went up. The block was re-run and re-pinned again for the same reason when docs/architecture/m3-hook-targets.md was corrected: an input digest is hashed at revision.id, so correcting a pinned input means the recorded run moves with it. durationMs is measured rather than remembered, and a fifth-round follow-up was right that the previous value was bound by nothing: it is now the wall clock of the run this block records, taken around the whole devenv tasks run ravel:verify invocation. It is a warm-cache figure and should be read as one — the cargo target directory, the JVM harness artifacts and the coverage instrumentation were all already built, so a cold run on the same machine costs several minutes and this number is not a claim about one. Nothing binds it: the log it belongs to is private, which is the same ceiling verify_recorded_run already records for the counts beside it.",
       "classification": "non-blocking"
     },
     {
@@ -176,7 +176,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "The fourth M3-W8 round found evidence/m3/profiling-overhead.json publishing two derived figures a reader could not follow: overhead.perTick.formula applied to the two-decimal percentiles printed beside it yields 500.05 where nanoseconds records 510.05, and breakEven.crossingsPerTick reconciles only against the unrounded per-crossing percentile of 0.051. The figures were right and the derivation was unstateable. The record now carries overhead.rounding, which says that every figure is rounded to two decimals while the derived pair is computed from the unrounded percentiles, and the measurement that writes the record writes that field, so a re-run cannot drop it. evidence/m3/README.md states this record's own reconciliation, including that the tick-boundary percentile is recoverable from the published figures only as far as the interval that rounds to 0.05.",
+      "summary": "The fourth M3-W8 round found evidence/m3/profiling-overhead.json publishing two derived figures a reader could not follow: overhead.perTick.formula applied to the two-decimal percentiles printed beside it yields 500.05 where nanoseconds records 510.05, and breakEven.crossingsPerTick reconciles only against the unrounded per-crossing percentile of 0.051. The figures were right and the derivation was unstateable. The record now carries overhead.rounding, which says that every figure is rounded to two decimals while the derived pair is computed from the unrounded percentiles. Nothing writes that field for the record — the measurement writes the numbers, not the prose about them — so the_record_states_the_rounding_the_derived_figures_were_computed_under in tests/conformance/tests/profiling_report.rs is what stops a re-run or an edit from dropping it, rather than the measurement. A fifth-round follow-up found the accompanying passage in evidence/m3/README.md wrong in the opposite direction: it said the tick-boundary percentile was recoverable only as far as the interval that rounds to 0.05 and that neither derived figure moved inside it, when breakEven divides by 0.051 and therefore moves about 19.6 per nanosecond of boundary time. The published 9803920.59 pins the unrounded boundary to roughly [0.0497, 0.0502], about twenty times narrower than the rounding interval, and perTick is the figure that recovers it no better than the rounding. The README now states that, with both intervals derived rather than asserted.",
       "classification": "non-blocking"
     },
     {
@@ -184,7 +184,15 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "M3-W8 found no hook-integrity defect: the reviewed hook inventory, generated lock, transformed-class counts, and callable-target counts reconcile.",
+      "summary": "M3-W8 found no hook-integrity defect in the inventory itself: minecraft/versions/26.1.2/hooks.toml, the generated mappings.lock, the transformed-class counts and the callable-target counts reconcile. That was three of the four things this row used to claim. The fourth, docs/architecture/m3-hook-targets.md, did not: it still said 35 entries, 31 methods and 23 handle parameters after ADG-7's two world persistence seams brought the inventory to 37 entries, 33 methods and 27 handle parameters, while tabling those two seams further down the same file. This manifest closes M3-W0 on that document and pins its digest under inputs[], and a digest binds bytes rather than the thing the bytes are about, so the gate was satisfied by a stale document and nothing in the repository referenced it from any .rs, .sh or .nix. The counts are corrected and verify_hook_inventory_document in tools/ravel-xtask/src/lib.rs now derives all four from hooks.toml on every ravel-verify-scaffold and fails when the document disagrees, checking every occurrence rather than the first. The inventory itself is untouched, so no re-pin ceremony was owed.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "All three M3 measurement trials were run on a dirty working copy and no revision identifies the code they measured. evidence/m3/pack-compile.json records trial.revision.dirty true at both its curve trial and its variants trial, and evidence/m3/profiling-overhead.json records it at its own, so in each case the recorded changeId and id name a commit the measured tree differed from by an unrecorded amount. That reaches the one limit ravel:verify enforces on every run: the M3-W6 budget in profiling-overhead.json is compared against a later measurement by cargo xtask verify budget, and the code behind the figure it compares against is not identified. It is disclosed rather than repaired. Re-measuring clean is not cheap — the curve trial ran 174 s, the variants trial 1161 s, and both hold only on the linux-reference-v1 hardware profile, so a re-run on any other machine remeasures rather than reproduces — and a re-measurement would land on a working copy that is dirty again for the same structural reason the manifest's own revision block records: recording a result changes the tree that produced it. What is bound rather than trusted is the limit and the arithmetic over it, which tests/conformance/tests/profiling_report.rs and cargo xtask verify budget check on every gate; what is not bound is which source produced the measurement. Note that verify_general_closure requires this manifest's own revision.dirty to be false, so the milestone gate holds the manifest to a standard the trials it inventories do not meet.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "ADG-7's save-seam refusal had no test until this pass. docs/decisions/adg-7-world-persistence.md and jvm/bootstrap/dev/ravel/jvm/Persistence.java specify that an absent installed-prologue marker for worldSavePersistence refuses the world load, and saveSeamInstalled returned true in all eight cases the JVM harness ran, so the false branch of the one check that distinguishes a transformed class from a present one never executed anywhere in the gate. jvm/harness/run-harness.sh now runs a ninth world lifecycle, missing-save-seam, which installs the open seam and not the save seam: the server class is present and loads, its transformation matches no method, the marker stays empty, and the world is refused with the recorded diagnostic before Rust is asked at all. The stand-in inventory selects that arrangement from ravel.test.persistence.saveSeamMissing rather than from a broken descriptor, so the case exercises the marker and nothing else.",
       "classification": "non-blocking"
     },
     {
@@ -226,7 +234,15 @@
       "classification": "blocking"
     },
     {
+      "summary": "M3-W0 is as unrecomputable as the live half of M3-W4 and M3-W7, and until now no M3 record said so. That gate closes on docs/architecture/m3-hook-targets.md and the pinned 26.1.2 hook inventory, both tracked, which reads as recomputable evidence — but every claim either file makes about the game is a claim about the pinned client jar, and that jar is a restricted local fixture this repository never tracks. On a machine without it the chain terminates at minecraft/versions/26.1.2/adapter.toml's inputs.clientJar sha256 and bytes: mappings.lock and stubs.lock can be compared against their own pinned hashes, which is what catches a stale lock and is stated in adapter.toml's own comments, but no member can be re-resolved against a class file and no count in the inventory can be re-derived from the game. What a reviewer can recompute is the inventory's internal consistency — which verify_hook_inventory_document now includes the document in — and nothing beyond it. evidence/m3/README.md states the same ceiling in the same terms.",
+      "classification": "non-blocking"
+    },
+    {
       "summary": "One excluded diagnostic launch and the first W7 launch remained alive after the normal game shutdown sequence. The accepted W7 relaunch exited naturally, so the recurring post-shutdown futex hang is tracked separately and does not invalidate the matrix's supporting evidence.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The exact-version package refusal M3-W4's gate names cannot be reached from a launch. SavedDataAggregate::open compares an envelope's requiredPackages against an installed set, and crates/ravel-bootstrap/src/persistence.rs has no such set to give it: install() receives a lifecycle machine, a mod set and a pre-world report, LifecycleEntry and HostMod carry an identity and no version, and ravel-composed-host builds its mods from source rather than from package manifests. So a stored requirement refuses as missing, which is fail-closed and is what SPEC.md §14 asks for, while SavedDataError::IncompatiblePackage — required and installed at different versions — is unreachable in the game process. It is reachable and asserted where an installed set exists: ravel-save's own suite and tests/conformance/tests/saved_data.rs, which supply one. The gap is that no launch supplies one, and closing it means carrying package identity and version through composition into install(), which belongs to the packaged-installation work M4-W5 owns rather than to a source-composed prototype. The seam says so in code at the call site, and no branch is left in persistence.rs looking like a check that runs.",
       "classification": "non-blocking"
     }
   ],

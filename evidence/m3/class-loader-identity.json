@@ -17,7 +17,6 @@
     }
   ],
   "conclusion": {
-    "answersTask": 30,
     "candidateTwoIsAvailable": true,
     "detail": "The loader that loaded a rewritten net.minecraft class is the same object as ClassLoader.getSystemClassLoader(). appendToSystemClassLoaderSearch therefore targets the loader that actually resolves the game's classes, so ADG-1's second candidate rests on a premise that holds for the pinned launch. This measurement does not implement it and does not compare it against candidate 1 on any other ground.",
     "summary": "In the pinned launch there is no parent/child split between an application loader and a system loader. There is one loader, and it is both."
@@ -50,6 +49,13 @@
     "platform": "linux",
     "prism": "11.0.3"
   },
+  "measuredAgainst": {
+    "detail": "This record is the only M3 record with no `trial` block, because it is a launch rather than a task: nothing in the repository ran it and no command digest describes it. What it can still be pinned to is the shape of the build it observed, and that is stated here rather than left to be inferred. The two hook counts below belong to an earlier `hooks.toml` than the one `evidence/m3/manifest.json` pins as an M3 input, and no digest in this record names which one; that is not recoverable from the record and is not reconstructed here.",
+    "hookInventoryDigest": null,
+    "hookInventoryDigestDetail": "Deliberately null rather than absent. `minecraft/versions/26.1.2/hooks.toml` now resolves to 33 callable methods over 15 classes; this launch reported 10 classes and 24 methods, so it ran against an inventory that no longer exists in the working copy, and pinning today's digest here would claim a build this launch never saw.",
+    "javaDiffersFromTheMilestone": "`identity.java` is 25.0.1 and `evidence/m3/manifest.json` records the milestone at 25.0.4. The difference is real and is not reconciled: this launch was taken earlier, on the JDK patch the instance held at the time, and it was not re-run on 25.0.4. What the measurement turns on is whether two references inside one JVM are the same object, which is a property of how the launcher and the game are put together rather than of a JDK patch level, so nothing here is expected to move with it — but nothing here proves that either, and a reader should treat the result as observed on 25.0.1.",
+    "workPackageDetail": "`workPackage` is M3-W3 because that is the gate ADG-1's second candidate belongs to: `ROADMAP.md` records M3-W3 selecting `Instrumentation.appendToSystemClassLoaderSearch` for the sibling screen jar, and this measurement removes the objection that had been read as blocking it. It closes no gate on its own."
+  },
   "measurement": {
     "detail": "Transformer.transform receives the loader that is defining the class it is asked to rewrite. It previously discarded that argument. It now records the loader's class and identity hash, the system loader's, whether the two are the same object, and the parent chain, at the moment of the first rewrite and as text rather than as a reference. The agent prints it from the shutdown hook that already reports what it rewrote.",
     "identityHashesAreStable": false,
@@ -76,10 +82,10 @@
   "record": "m3-class-loader-identity",
   "rewrite": {
     "classesRewritten": 10,
-    "detail": "The counts are the agent's own, from the same shutdown report. They are here because a loader identity recorded by a launch that rewrote nothing would describe no rewrite, and the count is what rules that out.",
+    "detail": "The counts are the agent's own, from the same shutdown report. They are here because a loader identity recorded by a launch that rewrote nothing would describe no rewrite, and the count is what rules that out. They are not this milestone's counts: 10 and 24 are an earlier `hooks.toml`'s, and `measuredAgainst.hookInventoryDigest` says that nothing pins which. All this pair establishes is that the launch rewrote a `net.minecraft` class before the loader identity was read, which is the whole reason it is recorded.",
+    "methodsRewritten": 24,
     "nativeInvocations": 17115,
-    "reachedNativeCode": true,
-    "methodsRewritten": 24
+    "reachedNativeCode": true
   },
   "schemaVersion": 1,
   "summary": "The loader that loaded a rewritten net.minecraft class in the official game process is the same object as ClassLoader.getSystemClassLoader(), so the pinned launch has one loader where jvm/README.md describes a delegating pair.",
@@ -90,5 +96,6 @@
     "The identity hashes are this process's. They differ on every run and prove only that two references are or are not the same object within one launch.",
     "Nothing here says a rewritten class is loaded by this loader at every point in a session. The identity is the first rewrite's, which happened during startup; a class loaded later by a loader the game creates itself would not be visible in this record.",
     "Nothing here measures the dedicated server. The launch was the client, and the loader arrangement of a server launch was not observed."
-  ]
+  ],
+  "workPackage": "M3-W3"
 }

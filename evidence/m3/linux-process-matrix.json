@@ -20,6 +20,7 @@
     "method": "the stock game process working directory was read from outside the process before Ravel was attached"
   },
   "launch": {
+    "whichCampaignThisDescribes": "The earlier 31-target campaign's accepted trial, kept because it is the launch shape every later campaign reproduced. `currentCampaign` below is the world round trip campaign, which is the first of the five recorded here. The two blocks disagree on one field and only one: `prismExitedNaturally`. The earlier trial let the launcher exit on its own; every campaign from the world round trip onward terminated it between launches instead, for the single-instance reason `currentCampaign.prismExitNote` gives, so `false` there is a deliberate change of method rather than a failure and the later value is the one that describes how this record's evidence was taken. The surface campaign restates it as `launcherTerminatedBetweenLaunches`, and each single-launch campaign records the launcher's state in its own section.",
     "overrideJavaArgs": true,
     "javaAgent": true,
     "screenJarBesideAgentJar": true,
@@ -66,7 +67,7 @@
       "M3-W7"
     ],
     "decision": "ADG-7",
-    "scopeOfThisClaim": "The rewrite of both persistence methods was already proven in-gate by `jvm/harness/PersistenceMain.java` over eight world lifecycles. What these launches add, and all they add, is the real game's world storage on both ends of that rewrite: an official `SavedDataStorage` writing Ravel's object into an official world directory, and an official world load reading it back and deciding on it.",
+    "scopeOfThisClaim": "The rewrite of both persistence methods was already proven in-gate by `jvm/harness/PersistenceMain.java` over nine world lifecycles, the ninth added for the save-seam refusal that had no case. What these launches add, and all they add, is the real game's world storage on both ends of that rewrite: an official `SavedDataStorage` writing Ravel's object into an official world directory, and an official world load reading it back and deciding on it.",
     "reviewCeiling": "This round trip is operator attestation, not a result a reviewer can recompute. The world was removed and the raw logs deleted once the campaign finished, so what survives is digests of files that no longer exist, and a digest of a vanished file records a claim rather than verifies one. What a reviewer can check independently is the in-gate half: `tests/conformance/tests/saved_data.rs` and `jvm/harness/PersistenceMain.java` run in `ravel:verify` on any machine. Reading the live half means taking the operator's word for it, and every gate decision that rests on it rests on that.",
     "modOwningWorldData": "saved_data",
     "declaredVersions": [
@@ -234,7 +235,8 @@
     "methodsRewritten": 33,
     "nativeInvocations": 749397,
     "transformationFailures": 0,
-    "measuredIn": "The three launches of this campaign each reported `rewrote 15 classes and 33 methods` in the agent's own shutdown report, with 675660, 749397, and 28845 native invocations. The figure above is the second launch, which is the one that both read a stored aggregate and exited through Quit Game.",
+    "measuredIn": "The three launches of the world round trip campaign each reported `rewrote 15 classes and 33 methods` in the agent's own shutdown report, with 675660, 749397, and 28845 native invocations. The figure above is the second launch, which is the one that both read a stored aggregate and exited through Quit Game.",
+    "whyTheRefusedLaunchStillRewroteFifteen": "The third launch refused the world before it opened and its `integratedServerNeverStarted` is true, so by the criterion in `surfaceCampaign.launchDetail.first.whyElevenNotFifteen` a reader would expect 11 and 27, and its 28845 native invocations against the others' 675660 and 749397 agree that almost no world ran. It reported 15 and 33 anyway, and the reason is the shape of the seam rather than an error. `world.open-persistence` sits on `Minecraft.doWorldLoad`, whose reviewed descriptor takes an already-constructed `net.minecraft.server.WorldStem` as its third parameter: the stem is built before the call, it holds a `ReloadableServerResources`, and that class's constructor instantiates `RecipeManager` and `Commands`. All three were therefore loaded, and rewritten, before Ravel's prologue ran at all. The fourth world-only class is loaded by Ravel itself — `Persistence.saveSeamInstalled` resolves `MinecraftServer` by name on purpose, and `Persistence.read` resolves `SavedDataStorage` to open the storage over the world directory and read the stored aggregate, which is the read the refusal decided on. Refusing a world is therefore not the same shape as never asking for one: a title-only launch loads none of the four and reports 11 and 27, and a refused world load has already loaded all four. `nativeInvocations` is what separates them, because it counts hook traffic rather than classes.",
     "targetInventory": [
       {
         "class": "net.minecraft.client.Minecraft",
@@ -495,6 +497,7 @@
     "status": "fixed",
     "surface": "dev.ravel.jvm.screen.RavelProfilingScreen",
     "whatWasObserved": "Two of the seven lines on the profiling report render only their tail. The line naming the metrics no collector can measure appears as `-memory, cpu-time, transferred-bytes, saved-data-footprint`, and the accuracy caveat appears as `y key is charged for the lookup as well as for its own code.`, which is not a sentence. The other five lines, all shorter, render in full.",
+    "intendedTextIsThatBuildsAndNotToday": "The two strings below are what the surface campaign's build would have drawn whole, quoted as that build wrote them. That build declared five unmeasurable metrics; `tick-count` joined them later, in change `lppyxtnz`, so the line the screen draws today carries six names and is recorded as observed in `profilingReObservationCampaign.atScaleOne.linesAsRendered`. Nothing below is a claim about the current build.",
     "intendedText": {
       "unsupportedMetrics": "Not measurable in this build: retained-memory, allocated-memory, cpu-time, transferred-bytes, saved-data-footprint",
       "accuracyCaveat": "A mod is charged for host work it calls back into. The window is entry to return, so a mod that asks Ravel to resolve a registry key is charged for the lookup as well as for its own code."
@@ -502,8 +505,8 @@
     "rootCause": "The screen draws every line as a non-editable `EditBox` of fixed width. `EditBox` scrolls its visible window to follow the cursor, and `setValue` leaves the cursor at the end of the string, so any line wider than the widget shows its last characters and hides its first. The window was enlarged from 854x480 to 1400x800 and the same two lines stayed clipped, because the widget width is fixed rather than derived from the screen width, which is what rules out a display-size explanation.",
     "notFixedHere": "The fix is small and belongs to the screen rather than to this record. It is deliberately not made in this campaign, because changing the screen jar changes its digest, and every row above was observed against the digest recorded in `artifacts`. Re-observation, not a patch landed after the fact, is what would let those rows keep their provenance.",
     "whatTheClippingCosts": {
-      "unsupportedMetrics": "Two of the five metric names are lost outright, not just the label. The build declares `retained-memory`, `allocated-memory`, `cpu-time`, `transferred-bytes`, and `saved-data-footprint` unsupported; the client shows `-memory, cpu-time, transferred-bytes, saved-data-footprint`, which is the tail beginning inside the word `allocated-memory`. A player reading the screen cannot learn that retained memory and allocated memory are unmeasured, and the fragment `-memory` does not name either of them.",
-      "accuracyCaveat": "The whole sentence is lost but its last clause. What the screen shows has no subject and reads as though some unnamed key were being charged, which is not what the caveat says."
+      "unsupportedMetrics": "Two of the five metric names were lost outright, not just the label. The build that campaign ran declared `retained-memory`, `allocated-memory`, `cpu-time`, `transferred-bytes`, and `saved-data-footprint` unsupported — five, before `lppyxtnz` added `tick-count` — and the client showed `-memory, cpu-time, transferred-bytes, saved-data-footprint`, which is the tail beginning inside the word `allocated-memory`. A player reading that screen could not learn that retained memory and allocated memory were unmeasured, and the fragment `-memory` names neither of them.",
+      "accuracyCaveat": "The whole sentence was lost but its last clause. What the screen showed had no subject and read as though some unnamed key were being charged, which is not what the caveat says."
     },
     "foundBy": "the surface campaign, in the real client, at 33 callable targets",
     "fixedBy": {

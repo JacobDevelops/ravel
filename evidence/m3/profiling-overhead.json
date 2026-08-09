@@ -89,7 +89,7 @@
         "unit": "count"
       },
       {
-        "detail": "The loader records which saved-data versions a mod declares, not how many bytes a world holds for it. Moving bytes in a world is the half of M3-W4 that is still open, so there is nothing to size, and reporting the declared version count under the word `footprint` would answer a different question.",
+        "detail": "The loader records which saved-data versions a mod declares, not how many bytes a world holds for it. Those bytes exist — M3-W4 moved Ravel's own aggregate through an official world save and reload — but they are `ravel-save`'s aggregate, written at the ADG-7 persistence seam once per world save, and this crate depends on `ravel-core` alone and sees only what crosses a profiled callback. No stored byte ever reaches the collector path, and reporting the declared version count under the word `footprint` would answer a different question.",
         "metric": "saved-data-footprint",
         "support": "unsupported",
         "unit": "bytes"
@@ -155,7 +155,7 @@
     },
     "perTick": {
       "assumedCrossingsPerTick": 10000,
-      "assumptionDetail": "An assumption, not a measurement. The real per-tick crossing count is its own open work — the M2 record puts it at zero for M2 and says M3 is where the first non-zero one is taken — and this budget is deliberately written per tick rather than per crossing so that it does not wait on it. Ten thousand is a ceiling rather than a prediction: a 256-mod set would have to be entered thirty-nine times each in one tick to reach it.",
+      "assumptionDetail": "An assumption, not a measurement. The real per-tick crossing count is its own open work — the M2 record puts it at zero for M2 and says M3 is where the first non-zero one is taken — and this budget is deliberately written per tick rather than per crossing so that it does not wait on it. Ten thousand is a ceiling rather than a prediction: a 256-mod set would have to be entered forty times each in one tick to reach it, thirty-nine each falling short at 9984.",
       "formula": "one tick boundary plus the assumed crossings, each at its 99th percentile",
       "nanoseconds": 510.05
     },

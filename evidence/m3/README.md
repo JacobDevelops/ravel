@@ -1,9 +1,11 @@
 # M3 evidence
 
 M3-W0 through M3-W7 are closed. M3-W8 is open: every independent round that has
-run returned FAIL, and the latest round's blocking finding is unanswered — the
-M3-W7 profiling row is bound to a build that cannot have produced the observation
-it rests on. M3 is not closed and does not authorize private inventory work.
+run returned FAIL. The latest round's blocking finding, B-1, is answered by the
+fifth launch campaign described below, and answering it is not closure — one of
+that round's must-fix findings and all of its moderate and minor ones are still
+open, and the review that has to pass is an independent one. M3 is not closed and
+does not authorize private inventory work.
 
 M3-W4 and M3-W7 close on operator attestation for their live half. The world
 round trip and every native surface row were observed in a real client, and the
@@ -15,12 +17,26 @@ must take the operator's word for the rest. That is this repository's convention
 for launch evidence, and it is stated up front so nobody mistakes an attested
 result for a recomputable one.
 
+M3-W0's evidence has a ceiling of the same shape and it is easy to miss, because
+that gate closes on tracked files rather than on a launch.
+`docs/architecture/m3-hook-targets.md` and `minecraft/versions/26.1.2/hooks.toml`
+are both tracked and both readable, but every claim either makes about the game is
+a claim about the pinned client jar, and that jar is a restricted local fixture
+this repository never tracks. On a machine without it the chain terminates at
+`minecraft/versions/26.1.2/adapter.toml`'s `inputs.clientJar` digest and byte
+count: `mappings.lock` and `stubs.lock` can be compared against their own pinned
+hashes, which is what catches a stale lock, but nothing can re-resolve a member
+against the class files. `adapter.toml` states this in its own comments, and it is
+restated here because no other M3 record does. So M3-W0 is recomputable exactly as
+far as the inventory's internal consistency and no further.
+
 | Record | Work package | What it shows |
 | --- | --- | --- |
 | [`manifest.json`](manifest.json) | M3-W0..W8 | Which gates are closed, what each one's evidence can and cannot prove to a reviewer, and the failed independent review that keeps M3-W8 open. |
 | [`pack-compile.json`](pack-compile.json) | ADG-2 | What compiling a pack-sized set of mods with real bodies costs — cold, warm after one mod changes, in peak memory, and on disk. |
 | [`profiling-overhead.json`](profiling-overhead.json) | M3-W6 | What opt-in profiling costs a tick when nobody turned it on, what it can and cannot attribute to a mod, and which metrics it cannot measure at all. |
 | [`linux-process-matrix.json`](linux-process-matrix.json) | M3-W7 | What a real Linux launch proves about the game directory, the rewrite, and the instance — and, at least as importantly, what it could not reach. |
+| [`class-loader-identity.json`](class-loader-identity.json) | M3-W3 | That the loader which loaded a rewritten `net.minecraft` class is the same object as `ClassLoader.getSystemClassLoader()`, which is the premise `appendToSystemClassLoaderSearch` rests on. Measured on an earlier build and an earlier JDK patch than the milestone's, and it says so. |
 | [`review.md`](review.md) | M3-W8 | The five tracked independent M3-W8 rounds as they were written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. Every round is FAIL, and the record says which round it does not hold and why. |
 
 ## M3-W8 review
@@ -159,6 +175,18 @@ has no floor: an unreadable or renamed directory yields no manifests, no
 violations, and no message, which is the one failure mode a digest check cannot
 report on itself.
 
+One more is carried and it is about the measurements rather than the machinery.
+All three M3 trials — `pack-compile.json`'s curve and variants runs and
+`profiling-overhead.json`'s — record `trial.revision.dirty: true`, so no revision
+identifies the code any of them measured, including the code behind the single
+M3-W6 limit `cargo xtask verify budget` enforces on every gate run. It is
+disclosed as a deviation rather than repaired: the two pack-compile runs took 174
+and 1161 seconds and hold on `linux-reference-v1` alone, and a re-run would land
+on a working copy that is dirty again for the same reason the manifest's own
+revision block gives — recording a result changes the tree that produced it. The
+limit and the arithmetic over it are bound on every gate; which source produced
+the figure is not.
+
 Two findings from that round are fixed rather than carried. The `review.record`
 digests it found unbound in three different ways under one field name are bound, as
 described above. And `verify_recorded_change` and `verify_manifest_change` returned
@@ -263,10 +291,21 @@ and rounded afterwards. Applying `perTick.formula` to the two-decimal percentile
 therefore misses. In this record the per-crossing 99th percentile is `0.051`
 before rounding and `0.05` as published, which is what
 0.05 + 10000 × 0.051 = 510.05 and (500000 − 0.05) / 0.051 = 9803920.59 follow
-from; the tick-boundary percentile is recoverable from the published figures only
-as far as the interval that rounds to `0.05`, and neither derived figure moves
-inside it at the precision they are published at. `overhead.rounding` now states
-the rule in the record itself, and the measurement writes it there.
+from. The tick-boundary percentile is the one input that is published only rounded,
+and the two derived figures recover it to very different precision. `perTick` is
+1:1 sensitive to it — 10000 × 0.051 is exactly 510, so a published `510.05` puts
+the unrounded boundary in [0.045, 0.055), which is precisely the interval that
+rounds to `0.05` and not one digit better. `breakEven` divides by `0.051` instead,
+so it moves 1/0.051 ≈ 19.6 per nanosecond of boundary time: across that same
+interval it spans 9803920.4902 … 9803920.6863, a range of about 0.196 against a
+figure published to two decimals. Read backwards, the published `9803920.59` pins
+the unrounded boundary to about [0.0497, 0.0502] — roughly twenty times *narrower*
+than the rounding interval, not wider. So the sensitive figure is the one that
+recovers the rounded input rather than the one that loses it, and the number a
+reader should reconcile against is `breakEven`. `overhead.rounding` states the
+rounding rule in the record itself, and
+`tests/conformance/tests/profiling_report.rs` fails the gate if that field goes
+missing.
 
 ## `linux-process-matrix.json`
 
@@ -291,7 +330,7 @@ saved-data row persisted a vanilla scoreboard.
 
 The world round trip campaign, the second of the four, is three launches at 33
 callable targets, and its claim is narrow on purpose. The rewrite of both persistence methods was already proven
-in-gate by `jvm/harness/PersistenceMain.java` over eight world lifecycles; what
+in-gate by `jvm/harness/PersistenceMain.java` over nine world lifecycles; what
 these launches add is the real game's storage on both ends of it. A world was
 created through the game UI, saved, and exited; a second launch reloaded it and
 Ravel's own versioned aggregate came back byte-identical, written by the game's
@@ -399,8 +438,8 @@ tick figure in it, the wall-clock line, both mod rows with real call counts and
 nanosecond totals, all six unmeasurable metric names over three wrapped rows —
 `retained-memory`, `allocated-memory`, `cpu-time`, `transferred-bytes`,
 `saved-data-footprint`, `tick-count` — the heading, and the accuracy statement
-whole from its subject to its full stop over four. At the default scale the window
-has seven rows rather than eighteen, and the screen spends them as designed —
+whole from its subject to its full stop over four. At the default scale the record
+puts the window's budget at seven rows, and the screen spends them as designed —
 summary, wall-clock line, heading, statement — dropping the table and the metric
 names rather than truncating anything. Nothing is clipped at either scale, and
 this window offers no third one. Reopening the screen redrew the same twelve lines

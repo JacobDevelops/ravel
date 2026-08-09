@@ -821,6 +821,7 @@ dependencies = [
  "ravel-core",
  "ravel-data",
  "ravel-example-content-mod",
+ "ravel-example-minimal-mod",
  "ravel-example-stateful-mod",
  "ravel-host-api",
  "ravel-loader",

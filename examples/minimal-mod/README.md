@@ -19,3 +19,12 @@ evidence — they are why "an author needs no loader internals and no Java" is a
 checked claim rather than a sentence in a document.
 `tests/conformance/tests/sdk_boundary.rs` keeps those refusals honest by
 recomputing what this crate and `ravel-sdk` are allowed to see.
+
+[`package.json`](package.json) and [`provenance.json`](provenance.json) are what
+make this crate a package rather than only a crate — the metadata the loader
+validates before any of the code above runs, and the shortest complete pair to
+copy. Every optional field this mod has nothing to say about is absent rather
+than empty, which is itself the lesson.
+`tests/conformance/tests/example_package.rs` recomputes the three things a
+hand-written manifest goes stale about: the digests, the file list, and whether
+`"id"` still agrees with `#[declare_mod]`.

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "minimal",
+  "version": "0.0.0",
+  "displayName": "Minimal",
+  "description": "The smallest complete Ravel mod: one command and a tick count.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "26.1.2"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "authors": [
+    {
+      "name": "Ravel"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://tangled.org/jacobdevelops.tngl.sh/ravel",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "595fa5dc6bf9cd80ce7494aaabbb08c580b2f94d0bf3ec3922fe84a75b612247"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "ce80c4d07401eac5c94e0d3a24f2e2ecc4c8593a7d12350040dd4bddad10fc96"
+      },
+      {
+        "path": "src/boundary.rs",
+        "sha256": "2ecfd368422ea6d2c391d6a7370f2f5e28f124beb888a26e8f4d846e7608ef0d"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "1a5b493a83ca46f21b03da03a4833d762d671499f364a4f60580998f6dbd28a2"
+  }
+}

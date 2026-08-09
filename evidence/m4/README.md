@@ -38,9 +38,16 @@ Everything below runs inside the devenv shell.
 devenv tasks run ravel:verify
 ```
 
-That is the gate `commands[0]` records. The individual rows of the matrix are the
-sub-tasks it runs, each of which can be run on its own by the command the matrix
-names in that row.
+That is the gate `commands[0]` records. The rows under the matrix's `processes`
+are the sub-tasks it runs — all of them and nothing else, which
+`verify_m4_process_matrix` reconciles against `ravel:verify`'s own `after` list in
+[`nix/common.nix`](../../nix/common.nix) in both directions. Each can be run on
+its own by the command the matrix names in that row.
+
+`ravel:verify-environment` is not one of them. `ravel:verify` is the fast
+code-policy graph and `ravel:verify-environment` runs `devenv test` and
+`nix flake check`, which is why the matrix carries it under
+`checksOutsideTheGate` and not among the processes the gate ran.
 
 The coverage figures under `gate.coverage` come from the same invocation
 `ravel:coverage` makes, read off `cargo llvm-cov`'s own summary:
@@ -81,6 +88,11 @@ let drift:
   against the repository, in both directions. A crate added, a guide page renamed
   or a conformance suite deleted after the record was written fails the gate by
   name.
+- `verify_m4_process_matrix` compares the matrix's `processes` against
+  `ravel:verify`'s `after` list, in both directions, and refuses a nonzero
+  `exitStatus` under a record whose own `result` is `pass`. The first round of
+  M4-W8's independent review added an invented process row and flipped a row's
+  exit status to 1, and the gate returned 0 for both; this is the repair.
 
 Both are proven by mutation rather than by reading, which is the only proof this
 repository accepts that a check is not vacuous.

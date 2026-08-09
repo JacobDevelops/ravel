@@ -1652,6 +1652,7 @@ fn verify_manifest_invariants(
         // gone stale. The milestone gate runs them too, and the two never run in
         // the same invocation.
         verify_m4_surface(root, violations);
+        verify_m4_process_matrix(root, violations);
         verify_m4_gate_figures(root, manifest_path, violations);
     }
 }
@@ -3716,6 +3717,7 @@ fn verify_m4_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
     }
 
     verify_m4_surface(root, violations);
+    verify_m4_process_matrix(root, violations);
     verify_m4_gate_figures(root, manifest_path, violations);
 }
 
@@ -3867,6 +3869,193 @@ fn files_named(root: &Path, directory: &str, extension: &str) -> BTreeSet<String
                 .is_some_and(|found| found == extension)
         })
         .collect()
+}
+
+/// The file that declares what `ravel:verify` runs, and the name of that gate.
+const GATE_DEFINITION: &str = "nix/common.nix";
+
+/// The record that lists the processes that gate ran.
+const M4_PROCESS_MATRIX: &str = "evidence/m4/linux-process-matrix.json";
+
+/// The prefix every row's command carries, and the whole of what makes it a task.
+const TASK_COMMAND_PREFIX: &str = "devenv tasks run ";
+
+/// Reconciles the recorded gate processes against the gate that ran them.
+///
+/// The matrix says it holds every process `devenv tasks run ravel:verify` runs,
+/// and until this existed nothing recomputed that: an invented row naming a task
+/// that does not exist passed the gate, and so did a row recording a nonzero exit
+/// under a record whose own `result` is `pass`. Both are the failure
+/// [`verify_m4_surface`] closes for the inventory lists one document over — a list
+/// nobody recomputes is a claim about the tree that the tree never answered — and
+/// the process list is the one an entire milestone's gate evidence rests on.
+///
+/// So the list is compared against `nix/common.nix`'s own `after` list in both
+/// directions. A recorded process the gate does not run is an error, because that
+/// is a row whose exit status came from somewhere other than the run the record
+/// heads. A gate sub-task with no recorded row is an error too, because the
+/// omission is how a failing process leaves a record that still reads complete.
+///
+/// `checksOutsideTheGate` is the escape valve and it is held shut: a row there is
+/// required to name a task the gate does *not* run, so moving an in-gate task out
+/// of `processes` to avoid the reconciliation fails by name instead of passing.
+///
+/// The exit statuses are held to the record's own verdict rather than to zero, so
+/// a record that reports a red run can still be written — what it may not do is
+/// report one while calling itself a pass.
+///
+/// What this cannot do, stated because the reconciliation reads stronger than it
+/// is: both sides are still Ravel's own text. It compares a record against the
+/// task graph's source, not against a run, so a row's `exitStatus` is an
+/// unverifiable assertion about what happened and remains one. What it closes is
+/// the drift between the two documents, which is the part a later edit breaks.
+fn verify_m4_process_matrix(root: &Path, violations: &mut Vec<String>) {
+    let record = root.join(M4_PROCESS_MATRIX);
+    if !record.is_file() {
+        // Its absence is already a violation where the record set is checked.
+        return;
+    }
+    let gate = match gate_sub_tasks(root) {
+        Ok(gate) => gate,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+
+    let Some(recorded) = recorded_tasks(&record, ".processes", violations) else {
+        return;
+    };
+    for extra in recorded.difference(&gate) {
+        violations.push(format!(
+            "{M4_PROCESS_MATRIX} records {extra} under processes, which {GATE_DEFINITION} does not \
+             list among the sub-tasks ravel:verify runs; a row the gate never ran took its exit \
+             status from somewhere the record does not name"
+        ));
+    }
+    for missing in gate.difference(&recorded) {
+        violations.push(format!(
+            "{M4_PROCESS_MATRIX} omits {missing} from processes, which {GATE_DEFINITION} lists \
+             among the sub-tasks ravel:verify runs; a gate process with no row is how a failing \
+             one leaves a record that still reads complete"
+        ));
+    }
+
+    if let Some(outside) = recorded_tasks(&record, ".checksOutsideTheGate", violations) {
+        for inside in outside.intersection(&gate) {
+            violations.push(format!(
+                "{M4_PROCESS_MATRIX} records {inside} under checksOutsideTheGate while \
+                 {GATE_DEFINITION} lists it among the sub-tasks ravel:verify runs; that section is \
+                 for checks the gate does not run and is not a way out of the reconciliation"
+            ));
+        }
+    }
+
+    verify_recorded_exit_statuses(&record, violations);
+}
+
+/// Every sub-task `ravel:verify` declares in its `after` list.
+fn gate_sub_tasks(root: &Path) -> Result<BTreeSet<String>, String> {
+    let source = fs::read_to_string(root.join(GATE_DEFINITION))
+        .map_err(|error| format!("cannot read {GATE_DEFINITION}: {error}"))?;
+    let mut names = BTreeSet::new();
+    let mut inside_gate = false;
+    let mut inside_list = false;
+    for line in source.lines().map(str::trim) {
+        if line.starts_with("\"ravel:verify\" =") {
+            inside_gate = true;
+            continue;
+        }
+        if !inside_gate {
+            continue;
+        }
+        if !inside_list {
+            inside_list = line.starts_with("after = [");
+            continue;
+        }
+        if line.starts_with(']') {
+            break;
+        }
+        let name = line.trim_matches('"');
+        if !name.is_empty() {
+            names.insert(name.to_owned());
+        }
+    }
+    if names.is_empty() {
+        return Err(format!(
+            "{GATE_DEFINITION} states no after list for ravel:verify, so nothing says which \
+             sub-tasks the gate runs and no record of them can be reconciled"
+        ));
+    }
+    Ok(names)
+}
+
+/// The task each row of one array names, or nothing when the array is absent.
+fn recorded_tasks(
+    record: &Path,
+    field: &str,
+    violations: &mut Vec<String>,
+) -> Option<BTreeSet<String>> {
+    let commands = match jq_value(record, &format!("{field}[]?.command")) {
+        Ok(commands) => commands,
+        Err(error) => {
+            violations.push(error);
+            return None;
+        }
+    };
+    let mut tasks = BTreeSet::new();
+    for command in commands
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        match command.strip_prefix(TASK_COMMAND_PREFIX) {
+            Some(task) => {
+                tasks.insert(task.trim().to_owned());
+            }
+            None => violations.push(format!(
+                "{M4_PROCESS_MATRIX} records the command `{command}` under {field}, which does not \
+                 name a devenv task; a row nothing can resolve to a task is reconciled against \
+                 nothing"
+            )),
+        }
+    }
+    Some(tasks)
+}
+
+/// Refuses a red row under a record that calls itself green.
+fn verify_recorded_exit_statuses(record: &Path, violations: &mut Vec<String>) {
+    match jq_value(record, ".result") {
+        Ok(result) if result == "pass" => {}
+        Ok(_) => return,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    }
+    for field in [".processes", ".checksOutsideTheGate"] {
+        let failed = match jq_value(
+            record,
+            &format!("{field}[]? | select(.exitStatus != 0) | .command"),
+        ) {
+            Ok(failed) => failed,
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
+        };
+        for command in failed
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
+            violations.push(format!(
+                "{M4_PROCESS_MATRIX} records a nonzero exit status for `{command}` under {field} \
+                 while its own result is pass; a record that reports a failed process and calls \
+                 itself green states two things that cannot both be true"
+            ));
+        }
+    }
 }
 
 /// Requires M4's manifest and its matrix record to report the same gate run.
@@ -5017,18 +5206,19 @@ mod tests {
     use std::process::Command;
 
     use super::{
-        CRATE_NAMES, CampaignInventory, EXAMPLE_NAMES, HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts,
-        MILESTONE_MANIFESTS, SWEPT_SCOPE, TEST_MOD_NAMES, VERSION_CLASS_EXCUSES,
-        campaign_document_violations, change_mismatch, declared_hook_names,
+        CRATE_NAMES, CampaignInventory, EXAMPLE_NAMES, GATE_DEFINITION, HOOK_DOCUMENT,
+        HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS, SWEPT_SCOPE, TEST_MOD_NAMES,
+        VERSION_CLASS_EXCUSES, campaign_document_violations, change_mismatch, declared_hook_names,
         declares_unsafe_prohibition, denied_hook_names, game_class_literals, hook_counts,
         hook_document_violations, numbers_before, pinned_commit_mismatch, redacted_path,
         required_scaffold_paths, round_count_restatements, verify_campaign_inventory,
         verify_decision_hook_claims, verify_evidence_records, verify_experiment_fence,
         verify_harness_lifecycles, verify_hook_inventory_document, verify_ignored_boundaries,
-        verify_m4_gate_figures, verify_m4_surface, verify_manifest_percentages, verify_milestone,
-        verify_persistence_reflection, verify_review_round_counts, verify_scaffold, verify_spikes,
-        verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
-        verify_version_boundary, verify_void_limits, visible_commit,
+        verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface,
+        verify_manifest_percentages, verify_milestone, verify_persistence_reflection,
+        verify_review_round_counts, verify_scaffold, verify_spikes, verify_testkit_fence,
+        verify_tracked_contents, verify_tracked_paths, verify_version_boundary, verify_void_limits,
+        visible_commit,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -6910,6 +7100,154 @@ mod tests {
             ["evidence/m4/manifest.json records .tests.total 9 while \
                  evidence/m4/linux-process-matrix.json records .gate.tests.run 8; they describe \
                  one gate run",]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A root holding a gate definition that runs `tasks`, and one matrix record.
+    fn process_matrix_root(label: &str, tasks: &[&str], matrix: &str) -> PathBuf {
+        let root = temporary_root(label);
+        let after = tasks
+            .iter()
+            .map(|task| format!("          \"{task}\"\n"))
+            .collect::<String>();
+        fs::create_dir_all(root.join("nix")).expect("directory should be creatable");
+        fs::write(
+            root.join(GATE_DEFINITION),
+            format!(
+                "  tasks = {{\n    \"ravel:verify-scaffold\".exec = \"x\";\n\
+                 \n    \"ravel:verify\" = {{\n      after = [\n{after}      ];\n\
+                 \x20     exec = \"true\";\n    }};\n  }};\n"
+            ),
+        )
+        .expect("gate definition should be writable");
+        let milestone = root.join("evidence/m4");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("linux-process-matrix.json"), matrix)
+            .expect("record should be writable");
+        root
+    }
+
+    #[test]
+    fn a_process_matrix_naming_exactly_the_gates_sub_tasks_is_accepted() {
+        let root = process_matrix_root(
+            "matrix-agrees",
+            &["ravel:fmt", "ravel:audit"],
+            r#"{"result":"pass","processes":[
+                {"command":"devenv tasks run ravel:fmt","exitStatus":0},
+                {"command":"devenv tasks run ravel:audit","exitStatus":0}]}"#,
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_process_matrix(&root, &mut violations);
+
+        assert!(violations.is_empty(), "{violations:?}");
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_process_matrix_that_has_drifted_from_the_gate_is_reported() {
+        // Both directions in one record, for the reason the surface inventory is
+        // read both ways: a fabricated row and an omitted one cancel out under
+        // any check that compares lengths.
+        let root = process_matrix_root(
+            "matrix-drifted",
+            &["ravel:fmt", "ravel:audit"],
+            r#"{"result":"pass","processes":[
+                {"command":"devenv tasks run ravel:fmt","exitStatus":0},
+                {"command":"devenv tasks run ravel:this-task-does-not-exist","exitStatus":0}]}"#,
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_process_matrix(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m4/linux-process-matrix.json records ravel:this-task-does-not-exist \
+                 under processes, which nix/common.nix does not list among the sub-tasks \
+                 ravel:verify runs; a row the gate never ran took its exit status from somewhere \
+                 the record does not name",
+                "evidence/m4/linux-process-matrix.json omits ravel:audit from processes, which \
+                 nix/common.nix lists among the sub-tasks ravel:verify runs; a gate process with \
+                 no row is how a failing one leaves a record that still reads complete",
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_failed_process_under_a_record_that_calls_itself_a_pass_is_reported() {
+        let root = process_matrix_root(
+            "matrix-red-row",
+            &["ravel:fmt"],
+            r#"{"result":"pass","processes":[
+                {"command":"devenv tasks run ravel:fmt","exitStatus":1}]}"#,
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_process_matrix(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m4/linux-process-matrix.json records a nonzero exit status for `devenv \
+                 tasks run ravel:fmt` under .processes while its own result is pass; a record that \
+                 reports a failed process and calls itself green states two things that cannot \
+                 both be true"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_gate_sub_task_recorded_as_a_check_outside_the_gate_is_reported() {
+        // The section exists so a hand-run check can be recorded honestly. It
+        // would also be the obvious way to evade the reconciliation above, which
+        // is why membership of it is checked rather than trusted.
+        let root = process_matrix_root(
+            "matrix-parked-row",
+            &["ravel:fmt"],
+            r#"{"result":"pass",
+                "processes":[{"command":"devenv tasks run ravel:fmt","exitStatus":0}],
+                "checksOutsideTheGate":[
+                    {"command":"devenv tasks run ravel:fmt","exitStatus":0}]}"#,
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_process_matrix(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m4/linux-process-matrix.json records ravel:fmt under checksOutsideTheGate \
+                 while nix/common.nix lists it among the sub-tasks ravel:verify runs; that section \
+                 is for checks the gate does not run and is not a way out of the reconciliation"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_recorded_command_that_names_no_task_is_reported() {
+        let root = process_matrix_root(
+            "matrix-bare-command",
+            &["ravel:fmt"],
+            r#"{"result":"pass","processes":[
+                {"command":"devenv tasks run ravel:fmt","exitStatus":0},
+                {"command":"cargo test","exitStatus":0}]}"#,
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_process_matrix(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m4/linux-process-matrix.json records the command `cargo test` under \
+                 .processes, which does not name a devenv task; a row nothing can resolve to a \
+                 task is reconciled against nothing"
+            ]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }

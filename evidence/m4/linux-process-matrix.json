@@ -4,7 +4,7 @@
   "workPackage": "M4-W8",
   "protocol": "m4-gate-matrix-v1",
   "result": "pass",
-  "summary": "Every process the global Linux gate runs, with the exit status it returned, what it proves about M4's surface, and what it does not. The figures under gate are the run evidence/m4/manifest.json records under commands and tests, and verify_m4_gate_figures in tools/ravel-xtask/src/lib.rs refuses the two documents when they disagree.",
+  "summary": "Every process the global Linux gate runs, with the exit status it returned, what it proves about M4's surface, and what it does not. processes holds those and only those: it is reconciled against ravel:verify's own after list in nix/common.nix in both directions by verify_m4_process_matrix in tools/ravel-xtask/src/lib.rs, so a row the gate does not run and a gate sub-task with no row both fail the gate by name. checksOutsideTheGate holds what was run by hand instead, and no row there is a figure the command under gate produced. The figures under gate are the run evidence/m4/manifest.json records under commands and tests, and verify_m4_gate_figures refuses the two documents when they disagree.",
   "platform": {
     "os": "linux",
     "architecture": "x86_64",
@@ -15,7 +15,7 @@
     "whyItIsNotHere": "M4 is the SDK breadth milestone and every surface it added is exercised inside the gate. No game process was started for it, so nothing recorded here observes Ravel inside Minecraft. That is a field rather than a sentence because it is the single most misreadable thing about this record: M3's matrix of the same name is an operator-run native launch, and this one is not. What a launch would add is the half nothing here reaches — a mod discovered from a package, a declared side honoured by a running host, a packet crossing a connection — and each of those is recorded as an owed obligation in evidence/m4/manifest.json rather than as a gap this record closes.",
     "whatWouldChangeIt": "A launch campaign of the shape M3-W7 ran. It needs an operator, the display, and the pinned local fixture, and no M4 work package owns one."
   },
-  "resultCeiling": "A reader can recompute every row below by running the named command on a checkout with the devenv shell. That is the whole of what this record attests, and it is deliberately more recomputable and less far-reaching than M3's matrix: every row is a gate process, so the matrix proves the gate passes and proves nothing about a running game.",
+  "resultCeiling": "A reader can recompute every row below by running the named command on a checkout with the devenv shell. That is the whole of what this record attests, and it is deliberately more recomputable and less far-reaching than M3's matrix: every row under processes is a gate process, so the matrix proves the gate passes and proves nothing about a running game. The one row that is not a gate process is under checksOutsideTheGate and is labelled as such, because a table headed by ravel:verify's exit status must not carry a row that command never ran.",
   "measuredAgainst": "a clean working copy at the head of the change stack that lands M4's evidence. Every row below was run individually, in the order listed, on that tree. evidence/m4/manifest.json pins revision.id at the change that introduced it, which is below that head by construction: recording a result changes the tree that produced it, so no evidence record can pin the tree it was measured on and also be part of it. The manifest states the same ceiling as a deviation rather than leaving it to be discovered.",
   "gate": {
     "command": "devenv tasks run ravel:verify",
@@ -122,18 +122,21 @@
       "doesNotProve": "That the closure is small enough for an author to reason about; the SDK boundary suite is what states the closure."
     },
     {
-      "surface": "environment reproducibility",
-      "command": "devenv tasks run ravel:verify-environment",
-      "exitStatus": 0,
-      "proves": "The devenv environment builds and its own checks pass, so the commands above are reproducible from the pinned environment rather than from whatever was on the machine. This row returned a nonzero status when M4-W8 first ran it, and for a reason that predated M4: the flake's scaffold check supplied jq and not check-jsonschema, so every milestone manifest reported that it could not validate the evidence schema and the schema rule ran nowhere outside the devenv shell. It failed closed rather than falsely green, which is why the row was red. flake.nix now supplies the validator and the row passes.",
-      "doesNotProve": "That they reproduce on a different hardware profile; every figure recorded here is from linux-reference-v1."
-    },
-    {
       "surface": "change stack contract",
       "command": "devenv tasks run ravel:verify-stack",
       "exitStatus": 0,
       "proves": "Every change in the stack carries a conventional description and the working copy is not carrying undescribed work.",
       "doesNotProve": "Anything about the content of a change. It fails on any dirty tree in tens of milliseconds, which is why it cannot be the task that judges whether some other check caught a mutation."
+    }
+  ],
+  "checksOutsideTheGate": [
+    {
+      "surface": "environment reproducibility",
+      "command": "devenv tasks run ravel:verify-environment",
+      "exitStatus": 0,
+      "whyItIsNotAGateProcess": "ravel:verify does not run it. ROADMAP.md distinguishes the two gates in as many words — ravel:verify is the fast code-policy graph and ravel:verify-environment runs devenv test and nix flake check — and nix/common.nix's after list for ravel:verify does not name it. This row was written among the processes above in the first draft of this record, which made the record claim the gate had run a process it had not; the M4-W8 independent review's first round found that and it is separated here. verify_m4_process_matrix in tools/ravel-xtask/src/lib.rs now reconciles the processes array against that after list in both directions and requires every row in this section to name a task the gate does not run.",
+      "proves": "The devenv environment builds and its own checks pass, so the commands above are reproducible from the pinned environment rather than from whatever was on the machine. It was run by hand for this record.",
+      "doesNotProve": "Anything about the gate. Nothing in devenv tasks run ravel:verify reaches this task, so a red result here does not make the gate red and a green one is not a gate figure. It also does not prove reproducibility on a different hardware profile; every figure recorded here is from linux-reference-v1."
     }
   ],
   "whatAGreenMatrixDoesNotSay": [

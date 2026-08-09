@@ -30,8 +30,12 @@ devenv tasks run ravel:spike-adg-2
 devenv tasks run ravel:spike-adg-3
 devenv tasks run ravel:spike-adg-4
 devenv tasks run ravel:spike-adg-5
-./jvm/harness/run-datafix-byte-preservation.sh # ADG-7 pinned fixer proof
+./jvm/harness/run-datafix-byte-preservation.sh # ADG-7 pinned fixer measurement
 ```
+
+The last one is a script rather than a task because no task runs it: it additionally
+needs a real Minecraft library root for the fixer's own dependencies, so it stays a
+measurement ADG-7 records rather than a gate. ADG-7 says what that costs.
 
 The shared measurement contract these tasks report through is
 [`docs/architecture/m1-measurement-gate.md`](../architecture/m1-measurement-gate.md),

@@ -163,22 +163,90 @@ general Rust-to-JVM mechanism.
 
 ## Evidence
 
-Run the pinned fixer regression with:
+The fixer result below is a measurement taken once, not a regression gate. Nothing
+in `ravel:verify` runs it, no devenv task wraps it, and this record previously
+called it a gate while nothing regressed on it. It needs the restricted pinned
+client jar and a real Minecraft library root for the fixer's own dependencies, and
+the gate graph can assume neither; the fixture-dependent `ravel:spike-adg-*` tasks
+sit outside the gate for exactly that reason. Runtime is not why — the whole run
+takes about two seconds.
+
+Take it with:
 
 ```console
 ./jvm/harness/run-datafix-byte-preservation.sh
 ```
 
-`DataFixTypes.SAVED_DATA_COMMAND_STORAGE` preserved all payloads byte-identically
-from data version 1343 through 4790 inclusive: 3,448 source versions, eight payload
-classes, and 27,584 of 27,584 cases. Payload lengths were 0, 1, 7, 8, 31, 256,
-257, and 4,097 bytes, including leading zeroes, all byte values, and invalid UTF-8.
-This admits the selected fixer for the pinned version.
+What it measures is the shape Ravel actually stores, and that shape is taken from
+production rather than restated. `jvm/harness/DataFixBytePreservationMain.java`
+compiles `dev.ravel.jvm.screen.RavelWorldData` — the class Minecraft stores —
+against the pinned jar and uses that class's own `SavedDataType`: its codec builds
+the payload, its `dataFixType()` selects the fixer, and its byte accessor reads the
+aggregate back. The wrapping around the payload is the pinned `SavedDataStorage`'s,
+read from the pinned class files: writing puts the codec's output under `data` in a
+fresh compound and adds `DataVersion`, and reading hands the whole root compound to
+`DataFixTypes.update` and then parses `root.get("data")`. The fixer therefore sees
+the nesting rather than the payload alone.
 
-The limit of that evidence is explicit: it covers only 26.1.2's current range and
+At change `muuxlrom` the run reported:
+
+```text
+datafix-byte-preservation=passed fixer=SAVED_DATA_COMMAND_STORAGE
+shape=data.{aggregate:StringTag} range=1343..4790 versions=3448 payloads=8
+cases=27584
+```
+
+That is one line in the terminal, wrapped here. Every payload came back
+byte-identical: 3,448 source versions from data version 1343 through 4790
+inclusive, eight payload classes, and 27,584 of 27,584 cases. Payload lengths were
+0, 1, 7, 8, 31, 256, 257, and 4,097 bytes, including leading zeroes, all byte
+values, and invalid UTF-8. `shape` is printed off an encoded payload rather than
+asserted against a copy, and it is the field that says the bytes measured were the
+base64 string under `aggregate` that production writes. This admits the selected
+fixer for the pinned version and for the object Ravel stores.
+
+An earlier run of this harness measured a different shape: `Codec.BYTE_BUFFER`
+encoded directly under `data`, which is an NBT byte array where production writes a
+base64 string one level deeper under `aggregate`. That run passed and its result was
+not false, but a fixer result over a shape production never writes cannot admit the
+fixer for the object Ravel stores, so it has been re-measured rather than reworded.
+The conclusion is unchanged because the real shape is preserved too — and, on the
+way to it, so was the same payload set under the key `contents`, which is the one
+key the selected fixer's own vanilla data uses.
+
+The figures above are a historical record of one run, so they are anchored to the
+files that produced them. At that change:
+
+| File | sha256 |
+| --- | --- |
+| `jvm/harness/DataFixBytePreservationMain.java` | `cf793a7796dff3420e06141c622ef173e6711af53db36e0ed1d906e7b9de667c` |
+| `jvm/harness/run-datafix-byte-preservation.sh` | `8d9c4d4ab171cceade6649a87b3e795c05a225d885fc81e1f06f8bf2a461742e` |
+| `jvm/screen/src/dev/ravel/jvm/screen/RavelWorldData.java` | `3923d3a40b26a2627045f5dc92380185b258c49d4ca56f8d5030cae56753bec8` |
+
+`sha256sum` over those three paths recomputes them. Editing any of the three makes
+the reported line a record of a different instrument, and nothing in the repository
+notices: the provenance of this measurement is prose, which is what not being a gate
+costs. The client jar the run linked against is the one
+`minecraft/versions/26.1.2/adapter.toml` pins by digest, and that pin is checked.
+
+The limit of the evidence is explicit: it covers only 26.1.2's current range and
 payloads through 4,097 bytes. The 1 MiB decompressed canonical aggregate ceiling
 is an admission safety policy, not a claim that every byte length up to the ceiling
 was passed individually through the fixer.
+
+### What would make it a gate, and who owns that
+
+M3-W4 owns this evidence: it is the first item in that work package's Verification
+column. Making it a gate needs one thing that is not available — the pinned class
+files and the fixer's libraries reachable from `ravel:verify` on a clean checkout.
+The client jar is restricted material that `tests/fixtures/local/` keeps ignored and
+`ravel-verify-scaffold` refuses to let into the tracked tree, and the library root
+belongs to a launcher installation outside the repository. So no work package owns
+wiring this in today, and M3-W4 rests on a recorded measurement instead. An
+independent M3-W8 round marked that Verification item proven by citing this section
+while it described the earlier shape; the round's transcript in
+`evidence/m3/review.md` stays as it was written, and this section is the correction
+a later round should read.
 
 The same pinned-class inspection established the common `saveAllChunks` seam and
 that `SavedDataStorage.set` dirties exactly once. Phase C turns those measured

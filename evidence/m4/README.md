@@ -63,9 +63,10 @@ Closure is a different question from the gate:
 devenv tasks run ravel:verify-milestone:m4
 ```
 
-That exits nonzero while M4 is open, which is the gate working. It becomes green
-when — and only when — an independent review round returns a pass and
-`review.result` records it.
+That exited nonzero for the whole life of this milestone, which was the gate
+working. It is green now, and it turned green when — and only when — an
+independent review round returned a pass with nothing repaired after it and
+`review.result` recorded that.
 
 ## What the gate binds here
 

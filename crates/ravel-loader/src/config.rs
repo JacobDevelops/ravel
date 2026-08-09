@@ -180,8 +180,8 @@ impl std::error::Error for ConfigRefused {
 }
 
 impl StructuredFailure for ConfigRefused {
-    /// None of the three is one of `SPEC.md` §9.2's dependency-graph outcomes: the
-    /// graph resolved and a document or a mod is what was refused.
+    /// No variant of this enum is one of `SPEC.md` §9.2's dependency-graph
+    /// outcomes: the graph resolved and a document or a mod is what was refused.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }

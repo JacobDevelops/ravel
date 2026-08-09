@@ -418,6 +418,20 @@ fn written_files(
         }
     }
 
+    // Written unchecked, and this is the one asymmetry in what `validate` decides.
+    // A tag member is checked because registry closure is one of the four properties
+    // the gate names and its input — every member's `ContentDeclaration` — is already
+    // an argument here. A settings key is not, because the pack's settings layer is
+    // none of the four and the input a check would need, every member's
+    // `ConfigurationDeclaration`, is not an argument here. The check itself is not
+    // missing from the repository: `LayeredConfiguration::resolve` refuses an unknown
+    // key, an illegal value, and a `required` setting the pack left out. It runs when
+    // the game starts rather than when the pack is built, so a typo'd tag member is
+    // refused to the pack author and a typo'd settings key is refused to the player.
+    // Closing it means handing `validate` the members' configuration declarations and
+    // calling that same `resolve` per member rather than writing a second answer.
+    // Nothing decides against that; no work package owns it yet, and `ROADMAP.md`'s
+    // open-questions table is where it is recorded.
     for (owner, document) in pack.settings() {
         let path = ravel_path(&format!("config/{owner}.json"));
         files.insert(path, document_bytes(&document.to_json()));

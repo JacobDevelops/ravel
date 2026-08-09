@@ -1,6 +1,10 @@
 #![forbid(unsafe_code)]
 
-//! Versioned saved-data admission and canonical aggregate contracts.
+//! Versioned saved-data admission, migration and canonical aggregate contracts.
+
+mod migrate;
+
+pub use migrate::{MigrationChain, MigrationFailed, MigrationStep};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -206,6 +210,24 @@ impl SavedDataEnvelope {
     pub const fn payload(&self) -> &Value {
         &self.payload
     }
+
+    /// Returns this envelope at `data_version` carrying `payload`.
+    ///
+    /// A new value rather than a mutation, because a migration that refuses
+    /// halfway must leave the aggregate holding exactly what it held. Everything
+    /// else travels unchanged: a migration rewrites a payload's shape and decides
+    /// nothing about who owns it or what it needs installed.
+    #[must_use]
+    pub fn migrated(&self, data_version: SavedDataVersion, payload: Value) -> Self {
+        Self {
+            schema_version: self.schema_version,
+            owner: self.owner.clone(),
+            data_version,
+            required_packages: self.required_packages.clone(),
+            payload_schema: self.payload_schema.clone(),
+            payload,
+        }
+    }
 }
 
 /// The one canonical multi-owner value stored by Minecraft.
@@ -378,6 +400,19 @@ pub enum SavedDataError {
         stored: SavedDataVersion,
         missing: SavedDataVersion,
     },
+    /// A version the plan crosses has no declared migration step into it.
+    MissingMigration {
+        owner: ModId,
+        to: SavedDataVersion,
+    },
+    /// A declared step refused the payload it was handed.
+    MigrationFailed {
+        owner: ModId,
+        to: SavedDataVersion,
+        /// The mod's own account, which is why this is the one migration refusal
+        /// that quotes untrusted text.
+        detail: String,
+    },
     AggregateTooLarge {
         limit: usize,
     },
@@ -427,6 +462,8 @@ impl SavedDataError {
             Self::NoVersionsDeclared { owner }
             | Self::FutureVersion { owner, .. }
             | Self::NoMigrationPath { owner, .. }
+            | Self::MissingMigration { owner, .. }
+            | Self::MigrationFailed { owner, .. }
             | Self::UnsupportedEnvelopeVersion { owner, .. }
             | Self::DuplicateOwner { owner }
             | Self::UnknownOwner { owner }
@@ -460,6 +497,14 @@ impl fmt::Display for SavedDataError {
             } => write!(
                 formatter,
                 "`{owner}` cannot migrate saved data from {stored}; version {missing} is undeclared"
+            ),
+            Self::MissingMigration { owner, to } => write!(
+                formatter,
+                "`{owner}` declares saved-data version {to} and no migration into it"
+            ),
+            Self::MigrationFailed { owner, to, detail } => write!(
+                formatter,
+                "`{owner}` could not migrate its saved data to version {to}: {detail}"
             ),
             Self::AggregateTooLarge { limit } => write!(
                 formatter,
@@ -512,7 +557,10 @@ impl StructuredFailure for SavedDataError {
         LifecycleState::Registered
     }
     fn quotes_untrusted_text(&self) -> bool {
-        matches!(self, Self::InvalidAggregate(_))
+        matches!(
+            self,
+            Self::InvalidAggregate(_) | Self::MigrationFailed { .. }
+        )
     }
 }
 

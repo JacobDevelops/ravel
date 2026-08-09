@@ -74,9 +74,10 @@ fn run() -> Result<usize, String> {
         let evidence = measure(owner, &layout)?;
         let result = assemble(owner, &evidence, &layout, &pinned, &revision)?;
         let file = format!("adg4-{}.json", owner.flag());
-        harness::write_result(&layout.root.join(RESULT_DIRECTORY).join(file), &result)
-            .map_err(|error| error.to_string())?;
-        written += 1;
+        written += usize::from(
+            harness::write_result(&layout.root.join(RESULT_DIRECTORY).join(file), &result)
+                .map_err(|error| error.to_string())?,
+        );
     }
     Ok(written)
 }

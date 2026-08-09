@@ -92,14 +92,12 @@ fn run() -> Result<usize, String> {
             control_ready = Some(evidence.trial.ready_nanos);
         }
         let result = assemble(entry, &evidence, &layout, &pinned, &revision, control_ready)?;
-        write(&layout, entry.id(), &result)?;
-        written += 1;
+        written += usize::from(write(&layout, entry.id(), &result)?);
     }
 
     for rejection in REJECTIONS {
         let result = rejected(rejection, &pinned, &java, &revision)?;
-        write(&layout, rejection.id, &result)?;
-        written += 1;
+        written += usize::from(write(&layout, rejection.id, &result)?);
     }
 
     Ok(written)
@@ -815,7 +813,7 @@ fn installed_bytes(entry: Entry, layout: &Layout) -> Result<u64, String> {
     Ok(total)
 }
 
-fn write(layout: &Layout, id: &str, result: &SpikeResult) -> Result<(), String> {
+fn write(layout: &Layout, id: &str, result: &SpikeResult) -> Result<bool, String> {
     let file = format!("{}.json", id.replace('.', "-"));
     harness::write_result(&layout.root.join(RESULT_DIRECTORY).join(file), result)
         .map_err(|error| error.to_string())

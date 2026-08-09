@@ -142,7 +142,8 @@ fn run() -> Result<(), String> {
             .join("adg5-stock-jvm-arguments.json"),
         &result,
     )
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 /// What the inspection observed.

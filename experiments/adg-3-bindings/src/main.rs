@@ -63,8 +63,7 @@ fn run() -> Result<usize, String> {
             .binding_generation
             .as_ref()
             .is_some_and(|generation| generation.repeated_run_is_identical);
-        write(&layout, &result.candidate.id.clone(), &result)?;
-        written += 1;
+        written += usize::from(write(&layout, &result.candidate.id.clone(), &result)?);
         // The record carries the observation either way, and a run that observed
         // a non-reproducible generation still fails: reproducibility being false
         // is a finding about the mechanism, not a field to file quietly.
@@ -79,8 +78,7 @@ fn run() -> Result<usize, String> {
 
     for rejection in REJECTIONS {
         let result = rejected(rejection, &pinned, &revision)?;
-        write(&layout, rejection.id, &result)?;
-        written += 1;
+        written += usize::from(write(&layout, rejection.id, &result)?);
     }
     Ok(written)
 }
@@ -600,7 +598,7 @@ fn generated_files(directory: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
-fn write(layout: &Layout, id: &str, result: &SpikeResult) -> Result<(), String> {
+fn write(layout: &Layout, id: &str, result: &SpikeResult) -> Result<bool, String> {
     let file = format!("{}.json", id.replace('.', "-"));
     harness::write_result(&layout.root.join(RESULT_DIRECTORY).join(file), result)
         .map_err(|error| error.to_string())

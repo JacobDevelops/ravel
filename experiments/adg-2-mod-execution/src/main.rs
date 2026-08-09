@@ -79,9 +79,10 @@ fn run() -> Result<usize, String> {
         let evidence = measure(binding, &layout)?;
         let result = assemble(binding, &evidence, &layout, &pinned, &revision)?;
         let file = format!("{}.json", binding.id().replace('.', "-"));
-        harness::write_result(&layout.root.join(RESULT_DIRECTORY).join(file), &result)
-            .map_err(|error| error.to_string())?;
-        written += 1;
+        written += usize::from(
+            harness::write_result(&layout.root.join(RESULT_DIRECTORY).join(file), &result)
+                .map_err(|error| error.to_string())?,
+        );
     }
     Ok(written)
 }

@@ -80,7 +80,7 @@
       "doesNotProve": "Whether any milestone is closed. That is ravel:verify-milestone, and for M4 it exits nonzero by design while the milestone is open."
     },
     {
-      "surface": "pack example, written and read back off disk",
+      "surface": "pack example, written to disk and compared against two independent lists",
       "command": "devenv tasks run ravel:verify-example-pack",
       "exitStatus": 0,
       "proves": "The M4-W5 pack example runs as its own process, writes a pack, and the tree it wrote matches both the file list the gate holds independently and the example's own report of what it wrote.",

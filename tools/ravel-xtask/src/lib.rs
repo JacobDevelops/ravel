@@ -1405,6 +1405,52 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
             ));
         }
     }
+
+    verify_resolved_class_figure(root, violations);
+}
+
+/// The record that states in prose how large the reflective surface is.
+const JVM_ENTRY_DECISION: &str = "docs/decisions/adg-1-jvm-entry.md";
+
+/// Anchors the one prose figure written about the set above to the set itself.
+///
+/// The list is designed to grow: bringing a member under the adapter means adding
+/// a class name to it, and the check above already fails in both directions when
+/// the jar and the list disagree. What nothing read was the sentence in ADG-1 that
+/// counts the list for a reader, so the figure could go stale on exactly the edit
+/// the rest of this function exists to force. It is one line of prose against one
+/// `len()`, which is the cheapest anchor in this repository and the reason there
+/// is no excuse for the figure being ungated.
+///
+/// Known limit: this holds the count and nothing else. A record that states the
+/// right number and describes the wrong classes passes, because prose about what
+/// the names *are* is held by nothing but reading.
+fn verify_resolved_class_figure(root: &Path, violations: &mut Vec<String>) {
+    let record = match fs::read_to_string(root.join(JVM_ENTRY_DECISION)) {
+        Ok(record) => record,
+        Err(error) => {
+            violations.push(format!("cannot read {JVM_ENTRY_DECISION}: {error}"));
+            return;
+        }
+    };
+    let declared = PERSISTENCE_REFLECTED_CLASSES.len();
+    let stated = numbers_before(&record, &["classes", "by", "name"]);
+    if stated.is_empty() {
+        violations.push(format!(
+            "{JVM_ENTRY_DECISION} states no count of the classes the persistence adapter resolves \
+             by name; the figure is the one thing about that set a reader takes on trust, so it is \
+             required rather than optional"
+        ));
+        return;
+    }
+    for count in stated {
+        if count != declared {
+            violations.push(format!(
+                "{JVM_ENTRY_DECISION} says the persistence adapter resolves {count} classes by \
+                 name while the declared reflective surface holds {declared}"
+            ));
+        }
+    }
 }
 
 /// The author-facing documents whose enumerations are held to the code.

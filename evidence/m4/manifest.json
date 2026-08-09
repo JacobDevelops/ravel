@@ -109,7 +109,7 @@
     "results": [
       {
         "name": "linux-process-matrix.json",
-        "sha256": "f5ff9ecf8e5d6c1c23ac51423830d6db9685014706dae713df5bb1490ae30410"
+        "sha256": "ef00faca73f2eb2d45699acf1dbd30d30f44b2120876ea5ac6e29bcb3dcff924"
       },
       {
         "name": "sdk-surface.json",
@@ -139,7 +139,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "The agent jar's persistence adapter reflective surface is still unpinned, and this manifest therefore claims no ADG-3 drift coverage for the agent jar. jvm/bootstrap/dev/ravel/jvm/Persistence.java resolves game classes and members by name through Class.forName, and no member of that set appears in minecraft/versions/26.1.2/hooks.toml, stubs.toml, stubs.lock or mappings.lock, so the drift gate whose whole purpose is that a rename shows up in a diff reaches none of it. What does exist is verify_persistence_reflection in tools/ravel-xtask/src/lib.rs, which holds the jar's own sources to a declared set of class names and fails in both directions — but both sides of that comparison are Ravel's own, so it cannot see a game-side rename. Bringing the surface under stubs.toml and mappings.lock needs the stub-seed and lock re-pin ceremony against the pinned jar. ROADMAP.md's ADG-3 row records that no work package owns that ceremony, and because M4-W8 is where a drift claim over the agent jar would be made, this manifest states plainly that it makes none. Owner: unowned; ROADMAP.md's ADG-3 row is where that stays visible.",
+      "summary": "The agent jar's persistence adapter reflective surface is still unpinned, and this manifest therefore claims no ADG-3 drift coverage for the agent jar. jvm/bootstrap/dev/ravel/jvm/Persistence.java resolves game classes and members by name through Class.forName, and what the pinned files cover is narrower than that surface rather than absent from it. Three of the class names it resolves — net.minecraft.client.Minecraft, net.minecraft.server.MinecraftServer and net.minecraft.world.level.storage.SavedDataStorage — are hook targets in minecraft/versions/26.1.2/hooks.toml and in mappings.lock, so a rename of one of those classes does land in a re-pin diff. What is in no pinned file is net.minecraft.world.level.storage.LevelResource, net.minecraft.util.datafix.DataFixers, every member name and arity the adapter resolves, the two LevelResource field constants, and the three-argument SavedDataStorage constructor. That is the gap, it is where Persistence.java's own comment at the lookup states it, and the drift gate reaches none of it. What does exist is verify_persistence_reflection in tools/ravel-xtask/src/lib.rs, which holds the jar's own sources to a declared set of class names and fails in both directions — but both sides of that comparison are Ravel's own, so it cannot see a game-side rename. Bringing the surface under stubs.toml and mappings.lock needs the stub-seed and lock re-pin ceremony against the pinned jar. ROADMAP.md's ADG-3 row records that no work package owns that ceremony, and because M4-W8 is where a drift claim over the agent jar would be made, this manifest states plainly that it makes none. Owner: unowned; ROADMAP.md's ADG-3 row is where that stays visible.",
       "classification": "non-blocking"
     },
     {

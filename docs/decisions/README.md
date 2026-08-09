@@ -20,7 +20,8 @@ measurement exists, a rejection is explicit, and the limits are written down.
 
 ## Reproducing the evidence
 
-Each gate has one task. All of them need the pinned local fixtures described in
+Each gate that took a measurement has one task, and two of the gates did not take
+one. All of the tasks need the pinned local fixtures described in
 [`tests/fixtures/local/README.md`](../../tests/fixtures/local/README.md), and none
 of them authenticates or launches the game.
 
@@ -36,6 +37,13 @@ devenv tasks run ravel:spike-adg-5
 The last one is a script rather than a task because no task runs it: it additionally
 needs a real Minecraft library root for the fixer's own dependencies, so it stays a
 measurement ADG-7 records rather than a gate. ADG-7 says what that costs.
+
+[ADG-6](adg-6-configuration-ui.md) has neither a task nor a script, and that is
+the one gate here decided without a new measurement. Its record says so in its
+own `Status` line and its Evidence section says what decided it instead — a
+property no measurement was addressed to — so there is nothing for a task to
+re-run. Reading that section is the only way to check it, which is the cost of
+deciding a gate that way and is stated there rather than here.
 
 The shared measurement contract these tasks report through is
 [`docs/architecture/m1-measurement-gate.md`](../architecture/m1-measurement-gate.md),

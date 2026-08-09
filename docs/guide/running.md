@@ -21,9 +21,16 @@ and closed deliberately: an unknown event would name something no version adapte
 has resolved a hook for. Implement `observe` and `match`; ignoring an event costs
 one arm.
 
-The loader broadcasts every event to every running mod in resolved load order, so
-a mod that cares about ordering sees the same order every run. A mod that fails
-on an event ends that broadcast, and the mods after it never see it.
+The loader broadcasts every event to the mods that load on the running side, in
+resolved load order, so a mod that cares about ordering sees the same order every
+run. A mod that fails on an event ends that broadcast, and the mods after it
+never see it.
+
+There is a second filter and it is the one that surprises people. An event that
+does not happen on the running side at all has an empty audience — a client tick
+on a dedicated server reaches nobody, and that is not because no mod happened to
+be client-side. So `ClientTick` arms in a server-side mod are dead code rather
+than rare code, and a mod counting ticks has to say which side it counts on.
 
 **There is no hooks module and you never name a hook.** A hook is a host-side
 target in a Minecraft version's data, resolved against that version's mappings.

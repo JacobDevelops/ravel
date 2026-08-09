@@ -152,10 +152,17 @@ worth doing if you already keep a checkout for the `path` dependency — you do 
 and it is not something published for you to install.
 
 When validation does refuse, the message names the file and gives you the digest
-it actually has — `` `src/lib.rs` hashes <actual> but the manifest records
-<declared>`` — so a single stale digest is a copy-and-paste fix. It reports the
-first failure in declaration order only, so several edited files take several
-rounds by hand. That is what the subcommand is for.
+it actually has — `` `lib.rs` hashes <actual> but the manifest records
+<declared>`` — so a single stale digest is a copy-and-paste fix. The loader names
+a file and never a path, deliberately and everywhere: no published message names
+a filesystem path, which [Conforming](conforming.md) states as a rule. So a
+package with two files of the same base name in different directories gets two
+refusals that read alike, and the declaration order below is what tells them
+apart. The subcommand has no such constraint and prints the full relative path,
+which is the other reason to reach for it.
+
+It reports the first failure in declaration order only, so several edited files
+take several rounds by hand. That is what the subcommand is for.
 
 **Only what `source.files` lists is verified.** A configuration schema or a
 resource named elsewhere in the manifest is not hashed and not checked. If you

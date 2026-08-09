@@ -91,25 +91,25 @@
   "commands": [
     {
       "command": "devenv tasks run ravel:verify",
-      "startedAt": "2026-08-09T22:41:00.000Z",
-      "durationMs": 32822,
+      "startedAt": "2026-08-09T23:10:18.000Z",
+      "durationMs": 27548,
       "exitStatus": 0,
-      "logSha256": "2bad7ef233510f9b1ad1f826fda9c68b4f36ca4424c3d5023e2bf3643962c3d7"
+      "logSha256": "5120cbdf653832a92f8e99ebc8e7873d1ea885db1c9a57197212c43be5fa6435"
     }
   ],
   "tests": {
-    "total": 1275,
-    "passed": 1275,
+    "total": 1278,
+    "passed": 1278,
     "failed": 0,
     "skipped": 0,
-    "lineCoveragePercent": 88.41
+    "lineCoveragePercent": 88.43
   },
   "benchmarks": {
     "protocolVersion": "m4-surface-v1",
     "results": [
       {
         "name": "linux-process-matrix.json",
-        "sha256": "0ed2cc2dc3118ab193749fa7d2cc7e00ebee876fdc833d058bdb5497ad0e38db"
+        "sha256": "2b1234c72bb79bac585497c2f0643a6a283d0012e8277f83bafc9a3d6acb940f"
       },
       {
         "name": "sdk-surface.json",

@@ -21,16 +21,16 @@
     "command": "devenv tasks run ravel:verify",
     "exitStatus": 0,
     "tests": {
-      "run": 1275,
-      "passed": 1275,
+      "run": 1278,
+      "passed": 1278,
       "failed": 0,
       "skipped": 0,
       "runner": "cargo llvm-cov nextest --workspace --all-features"
     },
     "coverage": {
-      "linesPercent": 88.41,
-      "regionsPercent": 89.24,
-      "functionsPercent": 85.66,
+      "linesPercent": 88.43,
+      "regionsPercent": 89.26,
+      "functionsPercent": 85.69,
       "floorPercent": 80,
       "source": "the Lines, Regions and Functions columns of cargo llvm-cov's own summary, taken from the same invocation ravel:coverage runs, with the experiments/adg- filename filter that task applies",
       "howToRecompute": "devenv shell -- cargo llvm-cov nextest --workspace --all-features --summary-only --ignore-filename-regex '(^|/)experiments/adg-'"

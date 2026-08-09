@@ -213,7 +213,8 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
 /// digests do not bind its own records is an index rather than evidence, and
 /// the drift is invisible precisely because every field still validates.
 ///
-/// `benchmarks.results[]` is recomputed against the working copy because a
+/// `benchmarks.results[]` and every `platformEvidence[].baselines[]` digest that
+/// names a tracked file are recomputed against the working copy, because a
 /// milestone owns those files. `inputs[]` names files outside the evidence
 /// directory that go on changing after the milestone closes, so it is
 /// recomputed against the revision the manifest pins instead; hashing it here
@@ -232,6 +233,7 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
 
     for manifest in &manifests {
         verify_recorded_digests(root, manifest, &mut violations);
+        verify_recorded_baselines(root, manifest, &mut violations);
         verify_recorded_inputs(root, manifest, &mut violations);
     }
 
@@ -251,15 +253,21 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
 /// The revision is resolved through jj, and a checkout without one is skipped:
 /// `revision.id` is frequently a commit no branch reaches, so a plain git tree
 /// would report every input unreadable and turn a provenance check into noise.
+/// The skip says so on stdout, because a whole provenance check that evaporates
+/// in silence reads exactly like one that passed.
 fn verify_recorded_inputs(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
-    if !root.join(".jj").exists() {
-        return;
-    }
     let label = manifest_path
         .strip_prefix(root)
         .unwrap_or(manifest_path)
         .display()
         .to_string();
+    if !root.join(".jj").exists() {
+        println!(
+            "- {label}: input digests are not recomputed, because this checkout has no jj \
+             repository to resolve the pinned revision in"
+        );
+        return;
+    }
     let revision = match jq_value(manifest_path, ".revision.id") {
         Ok(value) if value != "null" && !value.is_empty() => value,
         Ok(_) => {
@@ -335,28 +343,130 @@ fn verify_recorded_digests(root: &Path, manifest_path: &Path, violations: &mut V
             violations.push(format!("{label} records a result with no digest: {record}"));
             continue;
         };
-        if name.is_empty() || name.starts_with('/') || name.split('/').any(|part| part == "..") {
+        verify_tracked_digest(
+            &TrackedDigest {
+                label: &label,
+                kind: "result",
+                manifest_path,
+                directory,
+                name,
+                recorded,
+            },
+            violations,
+        );
+    }
+}
+
+/// Recomputes every baseline digest a manifest records for a tracked file.
+///
+/// `benchmarks.results[]` is not the only place a manifest hashes its own
+/// records. M0 records a launch summary and a launch validation for each
+/// baseline workload, and two of those four digests name tracked evidence files
+/// that nothing recomputed, which is the same rot in a second place: correct
+/// today, and green on a stale value the moment a later change edits the record.
+///
+/// A validation digest names a private capture that never enters the repository,
+/// so it cannot be recomputed here and is announced as unbound instead of being
+/// silently passed over. A name that reads as a path is checked, because a typo
+/// in one would otherwise buy the same silence.
+fn verify_recorded_baselines(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    let label = manifest_path
+        .strip_prefix(root)
+        .unwrap_or(manifest_path)
+        .display()
+        .to_string();
+    let records = match jq_value(
+        manifest_path,
+        r#".platformEvidence[]?.baselines[]? | (.result, .validation)
+           | select(. != null) | .name + " " + .sha256"#,
+    ) {
+        Ok(records) => records,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let Some(directory) = manifest_path.parent() else {
+        return;
+    };
+
+    for record in records.lines().filter(|record| !record.trim().is_empty()) {
+        let Some((name, recorded)) = record.rsplit_once(' ') else {
             violations.push(format!(
-                "{label} records a result outside its own milestone: {name}"
+                "{label} records a baseline with no digest: {record}"
             ));
             continue;
-        }
-        let path = directory.join(name);
-        // A manifest cannot carry its own digest. Writing one changes the file
-        // it describes, so a check that admitted the record would only ever
-        // pass on a value nobody could compute, which is a check that verifies
-        // itself rather than the evidence.
-        if path == manifest_path {
-            violations.push(format!("{label} records its own digest, which cannot bind"));
+        };
+        if !names_a_path(name) {
+            println!(
+                "- {label}: the baseline digest recorded for \"{name}\" is not recomputed, \
+                 because it names material held outside the repository"
+            );
             continue;
         }
-        match file_digest(&path) {
-            Ok(actual) if actual == recorded => {}
-            Ok(actual) => violations.push(format!(
-                "{label} records {name} as {recorded} but it hashes {actual}"
-            )),
-            Err(error) => violations.push(format!("{label} records {name}: {error}")),
-        }
+        verify_tracked_digest(
+            &TrackedDigest {
+                label: &label,
+                kind: "baseline",
+                manifest_path,
+                directory,
+                name,
+                recorded,
+            },
+            violations,
+        );
+    }
+}
+
+/// Whether a recorded name is a path in the repository rather than prose.
+///
+/// Every tracked evidence record is named by its file name; the private captures
+/// are named by description, and no description is a bare file name.
+fn names_a_path(name: &str) -> bool {
+    !name.contains(char::is_whitespace) && Path::new(name).extension().is_some()
+}
+
+/// One recorded digest and where the manifest that records it says to find it.
+struct TrackedDigest<'a> {
+    label: &'a str,
+    kind: &'a str,
+    manifest_path: &'a Path,
+    directory: &'a Path,
+    name: &'a str,
+    recorded: &'a str,
+}
+
+/// Compares one recorded digest against the file inside the milestone it names.
+fn verify_tracked_digest(record: &TrackedDigest<'_>, violations: &mut Vec<String>) {
+    let TrackedDigest {
+        label,
+        kind,
+        manifest_path,
+        directory,
+        name,
+        recorded,
+    } = *record;
+    if name.is_empty() || name.starts_with('/') || name.split('/').any(|part| part == "..") {
+        violations.push(format!(
+            "{label} records a {kind} outside its own milestone: {name}"
+        ));
+        return;
+    }
+    let path = directory.join(name);
+    // A manifest cannot carry its own digest. Writing one changes the file
+    // it describes, so a check that admitted the record would only ever
+    // pass on a value nobody could compute, which is a check that verifies
+    // itself rather than the evidence.
+    if path == manifest_path {
+        violations.push(format!("{label} records its own digest, which cannot bind"));
+        return;
+    }
+    match file_digest(&path) {
+        Ok(actual) if actual == recorded => {}
+        Ok(actual) => violations.push(format!(
+            "{label} records {name} as {recorded} but it hashes {actual}"
+        )),
+        Err(error) => violations.push(format!("{label} records {name}: {error}")),
     }
 }
 
@@ -1874,6 +1984,89 @@ mod tests {
                     fs::read(milestone.join("absent.json"))
                         .expect_err("absent file cannot be read")
                 ),
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Writes a manifest recording one baseline result and one private
+    /// validation, and returns the root.
+    fn recorded_baseline_root(label: &str, result: &str, digest: &str) -> PathBuf {
+        let root = temporary_root(label);
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("launch.json"), result).expect("record should be writable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{"platformEvidence":[{{"baselines":[{{"workload":"vanilla",
+                    "result":{{"name":"launch.json","sha256":"{digest}"}},
+                    "validation":{{"name":"private launch validation",
+                        "sha256":"{}"}}}}]}}]}}"#,
+                "0".repeat(64)
+            ),
+        )
+        .expect("manifest should be writable");
+        root
+    }
+
+    #[test]
+    fn a_recorded_baseline_digest_is_recomputed_against_the_tracked_file() {
+        // The private validation digest names a capture outside the repository
+        // and is announced rather than checked, so it cannot be a violation.
+        let root = recorded_baseline_root("baseline-match", "{}\n", EMPTY_OBJECT_DIGEST);
+
+        assert!(verify_evidence_records(&root).is_empty());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_recorded_baseline_digest_that_binds_nothing_is_reported() {
+        // The hole this exists for: two M0 baseline digests naming tracked
+        // evidence files that no gate recomputed.
+        let root = recorded_baseline_root("baseline-drift", "{}\n", &"0".repeat(64));
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].starts_with("evidence/m9/manifest.json records launch.json as ")
+                && violations[0].ends_with(&format!(" but it hashes {EMPTY_OBJECT_DIGEST}")),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_baseline_naming_a_file_the_milestone_does_not_hold_is_reported() {
+        let root = temporary_root("baseline-absent");
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{"platformEvidence":[{{"baselines":[{{"workload":"vanilla",
+                    "result":{{"name":"absent.json","sha256":"{EMPTY_OBJECT_DIGEST}"}},
+                    "validation":{{"name":"../m8/borrowed.json",
+                        "sha256":"{EMPTY_OBJECT_DIGEST}"}}}}]}}]}}"#
+            ),
+        )
+        .expect("manifest should be writable");
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(
+            violations,
+            [
+                format!(
+                    "evidence/m9/manifest.json records absent.json: cannot read the recorded \
+                     file: {}",
+                    fs::read(milestone.join("absent.json"))
+                        .expect_err("absent file cannot be read")
+                ),
+                "evidence/m9/manifest.json records a baseline outside its own milestone: \
+                 ../m8/borrowed.json"
+                    .to_owned(),
             ]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");

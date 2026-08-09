@@ -176,7 +176,7 @@
         {
           "workload": "vanilla",
           "result": {
-            "name": "Linux vanilla launch summary",
+            "name": "linux-vanilla-launch.json",
             "sha256": "907e81331be6941fe74a99b1cc6e6ea6e234d83ea7c74d369aad54ec1d4146db"
           },
           "validation": {
@@ -187,7 +187,7 @@
         {
           "workload": "official-atm11",
           "result": {
-            "name": "Linux official ATM11 launch summary",
+            "name": "linux-official-atm11-launch.json",
             "sha256": "88e2c3ec13a87e3a0d7b3ac0faf87fad28ee273a44bc70eb70029dbdef7e0cf7"
           },
           "validation": {

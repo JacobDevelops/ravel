@@ -38,7 +38,7 @@
   },
   "inputs": [
     {
-      "name": "synthetic fixture manifest",
+      "name": "synthetic-fixture-manifest.json",
       "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
     }
   ],

@@ -38,7 +38,7 @@
   },
   "inputs": [
     {
-      "name": "synthetic fixture manifest",
+      "name": "synthetic-fixture-manifest.json",
       "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
     }
   ],
@@ -134,7 +134,7 @@
         {
           "workload": "vanilla",
           "result": {
-            "name": "synthetic Linux vanilla launch proof",
+            "name": "synthetic-linux-vanilla-launch-proof.json",
             "sha256": "7777777777777777777777777777777777777777777777777777777777777777"
           },
           "validation": {
@@ -145,7 +145,7 @@
         {
           "workload": "official-atm11",
           "result": {
-            "name": "synthetic Linux official-ATM11 launch proof",
+            "name": "synthetic-linux-official-atm11-launch-proof.json",
             "sha256": "8888888888888888888888888888888888888888888888888888888888888888"
           },
           "validation": {

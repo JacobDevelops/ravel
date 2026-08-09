@@ -92,6 +92,8 @@
     },
     "inputs": {
       "type": "array",
+      "minItems": 1,
+      "description": "A closure with no hashed input is bound to no revision at all, and an empty array satisfied every rule phrased as a refusal.",
       "items": {
         "$ref": "#/$defs/hashedArtifact"
       }
@@ -283,6 +285,22 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "sha256"],
+      "description": "A digest over an artifact a reader can obtain. The name is a repository-relative path for the same reason a review record's is: a name typed as free text let a digest be recorded against prose, and the gate answered a name it could not resolve with an announced skip rather than a violation.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*\\.[A-Za-z0-9]+$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "privateCapture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256"],
+      "description": "A digest over material that never enters the repository, so it binds nothing a reader can recompute and the gate says so rather than checking it. This is the one place an unresolvable name is legitimate, and it is a separate definition so that the distinction is declared rather than inferred from how a name happens to read.",
       "properties": {
         "name": {
           "type": "string",
@@ -364,7 +382,7 @@
           "$ref": "#/$defs/hashedArtifact"
         },
         "validation": {
-          "$ref": "#/$defs/hashedArtifact"
+          "$ref": "#/$defs/privateCapture"
         }
       }
     },

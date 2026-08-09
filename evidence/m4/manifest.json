@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "native",
+  "milestone": "M4",
+  "workPackages": [
+    "M4-W1",
+    "M4-W2",
+    "M4-W3",
+    "M4-W4",
+    "M4-W5",
+    "M4-W6",
+    "M4-W7",
+    "M4-W8"
+  ],
+  "revision": {
+    "id": "0000000000000000000000000000000000000000",
+    "changeId": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    "dirty": false
+  },
+  "versions": {
+    "minecraft": "26.1.2",
+    "neoforge": "26.1.2.78",
+    "prism": "11.0.3",
+    "fixture": "ATM11 0.2.1",
+    "java": "25.0.4",
+    "rust": "1.95.0",
+    "nix": "2.33.3",
+    "devenv": "2.1.2"
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1",
+    "settings": {
+      "scope": "documented, safe, reusable mod and pack authoring surface, proved inside the gate",
+      "whatThisMilestoneDidNotDo": "No game process was launched for M4. evidence/m4/linux-process-matrix.json records that as gameLaunch.occurred false rather than as prose, and every consequence of it is a deviation or a risk below rather than a caveat inside a closed row.",
+      "gateStatus": {
+        "M4-W1": {
+          "status": "closed",
+          "evidence": "ravel-sdk's mod-facing facade and the #[declare_mod] macro, with examples/minimal-mod as the crate an author copies and examples/minimal-mod/src/boundary.rs as the compile-pass/fail suite. tests/conformance/tests/sdk_boundary.rs derives the author boundary from the dependency closure Cargo.lock resolves for ravel-sdk rather than asserting it, so the gate recomputes what an author may reach instead of trusting a list. The row's own wording — that authors need no loader internals or Java — is what that suite checks. What it does not reach is publication: nothing is on a registry, so an author outside this checkout depends on the SDK by path, which docs/guide/limits.md states."
+        },
+        "M4-W2": {
+          "status": "closed",
+          "evidence": "Public declaration APIs for registries, tags, resources and generated data, with examples/content-mod as the content example and a merged tag file built from every member's contributions. tests/conformance/tests/content_declarations.rs covers the row's three properties — declarations, conflicting claims, and generated output being the same bytes twice — against the loader's own pipeline. Nothing here reaches a game: no M4 process registered content in a running client or server."
+        },
+        "M4-W3": {
+          "status": "closed",
+          "evidence": "Sides on the facade, the client-only side rule in ravel-core, packet contracts and their wire format in ravel-network, routing from a contract to the mod that owns it, and the client and server halves of test-mods/networking. tests/conformance/tests/sides_and_packets.rs checks both properties the row names. The row is closed on the abstractions it asks for and on nothing beyond them, and two limits are recorded as deviations rather than folded in here: a mod cannot send a packet, and the shipped host reads no manifest, so no mod's declared sides are honoured by anything that runs."
+        },
+        "M4-W4": {
+          "status": "closed",
+          "evidence": "Configuration, saved-data migration chains and inter-mod services on the facade; settings resolved and applied across a whole set; services opened in dependency order and closed on failure; a saved-data envelope built from an ordinary mod's declarations; examples/stateful-mod carrying all three. tests/conformance/tests/config_saves_and_services.rs covers the row's three properties — migration chains, service dependencies, and failure closure — and tests/conformance/tests/configuration.rs the settings half. What no gate reaches is composition from a package: the shipped host resolves a fixed set of mods against a constant configuration path."
+        },
+        "M4-W5": {
+          "status": "closed",
+          "evidence": "ravel-pack declares a pack and checks its four closures, and tests/conformance/tests/pack_closure.rs drives every one of them through ravel_pack::validate, which is the only thing that produces a writable pack. ravel:verify-example-pack runs the pack example as its own process and compares the written tree both against a list the gate holds independently and against the example's own report. The write half is what is closed; nothing in this repository reads a written pack, which is recorded as an owed obligation below."
+        },
+        "M4-W6": {
+          "status": "closed",
+          "evidence": "tests/fixtures/public/versions/99.0.0-synthetic is a second version's data, and crates/ravel-minecraft-adapter/src/generate/mod.rs stages it through the same generator the pinned version goes through, asserting that what comes out names the second version and nothing of the first. verify_version_boundary in tools/ravel-xtask/src/lib.rs sweeps crates/ for either version's name and for every game class name either version's data supplies, with each permitted occurrence named and its excuse failing when it stops matching. Those two are what M4-W6 proves. The row's own wording — general crates compiling and testing without version-specific edits — is proved as those two properties and not as a general crate executing against the second version's table, which is recorded as a deviation below."
+        },
+        "M4-W7": {
+          "status": "closed",
+          "evidence": "docs/guide/ is the public author's guide, tests/conformance/tests/guide_snippets.rs compiles every Rust block in it through examples/guide-snippets, cargo xtask package digests refreshes and checks a manifest's digests with ravel:verify-example-package running the check on the package an author copies, and test-mods/waystone-ledger is the original mod a fresh agent built from those documents with no internal access. The row assumed public author documentation existed and none did, so W7 wrote the guide before its own gate's premise could hold; the fresh-author run then found defects in the facade and in the guide, which are repaired in this tree. The limits that run surfaced are stated in docs/guide/limits.md and are deviations below rather than caveats inside this row."
+        },
+        "M4-W8": {
+          "status": "open",
+          "evidence": "The global Linux gate and the process matrix are recorded — evidence/m4/linux-process-matrix.json holds every gate process with its exit status, and commands and tests below hold the run itself. The independent review this row also requires has not run. evidence/m4/review.md is the record it will be written into and holds no round, and review.result below is fail for that reason and for no other. ravel:verify-milestone:m4 exits nonzero while this is true, which is the gate working rather than failing."
+        }
+      }
+    }
+  },
+  "inputs": [
+    {
+      "name": "docs/guide/limits.md",
+      "sha256": "a3062a0105f13ec55117b6ee2b61f4643dc60e224d0f3ecaa34ff99f8b282880"
+    },
+    {
+      "name": "docs/guide/README.md",
+      "sha256": "faf990c731b7b3e56603dbb8b222040866beadfbfc535d4f4ba13dffa5d0508a"
+    },
+    {
+      "name": "schemas/package.schema.json",
+      "sha256": "cf327abf3b119961e3fa11fc4f27948c2d68659a82858771117a5d510c8b369c"
+    },
+    {
+      "name": "docs/decisions/adg-2-mod-execution.md",
+      "sha256": "2803ffc8a91b60dfe666cc7712cefda654dc0c02848fa86a96fa6fca7efc9356"
+    }
+  ],
+  "commands": [
+    {
+      "command": "devenv tasks run ravel:verify",
+      "startedAt": "2026-08-10T00:00:00.000Z",
+      "durationMs": 0,
+      "exitStatus": 0,
+      "logSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "tests": {
+    "total": 1263,
+    "passed": 1263,
+    "failed": 0,
+    "skipped": 0,
+    "lineCoveragePercent": 88.53
+  },
+  "benchmarks": {
+    "protocolVersion": "m4-surface-v1",
+    "results": [
+      {
+        "name": "linux-process-matrix.json",
+        "sha256": "5ed9ed3a9725d6bb99dd914b69ad6131dc7398d520a407e3abd0891cab4ab188"
+      },
+      {
+        "name": "sdk-surface.json",
+        "sha256": "2b971e2d0a47f4ce04859f24f149605a1c76cebb947cf5c23741ea599a35f139"
+      }
+    ]
+  },
+  "deviations": [
+    {
+      "summary": "A mod cannot send a packet. M4-W3 shipped packet contracts, a wire format, encoding, decoding and routing from a contract to the mod that owns it, and every refusal in that surface is checked. What does not exist is the leg after encoding: no wire adapter is written, no launch path moves a byte between a client and a server on a mod's behalf, and Mod::receive_packet has no caller in a running game. So a declared packet is a specification of what a mod will send rather than something a mod sends. It is disclosed where an author meets it — crates/ravel-sdk/src/network.rs:132, docs/guide/README.md:12 and docs/guide/limits.md:19 all say so — and M4-W3's row is closed on the abstractions ROADMAP.md's Output column asks for and not on delivery. Owner: the wire adapters ROADMAP.md places after the abstractions; no M4 work package owns them and none claimed to.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The shipped host reads no manifest, so M4 proves no mod's declared sides are honoured by anything that runs. crates/ravel-composed-host/src/lib.rs writes both lifecycle entries by hand and hardcodes a constant configuration path, under a section headed for exactly this. The mapping from a validated package set to lifecycle entries is production code and does read a manifest's sides — ravel_loader::admitted — and nothing in a launch path calls it, because that host discovers no package and validates none. What M4-W3 proves is therefore the rule and the pipeline, checked in tests/conformance/tests/sides_and_packets.rs, and not the rule taking effect in a launch. The same absence is why M4-W4's configuration composition is fixed: a settings document from a package the host does not know about is never read. docs/guide/limits.md states both to an author before they plan around them. Owner: package discovery in a launch path, which no M4 work package owned; M8's pack work is the first place it can honestly land.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The pack write-and-read-back round trip is unprovable by construction in this repository, so M4 claims the write half only. ravel_pack::validate is the only thing that produces a writable pack and tests/conformance/tests/pack_closure.rs drives every closure check through it; ravel:verify-example-pack then runs the example as its own process and compares the written tree against a file list the gate holds independently and against the example's own report. Nothing reads that pack back with Ravel. ravel_loader::open_configuration takes its documents from a caller-supplied map that no production caller fills, and M4 names no package for reading a pack at all. No claim is made here that a written pack holds correct bytes for a game to consume; what is checked is that the files the example says it wrote are the files on disk and that the manifest names a member. Owner: M8, which owns the complete Ravel pack and therefore the reading half.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "No general crate is compiled or run against the second version's target table, and M4-W6's row must be read as the two narrower things it proves. The first is that the shared adapter's generator reads a second version's data through the same code path the pinned version goes through and emits that version's names and nothing of the pinned one, which crates/ravel-minecraft-adapter/src/generate/mod.rs asserts by staging tests/fixtures/public/versions/99.0.0-synthetic as if it were pinned. The second is that no file under crates/ spells either version's name or any game class name either version's data supplies, which verify_version_boundary sweeps for, with every permitted occurrence named and its excuse reported as stale when it stops matching. What neither shows is a general crate executing against the second version's table: one build compiles one table, and building the workspace against the synthetic version would mean generating and pinning a second adapter output, which nothing in M4 did. M4's wording says the first two and does not imply the third. Owner: unowned; the first work package that needs two tables resident is where it becomes real, and none exists yet.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Only source.files and the provenance record are integrity-checked in a package, so anything declared elsewhere in a manifest and not also listed there ships unverified. Package verification hashes exactly those two sets. A configurationSchemas entry or a resources entry that is not also named under source.files is covered by no digest, and cargo xtask package digests --check will report a package with such an entry as current. This is the declared contract rather than a defect in the implementation of it — source.files is the declared set and the schema is explicit — but declared in the manifest and protected are different sets and an author will reasonably assume they are one, so docs/guide/limits.md tells them to list anything they want protected twice. Owner: unowned as a change to the contract; the disclosure is the whole of what M4 does about it.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The agent jar's persistence adapter reflective surface is still unpinned, and this manifest therefore claims no ADG-3 drift coverage for the agent jar. jvm/bootstrap/dev/ravel/jvm/Persistence.java resolves game classes and members by name through Class.forName, and no member of that set appears in minecraft/versions/26.1.2/hooks.toml, stubs.toml, stubs.lock or mappings.lock, so the drift gate whose whole purpose is that a rename shows up in a diff reaches none of it. What does exist is verify_persistence_reflection in tools/ravel-xtask/src/lib.rs, which holds the jar's own sources to a declared set of class names and fails in both directions — but both sides of that comparison are Ravel's own, so it cannot see a game-side rename. Bringing the surface under stubs.toml and mappings.lock needs the stub-seed and lock re-pin ceremony against the pinned jar. ROADMAP.md's ADG-3 row records that no work package owns that ceremony, and because M4-W8 is where a drift claim over the agent jar would be made, this manifest states plainly that it makes none. Owner: unowned; ROADMAP.md's ADG-3 row is where that stays visible.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Every limit in docs/guide/limits.md is a gap M4 shipped with and disclosed rather than fixed, and the ones not already carried above are carried here so that no reader takes the guide as the softer statement. ravel-config resolves a configuration through an .ok() idiom, so a document that fails to parse is indistinguishable at that call site from one that is absent. Nothing checks that a package manifest's id and the id in a mod's #[declare_mod] agree, so a mod can be one identity to the loader and another to itself; docs/guide/conforming.md carries it as a pitfall. There is no command that validates a manifest — the schemas under schemas/ are the authority and are ordinary JSON Schema 2020-12, and Ravel ships no wrapper around a validator. Packaging tooling is one subcommand rather than a workflow: cargo xtask package digests and its --check mode, with no scaffold for a new mod crate and no publish step, against SPEC.md section 4.2's promise that an author publishes through supported tooling. PacketWriter::text and PacketWriter::bytes_field panic on a field of four gibibytes or more, which no decoded packet can reach and an author's own code can. Owner of each: the author-facing work M5 and later milestones schedule; none is owned by an M4 work package and none is claimed fixed.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "M4's process matrix is not a launch and shares almost nothing with M3's record of the same name. Every row in evidence/m4/linux-process-matrix.json is a gate process, so the whole record is recomputable by a reader with the devenv shell and reaches nothing about Ravel inside a game. That is stated as gameLaunch.occurred false rather than as prose, because a record titled linux-process-matrix.json sitting beside M3's operator-run launch matrix is the most misreadable artifact in this milestone. Nothing in M4 needed a launch to be honest about what it built; what a launch would add is exactly the set of things the deviations above say M4 does not prove. Owner: no M4 work package; a campaign of M3-W7's shape is what would change it.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The figures in this manifest and in evidence/m4/linux-process-matrix.json describe one gate run written down twice, which is the shape a figure goes stale in. verify_m4_gate_figures in tools/ravel-xtask/src/lib.rs reconciles the manifest's tests block against the record's gate block field by field on every ravel:verify, so an edit to one without the other fails the gate by name. The lists in evidence/m4/sdk-surface.json are held the same way by verify_m4_surface, which compares each one against the repository in both directions. What binds neither is the run itself: the log is private, and revision.id is below the tip by construction because recording a result changes the tree that produced it. That ceiling is the one verify_recorded_run already records for every milestone and is not new here.",
+      "classification": "non-blocking"
+    }
+  ],
+  "risks": [
+    {
+      "summary": "M4 is not closed. No independent review round has run against it: evidence/m4/review.md is the record they will be written into and holds none, and review.result below is fail for that reason and for no other reason. ravel:verify-milestone:m4 exits nonzero while that is true. This risk is discharged by an independent round returning a pass on the state it reads, at which point the verdict, review.result and this entry move together.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "An author can build a conforming mod and cannot run it. That is the plain reading of the first three deviations taken together — no package discovery in a launch, no packet delivery, no pack read back — and it is stated as its own risk because each deviation on its own reads as a narrower gap than the three do together. What M4 delivers is an authoring surface that is documented, checked, and complete enough for a fresh author to build against it without internal access, which is what the milestone's purpose asks for. What it does not deliver is the moment an author sees their mod in a game, and no reader of this evidence should come away thinking otherwise.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Everything M4 proves, it proves in-process. There is no operator attestation to weigh here and no unrecomputable half, which makes this evidence set easier to check than M3's and narrower in what it reaches. The risk is that ease reads as strength: a green gate over in-process suites says the surface behaves as its own tests describe, and the tests were written by the same work that wrote the surface. The fresh-author run under M4-W7 is the one part of M4 that was not, and its findings are in the tree rather than in this sentence.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The JVM harness asserts Ravel's stubs against Ravel's reflection. ravel:verify-jvm runs the agent and its persistence adapter in a real JVM over stand-in classes under jvm/harness/persistence/, and those stand-ins declare the members Persistence.java resolves because Persistence.java needs them. So a game-side rename keeps the harness passing and lands at runtime as a refused world load or a skipped save rather than as a generation failure a diff would show. This is the runtime face of the unpinned reflective surface recorded as a deviation above, and it is recorded separately because a reader who trusts the JVM row of the process matrix is trusting exactly this.",
+      "classification": "non-blocking"
+    }
+  ],
+  "review": {
+    "reviewer": "not yet assigned; M4-W8's independent review has not run",
+    "independent": true,
+    "result": "fail",
+    "record": {
+      "name": "review.md",
+      "sha256": "5fa6914d57b471879d53c046665f93c870fb119e6dfcbc6f3d40e32564c9e503"
+    }
+  },
+  "attestations": [
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "workloads": [
+        "ravel"
+      ],
+      "statement": "The gate run recorded under commands was made on this Linux machine, inside the devenv shell, on the tree revision.id pins. No game process was started for it and none is claimed: the Ravel code exercised is the workspace's own, including the agent and persistence adapter the JVM harness runs in a real JVM over stand-in classes.",
+      "attestedBy": "Ravel maintainer, gate run",
+      "attestedAt": "2026-08-10T00:00:00.000Z"
+    }
+  ],
+  "platformEvidence": []
+}

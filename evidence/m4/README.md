@@ -1,0 +1,98 @@
+# M4 evidence
+
+M4 turned the prototype's internals into a documented, safe, reusable mod and
+pack authoring surface. This directory is what that claim rests on.
+
+Read [`manifest.json`](manifest.json) first. It carries the work-package
+inventory, the gate run M4-W8 asks for, and every deviation and risk M4 records —
+including the ones that say what M4 does not do, which are most of the
+interesting ones.
+
+## The records
+
+| File | What it holds |
+| --- | --- |
+| [`manifest.json`](manifest.json) | The milestone record. Schema-validated, digest-bound, provenance-checked, and held to its own arithmetic on every `ravel:verify`. |
+| [`linux-process-matrix.json`](linux-process-matrix.json) | Every process the global Linux gate runs, its exit status, what it proves, and what it does not. |
+| [`sdk-surface.json`](sdk-surface.json) | What each of M4-W1 through M4-W7 shipped, what proves it, what it leaves unproven, and the inventory of crates, test mods, examples, guide documents and conformance suites the gate reconciles against the tree. |
+| [`review.md`](review.md) | The record M4-W8's independent review rounds are written into. |
+
+## What this milestone's matrix is, and is not
+
+`linux-process-matrix.json` shares a name with
+[`evidence/m3/linux-process-matrix.json`](../m3/linux-process-matrix.json) and
+almost nothing else. M3's is an operator-run native launch: a person started the
+game, drove the surfaces by hand, and attested to what they saw, and a reviewer
+can recompute only the in-gate half of it. M4's is a table of gate processes. Every
+row is a command a reader can run, so the whole record recomputes — and it reaches
+nothing about Ravel inside a game, because no game process was started for M4.
+
+That is recorded as `gameLaunch.occurred: false`, a field rather than a sentence,
+because it is the thing about this record a reader is most likely to get wrong.
+
+## Recomputing it
+
+Everything below runs inside the devenv shell.
+
+```console
+devenv tasks run ravel:verify
+```
+
+That is the gate `commands[0]` records. The individual rows of the matrix are the
+sub-tasks it runs, each of which can be run on its own by the command the matrix
+names in that row.
+
+The coverage figures under `gate.coverage` come from the same invocation
+`ravel:coverage` makes, read off `cargo llvm-cov`'s own summary:
+
+```console
+devenv shell -- cargo llvm-cov nextest --workspace --all-features \
+  --summary-only --ignore-filename-regex '(^|/)experiments/adg-'
+```
+
+Closure is a different question from the gate:
+
+```console
+devenv tasks run ravel:verify-milestone:m4
+```
+
+That exits nonzero while M4 is open, which is the gate working. It becomes green
+when — and only when — an independent review round returns a pass and
+`review.result` records it.
+
+## What the gate binds here
+
+Beyond the rules every milestone manifest is held to, `verify_m4_manifest` in
+[`tools/ravel-xtask/src/lib.rs`](../../tools/ravel-xtask/src/lib.rs) requires the
+full M4-W1 through M4-W8 inventory, both records under the `m4-surface-v1`
+protocol so each is covered by a recomputed digest, a `gateStatus` row for every
+work package with each implementation row closed and naming its evidence, a native
+Linux attestation for the gate run, recorded deviations and risks, and both
+decision records M4 rests on.
+
+Two of its checks exist because a record of in-gate work is the easiest kind to
+let drift:
+
+- `verify_m4_gate_figures` reconciles the manifest's `tests` block against the
+  matrix's `gate` block field by field. The two documents describe one run, so an
+  edit to one without the other is a violation rather than a discrepancy someone
+  might notice.
+- `verify_m4_surface` compares every list in `sdk-surface.json`'s `inventory`
+  against the repository, in both directions. A crate added, a guide page renamed
+  or a conformance suite deleted after the record was written fails the gate by
+  name.
+
+Both are proven by mutation rather than by reading, which is the only proof this
+repository accepts that a check is not vacuous.
+
+## The ceiling
+
+Everything M4 proves, it proves in-process, and the suites that prove it were
+written by the same work that wrote the surface. The one part of M4 that was not
+is the fresh-author run under M4-W7, whose findings are repaired in this tree
+rather than summarised here.
+
+An author can build a conforming mod against this surface. An author cannot yet
+run one. [`docs/guide/limits.md`](../../docs/guide/limits.md) is where that is
+said to an author before they plan around it, and the deviations in
+[`manifest.json`](manifest.json) are where it is said to a reviewer.

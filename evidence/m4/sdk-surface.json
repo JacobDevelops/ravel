@@ -1,0 +1,156 @@
+{
+  "record": "M4 SDK surface inventory",
+  "milestone": "M4",
+  "workPackage": "M4-W8",
+  "protocol": "m4-surface-v1",
+  "summary": "What M4 shipped, work package by work package, with what proves each one and what each one does not prove. The inventory lists below are reconciled against the repository by verify_m4_surface in tools/ravel-xtask/src/lib.rs on every ravel:verify, in both directions, so a crate added or a guide page renamed after this record was written fails the gate by name rather than leaving the list quietly wrong.",
+  "measuredAgainst": "the tree evidence/m4/manifest.json pins under revision, which is the tree the gate run recorded there was made on",
+  "inventory": {
+    "crates": [
+      "ravel-bootstrap",
+      "ravel-composed-host",
+      "ravel-config",
+      "ravel-core",
+      "ravel-data",
+      "ravel-host-api",
+      "ravel-loader",
+      "ravel-minecraft",
+      "ravel-minecraft-adapter",
+      "ravel-network",
+      "ravel-observability",
+      "ravel-pack",
+      "ravel-package",
+      "ravel-resolve",
+      "ravel-save",
+      "ravel-sdk",
+      "ravel-sdk-macros",
+      "ravel-testkit"
+    ],
+    "testMods": [
+      "client-only",
+      "commands",
+      "configuration",
+      "dependency-base",
+      "dependency-consumer",
+      "events",
+      "failure-cases",
+      "inter-mod-service",
+      "networking",
+      "noop",
+      "registries",
+      "resources",
+      "saved-data",
+      "waystone-ledger"
+    ],
+    "examples": [
+      "content-mod",
+      "guide-snippets",
+      "minimal-mod",
+      "stateful-mod"
+    ],
+    "guideDocuments": [
+      "README.md",
+      "conforming.md",
+      "content.md",
+      "limits.md",
+      "package-manifest.md",
+      "running.md",
+      "state.md",
+      "your-first-mod.md"
+    ],
+    "conformanceSuites": [
+      "config_saves_and_services.rs",
+      "configuration.rs",
+      "content_declarations.rs",
+      "example_package.rs",
+      "guide_snippets.rs",
+      "mod_capabilities.rs",
+      "noop_pipeline.rs",
+      "pack_closure.rs",
+      "package_schema.rs",
+      "pre_world_gate.rs",
+      "profiling_report.rs",
+      "saved_data.rs",
+      "sdk_boundary.rs",
+      "sides_and_packets.rs"
+    ]
+  },
+  "inventoryNotes": {
+    "examples": "examples/pack-module is a documentation directory rather than a crate — it holds a README and no Cargo.toml — so it is outside EXAMPLE_NAMES and outside this list, which inventories crates. The pack example a gate runs is crates/ravel-pack/examples/example_pack.rs, driven by ravel:verify-example-pack, and the README under examples/pack-module is what points a pack author at it.",
+    "conformanceSuites": "This is the whole suite directory rather than the M4 subset, because the directory is what the gate recomputes. Suites written for M2 and M3 are listed here and are attributed to those milestones rather than to M4; the workPackages entries below name the ones each M4 work package rests on."
+  },
+  "workPackages": [
+    {
+      "id": "M4-W1",
+      "shipped": "A mod-facing facade in ravel-sdk and a #[declare_mod] macro in ravel-sdk-macros, with examples/minimal-mod as the crate an author copies and examples/minimal-mod/src/boundary.rs as the compile-pass/fail suite the ROADMAP row asks for. The author boundary itself is derived from the dependency closure Cargo.lock resolves for ravel-sdk rather than asserted in prose.",
+      "provenBy": [
+        "tests/conformance/tests/sdk_boundary.rs",
+        "examples/minimal-mod/src/boundary.rs",
+        "tests/conformance/tests/example_package.rs"
+      ],
+      "notProven": "That an author outside this repository can depend on ravel-sdk at all. Nothing is published to a registry, so a mod crate elsewhere depends on the SDK by path against a checkout, and there is no released version to declare a range against. docs/guide/limits.md states this."
+    },
+    {
+      "id": "M4-W2",
+      "shipped": "Public declaration APIs for registries, tags, resources and generated data, with examples/content-mod as the content example and the merged tag output every member of a set contributes to.",
+      "provenBy": [
+        "tests/conformance/tests/content_declarations.rs",
+        "examples/content-mod"
+      ],
+      "notProven": "That any of it reaches a running game. A declaration is checked against the loader's own pipeline in-process; no game process in M4 registered a block, an item, a recipe or a tag."
+    },
+    {
+      "id": "M4-W3",
+      "shipped": "Sides on the mod-facing facade, a client-only side rule in ravel-core, packet contracts with a wire format in ravel-network, routing from a contract to the mod that owns it, and the client and server halves of test-mods/networking. ravel_loader::admitted reads a mod's declared sides off its manifest.",
+      "provenBy": [
+        "tests/conformance/tests/sides_and_packets.rs",
+        "test-mods/networking",
+        "test-mods/client-only"
+      ],
+      "notProven": "Two things, and both are disclosed rather than implied. A mod cannot send a packet: encoding and decoding are real and checked, and the leg after encoding does not exist — no wire adapter is written, no launch path moves a byte on a mod's behalf, and Mod::receive_packet has no caller in a running game. And no mod's declared sides are honoured by anything that runs: crates/ravel-composed-host/src/lib.rs hardcodes both lifecycle entries and the sides each runs on, and nothing in a launch path calls ravel_loader::admitted."
+    },
+    {
+      "id": "M4-W4",
+      "shipped": "Configuration, saved-data migration chains and inter-mod services on the facade; settings resolved and applied across a whole set; services opened in dependency order and closed on failure; a saved-data envelope built from what an ordinary mod declares; and examples/stateful-mod as the example carrying all three.",
+      "provenBy": [
+        "tests/conformance/tests/config_saves_and_services.rs",
+        "tests/conformance/tests/configuration.rs",
+        "examples/stateful-mod",
+        "test-mods/inter-mod-service",
+        "test-mods/saved-data"
+      ],
+      "notProven": "That a launch composes any of it from a package. The shipped host resolves a fixed set of mods' settings against a constant pack configuration path, so a settings document belonging to a package it does not know about is never read."
+    },
+    {
+      "id": "M4-W5",
+      "shipped": "ravel-pack, which declares a pack and checks its dependency, resource, registry and progression closures, and the pack example a gate runs end to end and compares against a tree the gate holds its own opinion of.",
+      "provenBy": [
+        "tests/conformance/tests/pack_closure.rs",
+        "crates/ravel-pack/examples/example_pack.rs",
+        "ravel:verify-example-pack"
+      ],
+      "notProven": "That a written pack is read back. Nothing in this repository reads a written pack: ravel_loader::open_configuration takes documents from a caller-supplied map that no production caller fills, and M4 names no package for reading a pack. So the write half is checked and the round trip is unprovable by construction here; M8 owns the reading half."
+    },
+    {
+      "id": "M4-W6",
+      "shipped": "A synthetic second version under tests/fixtures/public/versions/99.0.0-synthetic, generated through the shared adapter's own generator, and a version-boundary sweep over crates/ that fails on any file naming either version or any game class either version's data supplies.",
+      "provenBy": [
+        "crates/ravel-minecraft-adapter/src/generate/mod.rs",
+        "tools/ravel-xtask/src/lib.rs"
+      ],
+      "notProven": "That any general crate is compiled or run against the second version's target table. What is proven is narrower and is stated as the two things it is: the generator reads a second version's data through the same code path and emits that version's names and no other, and no file under crates/ spells either version's name or a game class name either version's data supplies. One build compiles one table, so a general crate executing against the second version's table is outside what M4 measured."
+    },
+    {
+      "id": "M4-W7",
+      "shipped": "The public author's guide under docs/guide/, the example package pair, cargo xtask package digests with its --check mode, and test-mods/waystone-ledger — an original mod a fresh agent built from the public documents alone. The ROADMAP row assumed public author docs existed; none did, so W7 had to write the guide before its own gate's premise could hold, and the guide's every Rust block is compiled by examples/guide-snippets.",
+      "provenBy": [
+        "docs/guide/",
+        "tests/conformance/tests/guide_snippets.rs",
+        "test-mods/waystone-ledger",
+        "ravel:verify-example-package"
+      ],
+      "notProven": "That the fresh author's mod runs. It is a conforming mod, compiled and tested as a library, and the same limits apply to it as to every other mod in this tree. The run itself found defects in the facade and in the guide, which were repaired; what it could not test is the part of authoring that starts at a launch."
+    }
+  ],
+  "whatThisRecordIsNot": "An argument that M4's surface works in a game. Every proof named above runs inside the gate, and the boundary between the two is the subject of evidence/m4/linux-process-matrix.json, which states in a field rather than in prose that no game process was launched for this milestone."
+}

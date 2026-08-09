@@ -1,0 +1,146 @@
+{
+  "record": "M4 Linux process matrix",
+  "milestone": "M4",
+  "workPackage": "M4-W8",
+  "protocol": "m4-gate-matrix-v1",
+  "result": "pass",
+  "summary": "Every process the global Linux gate runs, with the exit status it returned, what it proves about M4's surface, and what it does not. The figures under gate are the run evidence/m4/manifest.json records under commands and tests, and verify_m4_gate_figures in tools/ravel-xtask/src/lib.rs refuses the two documents when they disagree.",
+  "platform": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1"
+  },
+  "gameLaunch": {
+    "occurred": false,
+    "whyItIsNotHere": "M4 is the SDK breadth milestone and every surface it added is exercised inside the gate. No game process was started for it, so nothing recorded here observes Ravel inside Minecraft. That is a field rather than a sentence because it is the single most misreadable thing about this record: M3's matrix of the same name is an operator-run native launch, and this one is not. What a launch would add is the half nothing here reaches — a mod discovered from a package, a declared side honoured by a running host, a packet crossing a connection — and each of those is recorded as an owed obligation in evidence/m4/manifest.json rather than as a gap this record closes.",
+    "whatWouldChangeIt": "A launch campaign of the shape M3-W7 ran. It needs an operator, the display, and the pinned local fixture, and no M4 work package owns one."
+  },
+  "resultCeiling": "A reader can recompute every row below by running the named command on a checkout with the devenv shell. That is the whole of what this record attests, and it is deliberately more recomputable and less far-reaching than M3's matrix: every row is a gate process, so the matrix proves the gate passes and proves nothing about a running game.",
+  "measuredAgainst": "the tree evidence/m4/manifest.json pins under revision. The rows below were run individually on that tree, in the order listed, before the manifest that records them was written.",
+  "gate": {
+    "command": "devenv tasks run ravel:verify",
+    "exitStatus": 0,
+    "tests": {
+      "run": 1263,
+      "passed": 1263,
+      "failed": 0,
+      "skipped": 0,
+      "runner": "cargo llvm-cov nextest --workspace --all-features"
+    },
+    "coverage": {
+      "linesPercent": 88.53,
+      "regionsPercent": 89.32,
+      "functionsPercent": 85.54,
+      "floorPercent": 80,
+      "source": "the Lines, Regions and Functions columns of cargo llvm-cov's own summary, taken from the same invocation ravel:coverage runs, with the experiments/adg- filename filter that task applies",
+      "howToRecompute": "devenv shell -- cargo llvm-cov nextest --workspace --all-features --summary-only --ignore-filename-regex '(^|/)experiments/adg-'"
+    }
+  },
+  "processes": [
+    {
+      "surface": "formatting",
+      "command": "devenv tasks run ravel:fmt",
+      "exitStatus": 0,
+      "proves": "Rust, Nix, shell, TOML, JSON and Markdown in the tree are formatted, which covers the author's guide M4-W7 added as well as the code.",
+      "doesNotProve": "Anything about what the documents say."
+    },
+    {
+      "surface": "typecheck and schema validation",
+      "command": "devenv tasks run ravel:typecheck",
+      "exitStatus": 0,
+      "proves": "The workspace type-checks with all features, and the tracked JSON documents validate against the schemas under schemas/, which is where a package manifest's grammar is decided.",
+      "doesNotProve": "That a manifest validating against the schema describes a mod any launch will load. Nothing in a launch path reads a package manifest at all."
+    },
+    {
+      "surface": "lint",
+      "command": "devenv tasks run ravel:lint",
+      "exitStatus": 0,
+      "proves": "clippy::all and clippy::pedantic pass with no allow escape hatches, across the SDK crates M4 filled in.",
+      "doesNotProve": "That the API a lint-clean crate exposes is one an author can use; the guide and the fresh-author run are what tested that."
+    },
+    {
+      "surface": "test suite",
+      "command": "devenv tasks run ravel:test",
+      "exitStatus": 0,
+      "proves": "Every unit and conformance test passes, including the M4 suites for content declarations, sides and packets, config and saves and services, pack closure, the example package, the SDK author boundary and every compiled snippet in the guide.",
+      "doesNotProve": "That any of those surfaces is reached by a running game. Each suite drives the loader's own pipeline in-process."
+    },
+    {
+      "surface": "coverage floor",
+      "command": "devenv tasks run ravel:coverage",
+      "exitStatus": 0,
+      "proves": "Workspace line coverage is at or above the floor the task fixes, measured over the same run that produced the figures under gate.coverage.",
+      "doesNotProve": "That any particular crate or file is covered; the floor is a workspace figure and nothing in the gate reads a per-file percentage."
+    },
+    {
+      "surface": "scaffold and evidence contract",
+      "command": "devenv tasks run ravel:verify-scaffold",
+      "exitStatus": 0,
+      "proves": "The repository scaffold holds, the tracked-file policy holds, and every milestone manifest — this one included — is schema-valid, digest-bound, provenance-checked and internally consistent in its arithmetic.",
+      "doesNotProve": "Whether any milestone is closed. That is ravel:verify-milestone, and for M4 it exits nonzero by design while the milestone is open."
+    },
+    {
+      "surface": "pack example, written and read back off disk",
+      "command": "devenv tasks run ravel:verify-example-pack",
+      "exitStatus": 0,
+      "proves": "The M4-W5 pack example runs as its own process, writes a pack, and the tree it wrote matches both the file list the gate holds independently and the example's own report of what it wrote.",
+      "doesNotProve": "That Ravel reads a written pack. The gate reads the tree with find and jq; no Ravel code path in this repository consumes a written pack, and M8 owns the half that would."
+    },
+    {
+      "surface": "example package digests",
+      "command": "devenv tasks run ravel:verify-example-package",
+      "exitStatus": 0,
+      "proves": "cargo xtask package digests --check finds the minimal example's manifest digests current against the files beside them, which is the M4-W7 packaging tool exercised on the package an author is told to copy.",
+      "doesNotProve": "That everything a manifest declares is protected. Only source.files and the provenance record are integrity-checked, so anything declared elsewhere and not also listed there is checked by nothing here or anywhere."
+    },
+    {
+      "surface": "recorded architecture spikes",
+      "command": "devenv tasks run ravel:verify-spikes",
+      "exitStatus": 0,
+      "proves": "The M1 spike results still satisfy the gates they were recorded against.",
+      "doesNotProve": "Anything about M4; this row is here because it is part of the global gate M4-W8 has to pass, not because M4 added to it."
+    },
+    {
+      "surface": "JVM harness lifecycles",
+      "command": "devenv tasks run ravel:verify-jvm",
+      "exitStatus": 0,
+      "proves": "Ravel's agent and its persistence adapter run inside a real JVM process, over stand-in classes, through every world lifecycle the harness declares.",
+      "doesNotProve": "That the adapter's reflective surface matches the game's. Both sides of the harness are Ravel's own — Ravel's stubs asserted against Ravel's reflection — so a game-side rename would keep it passing. That surface is unpinned and is recorded as an owed obligation in evidence/m4/manifest.json."
+    },
+    {
+      "surface": "performance budget",
+      "command": "devenv tasks run ravel:verify-budget",
+      "exitStatus": 0,
+      "proves": "The recorded M2 and M3 budgets still compare as they were recorded to.",
+      "doesNotProve": "Anything M4 measured. M4 added no performance limit."
+    },
+    {
+      "surface": "dependency audit",
+      "command": "devenv tasks run ravel:audit",
+      "exitStatus": 0,
+      "proves": "cargo deny finds no advisory, licence, ban or source violation across the dependency graph the SDK's closure resolves.",
+      "doesNotProve": "That the closure is small enough for an author to reason about; the SDK boundary suite is what states the closure."
+    },
+    {
+      "surface": "environment reproducibility",
+      "command": "devenv tasks run ravel:verify-environment",
+      "exitStatus": 0,
+      "proves": "The devenv environment builds and its own checks pass, so the commands above are reproducible from the pinned environment rather than from whatever was on the machine.",
+      "doesNotProve": "That they reproduce on a different hardware profile; every figure recorded here is from linux-reference-v1."
+    },
+    {
+      "surface": "change stack contract",
+      "command": "devenv tasks run ravel:verify-stack",
+      "exitStatus": 0,
+      "proves": "Every change in the stack carries a conventional description and the working copy is not carrying undescribed work.",
+      "doesNotProve": "Anything about the content of a change. It fails on any dirty tree in tens of milliseconds, which is why it cannot be the task that judges whether some other check caught a mutation."
+    }
+  ],
+  "whatAGreenMatrixDoesNotSay": [
+    "That a mod can send a packet. Nothing in Ravel carries a mod's packet to the other end; the encode and decode halves are what these rows exercise.",
+    "That a mod's declared sides are honoured. The shipped host reads no manifest, so no row here observes a side declaration having an effect.",
+    "That a written pack can be read back. No row reads one with Ravel.",
+    "That a general crate runs against the second version's target table. The version rows prove a generator run and a name sweep, and one build compiles one table."
+  ],
+  "redaction": "No launcher path, instance path, account, world name or user path appears in this record, and none was needed: every row is a repository-relative command run inside the devenv shell."
+}

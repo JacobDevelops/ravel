@@ -8,9 +8,11 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+ravel-config.workspace = true
 ravel-core.workspace = true
 ravel-network.workspace = true
 ravel-save.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

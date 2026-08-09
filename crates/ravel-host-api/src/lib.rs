@@ -2,11 +2,19 @@
 
 //! Provisional host contract whose mechanism is selected by ADG-2.
 
+mod services;
+
+pub use services::{
+    ServiceCallFailed, ServiceDeclaration, ServiceDeclarationError, ServiceDirectory, ServiceId,
+    ServiceRequest, ServiceResponse, ServiceUnavailable,
+};
+
 use std::fmt;
 
+use ravel_config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure};
 use ravel_network::PacketDelivery;
-use ravel_save::{SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
+use ravel_save::{MigrationChain, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
 
 /// Something the game did that a mod may react to.
 ///
@@ -330,6 +338,18 @@ pub trait HostMod: Send {
         None
     }
 
+    /// Declares the step into every saved-data version above the oldest.
+    ///
+    /// Separate from [`HostMod::saved_data_declaration`] because the two are
+    /// checked at different times: the declaration decides whether a world may be
+    /// opened at all, and the chain is what carries an admitted payload up to the
+    /// current shape. Splitting them lets the host check that every declared
+    /// version has a way into it *before* a payload is read, which is what makes a
+    /// build shipped with a link missing a refusal rather than a surprise.
+    fn saved_data_migrations(&self) -> Option<MigrationChain> {
+        None
+    }
+
     /// Applies one aggregate entry after [`SavedDataPlan`] admitted it.
     ///
     /// The default accepts absence for a stateless mod and rejects an envelope
@@ -365,6 +385,76 @@ pub trait HostMod: Send {
     /// save.
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, HostError> {
         Ok(None)
+    }
+
+    /// Declares the settings this mod owns, when it owns any.
+    ///
+    /// ADG-6 declares configuration in data, so this is a document rather than a
+    /// screen: the host layers the author's defaults under a pack's overrides and
+    /// a player's file, and hands the result back through [`HostMod::configure`].
+    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
+        None
+    }
+
+    /// Applies the settings in force for this launch.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HostError::Unsupported`] from the default for a mod that
+    /// declared settings and did not implement this, because settings nothing
+    /// reads are settings a player changes with no effect — the loudest failure
+    /// is the useful one. A mod that declares none accepts silently.
+    ///
+    /// An implementation returns whatever refusal reading its own settings
+    /// produced. Refusing here refuses the mod rather than the value: the layered
+    /// result has already been validated against the declaration, so anything
+    /// left is the mod's own rule.
+    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
+        let _ = resolved;
+        if self.configuration_declaration().is_none() {
+            return Ok(());
+        }
+        Err(HostError::Unsupported {
+            mod_id: self.id().clone(),
+            state: LifecycleState::Constructed,
+        })
+    }
+
+    /// Declares the services this mod answers and the ones it needs answered.
+    fn service_declaration(&self) -> Option<ServiceDeclaration> {
+        None
+    }
+
+    /// Answers one call to a service this mod declared it provides.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HostError::Unsupported`] from the default, which is what a mod
+    /// that declared no service can honestly say. An implementation returns
+    /// whatever refusal answering produced.
+    fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, HostError> {
+        let _ = request;
+        Err(HostError::Unsupported {
+            mod_id: self.id().clone(),
+            state: LifecycleState::Running,
+        })
+    }
+
+    /// Calls the services this mod declared it requires.
+    ///
+    /// The `directory` reaches only providers the loader has already started, so
+    /// the ordering guarantee is a property of what a mod is handed rather than a
+    /// rule it is asked to follow.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever refusal the mod raised. The default requires nothing and
+    /// never fails. A refusal here refuses the mod: a consumer that could not
+    /// reach what it declared has not started, and starting it anyway would be
+    /// running a mod with half its dependencies.
+    fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), HostError> {
+        let _ = directory;
+        Ok(())
     }
 }
 

@@ -1,14 +1,28 @@
 # M2 Independent Closure Review — Cold Audits
 
-Result: FAIL
+Result: PASS
 
-Two independent cold audits ran against successive states of the M2 evidence, and
-both returned FAIL. Neither reviewer wrote any part of the work under review, and
-the second had not seen the project before reviewing it. The last audit below is
-the standing verdict; the blocking findings of both are answered, and answering
-them is not closure, because what M2 needs is an independent audit that returns a
-pass. Each audit's own findings and what became of them are recorded in
+Independent cold audits ran against successive states of the M2 evidence. No
+reviewer wrote any part of the work under review, and the later ones had not seen
+the project before reviewing it. The last audit below is the standing verdict and
+it returns PASS. The audits before it returned FAIL; their blocking findings are
+answered, and answering them was not closure, because what M2 needed was an
+independent audit of the repaired state that returned a pass. Each audit's own
+findings and what became of them are recorded in
 `evidence/m2/manifest.json`, and the sections below are the verdicts themselves.
+This record is where the audits are counted; nothing outside it restates how many
+there have been.
+
+The standing verdict passes conditional on four items, and all four are done. The
+stale `guard.rs` coverage figure its F1 measured is gone from `manifest.json`,
+with the two per-file percentages beside it, and a gate refuses the percent sign
+in a milestone manifest's prose so the class cannot return there. The citation its
+F2 corrects carries an editor's note below rather than an edit to the reviewer's
+words. Both blocking deviations are reclassified — the withdrawn-review one on the
+condition its own text names, and the dirty-trial one on the reasoning this audit
+recorded, reproduced in the manifest as the record of that judgement rather than
+paraphrased into approval. And `review.result` is `pass` because this record now
+states PASS, which is the only order those two may be written in.
 
 ## The first cold audit's scope
 
@@ -18,12 +32,22 @@ column, the closure rule at `ROADMAP.md:719`, `evidence/m2/README.md`,
 `evidence/m2/manifest.json`, and all four records under `evidence/m2/` against
 `schemas/evidence.schema.json`.
 
+> **Editor's note, not the reviewer's text.** The third cold audit's F2 found that
+> this citation no longer resolves: `ROADMAP.md:719` sits inside M3's profiling
+> budget discussion, and the M2 closure rule the first audit read is the paragraph
+> in `ROADMAP.md` that records M2's closure review. Both of this audit's
+> `ROADMAP.md:719` citations — here and inside its F1 — are left as the reviewer
+> wrote them, and the rule is identified here by its text rather than by a line
+> number, because a line number inside a digest-bound record goes stale the next
+> time anything above it in that file changes.
+
 This is the record M2's `review.record` binds, and it exists because the review
 that closed M2 did not. The previous record named a title and a sha256 matching
 no file this repository tracks, so `review.result: "pass"` rested on a verdict no
 reader could obtain; that digest is kept in the manifest's deviations and the
-verdict it carried is withdrawn. `review.result` is now `fail`, which is this
-audit's.
+verdict it carried is withdrawn. `review.result` was `fail` on this audit's
+verdict and on the next one's, and is `pass` on the third audit's, which is the
+last section below.
 
 Each verdict below is its auditor's, reproduced without softening and with nothing
 added. Long lines are re-wrapped, headings are demoted one level, and where two
@@ -470,3 +494,352 @@ review's strength.
   prose to be updated, and only a new terminal state would go stale silently. (iv) That
   `verify milestone M2` alone does not recompute record digests — withdrawn: `verify
   scaffold` does, and it runs in `ravel:verify`.
+
+---
+
+## M2 Independent Closure Review — Third Cold Audit
+
+Result: PASS
+
+Reviewer: an independent cold auditor who wrote no part of the work under review
+and had not seen this repository before this audit. Scope: `ROADMAP.md`'s M2 rows
+and their Verification column, `SPEC.md` §9.2 and §14, `evidence/m2/README.md`,
+`evidence/m2/manifest.json`, all four records under `evidence/m2/`, the two
+scaffold controls the previous round's blocking findings introduced, and the
+implementation behind M2-W1 through M2-W4 — which the previous round said it never
+examined and named as the place a later reviewer should look.
+
+Method: every verdict below marked *broke* was established by mutating a copy of
+the repository (`rsync -a --exclude target`, `.jj` retained, cwd inside the copy,
+`CARGO_TARGET_DIR` unset) and requiring a nonzero exit. Reading a gate or a test
+proved nothing and was not treated as proof. The audited tree was never written
+to; `jj st` reports no changes and the copy's source tree is byte-identical to the
+original after every mutation was reverted.
+
+Baseline in the copy before any mutation: `verify scaffold` exit **0**,
+`verify milestone M2` exit **1** on exactly two violations — "milestone must have
+no blocking deviations or risks" and "milestone review must be independent and
+pass" — and `cargo nextest run --workspace --all-features` **888 tests run, 888
+passed, 0 failed**.
+
+### What the previous round left unexamined, and what breaking it showed
+
+The previous round warned that if any row of M2-W1..W4 were proven by a test that
+would pass with its subject removed, it would not have found it. Seven mutations
+of the subject code, each run against the whole suite with `--no-fail-fast`:
+
+| Mutation | Subject | Exit | Killed by |
+| --- | --- | --- | --- |
+| An illegal transition made legal (`Discovered -> Running` added to the table) | `crates/ravel-core/src/states.rs:96` | 100 | `ravel-core states::…matches_the_spec_transition_table`, `ravel-loader lifecycle::…accepted_or_refused_by_the_spec_table`, `ravel-loader::spec_invariants no_mod_code_runs_before_validation_and_dependency_resolution` (3 failed) |
+| `ModId` grammar accepts an uppercase leading letter | `crates/ravel-core/src/identity.rs:61` | 100 | 7 tests across four crates, including `ravel-conformance-tests::package_schema the_mod_id_grammar_agrees_with_the_schema_pattern_under_a_real_engine` and `ravel-config document::…` (an unrelated crate caught `owner: "Example"` being admitted) |
+| Package integrity never checks a digest (`verify_package` returns `Ok` immediately) | `crates/ravel-package/src/integrity.rs:63` | 100 | 17 tests, including `ravel-testkit::pipeline an_altered_source_file_stops_the_run_before_any_mod_code` and five `ravel-conformance-tests::pre_world_gate` tests |
+| An incompatible dependency pair is allowed | `crates/ravel-resolve/src/graph.rs:166` | 100 | 9 tests, including `two_incompatible_mods_loading_together_fail_the_graph_closed` and `an_incompatibility_that_names_a_range_only_fires_inside_it` |
+| Load order stops being the lexicographically smallest topological order (`pop_first` → `pop_last`) | `crates/ravel-resolve/src/graph.rs:361` | 100 | 7 tests, including `the_same_package_set_resolves_identically_from_every_input_order` and `a_package_set_that_declares_nothing_loads_in_identity_order` |
+| `world_access` always opens a world | `crates/ravel-loader/src/lifecycle.rs:474` | 100 | 5 tests, including `ravel-loader::spec_invariants required_dependency_failure_prevents_world_access` and `failure_after_world_mutation_cannot_silently_continue_or_save_partial_state`, and `ravel-bootstrap persistence::…a_halted_set_cannot_open_a_world_at_the_crossing_the_game_calls` |
+| ADG-7's crossing removed (the `open_world` call deleted from `stage_world`) | `crates/ravel-bootstrap/src/persistence.rs:249` | 100 | `ravel-bootstrap persistence::a_refusal_the_machine_never_saw_still_withholds_the_world` and `…a_halted_set_cannot_open_a_world_at_the_crossing_the_game_calls` (2 failed) |
+
+None of these rows is proven by a test that survives its subject's removal. Two
+further results matter:
+
+- `SPEC.md` §14 names ten states and seven required invariants.
+  `crates/ravel-loader/tests/spec_invariants.rs` carries one test per invariant,
+  named in the spec's own words, plus one more; four of the seven were killed by
+  the mutations above. The transition table is checked over all 10×10 ordered
+  pairs against an oracle re-derived in the test, with the legal count asserted at
+  16.
+- The two generated records are genuinely byte-bound to behaviour, not merely
+  digest-bound to themselves. Changing one insignificant byte of whitespace in
+  `evidence/m2/noop-pipeline.json` failed
+  `ravel-conformance-tests::noop_pipeline the_recorded_evidence_is_what_the_loader_does_now`
+  and `ravel-xtask::scaffold required_scaffold_is_complete` (exit 100); the same in
+  `pre-world-gate.json` failed with exit 100. Mutating the loader also broke
+  `pre_world_gate the_recorded_evidence_is_what_the_gate_does_now`, so the record
+  tracks the loader in both directions.
+
+### The two controls the previous round's blocking findings introduced
+
+Both hold, including against the flaw in the previous round's own proof.
+
+1. **Record-level `trial.revision`.** `verify_admitted_revisions` in
+   `tools/ravel-xtask/src/lib.rs:1179`. Broke it four ways, each with the manifest
+   digest rebound so the digest control could not be what refused:
+   - a genuinely bogus pin (`1111…1111`, undisclosed) → `verify scaffold` exit
+     **1**, reported as "that commit names no commit in visible history";
+   - the previous reviewer's own probe — id forty zeroes, changeId thirty-two
+     z's, which are jj's ROOT commit and root change → exit **1**. `visible_commit`
+     resolves against `(::visible_heads() & (rev)) ~ root()`, so the root escape
+     the previous proof accidentally used is closed;
+   - a disclosure covering a pin it does not name (record re-pinned, disclosure
+     left at the old commit) → exit **1**, twice: once for the undisclosed pin and
+     once for the disclosure nothing carries;
+   - a disclosure outliving a repaired pin (record re-pinned to a real, obtainable
+     commit of its own change, disclosure updated to name it) → exit **1**,
+     "remove the disclosure rather than leaving an excuse the defect has outlived".
+
+   Both escapes are refused for M2's records, as they were shown to be for M3's.
+
+2. **`benchmarks.results` naming.** Removing `prism-launch.json` from
+   `benchmarks.results` and rewriting its `nativeInvocations` to 999999 and
+   `classesRewritten` to 42 → `verify scaffold` exit **1**
+   (`verify_admitted_inventory`: "names no record prism-launch.json, which its own
+   milestone directory tracks") and `verify milestone M2` exit **1** with the extra
+   violation "M2 manifest must record all four M2 results under the
+   m2-loader-budget-v1 protocol". The gap is closed at both levels.
+
+### The three wording corrections
+
+All three are made, and the factual claims behind the first two check out.
+
+- Deviation F5 (`manifest.json:169`) now says the two records "held different
+  bytes at that revision", not that they did not exist. Verified against the
+  abandoned commit itself: at `93772540cf84400f7f2eb0b5d9ae71490851ca65`,
+  `noop-pipeline.json` hashes `d4dcf5af…` and `pre-world-gate.json` `1577b23d…`,
+  exactly the values the deviation quotes, while `loader-overhead.json`
+  (`19e8b019…`) and `prism-launch.json` (`2896719b…`) are byte-identical to what
+  the manifest binds today. The deviation is precisely true.
+- `README.md:41` scopes the claim: "Every digest the manifest binds is
+  recomputable — which is narrower than every digest in this directory, because
+  `prism-launch.json` names three of its own that nobody can". All four bound
+  record digests recompute (`sha256sum evidence/m2/*.json` matches
+  `benchmarks.results` and `review.record` matches `review.md` at
+  `c2889007a70ad99192e58547e6cedea92b0158d95deafc64bcd263d08d4bf21e`).
+- M2-W7 (`ROADMAP.md:617-633`) no longer claims the machine's half is live in a
+  launch: "The machine's half is consulted on that crossing in a launch, and it has
+  not yet refused in one … that a halted set withholds a world is proven in-gate by
+  tests that fail when the call is removed." That last clause is now a measured
+  statement rather than an assertion — see the ADG-7 mutation above.
+
+### Arithmetic and counts
+
+Every absolute figure I could recompute, recomputes.
+
+- Six budget limits, each exactly `ceil(measured × 2)`: 7084→14168, 7769.25→15539,
+  5.51→12, 880→1760, 598→1196, 1885→3770. Deviation F4's account of the integer
+  ceiling is correct and complete.
+- M2-W5's reconciling counts: at the pinned revision `aac3bfd2…`,
+  `minecraft/versions/26.1.2/hooks.toml` holds exactly 6 entries across exactly 2
+  distinct classes — 4 `static-method`, 1 `instance-method`, 1 `instance-field` —
+  matching `classesRewritten` 2 and `methodsRewritten` 5. (The same file at the
+  working copy now holds 37 entries, which is why pinning the claim to a revision
+  was the right call.) `nativeInvocations` 144 reconciles against nothing, as
+  deviation F3 says.
+- `pre-world-gate.json` holds 6 refusals, 2 with `failureKind` null
+  (`unparsable-manifest`, `digest-mismatch`); `SPEC.md` §9.2 lists 6 conditions and
+  the record covers 4 of them by kind. Deviation F6's accounting is exact.
+- `noop-pipeline.json`'s transcript holds 8 distinct `SPEC.md` §14 states; §14
+  defines 10. The README row's explanation of the missing two is correct.
+- No `proptest` or `quickcheck` anywhere in `Cargo.lock` or any manifest, as
+  deviation F8 states.
+- Workspace line coverage measured at **87.06%** against the 80% floor.
+
+### Findings — third cold audit
+
+#### F1 — moderate. A bound coverage figure in the manifest is false, and the deviation whose job is to catch that missed it
+
+`evidence/m2/manifest.json:125` states, in the present tense:
+"crates/ravel-bootstrap/src/guard.rs sits at 54.55% lines and stays there."
+
+Actually true: 28.72% lines, 39.80% regions, 41.67% functions. Established by
+measuring, not reading:
+`cargo llvm-cov nextest --workspace --all-features --summary-only --ignore-filename-regex '(^|/)experiments/adg-'`,
+exit **0**, `crates/ravel-bootstrap/src/guard.rs … 94 lines, 67 missed, 28.72%`.
+The file grew as M3 added hook surface, so the figure drifted downward by 26
+points. The other half of the same sentence still holds exactly — the delegated
+logic is `wire.rs` at 100.00% and `report.rs` at 80.00%.
+
+What makes this more than a stale number is deviation F8 at `manifest.json:181`,
+whose stated purpose is precisely this sweep: "Present-tense prose in this
+historical manifest has gone stale and is left standing rather than rewritten, so
+this sentence says what is true now." It then enumerates three stale items —
+`schemas/package.schema.json`, the `ravel-config` placeholder risk, and
+`modExecutionModelSelected` — and misses this one, while its wording reads as a
+complete sweep. This is the seventh absolute number found stale across this
+project and the first found inside the sweep that was written to end them.
+
+The deviation's *conclusion* is unaffected: the classification is non-blocking
+because the path is verified by the JVM harness and the recorded launch rather than
+by coverage, and that reasoning does not depend on the percentage. Nothing M2
+claims about loader behaviour rests on this figure.
+
+Fix: one sentence in `manifest.json`, in the same shape the manifest already uses
+for stale prose — either extend F8 to name this figure and give the current one, or
+add a sentence to the guard.rs deviation itself. Do not rewrite the original
+number; the manifest's own convention is to leave historical prose standing and add
+what is true now.
+
+#### F2 — minor. A citation in the bound review record no longer resolves
+
+`evidence/m2/review.md:17` cites "the closure rule at `ROADMAP.md:719`". The M2
+closure rule is now at `ROADMAP.md:635-639`; line 719 is inside M3's profiling
+budget discussion. Established by reading. Because `review.md` is bound by digest
+and reproduced without softening, correcting it means rebinding the digest, which
+is the right trade only if the record is being rewritten anyway — this review's
+verdict does replace it, so the citation can be fixed by reference to the rule's
+text rather than its line number.
+
+#### F3 — disclosure, not a defect. Closure is an attestation gate, and M2's evidence does not say so
+
+I confirmed by breaking that four coordinated string edits close M2 with both
+gates green: `review.md`'s `Result: FAIL` → `Result: PASS`, `review.result` →
+`pass`, both blocking classifications → `non-blocking`, and the `review.record`
+digest rebound. Result: `verify milestone M2` exit **0** ("Ravel milestone
+verification passed"), `verify scaffold` exit **0**.
+
+The controls that do exist are real and I verified both:
+
+- the record's bytes are digest-bound — I confirmed all five digests recompute;
+- the record's verdict line must agree with the manifest. Flipping only
+  `review.result` to `pass` and the two classifications, leaving `review.md`
+  saying `Result: FAIL`, gives `verify milestone M2` exit **1** with
+  "records review.result pass while the review record it binds states fail". That
+  control is not decorative.
+
+So the residue is inherent: no gate can distinguish an attestation a person stands
+behind from one they fabricated. I record it here rather than treat it as a
+finding, because M2's evidence nowhere states this limit — the statement lives only
+in `evidence/m3/review.md:1226` — and because this record becoming M2's review
+record is what puts the statement in M2's evidence.
+
+#### F4 — minor observation. Three void budget limits still pass the gate as live limits
+
+`ROADMAP.md:641-653` declares `build.packCompile`, `build.relink` and
+`build.binaryGrowthPerMod` void, on the record's own `budget.expiry` clause, because
+M3 chose source compilation over linking. `loader-overhead.json` is deliberately
+not edited, which is right — but the M2 gate rule at
+`tools/ravel-xtask/src/lib.rs:2684` validates all six limits identically, and
+nothing inside the record marks three of them dead. A reader who runs the gate and
+not the roadmap gets a green on three limits the roadmap says describe a shape that
+no longer exists. This is disclosed in prose and I am not asking for it to be
+mechanised; it is noted so the next budget does not inherit the pattern.
+
+### On the remaining blocking deviation, which is a judgement and therefore mine to make
+
+`verify milestone M2` fails on two violations. One is this review, which now
+passes. The other is "no blocking deviations or risks", and two deviations carry
+`blocking`:
+
+**`manifest.json:153` — the withdrawn original review and its withdrawn `pass`.**
+Its own closing sentence is "What closes M2 is an independent review of the
+repaired state that returns pass, not an edit to this file." That condition is met
+by this record. Reclassifying it to non-blocking is executing the deviation as
+written, and the orphaned digest
+`abc003fdd77ede9be08f0ddf36c0b10e381431ff684c8bb7a874420513abea78` must stay in the
+sentence so the withdrawn claim is not lost.
+
+**`manifest.json:193` — both measurement trials pin a dirty tree no reader can
+obtain.** I judge this **non-blocking**, and the reasoning has to be on the record
+because the manifest currently argues the opposite.
+
+The finding is true: `loader-overhead.json` and `prism-launch.json` both record
+`trial.revision.dirty: true` on `df717025…`, a commit no visible head reaches, under
+a change that has moved off it. The gate says so out loud on every run — I saw both
+lines in the passing baseline — and the disclosure mechanism fails closed in both
+directions, which I proved rather than read.
+
+What I weighed against the manifest's own argument that "a launch attestation and a
+performance budget whose source is unidentified are the two claims M2 closes on":
+
+- M2-W5's claim is a historical event in a process this repository cannot re-enter,
+  and the artifact behind it is deleted by design to keep an account's session
+  arguments out of the repository. No pin, clean or dirty, could make that
+  recomputable. Requiring one would make M2-W5 unprovable by construction — the
+  same defect in the opposite direction. What matters instead is that the record
+  *labels* the unrecomputable parts attested, and it does: `launch.attestation`
+  carries `derived: false` and says in its own detail that the runner reads the
+  log and not the launcher. And the one part that can be corroborated,
+  corroborates — 2 classes and 5 methods reconcile against `hooks.toml` at the
+  pinned revision, independently of the operator's word.
+- M2-W8's budget is a wall-clock measurement already scoped to one hardware profile,
+  already carrying a factor of two for run-to-run variance, already half-void, and
+  re-measurable at any time. Its three surviving loader limits are a baseline for a
+  like-for-like comparison, and the property that makes that comparison valid — the
+  metric is pinned to a no-op package that registers no content — is stated and
+  independent of which tree was measured.
+- Nothing else in M2 depends on either trial. Every capability claim in M2-W1
+  through M2-W4, W6 and W7 is proven by tests that run on today's tree and that I
+  killed by mutation.
+
+So the honest classification is a disclosed limitation on two attested figures, not
+a blocking defect in what M2 built. It is already disclosed three times over — in
+the deviation, in `unobtainableRevisions`, and on the gate's own stdout — and it
+cannot be repaired, only re-measured into a different set of numbers that would
+attest a different run.
+
+### What convinced me, and what still has to change
+
+What convinced me: every load-bearing claim in the four rows the previous round
+never examined survives being attacked and dies when its subject is removed —
+canonical IDs against the schema pattern under a real regex engine, package
+integrity and tamper-before-execution, all four dependency relationship kinds
+including range-scoped incompatibility, deterministic load order, the full 10×10
+transition table, all seven `SPEC.md` §14 invariants named one-to-one, and both
+halves of the world-access gate including ADG-7's crossing in the composed host.
+The two controls the previous round demanded exist and refuse every escape I could
+construct, including the one that reviewer's own flawed proof would have missed.
+Every digest the manifest binds recomputes; every piece of arithmetic I could
+redo is true; F5's byte-level claim about an abandoned commit is exactly right; and
+the redaction control refuses a fabricated local path and credential at the
+milestone gate, precisely where the README says it lives and not where it does not.
+
+For `devenv tasks run ravel:verify-milestone:m2` to exit 0, the smallest set is:
+
+1. correct the guard.rs coverage figure per F1, in the manifest's own
+   leave-and-append convention;
+2. reclassify `manifest.json:153` to non-blocking, keeping the orphaned digest in
+   its text, because this review is the condition that deviation names;
+3. reclassify `manifest.json:193` to non-blocking on the reasoning above, and add a
+   sentence recording that an independent review judged it so — not a silent flip;
+4. record this verdict as `review.md` with `review.result: "pass"`, rebinding
+   `review.record.sha256`, and update `ROADMAP.md:635-639` and
+   `evidence/m2/README.md:32-50`, which both currently state that M2's review
+   returns FAIL.
+
+Nothing in that list changes a measurement, a record, or a line of loader code.
+That is the point: M2's work is sound, and what was left was bookkeeping and one
+judgement.
+
+### Ceiling — what this review judged by reading rather than by breaking
+
+This is the limit on how much weight the verdict above can carry. Every item here
+was read, or trusted to a gate I did not independently falsify.
+
+- **The launch itself.** That an official 26.1.2 client started from a stock Prism
+  build, reached a world, accepted input and exited cleanly is an operator
+  attestation. I did not launch anything. `nativeInvocations` 144, the redacted
+  launcher log digest, the native library digest and the agent jar digest reconcile
+  against nothing and I confirmed only that the record says so.
+- **`commands[0]` and `tests`.** The `ravel:verify` at 429 tests, 86.43% coverage,
+  exit 0 on `93772540…` is an attestation about an abandoned tree. The current tree
+  runs 888 tests and 87.06% line coverage, which is a different run and not a
+  check of that one.
+- **The three wording corrections** are prose claims and reading is the only
+  available check, though I did break out and verify the two factual sub-claims
+  underneath F5 and the README scoping.
+- **`schemas/evidence.schema.json` conformance** is trusted to the passing scaffold
+  baseline. I did not construct a manifest that violates the schema to confirm the
+  schema check refuses it.
+- **`review.md`'s 472 lines of prior-audit content.** I read the two earlier
+  verdicts and did not re-derive their findings. Where this review overlaps them it
+  re-established the result independently; where it does not, those findings rest on
+  their own authors.
+- **The Java side.** `jvm/bootstrap/dev/ravel/jvm/Persistence.java`'s refusal
+  handling and the fail-closed polarity ADG-7 describes were read, not exercised. I
+  broke the Rust half of that crossing; I did not run the Java half.
+- **`ravel:verify` as a whole.** I ran `verify scaffold`, `verify milestone M2` and
+  the test suite directly rather than the composite task, and I did not verify that
+  the composite propagates each sub-task's failure.
+- **F4's expiry reasoning** — that source compilation is not linking and therefore
+  fires the clause — is read from `ROADMAP.md` and `evidence/m3/pack-compile.json`;
+  M3's evidence was out of scope and I did not audit the 113.34 ms figure.
+- **Withdrawn during this review, and therefore not a finding:** an earlier pass of
+  my own mutation harness restored files with `shutil.move`, which preserves the
+  backup's mtime, so cargo reused artifacts built from the previous mutation and
+  three "kills" were attributed to the wrong mutation. Every result reported above
+  comes from the re-run harness, which touches each restored file and uses
+  `--no-fail-fast`, and whose clean baseline was re-established at 888/888 before
+  the first mutation. Recorded here because a reviewer's own harness is exactly the
+  kind of thing that passes for the wrong reason.
+- **Coverage of the M2 crates individually.** I measured the workspace total and
+  `guard.rs`; I did not check whether any other per-file figure quoted anywhere in
+  M2's evidence has drifted the way that one did. Given that one had, the others
+  are worth a sweep by whoever fixes F1.

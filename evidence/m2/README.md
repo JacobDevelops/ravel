@@ -29,16 +29,19 @@ an operator captured outside this repository, and the log is deleted once its
 digest is taken. That digest is the one hash here nobody can recompute, which is
 the same trade M0 and M1 made for their launches.
 
-[`review.md`](review.md) is M2's closure review, and it returns FAIL. The review
+[`review.md`](review.md) is M2's closure review, and it returns PASS. The review
 that originally closed M2 is not here and cannot be: `review.record` named a
 title and a sha256 matching no file this repository tracks, so that review could
 not be read or hashed by anyone who did not run it. Withdrawing the digest and
 keeping its `pass` verdict left the worse state of the two — a pass attributed by
 name to a review the same manifest said nobody could obtain — so the verdict is
-withdrawn as well. A cold audit has since reviewed the gate independently;
-`review.md` is its verdict, reproduced without softening, and
-`review.result` is `fail`. The orphaned digest stays in the manifest's deviations
-so the claim is not lost. Every digest the manifest binds is recomputable — which is narrower than every digest
+withdrawn as well. Cold audits have since reviewed the gate independently;
+`review.md` holds their verdicts, reproduced without softening, and
+`review.result` is `pass` on the last of them, which reviewed the repaired state.
+The orphaned digest stays in the manifest's deviations so the claim is not lost.
+What a pass here does and does not mean is in the record: closure is an
+attestation gate, and what these gates bind is which text was attested rather than
+that the attestation was earned. Every digest the manifest binds is recomputable — which is narrower than every digest
 in this directory, because `prism-launch.json` names three of its own that nobody can:
 the deleted launcher log, the native library, and the agent jar. And a recomputable
 digest is not the same as an unaffected measurement: `loader-overhead.json` and
@@ -46,8 +49,10 @@ digest is not the same as an unaffected measurement: `loader-overhead.json` and
 no visible head reaches, so M2-W8's budget and M2-W5's launch attestation are
 readable and tied to no inspectable tree. The manifest discloses both pins under
 `unobtainableRevisions` and classifies the finding, and the scaffold refuses any
-pin a record carries that is neither obtainable nor disclosed there. What closes
-M2 now is an independent review of the repaired state that passes.
+pin a record carries that is neither obtainable nor disclosed there. That finding
+was classified blocking until the third cold audit judged it non-blocking; its
+reasoning is the manifest's record of that judgement, and the reasoning rather than
+the classification is what a reader should weigh.
 
 The audit's blocking finding was that `LifecycleMachine::open_world` had no
 caller outside tests, which made M2-W7's "cannot open a world" a statement about

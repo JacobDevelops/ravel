@@ -632,11 +632,18 @@ a package and orders a graph runs when a pack is compiled rather than inside the
 game process. So an invalid package cannot reach a launch to be refused in one,
 and the refusals `pre-world-gate.json` records remain the loader's own answers.
 
-**M2's closure review returns FAIL.** [`evidence/m2/review.md`](evidence/m2/review.md)
-is a cold audit of this gate, bound by digest, and `review.result` is `fail`. The
-review that originally closed M2 was recorded by title against a digest matching
-no tracked file; both it and the `pass` it carried are withdrawn. M2 does not
-close until an independent review of the repaired state passes.
+**M2's closure review returns PASS.** [`evidence/m2/review.md`](evidence/m2/review.md)
+holds the cold audits of this gate, bound by digest, and `review.result` is `pass`
+on the last of them, which reviewed the repaired state and killed by mutation every
+load-bearing claim in the four rows the round before it never examined. The review
+that originally closed M2 was recorded by title against a digest matching no
+tracked file; both it and the `pass` it carried stay withdrawn, and the pass
+recorded now is a different audit's. What that pass rests on is bounded, and the
+passing audit is what bounded it: closure is an attestation gate, so the gates bind
+which text was attested rather than that the attestation was earned. The audit
+confirmed by breaking that four coordinated string edits close M2, and that
+flipping only the manifest is refused. Its own reading-only ceiling, including the
+launch it did not run, is in the record.
 
 **Three of that budget's six limits have expired, on the budget's own terms.**
 [`loader-overhead.json`](evidence/m2/loader-overhead.json) carries a

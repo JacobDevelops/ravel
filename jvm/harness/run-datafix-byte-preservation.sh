@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# Proves that the pinned game's selected vanilla saved-data fixer leaves Ravel's
-# opaque byte payload unchanged before the persistence adapter relies on it.
+# Measures whether the pinned game's selected vanilla saved-data fixer leaves
+# Ravel's opaque byte payload unchanged, over the shape `RavelWorldData` stores.
+#
+# This is a measurement and not a gate. It needs the restricted pinned client jar
+# and a real Minecraft library root, neither of which `ravel:verify` can assume,
+# so nothing in the gate graph runs it and no devenv task wraps it. ADG-7 records
+# what it measured, at which revision, and what would have to change for this to
+# become a gate.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -64,6 +70,19 @@ done
 
 rm -rf "$work"
 mkdir -p "$work"
-javac -Xlint:all -Werror -cp "$classpath" -d "$work" \
+
+# The production saved-data class is compiled here rather than copied, because
+# the shape being measured has to be production's own and not a restatement of
+# it. It is the only production source on this command line: everything around it
+# in `jvm/screen/src` is screens.
+#
+# Three lints are off and the rest stay fatal. The screen jar compiles this class
+# against the generated stubs, which carry erased descriptors, so `BASE64_STRING`
+# and `SavedDataType` are raw there and the source is written for that. Against
+# the real jar the same source meets the generics the stubs dropped, and every
+# suppressed warning below is that difference — not something the screen build's
+# own `-Xlint:all -Werror` would let through.
+javac -Xlint:all,-rawtypes,-unchecked,-cast -Werror -cp "$classpath" -d "$work" \
+    "$root/jvm/screen/src/dev/ravel/jvm/screen/RavelWorldData.java" \
     "$root/jvm/harness/DataFixBytePreservationMain.java"
 java -cp "$work:$classpath" DataFixBytePreservationMain

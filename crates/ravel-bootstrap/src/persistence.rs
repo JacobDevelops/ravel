@@ -8,7 +8,7 @@
 //!
 //! [`LifecycleMachine::open_world`]: ravel_loader::LifecycleMachine::open_world
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::sync::{Arc, OnceLock, PoisonError};
 
@@ -33,12 +33,33 @@ struct Checkpoint {
     dirty: bool,
 }
 
+/// How many admitted-world notices are kept at once.
+///
+/// A notice is written per world open and nothing consumes one, so an unbounded
+/// list is a leak measured in worlds per session rather than a record. The
+/// oldest is dropped rather than the newest because what a player is diagnosing
+/// is the world they just opened.
+const OBSERVATION_CAPACITY: usize = 32;
+
 #[derive(Default)]
 pub(crate) struct PersistenceState {
     live: Option<Checkpoint>,
     staged: Option<Checkpoint>,
     /// What was worth noticing about a world that was still admitted.
-    observations: Vec<String>,
+    ///
+    /// Bounded at [`OBSERVATION_CAPACITY`], because this lives for the whole
+    /// run of a game.
+    observations: VecDeque<String>,
+}
+
+impl PersistenceState {
+    /// Records one notice, dropping the oldest once the bound is reached.
+    fn notice(&mut self, observation: String) {
+        while self.observations.len() >= OBSERVATION_CAPACITY {
+            self.observations.pop_front();
+        }
+        self.observations.push_back(observation);
+    }
 }
 
 /// What the Java adapter should do after an open crossing.
@@ -161,6 +182,8 @@ pub fn save(identity_raw: &str) -> SaveOutcome {
 }
 
 /// What the open crossing noticed about worlds it admitted anyway.
+///
+/// Bounded: the most recent [`OBSERVATION_CAPACITY`] notices, oldest first.
 #[must_use]
 pub fn observations() -> Vec<String> {
     runtime().map_or_else(
@@ -171,13 +194,17 @@ pub fn observations() -> Vec<String> {
 
 impl LoaderRuntime {
     /// What the open crossing noticed about worlds it admitted anyway.
+    ///
+    /// Oldest first, and never longer than [`OBSERVATION_CAPACITY`].
     pub(crate) fn persistence_observations(&self) -> Vec<String> {
         self.inner
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .persistence
             .observations
-            .clone()
+            .iter()
+            .cloned()
+            .collect()
     }
 
     fn declarations(inner: &crate::runtime::Inner) -> Vec<SavedDataDeclaration> {
@@ -238,7 +265,7 @@ impl LoaderRuntime {
         // one that used to hold Ravel data and now does not, which is worth
         // saying and is not worth refusing over.
         if bytes.is_none() && !fresh_world {
-            inner.persistence.observations.push(format!(
+            inner.persistence.notice(format!(
                 "`{identity}` is not a new world and holds no Ravel data; \
                  fresh state was initialized"
             ));
@@ -487,8 +514,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        FAILED, IDENTITY_MISMATCH, OpenOutcome, REPLACEMENT, SaveOutcome, UNCHANGED, WorldIdentity,
-        tagged,
+        FAILED, IDENTITY_MISMATCH, OBSERVATION_CAPACITY, OpenOutcome, REPLACEMENT, SaveOutcome,
+        UNCHANGED, WorldIdentity, tagged,
     };
     use crate::runtime::LoaderRuntime;
 
@@ -945,6 +972,44 @@ mod tests {
             WorldIdentity::of("saves/world"),
             WorldIdentity::of("saves/world/nether"),
             "collapsing separators must not collapse a path into its parent"
+        );
+    }
+
+    /// The notice list is a bounded record rather than a leak.
+    ///
+    /// One notice is written per world open and nothing consumes one, so an
+    /// unbounded list grows for as long as the game runs. The bound is asserted
+    /// by overrunning it: the count stops at the capacity and the first world
+    /// noticed is gone while the last is still there.
+    #[test]
+    fn the_notices_a_long_session_accumulates_stay_bounded() {
+        let (runtime, _held) = running();
+        let overrun = OBSERVATION_CAPACITY + 3;
+        for index in 0..overrun {
+            runtime
+                .stage_world(WorldIdentity::of(&format!("worlds/w{index}")), None, false)
+                .expect("an existing world with no Ravel data still stages");
+        }
+
+        let observed = runtime.persistence_observations();
+
+        assert_eq!(
+            observed.len(),
+            OBSERVATION_CAPACITY,
+            "the notices a session writes are bounded, and this session wrote more"
+        );
+        assert!(
+            observed
+                .iter()
+                .all(|notice| !notice.contains("`worlds/w0`")),
+            "the oldest notice outlived the bound: {observed:?}"
+        );
+        assert!(
+            observed
+                .last()
+                .expect("the bound is not zero")
+                .contains(&format!("`worlds/w{}`", overrun - 1)),
+            "the newest notice was dropped instead of the oldest: {observed:?}"
         );
     }
 

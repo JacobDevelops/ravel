@@ -34,8 +34,7 @@
 //! use ravel_sdk::services::{
 //!     ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest, ServiceResponse,
 //! };
-//! use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
-//! use serde_json::json;
+//! use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod, json};
 //!
 //! #[derive(Default)]
 //! struct Base;

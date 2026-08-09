@@ -26,10 +26,21 @@
 //! behind a renamed dependency, and it carries third-party subtrees, which the
 //! manifest walk never followed either.
 //!
-//! Nothing here reads the SDK's source. A re-export can only reach a crate the
-//! closure contains, so the closure is the thing worth checking, and the
-//! doctests cover the second half — that the facade does not re-export what the
-//! closure does contain.
+//! A re-export can only reach a crate the closure contains, so the closure is
+//! the thing worth checking, and the doctests cover the second half — that the
+//! facade does not re-export what the closure does contain.
+//!
+//! # Why the doc examples are read as text
+//!
+//! One thing the closure cannot answer is what the facade's own examples name. A
+//! doctest is compiled with the facade's dependencies in scope, so
+//! `use serde_json::json;` inside one builds and passes while the same line in a
+//! mod crate does not resolve at all. That defect shipped twice — once in
+//! `config.rs` and again in `services.rs`, where the fix for the first missed it
+//! — and neither time did anything fail. So the code inside the facade's doc
+//! fences is compared here against the names a mod crate can actually write, and
+//! the comparison is closed rather than a list of banned crates: every path root
+//! that is not `ravel_sdk`, a language item, or a primitive is a finding.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -655,5 +666,171 @@ fn the_pinned_error_codes_are_the_codes_rustc_reports() {
             "{EXAMPLE_SUITE}:{} pins `{code}` but rustc reports {reported:?} for it",
             case.line
         );
+    }
+}
+
+/// The facade's own source, whose doc examples are read below.
+const FACADE_SOURCE: &str = "crates/ravel-sdk/src";
+
+/// The path roots a mod crate can write.
+///
+/// `ravel_sdk` is the one crate an author's manifest lists. `crate`, `self`,
+/// `super` and `Self` are language items rather than crates. `std`, `core` and
+/// `alloc` come with the compiler. Everything else lowercase in root position is
+/// either a crate a mod cannot name or a module that is only reachable through
+/// one, and both are the same defect for a reader copying the example.
+const NAMEABLE_ROOTS: &[&str] = &[
+    "ravel_sdk",
+    "crate",
+    "self",
+    "super",
+    "Self",
+    "std",
+    "core",
+    "alloc",
+];
+
+/// The primitive types that are lowercase and are not crates.
+///
+/// `u32::MAX` and `str::to_owned` are ordinary in an example and read as a
+/// lowercase root, so they are named rather than guessed at by shape.
+const PRIMITIVES: &[&str] = &[
+    "bool", "char", "str", "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16",
+    "u32", "u64", "u128", "usize",
+];
+
+/// One line of code inside a doc fence, with where a reader would find it.
+struct DocLine {
+    file: String,
+    /// The 1-based line in the source file, which is what an editor shows.
+    line: usize,
+    code: String,
+}
+
+/// Every file in a directory, sorted, so a run is the same run twice.
+fn files_in(directory: &Path) -> Vec<PathBuf> {
+    let mut files = fs::read_dir(directory)
+        .expect("the facade's source directory exists")
+        .map(|entry| entry.expect("a readable directory entry").path())
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
+    files.sort();
+    files
+}
+
+/// Every line inside a `///` or `//!` fenced block in the facade's source.
+///
+/// A fence tagged `text` or `ignore` is still collected: an author copies what
+/// the fence shows regardless of whether rustdoc compiles it, so a name they
+/// cannot write is a defect either way.
+fn doc_example_lines() -> Vec<DocLine> {
+    let mut lines = Vec::new();
+    for path in files_in(&repository_root().join(FACADE_SOURCE)) {
+        if path.extension().is_none_or(|extension| extension != "rs") {
+            continue;
+        }
+        let file = path
+            .file_name()
+            .expect("a named file")
+            .to_string_lossy()
+            .into_owned();
+        let text = fs::read_to_string(&path).expect("a readable source file");
+        let mut inside = false;
+        for (index, raw) in text.lines().enumerate() {
+            let trimmed = raw.trim_start();
+            let Some(rest) = trimmed
+                .strip_prefix("//!")
+                .or_else(|| trimmed.strip_prefix("///"))
+            else {
+                continue;
+            };
+            let body = rest.strip_prefix(' ').unwrap_or(rest);
+            if body.trim_start().starts_with("```") {
+                inside = !inside;
+                continue;
+            }
+            if inside {
+                lines.push(DocLine {
+                    file: file.clone(),
+                    line: index + 1,
+                    code: body.to_owned(),
+                });
+            }
+        }
+        assert!(
+            !inside,
+            "{file} leaves a doc fence open, so what this file read as an example is the rest of \
+             the file"
+        );
+    }
+    lines
+}
+
+/// Every path root a line of code names.
+///
+/// A root is an identifier followed by `::` and preceded by nothing that can be
+/// part of a path, which is what separates the `serde_json` in
+/// `use serde_json::json;` from the `content` in `ravel_sdk::content::ContentId`.
+fn path_roots(code: &str) -> Vec<String> {
+    fn is_word(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || byte == b'_'
+    }
+
+    let bytes = code.as_bytes();
+    let mut roots = Vec::new();
+    let mut start = None;
+    for index in 0..=bytes.len() {
+        let word = index < bytes.len() && is_word(bytes[index]);
+        match (word, start) {
+            (true, None) => start = Some(index),
+            (false, Some(from)) => {
+                start = None;
+                // A root is preceded by nothing path-like: `::` before it makes
+                // it a later segment, and `.` makes it a field or a method.
+                // Compared as bytes, because a doc line is prose as often as
+                // code and slicing it as `str` would land inside a dash.
+                let preceded = from >= 2 && bytes[from - 2] == b':' && bytes[from - 1] == b':'
+                    || from >= 1 && bytes[from - 1] == b'.';
+                let followed = bytes[index..].starts_with(b"::");
+                if !preceded && followed {
+                    roots.push(code[from..index].to_owned());
+                }
+            }
+            _ => {}
+        }
+    }
+    roots
+}
+
+#[test]
+fn every_doc_example_in_the_facade_names_only_crates_a_mod_can_name() {
+    let lines = doc_example_lines();
+    assert!(
+        !lines.is_empty(),
+        "no doc example was found in {FACADE_SOURCE}, so this test read nothing"
+    );
+
+    for line in &lines {
+        for root in path_roots(&line.code) {
+            if NAMEABLE_ROOTS.contains(&root.as_str()) || PRIMITIVES.contains(&root.as_str()) {
+                continue;
+            }
+            // A type or trait name in root position is a name the example
+            // brought into scope, not a crate.
+            if root
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_uppercase())
+            {
+                continue;
+            }
+            panic!(
+                "{FACADE_SOURCE}/{}:{} shows `{root}::` in a doc example. A mod crate lists \
+                 `{AUTHOR_DEPENDENCY}` and nothing else, so it cannot name `{root}`, and the \
+                 example does not compile where a reader will paste it. Reach the name through \
+                 `ravel_sdk`.\n{}",
+                line.file, line.line, line.code
+            );
+        }
     }
 }

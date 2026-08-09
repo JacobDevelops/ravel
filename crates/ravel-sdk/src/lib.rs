@@ -74,10 +74,11 @@
 //! # What a mod does while it runs
 //!
 //! [`events`] is what the game did and what a player typed. [`network`] is what a
-//! mod sends between a client and a server: a contract, and a value that
-//! round-trips under it or is refused. [`sides`] is which of those a mod is doing
-//! — and [`sides::ClientOnly`] is where its client-only work goes, so that work is
-//! not merely hidden on a server side but never runs there.
+//! mod declares it sends between a client and a server: a contract, and a value
+//! that round-trips under it or is refused — declared and testable today, and not
+//! yet carried anywhere, which that module states plainly. [`sides`] is which of
+//! those a mod is doing — and [`sides::ClientOnly`] is where its client-only work
+//! goes, so that work is not merely hidden on a server side but never runs there.
 //!
 //! [`config`] is what a player and a pack may change about a mod, declared as a
 //! document and resolved into the values in force for one launch. [`save`] is the
@@ -132,13 +133,68 @@ pub use ravel_host_api::HostError as ModError;
 /// implements only the parts of the lifecycle it takes part in.
 pub use ravel_host_api::HostMod as Mod;
 pub use ravel_sdk_macros::declare_mod;
-/// Builds one of the open JSON values this facade carries.
+/// Why a JSON document did not parse.
+///
+/// The error `str::parse::<`[`JsonValue`]`>` returns. It is re-exported for the
+/// same reason [`JsonValue`] is: without a name here, a mod that wanted to carry
+/// the failure — in its own error type, or in a signature — could not write the
+/// type down, because `serde_json` is not nameable from a crate that lists
+/// `ravel-sdk` and nothing else.
+///
+/// It implements [`std::error::Error`] and [`std::fmt::Display`], so the usual
+/// route is `error.to_string()` into a [`ModError::Refused`] detail.
+pub use serde_json::Error as JsonError;
+/// One of the open JSON values this facade carries.
 ///
 /// Three surfaces here are deliberately open rather than typed by Ravel: a
 /// [`save::SavedPayload`], a [`services::ServiceRequest`]'s arguments and a
-/// [`services::ServiceResponse`]'s answer, and a [`config`] setting's value. Each
-/// belongs to the mod that shapes it. This is the constructor for all of them, so
-/// an author never has to add a second dependency to write one down.
+/// [`services::ServiceResponse`]'s answer, and a [`config`] setting's value. All
+/// three are this type, and this is the name a mod uses for it. `serde_json` is
+/// not nameable from a crate that lists `ravel-sdk` and nothing else, so without
+/// a name here an author who wanted to write the type down — in a signature, or
+/// as the receiver of an associated function like `JsonValue::as_u64` — had one
+/// spelling available, `save::SavedPayload`, which says "saved data" about a
+/// setting that has nothing to do with a world.
+///
+/// [`save::SavedPayload`] remains the name for the payload in an envelope, where
+/// the saved-data reading is the right one.
+///
+/// # Reading a document a mod was given
+///
+/// [`json`] builds a value a mod wrote. A value a mod *received* as text — a
+/// file it read, a string a player typed into a command — is parsed with
+/// `str::parse`, because this type implements [`std::str::FromStr`]. That is the
+/// whole of it: there is no `from_str` function re-exported here, and none is
+/// needed. The error is [`JsonError`], which is named here so a mod can write
+/// the failure down as well as produce it.
+///
+/// # Examples
+///
+/// ```
+/// use ravel_sdk::{JsonError, JsonValue, json};
+///
+/// fn capacity(value: &JsonValue) -> Option<u64> {
+///     value.as_u64()
+/// }
+///
+/// assert_eq!(capacity(&json!(16)), Some(16));
+/// assert_eq!(capacity(&json!("sixteen")), None);
+///
+/// // The same value, read from text rather than built.
+/// let parsed: JsonValue = r#"{ "stock": 12 }"#.parse()?;
+/// assert_eq!(parsed, json!({ "stock": 12 }));
+///
+/// // A document that is not JSON is an error a mod can name and report.
+/// let refused: Result<JsonValue, JsonError> = "{".parse();
+/// assert!(refused.is_err());
+/// # Ok::<(), JsonError>(())
+/// ```
+pub use serde_json::Value as JsonValue;
+/// Builds a [`JsonValue`].
+///
+/// Each of the open surfaces [`JsonValue`] names belongs to the mod that shapes
+/// it. This is the constructor for all of them, so an author never has to add a
+/// second dependency to write one down.
 ///
 /// # Examples
 ///

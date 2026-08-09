@@ -16,6 +16,12 @@
 //! a mod receives has been validated against the declaration the mod itself
 //! wrote.
 //!
+//! A resolved value is a [`crate::JsonValue`], because a setting's shape belongs
+//! to the mod that declared it. Reading one is a method call on the value, so the
+//! example below names no type at all; a mod that wants to write the type down —
+//! in a signature, say — reaches it through the facade rather than through
+//! `serde_json`, which a mod's manifest does not list.
+//!
 //! # Examples
 //!
 //! ```
@@ -55,7 +61,7 @@
 //!         let key = "lanterns".parse().expect("the key this mod declared");
 //!         self.lanterns = resolved
 //!             .value(&key)
-//!             .and_then(serde_json::Value::as_u64)
+//!             .and_then(|value| value.as_u64())
 //!             .ok_or_else(|| ModError::Refused {
 //!                 mod_id: Self::declared_id().clone(),
 //!                 state: LifecycleState::Constructed,

@@ -57,13 +57,14 @@ impl ServiceOrder {
 ///
 /// Returns [`ServiceRefused::NoProvider`] when nothing in the running set answers
 /// a service a mod requires, [`ServiceRefused::Cycle`] naming every mod in a
-/// requirement cycle, and [`ServiceRefused::Consumer`] when a mod refused the
-/// services it was offered.
+/// requirement cycle, [`ServiceRefused::ForeignDeclaration`] when a mod returns a
+/// declaration owned by another identity, and [`ServiceRefused::Consumer`] when a
+/// mod refused the services it was offered.
 pub fn open_services(
     machine: &LifecycleMachine,
     mods: &mut [&mut dyn HostMod],
 ) -> Result<ServiceOrder, ServiceRefused> {
-    let declarations = declared(machine, mods);
+    let declarations = declared(machine, mods)?;
     let providers = providers(&declarations);
     let order = dependency_order(&declarations, &providers)?;
 
@@ -95,21 +96,41 @@ pub fn open_services(
 }
 
 /// Collects the declaration of every mod that runs on this side.
+///
+/// A declaration names its own owner, and this is where that name is checked
+/// against the mod that returned it. Every other boundary in this design refuses
+/// at the boundary — `NotOurs`, `RequiresItself` and `Undeclared` all do — and
+/// without this one a mod handing back a declaration built for another identity
+/// would have its edges recorded against itself and surface the mismatch far
+/// later, as a provider nothing can find at call time.
+///
+/// # Errors
+///
+/// Returns [`ServiceRefused::ForeignDeclaration`] naming both identities.
 fn declared(
     machine: &LifecycleMachine,
     mods: &[&mut dyn HostMod],
-) -> BTreeMap<ModId, ServiceDeclaration> {
-    mods.iter()
-        .filter(|host| {
-            machine
-                .entry(host.id())
-                .is_ok_and(|entry| entry.sides.loads_on(machine.side()))
-        })
-        .filter_map(|host| {
-            host.service_declaration()
-                .map(|declaration| (host.id().clone(), declaration))
-        })
-        .collect()
+) -> Result<BTreeMap<ModId, ServiceDeclaration>, ServiceRefused> {
+    let mut declarations = BTreeMap::new();
+    for host in mods {
+        let loads_here = machine
+            .entry(host.id())
+            .is_ok_and(|entry| entry.sides.loads_on(machine.side()));
+        if !loads_here {
+            continue;
+        }
+        let Some(declaration) = host.service_declaration() else {
+            continue;
+        };
+        if declaration.owner() != host.id() {
+            return Err(ServiceRefused::ForeignDeclaration {
+                mod_id: host.id().clone(),
+                owner: declaration.owner().clone(),
+            });
+        }
+        declarations.insert(host.id().clone(), declaration);
+    }
+    Ok(declarations)
 }
 
 /// Maps every answered service to the mod that answers it.
@@ -251,6 +272,13 @@ pub enum ServiceRefused {
         /// Every mod the cycle holds, in identity order.
         participants: Vec<ModId>,
     },
+    /// A mod returned a declaration built for another identity.
+    ForeignDeclaration {
+        /// The mod that returned it.
+        mod_id: ModId,
+        /// The identity the declaration names as its owner.
+        owner: ModId,
+    },
     /// A mod refused the services it was offered.
     Consumer {
         /// The mod that refused.
@@ -277,6 +305,11 @@ impl fmt::Display for ServiceRefused {
                 }
                 Ok(())
             }
+            Self::ForeignDeclaration { mod_id, owner } => write!(
+                formatter,
+                "`{mod_id}` returned a service declaration owned by `{owner}`, and a mod declares \
+                 only its own services"
+            ),
             Self::Consumer { mod_id, source } => {
                 write!(formatter, "`{mod_id}` refused its services: {source}")
             }
@@ -287,7 +320,7 @@ impl fmt::Display for ServiceRefused {
 impl std::error::Error for ServiceRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::NoProvider { .. } | Self::Cycle { .. } => None,
+            Self::NoProvider { .. } | Self::Cycle { .. } | Self::ForeignDeclaration { .. } => None,
             Self::Consumer { source, .. } => Some(source),
         }
     }
@@ -303,13 +336,17 @@ impl StructuredFailure for ServiceRefused {
         match self {
             Self::NoProvider { .. } => Some(FailureKind::MissingRequiredDependency),
             Self::Cycle { .. } => Some(FailureKind::DependencyCycle),
-            Self::Consumer { .. } => None,
+            // A foreign declaration is not a graph outcome either: the graph was
+            // never built, because the mod answered for somebody else.
+            Self::Consumer { .. } | Self::ForeignDeclaration { .. } => None,
         }
     }
 
     fn lifecycle_state(&self) -> LifecycleState {
         match self {
-            Self::NoProvider { .. } | Self::Cycle { .. } => LifecycleState::Resolved,
+            Self::NoProvider { .. } | Self::Cycle { .. } | Self::ForeignDeclaration { .. } => {
+                LifecycleState::Resolved
+            }
             Self::Consumer { .. } => LifecycleState::Constructed,
         }
     }
@@ -369,6 +406,13 @@ mod tests {
 
         fn refusing(mut self) -> Self {
             self.refuses = true;
+            self
+        }
+
+        /// Hands back a declaration built for `owner` rather than for this mod.
+        fn answering_for(mut self, owner: &str, provides: &[ServiceId]) -> Self {
+            self.declaration = ServiceDeclaration::new(id(owner), provides.to_vec(), Vec::new())
+                .expect("a legal declaration for the other identity");
             self
         }
     }
@@ -448,6 +492,40 @@ mod tests {
         assert_eq!(opened.order(), [id("base"), id("consumer")]);
         assert_eq!(consumer.reached, ["base"]);
         assert_eq!(base.answered, [service("base", "prices")]);
+    }
+
+    #[test]
+    fn a_mod_answering_for_another_identity_is_refused_before_any_mod_is_offered_anything() {
+        // `thief` hands back `base`'s declaration. Without the owner check its
+        // edges are recorded against `thief`, and the consumer's call for
+        // `base:prices` then finds no provider at all — a refusal one step from
+        // where the mistake was made and naming nobody who can fix it.
+        let prices = service("base", "prices");
+        let mut thief =
+            Wired::new("thief", &[], &[]).answering_for("base", std::slice::from_ref(&prices));
+        let mut consumer = Wired::new("consumer", &[], std::slice::from_ref(&prices));
+        let machine = machine(vec![
+            entry("thief", &[Side::DedicatedServer]),
+            entry("consumer", &[Side::DedicatedServer]),
+        ]);
+
+        let refused = open_services(&machine, &mut [&mut thief, &mut consumer])
+            .expect_err("a mod declares only its own services");
+
+        assert_eq!(
+            refused,
+            ServiceRefused::ForeignDeclaration {
+                mod_id: id("thief"),
+                owner: id("base"),
+            }
+        );
+        let text = refused.to_string();
+        assert!(text.contains("thief"), "{text}");
+        assert!(text.contains("base"), "{text}");
+        assert!(
+            consumer.reached.is_empty() && thief.answered.is_empty(),
+            "the refusal came before anything was wired"
+        );
     }
 
     #[test]

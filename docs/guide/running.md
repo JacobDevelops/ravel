@@ -110,12 +110,22 @@ A `PacketContract` is a triple rather than a name, so unlike a `RegistryKey`, a
 `TagId` or a `ServiceId` it has no `to_string()`. Read the parts: `id()`, which
 is a `PacketId` and does print, `direction()` and `version()`.
 
-A payload is refused rather than misread in every way it can be wrong: truncated
-inside a field, carrying trailing bytes, written under another contract version,
-naming one contract and carrying another, or arriving on a side the direction does
-not permit — the last of those before any of your reading code runs. Those six
-refusals are the whole of `WireError`; the `network` module's rustdoc lists each
-variant and what it carries.
+A payload is refused rather than misread in every way it can be wrong, and
+`WireError` is the whole of those refusals. Its variants are
+`WireError::Truncated`, the buffer ending inside a field;
+`WireError::TrailingBytes`, the body ending with bytes left over;
+`WireError::NotUtf8`, a length-prefixed text field that is not UTF-8;
+`WireError::NotABool`, a boolean byte that is neither zero nor one;
+`WireError::Identity`, a payload naming one contract and read as another; and
+`WireError::Version`, a payload written under another version of the contract.
+Every one is named here rather than summarised, because an author writing an
+exhaustive `match` needs the set and not a description of it; the `network`
+module's rustdoc is where what each variant carries is written down.
+
+Arriving on a side the direction does not permit is a different refusal in a
+different type. `DeliveryRefused::WrongSide` is what `Delivery::decode` returns,
+and it returns it before any decoding runs, so none of your reading code has
+executed when it does.
 
 Raise the contract version whenever you change what you send. The other end will
 then refuse instead of reading new fields out of an old buffer.

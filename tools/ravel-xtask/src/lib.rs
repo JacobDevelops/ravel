@@ -238,6 +238,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_void_limits(root, &mut violations);
     verify_harness_lifecycles(root, &mut violations);
     verify_persistence_reflection(root, &mut violations);
+    verify_guide_enumerations(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
     verify_example_inventory(root, &mut violations);
@@ -1374,6 +1375,144 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
             ));
         }
     }
+}
+
+/// The author-facing documents whose enumerations are held to the code.
+const GUIDE_DIRECTORY: &str = "docs/guide";
+
+/// The crate declaring the refusals the guide enumerates.
+const NETWORK_SOURCE: &str = "crates/ravel-network/src/lib.rs";
+
+/// The enum the guide states in full, and the one it only draws from.
+const ENUMERATED_IN_FULL: &str = "WireError";
+const NAMED_IN_PART: &str = "DeliveryRefused";
+
+/// Holds the guide's enumeration of a public enum to the enum itself.
+///
+/// `docs/guide/running.md` told an author that five listed refusals "are the
+/// whole of `WireError`" — a count that did not match its own list, over a list
+/// that omitted `NotUtf8` and `NotABool` and included a refusal belonging to a
+/// different enum. Those two omissions are exactly the variants that ambush
+/// someone writing an exhaustive `match`, and the sentence claiming completeness
+/// is what stopped them checking.
+///
+/// `tests/conformance/tests/guide_snippets.rs` compiles every fenced Rust block
+/// in the guide and deliberately reaches no prose, which its own module doc says.
+/// This is the prose half: every `WireError::` variant the guide names has to be
+/// a variant the enum declares, and every variant the enum declares has to be
+/// named somewhere in the guide. A seventh variant fails as an omission and a
+/// renamed one fails twice, by both names.
+///
+/// [`NAMED_IN_PART`] is held one way only, and the asymmetry is deliberate rather
+/// than an oversight: the guide names `DeliveryRefused::WrongSide` because that is
+/// the refusal an author meets at the boundary, and it has no reason to enumerate
+/// the rest of that enum. So a name the guide states must exist, and a variant the
+/// guide does not state is not a violation.
+///
+/// What this cannot do: it reads variant *names* and nothing else, so a variant
+/// the guide names and describes wrongly passes here. Only the rustdoc beside the
+/// declaration says what each one carries, which is why the guide points at it
+/// rather than restating it.
+fn verify_guide_enumerations(root: &Path, violations: &mut Vec<String>) {
+    let source = match fs::read_to_string(root.join(NETWORK_SOURCE)) {
+        Ok(source) => source,
+        Err(error) => {
+            violations.push(format!("cannot read {NETWORK_SOURCE}: {error}"));
+            return;
+        }
+    };
+    let mut guide = String::new();
+    let mut documents = Vec::new();
+    collect_files(&root.join(GUIDE_DIRECTORY), &mut documents);
+    documents.sort();
+    for path in &documents {
+        match fs::read_to_string(path) {
+            Ok(document) => guide.push_str(&document),
+            Err(error) => violations.push(format!(
+                "cannot read {}: {error}",
+                relative_label(root, path)
+            )),
+        }
+    }
+
+    for name in [ENUMERATED_IN_FULL, NAMED_IN_PART] {
+        let declared = declared_variants(&source, name);
+        if declared.is_empty() {
+            violations.push(format!(
+                "{NETWORK_SOURCE} declares no variant for {name}, so the enumeration \
+                 {GUIDE_DIRECTORY} states is held to nothing"
+            ));
+            continue;
+        }
+        let stated = stated_variants(&guide, name);
+        for extra in stated.difference(&declared) {
+            violations.push(format!(
+                "{GUIDE_DIRECTORY} names {name}::{extra} and {NETWORK_SOURCE} declares no such \
+                 variant; an author told to match on a name that does not exist finds out at the \
+                 compiler rather than here"
+            ));
+        }
+        if name != ENUMERATED_IN_FULL {
+            continue;
+        }
+        for missing in declared.difference(&stated) {
+            violations.push(format!(
+                "{GUIDE_DIRECTORY} enumerates {name} and omits {name}::{missing}, which \
+                 {NETWORK_SOURCE} declares; a variant left out of a list an author reads as \
+                 complete is the one their match arm will not have"
+            ));
+        }
+    }
+}
+
+/// Every variant one public enum declares, read from its own block.
+fn declared_variants(source: &str, name: &str) -> BTreeSet<String> {
+    let opening = format!("pub enum {name} {{");
+    let mut variants = BTreeSet::new();
+    let mut inside = false;
+    for line in source.lines() {
+        if !inside {
+            inside = line.trim() == opening;
+            continue;
+        }
+        if line == "}" {
+            break;
+        }
+        // A variant is the only thing declared at the block's own indentation
+        // that starts with a capital; a field inside one is indented further and
+        // an attribute or a doc comment starts with a sigil.
+        let Some(rest) = line.strip_prefix("    ") else {
+            continue;
+        };
+        if rest.starts_with(char::is_uppercase) {
+            let variant: String = rest
+                .chars()
+                .take_while(|character| character.is_alphanumeric() || *character == '_')
+                .collect();
+            if !variant.is_empty() {
+                variants.insert(variant);
+            }
+        }
+    }
+    variants
+}
+
+/// Every variant of one enum a document names in the `Enum::Variant` form.
+fn stated_variants(document: &str, name: &str) -> BTreeSet<String> {
+    let prefix = format!("{name}::");
+    let mut variants = BTreeSet::new();
+    let mut rest = document;
+    while let Some(at) = rest.find(&prefix) {
+        rest = &rest[at + prefix.len()..];
+        let variant: String = rest
+            .chars()
+            .take_while(|character| character.is_alphanumeric() || *character == '_')
+            .collect();
+        if !variant.is_empty() {
+            variants.insert(variant);
+        }
+    }
+    variants
 }
 
 /// Refuses the claim that an artifact *names* no game type, in tracked text.
@@ -5206,19 +5345,19 @@ mod tests {
     use std::process::Command;
 
     use super::{
-        CRATE_NAMES, CampaignInventory, EXAMPLE_NAMES, GATE_DEFINITION, HOOK_DOCUMENT,
-        HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS, SWEPT_SCOPE, TEST_MOD_NAMES,
-        VERSION_CLASS_EXCUSES, campaign_document_violations, change_mismatch, declared_hook_names,
-        declares_unsafe_prohibition, denied_hook_names, game_class_literals, hook_counts,
-        hook_document_violations, numbers_before, pinned_commit_mismatch, redacted_path,
-        required_scaffold_paths, round_count_restatements, verify_campaign_inventory,
-        verify_decision_hook_claims, verify_evidence_records, verify_experiment_fence,
-        verify_harness_lifecycles, verify_hook_inventory_document, verify_ignored_boundaries,
-        verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface,
-        verify_manifest_percentages, verify_milestone, verify_persistence_reflection,
-        verify_review_round_counts, verify_scaffold, verify_spikes, verify_testkit_fence,
-        verify_tracked_contents, verify_tracked_paths, verify_version_boundary, verify_void_limits,
-        visible_commit,
+        CRATE_NAMES, CampaignInventory, EXAMPLE_NAMES, GATE_DEFINITION, GUIDE_DIRECTORY,
+        HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS, NETWORK_SOURCE,
+        SWEPT_SCOPE, TEST_MOD_NAMES, VERSION_CLASS_EXCUSES, campaign_document_violations,
+        change_mismatch, declared_hook_names, declares_unsafe_prohibition, denied_hook_names,
+        game_class_literals, hook_counts, hook_document_violations, numbers_before,
+        pinned_commit_mismatch, redacted_path, required_scaffold_paths, round_count_restatements,
+        verify_campaign_inventory, verify_decision_hook_claims, verify_evidence_records,
+        verify_experiment_fence, verify_guide_enumerations, verify_harness_lifecycles,
+        verify_hook_inventory_document, verify_ignored_boundaries, verify_m4_gate_figures,
+        verify_m4_process_matrix, verify_m4_surface, verify_manifest_percentages, verify_milestone,
+        verify_persistence_reflection, verify_review_round_counts, verify_scaffold, verify_spikes,
+        verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
+        verify_version_boundary, verify_void_limits, visible_commit,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -7104,13 +7243,100 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
+    /// A root holding one network crate and one guide page.
+    fn guide_enumeration_root(label: &str, source: &str, guide: &str) -> PathBuf {
+        let root = temporary_root(label);
+        fs::create_dir_all(root.join("crates/ravel-network/src"))
+            .expect("directory should be creatable");
+        fs::write(root.join(NETWORK_SOURCE), source).expect("source should be writable");
+        fs::create_dir_all(root.join(GUIDE_DIRECTORY)).expect("directory should be creatable");
+        fs::write(root.join(GUIDE_DIRECTORY).join("running.md"), guide)
+            .expect("guide should be writable");
+        root
+    }
+
+    /// A network source declaring both enums, with `WireError` given `variants`.
+    fn network_source(variants: &[&str]) -> String {
+        let mut source = String::from("pub enum WireError {\n");
+        for variant in variants {
+            source.push_str("    /// A refusal.\n    ");
+            source.push_str(variant);
+            source.push_str(" {\n        /// A field.\n        Needed: usize,\n    },\n");
+        }
+        source.push_str("}\n\npub enum DeliveryRefused {\n    /// A refusal.\n    WrongSide,\n}\n");
+        source
+    }
+
+    #[test]
+    fn a_guide_enumerating_every_variant_the_code_declares_is_accepted() {
+        let root = guide_enumeration_root(
+            "guide-enumeration-agrees",
+            &network_source(&["Truncated", "NotUtf8"]),
+            "`WireError::Truncated` and `WireError::NotUtf8`, and separately \
+             `DeliveryRefused::WrongSide`.\n",
+        );
+
+        let mut violations = Vec::new();
+        verify_guide_enumerations(&root, &mut violations);
+
+        assert!(violations.is_empty(), "{violations:?}");
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_guide_enumeration_that_has_drifted_from_the_code_is_reported() {
+        // Both directions: a variant the guide invents and one it leaves out. The
+        // omission is the half the guide's own false completeness claim hid.
+        let root = guide_enumeration_root(
+            "guide-enumeration-drifted",
+            &network_source(&["Truncated", "NotUtf8"]),
+            "`WireError::Truncated` and `WireError::NotABool`.\n",
+        );
+
+        let mut violations = Vec::new();
+        verify_guide_enumerations(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "docs/guide names WireError::NotABool and crates/ravel-network/src/lib.rs declares \
+                 no such variant; an author told to match on a name that does not exist finds out \
+                 at the compiler rather than here",
+                "docs/guide enumerates WireError and omits WireError::NotUtf8, which \
+                 crates/ravel-network/src/lib.rs declares; a variant left out of a list an author \
+                 reads as complete is the one their match arm will not have",
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_guide_naming_part_of_an_enum_it_does_not_enumerate_is_accepted() {
+        // The asymmetry is the point: the guide has no reason to list every
+        // delivery refusal, so silence about one is not a violation while a name
+        // that does not exist still is.
+        let root = guide_enumeration_root(
+            "guide-enumeration-partial",
+            &network_source(&["Truncated"]),
+            "`WireError::Truncated`, and nothing about `DeliveryRefused` at all.\n",
+        );
+
+        let mut violations = Vec::new();
+        verify_guide_enumerations(&root, &mut violations);
+
+        assert!(violations.is_empty(), "{violations:?}");
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
     /// A root holding a gate definition that runs `tasks`, and one matrix record.
     fn process_matrix_root(label: &str, tasks: &[&str], matrix: &str) -> PathBuf {
         let root = temporary_root(label);
-        let after = tasks
-            .iter()
-            .map(|task| format!("          \"{task}\"\n"))
-            .collect::<String>();
+        let mut after = String::new();
+        for task in tasks {
+            after.push_str("          \"");
+            after.push_str(task);
+            after.push_str("\"\n");
+        }
         fs::create_dir_all(root.join("nix")).expect("directory should be creatable");
         fs::write(
             root.join(GATE_DEFINITION),

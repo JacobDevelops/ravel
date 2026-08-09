@@ -7,6 +7,8 @@ mod driver;
 mod events;
 mod lifecycle;
 mod registry;
+mod saves;
+mod services;
 mod surface;
 mod world;
 
@@ -20,5 +22,7 @@ pub use lifecycle::{
     executes_mod_code,
 };
 pub use registry::Registration;
+pub use saves::{SaveRefused, open_saved_data};
+pub use services::{ServiceOrder, ServiceRefused, open_services};
 pub use surface::{ModEntry, ModSurface};
 pub use world::WorldRefused;

@@ -989,6 +989,13 @@ fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
     // README both summarise them, and the figure that went stale in M3 went stale
     // in five sites of exactly that kind. Applying the rule before a count is
     // written is the only time it costs nothing.
+    //
+    // M0 and M1 are deliberately outside this, and the choice is recorded here so it
+    // is not read as an oversight: both are closed, their reviews are over, and the
+    // counts their records restate — `evidence/m1/manifest.json` and
+    // `evidence/m1/README.md` each restate one — cannot go stale because no further
+    // round will run against them. Bringing them in would mean rewording a closed
+    // milestone's prose to satisfy a rule written after it.
     for (record, documents) in [
         (REVIEW_RECORD, [CAMPAIGN_DOCUMENT, M3_MANIFEST]),
         (M2_REVIEW_RECORD, [M2_CAMPAIGN_DOCUMENT, M2_MANIFEST]),
@@ -1217,7 +1224,13 @@ fn verify_harness_lifecycles(root: &Path, violations: &mut Vec<String>) {
 const AGENT_JAR_SOURCES: &str = "jvm/bootstrap";
 
 /// What makes a string literal in those sources a game class name.
-const GAME_PACKAGE: &str = "net.minecraft.";
+///
+/// `com.mojang.` is here because the game's own libraries are as version-coupled as
+/// its own classes and are reached the same way: ADG-7 turns on
+/// `com.mojang.serialization.Codec` and `adapter.toml` pins `com.mojang:datafixerupper`
+/// as a second class source, so a reflective reach into one would be the same defect
+/// wearing a different prefix.
+const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
 
 /// Every game class the agent jar resolves reflectively, as a declared set.
 ///
@@ -1232,7 +1245,7 @@ const PERSISTENCE_REFLECTED_CLASSES: [&str; 5] = [
     "net.minecraft.world.level.storage.SavedDataStorage",
 ];
 
-/// Pins the game classes the always-present agent jar names as strings.
+/// Pins the game class names the always-present agent jar's own sources carry.
 ///
 /// ADG-1 forbids that jar from *declaring* a game type and `build-agent.sh`
 /// enforces it by construction, compiling with no `-cp` at all. ADG-7's persistence
@@ -1254,6 +1267,19 @@ const PERSISTENCE_REFLECTED_CLASSES: [&str; 5] = [
 /// and the three-argument `SavedDataStorage` constructor are checked only by
 /// `jvm/harness/persistence/net/minecraft/**`, which are stand-ins Ravel wrote, so
 /// that harness asserts Ravel's stubs against Ravel's reflection.
+///
+/// Two further limits, stated because a gate that promises more than it enforces is
+/// the defect this one was written to close. It sees only the prefixes
+/// [`GAME_PACKAGES`] lists, so a game name under any other package escapes it
+/// entirely. And it reads only the tracked sources under [`AGENT_JAR_SOURCES`],
+/// while `build-agent.sh` compiles those *and* the generated hook tree: generated
+/// `Hook.java` carries an internal game name for every class it transforms, and
+/// nothing here reads it. That half is `hooks.toml`-derived by construction and so
+/// cannot drift from the pinned inventory without the generator drifting, which is
+/// why this function does not reach for a build output — but it means "the agent
+/// jar's game names" is wider than what this reads. A name assembled by
+/// concatenation, or held in a constant declared elsewhere, is outside it too.
+///
 /// `evidence/m3/manifest.json` records the surface as a named deviation and
 /// `ROADMAP.md` records bringing it under `stubs.toml` and `mappings.lock` as owed
 /// work, which needs the re-pin ceremony against the pinned jar.
@@ -1344,7 +1370,11 @@ fn game_class_literals(source: &str) -> Vec<String> {
         })
         .flat_map(|line| line.split('"').skip(1).step_by(2))
         .map(|literal| literal.replace('/', "."))
-        .filter(|literal| literal.starts_with(GAME_PACKAGE))
+        .filter(|literal| {
+            GAME_PACKAGES
+                .iter()
+                .any(|package| literal.starts_with(package))
+        })
         .collect()
 }
 

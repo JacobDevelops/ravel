@@ -2,9 +2,12 @@
 
 //! Repository automation for Ravel.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+
+use sha2::{Digest, Sha256};
 
 mod instance_scan;
 
@@ -189,6 +192,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
     verify_experiment_fence(root, &mut violations);
+    violations.extend(verify_evidence_records(root));
 
     match tracked_paths(root) {
         Ok(paths) => {
@@ -199,6 +203,100 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     }
 
     violations
+}
+
+/// Recomputes every digest a milestone manifest records for its own results.
+///
+/// The schema constrains the shape of `benchmarks.results[].sha256` and nothing
+/// recomputed the value, so recorded digests drifted from the files they name
+/// the moment a later change edited one of those files. A manifest whose
+/// digests do not bind its own records is an index rather than evidence, and
+/// the drift is invisible precisely because every field still validates.
+///
+/// Only the milestone's own records are checked. `inputs[]` names files outside
+/// the evidence directory that go on changing after the milestone closes, so
+/// its digests are claims about the revision the manifest pins rather than
+/// about the working copy, and recomputing them here would rewrite history
+/// instead of verifying it.
+#[must_use]
+pub fn verify_evidence_records(root: &Path) -> Vec<String> {
+    let mut violations = Vec::new();
+    let mut manifests = fs::read_dir(root.join("evidence"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path().join("manifest.json"))
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
+    manifests.sort();
+
+    for manifest in &manifests {
+        verify_recorded_digests(root, manifest, &mut violations);
+    }
+
+    violations
+}
+
+/// Compares each recorded result digest against the file it names.
+fn verify_recorded_digests(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    let label = manifest_path
+        .strip_prefix(root)
+        .unwrap_or(manifest_path)
+        .display()
+        .to_string();
+    let records = match jq_value(
+        manifest_path,
+        r#".benchmarks.results[]? | .name + " " + .sha256"#,
+    ) {
+        Ok(records) => records,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let Some(directory) = manifest_path.parent() else {
+        return;
+    };
+
+    for record in records.lines().filter(|record| !record.trim().is_empty()) {
+        let Some((name, recorded)) = record.rsplit_once(' ') else {
+            violations.push(format!("{label} records a result with no digest: {record}"));
+            continue;
+        };
+        if name.is_empty() || name.starts_with('/') || name.split('/').any(|part| part == "..") {
+            violations.push(format!(
+                "{label} records a result outside its own milestone: {name}"
+            ));
+            continue;
+        }
+        let path = directory.join(name);
+        // A manifest cannot carry its own digest. Writing one changes the file
+        // it describes, so a check that admitted the record would only ever
+        // pass on a value nobody could compute, which is a check that verifies
+        // itself rather than the evidence.
+        if path == manifest_path {
+            violations.push(format!("{label} records its own digest, which cannot bind"));
+            continue;
+        }
+        match file_digest(&path) {
+            Ok(actual) if actual == recorded => {}
+            Ok(actual) => violations.push(format!(
+                "{label} records {name} as {recorded} but it hashes {actual}"
+            )),
+            Err(error) => violations.push(format!("{label} records {name}: {error}")),
+        }
+    }
+}
+
+/// Hashes a tracked file as it stands in the working copy.
+fn file_digest(path: &Path) -> Result<String, String> {
+    let bytes =
+        fs::read(path).map_err(|error| format!("cannot read the recorded file: {error}"))?;
+    let mut digest = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        write!(digest, "{byte:02x}").expect("writing to a string cannot fail");
+    }
+    Ok(digest)
 }
 
 /// Checks every recorded architecture spike result against the M1 gate rules.
@@ -1616,10 +1714,92 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        change_mismatch, required_scaffold_paths, verify_experiment_fence,
+        change_mismatch, required_scaffold_paths, verify_evidence_records, verify_experiment_fence,
         verify_ignored_boundaries, verify_milestone, verify_scaffold, verify_spikes,
         verify_tracked_contents, verify_tracked_paths, verify_version_boundary,
     };
+
+    /// Writes a milestone manifest recording one result and returns the root.
+    fn recorded_result_root(label: &str, result: &str, digest: &str) -> PathBuf {
+        let root = temporary_root(label);
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("result.json"), result).expect("result should be writable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{"benchmarks":{{"protocolVersion":"v1",
+                    "results":[{{"name":"result.json","sha256":"{digest}"}}]}}}}"#
+            ),
+        )
+        .expect("manifest should be writable");
+        root
+    }
+
+    /// The digest of `{}\n`, which is what the tests below record.
+    const EMPTY_OBJECT_DIGEST: &str =
+        "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356";
+
+    #[test]
+    fn a_recorded_result_digest_is_recomputed_against_the_file() {
+        let root = recorded_result_root("records-match", "{}\n", EMPTY_OBJECT_DIGEST);
+
+        assert!(verify_evidence_records(&root).is_empty());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_recorded_result_digest_that_binds_nothing_is_reported() {
+        // The defect this exists for: a manifest validated against its schema
+        // while four of its digests named content no tracked file ever held.
+        let root = recorded_result_root("records-drift", "{\"changed\": true}\n", &"0".repeat(64));
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].starts_with("evidence/m9/manifest.json records result.json as ")
+                && violations[0].contains(" but it hashes "),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_manifest_cannot_record_its_own_digest_or_a_result_it_does_not_hold() {
+        let root = temporary_root("records-self");
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{"benchmarks":{{"protocolVersion":"v1","results":[
+                    {{"name":"manifest.json","sha256":"{EMPTY_OBJECT_DIGEST}"}},
+                    {{"name":"../m8/borrowed.json","sha256":"{EMPTY_OBJECT_DIGEST}"}},
+                    {{"name":"absent.json","sha256":"{EMPTY_OBJECT_DIGEST}"}}]}}}}"#
+            ),
+        )
+        .expect("manifest should be writable");
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m9/manifest.json records its own digest, which cannot bind".to_owned(),
+                "evidence/m9/manifest.json records a result outside its own milestone: \
+                 ../m8/borrowed.json"
+                    .to_owned(),
+                format!(
+                    "evidence/m9/manifest.json records absent.json: cannot read the recorded \
+                     file: {}",
+                    fs::read(milestone.join("absent.json"))
+                        .expect_err("absent file cannot be read")
+                ),
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
 
     #[test]
     fn an_absent_spike_tree_is_not_a_violation() {

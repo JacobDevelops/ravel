@@ -209,7 +209,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "M3-W8 found no safety, layering, or ADR-conformance defect in the reviewed prototype stack.",
+      "summary": "M3-W8 found no safety or layering defect in the reviewed prototype stack. That was two of the three things this row used to claim. The third did not hold: M3-W8's ADR-conformance audit found two nonconformances against accepted decisions, and both are recorded in this tree. ADG-6's Consequences described a screen surface this repository does not have — it called the omission of extractRenderState from the hook inventory the decision, and it denied that anything crossed per frame or per widget — while minecraft/versions/26.1.2/hooks.toml had declared screen.extract-render-state since M3-W0 and the launch in evidence/m3/linux-process-matrix.json rewrote it. docs/decisions/adg-6-configuration-ui.md now carries an amendment withdrawing both sentences as design properties and keeping the decision they were written to protect, which is that Ravel never draws, and verify_decision_hook_claims in tools/ravel-xtask/src/lib.rs now fails the gate when a decision record denies a hook the inventory declares, proven by mutation rather than by reading. The second nonconformance is ADG-5's native-library staging, which carries its own deviation below and is not restated here. So the axis this row was split out to summarise came back clean on safety and layering and not on conformance, and the deviations rather than this sentence are where the audit's findings live.",
       "classification": "non-blocking"
     },
     {

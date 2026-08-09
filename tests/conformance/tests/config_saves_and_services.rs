@@ -29,8 +29,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
 use ravel_loader::{
-    LifecycleEntry, LifecycleMachine, Requirement, SaveRefused, ServiceRefused, open_saved_data,
-    open_services,
+    LifecycleEntry, LifecycleMachine, Requirement, SaveRefused, ServiceRefused, open_configuration,
+    open_saved_data, open_services,
 };
 use ravel_save::{
     SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataVersion,
@@ -459,24 +459,88 @@ impl Mod for Deaf {
 
 #[test]
 fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_ignored() {
+    // Driven over a set through `open_configuration`, not called directly. A
+    // default nothing walks is a refusal that exists in the type and in no
+    // composition, which is what W4's review found here.
     let mut deaf = Deaf;
-    let declaration = deaf
-        .configuration_declaration()
-        .expect("it declares one setting");
-    let resolved =
-        LayeredConfiguration::resolve(declaration, None, None).expect("nothing to layer");
-
-    let refusal = deaf
-        .configure(&resolved)
-        .expect_err("it never implemented `configure`");
-    assert_eq!(refusal.mod_id(), Deaf::declared_id());
-
-    // And a mod that declares nothing accepts, so the refusal above is about the
-    // declaration and not about the default.
     let mut shop = ShopMod::new();
-    assert!(shop.configuration_declaration().is_none());
-    shop.configure(&resolved)
-        .expect("a mod with no settings has nothing to read");
+    let pair = machine(vec![
+        entry(Deaf::declared_id(), &[SIDE]),
+        entry(ShopMod::declared_id(), &[SIDE]),
+    ]);
+
+    let refused = open_configuration(
+        &pair,
+        &mut [&mut deaf as &mut dyn Mod, &mut shop],
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+    )
+    .expect_err("settings nothing reads are settings a player changes with no effect");
+
+    assert_eq!(refused.owner(), Deaf::declared_id());
+    assert!(
+        refused.to_string().contains("deaf"),
+        "the refusal names the mod: {refused}"
+    );
+
+    // And a mod that declares nothing is not refused, so the refusal above is
+    // about the declaration and not about every mod that never implemented
+    // `configure`. `ShopMod` declares no settings and the same walk accepts it.
+    let mut shop = ShopMod::new();
+    let alone = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
+    let configured = open_configuration(
+        &alone,
+        &mut [&mut shop as &mut dyn Mod],
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+    )
+    .expect("a mod with no settings has nothing to read");
+    assert!(configured.order().is_empty());
+}
+
+#[test]
+fn the_walk_hands_each_mod_the_layer_in_force_and_reports_what_the_player_lost() {
+    // The positive half of the same walk, over a mod that does read its settings.
+    // `restock.size` has an author default of 8; the pack lowers it and the
+    // player's illegal value is dropped rather than becoming the value in force.
+    let owner = StockMod::declared_id();
+    let mut stock = StockMod::new();
+    let machine = machine(vec![entry(owner, &[SIDE])]);
+    let pack = ValueDocument::parse(
+        r#"{
+          "schemaVersion": 1,
+          "owner": "service_stock",
+          "values": { "restock.size": 3 }
+        }"#,
+    )
+    .expect("a legal pack document");
+    let player = ValueDocument::parse(
+        r#"{
+          "schemaVersion": 1,
+          "owner": "service_stock",
+          "values": { "restock.colour": "green" }
+        }"#,
+    )
+    .expect("a legal player document");
+
+    let configured = open_configuration(
+        &machine,
+        &mut [&mut stock as &mut dyn Mod],
+        &BTreeMap::from([(owner.clone(), pack)]),
+        &BTreeMap::from([(owner.clone(), player)]),
+    )
+    .expect("a dropped value is not a refusal");
+
+    assert_eq!(configured.order(), std::slice::from_ref(owner));
+    assert_eq!(
+        stock.restock_size(),
+        3,
+        "the mod holds the pack's value rather than its own default"
+    );
+    let dropped = configured.dropped();
+    assert_eq!(dropped.len(), 1, "one key the declaration does not declare");
+    assert_eq!(&dropped[0].0, owner);
+    assert_eq!(dropped[0].1.key.as_str(), "restock.colour");
 }
 
 #[test]

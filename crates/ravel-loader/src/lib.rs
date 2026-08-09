@@ -3,6 +3,7 @@
 //! Loader orchestration independent of any concrete Minecraft version.
 
 mod admission;
+mod config;
 mod driver;
 mod events;
 mod lifecycle;
@@ -13,6 +14,7 @@ mod surface;
 mod world;
 
 pub use admission::admitted;
+pub use config::{ConfigRefused, Configured, open_configuration};
 pub use driver::{DriveError, drive};
 pub use events::{
     Delivery, DispatchRefused, broadcast, broadcast_profiled, deliver_packet, route, route_profiled,

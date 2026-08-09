@@ -5,7 +5,10 @@ drawn in Java, and Rust supplies the values. No new measurement was taken for
 this gate, and "Evidence" below says what decided it instead and why that is not
 a thing a measurement produces. Amended when the schema edits landed, to record
 the `packOverride` encoding and one open question the gate did not settle; the
-decision is unchanged and both are under "What has to change, precisely".
+decision is unchanged and both are under "What has to change, precisely". Amended
+again after M3-W8's ADR-conformance audit, to describe the per-frame screen seam
+the shipped hook inventory actually has; the decision is unchanged there too and
+the amendment is at "Amendment: the extraction hook is the screen seam".
 [ADG-7](adg-7-world-persistence.md) reuses this decision's Ravel-owned screen
 mechanism for persistence refusal, but persistence itself is not an ADG-6 concern.
 
@@ -117,6 +120,12 @@ for the pinned progression "without hundreds of resident Java mods", §6.2 caps
 steady-state RSS at 8 GiB, and §6.5 names "hook and boundary overhead" as one of
 the things re-examined if the contract fails. A design whose crossing count is
 O(widgets × frames) is the wrong side of that even before anyone measures it.
+
+This paragraph prices per-frame crossing rather than forbidding it, and that
+reading is the one that survives: Ravel's own inventory carries one per-frame
+screen observation, `screen.extract-render-state`, and what is refused above is
+the unbounded per-widget factor and the direction, not the frame. See "Amendment:
+the extraction hook is the screen seam".
 
 **A declaration is version-agnostic; a drawn screen is not.** ADG-4's amendment
 argues that an opaque handle is version-agnostic by construction because its
@@ -296,12 +305,16 @@ refusing.
 - The screen hooks `Screen.init()V` to populate, `Screen.tick()V` if it needs
   ticking, `Minecraft.setScreen` to observe navigation, and
   `TitleScreen.createNormalMenuOptions(II)I` for the entry point in the main
-  menu. It does **not** hook `extractRenderState`, and that omission is the
-  decision: Ravel never draws.
-- Two boundary crossings per screen session, both batched, in the direction
-  ADG-1 provides. Opening reads one owner's declaration and current values;
-  saving hands back the settings that changed. Nothing crosses per frame and
-  nothing crosses per widget.
+  menu. The inventory also carries `screen.extract-render-state`, which is this
+  version's per-frame seam and an observation point rather than a drawing one:
+  Ravel's own screens omit that override and every widget is drawn in Java.
+  **Ravel never draws** is what the bullet was written to protect and it is
+  undisturbed. See "Amendment: the extraction hook is the screen seam".
+- Two batched boundary crossings are all this design *needs* per screen session,
+  both in the direction ADG-1 provides. Opening reads one owner's declaration and
+  current values; saving hands back the settings that changed. Neither of them
+  scales with widgets. The per-frame observation the inventory carries is a
+  separate crossing and the amendment below is where it is accounted for.
 - `restartRequired` is reported by the screen, not enforced by it. A changed
   restart-required setting is written and takes effect on the next launch, and
   the UI has to say so at the moment of the edit rather than at the next launch.
@@ -317,6 +330,83 @@ refusing.
   must report before world access is a data contract rather than a rendering
   one.
 
+## Amendment: the extraction hook is the screen seam
+
+Amended after M3-W8's ADR-conformance audit, on the shipped inventory rather than
+on an argument. Two sentences in "Consequences" described a screen surface this
+repository does not have. One said the omission of `extractRenderState` from the
+hook inventory was the decision. The other said that no crossing happened per
+frame or per widget. **Both are withdrawn as design properties, and the decision
+they were written to protect is untouched: Ravel never draws.**
+
+What the inventory says instead: `hooks.toml` declares `screen.extract-render-state`
+on `Screen.extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V`,
+its own section comment gives the reason — "26.1.2 has no Screen.render; screens
+draw through render-state extraction, so extractRenderState is the per-frame
+seam" — and the entry is not decorative. The generator emits one native export per
+inventory entry, so the agent rewriting that method is a crossing, and the launch
+recorded in
+[`linux-process-matrix.json`](../../evidence/m3/linux-process-matrix.json) rewrote
+it inside the official client along with the other three `Screen` targets. The ADR
+was describing what it thought it had asked for; the inventory has said otherwise
+since M3-W0.
+
+### Why the hook stays and the prose changes
+
+There is no `Screen.render` in 26.1.2, which is the third bullet of "Evidence"
+above and the reason this version was interesting in the first place. Extraction
+is therefore the only point at which a screen can be observed while a frame is
+being built, and `screen.init`, `screen.init-sized`, `screen.tick` and
+`screen.set` do not stand in for it: none of them fires during a frame. Removing
+the entry would not move drawing into Java, because drawing is already in Java —
+it would remove per-frame screen observation from the inventory altogether. The
+alternative to this hook in this version is no such seam at all, so the record is
+what was wrong and the record is what is corrected.
+
+### What crosses, and what still does not
+
+The entry is an **observation** point. A rewritten `Screen` crosses into Rust once
+per frame while it is the open screen, because the generator emits one export per
+entry and the agent rewrites the method carrying it. That is per frame and per
+screen. It is not per widget: it does not multiply by the settings a mod declares
+or by the number of mods installed, which is the factor "The traffic differs in
+kind, not by a factor" above actually objects to, and that objection survives
+intact.
+
+**Ravel never draws, and it is checkable rather than asserted.** No crate names a
+drawing call — `drawString`, `GuiGraphics`, `renderBackground` and `blit(` appear
+nowhere under `crates/`. Every widget is built and drawn in Java under
+`jvm/screen/src/dev/ravel/jvm/screen/`, the game's font does the wrapping, and
+`RavelSettingsScreen` deliberately declares no `extractRenderState` of its own —
+its class comment records that this is why `AbstractSliderButton` is subclassed
+and `AbstractButton`, which forces an extraction override, is not. So Ravel's own
+screens do not even contribute the one per-frame crossing above; a rewritten
+*game* screen does. Configuration is still declared in data, and the two batched
+crossings per screen session are still the only ones this design needs.
+
+### What it costs is unmeasured, and stays that way here
+
+No M3 record prices this crossing. There is no per-frame figure in
+`profiling-overhead.json`, `linux-process-matrix.json` or any other M3 record, and
+the nearest numbers in the repository are ADG-1's 10.02 ns hook crossing and
+ADG-4's 8.61 ns Java-authoritative flow, both taken through other call sites for
+other questions and neither addressed to a frame. "Limits of this evidence" below
+still says nobody has measured a per-frame crossing, and that is still true after
+this amendment. What changed is that the repository now *has* one, not that it has
+a number for it. Anyone who wants the number should measure it rather than
+multiply 10.02 ns by a frame rate, which is arithmetic across paths that ADG-4's
+"Limits of this evidence" expressly refuses.
+
+### Why this is an amendment rather than a code change
+
+The stale sentences are the defect. Changing code to match them would have deleted
+the only screen observation the version admits, on the authority of a sentence
+nobody had checked against `hooks.toml` — and `hooks.toml` is re-pinned by
+ceremony, which is a further reason a prose error is not a licence to edit it.
+`verify_decision_hook_claims` in `tools/ravel-xtask/src/lib.rs` now fails
+`ravel-verify-scaffold` if a decision record denies a hook the inventory declares,
+so this particular pair cannot drift apart again in silence.
+
 ## Limits of this evidence
 
 - **No measurement was taken for this gate**, and the record above says why. The
@@ -326,7 +416,9 @@ refusing.
 - The argument against a Rust-drawn screen is a missing capability and a moving
   API, not a number. Nobody has measured a per-frame crossing, and if the
   capability is ever built for another reason the arithmetic should be redone
-  rather than inherited from here.
+  rather than inherited from here. That sentence is now load-bearing in a second
+  way: the amendment above records that the inventory carries a per-frame
+  observation crossing today, and no record prices it either.
 - The 26.1.2 screen targets were resolved against the pinned jar and, when this
   was written, were not in `hooks.toml` and had never run. M3-W0 added them and
   M3-W3 ran them: the launch recorded in

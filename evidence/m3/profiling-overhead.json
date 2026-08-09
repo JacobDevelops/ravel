@@ -159,6 +159,7 @@
       "formula": "one tick boundary plus the assumed crossings, each at its 99th percentile",
       "nanoseconds": 510.05
     },
+    "rounding": "Every figure in this record is rounded to two decimals, which is as fine as the wall clock behind it can honestly be read. perTick.nanoseconds and breakEven.crossingsPerTick are computed from the unrounded percentiles and rounded afterwards, so applying perTick.formula to the rounded percentiles printed here does not reproduce them: the gap is the digits the rounding dropped, and it is stated here rather than left for a reader to hit.",
     "unit": "nanoseconds"
   },
   "record": "m3-w6-profiling-overhead",

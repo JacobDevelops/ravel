@@ -183,6 +183,12 @@ fn overhead_record(overhead: &Overhead) -> Value {
         "clamping": "A sample whose instrumented batch finished ahead of its control is recorded \
                      as zero rather than as a negative time, so the figure is biased upward. That \
                      is the safe direction for a limit.",
+        "rounding": "Every figure in this record is rounded to two decimals, which is as fine as \
+                     the wall clock behind it can honestly be read. perTick.nanoseconds and \
+                     breakEven.crossingsPerTick are computed from the unrounded percentiles and \
+                     rounded afterwards, so applying perTick.formula to the rounded percentiles \
+                     printed here does not reproduce them: the gap is the digits the rounding \
+                     dropped, and it is stated here rather than left for a reader to hit.",
         "off": {
             "perCrossing": timing(overhead.off_per_crossing),
             "perTickBoundary": timing(overhead.off_per_tick_boundary),

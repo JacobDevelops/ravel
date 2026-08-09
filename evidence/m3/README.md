@@ -217,6 +217,18 @@ stated as an assumption everywhere it appears. `overhead.breakEven` beside it
 rests on no assumption and is what answers the budget outright once the real
 per-tick crossing count is recorded.
 
+Both of those are derived, and following the derivation needs one fact the record
+did not state until the fourth W8 review asked for it: every figure is rounded to
+two decimals, while the derived pair is computed from the unrounded percentiles
+and rounded afterwards. Applying `perTick.formula` to the two-decimal percentiles
+therefore misses. In this record the per-crossing 99th percentile is `0.051`
+before rounding and `0.05` as published, which is what
+0.05 + 10000 × 0.051 = 510.05 and (500000 − 0.05) / 0.051 = 9803920.59 follow
+from; the tick-boundary percentile is recoverable from the published figures only
+as far as the interval that rounds to `0.05`, and neither derived figure moves
+inside it at the precision they are published at. `overhead.rounding` now states
+the rule in the record itself, and the measurement writes it there.
+
 ## `linux-process-matrix.json`
 
 It comes from launches rather than from a task, because the thing it measures is

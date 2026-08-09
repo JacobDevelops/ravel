@@ -16,17 +16,18 @@ recorded result, every gate has an accepted ADR, the spike results are hashed un
 the `spike-v1` protocol, an ADG-5 result records an observed stock launch, and the
 manifest names the change that introduced it. All of that holds. The gate does not
 pass, and says why: `review.result` records `fail`, because the last cold verdict
-against this evidence is FAIL and none of the corrections that answered it has been
-re-audited. M1's measurements stand and M1's review does not.
+against this evidence is FAIL. M1's measurements stand and M1's review does not.
 
-The review itself is a process artifact and is not tracked here; the manifest
-records its reviewer, result, and the hash of the record, and that record is held
-outside the repository. The gate checks the claim rather than the document, which
-is a weaker guarantee than recomputing a hash and is stated so a reader knows
-which one they are getting.
+That verdict is now a tracked file. [`review.md`](review.md) is the second cold
+audit's verdict as it was written — FAIL on seven findings, with the file and line
+for each, what it recomputed (45 digests, 45 matched) and what it could not, and its
+stated coverage. `review.record` names it by path and the scaffold recomputes its
+digest, so a reader can read the review rather than take the manifest's word that
+one happened. The field used to record a title and a hash of nothing obtainable,
+which the same audit is what found.
 
 What M1's measurements do not mean is that everything is clean. The manifest carries
-eleven deviations and four risks, all recorded rather than repaired — including that
+twelve deviations and four risks, all recorded rather than repaired — including that
 the selected native binding has never run in the real game, that the last cold audit
 of this evidence returned FAIL before its findings were resolved, and that this
 manifest does not exist at the revision it pins. One of the eleven is **blocking**:

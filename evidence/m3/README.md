@@ -21,8 +21,15 @@ result for a recomputable one.
 | [`pack-compile.json`](pack-compile.json) | ADG-2 | What compiling a pack-sized set of mods with real bodies costs — cold, warm after one mod changes, in peak memory, and on disk. |
 | [`profiling-overhead.json`](profiling-overhead.json) | M3-W6 | What opt-in profiling costs a tick when nobody turned it on, what it can and cannot attribute to a mod, and which metrics it cannot measure at all. |
 | [`linux-process-matrix.json`](linux-process-matrix.json) | M3-W7 | What a real Linux launch proves about the game directory, the rewrite, and the instance — and, at least as importantly, what it could not reach. |
+| [`review.md`](review.md) | M3-W8 | The three independent M3-W8 rounds as they were written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. All three are FAIL. |
 
 ## M3-W8 review
+
+[`review.md`](review.md) holds all three rounds verbatim and `review.record` binds
+its digest, so the verdicts below are readable rather than summarised from memory.
+They are one file rather than three because `review.record` binds one artifact per
+milestone and the rounds only mean anything read in order: round two verifies round
+one's repairs, round three verifies round two's.
 
 The independent prototype review returned **FAIL** with four blocking findings.
 All four are answered, and they stay listed because a finding that disappears
@@ -100,12 +107,23 @@ reach are named rather than left to look verified. Two in
 `evidence/m0/manifest.json` are outside it by construction: the private launch
 validations name captures that never enter the repository, so no gate can hash them
 and the check announces them as unbound instead of passing over them in silence.
-The `review.record.sha256` fields are outside it too, and less obviously. M0's is
-exactly the digest of `evidence/m0/review.md`, a tracked file, and nothing
-recomputes it; M1's and M2's match no tracked file at all, because those review
-records are held outside the repository. So the same field name means a hashable
-tracked document in one manifest and an untracked one in the next, and no gate can
-tell a reader which. All of those digests remain claims rather than verified values.
+
+`review.record.sha256` used to be outside that reach too, and less obviously. M0's
+was exactly the digest of `evidence/m0/review.md`, a tracked file that nothing
+recomputed; M1's and M2's matched no tracked file at all, which was read as those
+records being deliberately private and turned out to mean the digests bound nothing
+obtainable. One field name, three meanings, and no gate could tell a reader which
+they were looking at — while the field is the one a milestone is closed on. That is
+now a rule rather than a disclosure. `schemas/evidence.schema.json` requires
+`review.record.name` to be a repository-relative path, and `verify_recorded_review`
+recomputes its digest through the same `verify_tracked_digest` body as the results
+and the baselines, so a review named by title fails the scaffold and so does one
+whose bytes have moved. M0's record is renamed to `review.md` against its unchanged
+digest, M1's and M3's name tracked verdicts, and M2's is withdrawn: that review was
+never written into the repository, so `ravel:verify-milestone:m2` now reports the
+missing record and exits non-zero. Absence stays legal in the schema, because a
+milestone under construction has no review yet; the milestone gate is what refuses
+to close on it.
 
 Findings about that machinery are carried rather than fixed, and each is
 recorded as a deviation in `manifest.json`. Input provenance is pinned to
@@ -122,11 +140,12 @@ M3-W7 is an operator-run native Linux matrix. Two more were added by the third
 round. `verify_evidence_records` discovers manifests by scanning `evidence/`, so it
 has no floor: an unreadable or renamed directory yields no manifests, no
 violations, and no message, which is the one failure mode a digest check cannot
-report on itself. And the `review.record` digests above are unbound in three
-different ways under one field name.
+report on itself.
 
-One finding from that round is fixed rather than carried.
-`verify_recorded_change` and `verify_manifest_change` returned in silence on a
+Two findings from that round are fixed rather than carried. The `review.record`
+digests it found unbound in three different ways under one field name are bound, as
+described above. And `verify_recorded_change` and `verify_manifest_change` returned
+in silence on a
 checkout with no `.jj`, so on a git-only clone the control their own doc comment
 calls the repository's strongest provenance control evaporated without a word. Both
 now announce the skip the way `verify_recorded_inputs` already did.

@@ -219,7 +219,11 @@
       "classification": "blocking"
     },
     {
-      "summary": "The cold audit returned FAIL with ten findings. All ten were resolved and none has been re-audited, so the last cold verdict recorded against this evidence is FAIL. review.result records fail accordingly. It previously recorded pass, which contradicted this deviation in the same file and made a recorded pass mean one thing here and another in evidence/m3/manifest.json, where the identical situation is recorded as fail. M3's convention is the one kept, so ravel:verify-milestone:m1 now reports the review as outstanding until a cold auditor re-verifies this evidence.",
+      "summary": "M1's review.record used to record sha256 5257619f1d017617c833f9efd819c88636c25977097b02c993a2cb9430d3750a under the title M1 independent architecture review. That digest matches no file this repository tracks, so nobody could obtain what it hashed, and the review it stood for was unauditable in principle. It is replaced by evidence/m1/review.md, the verdict of a second cold audit run against this evidence: FAIL, on seven findings, the first two of which are that M1-W8 is unproven by its own record and that the review record named a title rather than a path. The record now names a path and the scaffold recomputes its digest, so the review is readable by anyone who has the repository. review.result stays fail, and this audit is the reason it is now a fail nobody has to take on trust.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The first cold audit returned FAIL with ten findings. All ten were resolved. A second cold audit has since read this evidence and returned FAIL again, recorded at evidence/m1/review.md: it identified only three of the ten from evidence/m1/README.md and verified those three against the file and line that fixes each, and it records that the other seven are enumerated nowhere in this repository, which makes the claim that all ten were resolved unauditable. So the last cold verdict recorded against this evidence is FAIL. review.result records fail accordingly. It previously recorded pass, which contradicted this deviation in the same file and made a recorded pass mean one thing here and another in evidence/m3/manifest.json, where the identical situation is recorded as fail. M3's convention is the one kept, so ravel:verify-milestone:m1 now reports the review as outstanding until a cold auditor re-verifies this evidence.",
       "classification": "non-blocking"
     }
   ],
@@ -242,12 +246,12 @@
     }
   ],
   "review": {
-    "reviewer": "independent Claude reviewer (M1 architecture, four passes) with a separate cold audit",
+    "reviewer": "independent Claude reviewer (M1 architecture, four passes) with a separate cold audit; the tracked record is the cold audit's verdict",
     "independent": true,
     "result": "fail",
     "record": {
-      "name": "M1 independent architecture review",
-      "sha256": "5257619f1d017617c833f9efd819c88636c25977097b02c993a2cb9430d3750a"
+      "name": "review.md",
+      "sha256": "59092e695f657faf4757203434490a931ee3991fe5eeb87d9c17c5e3543723c3"
     }
   },
   "attestations": [],

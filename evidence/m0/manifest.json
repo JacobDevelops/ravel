@@ -116,7 +116,7 @@
     "independent": true,
     "result": "pass",
     "record": {
-      "name": "M0 independent admission review",
+      "name": "review.md",
       "sha256": "b225d06b3f4b6bdd61812ad271c795147c92de5c497e1d6347e65c74c9739599"
     }
   },

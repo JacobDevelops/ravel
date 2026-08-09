@@ -234,6 +234,7 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
     for manifest in &manifests {
         verify_recorded_digests(root, manifest, &mut violations);
         verify_recorded_baselines(root, manifest, &mut violations);
+        verify_recorded_review(root, manifest, &mut violations);
         verify_recorded_inputs(root, manifest, &mut violations);
         verify_recorded_run(root, manifest, &mut violations);
     }
@@ -498,6 +499,75 @@ fn verify_recorded_baselines(root: &Path, manifest_path: &Path, violations: &mut
             violations,
         );
     }
+}
+
+/// Recomputes the digest a manifest records for its own independent review.
+///
+/// This is the field a milestone is closed on. The gate asked only that
+/// `review.record` exist, and the schema typed its `name` as free text, so three
+/// of the four manifests named the review by title — "M1 independent
+/// architecture review" — and the recorded sha256 bound nothing a reader could
+/// obtain. A digest over an unobtainable artifact is weaker than no digest: it
+/// reads as proof that a review happened, was independent, and found what the
+/// manifest says, while confirming none of it. Two milestones were recorded
+/// closed that way.
+///
+/// So a review record names a repository-relative path inside its own milestone
+/// and is hashed here, through the same body as the result and baseline digests.
+/// A name that reads as prose is a violation rather than an announced skip: a
+/// private capture is legitimately outside the repository, but a review nobody
+/// can read is not evidence of a review, and the whole point of the field is
+/// that a reader who did not run the review can obtain it.
+///
+/// Absence stays legal, because a milestone under construction has no review
+/// yet. What refuses to close on it is the milestone gate, which requires the
+/// record; `verify_general_closure` is where that belongs.
+fn verify_recorded_review(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    let label = manifest_path
+        .strip_prefix(root)
+        .unwrap_or(manifest_path)
+        .display()
+        .to_string();
+    let record = match jq_value(
+        manifest_path,
+        r#".review.record? | select(. != null) | .name + " " + .sha256"#,
+    ) {
+        Ok(record) => record,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    if record.is_empty() {
+        return;
+    }
+    let Some(directory) = manifest_path.parent() else {
+        return;
+    };
+    let Some((name, recorded)) = record.rsplit_once(' ') else {
+        violations.push(format!(
+            "{label} records a review record with no digest: {record}"
+        ));
+        return;
+    };
+    if !names_a_path(name) {
+        violations.push(format!(
+            "{label} records a review record by title rather than by path, so its digest \
+             binds nothing obtainable: {name}"
+        ));
+        return;
+    }
+    verify_tracked_digest(
+        &TrackedDigest {
+            label: &label,
+            kind: "review record",
+            manifest_path,
+            directory,
+            name,
+            recorded,
+        },
+        violations,
+    );
 }
 
 /// Whether a recorded name is a path in the repository rather than prose.
@@ -2084,6 +2154,89 @@ mod tests {
                 ),
             ]
         );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Writes a manifest recording one review record and returns the root.
+    fn recorded_review_root(label: &str, record: &str, name: &str, digest: &str) -> PathBuf {
+        let root = temporary_root(label);
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("review.md"), record).expect("record should be writable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{"review":{{"reviewer":"an independent reviewer","independent":true,
+                    "result":"pass","record":{{"name":"{name}","sha256":"{digest}"}}}}}}"#
+            ),
+        )
+        .expect("manifest should be writable");
+        root
+    }
+
+    #[test]
+    fn a_recorded_review_digest_is_recomputed_against_the_tracked_record() {
+        let root = recorded_review_root("review-match", "{}\n", "review.md", EMPTY_OBJECT_DIGEST);
+
+        assert!(verify_evidence_records(&root).is_empty());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_recorded_review_digest_that_binds_nothing_is_reported() {
+        let root = recorded_review_root("review-drift", "{}\n", "review.md", &"0".repeat(64));
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].starts_with("evidence/m9/manifest.json records review.md as ")
+                && violations[0].ends_with(&format!(" but it hashes {EMPTY_OBJECT_DIGEST}")),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_review_record_named_by_title_is_reported() {
+        // The defect this exists for: three manifests named the review by
+        // title, so a recorded sha256 read as proof of a review while binding
+        // no artifact a reader could obtain.
+        let root = recorded_review_root(
+            "review-title",
+            "{}\n",
+            "M9 independent closure review",
+            EMPTY_OBJECT_DIGEST,
+        );
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m9/manifest.json records a review record by title rather than by \
+                 path, so its digest binds nothing obtainable: M9 independent closure review"
+                    .to_owned()
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_manifest_recording_no_review_record_is_left_to_the_milestone_gate() {
+        // A milestone under construction has no review yet, and the milestone
+        // gate is what refuses to close on that.
+        let root = temporary_root("review-absent");
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(
+            milestone.join("manifest.json"),
+            r#"{"review":{"reviewer":"an independent reviewer","independent":true,
+                "result":"fail"}}"#,
+        )
+        .expect("manifest should be writable");
+
+        assert!(verify_evidence_records(&root).is_empty());
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 

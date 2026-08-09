@@ -134,6 +134,10 @@
     {
       "summary": "The lifecycle residual in the overhead record is the whole pipeline's 99th percentile less the sum of three stage 99th percentiles from separate runs. A difference of percentiles is not a percentile: it understates the remainder and a negative result is clamped to zero. The record says so and the field is named in nanoseconds rather than as a percentile, but it remains an order of magnitude rather than a measurement.",
       "classification": "non-blocking"
+    },
+    {
+      "summary": "M2's review.record has been withdrawn. It recorded sha256 abc003fdd77ede9be08f0ddf36c0b10e381431ff684c8bb7a874420513abea78 under the title M2 independent closure review, and that digest matches no file this repository tracks, at this revision or at the one the manifest pins. So the review that closed M2 could not be obtained, read, or hashed by anyone who did not run it, and result pass rested on a claim no reader could check. The field is withdrawn rather than renamed because a review that was never written into the repository cannot be produced after the fact; the orphaned digest is kept in this sentence so the claim itself is not lost. The consequence is deliberate: ravel:verify-milestone:m2 now reports milestone review must include a hashed record and exits non-zero, which is the true state of M2's closure. What closes this is a reviewer writing a record, not an edit to this file.",
+      "classification": "blocking"
     }
   ],
   "risks": [
@@ -165,11 +169,7 @@
   "review": {
     "reviewer": "independent Claude reviewer (M2 closure, adversarial pass over records, budget method, and launch evidence)",
     "independent": true,
-    "result": "pass",
-    "record": {
-      "name": "M2 independent closure review",
-      "sha256": "abc003fdd77ede9be08f0ddf36c0b10e381431ff684c8bb7a874420513abea78"
-    }
+    "result": "pass"
   },
   "attestations": [
     {

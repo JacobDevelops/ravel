@@ -152,7 +152,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "The review.record.sha256 field means three different things across the four manifests and no gate can tell them apart. evidence/m0/manifest.json records b225d06b3f4b, which is exactly sha256 of evidence/m0/review.md, a tracked file that nothing recomputes; evidence/m1/manifest.json and evidence/m2/manifest.json record digests that match no tracked file, because those review records are deliberately held outside the repository; this manifest records no review record at all, which is why the M3 milestone rule requiring one is among the reasons M3-W8 is open. verify_evidence_records recomputes results, baselines, and inputs and does not touch review.record, so the one digest in the corpus that names a tracked file reads exactly like the two that cannot. Recomputing M0's is cheap and is not done here, because the fix worth having is a rule about which review records are tracked rather than a hash of the one that happens to be.",
+      "summary": "The review.record.sha256 field meant three different things across the four manifests and no gate could tell them apart. evidence/m0/manifest.json recorded b225d06b3f4b, which is exactly sha256 of evidence/m0/review.md, a tracked file that nothing recomputed; evidence/m1/manifest.json and evidence/m2/manifest.json recorded digests that match no tracked file, which was read at the time as those records being deliberately private and turned out to mean the digests bound nothing obtainable; this manifest recorded no review record at all. The rule now exists: schemas/evidence.schema.json requires review.record.name to be a repository-relative path inside the milestone directory, and verify_recorded_review in tools/ravel-xtask/src/lib.rs recomputes its digest through the same verify_tracked_digest body as results and baselines, so the scaffold fails on a review record that names prose or hashes the wrong bytes. M0's record is renamed to review.md against its unchanged digest, M1's and this milestone's name tracked verdicts written for the purpose, and M2's is withdrawn because the review it stood for was never written into the repository. Renaming a title to a path is not what closed this; recomputing the digest is.",
       "classification": "non-blocking"
     },
     {
@@ -210,7 +210,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "M3 is not closed. The last independent review returned FAIL, and although every finding it raised is now answered, no independent review has been run against this state. M3-W8 is what remains, and until it closes M3 authorizes no private inventory work.",
+      "summary": "M3 is not closed. Three independent M3-W8 rounds have run and all three returned FAIL; their verdicts are tracked at evidence/m3/review.md and bound by review.record. Every finding the third round raised is now answered, and no independent review has been run against this state. M3-W8 is what remains, and until it closes M3 authorizes no private inventory work.",
       "classification": "blocking"
     },
     {
@@ -219,9 +219,13 @@
     }
   ],
   "review": {
-    "reviewer": "independent Claude reviewer (M3-W8 prototype review)",
+    "reviewer": "independent Claude reviewer (M3-W8 prototype review, three rounds, each round independent of the work under review)",
     "independent": true,
-    "result": "fail"
+    "result": "fail",
+    "record": {
+      "name": "review.md",
+      "sha256": "df29c46a2b6150dc612c1066643dae32390ef51a2e954d7ec348eb53e733b14f"
+    }
   },
   "attestations": [
     {

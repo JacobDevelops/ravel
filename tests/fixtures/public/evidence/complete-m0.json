@@ -74,7 +74,7 @@
     "independent": true,
     "result": "pass",
     "record": {
-      "name": "synthetic review record",
+      "name": "synthetic-review.md",
       "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
     }
   },

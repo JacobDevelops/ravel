@@ -17,6 +17,17 @@ Schema tests use `evidenceKind: synthetic`. A milestone manifest must use
 required native attestations. Relabelling a contract fixture cannot close a
 milestone.
 
+`review.record` names the independent review the milestone is closed on, and it is
+the one hashed artifact that must be obtainable: `name` is a path relative to the
+milestone directory, and `ravel-verify-scaffold` recomputes its digest against the
+tracked file. A title is refused. The field used to be free text, and three of the
+four manifests named the review by title, so the recorded digest read as proof that
+a review happened while binding nothing anyone could read. A private capture may
+stay outside the repository because a reader can still be told what it was; a
+review that no reader can obtain is not evidence of a review. Absence is legal —
+a milestone under construction has no review yet — and the milestone gate is what
+refuses to close without one.
+
 `revision.id` identifies the source revision exercised by the recorded commands,
 and `revision.dirty` records that source tree's state at execution time. The
 revision can precede the commit that admits its manifest, because a tracked

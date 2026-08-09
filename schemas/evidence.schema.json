@@ -176,7 +176,7 @@
           "enum": ["pass", "fail", "not-required"]
         },
         "record": {
-          "$ref": "#/$defs/hashedArtifact"
+          "$ref": "#/$defs/reviewRecord"
         }
       }
     },
@@ -287,6 +287,22 @@
         "name": {
           "type": "string",
           "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "reviewRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256"],
+      "description": "The independent review a milestone is closed on. Unlike a private capture, a review record must be obtainable by a reader who did not run the review, so its name is a repository-relative path inside the milestone directory and the gate recomputes its digest.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*\\.[A-Za-z0-9]+$",
+          "description": "Path to the tracked record, relative to the milestone directory. A title is refused: it names nothing a reader can hash."
         },
         "sha256": {
           "$ref": "#/$defs/sha256"

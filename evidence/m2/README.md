@@ -29,6 +29,17 @@ an operator captured outside this repository, and the log is deleted once its
 digest is taken. That digest is the one hash here nobody can recompute, which is
 the same trade M0 and M1 made for their launches.
 
+M2's independent closure review is not here, and that is now visible instead of
+hidden. `review.record` recorded a title and a sha256 that matches no file this
+repository tracks, so the review that closed M2 could not be read or hashed by
+anyone who did not run it. The field is withdrawn rather than renamed, because a
+review that was never written into the repository cannot be produced afterwards, and
+the orphaned digest is kept in the manifest's deviations so the claim is not lost.
+`ravel:verify-milestone:m2` therefore reports `milestone review must include a
+hashed record` and exits non-zero. M2's measurements are unaffected — every digest
+here is recomputable — but its closure rests on a review nobody else can confirm,
+and a reviewer writing a record is what closes that, not an edit.
+
 The records name files, mods, states, and digests. They name no filesystem path,
 no credential, and no local directory. The conformance tests assert it over the
 two generated records, and `ravel:verify-milestone:m2` asserts it over the

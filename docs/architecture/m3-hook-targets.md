@@ -25,10 +25,20 @@ no game type and still compiles without the client jar. What is refused now is
 only a descriptor that is not one: an unterminated class name, an array of
 nothing, or a character that is not a descriptor at all.
 
-`hooks.toml` therefore grew from 6 entries to 35 — 31 methods and 4 fields,
-carrying 23 handle parameters between them — covering all six capabilities
+`hooks.toml` therefore grew from 6 entries to 37 — 33 methods and 4 fields,
+carrying 27 handle parameters between them — covering all six capabilities
 below. Every entry was re-resolved against the class file's own member table for
-name, descriptor, kind and static flag before it was written.
+name, descriptor, kind and static flag before it was written. The last two of
+those entries are ADG-7's world persistence seams, tabled under
+[World save and load](#world-save-and-load--m3-w4); they arrived after this
+paragraph was first written, which is why the four counts in it are now gated.
+`verify_hook_inventory_document` in [`tools/ravel-xtask/src/lib.rs`](../../tools/ravel-xtask/src/lib.rs)
+derives all four from `hooks.toml` itself on every `ravel-verify-scaffold` and
+fails when this file disagrees, so the sentence above cannot go stale behind the
+inventory again. A handle parameter there is a reference-type parameter of a
+method entry's descriptor other than `java/lang/String`, which the generator
+renders as a string rather than as a `JavaHandle`; a field entry carries no
+parameters.
 
 **`Commands.<init>` is the one target deliberately left out.** It resolves: the
 class file declares `<init>` with the reviewed descriptor, so the generator's

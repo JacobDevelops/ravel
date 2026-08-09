@@ -235,9 +235,85 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
         verify_recorded_digests(root, manifest, &mut violations);
         verify_recorded_baselines(root, manifest, &mut violations);
         verify_recorded_inputs(root, manifest, &mut violations);
+        verify_recorded_run(root, manifest, &mut violations);
     }
 
     violations
+}
+
+/// Checks the gate run a milestone manifest records against itself.
+///
+/// A manifest attests a run it cannot contain. The log is private, and the
+/// revision the run was made on is below the tip by construction, because
+/// recording a result changes the tree that produced it — so no check can ask a
+/// manifest to name the state it sits in. What can be bound is that the numbers
+/// agree with each other and with the gate they claim to have passed, and that a
+/// manifest recording a run records its result at all. That the pinned revision
+/// resolves is already bound by `verify_recorded_inputs`, which hashes every
+/// input there and fails when it cannot.
+///
+/// The milestone gate applies the same arithmetic to the one milestone it is
+/// closing. This applies it to every manifest on every scaffold run, because the
+/// numbers a closed milestone records are exactly the ones nobody looks at again.
+fn verify_recorded_run(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    let label = manifest_path
+        .strip_prefix(root)
+        .unwrap_or(manifest_path)
+        .display()
+        .to_string();
+    let records_run = match jq_matches(
+        manifest_path,
+        r#".commands | type == "array" and length > 0"#,
+    ) {
+        Ok(records_run) => records_run,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let records_tests = match jq_matches(manifest_path, r#".tests | type == "object""#) {
+        Ok(records_tests) => records_tests,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+
+    if records_run && !records_tests {
+        violations.push(format!("{label} records a gate run but no test result"));
+    }
+    if records_run {
+        require_manifest_rule(
+            manifest_path,
+            "[.commands[].exitStatus] | all(. == 0)",
+            &format!("{label} records a gate run that did not succeed"),
+            violations,
+        );
+    }
+    if !records_tests {
+        return;
+    }
+    for (filter, violation) in [
+        (
+            ".tests.total == (.tests.passed + .tests.failed + .tests.skipped)",
+            "records test counts that do not sum to its total",
+        ),
+        (
+            ".tests.total > 0 and .tests.failed == 0 and .tests.skipped == 0",
+            "records no passing test run",
+        ),
+        (
+            ".tests.lineCoveragePercent >= 80",
+            "records line coverage below the floor the gate enforces",
+        ),
+    ] {
+        require_manifest_rule(
+            manifest_path,
+            filter,
+            &format!("{label} {violation}"),
+            violations,
+        );
+    }
 }
 
 /// Recomputes every input digest against the revision the manifest pins.
@@ -533,15 +609,24 @@ pub fn verify_spikes(root: &Path) -> Vec<String> {
 /// be resolved and is not checked. The change id can be, and this is the only
 /// reason to prefer it: seven results named the wrong revision for a week because
 /// nothing recomputed the claim.
+///
+/// A checkout with no jj repository cannot resolve a change at all, so the check
+/// is skipped there and says so on stdout. It used to return in silence, which is
+/// indistinguishable from passing on exactly the machines where the repository's
+/// strongest provenance control is absent.
 fn verify_recorded_change(root: &Path, path: &Path, violations: &mut Vec<String>) {
-    if !root.join(".jj").exists() {
-        return;
-    }
     let label = path
         .strip_prefix(root)
         .unwrap_or(path)
         .display()
         .to_string();
+    if !root.join(".jj").exists() {
+        println!(
+            "- {label}: the recorded change is not recomputed, because this checkout has no jj \
+             repository to resolve it in"
+        );
+        return;
+    }
     let recorded = match jq_value(path, ".trial.revision.changeId") {
         Ok(value) if value != "null" && !value.is_empty() => value,
         // A result with no recorded change is the failure this rule exists for,
@@ -594,10 +679,10 @@ fn introducing_change(root: &Path, label: &str) -> Result<String, String> {
 /// The same rule the spike results carry, for the same reason: a commit id is
 /// abandoned by every rewrite, so a manifest that records only one cannot be
 /// resolved by the reader it is written for.
+///
+/// As with the spike results, a checkout with no jj repository is skipped and the
+/// skip is announced rather than silent.
 fn verify_manifest_change(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
-    if !root.join(".jj").exists() {
-        return;
-    }
     let Ok(label) = manifest_path.strip_prefix(root) else {
         return;
     };
@@ -605,6 +690,13 @@ fn verify_manifest_change(root: &Path, manifest_path: &Path, violations: &mut Ve
     // Contract fixtures are synthetic by design and describe no real revision;
     // only admitted evidence carries a resolvable provenance claim.
     if !label.starts_with("evidence/") {
+        return;
+    }
+    if !root.join(".jj").exists() {
+        println!(
+            "- {label}: the recorded change is not recomputed, because this checkout has no jj \
+             repository to resolve it in"
+        );
         return;
     }
     let owner = match introducing_change(root, &label) {
@@ -2159,6 +2251,75 @@ mod tests {
                 "evidence/m9/manifest.json records input absent.txt: cannot read it at revision \
                  {revision}"
             )]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Writes a manifest recording one gate run and returns the root.
+    fn recorded_run_root(label: &str, run: &str) -> PathBuf {
+        let root = temporary_root(label);
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("manifest.json"), run).expect("manifest should be writable");
+        root
+    }
+
+    #[test]
+    fn a_recorded_run_whose_numbers_agree_is_accepted() {
+        let root = recorded_run_root(
+            "run-consistent",
+            r#"{"commands":[{"exitStatus":0}],
+                "tests":{"total":9,"passed":9,"failed":0,"skipped":0,
+                    "lineCoveragePercent":85.97}}"#,
+        );
+
+        assert!(verify_evidence_records(&root).is_empty());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_recorded_run_whose_counts_do_not_sum_is_reported() {
+        // A manifest attests a run nothing can replay, so the arithmetic between
+        // its own numbers is the part a gate can hold it to.
+        let root = recorded_run_root(
+            "run-arithmetic",
+            r#"{"commands":[{"exitStatus":0}],
+                "tests":{"total":8,"passed":9,"failed":0,"skipped":0,
+                    "lineCoveragePercent":85.97}}"#,
+        );
+
+        assert_eq!(
+            verify_evidence_records(&root),
+            ["evidence/m9/manifest.json records test counts that do not sum to its total"]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_recorded_run_with_no_test_result_and_no_coverage_is_reported() {
+        let root = recorded_run_root("run-untested", r#"{"commands":[{"exitStatus":1}]}"#);
+
+        assert_eq!(
+            verify_evidence_records(&root),
+            [
+                "evidence/m9/manifest.json records a gate run but no test result",
+                "evidence/m9/manifest.json records a gate run that did not succeed",
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_recorded_run_below_the_coverage_floor_is_reported() {
+        let root = recorded_run_root(
+            "run-coverage",
+            r#"{"tests":{"total":9,"passed":9,"failed":0,"skipped":0,
+                "lineCoveragePercent":79.9}}"#,
+        );
+
+        assert_eq!(
+            verify_evidence_records(&root),
+            ["evidence/m9/manifest.json records line coverage below the floor the gate enforces"]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }

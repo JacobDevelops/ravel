@@ -115,6 +115,52 @@ fn register_all(
 
 // ----------------------------------------------------------- declarations ---
 
+/// The registry entries the example declares, spelled out rather than derived.
+///
+/// Every other assertion in this file reads the declaration and checks what the
+/// barrier or the generator made of it, so all of them hold when the example
+/// declares *less*: a review deleted the recipe and this suite stayed at exit 0
+/// while the example's own tests caught it. A floor derived from the subject is
+/// not a floor, so this one is a literal.
+const DECLARED_ENTRIES: &[&str] = &[
+    "block:content:copper_lantern",
+    "item:content:copper_lantern",
+    "recipe:content:crafting/copper_lantern",
+];
+
+/// The paths the example's declaration generates, spelled out for the same reason.
+const GENERATED_PATHS: &[&str] = &[
+    "assets/content/lang/en_us.json",
+    "assets/content/lang/fr_fr.json",
+    "assets/content/models/block/copper_lantern.json",
+    "data/c/tags/block/lanterns.json",
+    "data/c/tags/item/lanterns.json",
+];
+
+#[test]
+fn the_example_still_declares_the_content_this_suite_is_written_against() {
+    let content = ContentMod::new();
+
+    assert_eq!(
+        content
+            .declaration()
+            .entries()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        DECLARED_ENTRIES,
+        "the example is this suite's subject and every other test here derives its expectation \
+         from what the example declares, so a declaration that shrank would satisfy all of them. \
+         If the example legitimately declares something else, decide it here."
+    );
+    assert_eq!(
+        content.generated().paths().collect::<Vec<_>>(),
+        GENERATED_PATHS,
+        "the same floor for the generated side: an entry, a tag, a locale or a supplied resource \
+         dropped from the example changes this list and nothing else in this file."
+    );
+}
+
 #[test]
 fn every_entry_the_example_declares_is_owned_by_it_after_the_real_barrier_closes() {
     let mut content = ContentMod::new();
@@ -369,6 +415,36 @@ fn two_of_one_mods_declarations_cannot_produce_the_same_file() {
             Err(DeclarationError::ProducedPath { ref path, .. }) if path == &generated
         ),
         "a locale already writes that file"
+    );
+}
+
+#[test]
+fn one_mod_supplying_one_path_twice_is_refused_rather_than_overwritten() {
+    // The same-kind counterpart to the test above, which covers a tag or a locale
+    // colliding with a supplied path. Two supplies of one path is the collision a
+    // mod can make on its own, and it is the mod's mistake rather than an
+    // override: an override needs a second mod, which the next test is about.
+    let mut declaration = ContentDeclaration::new(id("example_mod"));
+    let model = RelativePath::try_from("assets/example_mod/models/block/lantern.json".to_owned())
+        .expect("a legal path");
+
+    declaration
+        .resource(model.clone(), b"{}".to_vec())
+        .expect("the first supply");
+    assert_eq!(
+        declaration.resource(model.clone(), b"{\"changed\": true}".to_vec()),
+        Err(DeclarationError::DuplicateResource {
+            path: model.clone()
+        })
+    );
+
+    // The refusal left the first bytes in place rather than half-replacing them.
+    assert_eq!(
+        declaration
+            .generate()
+            .file(&model)
+            .map(GeneratedFile::bytes),
+        Some(b"{}".as_slice())
     );
 }
 

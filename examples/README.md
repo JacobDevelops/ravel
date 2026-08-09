@@ -9,4 +9,7 @@ has drifted stops building here first.
   compile-pass/fail suite for the author boundary.
 - [`content-mod`](content-mod) — a mod that adds content: registry entries, tags,
   resources and the pack M4-W2's generator produces from them.
-- `pack-module` — M4-W5, once `ravel-pack` declares and validates a pack.
+- [`stateful-mod`](stateful-mod) — a mod with settings, versioned world data and a
+  service other mods call.
+- [`pack-module`](pack-module) — where M4-W5's pack example lives, and why it is not
+  a crate in this directory.

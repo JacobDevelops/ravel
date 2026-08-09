@@ -26,8 +26,8 @@ stable contracts toward concrete host internals.
   declaration a mod
   writes — registry entries, tag memberships, supplied resources, and the pack
   they generate — is that crate's model, and `ravel-pack` reads the same
-  declarations in M4-W5; a model living in the facade would make a feature crate
-  depend on the facade.
+  declarations to check a pack's registry closure and to merge its members' tags;
+  a model living in the facade would make a feature crate depend on the facade.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data.
   General crates must remain buildable against a synthetic second adapter.

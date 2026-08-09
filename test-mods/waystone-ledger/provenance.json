@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "kind": "ravel-package",
+    "id": "waystone_ledger",
+    "version": "0.2.0"
+  },
+  "implementationMethod": "original",
+  "sources": [],
+  "rights": [
+    {
+      "surface": "code",
+      "status": "cleared",
+      "basis": "Original work written for this package and licensed under MIT OR Apache-2.0."
+    },
+    {
+      "surface": "models",
+      "status": "cleared",
+      "basis": "The one model this package supplies is a two-line parent reference naming a vanilla model; it embeds no vanilla asset."
+    },
+    {
+      "surface": "names",
+      "status": "cleared",
+      "basis": "\"Waystone\" and \"Wegstein\" are ordinary words chosen for this package."
+    },
+    {
+      "surface": "textures",
+      "status": "not-applicable"
+    },
+    {
+      "surface": "sounds",
+      "status": "not-applicable"
+    }
+  ],
+  "attribution": [],
+  "publication": {
+    "status": "cleared",
+    "reviewedBy": "Waystone Ledger author",
+    "notes": "Contains no third-party code, assets, branding, credentials, or filesystem paths."
+  }
+}

@@ -51,6 +51,7 @@ const TEST_MOD_NAMES: &[&str] = &[
     "registries",
     "resources",
     "saved-data",
+    "waystone-ledger",
 ];
 
 /// Example crates a mod author reads, and the only crates whose manifests are
@@ -239,6 +240,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
     verify_example_inventory(root, &mut violations);
+    verify_test_mod_inventory(root, &mut violations);
     verify_experiment_fence(root, &mut violations);
     violations.extend(verify_evidence_records(root));
 
@@ -4223,9 +4225,38 @@ fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
 /// the list — so an example added without editing it would sit outside every one
 /// of them.
 fn verify_example_inventory(root: &Path, violations: &mut Vec<String>) {
-    let directory = root.join("examples");
-    let Ok(entries) = fs::read_dir(&directory) else {
-        violations.push("cannot read examples".to_owned());
+    verify_inventory(root, "examples", EXAMPLE_NAMES, "EXAMPLE_NAMES", violations);
+}
+
+/// The same, for `test-mods/`, which had no backwards reading at all.
+///
+/// `CLAUDE.md` tells an author adding a test mod to edit `TEST_MOD_NAMES`, and
+/// until this existed nothing checked that they had: the forwards reading fails
+/// on a listed name with no directory, and an unlisted directory passed in
+/// silence, outside the unsafe-prohibition sweep and the maintained Rust roots
+/// exactly as an unlisted example would have been. Found while landing
+/// `test-mods/waystone-ledger` by deleting its entry and watching the gate stay
+/// green.
+fn verify_test_mod_inventory(root: &Path, violations: &mut Vec<String>) {
+    verify_inventory(
+        root,
+        "test-mods",
+        TEST_MOD_NAMES,
+        "TEST_MOD_NAMES",
+        violations,
+    );
+}
+
+/// Reports every crate directory under `directory` that `listed` does not name.
+fn verify_inventory(
+    root: &Path,
+    directory: &str,
+    listed: &[&str],
+    list: &str,
+    violations: &mut Vec<String>,
+) {
+    let Ok(entries) = fs::read_dir(root.join(directory)) else {
+        violations.push(format!("cannot read {directory}"));
         return;
     };
 
@@ -4234,8 +4265,8 @@ fn verify_example_inventory(root: &Path, violations: &mut Vec<String>) {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !EXAMPLE_NAMES.contains(&name.as_str()) {
-            violations.push(format!("example is not listed in EXAMPLE_NAMES: {name}"));
+        if !listed.contains(&name.as_str()) {
+            violations.push(format!("{directory}/{name} is not listed in {list}"));
         }
     }
 }

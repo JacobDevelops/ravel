@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "waystone_ledger",
+  "version": "0.2.0",
+  "displayName": "Waystone Ledger",
+  "description": "A waystone block and a per-world ledger of the places a player named.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "26.1.2"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [
+    "configuration.json"
+  ],
+  "savedDataVersions": [
+    1,
+    2
+  ],
+  "authors": [
+    {
+      "name": "Waystone Ledger author"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://example.invalid/waystone-ledger",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "3bc232198a807f6a7c87c6836ee5b300645c80cd2af04051a961df04ddbb21e1"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "75787da40ca6d8e940afa79af45ea295ef7e131f5aaf080aa9495cb91b15a98e"
+      },
+      {
+        "path": "configuration.json",
+        "sha256": "e3f8ed442999c251cb9558d71f23c375f35568007342b49923d3c072e28425a8"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "782447c891d5e6eb3e47f5f483051b3be6af54d3e7fe556247482e968027c7ee"
+  }
+}

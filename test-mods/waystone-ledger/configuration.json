@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "owner": "waystone_ledger",
+  "version": 1,
+  "settings": [
+    {
+      "key": "ledger.capacity",
+      "title": "Ledger capacity",
+      "description": "How many waystones one world's ledger may hold.",
+      "valueSchema": { "type": "integer", "minimum": 1.0, "maximum": 512.0 },
+      "default": 32,
+      "side": "common",
+      "restartRequired": false
+    },
+    {
+      "key": "ledger.overwrite",
+      "title": "Overwrite a repeated name",
+      "description": "Whether recording a name the ledger already holds replaces it instead of being refused.",
+      "valueSchema": { "type": "boolean" },
+      "default": true,
+      "side": "common",
+      "restartRequired": false
+    }
+  ]
+}

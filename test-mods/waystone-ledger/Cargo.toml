@@ -1,0 +1,16 @@
+[package]
+name = "waystone-ledger"
+description = "A Ravel mod that keeps a per-world ledger of named waystones"
+version = "0.2.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+rust-version = "1.95.0"
+
+# One dependency, by path against a checkout, because `ravel-sdk` is not
+# published. Nothing else from the Ravel workspace is named here.
+[dependencies]
+ravel-sdk.workspace = true
+
+[lints]
+workspace = true

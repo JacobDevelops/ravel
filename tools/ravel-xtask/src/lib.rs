@@ -211,6 +211,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     }
 
     verify_ignored_boundaries(root, &mut violations);
+    verify_hook_inventory_document(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
     verify_experiment_fence(root, &mut violations);
@@ -241,6 +242,220 @@ fn declares_unsafe_prohibition(source: &str) -> bool {
         .lines()
         .map(str::trim_start)
         .any(|line| line.starts_with("#![forbid(unsafe_code)]"))
+}
+
+/// The reviewed hook inventory for the pinned version.
+const HOOK_INVENTORY: &str = "minecraft/versions/26.1.2/hooks.toml";
+
+/// The document that describes the inventory above, and M3-W0's closing evidence.
+const HOOK_DOCUMENT: &str = "docs/architecture/m3-hook-targets.md";
+
+/// What `hooks.toml` holds, counted from `hooks.toml` and from nothing else.
+struct HookCounts {
+    /// Every `[[hook]]` block.
+    entries: usize,
+    /// Blocks whose `kind` is a method, so blocks the generator gives a prologue.
+    methods: usize,
+    /// Blocks whose `kind` is a field, which carry no parameters.
+    fields: usize,
+    /// Reference-type method parameters the generator renders as a `JavaHandle`.
+    handles: usize,
+}
+
+/// Holds `docs/architecture/m3-hook-targets.md` to the inventory it describes.
+///
+/// M3-W0 closes on that document and `evidence/m3/manifest.json` pins its digest
+/// as an M3 input, so the gate was satisfied by a document that had gone stale:
+/// it still said 35 entries, 31 methods and 23 handle parameters after ADG-7's two
+/// world persistence seams entered the inventory, while tabling those two seams
+/// further down the same file. A digest binds a document to its bytes and never to
+/// the thing it is about, which is why nothing caught it. These four counts are
+/// derivable from `hooks.toml` alone, so they are derived here and compared rather
+/// than trusted.
+fn verify_hook_inventory_document(root: &Path, violations: &mut Vec<String>) {
+    let inventory = match fs::read_to_string(root.join(HOOK_INVENTORY)) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(format!("cannot read {HOOK_INVENTORY}: {error}"));
+            return;
+        }
+    };
+    let document = match fs::read_to_string(root.join(HOOK_DOCUMENT)) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(format!("cannot read {HOOK_DOCUMENT}: {error}"));
+            return;
+        }
+    };
+    let counts = match hook_counts(&inventory) {
+        Ok(counts) => counts,
+        Err(error) => {
+            violations.push(format!("cannot count {HOOK_INVENTORY}: {error}"));
+            return;
+        }
+    };
+    violations.extend(hook_document_violations(&document, &counts));
+}
+
+/// Counts the entries, kinds and handle parameters one `hooks.toml` declares.
+fn hook_counts(inventory: &str) -> Result<HookCounts, String> {
+    let mut counts = HookCounts {
+        entries: 0,
+        methods: 0,
+        fields: 0,
+        handles: 0,
+    };
+    for block in inventory.split("[[hook]]").skip(1) {
+        let body = block
+            .split("\n[")
+            .next()
+            .expect("splitting a string yields at least one part");
+        let mut kind = None;
+        let mut descriptor = None;
+        for line in body.lines().map(str::trim) {
+            if let Some(value) = quoted_value(line, "kind") {
+                kind = Some(value);
+            } else if let Some(value) = quoted_value(line, "descriptor") {
+                descriptor = Some(value);
+            }
+        }
+        let (Some(kind), Some(descriptor)) = (kind, descriptor) else {
+            return Err("a `[[hook]]` entry declares no kind or no descriptor".to_owned());
+        };
+
+        counts.entries += 1;
+        if kind.ends_with("-field") {
+            counts.fields += 1;
+        } else {
+            counts.methods += 1;
+            counts.handles += descriptor_handles(descriptor)
+                .ok_or_else(|| format!("`{descriptor}` is not a method descriptor"))?;
+        }
+    }
+
+    Ok(counts)
+}
+
+/// Every count the document states that the inventory does not bear out.
+///
+/// Each count is anchored on the phrase it is written in rather than searched for
+/// loosely, and *every* occurrence of that phrase is checked. A second stale
+/// sentence somewhere else in the file is the way this document went wrong the
+/// first time, so finding one right occurrence is not enough.
+fn hook_document_violations(document: &str, counts: &HookCounts) -> Vec<String> {
+    let mut violations = Vec::new();
+    for (phrase, side, expected, subject) in [
+        (" entries to ", Side::After, counts.entries, "hook entries"),
+        (
+            " methods and ",
+            Side::Before,
+            counts.methods,
+            "method entries",
+        ),
+        (" fields", Side::Before, counts.fields, "field entries"),
+        (
+            " handle parameters",
+            Side::Before,
+            counts.handles,
+            "handle parameters",
+        ),
+    ] {
+        let stated = stated_counts(document, phrase, side);
+        if stated.is_empty() {
+            violations.push(format!(
+                "{HOOK_DOCUMENT} no longer writes a count against `{phrase}`, so nothing in it is \
+                 held to {HOOK_INVENTORY}'s {expected} {subject}"
+            ));
+            continue;
+        }
+        for count in stated {
+            if count != expected {
+                violations.push(format!(
+                    "{HOOK_DOCUMENT} states {count} {subject} where {HOOK_INVENTORY} declares \
+                     {expected}"
+                ));
+            }
+        }
+    }
+    violations
+}
+
+/// Which side of a phrase the number it states sits on.
+#[derive(Clone, Copy)]
+enum Side {
+    /// `31 methods and` — the number precedes the phrase.
+    Before,
+    /// `entries to 35` — the number follows it.
+    After,
+}
+
+/// Every number written against one phrase in a document.
+fn stated_counts(document: &str, phrase: &str, side: Side) -> Vec<usize> {
+    let mut counts = Vec::new();
+    let mut offset = 0;
+    while let Some(found) = document[offset..].find(phrase) {
+        let at = offset + found;
+        offset = at + phrase.len();
+        let digits = match side {
+            Side::Before => {
+                let head = document[..at].trim_end();
+                let start =
+                    head.len() - head.chars().rev().take_while(char::is_ascii_digit).count();
+                &head[start..]
+            }
+            Side::After => {
+                let tail = document[offset..].trim_start();
+                let end = tail.chars().take_while(char::is_ascii_digit).count();
+                &tail[..end]
+            }
+        };
+        if let Ok(count) = digits.parse() {
+            counts.push(count);
+        }
+    }
+    counts
+}
+
+/// Reads `name = "value"` out of one line, or nothing.
+fn quoted_value<'a>(line: &'a str, name: &str) -> Option<&'a str> {
+    let rest = line.strip_prefix(name)?.trim_start();
+    rest.strip_prefix('=')?
+        .trim_start()
+        .strip_prefix('"')?
+        .strip_suffix('"')
+}
+
+/// How many parameters of a method descriptor the generator renders as handles.
+///
+/// A reference is a handle, an array of anything is a reference, and
+/// `java/lang/String` is the one reference the generator renders as a string
+/// instead. Returns nothing when the descriptor is not a method descriptor.
+fn descriptor_handles(descriptor: &str) -> Option<usize> {
+    let mut rest = descriptor.strip_prefix('(')?.split_once(')')?.0;
+    let mut handles = 0;
+    while !rest.is_empty() {
+        let arrays = rest.len() - rest.trim_start_matches('[').len();
+        rest = &rest[arrays..];
+        if let Some(named) = rest.strip_prefix('L') {
+            let (name, tail) = named.split_once(';')?;
+            if arrays > 0 || name != "java/lang/String" {
+                handles += 1;
+            }
+            rest = tail;
+        } else {
+            if !matches!(
+                rest.as_bytes().first()?,
+                b'B' | b'C' | b'D' | b'F' | b'I' | b'J' | b'S' | b'Z'
+            ) {
+                return None;
+            }
+            if arrays > 0 {
+                handles += 1;
+            }
+            rest = &rest[1..];
+        }
+    }
+    Some(handles)
 }
 
 /// Recomputes every digest a milestone manifest records for its own results.
@@ -2599,11 +2814,12 @@ mod tests {
     use std::process::Command;
 
     use super::{
-        MILESTONE_MANIFESTS, change_mismatch, declares_unsafe_prohibition, redacted_path,
+        HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS, change_mismatch,
+        declares_unsafe_prohibition, hook_counts, hook_document_violations, redacted_path,
         required_scaffold_paths, verify_evidence_records, verify_experiment_fence,
-        verify_ignored_boundaries, verify_milestone, verify_scaffold, verify_spikes,
-        verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
-        verify_version_boundary,
+        verify_hook_inventory_document, verify_ignored_boundaries, verify_milestone,
+        verify_scaffold, verify_spikes, verify_testkit_fence, verify_tracked_contents,
+        verify_tracked_paths, verify_version_boundary,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -3540,6 +3756,102 @@ mod tests {
             redacted_path(Path::new("/somewhere/else/manifest.json")),
             "manifest.json"
         );
+    }
+
+    /// One `[[hook]]` block, in the shape `hooks.toml` writes them.
+    fn hook_entry(kind: &str, descriptor: &str) -> String {
+        format!(
+            "\n[[hook]]\nid = \"an.id\"\nclass = \"net.minecraft.Thing\"\nmember = \"member\"\n\
+             descriptor = \"{descriptor}\"\nkind = \"{kind}\"\ncapability = \"Do something.\"\n"
+        )
+    }
+
+    #[test]
+    fn a_hook_inventory_is_counted_by_kind_and_by_handle_parameter() {
+        let inventory = format!(
+            "schemaVersion = 1\n{}{}{}{}",
+            // A string is rendered as a string, so it is not a handle; an array of
+            // strings is a reference and is one.
+            hook_entry("static-method", "(Ljava/lang/String;Z)Ljava/lang/String;"),
+            hook_entry(
+                "instance-method",
+                "([Ljava/lang/String;[JLjava/util/List;D)V"
+            ),
+            hook_entry("instance-method", "(I)Z"),
+            hook_entry("instance-field", "Z"),
+        );
+
+        let counts = hook_counts(&inventory).expect("the inventory should count");
+
+        assert_eq!(counts.entries, 4);
+        assert_eq!(counts.methods, 3);
+        assert_eq!(counts.fields, 1);
+        assert_eq!(counts.handles, 3);
+    }
+
+    #[test]
+    fn the_hook_document_fails_on_every_count_that_no_longer_matches_the_inventory() {
+        let counts = HookCounts {
+            entries: 37,
+            methods: 33,
+            fields: 4,
+            handles: 27,
+        };
+        let current = "`hooks.toml` therefore grew from 6 entries to 37 — 33 methods and 4 fields,\n\
+                       carrying 27 handle parameters between them.";
+        let stale = "`hooks.toml` therefore grew from 6 entries to 35 — 31 methods and 4 fields,\n\
+                     carrying 23 handle parameters between them.";
+
+        assert_eq!(
+            hook_document_violations(current, &counts),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            hook_document_violations(stale, &counts),
+            [
+                format!(
+                    "{HOOK_DOCUMENT} states 35 hook entries where {HOOK_INVENTORY} declares 37"
+                ),
+                format!(
+                    "{HOOK_DOCUMENT} states 31 method entries where {HOOK_INVENTORY} declares 33"
+                ),
+                format!(
+                    "{HOOK_DOCUMENT} states 23 handle parameters where {HOOK_INVENTORY} declares 27"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_hook_document_stating_no_count_at_all_is_not_read_as_agreement() {
+        let counts = HookCounts {
+            entries: 37,
+            methods: 33,
+            fields: 4,
+            handles: 27,
+        };
+
+        let violations = hook_document_violations("The inventory grew.", &counts);
+
+        assert_eq!(violations.len(), 4, "{violations:?}");
+        assert!(
+            violations
+                .iter()
+                .all(|violation| violation.contains("no longer writes a count against")),
+            "{violations:?}"
+        );
+    }
+
+    #[test]
+    fn the_tracked_hook_document_agrees_with_the_tracked_inventory() {
+        let root = std::env::current_dir()
+            .expect("the current directory must be available")
+            .join("../..");
+        let mut violations = Vec::new();
+
+        verify_hook_inventory_document(&root, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
     }
 
     fn temporary_root(label: &str) -> PathBuf {

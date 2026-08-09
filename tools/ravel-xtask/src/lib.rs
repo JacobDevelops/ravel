@@ -1463,6 +1463,19 @@ const NETWORK_SOURCE: &str = "crates/ravel-network/src/lib.rs";
 const ENUMERATED_IN_FULL: &str = "WireError";
 const NAMED_IN_PART: &str = "DeliveryRefused";
 
+/// The document holding the passage that claims to state [`ENUMERATED_IN_FULL`]
+/// in full.
+const ENUMERATING_DOCUMENT: &str = "docs/guide/running.md";
+
+/// The sentence that makes the completeness claim, and the anchor the passage
+/// making it is found by.
+///
+/// The claim is what creates the obligation, so the claim is what locates the
+/// list held to it. A passage that stops claiming completeness would need no
+/// check — but deleting the sentence while leaving the list is the cheap way out,
+/// so its absence is a violation rather than a pass.
+const COMPLETENESS_CLAIM: &str = "is the whole of those refusals";
+
 /// Holds the guide's enumeration of a public enum to the enum itself.
 ///
 /// `docs/guide/running.md` told an author that five listed refusals "are the
@@ -1474,10 +1487,17 @@ const NAMED_IN_PART: &str = "DeliveryRefused";
 ///
 /// `tests/conformance/tests/guide_snippets.rs` compiles every fenced Rust block
 /// in the guide and deliberately reaches no prose, which its own module doc says.
-/// This is the prose half: every `WireError::` variant the guide names has to be
-/// a variant the enum declares, and every variant the enum declares has to be
-/// named somewhere in the guide. A seventh variant fails as an omission and a
-/// renamed one fails twice, by both names.
+/// This is the prose half, and the two directions are held over different spans
+/// on purpose. A `WireError::` variant named anywhere in the guide has to be a
+/// variant the enum declares, because a name that does not exist misleads an
+/// author wherever it is written. Completeness is held over the one passage that
+/// claims it — [`COMPLETENESS_CLAIM`] in [`ENUMERATING_DOCUMENT`] — because that
+/// passage is what an author reads as the whole set, and a variant named in
+/// passing on some other page does not make their list complete. Holding
+/// completeness over the concatenated directory instead proves the weaker
+/// property: a round dropped a variant from the enumeration, pasted the string
+/// into `limits.md`, and the check returned 0. A seventh variant fails as an
+/// omission and a renamed one fails twice, by both names.
 ///
 /// [`NAMED_IN_PART`] is held one way only, and the asymmetry is deliberate rather
 /// than an oversight: the guide names `DeliveryRefused::WrongSide` because that is
@@ -1488,7 +1508,9 @@ const NAMED_IN_PART: &str = "DeliveryRefused";
 /// What this cannot do: it reads variant *names* and nothing else, so a variant
 /// the guide names and describes wrongly passes here. Only the rustdoc beside the
 /// declaration says what each one carries, which is why the guide points at it
-/// rather than restating it.
+/// rather than restating it. And it holds one passage, found by one sentence, so
+/// a second passage elsewhere in the guide claiming the same set in different
+/// words is held by nothing until its own claim is named here.
 fn verify_guide_enumerations(root: &Path, violations: &mut Vec<String>) {
     let source = match fs::read_to_string(root.join(NETWORK_SOURCE)) {
         Ok(source) => source,
@@ -1511,6 +1533,23 @@ fn verify_guide_enumerations(root: &Path, violations: &mut Vec<String>) {
         }
     }
 
+    let passage = match fs::read_to_string(root.join(ENUMERATING_DOCUMENT)) {
+        Ok(document) => enumerating_passage(&document).map(str::to_owned),
+        Err(error) => {
+            violations.push(format!("cannot read {ENUMERATING_DOCUMENT}: {error}"));
+            return;
+        }
+    };
+    let Some(passage) = passage else {
+        violations.push(format!(
+            "{ENUMERATING_DOCUMENT} no longer holds the passage saying {ENUMERATED_IN_FULL} \
+             \"{COMPLETENESS_CLAIM}\", so no list an author reads as complete is held to \
+             {NETWORK_SOURCE}; the claim is what this check exists for and dropping it while \
+             keeping the list is not a way out of it"
+        ));
+        return;
+    };
+
     for name in [ENUMERATED_IN_FULL, NAMED_IN_PART] {
         let declared = declared_variants(&source, name);
         if declared.is_empty() {
@@ -1531,14 +1570,27 @@ fn verify_guide_enumerations(root: &Path, violations: &mut Vec<String>) {
         if name != ENUMERATED_IN_FULL {
             continue;
         }
-        for missing in declared.difference(&stated) {
+        let enumerated = stated_variants(&passage, name);
+        for missing in declared.difference(&enumerated) {
             violations.push(format!(
-                "{GUIDE_DIRECTORY} enumerates {name} and omits {name}::{missing}, which \
+                "{ENUMERATING_DOCUMENT}'s enumeration of {name} omits {name}::{missing}, which \
                  {NETWORK_SOURCE} declares; a variant left out of a list an author reads as \
-                 complete is the one their match arm will not have"
+                 complete is the one their match arm will not have, and naming it on another page \
+                 does not complete this one"
             ));
         }
     }
+}
+
+/// The paragraph that claims to state an enum in full, found by the claim itself.
+///
+/// A paragraph rather than the document, because the document is where a variant
+/// may legitimately be named in passing and the paragraph is where the set is
+/// asserted whole.
+fn enumerating_passage(document: &str) -> Option<&str> {
+    document
+        .split("\n\n")
+        .find(|paragraph| paragraph.contains(COMPLETENESS_CLAIM))
 }
 
 /// Every variant one public enum declares, read from its own block.
@@ -7348,8 +7400,8 @@ mod tests {
         let root = guide_enumeration_root(
             "guide-enumeration-agrees",
             &network_source(&["Truncated", "NotUtf8"]),
-            "`WireError::Truncated` and `WireError::NotUtf8`, and separately \
-             `DeliveryRefused::WrongSide`.\n",
+            "`WireError` is the whole of those refusals: `WireError::Truncated` and \
+             `WireError::NotUtf8`.\n\nSeparately, `DeliveryRefused::WrongSide`.\n",
         );
 
         let mut violations = Vec::new();
@@ -7366,7 +7418,8 @@ mod tests {
         let root = guide_enumeration_root(
             "guide-enumeration-drifted",
             &network_source(&["Truncated", "NotUtf8"]),
-            "`WireError::Truncated` and `WireError::NotABool`.\n",
+            "`WireError` is the whole of those refusals: `WireError::Truncated` and \
+             `WireError::NotABool`.\n",
         );
 
         let mut violations = Vec::new();
@@ -7378,9 +7431,66 @@ mod tests {
                 "docs/guide names WireError::NotABool and crates/ravel-network/src/lib.rs declares \
                  no such variant; an author told to match on a name that does not exist finds out \
                  at the compiler rather than here",
-                "docs/guide enumerates WireError and omits WireError::NotUtf8, which \
+                "docs/guide/running.md's enumeration of WireError omits WireError::NotUtf8, which \
                  crates/ravel-network/src/lib.rs declares; a variant left out of a list an author \
-                 reads as complete is the one their match arm will not have",
+                 reads as complete is the one their match arm will not have, and naming it on \
+                 another page does not complete this one",
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_variant_named_on_another_page_does_not_complete_the_enumeration() {
+        // The escape a round found: the omitted variant is pasted somewhere else
+        // under docs/guide, so a check reading the concatenated directory sees a
+        // complete set while the passage an author reads is short one.
+        let root = guide_enumeration_root(
+            "guide-enumeration-elsewhere",
+            &network_source(&["Truncated", "NotUtf8"]),
+            "`WireError` is the whole of those refusals: `WireError::Truncated`.\n",
+        );
+        fs::write(
+            root.join(GUIDE_DIRECTORY).join("limits.md"),
+            "In passing, `WireError::NotUtf8` is also refused.\n",
+        )
+        .expect("guide should be writable");
+
+        let mut violations = Vec::new();
+        verify_guide_enumerations(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "docs/guide/running.md's enumeration of WireError omits WireError::NotUtf8, which \
+              crates/ravel-network/src/lib.rs declares; a variant left out of a list an author \
+              reads as complete is the one their match arm will not have, and naming it on \
+              another page does not complete this one",
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_guide_that_drops_its_completeness_claim_is_reported() {
+        // Deleting the sentence would otherwise retire the obligation while the
+        // list an author reads stays exactly where it was.
+        let root = guide_enumeration_root(
+            "guide-enumeration-claimless",
+            &network_source(&["Truncated", "NotUtf8"]),
+            "`WireError::Truncated` and `WireError::NotUtf8` are refusals.\n",
+        );
+
+        let mut violations = Vec::new();
+        verify_guide_enumerations(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "docs/guide/running.md no longer holds the passage saying WireError \"is the whole \
+              of those refusals\", so no list an author reads as complete is held to \
+              crates/ravel-network/src/lib.rs; the claim is what this check exists for and \
+              dropping it while keeping the list is not a way out of it",
             ]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -7394,7 +7504,8 @@ mod tests {
         let root = guide_enumeration_root(
             "guide-enumeration-partial",
             &network_source(&["Truncated"]),
-            "`WireError::Truncated`, and nothing about `DeliveryRefused` at all.\n",
+            "`WireError` is the whole of those refusals: `WireError::Truncated`, and nothing \
+             about `DeliveryRefused` at all.\n",
         );
 
         let mut violations = Vec::new();

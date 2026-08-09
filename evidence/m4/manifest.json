@@ -65,7 +65,7 @@
         },
         "M4-W8": {
           "status": "open",
-          "evidence": "The global Linux gate and the process matrix are recorded — evidence/m4/linux-process-matrix.json holds every gate process with its exit status, and commands and tests below hold the run itself. The independent review this row also requires has not run. evidence/m4/review.md is the record it will be written into and holds no round, and review.result below is fail for that reason and for no other. ravel:verify-milestone:m4 exits nonzero while this is true, which is the gate working rather than failing."
+          "evidence": "The global Linux gate and the process matrix are recorded — evidence/m4/linux-process-matrix.json holds every gate process with its exit status, and commands and tests below hold the run itself. The independent review this row also requires has run and has not passed: evidence/m4/review.md holds its verdicts verbatim and the latest one is a fail, and review.result below is fail for that reason and for no other. ravel:verify-milestone:m4 exits nonzero while this is true, which is the gate working rather than failing."
         }
       }
     }
@@ -165,7 +165,7 @@
   ],
   "risks": [
     {
-      "summary": "M4 is not closed. No independent review round has run against it: evidence/m4/review.md is the record they will be written into and holds none, and review.result below is fail for that reason and for no other reason. ravel:verify-milestone:m4 exits nonzero while that is true. This risk is discharged by an independent round returning a pass on the state it reads, at which point the verdict, review.result and this entry move together.",
+      "summary": "M4 is not closed. Its independent review has run and has not passed: evidence/m4/review.md holds every verdict verbatim and the latest is a fail, and review.result below is fail for that reason and for no other reason. ravel:verify-milestone:m4 exits nonzero while that is true. This risk is discharged by an independent round returning a pass on the state it reads, at which point the verdict, review.result and this entry move together.",
       "classification": "non-blocking"
     },
     {
@@ -182,12 +182,12 @@
     }
   ],
   "review": {
-    "reviewer": "not yet assigned; M4-W8's independent review has not run",
+    "reviewer": "independent Claude reviewer (M4-W8, independent of the work under review; every round is reproduced verbatim in the record below, which is the one place that says how many have run)",
     "independent": true,
     "result": "fail",
     "record": {
       "name": "review.md",
-      "sha256": "5fa6914d57b471879d53c046665f93c870fb119e6dfcbc6f3d40e32564c9e503"
+      "sha256": "ff68c73ddaa8936df82712e53ee36b04e1d1d6d95ef8d5c9ba9da393aa5dcdab"
     }
   },
   "attestations": [

@@ -16,21 +16,21 @@
     "whatWouldChangeIt": "A launch campaign of the shape M3-W7 ran. It needs an operator, the display, and the pinned local fixture, and no M4 work package owns one."
   },
   "resultCeiling": "A reader can recompute every row below by running the named command on a checkout with the devenv shell. That is the whole of what this record attests, and it is deliberately more recomputable and less far-reaching than M3's matrix: every row is a gate process, so the matrix proves the gate passes and proves nothing about a running game.",
-  "measuredAgainst": "the tree evidence/m4/manifest.json pins under revision. The rows below were run individually on that tree, in the order listed, before the manifest that records them was written.",
+  "measuredAgainst": "a clean working copy at the head of the change stack that lands M4's evidence. Every row below was run individually, in the order listed, on that tree. evidence/m4/manifest.json pins revision.id at the change that introduced it, which is below that head by construction: recording a result changes the tree that produced it, so no evidence record can pin the tree it was measured on and also be part of it. The manifest states the same ceiling as a deviation rather than leaving it to be discovered.",
   "gate": {
     "command": "devenv tasks run ravel:verify",
     "exitStatus": 0,
     "tests": {
-      "run": 1263,
-      "passed": 1263,
+      "run": 1267,
+      "passed": 1267,
       "failed": 0,
       "skipped": 0,
       "runner": "cargo llvm-cov nextest --workspace --all-features"
     },
     "coverage": {
-      "linesPercent": 88.53,
-      "regionsPercent": 89.32,
-      "functionsPercent": 85.54,
+      "linesPercent": 88.41,
+      "regionsPercent": 89.24,
+      "functionsPercent": 85.59,
       "floorPercent": 80,
       "source": "the Lines, Regions and Functions columns of cargo llvm-cov's own summary, taken from the same invocation ravel:coverage runs, with the experiments/adg- filename filter that task applies",
       "howToRecompute": "devenv shell -- cargo llvm-cov nextest --workspace --all-features --summary-only --ignore-filename-regex '(^|/)experiments/adg-'"
@@ -125,7 +125,7 @@
       "surface": "environment reproducibility",
       "command": "devenv tasks run ravel:verify-environment",
       "exitStatus": 0,
-      "proves": "The devenv environment builds and its own checks pass, so the commands above are reproducible from the pinned environment rather than from whatever was on the machine.",
+      "proves": "The devenv environment builds and its own checks pass, so the commands above are reproducible from the pinned environment rather than from whatever was on the machine. This row returned a nonzero status when M4-W8 first ran it, and for a reason that predated M4: the flake's scaffold check supplied jq and not check-jsonschema, so every milestone manifest reported that it could not validate the evidence schema and the schema rule ran nowhere outside the devenv shell. It failed closed rather than falsely green, which is why the row was red. flake.nix now supplies the validator and the row passes.",
       "doesNotProve": "That they reproduce on a different hardware profile; every figure recorded here is from linux-reference-v1."
     },
     {

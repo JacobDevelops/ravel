@@ -795,8 +795,18 @@ fn verify_manifest_change(root: &Path, manifest_path: &Path, violations: &mut Ve
 ///
 /// An untracked result has no introducing change yet, which is not a violation:
 /// the schema still constrains the field, and the next run has a change to check.
+/// It is announced rather than passed over, for the reason the `.jj` skips are:
+/// a path jj cannot attribute clears this control, and a cleared control that
+/// says nothing is indistinguishable from one that agreed.
 fn change_mismatch(label: &str, recorded: &str, owner: &str) -> Option<String> {
-    if owner.is_empty() || owner == recorded {
+    if owner.is_empty() {
+        println!(
+            "- {label}: the recorded change {recorded} is not recomputed, because jj attributes \
+             this path to no change yet"
+        );
+        return None;
+    }
+    if owner == recorded {
         return None;
     }
     Some(format!(
@@ -2630,7 +2640,9 @@ mod tests {
             change_mismatch("r.json", "wtvoqolwmrxt", "wtvoqolwmrxt"),
             None
         );
-        // An untracked result has no introducing change and is not yet checkable.
+        // An untracked result has no introducing change and is not yet checkable,
+        // so the check clears without a verdict and has to say so rather than
+        // read as agreement.
         assert_eq!(change_mismatch("r.json", "wtvoqolwmrxt", ""), None);
     }
 

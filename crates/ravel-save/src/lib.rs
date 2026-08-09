@@ -179,6 +179,23 @@ pub struct SavedDataEnvelope {
 }
 
 impl SavedDataEnvelope {
+    /// Builds an envelope for a mod that owns its data alone.
+    ///
+    /// The ordinary answer a mod gives when it is asked to save names the mod,
+    /// the version this build writes, and the payload. The two arguments this
+    /// drops from [`Self::new`] are the ones a mod only has
+    /// something to say about when its payload cannot be read without some other
+    /// package installed, or when it publishes a schema name for its own
+    /// payload; a mod in neither position passed an empty list and a `None` to
+    /// say so, which is two arguments of nothing at the one call site an author
+    /// writes by hand.
+    ///
+    /// Reach for [`Self::new`] when either is real.
+    #[must_use]
+    pub fn current(owner: ModId, data_version: SavedDataVersion, payload: Value) -> Self {
+        Self::new(owner, data_version, Vec::new(), None, payload)
+    }
+
     /// Builds an envelope in the only schema this release writes.
     #[must_use]
     pub fn new(
@@ -596,6 +613,29 @@ mod tests {
         assert_eq!(
             SavedDataAggregate::open(None, &[declaration()], &BTreeMap::new()).expect("fresh"),
             SavedDataAggregate::fresh()
+        );
+    }
+    #[test]
+    fn the_ordinary_constructor_says_what_the_long_one_says_with_nothing_to_add() {
+        let payload = json!({"entries": ["found copper"]});
+        assert_eq!(
+            SavedDataEnvelope::current(id("saved_data"), version(2), payload.clone()),
+            SavedDataEnvelope::new(id("saved_data"), version(2), Vec::new(), None, payload)
+        );
+    }
+    #[test]
+    fn an_envelope_from_the_ordinary_constructor_crosses_the_aggregate() {
+        let mut aggregate = SavedDataAggregate::fresh();
+        aggregate.replace(SavedDataEnvelope::current(
+            id("saved_data"),
+            version(1),
+            json!({"entry": "found copper"}),
+        ));
+        let bytes = aggregate.to_bytes().expect("bounded");
+        let declarations = [SavedDataDeclaration::new(id("saved_data"), [version(1)]).expect("v")];
+        assert_eq!(
+            SavedDataAggregate::open(Some(&bytes), &declarations, &BTreeMap::new()).expect("valid"),
+            aggregate
         );
     }
     #[test]

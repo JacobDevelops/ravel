@@ -27,6 +27,12 @@
 //! into, which is what keeps [`MAX_AGGREGATE_BYTES`] a property of the whole
 //! world rather than of one mod's good behaviour.
 //!
+//! [`SavedDataEnvelope::current`] builds that answer from the three things a mod
+//! that owns its data alone has to say — itself, the version it writes, and the
+//! payload. [`SavedDataEnvelope::new`] takes the other two as well, and is what
+//! a mod whose payload needs another package installed, or which publishes a
+//! schema name for its own payload, reaches for.
+//!
 //! # Examples
 //!
 //! ```

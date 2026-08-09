@@ -2,6 +2,7 @@
 
 //! Repository automation for Ravel.
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -69,6 +70,22 @@ const SPIKE_GATES: &[(&str, &str)] = &[
     ("adg-3", "ADG-3"),
     ("adg-4", "ADG-4"),
     ("adg-5", "ADG-5"),
+];
+
+/// Every milestone manifest the evidence gate reads, named rather than discovered.
+///
+/// Discovery by directory scan gave the gate no floor. Moving all four manifests
+/// away left `verify scaffold` reporting zero manifests, zero violations, and
+/// "verification passed" — the absence of the evidence was flattened into the
+/// absence of a complaint by `.into_iter().flatten().flatten()`, and `ROOT_FILES`
+/// asked only for two READMEs. Naming the manifests is what makes a missing one a
+/// violation, and the scan is now checked against this list rather than being the
+/// whole of it.
+const MILESTONE_MANIFESTS: &[(&str, &str)] = &[
+    ("evidence/m0/manifest.json", "M0"),
+    ("evidence/m1/manifest.json", "M1"),
+    ("evidence/m2/manifest.json", "M2"),
+    ("evidence/m3/manifest.json", "M3"),
 ];
 
 const ROOT_FILES: &[&str] = &[
@@ -152,6 +169,11 @@ pub fn required_scaffold_paths() -> Vec<String> {
         .iter()
         .map(|path| (*path).to_owned())
         .chain(
+            MILESTONE_MANIFESTS
+                .iter()
+                .map(|(relative, _)| (*relative).to_owned()),
+        )
+        .chain(
             CRATE_NAMES
                 .iter()
                 .map(|name| format!("crates/{name}/Cargo.toml")),
@@ -182,7 +204,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
 
     for relative in maintained_rust_roots() {
         match fs::read_to_string(root.join(&relative)) {
-            Ok(source) if source.contains("#![forbid(unsafe_code)]") => {}
+            Ok(source) if declares_unsafe_prohibition(&source) => {}
             Ok(_) => violations.push(format!("missing unsafe prohibition: {relative}")),
             Err(error) => violations.push(format!("cannot read {relative}: {error}")),
         }
@@ -203,6 +225,22 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     }
 
     violations
+}
+
+/// Whether a crate root carries the unsafe prohibition as its own inner attribute.
+///
+/// A `contains` test was satisfied by prose. `crates/ravel-bootstrap/src/lib.rs`
+/// quotes `#![forbid(unsafe_code)]` in a doc comment explaining why the crate can
+/// keep it, so deleting the real attribute and adding a working `unsafe` block
+/// left this check green. The boundary itself never moved — `Cargo.toml` forbids
+/// `unsafe_code` for the whole workspace — which is exactly what made the
+/// redundant control's vacuity invisible. Anchoring on the attribute's own line
+/// is what a doc comment cannot satisfy.
+fn declares_unsafe_prohibition(source: &str) -> bool {
+    source
+        .lines()
+        .map(str::trim_start)
+        .any(|line| line.starts_with("#![forbid(unsafe_code)]"))
 }
 
 /// Recomputes every digest a milestone manifest records for its own results.
@@ -231,15 +269,117 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
         .collect::<Vec<_>>();
     manifests.sort();
 
+    // A discovery that found nothing is not a tree with nothing to check; it is a
+    // check with nothing to say. `required_scaffold_paths` names each milestone
+    // manifest, so an absent one is reported there by name; this is the floor for
+    // the sweep itself.
+    if manifests.is_empty() {
+        violations.push(
+            "evidence/ holds no milestone manifest, and a manifest sweep over nothing passes \
+             vacuously"
+                .to_owned(),
+        );
+        return violations;
+    }
+
+    // A digest can only bind a file the repository holds. Listing the tracked set
+    // is therefore part of the binding, and a listing that fails takes the whole
+    // sweep with it rather than letting every digest resolve against whatever the
+    // working copy happens to contain.
+    let tracked = match tracked_paths(root) {
+        Ok(paths) => paths.into_iter().collect::<BTreeSet<String>>(),
+        Err(error) => {
+            violations.push(error);
+            return violations;
+        }
+    };
+
     for manifest in &manifests {
-        verify_recorded_digests(root, manifest, &mut violations);
-        verify_recorded_baselines(root, manifest, &mut violations);
-        verify_recorded_review(root, manifest, &mut violations);
+        verify_recorded_digests(root, manifest, &tracked, &mut violations);
+        verify_recorded_baselines(root, manifest, &tracked, &mut violations);
+        verify_recorded_review(root, manifest, &tracked, &mut violations);
         verify_recorded_inputs(root, manifest, &mut violations);
         verify_recorded_run(root, manifest, &mut violations);
     }
 
+    for (relative, milestone) in MILESTONE_MANIFESTS {
+        let manifest = root.join(relative);
+        if manifest.is_file() {
+            verify_manifest_invariants(root, &manifest, milestone, &mut violations);
+        }
+    }
+
     violations
+}
+
+/// The closure rules that do not turn on a review verdict.
+///
+/// `ravel:verify` is what `AGENTS.md` tells every agent to run, and it ran no
+/// milestone closure rule at all: `ravel:verify-milestone:*` was a separate,
+/// opt-in task, so `revision.changeId` provenance, schema conformance and the
+/// recorded arithmetic were checked only by whoever thought to ask. Moving the
+/// whole of closure into `ravel:verify` was not available, because M1, M2 and M3
+/// record `review.result: "fail"` by design and the repository's own gate has to
+/// keep exiting zero.
+///
+/// So closure is split by what decides it. Everything here is decided by the
+/// document and the repository — the schema, the pinned change, the numbers
+/// agreeing with each other — and runs on every gate. The verdict rules, which
+/// ask what the independent reviewer concluded and whether any finding is
+/// blocking, stay in the per-milestone task, because a failing review is a true
+/// statement about an open milestone rather than a broken repository.
+fn verify_manifest_invariants(
+    root: &Path,
+    manifest_path: &Path,
+    milestone: &str,
+    violations: &mut Vec<String>,
+) {
+    let label = relative_label(root, manifest_path);
+    match evidence_schema_matches(root, manifest_path) {
+        Ok(true) => {}
+        Ok(false) => violations.push(format!("{label} does not conform to the evidence schema")),
+        Err(error) => violations.push(error),
+    }
+    verify_redaction(manifest_path, &label, violations);
+
+    for (filter, requirement) in [
+        (
+            ".schemaVersion == 1".to_owned(),
+            "must record schemaVersion 1",
+        ),
+        (
+            format!(".milestone == \"{milestone}\""),
+            "must record the milestone of the directory it sits in",
+        ),
+        (
+            format!(".workPackages | length > 0 and all(startswith(\"{milestone}-W\"))"),
+            "must carry work-package IDs belonging to its own milestone",
+        ),
+    ] {
+        require_manifest_rule(
+            manifest_path,
+            &filter,
+            &format!("{label} {requirement}"),
+            violations,
+        );
+    }
+    for (filter, requirement) in MANIFEST_INVARIANTS {
+        require_manifest_rule(
+            manifest_path,
+            filter,
+            &format!("{label} {requirement}"),
+            violations,
+        );
+    }
+    verify_manifest_change(root, manifest_path, violations);
+}
+
+/// Names a path relative to the repository, for a violation a reader has to act on.
+fn relative_label(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
 }
 
 /// Checks the gate run a milestone manifest records against itself.
@@ -280,6 +420,18 @@ fn verify_recorded_run(root: &Path, manifest_path: &Path, violations: &mut Vec<S
         }
     };
 
+    // Neither field present used to return with nothing said, which made a
+    // manifest that recorded no run at all indistinguishable from one whose run
+    // succeeded. `del(.tests, .commands)` cleared this whole check, and the
+    // scaffold schema-validates only the named milestone manifests, so a document
+    // that dropped both fields had nothing left to answer for.
+    if !records_run && !records_tests {
+        violations.push(format!(
+            "{label} records neither a gate run nor a test result, so there is nothing here a \
+             gate can hold it to"
+        ));
+        return;
+    }
     if records_run && !records_tests {
         violations.push(format!("{label} records a gate run but no test result"));
     }
@@ -401,12 +553,13 @@ fn revision_digest(root: &Path, revision: &str, name: &str) -> Result<String, St
 }
 
 /// Compares each recorded result digest against the file it names.
-fn verify_recorded_digests(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
-    let label = manifest_path
-        .strip_prefix(root)
-        .unwrap_or(manifest_path)
-        .display()
-        .to_string();
+fn verify_recorded_digests(
+    root: &Path,
+    manifest_path: &Path,
+    tracked: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let label = relative_label(root, manifest_path);
     let records = match jq_value(
         manifest_path,
         r#".benchmarks.results[]? | .name + " " + .sha256"#,
@@ -430,6 +583,8 @@ fn verify_recorded_digests(root: &Path, manifest_path: &Path, violations: &mut V
             &TrackedDigest {
                 label: &label,
                 kind: "result",
+                root,
+                tracked,
                 manifest_path,
                 directory,
                 name,
@@ -448,22 +603,42 @@ fn verify_recorded_digests(root: &Path, manifest_path: &Path, violations: &mut V
 /// that nothing recomputed, which is the same rot in a second place: correct
 /// today, and green on a stale value the moment a later change edits the record.
 ///
-/// A validation digest names a private capture that never enters the repository,
-/// so it cannot be recomputed here and is announced as unbound instead of being
-/// silently passed over. A name that reads as a path is checked, because a typo
-/// in one would otherwise buy the same silence.
-fn verify_recorded_baselines(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
-    let label = manifest_path
-        .strip_prefix(root)
-        .unwrap_or(manifest_path)
-        .display()
-        .to_string();
-    let records = match jq_value(
+/// A baseline's `result` names a tracked record inside the milestone and is
+/// recomputed. Its `validation` names a private launch capture that never enters
+/// the repository, which is the one legitimately unbound digest here, and it is
+/// announced as unbound rather than silently passed over.
+///
+/// The two are read through separate filters, because telling them apart by how
+/// the name happened to read was itself a hole. Rewording a `result` name from
+/// `linux-vanilla-launch.json` to prose failed the whitespace-and-extension
+/// heuristic, and failing it produced an announced skip rather than a violation —
+/// so a digest could be detached from the file it bound by editing a string, and
+/// both the scaffold and the M0 gate stayed at zero. The schema now types the two
+/// fields differently, `hashedArtifact` against `privateCapture`, so which digests
+/// can be bound is declared in one place and read here rather than guessed.
+fn verify_recorded_baselines(
+    root: &Path,
+    manifest_path: &Path,
+    tracked: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let label = relative_label(root, manifest_path);
+    let results = match jq_value(
         manifest_path,
-        r#".platformEvidence[]?.baselines[]? | (.result, .validation)
+        r#".platformEvidence[]?.baselines[]?.result
            | select(. != null) | .name + " " + .sha256"#,
     ) {
-        Ok(records) => records,
+        Ok(results) => results,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let validations = match jq_value(
+        manifest_path,
+        r".platformEvidence[]?.baselines[]?.validation | select(. != null) | .name",
+    ) {
+        Ok(validations) => validations,
         Err(error) => {
             violations.push(error);
             return;
@@ -473,7 +648,15 @@ fn verify_recorded_baselines(root: &Path, manifest_path: &Path, violations: &mut
         return;
     };
 
-    for record in records.lines().filter(|record| !record.trim().is_empty()) {
+    for name in validations.lines().filter(|name| !name.trim().is_empty()) {
+        println!(
+            "- {label}: the baseline validation digest recorded for \"{name}\" is not \
+             recomputed, because a launch validation is a private capture that never enters the \
+             repository"
+        );
+    }
+
+    for record in results.lines().filter(|record| !record.trim().is_empty()) {
         let Some((name, recorded)) = record.rsplit_once(' ') else {
             violations.push(format!(
                 "{label} records a baseline with no digest: {record}"
@@ -481,16 +664,18 @@ fn verify_recorded_baselines(root: &Path, manifest_path: &Path, violations: &mut
             continue;
         };
         if !names_a_path(name) {
-            println!(
-                "- {label}: the baseline digest recorded for \"{name}\" is not recomputed, \
-                 because it names material held outside the repository"
-            );
+            violations.push(format!(
+                "{label} records a baseline result by description rather than by path, so its \
+                 digest binds nothing obtainable: {name}"
+            ));
             continue;
         }
         verify_tracked_digest(
             &TrackedDigest {
                 label: &label,
                 kind: "baseline",
+                root,
+                tracked,
                 manifest_path,
                 directory,
                 name,
@@ -522,12 +707,13 @@ fn verify_recorded_baselines(root: &Path, manifest_path: &Path, violations: &mut
 /// Absence stays legal, because a milestone under construction has no review
 /// yet. What refuses to close on it is the milestone gate, which requires the
 /// record; `verify_general_closure` is where that belongs.
-fn verify_recorded_review(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
-    let label = manifest_path
-        .strip_prefix(root)
-        .unwrap_or(manifest_path)
-        .display()
-        .to_string();
+fn verify_recorded_review(
+    root: &Path,
+    manifest_path: &Path,
+    tracked: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let label = relative_label(root, manifest_path);
     let record = match jq_value(
         manifest_path,
         r#".review.record? | select(. != null) | .name + " " + .sha256"#,
@@ -561,6 +747,8 @@ fn verify_recorded_review(root: &Path, manifest_path: &Path, violations: &mut Ve
         &TrackedDigest {
             label: &label,
             kind: "review record",
+            root,
+            tracked,
             manifest_path,
             directory,
             name,
@@ -572,8 +760,10 @@ fn verify_recorded_review(root: &Path, manifest_path: &Path, violations: &mut Ve
 
 /// Whether a recorded name is a path in the repository rather than prose.
 ///
-/// Every tracked evidence record is named by its file name; the private captures
-/// are named by description, and no description is a bare file name.
+/// This is the shape the schema's `hashedArtifact.name` pattern requires. It is
+/// checked here too, so that a manifest the scaffold reaches before any schema
+/// validation still cannot detach a digest from its file, and so that the
+/// violation names the field a reader has to fix.
 fn names_a_path(name: &str) -> bool {
     !name.contains(char::is_whitespace) && Path::new(name).extension().is_some()
 }
@@ -582,6 +772,8 @@ fn names_a_path(name: &str) -> bool {
 struct TrackedDigest<'a> {
     label: &'a str,
     kind: &'a str,
+    root: &'a Path,
+    tracked: &'a BTreeSet<String>,
     manifest_path: &'a Path,
     directory: &'a Path,
     name: &'a str,
@@ -593,6 +785,8 @@ fn verify_tracked_digest(record: &TrackedDigest<'_>, violations: &mut Vec<String
     let TrackedDigest {
         label,
         kind,
+        root,
+        tracked,
         manifest_path,
         directory,
         name,
@@ -611,6 +805,18 @@ fn verify_tracked_digest(record: &TrackedDigest<'_>, violations: &mut Vec<String
     // itself rather than the evidence.
     if path == manifest_path {
         violations.push(format!("{label} records its own digest, which cannot bind"));
+        return;
+    }
+    // The digest has to bind a file the repository holds. Hashing the working copy
+    // and stopping there let a record be bound to an untracked file, which nobody
+    // but the machine that wrote it can obtain — the same failure as naming the
+    // artifact in prose, arrived at from the other side.
+    let relative = relative_label(root, &path).replace('\\', "/");
+    if !tracked.contains(&relative) {
+        violations.push(format!(
+            "{label} records a {kind} that the repository does not track, so its digest binds \
+             nothing a reader can obtain: {name}"
+        ));
         return;
     }
     match file_digest(&path) {
@@ -925,6 +1131,8 @@ fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
         }
     }
 
+    verify_testkit_fence(root, violations);
+
     let mut sources = Vec::new();
     for directory in ["crates", "test-mods", "tools", "tests"] {
         collect_files(&root.join(directory), &mut sources);
@@ -947,6 +1155,41 @@ fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
             violations.push(format!(
                 "unsafe code is permitted outside the experiment boundary: {}",
                 relative.display()
+            ));
+        }
+    }
+}
+
+/// Keeps the test harness crate out of the production libraries.
+///
+/// `dependency-rules.md` says testkit may depend on the loader and the public
+/// contracts to build process harnesses, but that production libraries never
+/// depend on testkit. That was a sentence and nothing else: adding
+/// `ravel-testkit.workspace = true` to `crates/ravel-loader/Cargo.toml` left the
+/// scaffold at zero. No live violation existed, which is why it went unnoticed.
+///
+/// The rule is held against the shipped libraries and the test mods, which are
+/// what a player's build graph contains. `tools/ravel-cli` and
+/// `tests/conformance` are harnesses that legitimately drive testkit, and testkit
+/// is not held against itself.
+fn verify_testkit_fence(root: &Path, violations: &mut Vec<String>) {
+    let fenced = CRATE_NAMES
+        .iter()
+        .filter(|name| **name != "ravel-testkit")
+        .map(|name| format!("crates/{name}/Cargo.toml"))
+        .chain(
+            TEST_MOD_NAMES
+                .iter()
+                .map(|name| format!("test-mods/{name}/Cargo.toml")),
+        );
+
+    for relative in fenced {
+        let Ok(manifest) = fs::read_to_string(root.join(&relative)) else {
+            continue;
+        };
+        if manifest.contains("ravel-testkit") {
+            violations.push(format!(
+                "production crate depends on the test harness: {relative}"
             ));
         }
     }
@@ -1019,6 +1262,76 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
     violations
 }
 
+/// The closure rules the repository decides, whatever the review concluded.
+///
+/// These run on every `ravel:verify` through `verify_manifest_invariants` as well
+/// as in the per-milestone gate, so that the gate every agent is told to run is
+/// the gate that checks them. They are one table rather than two copies for the
+/// obvious reason: a second statement of the same rule is a second thing to drift.
+const MANIFEST_INVARIANTS: &[(&str, &str)] = &[
+    (
+        ".revision.dirty == false",
+        "milestone revision must be clean",
+    ),
+    (
+        ".inputs | length > 0",
+        "milestone must include at least one hashed input",
+    ),
+    (
+        "([.commands[].exitStatus] + [.platformEvidence[].commands[].exitStatus]) | length > 0 and all(. == 0)",
+        "milestone commands must all succeed",
+    ),
+    (
+        ".tests.total == (.tests.passed + .tests.failed + .tests.skipped)",
+        "test counts must equal passed + failed + skipped",
+    ),
+    (
+        ".tests.total > 0 and .tests.passed > 0",
+        "milestone must record at least one passing test",
+    ),
+    (
+        ".tests.failed == 0",
+        "milestone tests must have zero failures",
+    ),
+    (
+        ".tests.skipped == 0",
+        "milestone tests must have zero skipped tests",
+    ),
+    (
+        ".tests.lineCoveragePercent != null and .tests.lineCoveragePercent >= 80",
+        "milestone line coverage must be at least 80%",
+    ),
+];
+
+/// The closure rules only the independent review's verdict can decide.
+///
+/// These stay in `ravel:verify-milestone:*`. M1, M2 and M3 record
+/// `review.result: "fail"`, which is a true statement about three open milestones
+/// rather than a broken repository, so `ravel:verify` cannot ask them and keep
+/// exiting zero — and greening them to make it possible would be the failure this
+/// whole gate exists to prevent.
+///
+/// The blocking-finding rule is paired with a cardinality floor in each
+/// milestone's own closure, because `all(. != "blocking")` is true of an empty
+/// array: with `deviations` and `risks` emptied, this rule passed and the milestone
+/// closed on findings that had simply been deleted. Where the floor sits is
+/// per milestone, because M0 recorded none and its closure rests on its
+/// platform evidence and baseline digests instead.
+const MANIFEST_VERDICTS: &[(&str, &str)] = &[
+    (
+        "([.deviations[].classification] + [.risks[].classification]) | all(. != \"blocking\")",
+        "milestone must have no blocking deviations or risks",
+    ),
+    (
+        ".review.independent == true and .review.result == \"pass\"",
+        "milestone review must be independent and pass",
+    ),
+    (
+        ".review | has(\"record\")",
+        "milestone review must include a hashed record",
+    ),
+];
+
 fn verify_general_closure(manifest_path: &Path, milestone: &str, violations: &mut Vec<String>) {
     let work_package_prefix = format!("{milestone}-W");
     require_manifest_rule(
@@ -1027,72 +1340,9 @@ fn verify_general_closure(manifest_path: &Path, milestone: &str, violations: &mu
         "work-package IDs must belong to the manifest milestone",
         violations,
     );
-    require_manifest_rule(
-        manifest_path,
-        ".revision.dirty == false",
-        "milestone revision must be clean",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        ".inputs | length > 0",
-        "milestone must include at least one hashed input",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        "([.commands[].exitStatus] + [.platformEvidence[].commands[].exitStatus]) | length > 0 and all(. == 0)",
-        "milestone commands must all succeed",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        ".tests.total == (.tests.passed + .tests.failed + .tests.skipped)",
-        "test counts must equal passed + failed + skipped",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        ".tests.total > 0 and .tests.passed > 0",
-        "milestone must record at least one passing test",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        ".tests.failed == 0",
-        "milestone tests must have zero failures",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        ".tests.skipped == 0",
-        "milestone tests must have zero skipped tests",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        ".tests.lineCoveragePercent != null and .tests.lineCoveragePercent >= 80",
-        "milestone line coverage must be at least 80%",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        "([.deviations[].classification] + [.risks[].classification]) | all(. != \"blocking\")",
-        "milestone must have no blocking deviations or risks",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        ".review.independent == true and .review.result == \"pass\"",
-        "milestone review must be independent and pass",
-        violations,
-    );
-    require_manifest_rule(
-        manifest_path,
-        ".review | has(\"record\")",
-        "milestone review must include a hashed record",
-        violations,
-    );
+    for (filter, violation) in MANIFEST_INVARIANTS.iter().chain(MANIFEST_VERDICTS) {
+        require_manifest_rule(manifest_path, filter, violation, violations);
+    }
 }
 
 fn verify_admitted_manifest(manifest_path: &Path, milestone: &str, violations: &mut Vec<String>) {
@@ -1451,8 +1701,24 @@ pub fn verify_tracked_paths<'a>(paths: impl IntoIterator<Item = &'a str>) -> Vec
 pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
     let mut violations = Vec::new();
     for relative in paths {
-        let Ok(source) = fs::read_to_string(root.join(relative)) else {
-            continue;
+        // Reading as UTF-8 and skipping what failed meant every non-UTF-8 tracked
+        // file was exempt from the credential scan, which is the one file class a
+        // key or a keystore would actually arrive as. Bytes are scanned lossily
+        // instead, and a file that cannot be read at all is reported rather than
+        // passed over. A symlink's tracked content is its target text, which is
+        // what jj records and therefore what is scanned.
+        let path = root.join(relative);
+        let read = if path.is_symlink() {
+            fs::read_link(&path).map(|target| target.to_string_lossy().into_owned())
+        } else {
+            fs::read(&path).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        };
+        let source = match read {
+            Ok(source) => source,
+            Err(error) => {
+                violations.push(format!("cannot scan tracked file {relative}: {error}"));
+                continue;
+            }
         };
 
         let private_key = [
@@ -1634,7 +1900,7 @@ pub fn verify_budget(root: &Path, candidates: &[&Path]) -> BudgetReport {
             Ok(protocol) => report.violations.push(format!(
                 "{label}, {}, declares budget protocol `{protocol}`, and this comparison \
                  understands only `{BUDGET_PROTOCOL}`",
-                path.display()
+                redacted_path(path)
             )),
             Err(error) => report.violations.push(error),
         }
@@ -1656,7 +1922,7 @@ pub fn verify_budget(root: &Path, candidates: &[&Path]) -> BudgetReport {
             Ok(actual) => report.violations.push(format!(
                 "the budget holds on hardware profile `{required}` and {} was measured on \
                  `{actual}`, so it is remeasured rather than compared",
-                candidate.display()
+                redacted_path(candidate)
             )),
             Err(error) => report.violations.push(error),
         }
@@ -1768,7 +2034,7 @@ fn hardware_profile(baselines: &[&Path]) -> Result<String, String> {
                 return Err(format!(
                     "the budget records hold on different hardware profiles, `{first}` and \
                      `{profile}`, so together they are not a budget; {} is the second",
-                    baseline.display()
+                    redacted_path(baseline)
                 ));
             }
         }
@@ -1791,7 +2057,7 @@ fn union(paths: &[&Path], role: &str) -> Result<Vec<Limit>, String> {
                     "`{}` is stated by two {role}, so it has two ceilings and therefore none; the \
                      second is in {}",
                     limit.metric,
-                    path.display()
+                    redacted_path(path)
                 ));
             }
             all.push(limit);
@@ -1807,7 +2073,7 @@ fn limits(path: &Path) -> Result<Vec<Limit>, String> {
         r#".budget.limits[] | "\(.metric)\t\(.limit)\t\(.measured)\t\(.operator)""#,
     )?;
     if rows.is_empty() {
-        return Err(format!("{} states no budget limits", path.display()));
+        return Err(format!("{} states no budget limits", redacted_path(path)));
     }
 
     rows.lines()
@@ -1822,7 +2088,7 @@ fn limits(path: &Path) -> Result<Vec<Limit>, String> {
                 }),
                 _ => Err(format!(
                     "{} states a limit that is not complete",
-                    path.display()
+                    redacted_path(path)
                 )),
             }
         })
@@ -2031,18 +2297,64 @@ fn jq_value(path: &Path, filter: &str) -> Result<String, String> {
         .output()
         .map_err(|error| format!("cannot read JSON with jq: {error}"))?;
     if !output.status.success() {
-        return Err(format!("cannot read {filter} from {}", path.display()));
+        return Err(format!("cannot read {filter} from {}", redacted_path(path)));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
+/// Names a path the way gate output has to name one.
+///
+/// `verify_milestone` already refuses to report a filesystem error against an
+/// absolute path, and the repository redacts local paths from everything it
+/// records — but `jq_value` printed `root.join(..)` straight into a violation, so
+/// the same gate leaked what the same gate elsewhere took care to hide. This makes
+/// the two agree.
+fn redacted_path(path: &Path) -> String {
+    if path.is_relative() {
+        return path.display().to_string();
+    }
+    std::env::current_dir()
+        .ok()
+        .and_then(|directory| path.strip_prefix(directory).ok().map(Path::to_path_buf))
+        .map_or_else(
+            || {
+                path.file_name().map_or_else(
+                    || "an unnamed path".to_owned(),
+                    |name| name.to_string_lossy().into_owned(),
+                )
+            },
+            |relative| relative.display().to_string(),
+        )
+}
+
+/// Answers one yes-or-no question about a JSON document, or refuses to answer.
+///
+/// Any nonzero jq status used to mean "no", which put a parse error and a false
+/// answer in the same box: an unparseable manifest made every check phrased as a
+/// refusal quietly succeed, and the gate had no way to say it had failed to look.
+/// jq exits 1 when the filter's last output was false or null and 4 when it
+/// produced none — those are answers. Everything else, including the 5 an
+/// unparseable document produces, is jq failing to run at all.
 fn jq_matches(path: &Path, filter: &str) -> Result<bool, String> {
     let output = Command::new("jq")
         .args(["--exit-status", filter])
         .arg(path)
         .output()
         .map_err(|error| format!("cannot validate JSON with jq: {error}"))?;
-    Ok(output.status.success())
+    if output.status.success() {
+        return Ok(true);
+    }
+    match output.status.code() {
+        Some(1 | 4) => Ok(false),
+        Some(code) => Err(format!(
+            "cannot evaluate {filter} against {}: jq exited {code}",
+            redacted_path(path)
+        )),
+        None => Err(format!(
+            "cannot evaluate {filter} against {}: jq was terminated by a signal",
+            redacted_path(path)
+        )),
+    }
 }
 
 fn evidence_schema_matches(root: &Path, manifest: &Path) -> Result<bool, String> {
@@ -2080,10 +2392,21 @@ mod tests {
     use std::process::Command;
 
     use super::{
-        change_mismatch, required_scaffold_paths, verify_evidence_records, verify_experiment_fence,
+        MILESTONE_MANIFESTS, change_mismatch, declares_unsafe_prohibition, redacted_path,
+        required_scaffold_paths, verify_evidence_records, verify_experiment_fence,
         verify_ignored_boundaries, verify_milestone, verify_scaffold, verify_spikes,
-        verify_tracked_contents, verify_tracked_paths, verify_version_boundary,
+        verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
+        verify_version_boundary,
     };
+
+    /// A passing gate run, which every fixture below records.
+    ///
+    /// A manifest carrying neither `commands` nor `tests` is now a violation of
+    /// its own, because both being absent used to clear the run check in silence.
+    /// The fixtures below are about digests, so they record a run that agrees with
+    /// itself and leave the run rules to the tests written for them.
+    const RECORDED_RUN: &str = r#""commands":[{"exitStatus":0}],
+        "tests":{"total":9,"passed":9,"failed":0,"skipped":0,"lineCoveragePercent":85.97}"#;
 
     /// Writes a milestone manifest recording one result and returns the root.
     fn recorded_result_root(label: &str, result: &str, digest: &str) -> PathBuf {
@@ -2094,7 +2417,7 @@ mod tests {
         fs::write(
             milestone.join("manifest.json"),
             format!(
-                r#"{{"benchmarks":{{"protocolVersion":"v1",
+                r#"{{{RECORDED_RUN},"benchmarks":{{"protocolVersion":"v1",
                     "results":[{{"name":"result.json","sha256":"{digest}"}}]}}}}"#
             ),
         )
@@ -2139,7 +2462,7 @@ mod tests {
         fs::write(
             milestone.join("manifest.json"),
             format!(
-                r#"{{"benchmarks":{{"protocolVersion":"v1","results":[
+                r#"{{{RECORDED_RUN},"benchmarks":{{"protocolVersion":"v1","results":[
                     {{"name":"manifest.json","sha256":"{EMPTY_OBJECT_DIGEST}"}},
                     {{"name":"../m8/borrowed.json","sha256":"{EMPTY_OBJECT_DIGEST}"}},
                     {{"name":"absent.json","sha256":"{EMPTY_OBJECT_DIGEST}"}}]}}}}"#
@@ -2156,12 +2479,9 @@ mod tests {
                 "evidence/m9/manifest.json records a result outside its own milestone: \
                  ../m8/borrowed.json"
                     .to_owned(),
-                format!(
-                    "evidence/m9/manifest.json records absent.json: cannot read the recorded \
-                     file: {}",
-                    fs::read(milestone.join("absent.json"))
-                        .expect_err("absent file cannot be read")
-                ),
+                "evidence/m9/manifest.json records a result that the repository does not \
+                 track, so its digest binds nothing a reader can obtain: absent.json"
+                    .to_owned(),
             ]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -2176,7 +2496,8 @@ mod tests {
         fs::write(
             milestone.join("manifest.json"),
             format!(
-                r#"{{"review":{{"reviewer":"an independent reviewer","independent":true,
+                r#"{{{RECORDED_RUN},"review":{{"reviewer":"an independent reviewer",
+                    "independent":true,
                     "result":"pass","record":{{"name":"{name}","sha256":"{digest}"}}}}}}"#
             ),
         )
@@ -2241,8 +2562,10 @@ mod tests {
         fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
         fs::write(
             milestone.join("manifest.json"),
-            r#"{"review":{"reviewer":"an independent reviewer","independent":true,
-                "result":"fail"}}"#,
+            format!(
+                r#"{{{RECORDED_RUN},"review":{{"reviewer":"an independent reviewer",
+                    "independent":true,"result":"fail"}}}}"#
+            ),
         )
         .expect("manifest should be writable");
 
@@ -2260,7 +2583,8 @@ mod tests {
         fs::write(
             milestone.join("manifest.json"),
             format!(
-                r#"{{"platformEvidence":[{{"baselines":[{{"workload":"vanilla",
+                r#"{{{RECORDED_RUN},"platformEvidence":[{{"baselines":[
+                    {{"workload":"vanilla",
                     "result":{{"name":"launch.json","sha256":"{digest}"}},
                     "validation":{{"name":"private launch validation",
                         "sha256":"{}"}}}}]}}]}}"#,
@@ -2306,9 +2630,10 @@ mod tests {
         fs::write(
             milestone.join("manifest.json"),
             format!(
-                r#"{{"platformEvidence":[{{"baselines":[{{"workload":"vanilla",
+                r#"{{{RECORDED_RUN},"platformEvidence":[{{"baselines":[
+                    {{"workload":"vanilla",
                     "result":{{"name":"absent.json","sha256":"{EMPTY_OBJECT_DIGEST}"}},
-                    "validation":{{"name":"../m8/borrowed.json",
+                    "validation":{{"name":"a private launch validation",
                         "sha256":"{EMPTY_OBJECT_DIGEST}"}}}}]}}]}}"#
             ),
         )
@@ -2319,15 +2644,8 @@ mod tests {
         assert_eq!(
             violations,
             [
-                format!(
-                    "evidence/m9/manifest.json records absent.json: cannot read the recorded \
-                     file: {}",
-                    fs::read(milestone.join("absent.json"))
-                        .expect_err("absent file cannot be read")
-                ),
-                "evidence/m9/manifest.json records a baseline outside its own milestone: \
-                 ../m8/borrowed.json"
-                    .to_owned(),
+                "evidence/m9/manifest.json records a baseline that the repository does not track, \
+              so its digest binds nothing a reader can obtain: absent.json"
             ]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -2371,7 +2689,7 @@ mod tests {
         fs::write(
             milestone.join("manifest.json"),
             format!(
-                r#"{{"revision":{{"id":"{revision}"}},
+                r#"{{{RECORDED_RUN},"revision":{{"id":"{revision}"}},
                     "inputs":[{{"name":"{name}","sha256":"{digest}"}}]}}"#
             ),
         )
@@ -2804,6 +3122,217 @@ mod tests {
             violation.starts_with("hardcoded Minecraft version outside version data:")
         }));
         fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn every_milestone_manifest_is_required_by_name() {
+        // The defect this exists for: the sweep discovered manifests by scanning
+        // `evidence/`, so moving all four away left the scaffold reporting zero
+        // manifests, zero violations, and "verification passed".
+        let required = required_scaffold_paths();
+
+        for (relative, _) in MILESTONE_MANIFESTS {
+            assert!(
+                required.iter().any(|path| path == relative),
+                "{relative} must be required by name"
+            );
+        }
+    }
+
+    #[test]
+    fn an_evidence_tree_holding_no_manifest_is_reported() {
+        let root = temporary_root("records-none");
+        fs::create_dir_all(root.join("evidence")).expect("evidence directory should be creatable");
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/ holds no milestone manifest, and a manifest sweep over nothing passes \
+              vacuously"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_manifest_recording_neither_a_run_nor_a_test_result_is_reported() {
+        // The defect this exists for: `del(.tests, .commands)` left this check
+        // with nothing to say and the scaffold at zero.
+        let root = recorded_run_root("run-silent", r#"{"milestone":"M9"}"#);
+
+        assert_eq!(
+            verify_evidence_records(&root),
+            [
+                "evidence/m9/manifest.json records neither a gate run nor a test result, so there is \
+              nothing here a gate can hold it to"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_baseline_result_named_by_description_is_reported() {
+        // The defect this exists for: rewording a result name to prose failed the
+        // path heuristic, and failing it bought an announced skip rather than a
+        // violation, so a digest could be detached from its file by editing a
+        // string. The validation beside it names a private capture and stays a
+        // skip, which is what makes the two distinguishable at all.
+        let root = temporary_root("baseline-prose");
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{{RECORDED_RUN},"platformEvidence":[{{"baselines":[
+                    {{"workload":"vanilla",
+                    "result":{{"name":"the Linux vanilla launch summary",
+                        "sha256":"{EMPTY_OBJECT_DIGEST}"}},
+                    "validation":{{"name":"a private launch validation",
+                        "sha256":"{EMPTY_OBJECT_DIGEST}"}}}}]}}]}}"#
+            ),
+        )
+        .expect("manifest should be writable");
+
+        assert_eq!(
+            verify_evidence_records(&root),
+            [
+                "evidence/m9/manifest.json records a baseline result by description rather than by \
+              path, so its digest binds nothing obtainable: the Linux vanilla launch summary"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_digest_binding_an_untracked_file_is_reported() {
+        // The defect this exists for: the digest was recomputed against the working
+        // copy and nothing asked whether the repository held the file, so a record
+        // could be bound to something only the machine that wrote it can obtain.
+        let root = temporary_root("records-untracked");
+        let initialised = Command::new("jj")
+            .args(["git", "init"])
+            .current_dir(&root)
+            .output()
+            .expect("jj should be available");
+        assert!(initialised.status.success(), "{initialised:?}");
+        fs::write(root.join(".gitignore"), "ignored.json\n").expect("ignore should be writable");
+        let milestone = root.join("evidence/m9");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("ignored.json"), "{}\n").expect("result should be writable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{{RECORDED_RUN},"revision":{{"id":"@"}},
+                    "benchmarks":{{"protocolVersion":"v1",
+                    "results":[{{"name":"ignored.json",
+                        "sha256":"{EMPTY_OBJECT_DIGEST}"}}]}}}}"#
+            ),
+        )
+        .expect("manifest should be writable");
+
+        assert_eq!(
+            verify_evidence_records(&root),
+            [
+                "evidence/m9/manifest.json records a result that the repository does not track, so \
+              its digest binds nothing a reader can obtain: ignored.json"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn an_unparseable_manifest_cannot_answer_a_check() {
+        // The defect this exists for: jq's nonzero exit was read as the answer
+        // "no", so a document it could not parse quietly satisfied every check
+        // phrased as a refusal.
+        let root = recorded_run_root("records-unparseable", "{not json\n");
+
+        let violations = verify_evidence_records(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("jq exited 5")),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn the_unsafe_prohibition_must_be_the_attribute_and_not_a_doc_comment() {
+        // The defect this exists for: `crates/ravel-bootstrap/src/lib.rs` quotes
+        // the attribute in a doc comment, so a substring test passed that crate
+        // with the real attribute deleted and a working `unsafe` block added.
+        assert!(declares_unsafe_prohibition("#![forbid(unsafe_code)]\n"));
+        assert!(declares_unsafe_prohibition(
+            "//! a crate\n\n    #![forbid(unsafe_code)]\n"
+        ));
+        assert!(!declares_unsafe_prohibition(
+            "//! this crate keeps `#![forbid(unsafe_code)]` verbatim\npub fn f() {}\n"
+        ));
+    }
+
+    #[test]
+    fn production_crates_cannot_depend_on_the_test_harness() {
+        // The defect this exists for: `dependency-rules.md` forbids it and nothing
+        // enforced it, so adding the dependency left the scaffold at zero.
+        let root = temporary_root("fence-testkit");
+        let crate_root = root.join("crates/ravel-loader");
+        fs::create_dir_all(&crate_root).expect("crate directory should be creatable");
+        fs::write(
+            crate_root.join("Cargo.toml"),
+            "[dependencies]\nravel-testkit.workspace = true\n",
+        )
+        .expect("manifest should be writable");
+        let mut violations = Vec::new();
+
+        verify_testkit_fence(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            ["production crate depends on the test harness: crates/ravel-loader/Cargo.toml"]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_tracked_file_that_is_not_utf8_is_still_scanned_for_credentials() {
+        // The defect this exists for: the scan read every tracked file as UTF-8 and
+        // skipped what failed, exempting exactly the binary files a key arrives as.
+        let root = temporary_root("credentials-binary");
+        let mut bytes = format!("{}{}\n", "-----BEGIN OPENSSH ", "PRIVATE KEY-----").into_bytes();
+        bytes.push(0xff);
+        fs::write(root.join("keystore.bin"), bytes).expect("canary should be writable");
+
+        let violations = verify_tracked_contents(&root, &["keystore.bin".to_owned()]);
+
+        assert_eq!(
+            violations,
+            ["tracked file contains credential material: keystore.bin"]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn gate_output_never_names_an_absolute_path() {
+        // The repository redacts local paths from everything it records, and
+        // `verify_milestone` already refuses to report one; `jq_value` printed one
+        // straight into a violation.
+        let absolute = std::env::current_dir()
+            .expect("the current directory must be available")
+            .join("evidence/m0/manifest.json");
+
+        assert_eq!(redacted_path(&absolute), "evidence/m0/manifest.json");
+        assert_eq!(
+            redacted_path(Path::new("evidence/m0/manifest.json")),
+            "evidence/m0/manifest.json"
+        );
+        assert_eq!(
+            redacted_path(Path::new("/somewhere/else/manifest.json")),
+            "manifest.json"
+        );
     }
 
     fn temporary_root(label: &str) -> PathBuf {

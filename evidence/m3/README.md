@@ -1,9 +1,9 @@
 # M3 evidence
 
-M3-W0 through M3-W7 are closed. M3-W8 is open: the independent prototype review
-returned FAIL, every finding it raised has since been answered, and no
-independent review has been run against this state. M3 is not closed and does
-not authorize private inventory work.
+M3-W0 through M3-W7 are closed. M3-W8 is open: every independent round that has
+run returned FAIL, the findings of the latest one are answered here, and no round
+has yet run against this state. M3 is not closed and does not authorize private
+inventory work.
 
 M3-W4 and M3-W7 close on operator attestation for their live half. The world
 round trip and every native surface row were observed in a real client, and the
@@ -21,17 +21,26 @@ result for a recomputable one.
 | [`pack-compile.json`](pack-compile.json) | ADG-2 | What compiling a pack-sized set of mods with real bodies costs — cold, warm after one mod changes, in peak memory, and on disk. |
 | [`profiling-overhead.json`](profiling-overhead.json) | M3-W6 | What opt-in profiling costs a tick when nobody turned it on, what it can and cannot attribute to a mod, and which metrics it cannot measure at all. |
 | [`linux-process-matrix.json`](linux-process-matrix.json) | M3-W7 | What a real Linux launch proves about the game directory, the rewrite, and the instance — and, at least as importantly, what it could not reach. |
-| [`review.md`](review.md) | M3-W8 | The three independent M3-W8 rounds as they were written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. All three are FAIL. |
+| [`review.md`](review.md) | M3-W8 | The tracked independent M3-W8 rounds as they were written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. Every round is FAIL, and the record says which round it does not hold and why. |
 
 ## M3-W8 review
 
-[`review.md`](review.md) holds all three rounds verbatim and `review.record` binds
-its digest, so the verdicts below are readable rather than summarised from memory.
-They are one file rather than three because `review.record` binds one artifact per
-milestone and the rounds only mean anything read in order: round two verifies round
-one's repairs, round three verifies round two's.
+[`review.md`](review.md) holds the tracked rounds verbatim and `review.record`
+binds its digest, so those verdicts are readable rather than summarised from
+memory. They are one file rather than one file each because `review.record` binds
+one artifact per milestone and the rounds only mean anything read in order: each
+round verifies the previous round's repairs.
 
-The independent prototype review returned **FAIL** with four blocking findings.
+One round is missing from it, and the fourth round is what found that out. The
+earliest round reviewed the prototype rather than the evidence set, and its verdict
+was never written into the repository — the summary below is all that survives of
+it, which is exactly what a tracked review record exists to prevent. `review.md`
+names the omission, states that the text is not recoverable from the repository or
+its history, and says that its own numbering therefore begins at the second round.
+The counts here and in `manifest.json` count the missing round rather than rounding
+it away.
+
+That earliest round returned **FAIL** with four blocking findings.
 All four are answered, and they stay listed because a finding that disappears
 once it is fixed leaves no way to tell it from one that was never raised:
 
@@ -157,8 +166,18 @@ checkout with no `.jj`, so on a git-only clone the control their own doc comment
 calls the repository's strongest provenance control evaporated without a word. Both
 now announce the skip the way `verify_recorded_inputs` already did.
 
+The fourth round found the same shape one level down and it is fixed the same way.
+`change_mismatch` treated empty output from `introducing_change` as agreement, so
+any path jj could not attribute cleared the repository's strongest provenance
+control without a word; it now announces that it cleared without a verdict. The
+same round's two remaining findings are carried as deviations: the pinned revision
+is already an abandoned commit rather than one that might become abandoned, and
+`overhead.perTick`'s derivation could not be followed from the percentiles printed
+beside it until the record stated its own rounding.
+
 M3-W8 stays open. Every implementation gate is closed, but the review that has to
-pass is an *independent* one, and none has been run against this state.
+pass is an *independent* one, every round so far has returned FAIL, and no round
+has yet run against this state.
 
 `pack-compile.json` comes from `devenv tasks run ravel:measure-pack-compile` and
 is the measurement ADG-2 named as deciding its open mechanism: whether an

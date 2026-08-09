@@ -2,21 +2,56 @@
 
 Result: FAIL
 
-Three independent rounds ran against successive states of the M3 evidence. Each
-reviewer wrote none of the work under review. All three returned FAIL, and the
-third is the standing verdict: `evidence/m3/manifest.json` records
+Independent rounds ran against successive states of the M3 evidence. Each reviewer
+wrote none of the work under review, and every round returned FAIL. Round 4 below
+is the standing verdict: `evidence/m3/manifest.json` records
 `review.result: "fail"` and M3-W8 stays open.
 
-They are one record rather than three files because `review.record` in
+One round is not here. The earliest round of all reviewed the prototype rather than
+the evidence set, and its verdict text was never written into the repository; the
+next section states what is known about it, that the text is not recoverable, and
+what that costs a reader. **The numbering below counts only the rounds this file
+holds, so "Round 1" is the second round that ran.**
+
+They are one record rather than one file each because `review.record` in
 `schemas/evidence.schema.json` binds one hashed artifact per milestone, and these
 are successive rounds of a single M3-W8 review of a single work package. Carrying
-them as three tracked files would need a schema change to hold three records, and
-the rounds only mean anything read in order — round 2 verifies round 1's repairs,
-round 3 verifies round 2's.
+them as separate tracked files would need a schema change to hold more than one
+record, and the rounds only mean anything read in order — each verifies the
+previous round's repairs.
 
 Each verdict is reproduced as written, without softening and with nothing added.
 The `file:line` anchors are as of the tree each reviewer read; later rounds and
 later repairs have moved some of them.
+
+---
+
+## The prototype round — VERDICT: FAIL, verdict text untracked
+
+This round ran before `review.md` existed and reviewed the prototype rather than
+the evidence set. Its verdict was never written into the repository, and it is not
+recoverable from the repository or its history: `evidence/m3/review.md` has never
+held more than the three rounds it held before Round 4 was added, no other tracked
+file has ever held a review record for M3, and change `xqmmlnzmtkqp`, which
+recorded this round's outcome, changed only `evidence/m3/README.md` and
+`evidence/m3/manifest.json`.
+
+What survives is the prose summary in those two files. It attributes four blocking
+findings to this round — the manifest inventory omission of M3-W0, the
+package-schema contradiction between `schemas/package.schema.json` and the
+source-only distribution contract ADG-2 selected, the missing Ravel-owned versioned
+world write, and the unexercised native surfaces — and three clean results: hook
+integrity, safety/layering/ADR conformance, and evidence redaction. All four
+findings are recorded as answered.
+
+That summary is not a verdict. Absent the text there is no clause table, no
+`file:line` anchor, no statement of what this reviewer recomputed or could not
+reach, and no independent way to check the summary against what was actually
+written — including whether four is the number of findings it raised. A reader
+therefore has to take the summary on trust in exactly the way this record exists to
+make unnecessary, and the tracked record begins one round later than the review
+did. Round 4 raised this as its N-3 finding; it is answered by saying so here
+rather than by reconstructing a verdict nobody has.
 
 ---
 
@@ -532,3 +567,180 @@ settings round trip, the command path, both profiling scale observations, and ev
 instance scan — none of which any reviewer on any machine can re-derive from this
 repository, plus the two M0 private validation digests and the M1/M2 private review
 records.
+
+---
+
+## Round 4 — VERDICT: FAIL
+
+I recomputed everything and ran the gates. Here is the verdict.
+
+Two false claims about the live tree in `evidence/m3/README.md`, one of them inside
+the very paragraph written to repair round 3's blocking F-A, plus an incomplete
+review record. All three are the same class rounds 2 and 3 died on: a count that
+does not survive being recomputed.
+
+### Round 4 — Clause-by-clause (M3-W8, `ROADMAP.md:716`, closure standard `ROADMAP.md:720-722`)
+
+| Gate clause | File:line that proves it | Status |
+| --- | --- | --- |
+| Output: "review record" exists, digest-bound | `evidence/m3/manifest.json:216-221` `review.record.name: "review.md"`; `evidence/m3/review.md` hashes `df29c46a…` — I recomputed, matches; bound by `verify_recorded_review` (`tools/ravel-xtask/src/lib.rs:525-575`) via `verify_tracked_digest` (`:592`) | **proven** (a record exists and is bound) |
+| Review is independent | `manifest.json:222-224` `independent: true`; `review.md:5-6` | **asserted only** — no gate can bind reviewer identity |
+| "M3 gate passes" | `ravel:verify-milestone:m3` exit **1**: `milestone must have no blocking deviations or risks`, `milestone review must be independent and pass` (`manifest.json:210-213` blocking risk, `:225` `result: "fail"`) | **not passing** (deliberately, pre-verdict) |
+| `ravel:verify` green | my run: exit **0** (827 tests, 827 passed, 0 skipped) | **proven** |
+| `ravel:verify-stack` green | my run: exit **0** | **proven** |
+| "authorizes private inventory work only after M4" | `README.md:3-6`; `manifest.json:210-213` | **proven** (correctly withheld) |
+| M3-W0 target reconciliation | recomputed from `hooks.toml`: 37 entries = 7 static + 26 instance methods (**33**) + 4 fields, over **15** classes; per-class 5+4+1+1+1+2+2+5+1+1+1+4+1+1+3 = 33; `mappings.lock` holds 37 distinct members, same 15 classes; `adapter.toml:22` `clientJarSha256` = `mappings.lock` `clientJarSha256` | **proven, observed** |
+| Title-only reconciliation 15−4=11, 33−6=27 | recomputed: the 4 absent classes hold exactly 6 of the 8 `rewrite.worldOnlyTargets`; `world.open-persistence`/`world.save-persistence` sit in `Minecraft`/`MinecraftServer`, both loaded at title. `linux-process-matrix.json` `rewrite.worldOnlyTargetsCriterion` and `surfaceCampaign.launchDetail.first.whyElevenNotFifteen` agree | **proven, observed** |
+| M3-W6 unsupported-metric count | `crates/ravel-observability/src/profiling.rs:165-227` declares exactly **6** unsupported (5 + `TickCount`); `Profiler::tick` has callers only at `:634,694,695,823,844`, all below `#[cfg(test)]` at `:611` | **proven, concluded from code** |
+| M3-W4 / M3-W7 live halves | `linux-process-matrix.json` `reviewCeiling`, `resultCeiling` | **attested by an operator, not recomputable** — correctly labelled |
+| M3 evidence README describes the records it inventories | `README.md:76`, `:217` | **disproven — N-1, N-2** |
+
+### Round 4 — Round 3's findings, one by one
+
+| Finding | Status | Checked at |
+| --- | --- | --- |
+| **F-A** (README falsely called the revision/gate numbers "this state's") | **partially repaired, and re-broken.** The false sentence is gone and replaced by an honest arithmetic argument (`README.md:73-97`); `verify_recorded_run` exists and is wired (`lib.rs:259-320`, called from `:241`) and holds M3's block to itself (813 = 813+0+0, 85.97 ≥ 80). But the replacement embeds a new false count — see **N-1** | `README.md:73-97`, `lib.rs:259-320` |
+| **F-B** (five-vs-six metric drift) | **repaired.** Five where it describes the pre-fix observation (`README.md:296-301`; `linux-process-matrix.json` `profilingSurfaceDefect.…unsupportedMetrics` "two of the five"), six where it describes the re-observation (`README.md:322-325`; `caveatReObservationCampaign.atScaleOne.linesDrawn`). Both agree with the 6 `Support::Unsupported` arms in `profiling.rs` | `README.md:296-301`, `:322-325` |
+| **F-C** (`review.record.sha256` unbound) | **fixed, not merely recorded.** `verify_recorded_review` (`lib.rs:525-575`) rejects a prose name (`names_a_path`, `:577`) as a *violation* rather than a skip; M0's `review.md` = `b225d06b…` ✓, M1's = `59092e69…` ✓, M3's = `df29c46a…` ✓, M2's withdrawn (and `m2` gate exits 1 on the missing record, as documented) | `lib.rs:525-575`, `manifest.json:216-221` |
+| **F-D** (silent `.jj` skips) | **repaired.** Both now `println!` the skip: `lib.rs:698-703` (`verify_recorded_change`), `lib.rs:771-776` (`verify_manifest_change`) | as cited |
+| **F-E** (`verify_evidence_records` has no floor) | **recorded as a non-blocking deviation** (`manifest.json:156`), and the hole is real and unfixed: `lib.rs:225-231` `.into_iter().flatten().flatten()` yields zero manifests, zero violations, no message | as cited |
+| **F-F** (`whatSurvivesTheRemoval` implied a digest restores checkability) | **fixed.** The passage now reads "All three are now claims in this file: `reviewCeiling` above states the position this passage has to keep" | `linux-process-matrix.json` `worldPersistenceRoundTrip.worldRemovedAfterwards` |
+| **F-G** (`worldOnlyTargets` had no membership rule) | **fixed.** `rewrite.worldOnlyTargetsCriterion` states the rule and names the four targets the narrower rule excludes; I confirmed all four exist in loaded classes | as cited |
+
+### Round 4 — New findings
+
+**N-1 — blocking. `evidence/m3/README.md:76` and `evidence/m3/manifest.json:167`
+state a false count about the live tree.** Both say `revision.id` "resolves to
+change `pqkoksqopryu`, **six** described changes below the tip". Recomputed:
+`jj log -r 'pqkoksqopryu::@ ~ pqkoksqopryu'` returns **14 changes — 13 described**
+plus the empty working copy (`yuouxpsvvstn`, `txvluwnvrpor`, `vtprwxqxpykr`,
+`ssvlsmrxllom`, `pwlmolmtmnol`, `mrrxlqsuwkqm`, `snuqtkvvpoln`, `wrrqlmrmnswx`,
+`pyzomuruuouy`, `tyvwrtwmzpsk`, `mvpnyqsyvswq`, `xoxrmtyorpmq`, `ltxxwlqmrlku`).
+Six was true when round 3 wrote it — round 3's F-A enumerates exactly those six —
+and seven changes have landed since. This is round 3's F-A reproduced: a positive
+false claim about this state, in the paragraph written to remove one. The defect is
+structural, not arithmetic: any absolute count of changes below the tip is false on
+the next commit, so the fix is to drop the number, not to update it to 13.
+
+**N-2 — must fix. `evidence/m3/README.md:217` contradicts the record it documents
+on the number of campaigns.** README: "It now holds **three** launch campaigns."
+`linux-process-matrix.json` `summary`: "**Four** campaigns are recorded here." The
+record holds four — the earlier 31-target campaign (`privateEvidenceDigests.provenance`,
+`matrixNotCarriedForward`), the world round trip (`thisCampaignMachineEvidence`, 3
+launches), the surface campaign (3 launches), and `caveatReObservationCampaign` (1
+launch). The README's own narration confirms four and forces the contradiction:
+`:254` calls the surface campaign "**A third** campaign … the rows **the first** had
+left inherited" (the first being the 31-target campaign), and `:316` then introduces
+the caveat re-observation as a further one. Either "three" is wrong or "a third
+campaign" is; the matrix says four.
+
+**N-3 — moderate. The review record omits one of the four rounds, and the manifest
+miscounts them.** `README.md:34-63` and `manifest.json:73` attribute four blocking
+findings — manifest inventory, package schema, missing world write, unexercised
+native surfaces — to "the independent prototype review". None of those four appears
+in any of the three rounds `review.md` tracks; `review.md` Round 1 raises digest
+rot, the stale pinned revision, the world-round-trip self-contradiction and the
+self-declared `pass`, which `manifest.json:73` itself calls "**a later** review
+round". So four rounds ran and three are tracked. `manifest.json:222`
+(`"three rounds"`) and the blocking risk at `:210` ("Three independent M3-W8 rounds
+have run … their verdicts are tracked at evidence/m3/review.md") both understate it,
+and the earliest round's verdict — the one whose findings the README leads with —
+survives only as prose summary, which is precisely what `review.md:28-29` says the
+tracked record exists to prevent.
+
+**N-4 — minor. `evidence/m3/profiling-overhead.json` publishes two derived figures
+that cannot be recomputed from the percentiles beside them.**
+`overhead.perTick.formula` is "one tick boundary plus the assumed crossings, each at
+its 99th percentile"; from the published `off.perCrossing.p99 = 0.05` and
+`off.perTickBoundary.p99 = 0.05`, 0.05 + 10000×0.05 = **500.05**, but `nanoseconds`
+records **510.05**. `breakEven.crossingsPerTick = 9803920.59` reconciles only at
+(500000 − 0.05)/**0.051**. Both figures are consistent at three decimal places and
+the record publishes two, with no rounding note — so a reader applying the stated
+formula to the stated inputs gets the wrong answer. The budget itself passes
+(510.05 ≤ 500000). No prior round reached this file.
+
+**N-5 — minor, informational. `revision.id` pins an already-abandoned commit.**
+`jj log -r 3c3520be…` reports `hidden=yes`, and `3c3520be::@` is empty — the commit
+is not an ancestor of `@`; change `pqkoksqopryu` now points at `b9c5f54b`.
+`jj file show -r` still resolves it, so `verify_recorded_inputs` genuinely binds
+(4/4 matched). The manifest discloses the `jj util gc` fragility as a deviation but
+presents it as a future risk; it is already an obsolete commit kept alive only by the
+op log. `README.md:75` "resolves to change `pqkoksqopryu`" is true but not for the
+reason a reader would assume.
+
+**N-6 — minor. `change_mismatch` (`lib.rs:798-806`) passes silently when
+`introducing_change` returns empty output.** `owner.is_empty()` → `None`. The doc
+comment sanctions it for untracked results, but the effect is that any path jj cannot
+attribute clears the repository's strongest provenance control without a word — the
+same failure mode F-D was raised about, one level down.
+
+### Round 4 — Vacuity audit of the digest machinery
+
+`verify_recorded_digests`, `verify_recorded_baselines`, `verify_recorded_review`,
+`verify_recorded_inputs`, `verify_recorded_run` — every skip and early return read at
+`lib.rs:223-625`. Findings: the directory-scan floor (F-E, disclosed, real);
+`.benchmarks.results[]?`/`.inputs[]?`/`.platformEvidence[]?` all use `?`, so a
+renamed or absent key checks nothing silently (disclosed as two deviations, real);
+`verify_recorded_run` returns early when `.tests` is absent, so a manifest with
+neither `commands` nor `tests` passes it entirely (harmless — `verify_general_closure`
+refuses to close such a manifest); N-6 above. Everything else fails closed: `jq`
+absent → violation, invalid filter → violation, unreadable file → violation, path
+escaping the milestone → violation, a manifest recording its own digest → violation,
+`.tests: {}` → caught by `total > 0`. I found no way for a *recorded* digest to pass
+without being computed.
+
+### Round 4 — Coverage
+
+**Recomputed: 37 digests, 37 matched.** 4 M3 results, 4 M3 inputs (by
+`jj file show` at pinned `3c3520be`), 1 M3 review record; 2 M0 baseline results, 1 M0
+review record; 20 M1 spike results, 1 M1 review record; 4 M2 results. Also
+recomputed: the 3 M3 input files in the working copy (identical to the
+pinned-revision values); the 37/33/15 hook inventory from `hooks.toml` and
+`mappings.lock`; the per-class method breakdown; 15−4=11, 33−6=27, 6+2=8; the
+jar-hash chain `adapter.toml` → `mappings.lock`; the 6 unsupported metric arms and
+all 5 `Profiler::tick` call sites; the `perTick`/`breakEven` arithmetic (did not
+reconcile — N-4); the change count below `revision.id` (did not reconcile — N-1);
+the campaign enumeration (did not reconcile — N-2).
+
+**Ran, judged by exit code:** `ravel:verify` **0**, `ravel:verify-stack` **0**,
+`ravel:verify-milestone:m3` **1** (two violations, both deliberate).
+
+**Read in full:** `ROADMAP.md` M3/M4 rows and the closure rule;
+`evidence/m3/README.md` (388 lines); `evidence/m3/manifest.json`;
+`evidence/m3/review.md` (all three rounds); `evidence/m3/linux-process-matrix.json`
+(every scalar path enumerated, load-bearing objects verbatim);
+`evidence/m3/profiling-overhead.json` `overhead`/`budget`;
+`tools/ravel-xtask/src/lib.rs:150-810` and `:947-1130`; the
+`revision`/`inputs`/`benchmarks`/`review` blocks of all four manifests;
+`minecraft/versions/26.1.2/hooks.toml`, `mappings.lock`, `adapter.toml`.
+
+**Not reached:** `pack-compile.json` and `class-loader-identity.json` contents
+(digests only); `profiling-overhead.json` `collectors`/`trial`/`whatThisDoesNotSay`;
+the conformance test bodies and the JVM harness sources;
+`schemas/evidence.schema.json` clause by clause (relied on `check-jsonschema` inside
+the gates); `evidence/m0`, `m1`, `m2` prose beyond the blocks cited; every
+`logSha256`, `verificationLogSha256`, `artifacts[].sha256`, and the two M0 private
+validation digests — unbindable by construction and announced as such. I cannot
+verify `review.md` against the original round 1–3 transcripts, which do not exist in
+the repository; on internal evidence it is not softened — round 1's F1/F2/F3 keep
+**BLOCKING**, round 2's F1/F2 keep **must fix**, round 3's F-A keeps **blocking**,
+and round 3's enumeration of the six changes corroborates that its own numbers were
+true when written. What it omits is a whole round (N-3), not a severity.
+
+### Round 4 — What a fix costs
+
+N-1 and N-2 are one-line edits (drop the drifting count; say four campaigns, or
+renumber). N-3 needs either the prototype round's verdict added to `review.md` and
+the counts in `manifest.json:73`, `:210`, `:222` corrected to four, or an explicit
+statement that the earliest round is untracked and its findings are a summary. N-4
+needs a rounding note or a third decimal place. N-5 and N-6 are deviation-grade.
+
+Had those been clean, the honest ceiling I would have named is the one round 3 named
+and this round confirms unchanged: the entire live half of M3-W4 and M3-W7 — the
+world round trip, the `dataVersion`→9 refusal, all three screens, the settings round
+trip, the command path, both profiling scale observations and every instance scan —
+is operator attestation over deleted worlds, logs and screenshots, recomputable by
+nobody; `tests.total: 813` and `lineCoveragePercent: 85.97` are attested numbers from
+a private log on an abandoned commit (the tip now runs 827) and `verify_recorded_run`
+binds only their internal consistency; and the durability of all four milestones'
+input provenance rests on jj's op log retaining obsolete commits.

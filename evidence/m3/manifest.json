@@ -70,7 +70,7 @@
         },
         "M3-W8": {
           "status": "open",
-          "evidence": "The independent prototype review returned FAIL with four findings, and all four are now answered: the manifest inventory omission of M3-W0; the package-schema contradiction, which change rkrpplvwpklskyuwvksvmuuyklkwsqlt closed by migrating schemas/package.schema.json in place so that targets is refused and source declares a repository plus integrity-protected portable files; the missing Ravel-owned versioned world write, closed under M3-W4; and the unexercised native surfaces, closed under M3-W7. A later review round found four more against the evidence set itself rather than the prototype: the manifest recorded digests nothing recomputed, it pinned a revision predating the work it covered, it contradicted the other records on whether the world round trip had happened, and one record self-declared a pass the manifest held open. Those are answered by change pqkoksqopryuyvzormzsnllylmusvtpp and by the digest check verify_evidence_records added in yuouxpsvvstnoquzxxsrwktmzrlmmlvy. Clean results: hook integrity passed, safety/layering/ADR conformance passed, and redaction passed. M3-W8 stays open because the review that must pass is an independent one, and no independent review has been run against this state."
+          "evidence": "The earliest independent round returned FAIL with four findings, and all four are now answered. That round's verdict text was never written into the repository and is not recoverable from it: what follows is the summary, which evidence/m3/review.md now names as the one round it does not hold. The four findings were the manifest inventory omission of M3-W0; the package-schema contradiction, which change rkrpplvwpklskyuwvksvmuuyklkwsqlt closed by migrating schemas/package.schema.json in place so that targets is refused and source declares a repository plus integrity-protected portable files; the missing Ravel-owned versioned world write, closed under M3-W4; and the unexercised native surfaces, closed under M3-W7. A later review round found four more against the evidence set itself rather than the prototype: the manifest recorded digests nothing recomputed, it pinned a revision predating the work it covered, it contradicted the other records on whether the world round trip had happened, and one record self-declared a pass the manifest held open. Those are answered by change pqkoksqopryuyvzormzsnllylmusvtpp and by the digest check verify_evidence_records added in yuouxpsvvstnoquzxxsrwktmzrlmmlvy. Clean results: hook integrity passed, safety/layering/ADR conformance passed, and redaction passed. Three further rounds followed, so evidence/m3/review.md holds four verbatim verdicts and names the earliest round as the one it does not hold; the latest of the four found the omitted verdict text described above, two counts in evidence/m3/README.md that no longer described the tree, an unfollowable derivation in evidence/m3/profiling-overhead.json, and two deviation-grade holes recorded below. M3-W8 stays open because the review that must pass is an independent one, every round so far returned FAIL, and no round has yet run against this state."
         }
       }
     }
@@ -172,6 +172,18 @@
       "classification": "non-blocking"
     },
     {
+      "summary": "The earliest M3-W8 round's verdict text is untracked and not recoverable. The four blocking findings this manifest and evidence/m3/README.md attribute to it survive as prose summary only: evidence/m3/review.md has never held that round, no other tracked file has ever held a review record for M3, and change xqmmlnzmtkqpuuxymttpzqyvnovxtxtv, which recorded the round's outcome, touched only the README and this manifest. So there is no clause table, no anchor, no statement of what that reviewer recomputed or could not reach, and no way to check the summary against what was written — including whether four is the number of findings raised. The fourth round found this, and it is answered by stating it in review.md and counting the round in every count here rather than by reconstructing a verdict nobody has.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The fourth M3-W8 round found evidence/m3/profiling-overhead.json publishing two derived figures a reader could not follow: overhead.perTick.formula applied to the two-decimal percentiles printed beside it yields 500.05 where nanoseconds records 510.05, and breakEven.crossingsPerTick reconciles only against the unrounded per-crossing percentile of 0.051. The figures were right and the derivation was unstateable. The record now carries overhead.rounding, which says that every figure is rounded to two decimals while the derived pair is computed from the unrounded percentiles, and the measurement that writes the record writes that field, so a re-run cannot drop it. evidence/m3/README.md states this record's own reconciliation, including that the tick-boundary percentile is recoverable from the published figures only as far as the interval that rounds to 0.05.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The fourth M3-W8 round found change_mismatch in tools/ravel-xtask/src/lib.rs treating empty output from introducing_change as agreement, so any path jj could not attribute cleared the repository's strongest provenance control in silence — the same failure mode the third round raised one level up, where the .jj skips were. It now announces that it cleared without a verdict, the way those skips do. What remains carried rather than fixed is that a cleared control is still a control that did not run, which no message changes.",
+      "classification": "non-blocking"
+    },
+    {
       "summary": "M3-W8 found no hook-integrity defect: the reviewed hook inventory, generated lock, transformed-class counts, and callable-target counts reconcile.",
       "classification": "non-blocking"
     },
@@ -210,7 +222,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "M3 is not closed. Three independent M3-W8 rounds have run and all three returned FAIL; their verdicts are tracked at evidence/m3/review.md and bound by review.record. Every finding the third round raised is now answered, and no independent review has been run against this state. M3-W8 is what remains, and until it closes M3 authorizes no private inventory work.",
+      "summary": "M3 is not closed. Five independent M3-W8 rounds have run and all five returned FAIL. Four of the five verdicts are tracked verbatim at evidence/m3/review.md and bound by review.record; the earliest round's verdict text was never written into the repository and is not recoverable from it, so that round survives only as the summary in this manifest's M3-W8 row and in evidence/m3/README.md, and review.md says so rather than counting itself complete. Every finding the fourth round raised is now answered, and no round has yet run against this state. M3-W8 is what remains, and until it closes M3 authorizes no private inventory work.",
       "classification": "blocking"
     },
     {
@@ -219,12 +231,12 @@
     }
   ],
   "review": {
-    "reviewer": "independent Claude reviewer (M3-W8 prototype review, three rounds, each round independent of the work under review)",
+    "reviewer": "independent Claude reviewer (M3-W8 prototype review, five rounds, each round independent of the work under review; four rounds are tracked verbatim in the record below and the earliest round's verdict text is untracked and unrecoverable)",
     "independent": true,
     "result": "fail",
     "record": {
       "name": "review.md",
-      "sha256": "df29c46a2b6150dc612c1066643dae32390ef51a2e954d7ec348eb53e733b14f"
+      "sha256": "1c358ecd9a0e63ddc62c4a4ad8dad398c6d0f53eb2d2ffc61b6b4d8a97532fb1"
     }
   },
   "attestations": [

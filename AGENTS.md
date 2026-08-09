@@ -36,6 +36,15 @@ The individual scripts are `ravel-format`, `ravel-typecheck`, `ravel-lint`, `rav
 Formatting and lint cover Nix, shell, TOML, and Markdown as well as Rust, so a docs-only change still has to
 pass `ravel-format`. Report the real output. Never state that a gate passed without running it.
 
+`ravel:verify` checks every milestone manifest for the things the repository decides: schema conformance,
+`revision.changeId` provenance, digest binding, and the recorded arithmetic. It deliberately does not ask
+whether a milestone is closed. Whether the independent review passed and whether any finding is blocking are
+verdicts, and M1, M2 and M3 record `review.result: "fail"`, so a green `ravel:verify` says the evidence is
+intact and says nothing about closure. Closure is `devenv tasks run ravel:verify-milestone:<id>`, which
+exits 1 for M1, M2 and M3 today and is expected to.
+
+The gate prints a green test summary even when it fails. Judge it by the exit status.
+
 ## Hard rules
 
 - Every maintained crate root carries `#![forbid(unsafe_code)]`, `ravel-bootstrap` included, and no

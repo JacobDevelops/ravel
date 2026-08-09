@@ -302,6 +302,9 @@ const M2_MANIFEST: &str = "evidence/m2/manifest.json";
 /// [`REVIEW_RECORD`] counts M3's.
 const M2_REVIEW_RECORD: &str = "evidence/m2/review.md";
 
+/// The plan, which belongs to no milestone's evidence and cites all of it.
+const PLAN_DOCUMENT: &str = "ROADMAP.md";
+
 /// The harness whose runs are the world lifecycles M3's prose counts.
 const PERSISTENCE_HARNESS: &str = "jvm/harness/run-harness.sh";
 
@@ -872,6 +875,12 @@ fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> 
 }
 
 /// How a count of things can be spelled in this repository's prose.
+///
+/// It stops at twenty, which is a limit rather than a boundary: a count written
+/// in digits is read at any size, and a count spelled `forty` is read by nothing.
+/// Every stale figure any round has found here was below twenty and every one of
+/// them was spelled, so extending the list is speculation and stating where it
+/// ends is not. A prose count above twenty escapes every check built on this.
 const CARDINALS: [&str; 21] = [
     "zero",
     "one",
@@ -1039,6 +1048,27 @@ fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
                 Err(error) => violations.push(format!("cannot read {relative}: {error}")),
             }
         }
+    }
+
+    // `ROADMAP.md` is swept against the rule rather than against a record, and it
+    // had to be added the hard way. The sweep above is written per-milestone, so
+    // it reaches the documents that sit beside a record and no others — and the
+    // plan document sits beside none of them while restating figures from all of
+    // them. It carried a count of M3's rounds that was off by one, and the round
+    // that found that was a round after the last one the figure could have been
+    // right for, which is the whole argument for the rule. Correcting the number
+    // would have left a number to correct again.
+    match fs::read_to_string(root.join(PLAN_DOCUMENT)) {
+        Ok(document) => {
+            for (count, noun) in round_count_restatements(&document) {
+                violations.push(format!(
+                    "{PLAN_DOCUMENT} restates that {count} review {noun} exist; each milestone's \
+                     review.md is the one record that counts its own rounds, and a count written \
+                     in the plan is falsified by the next round"
+                ));
+            }
+        }
+        Err(error) => violations.push(format!("cannot read {PLAN_DOCUMENT}: {error}")),
     }
 }
 

@@ -1486,10 +1486,22 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
 /// as in the per-milestone gate, so that the gate every agent is told to run is
 /// the gate that checks them. They are one table rather than two copies for the
 /// obvious reason: a second statement of the same rule is a second thing to drift.
+///
+/// The review-record rule is here rather than with the verdicts because what it
+/// asks is not a verdict. Whether a review passed is the reviewer's; whether a
+/// recorded verdict names a document anyone can read is the repository's, and it
+/// sat with the verdicts, so `del(.review.record)` left `verify scaffold` at zero.
+/// M0 and M2 record `pass`, so for those two the readable review could be deleted
+/// and the gate every agent is told to run stayed green. It is conditioned on a
+/// verdict being recorded, because a milestone under construction has no review yet.
 const MANIFEST_INVARIANTS: &[(&str, &str)] = &[
     (
         ".revision.dirty == false",
         "milestone revision must be clean",
+    ),
+    (
+        ".review.result == null or (.review | has(\"record\"))",
+        "milestone recording a review verdict must record a hashed review record for it",
     ),
     (
         ".inputs | length > 0",
@@ -1543,10 +1555,6 @@ const MANIFEST_VERDICTS: &[(&str, &str)] = &[
     (
         ".review.independent == true and .review.result == \"pass\"",
         "milestone review must be independent and pass",
-    ),
-    (
-        ".review | has(\"record\")",
-        "milestone review must include a hashed record",
     ),
 ];
 

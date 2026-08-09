@@ -79,7 +79,7 @@ fn deliberately_incomplete_m0_bundle_is_rejected() {
         "milestone line coverage must be at least 80%",
         "milestone must have no blocking deviations or risks",
         "milestone review must be independent and pass",
-        "milestone review must include a hashed record",
+        "milestone recording a review verdict must record a hashed review record for it",
         "M0 manifest must include native Linux x86_64 launch evidence",
     ] {
         assert!(

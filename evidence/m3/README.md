@@ -37,25 +37,28 @@ far as the inventory's internal consistency and no further.
 | [`profiling-overhead.json`](profiling-overhead.json) | M3-W6 | What opt-in profiling costs a tick when nobody turned it on, what it can and cannot attribute to a mod, and which metrics it cannot measure at all. |
 | [`linux-process-matrix.json`](linux-process-matrix.json) | M3-W7 | What a real Linux launch proves about the game directory, the rewrite, and the instance — and, at least as importantly, what it could not reach. |
 | [`class-loader-identity.json`](class-loader-identity.json) | M3-W3 | That the loader which loaded a rewritten `net.minecraft` class is the same object as `ClassLoader.getSystemClassLoader()`, which is the premise `appendToSystemClassLoaderSearch` rests on. Measured on an earlier build and an earlier JDK patch than the milestone's, and it says so. |
-| [`review.md`](review.md) | M3-W8 | The five tracked independent M3-W8 rounds as they were written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. Every round is FAIL, and the record says which round it does not hold and why. |
+| [`review.md`](review.md) | M3-W8 | Each tracked independent M3-W8 round as it was written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. Every round is FAIL, and the record says which round it does not hold and why. |
 
 ## M3-W8 review
 
-Six independent rounds have run and all six returned FAIL.
-[`review.md`](review.md) holds five of them verbatim and `review.record`
+Every independent round that has run returned FAIL.
+[`review.md`](review.md) holds each tracked round verbatim and `review.record`
 binds its digest, so those verdicts are readable rather than summarised from
-memory. They are one file rather than one file each because `review.record` binds
-one artifact per milestone and the rounds only mean anything read in order: each
-round verifies the previous round's repairs.
+memory. `review.md` is the one place that says how many rounds there have been:
+neither this document nor `manifest.json` restates a count, because a count
+written outside the record is falsified by the next round. They are one file rather
+than one file each because `review.record` binds one artifact per milestone and the
+rounds only mean anything read in order: each round verifies the previous round's
+repairs.
 
-One round is missing from it, and the fourth round is what found that out. The
-earliest round reviewed the prototype rather than the evidence set, and its verdict
+The earliest round is missing from it, and the fourth round is what found that
+out. That round reviewed the prototype rather than the evidence set, and its verdict
 was never written into the repository — the summary below is all that survives of
 it, which is exactly what a tracked review record exists to prevent. `review.md`
 names the omission, states that the text is not recoverable from the repository or
 its history, and says that its own numbering therefore begins at the second round.
-The counts here and in `manifest.json` count the missing round rather than rounding
-it away.
+It counts the missing round rather than rounding it away, and it is what a reader
+counts from.
 
 That earliest round returned **FAIL** with four blocking findings.
 All four are answered, and they stay listed because a finding that disappears
@@ -237,8 +240,28 @@ M3-specific manifest closure rule, and the six minor ones.
 
 M3-W8 stays open. Every implementation gate is closed, but the review that has to
 pass is an *independent* one, and every round so far has returned FAIL. Answering
-B-1 is not closure: a sixth independent round decides that, and the fifth round's
-remaining findings are still open.
+B-1 is not closure: a later independent round decides that, and the findings the
+recorded rounds left open are still open.
+
+### What a green closure would and would not prove
+
+`devenv tasks run ravel:verify-milestone:m3` is an *attestation* gate, and the
+limit of what it decides is worth stating plainly, because a green exit is easy to
+read as more than it is. Two things it controls: `review.md`'s bytes are bound by
+`review.record.sha256`, so the text that was attested cannot be swapped for other
+text without the digest moving, and the verdict line in that text has to agree with
+`review.result`, so the manifest cannot claim a pass the record does not state. Both
+controls work, and a review round proved them by breaking each one on its own.
+
+What no gate here decides is whether the attestation was earned. A round
+demonstrated that too: four coordinated edits — `review.md`'s front-matter
+`Result:` line, `review.result`, the one blocking risk's classification, and the
+rebound digest — closed M3 with `ravel:verify-milestone:m3` and `ravel:verify`
+both green. That is the design rather than a hole in it: nothing mechanical can
+distinguish a verdict a reviewer reached from a verdict someone wrote down. So the
+gate binds **which text was attested**, not **that the attestation was earned**.
+An auditor reading a green closure is reading a digest-bound claim of independent
+review, and has to weigh the claim on the record's own contents.
 
 `pack-compile.json` comes from `devenv tasks run ravel:measure-pack-compile` and
 is the measurement ADG-2 named as deciding its open mechanism: whether an

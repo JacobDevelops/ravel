@@ -1215,6 +1215,22 @@ review.result pass while the review record it binds states fail"*, and `verify s
 exit 1 as well. `verify_recorded_verdict` (`lib.rs:994`) parses the record's own front
 matter. Closing M3 by editing the manifest alone is not available.
 
+> **Editor's note, not the reviewer's text.** The heading claims more than the
+> paragraph under it proves, and a later round demonstrated the gap. Closure was
+> obtained with four coordinated string edits: this record's front-matter `Result:`
+> line to PASS, `review.result` to `"pass"`, the one blocking risk to
+> `"non-blocking"`, and `review.record.sha256` rebound to the edited bytes. That
+> gives `verify milestone M3` exit 0 and `verify scaffold` exit 0. The narrower
+> claim the sentences above make — that closing M3 by editing the manifest *alone*
+> is not available — holds, and is the true one. This is not a defect in the
+> machinery. Closure is an attestation gate, and the controls available to it are
+> that the record's bytes are digest-bound and that the record's own verdict line
+> agrees with the manifest; both work, and both fired against the single-string
+> edit the round tried. What no gate in this repository can decide is whether the
+> attestation was earned. The gate binds *which text was attested*, not *that the
+> attestation was earned*, and `manifest.json` and this directory's `README.md`
+> now say so where they describe what a green closure means.
+
 **Both prior vacuity holes are closed.** Deleting all four milestone manifests → `verify
 scaffold` exit 1 with *"evidence/ holds no milestone manifest, and a manifest sweep over
 nothing passes vacuously"* plus four missing-file violations. Removing 8 of 9 work

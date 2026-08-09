@@ -218,6 +218,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_manifest_percentages(root, &mut violations);
     verify_void_limits(root, &mut violations);
     verify_harness_lifecycles(root, &mut violations);
+    verify_persistence_reflection(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
     verify_experiment_fence(root, &mut violations);
@@ -1210,6 +1211,141 @@ fn verify_harness_lifecycles(root: &Path, violations: &mut Vec<String>) {
             Err(error) => violations.push(format!("cannot read {relative}: {error}")),
         }
     }
+}
+
+/// The tracked sources compiled into the always-present agent jar.
+const AGENT_JAR_SOURCES: &str = "jvm/bootstrap";
+
+/// What makes a string literal in those sources a game class name.
+const GAME_PACKAGE: &str = "net.minecraft.";
+
+/// Every game class the agent jar resolves reflectively, as a declared set.
+///
+/// ADG-7's persistence adapter is the only source that resolves one. Adding a name
+/// to that source without adding it here fails the scaffold, which is the whole
+/// point of the list.
+const PERSISTENCE_REFLECTED_CLASSES: [&str; 5] = [
+    "net.minecraft.client.Minecraft",
+    "net.minecraft.server.MinecraftServer",
+    "net.minecraft.util.datafix.DataFixers",
+    "net.minecraft.world.level.storage.LevelResource",
+    "net.minecraft.world.level.storage.SavedDataStorage",
+];
+
+/// Pins the game classes the always-present agent jar names as strings.
+///
+/// ADG-1 forbids that jar from *declaring* a game type and `build-agent.sh`
+/// enforces it by construction, compiling with no `-cp` at all. ADG-7's persistence
+/// adapter resolves the game classes it needs by name instead, and ADG-1's
+/// amendment said for a while that the agent jar "names no game type", which was
+/// false of the shipped jar. This holds the jar's game-class literals to a set that
+/// is either declared here or declared as a hook target in `hooks.toml`, and it
+/// fails in both directions: an undeclared name in the jar, and a declared name no
+/// source resolves any more.
+///
+/// **What it cannot do, because the gap is the reason it exists.** It cannot detect
+/// a game-side rename. Both sides of the comparison are Ravel's own — the jar's
+/// literals and the list above — and neither comes from the pinned client jar, so a
+/// class renamed in the next pinned version passes here and fails at runtime as a
+/// refused world load. Hook target classes are the exception and only because
+/// `hooks.toml` and `mappings.lock` are re-pinned against the jar; the reflective
+/// set is in no lock. Nor does this reach anything below a class: the member names
+/// [`method`] resolves by name and arity, the two `LevelResource` field constants,
+/// and the three-argument `SavedDataStorage` constructor are checked only by
+/// `jvm/harness/persistence/net/minecraft/**`, which are stand-ins Ravel wrote, so
+/// that harness asserts Ravel's stubs against Ravel's reflection.
+/// `evidence/m3/manifest.json` records the surface as a named deviation and
+/// `ROADMAP.md` records bringing it under `stubs.toml` and `mappings.lock` as owed
+/// work, which needs the re-pin ceremony against the pinned jar.
+fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
+    let inventory = match fs::read_to_string(root.join(HOOK_INVENTORY)) {
+        Ok(inventory) => inventory,
+        Err(error) => {
+            violations.push(format!("cannot read {HOOK_INVENTORY}: {error}"));
+            return;
+        }
+    };
+    let pinned: Vec<&str> = inventory
+        .lines()
+        .map(str::trim)
+        .filter_map(|line| quoted_value(line, "class"))
+        .collect();
+
+    let mut sources = Vec::new();
+    collect_files(&root.join(AGENT_JAR_SOURCES), &mut sources);
+    sources.retain(|path| {
+        path.extension()
+            .is_some_and(|extension| extension == "java")
+    });
+    sources.sort();
+    if sources.is_empty() {
+        violations.push(format!(
+            "{AGENT_JAR_SOURCES} holds no Java source, so no game class the agent jar resolves is \
+             held to a declared set"
+        ));
+        return;
+    }
+
+    let mut resolved: Vec<String> = Vec::new();
+    for path in &sources {
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let source = match fs::read_to_string(path) {
+            Ok(source) => source,
+            Err(error) => {
+                violations.push(format!("cannot read {relative}: {error}"));
+                continue;
+            }
+        };
+        for name in game_class_literals(&source) {
+            if PERSISTENCE_REFLECTED_CLASSES.contains(&name.as_str()) {
+                resolved.push(name);
+                continue;
+            }
+            if pinned.contains(&name.as_str()) {
+                continue;
+            }
+            violations.push(format!(
+                "{relative} names the game class {name}, which is neither in the agent jar's \
+                 declared reflective surface nor a hook target {HOOK_INVENTORY} pins; a game name \
+                 in the always-present jar that no lock and no declared set covers is coupled to \
+                 the pinned version by nothing"
+            ));
+        }
+    }
+
+    for declared in PERSISTENCE_REFLECTED_CLASSES {
+        if !resolved.iter().any(|name| name == declared) {
+            violations.push(format!(
+                "the agent jar's declared reflective surface names {declared} and no source under \
+                 {AGENT_JAR_SOURCES} resolves it; a declared name nothing uses says the surface \
+                 drifted rather than that it is pinned"
+            ));
+        }
+    }
+}
+
+/// Every game class name one Java source carries as a string literal.
+///
+/// Literals only, and one line at a time, so a game class named in a doc comment is
+/// read as the prose it is and an unpaired quotation mark in prose cannot shift the
+/// parity of the rest of the file. Both spellings count: the transformer writes hook
+/// targets in internal `net/minecraft/…` form and the persistence adapter writes
+/// binary `net.minecraft.…` form, and they are the same coupling.
+fn game_class_literals(source: &str) -> Vec<String> {
+    source
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            !(trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*"))
+        })
+        .flat_map(|line| line.split('"').skip(1).step_by(2))
+        .map(|literal| literal.replace('/', "."))
+        .filter(|literal| literal.starts_with(GAME_PACKAGE))
+        .collect()
 }
 
 /// Reads `name = "value"` out of one line, or nothing.
@@ -4187,14 +4323,15 @@ mod tests {
     use super::{
         CampaignInventory, HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS,
         campaign_document_violations, change_mismatch, declared_hook_names,
-        declares_unsafe_prohibition, denied_hook_names, hook_counts, hook_document_violations,
-        numbers_before, pinned_commit_mismatch, redacted_path, required_scaffold_paths,
-        round_count_restatements, verify_campaign_inventory, verify_decision_hook_claims,
-        verify_evidence_records, verify_experiment_fence, verify_harness_lifecycles,
-        verify_hook_inventory_document, verify_ignored_boundaries, verify_manifest_percentages,
-        verify_milestone, verify_review_round_counts, verify_scaffold, verify_spikes,
-        verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
-        verify_version_boundary, verify_void_limits, visible_commit,
+        declares_unsafe_prohibition, denied_hook_names, game_class_literals, hook_counts,
+        hook_document_violations, numbers_before, pinned_commit_mismatch, redacted_path,
+        required_scaffold_paths, round_count_restatements, verify_campaign_inventory,
+        verify_decision_hook_claims, verify_evidence_records, verify_experiment_fence,
+        verify_harness_lifecycles, verify_hook_inventory_document, verify_ignored_boundaries,
+        verify_manifest_percentages, verify_milestone, verify_persistence_reflection,
+        verify_review_round_counts, verify_scaffold, verify_spikes, verify_testkit_fence,
+        verify_tracked_contents, verify_tracked_paths, verify_version_boundary, verify_void_limits,
+        visible_commit,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -5749,6 +5886,43 @@ mod tests {
         verify_harness_lifecycles(&root, &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
+    }
+
+    /// The shipped agent jar names no game class outside its declared reflective
+    /// surface and the pinned hook inventory, and every declared name is in use.
+    #[test]
+    fn the_agent_jars_game_class_names_are_the_declared_and_the_pinned_ones() {
+        let root = std::env::current_dir()
+            .expect("the current directory must be available")
+            .join("../..");
+        let mut violations = Vec::new();
+
+        verify_persistence_reflection(&root, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    /// Both spellings of a game class name are read out of a literal, and neither a
+    /// doc comment nor an unpaired quotation mark in prose is read as one.
+    #[test]
+    fn a_game_class_name_counts_from_a_literal_and_not_from_prose() {
+        let source = "\
+            /**\n\
+             * Resolves \"net.minecraft.world.level.storage.LevelResource\" in prose,\n\
+             * and mentions net.minecraft.client.Minecraft without quoting it.\n\
+             */\n\
+            private static final String STORAGE = \"net.minecraft.world.level.storage.SavedDataStorage\";\n\
+            // A commented-out \"net.minecraft.util.datafix.DataFixers\".\n\
+            return target.internalClass().equals(\"net/minecraft/client/Minecraft\");\n\
+            String other = \"dev.ravel.jvm.screen.RavelWorldData\";\n";
+
+        assert_eq!(
+            game_class_literals(source),
+            [
+                "net.minecraft.world.level.storage.SavedDataStorage",
+                "net.minecraft.client.Minecraft"
+            ]
+        );
     }
 
     #[test]

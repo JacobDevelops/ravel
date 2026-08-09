@@ -31,29 +31,32 @@ What M1's measurements do not mean is that everything is clean. The manifest's
 selected native binding has never run in the real game, that the last cold audit of
 this evidence returned FAIL, and that the figures in `tests` are an attestation about
 a past gate run rather than something a reader can re-derive. Counting them belongs
-to `jq`, not to this paragraph. One is **blocking**: M1-W4's Verification clause asks
-that a generated binding be reproducible from pinned inputs, and no M1 record
-contains a reproducibility observation, which is why `ravel:verify-milestone:m1`
-refuses to close M1 whatever the review verdict says. Read them before relying on
-anything here.
+to `jq`, not to this paragraph. None is blocking any more, and what is left blocking
+M1 is the review verdict rather than a gap in the evidence. Read them before relying
+on anything here.
 
-That clause is stated as unmet rather than argued closed. What is recorded is the
-drift half — both measured ADG-3 results record `driftDetected` — and a single
-`outputSha256` per candidate. The two extractors' outputs differ (`0ecc36a9` over
-3417 bytes against `8b093021` over 3413), so the cross-extractor digest is not a
-repeated run, and the "resolved all six targets identically" line below is a prose
-string with no per-target list behind it. What does enforce reproducibility is the
-instrument, not the evidence: `experiments/adg-3-bindings/src/bin/generate.rs`
-generates twice from the same resolved inventory and refuses to report if the digests
-differ, so a recorded result entails one identical repeat — an entailment from
-source, not a recorded observation, and nothing recomputes it. Recording one now is
-not available either: the generator refuses unknown adapter inputs and
-`minecraft/versions/26.1.2/adapter.toml` has since grown four, so it will not parse
-today's pinned inputs, and editing it would measure a different instrument.
+M1-W4's Verification clause used to be the exception. It asks that a generated
+binding be reproducible from pinned inputs and fail on drift; the drift half was
+recorded — both measured ADG-3 results record `driftDetected` — and the
+reproducibility half lived only in the instrument, which generated twice and refused
+to report on a mismatch. A record therefore entailed one identical repeat and
+observed nothing, and nothing recomputed it. It is now observed as a pair of
+digests: each of the two re-measured ADG-3 results records
+`bindingGeneration.outputSha256` and `repeatedOutputSha256` from two derivations
+that each resolved the pinned jar for themselves, and
+`ravel:verify-milestone:m1` requires an ADG-3 result to carry both and requires
+them equal. The digest is what is gated rather than the boolean beside it,
+because an operator holding the pinned jar can re-derive a digest and refute it
+and can do nothing with a boolean. What that observes is narrow — two
+derivations in one process on one machine agreed — and it says nothing about
+another machine or another day. The re-measurement is a new pair of records
+rather than a rewrite of the M1-era pair, because a result names the change that
+introduced it; the older pair stands as measured, over the smaller inventory of
+that run.
 
 ## What is recorded
 
-Twenty results under [`spikes/`](spikes/), one per candidate, all conforming to
+One result per candidate under [`spikes/`](spikes/), all conforming to
 [`schemas/spike-result.schema.json`](../../schemas/spike-result.schema.json) and
 checked by `devenv tasks run ravel:verify-spikes`.
 
@@ -61,7 +64,7 @@ checked by `devenv tasks run ravel:verify-spikes`.
 | --- | --- | --- | --- |
 | [ADG-1](spikes/adg-1/) | 4 measured, 2 rejected | agent plus exported JNI symbol | a primitive hook crossing costs 10.02 ns at the median and allocates nothing; the same cost as `RegisterNatives` |
 | [ADG-2](spikes/adg-2/) | 4 measured | **deferred to M3** | leading candidate a linked mod at 2.50 ns a call with no unsafe in the mod boundary, against 1.88 ns for a dynamic library needing two unsafe calls, 10.64 ns for a WebAssembly sandbox, and 3167 ns for a helper process |
-| [ADG-3](spikes/adg-3/) | 2 measured, 4 rejected | class-file extraction | two independent extractors resolved all six targets identically; a drifted input is refused |
+| [ADG-3](spikes/adg-3/) | 2 mechanisms measured, each re-measured once against today's pinned inputs, 4 rejected | class-file extraction | both extractors resolve every hook in the inventory to the same binding bytes, generating twice produces the same bytes, and a drifted input is refused |
 | [ADG-4](spikes/adg-4/) | 3 measured | Java keeps its state | all three models within 1.09 ns at the median, so duplication buys nothing measurable |
 | [ADG-5](spikes/adg-5/) | 1 measured | stock Prism arguments | the launcher exposes the two settings needed and requires no patch |
 
@@ -100,7 +103,8 @@ devenv tasks run ravel:verify-spikes
 
 Results are overwritten in place, so a re-run produces a diff whenever the
 measurement moves. Sub-nanosecond figures move between runs; the boundary costs
-do not.
+do not. ADG-3 is the exception: its measured records carry `-remeasured` names its
+own change introduced, and the M1-era pair beside them is not rewritten by a re-run.
 
 Every result records `trial.revision.dirty` as true, which is expected rather than
 a warning. For thirteen of the twenty the measured tree is `id` plus the diff of

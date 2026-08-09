@@ -136,12 +136,20 @@
         "sha256": "24e7cdf9cc1893696765b54c66e6ad2dbd52a2bb36ce5d84337b0701a6c6a929"
       },
       {
+        "name": "spikes/adg-3/adg3-classfile-extraction-remeasured.json",
+        "sha256": "1952351bf155098cc2b97378bc09e5c7b57ab6cc0940619cd9be9309009c86e1"
+      },
+      {
         "name": "spikes/adg-3/adg3-classfile-extraction.json",
         "sha256": "79e73a41e649a7e54350bc59f79e9ccff20e2d54af95d840611584c375055444"
       },
       {
         "name": "spikes/adg-3/adg3-hand-written-version-data.json",
         "sha256": "5a0d0e56ecb95952a0a8cf47735fa93cae1a73b3eae6732ee25add3dd50575ed"
+      },
+      {
+        "name": "spikes/adg-3/adg3-javap-extraction-remeasured.json",
+        "sha256": "289b46d8be889abbd7672694ff99f730b930b6e31f5b31c93bf53ffcb147cf01"
       },
       {
         "name": "spikes/adg-3/adg3-javap-extraction.json",
@@ -195,7 +203,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "Seven of twenty results record a trial.revision.id that cannot be reconstructed as described: six ADG-1 results name a predecessor of their own change, and the ADG-5 result names a change above the one holding it. The checked half, trial.revision.changeId, is correct on all twenty and is recomputed by ravel:verify-spikes. Nothing reads the commit field.",
+      "summary": "Seven results record a trial.revision.id that cannot be reconstructed as described: six ADG-1 results name a predecessor of their own change, and the ADG-5 result names a change above the one holding it. The checked half, trial.revision.changeId, is correct on every recorded result and is recomputed by ravel:verify-spikes, which is where the count lives rather than in this sentence. Nothing reads the commit field.",
       "classification": "non-blocking"
     },
     {
@@ -211,8 +219,8 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "M1-W4's ROADMAP Verification clause asks that a generated 26.1.2 binding be reproducible from pinned inputs and fail on drift. The drift half is recorded: both measured ADG-3 results record bindingGeneration.driftDetected true. The reproducibility half is not recorded anywhere in M1, and this deviation states that plainly rather than rewording the clause. bindingGeneration.outputSha256 is written once per candidate, and the two extractors' outputs differ — 0ecc36a9 over 3417 bytes for classfile against 8b093021 over 3413 bytes for javap — so the cross-extractor digest cannot stand in for a repeated run, and README's line that two independent extractors resolved all six targets identically comes from a prose string in both records with no per-target list recorded, which makes it attested rather than recomputable. M2 carries an explicit repeatedRunIsIdentical field for exactly this; M1's schema has no field for it, since schemas/spike-result.schema.json fixes bindingGeneration at driftDetected, durationMs, outputBytes, and outputSha256 with additional properties refused. What does bind it is the experiment source rather than the evidence: experiments/adg-3-bindings/src/bin/generate.rs generates the binding twice from the same resolved inventory and refuses to report at all if the two digests differ, so a recorded ADG-3 result entails one identical repeat. That is an entailment from the instrument's source at the revision it ran, not a recorded observation, and no gate recomputes it. Recording one now is not available: the generator's input model refuses unknown fields and minecraft/versions/26.1.2/adapter.toml has since grown dataFixerJar, stubSeeds, mappingsLock, and stubsLock, so bindings::adapter refuses to parse it and the M1 generator cannot run against today's pinned inputs. Editing the experiment to make it run would measure a different instrument than the one M1 recorded. The clause is therefore unmet by the recorded evidence, and it is the one ROADMAP Verification clause in M1 that is.",
-      "classification": "blocking"
+      "summary": "M1-W4's ROADMAP Verification clause asks that a generated 26.1.2 binding be reproducible from pinned inputs and fail on drift, and until this change only the drift half was recorded. The reproducibility half lived in the instrument's control flow: experiments/adg-3-bindings/src/bin/generate.rs generated twice and refused to report on a mismatch, so a recorded result entailed one identical repeat and observed nothing. It is now observed, and what carries it is a digest rather than a boolean. bindingGeneration records outputSha256 and repeatedOutputSha256; the generator resolves every hook target against the pinned jar twice and generates from each resolution; the runner recomputes repeatedRunIsIdentical from the two digests and fails the whole measurement if they differ; and verify_m1_manifest requires an ADG-3 result that carries both digests and requires them equal. spikes/adg-3/adg3-classfile-extraction-remeasured.json records b9603d93d5717d9876ecaa95c958d18b8f695c2e55ecba0ac78dec040b6c5a4b twice over 18946 bytes and spikes/adg-3/adg3-javap-extraction-remeasured.json records 4ee5e4655de7c0bcd0c0a4f33465d5567933b25b5972f2044fc6a2fb698966ec twice over 18942 bytes. The digest is the load-bearing field because a boolean can only be taken on the instrument's word, while an operator holding the restricted jar can re-derive these bytes and refute them. An earlier shape of this fix repeated only the render over an already-resolved target list, which is pure and could not disagree, so it witnessed renderer purity rather than re-derivation; the repeat now re-resolves the jar, which is where a nondeterministic reading of the pinned inputs would live. What is observed is still narrow: two derivations in one process on one machine agreed. Nothing here observes that a different machine, a later day, or another JDK produces these bytes, and the cross-extractor pair is not that observation either — the two outputs differ by four bytes, the length of the extractor's own name recorded in the lock. Three things bound this. The instrument could not run at all before this change: its input model refuses unknown fields and adapter.toml had grown dataFixerJar, stubSeeds, mappingsLock and stubsLock while hooks.toml had grown refuses, so it is repaired by declaring those fields rather than by loosening the model. The re-measurement is a new pair of records rather than a rewrite of the M1-era pair, because a spike result names the change that introduced it and no later change can honestly claim a file an earlier change added; the M1-era records stand as measured, and their figures — 0ecc36a9 over 3417 bytes for classfile against 8b093021 over 3413 bytes for javap, over six targets — describe the inventory of that run rather than today's. And the re-measurement needs the restricted client jar under tests/fixtures/local, which is never tracked, so a clean checkout can read these records and cannot reproduce them.",
+      "classification": "non-blocking"
     },
     {
       "summary": "M1's review.record used to record sha256 5257619f1d017617c833f9efd819c88636c25977097b02c993a2cb9430d3750a under the title M1 independent architecture review. That digest matches no file this repository tracks, so nobody could obtain what it hashed, and the review it stood for was unauditable in principle. It is replaced by evidence/m1/review.md, the verdict of a second cold audit run against this evidence: FAIL, on seven findings, the first two of which are that M1-W8 is unproven by its own record and that the review record named a title rather than a path. The record now names a path and the scaffold recomputes its digest, so the review is readable by anyone who has the repository. review.result stays fail, and this audit is the reason it is now a fail nobody has to take on trust.",

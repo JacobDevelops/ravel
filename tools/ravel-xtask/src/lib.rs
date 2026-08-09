@@ -1755,13 +1755,14 @@ fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
     }
 
     // M1-W4's Verification clause asks that a generated 26.1.2 binding be
-    // reproducible from pinned inputs and fail on drift. Only the drift half is
+    // reproducible from pinned inputs and fail on drift. Only the drift half was
     // recorded, and nothing asked for the other, so downgrading the one blocking
     // deviation and flipping `review.result` closed M1 with the clause still unmet.
     // M2 records `repeatedRunIsIdentical` for exactly this property; this asks ADG-3
-    // for it under the same name. No M1 result carries the field and
-    // `schemas/spike-result.schema.json` has no place for one yet, so this rule
-    // fails today, which is what an unmet Verification clause is supposed to do.
+    // for it under the same name. The re-measured ADG-3 results now carry it, so
+    // this rule passes on an observation rather than on an entailment from the
+    // generator's control flow — and it keeps failing if a re-measurement ever
+    // records a generation that did not repeat.
     let repeated = fs::read_dir(root.join("evidence/m1/spikes/adg-3"))
         .into_iter()
         .flatten()

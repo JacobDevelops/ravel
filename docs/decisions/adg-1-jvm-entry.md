@@ -170,9 +170,12 @@ revisit if Ravel ever needs to do work before a VM exists.
   maintained crate keeps `#![forbid(unsafe_code)]`, including whichever one carries
   the export, because `jni_mangle` writes the declaration. `SPEC.md` §3.3 records
   this rather than an exception, and the M1-W8 reviewer is what found it.
-- The export count scales with the hook surface, not with the crate. Six inventory
+- The export count scales with the hook surface, not with the crate. Inventory
   entries with heterogeneous descriptors cannot share one `extern "system"`
-  signature, so there is one generated export per hook shape. That is harmless
+  signature, so there is one generated export per hook shape. The figure is not
+  written here: `hooks.toml` is what the surface is counted from, and
+  `docs/architecture/m3-hook-targets.md` states the count against it under a gate
+  that recomputes it. That is harmless
   while every one is generated and safe; it would not have been under a
   hand-written exception, where the alternative was a single
   `(int hookId, Object[] args)` dispatcher whose per-call array allocation would
@@ -342,9 +345,14 @@ bears on whether the mechanism works rather than on the unsafe count.
 
 ### What is still forbidden
 
-- The agent jar must keep naming no game type and must keep compiling without the
-  client jar. That was an observation about M1's jar; from here it is an
-  invariant, and the build script's comment is the place it is enforced.
+- The agent jar must keep declaring no game type and must keep compiling with no
+  client jar on the class path and no licensed fixture. That was an observation
+  about M1's jar; from here it is an invariant, and it is enforced by construction
+  rather than by a comment: `jvm/build/build-agent.sh` runs `javac` with no `-cp`
+  at all, so a source declaring a game type fails to compile. What is *not* an
+  invariant is that the jar mentions no game class anywhere — ADG-7's persistence
+  adapter names the classes it needs as strings and resolves them at runtime, which
+  this rule permits. The amendment below says what that costs and what pins it.
 - The screen artifact declares no native methods of its own. Every crossing still
   goes through the generated `Hook`, which is what makes the loading loader and
   the declaring loader the same one by construction. A second class binding its
@@ -358,8 +366,29 @@ bears on whether the mechanism works rather than on the unsafe count.
 
 Amended before M3-W4 on [ADG-7](adg-7-world-persistence.md)'s account. The
 version-specific sibling Java artifact may carry the persistence adapter as well
-as screens. This is an artifact-scope widening only: the agent jar still names no
-game type, and generated `dev.ravel.jvm.Hook` remains the sole JNI surface.
+as screens. This is an artifact-scope widening only: the agent jar still declares
+no game type and still compiles with no client jar on the class path, and generated
+`dev.ravel.jvm.Hook` remains the sole JNI surface.
+
+What the widening does add, and what an earlier form of this sentence concealed by
+saying the agent jar "names no game type", is a set of game names the always
+present jar resolves reflectively.
+`jvm/bootstrap/dev/ravel/jvm/Persistence.java` names the game classes it needs as
+string constants, resolves each through `Class.forName` against the system class
+loader, and reaches their members by name and arity. None of those names appears in
+`hooks.toml`, `stubs.toml`, `stubs.lock` or `mappings.lock`, so ADG-3's drift gate
+does not reach them: the *optional* screen jar compiles against stubs generated
+from a pinned lock and the *required* agent jar has no such binding. Neither of
+this decision's two reasons is damaged — the licensing and contribution argument
+above and the loader argument as corrected both rest on the jar declaring no game
+type, which still holds — but the coupling is real and is recorded rather than
+implied. `verify_persistence_reflection` pins the class set so a new unpinned name
+cannot be added silently, and states in its own doc comment that it cannot detect a
+game-side rename because the names are in no lock.
+`evidence/m3/manifest.json` records the whole surface as a named non-blocking
+deviation, and `ROADMAP.md` records bringing it under `stubs.toml` and
+`mappings.lock` as owed work whose price is the re-pin ceremony against the pinned
+jar.
 
 The transformer may use one receiver-aware Java-adapter injection mode for
 ADG-7's save seam. That mode is distinct from ordinary native observation hooks

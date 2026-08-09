@@ -334,7 +334,11 @@ public net.minecraft.world.level.saveddata.SavedDataType(
 subclass of a game type, and `SavedDataType` additionally requires a
 `com.mojang.serialization.Codec` for that subclass. Reflection calls methods; it
 neither defines a subclass nor builds a codec. ADG-1 forbids the agent jar from
-naming a game type, so the storage half cannot live there.
+*declaring* a game type — it compiles with no client jar on the class path — and
+defining a subclass of one is a declaration, so the storage half cannot live there.
+Resolving a game class by name at runtime is a different thing, it is permitted,
+and the agent jar's own persistence adapter does exactly that; what it cannot do
+that way is define a subclass.
 
 It lives in the sibling artifact, compiled against generated stubs like the
 screens already are, and the stub seeds and lock re-pin are the ordinary

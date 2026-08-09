@@ -10,10 +10,15 @@ import java.util.Arrays;
  * ADG-7's world persistence adapter, on the Java side of the two crossings.
  *
  * <p>Everything here is reflective, because this class ships in the always
- * present agent jar and ADG-1 forbids that jar naming a game type. The one half
- * that cannot be reflective — a concrete {@code SavedData} subclass and its
- * codec — is compiled in the sibling artifact, and this class reaches it by name
- * too, for exactly the reason {@link Screens} does.
+ * present agent jar and ADG-1 forbids that jar <em>declaring</em> a game type:
+ * the jar is compiled with no client jar on the class path, so a source declaring
+ * one would not compile. The class names below are strings this class resolves at
+ * runtime, which the rule permits and which is not free — they are a version
+ * coupling no lock covers, recorded as such in {@code evidence/m3/manifest.json}
+ * and pinned as a set by {@code verify_persistence_reflection}. The one half that
+ * cannot be reflective — a concrete {@code SavedData} subclass and its codec — is
+ * compiled in the sibling artifact, and this class reaches it by name too, for
+ * exactly the reason {@link Screens} does.
  *
  * <p><b>The sibling is required here, where a screen is optional.</b> An absent
  * screen jar loses the settings UI and leaves a working game, so
@@ -307,11 +312,19 @@ final class Persistence {
     /**
      * Finds one member by name and shape rather than by declared parameter types.
      *
-     * <p>Naming the parameter types would mean loading each of them here, and
-     * several are game types this jar is not allowed to name even as a string it
-     * then resolves — the point of ADG-1's rule is that the agent jar does not
-     * depend on the game's type graph. Name and arity identify each member used
-     * here uniquely in the pinned classes.
+     * <p>Naming the parameter types would mean either declaring them here, which
+     * the agent jar cannot do because it compiles with no client jar on the class
+     * path, or resolving every one of them by name as well — which widens the set
+     * of game names this jar carries and buys nothing. Name and arity identify
+     * each member used here uniquely in the pinned classes.
+     *
+     * <p>What that costs is worth stating where the lookup is. These member names,
+     * the two {@code LevelResource} field constants, and the three-argument
+     * {@code SavedDataStorage} constructor appear in no pinned file, so ADG-3's
+     * drift gate does not reach any of them and a rename in the next pinned
+     * version lands as a runtime refusal rather than as a generation failure. The
+     * class names are pinned as a set by {@code verify_persistence_reflection},
+     * which cannot see a rename either.
      */
     private static Method method(Class<?> owner, String name, int arity)
             throws ReflectiveOperationException {

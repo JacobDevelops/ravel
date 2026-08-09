@@ -1,0 +1,315 @@
+# Reviewed hook capability inventory for the synthetic second version.
+#
+# Nothing here is a real game. Every class, member and descriptor below is
+# invented, and the version this directory is named for does not exist, because
+# tracking a real game artefact is forbidden and proving version isolation does
+# not need one. What is real is the *shape*: this is a drop-in replacement for
+# the pinned version's data, laid out exactly as `minecraft/versions/<version>/`
+# is, so a generator that reads it reads nothing it would not read for a real
+# second version.
+#
+# The hook ids are deliberately the pinned version's own. An id is the only name
+# ADG-3 says survives a game update, so a second version of the same capability
+# surface names the same ids and maps them onto its own classes and members.
+# That is the isolation being proved: what changes between versions is this data,
+# and what does not change is the id a general crate names.
+
+schemaVersion = 1
+minecraft = "99.0.0-synthetic"
+
+[[hook]]
+id = "chat.allowed-character"
+class = "org.exampleengine.text.TextRules"
+member = "chatAllowedCharacter"
+descriptor = "(I)Z"
+kind = "static-method"
+capability = "Synthetic second-version target standing in for the `chat.allowed-character` capability."
+
+[[hook]]
+id = "chat.filter-text"
+class = "org.exampleengine.text.TextRules"
+member = "chatFilterText"
+descriptor = "(Ljava/lang/String;Z)Ljava/lang/String;"
+kind = "static-method"
+capability = "Synthetic second-version target standing in for the `chat.filter-text` capability."
+
+[[hook]]
+id = "chat.filter-text-simple"
+class = "org.exampleengine.text.TextRules"
+member = "chatFilterTextSimple"
+descriptor = "(Ljava/lang/String;)Ljava/lang/String;"
+kind = "static-method"
+capability = "Synthetic second-version target standing in for the `chat.filter-text-simple` capability."
+
+[[hook]]
+id = "player.name-valid"
+class = "org.exampleengine.text.TextRules"
+member = "playerNameValid"
+descriptor = "(Ljava/lang/String;)Z"
+kind = "static-method"
+capability = "Synthetic second-version target standing in for the `player.name-valid` capability."
+
+[[hook]]
+id = "input.smooth-delta"
+class = "org.exampleengine.input.Smoother"
+member = "inputSmoothDelta"
+descriptor = "(DD)D"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `input.smooth-delta` capability."
+
+[[hook]]
+id = "input.smooth-last-amount"
+class = "org.exampleengine.input.Smoother"
+member = "inputSmoothLastAmount"
+descriptor = "D"
+kind = "instance-field"
+capability = "Synthetic second-version target standing in for the `input.smooth-last-amount` capability."
+
+[[hook]]
+id = "registry.register"
+class = "org.exampleengine.registry.KeyedRegistry"
+member = "registryRegister"
+descriptor = "(Lorg/exampleengine/registry/EntryKey;Ljava/lang/Object;Lorg/exampleengine/registry/EntryInfo;)Lorg/exampleengine/registry/EntryHandle;"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `registry.register` capability."
+
+[[hook]]
+id = "registry.freeze"
+class = "org.exampleengine.registry.KeyedRegistry"
+member = "registryFreeze"
+descriptor = "()Lorg/exampleengine/registry/Registry;"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `registry.freeze` capability."
+
+[[hook]]
+id = "registry.closed"
+class = "org.exampleengine.registry.KeyedRegistry"
+member = "registryClosed"
+descriptor = "Z"
+kind = "instance-field"
+capability = "Synthetic second-version target standing in for the `registry.closed` capability."
+
+[[hook]]
+id = "registry.built-in-freeze"
+class = "org.exampleengine.registry.StockRegistries"
+member = "registryBuiltInFreeze"
+descriptor = "()V"
+kind = "static-method"
+capability = "Synthetic second-version target standing in for the `registry.built-in-freeze` capability."
+
+[[hook]]
+id = "registry.built-in-bootstrap"
+class = "org.exampleengine.registry.StockRegistries"
+member = "registryBuiltInBootstrap"
+descriptor = "()V"
+kind = "static-method"
+capability = "Synthetic second-version target standing in for the `registry.built-in-bootstrap` capability."
+
+[[hook]]
+id = "recipe.apply"
+class = "org.exampleengine.craft.RecipeStore"
+member = "recipeApply"
+descriptor = "(Lorg/exampleengine/craft/RecipeMap;Lorg/exampleengine/resource/Resources;Lorg/exampleengine/profile/Profiler;)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `recipe.apply` capability."
+
+[[hook]]
+id = "server.tick"
+class = "org.exampleengine.server.GameServer"
+member = "serverTick"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `server.tick` capability."
+
+[[hook]]
+id = "server.tick-integrated"
+class = "org.exampleengine.server.EmbeddedServer"
+member = "serverTickIntegrated"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `server.tick-integrated` capability."
+
+[[hook]]
+id = "server.tick-count"
+class = "org.exampleengine.server.GameServer"
+member = "serverTickCount"
+descriptor = "I"
+kind = "instance-field"
+capability = "Synthetic second-version target standing in for the `server.tick-count` capability."
+
+[[hook]]
+id = "server.average-tick-time"
+class = "org.exampleengine.server.GameServer"
+member = "serverAverageTickTime"
+descriptor = "()J"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `server.average-tick-time` capability."
+
+[[hook]]
+id = "server.tick-times"
+class = "org.exampleengine.server.GameServer"
+member = "serverTickTimes"
+descriptor = "()[J"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `server.tick-times` capability."
+
+[[hook]]
+id = "client.tick"
+class = "org.exampleengine.client.GameClient"
+member = "clientTick"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `client.tick` capability."
+
+[[hook]]
+id = "client.run-tick"
+class = "org.exampleengine.client.GameClient"
+member = "clientRunTick"
+descriptor = "(Z)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `client.run-tick` capability."
+
+[[hook]]
+id = "command.table"
+class = "org.exampleengine.command.CommandRoot"
+member = "commandTable"
+descriptor = "Lorg/exampleengine/command/Dispatcher;"
+kind = "instance-field"
+capability = "Synthetic second-version target standing in for the `command.table` capability."
+
+[[hook]]
+id = "command.perform-prefixed"
+class = "org.exampleengine.command.CommandRoot"
+member = "commandPerformPrefixed"
+descriptor = "(Lorg/exampleengine/command/CommandSource;Ljava/lang/String;)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `command.perform-prefixed` capability."
+
+[[hook]]
+id = "resource.register-reload-listener"
+class = "org.exampleengine.resource.ReloadableResources"
+member = "resourceRegisterReloadListener"
+descriptor = "(Lorg/exampleengine/resource/ReloadListener;)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `resource.register-reload-listener` capability."
+
+[[hook]]
+id = "resource.load-server-resources"
+class = "org.exampleengine.resource.ServerResources"
+member = "resourceLoadServerResources"
+descriptor = "(Lorg/exampleengine/resource/Resources;Lorg/exampleengine/registry/RegistryLayers;Ljava/util/List;Lorg/exampleengine/flag/FlagSet;Lorg/exampleengine/command/CommandScope;Lorg/exampleengine/permission/PermissionSet;Ljava/util/concurrent/Executor;Ljava/util/concurrent/Executor;)Ljava/util/concurrent/CompletableFuture;"
+kind = "static-method"
+capability = "Synthetic second-version target standing in for the `resource.load-server-resources` capability."
+
+[[hook]]
+id = "resource.reload-client-packs"
+class = "org.exampleengine.client.GameClient"
+member = "resourceReloadClientPacks"
+descriptor = "()Ljava/util/concurrent/CompletableFuture;"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `resource.reload-client-packs` capability."
+
+[[hook]]
+id = "screen.init"
+class = "org.exampleengine.screen.Panel"
+member = "screenInit"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `screen.init` capability."
+
+[[hook]]
+id = "screen.init-sized"
+class = "org.exampleengine.screen.Panel"
+member = "screenInitSized"
+descriptor = "(II)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `screen.init-sized` capability."
+
+[[hook]]
+id = "screen.tick"
+class = "org.exampleengine.screen.Panel"
+member = "screenTick"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `screen.tick` capability."
+
+[[hook]]
+id = "screen.extract-render-state"
+class = "org.exampleengine.screen.Panel"
+member = "screenExtractRenderState"
+descriptor = "(Lorg/exampleengine/screen/FrameSink;IIF)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `screen.extract-render-state` capability."
+
+[[hook]]
+id = "screen.set"
+class = "org.exampleengine.client.GameClient"
+member = "screenSet"
+descriptor = "(Lorg/exampleengine/screen/Panel;)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `screen.set` capability."
+
+[[hook]]
+id = "screen.title-menu-options"
+class = "org.exampleengine.screen.TitlePanel"
+member = "screenTitleMenuOptions"
+descriptor = "(II)I"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `screen.title-menu-options` capability."
+
+[[hook]]
+id = "save.compute-if-absent"
+class = "org.exampleengine.store.RecordStore"
+member = "saveComputeIfAbsent"
+descriptor = "(Lorg/exampleengine/store/RecordType;)Lorg/exampleengine/store/Record;"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `save.compute-if-absent` capability."
+
+[[hook]]
+id = "save.try-write"
+class = "org.exampleengine.store.RecordStore"
+member = "saveTryWrite"
+descriptor = "(Lorg/exampleengine/store/RecordType;Lorg/exampleengine/store/Blob;)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `save.try-write` capability."
+
+[[hook]]
+id = "save.save-and-join"
+class = "org.exampleengine.store.RecordStore"
+member = "saveSaveAndJoin"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `save.save-and-join` capability."
+
+[[hook]]
+id = "save.set-dirty"
+class = "org.exampleengine.store.Record"
+member = "saveSetDirty"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `save.set-dirty` capability."
+
+[[hook]]
+id = "save.save-everything"
+class = "org.exampleengine.server.GameServer"
+member = "saveSaveEverything"
+descriptor = "(ZZZ)Z"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `save.save-everything` capability."
+
+[[hook]]
+id = "world.open-persistence"
+class = "org.exampleengine.client.GameClient"
+member = "worldOpenPersistence"
+descriptor = "(Lorg/exampleengine/store/WorldStore;Lorg/exampleengine/resource/PackStore;Lorg/exampleengine/world/WorldSeed;Ljava/util/Optional;Z)V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `world.open-persistence` capability."
+refuses = true
+
+[[hook]]
+id = "world.save-persistence"
+class = "org.exampleengine.server.GameServer"
+member = "worldSavePersistence"
+descriptor = "(ZZZ)Z"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `world.save-persistence` capability."

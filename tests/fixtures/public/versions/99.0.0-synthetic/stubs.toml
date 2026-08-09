@@ -1,0 +1,17 @@
+# Classes the settings screen compiles against, for the synthetic second version.
+#
+# Invented like everything else here, and small on purpose: the property this
+# fixture proves is that the generator reads a version's stub data rather than
+# the pinned version's, and two classes with a constructor, a method, a field and
+# a reference between them exercise every branch the renderer has.
+
+schemaVersion = 1
+minecraft = "99.0.0-synthetic"
+
+[[stub]]
+class = "org.exampleengine.screen.FrameSink"
+members = ["flush"]
+
+[[stub]]
+class = "org.exampleengine.screen.Panel"
+members = ["<init>", "refresh", "sink", "width"]

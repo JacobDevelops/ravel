@@ -201,12 +201,12 @@ mod tests {
             |_env| {
                 Ok(::std::vec![
                     HookValue::Handle(JavaHandle::new(
-                        "net/minecraft/resources/ResourceKey",
+                        "com/example/resources/ResourceKey",
                         &argument0,
                     )),
                     HookValue::Handle(JavaHandle::new("java/lang/Object", &argument1)),
                     HookValue::Handle(JavaHandle::new(
-                        "net/minecraft/core/RegistrationInfo",
+                        "com/example/core/RegistrationInfo",
                         &argument2,
                     )),
                 ])

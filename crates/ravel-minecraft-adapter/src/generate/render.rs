@@ -1134,10 +1134,10 @@ mod tests {
             vec![JavaType::Text, JavaType::Boolean]
         );
         assert_eq!(
-            parameters("(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;)V")
+            parameters("(Lcom/example/resources/ResourceKey;Ljava/lang/Object;)V")
                 .expect("ADG-4 admits a handle onto an object the game owns"),
             vec![
-                JavaType::Handle("net/minecraft/resources/ResourceKey".to_owned()),
+                JavaType::Handle("com/example/resources/ResourceKey".to_owned()),
                 JavaType::Handle("java/lang/Object".to_owned()),
             ]
         );
@@ -1183,7 +1183,7 @@ mod tests {
     #[test]
     fn a_descriptor_that_is_not_one_is_refused_and_says_what_about_it_is_wrong() {
         assert!(
-            parameters("(Lnet/minecraft/core/Registry)V")
+            parameters("(Lcom/example/core/Registry)V")
                 .expect_err("an unterminated class name must be refused")
                 .contains("never terminated")
         );
@@ -1243,7 +1243,7 @@ mod tests {
 
     #[test]
     fn a_handle_keeps_its_declared_class_in_rust_and_loses_it_in_the_hook_signature() {
-        let registry = JavaType::Handle("net/minecraft/core/MappedRegistry".to_owned());
+        let registry = JavaType::Handle("com/example/core/MappedRegistry".to_owned());
 
         assert_eq!(registry.descriptor(), "Ljava/lang/Object;");
         assert_eq!(registry.java(), "Object");
@@ -1251,7 +1251,7 @@ mod tests {
         assert_eq!(
             registry.value("argument0"),
             "::ravel_minecraft::HookValue::Handle(::ravel_minecraft::JavaHandle::new(\
-             \"net/minecraft/core/MappedRegistry\", &argument0))"
+             \"com/example/core/MappedRegistry\", &argument0))"
         );
     }
 
@@ -1263,20 +1263,20 @@ mod tests {
     const CANDIDATES: [(&str, &str, &str, &str); 3] = [
         (
             "registry.register",
-            "net.minecraft.core.MappedRegistry",
+            "com.example.core.MappedRegistry",
             "register",
-            "(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;\
-             Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;",
+            "(Lcom/example/resources/ResourceKey;Ljava/lang/Object;\
+             Lcom/example/core/RegistrationInfo;)Lcom/example/core/Holder$Reference;",
         ),
         (
             "server.tick",
-            "net.minecraft.server.MinecraftServer",
+            "com.example.server.MinecraftServer",
             "tickServer",
             "(Ljava/util/function/BooleanSupplier;)V",
         ),
         (
             "server.tick-times",
-            "net.minecraft.server.MinecraftServer",
+            "com.example.server.MinecraftServer",
             "logTickTimes",
             "([JZ)V",
         ),
@@ -1296,7 +1296,7 @@ mod tests {
         );
         assert!(
             rust.contains(
-                "::ravel_minecraft::JavaHandle::new(\"net/minecraft/resources/ResourceKey\", \
+                "::ravel_minecraft::JavaHandle::new(\"com/example/resources/ResourceKey\", \
                  &argument0)"
             ),
             "{rust}"
@@ -1342,8 +1342,8 @@ mod tests {
         }
         assert!(
             java.contains(
-                "\"(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;\
-                 Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;\""
+                "\"(Lcom/example/resources/ResourceKey;Ljava/lang/Object;\
+                 Lcom/example/core/RegistrationInfo;)Lcom/example/core/Holder$Reference;\""
             ),
             "the target keeps its own descriptor, which is what the agent matches on: {java}"
         );
@@ -1436,20 +1436,15 @@ mod tests {
     #[test]
     fn a_stub_declares_the_members_it_carries_with_the_descriptors_the_jar_declared() {
         let screen = stub(
-            "net/minecraft/client/gui/screens/Screen",
+            "com/example/client/gui/screens/Screen",
             0x0421, // public abstract class
             &[
-                (
-                    "<init>",
-                    "(Lnet/minecraft/network/chat/Component;)V",
-                    4,
-                    true,
-                ),
+                ("<init>", "(Lcom/example/network/chat/Component;)V", 4, true),
                 ("init", "()V", 4, true),
                 ("init", "(II)V", 0x0011, true),
                 (
                     "getTitle",
-                    "()Lnet/minecraft/network/chat/Component;",
+                    "()Lcom/example/network/chat/Component;",
                     1,
                     true,
                 ),
@@ -1458,14 +1453,14 @@ mod tests {
 
         let (path, java) = stub_java(&adapter(), &screen).expect("a stub should render");
 
-        assert_eq!(path, "net/minecraft/client/gui/screens/Screen.java");
+        assert_eq!(path, "com/example/client/gui/screens/Screen.java");
         assert!(
-            java.contains("package net.minecraft.client.gui.screens;"),
+            java.contains("package com.example.client.gui.screens;"),
             "{java}"
         );
         assert!(java.contains("public abstract class Screen {"), "{java}");
         assert!(
-            java.contains("protected Screen(net.minecraft.network.chat.Component argument0) {"),
+            java.contains("protected Screen(com.example.network.chat.Component argument0) {"),
             "a constructor takes the class's simple name: {java}"
         );
         assert!(java.contains("protected void init() {"), "{java}");
@@ -1475,7 +1470,7 @@ mod tests {
         );
         assert!(
             java.contains(
-                "public net.minecraft.network.chat.Component getTitle() {\n        \
+                "public com.example.network.chat.Component getTitle() {\n        \
                  throw new UnsupportedOperationException(\"stub\");"
             ),
             "a stub body is never reached and says so if it is: {java}"
@@ -1485,31 +1480,31 @@ mod tests {
     #[test]
     fn a_stubbed_supertype_is_declared_and_an_interface_method_gets_a_body() {
         let mut component = stub(
-            "net/minecraft/network/chat/Component",
+            "com/example/network/chat/Component",
             0x0601, // public abstract interface
             &[(
                 "translatable",
-                "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;",
+                "(Ljava/lang/String;)Lcom/example/network/chat/MutableComponent;",
                 0x0009,
                 true,
             )],
         );
-        component.implements = vec!["net/minecraft/network/chat/FormattedText".to_owned()];
-        let mut mutable = stub("net/minecraft/network/chat/MutableComponent", 0x0031, &[]);
-        mutable.implements = vec!["net/minecraft/network/chat/Component".to_owned()];
+        component.implements = vec!["com/example/network/chat/FormattedText".to_owned()];
+        let mut mutable = stub("com/example/network/chat/MutableComponent", 0x0031, &[]);
+        mutable.implements = vec!["com/example/network/chat/Component".to_owned()];
 
         let (_, interface) = stub_java(&adapter(), &component).expect("renders");
         let (_, class) = stub_java(&adapter(), &mutable).expect("renders");
 
         assert!(
             interface.contains(
-                "public interface Component extends net.minecraft.network.chat.FormattedText {"
+                "public interface Component extends com.example.network.chat.FormattedText {"
             ),
             "{interface}"
         );
         assert!(
             interface.contains(
-                "static net.minecraft.network.chat.MutableComponent \
+                "static com.example.network.chat.MutableComponent \
                  translatable(java.lang.String argument0) {"
             ),
             "an interface member is never declared public, which javac warns on: {interface}"
@@ -1517,7 +1512,7 @@ mod tests {
         assert!(
             class.contains(
                 "public final class MutableComponent implements \
-                 net.minecraft.network.chat.Component {"
+                 com.example.network.chat.Component {"
             ),
             "the edge that makes a returned value assignable is what the stub keeps: {class}"
         );
@@ -1526,7 +1521,7 @@ mod tests {
     #[test]
     fn a_non_static_interface_method_is_given_a_body_rather_than_left_abstract() {
         let component = stub(
-            "net/minecraft/network/chat/Component",
+            "com/example/network/chat/Component",
             0x0601,
             &[("getString", "()Ljava/lang/String;", 0x0401, true)],
         );
@@ -1565,11 +1560,11 @@ mod tests {
     #[test]
     fn a_nested_class_is_declared_under_the_binary_name_the_jvm_links_on() {
         let builder = stub(
-            "net/minecraft/client/gui/components/Button$Builder",
+            "com/example/client/gui/components/Button$Builder",
             0x0021,
             &[(
                 "bounds",
-                "(IIII)Lnet/minecraft/client/gui/components/Button$Builder;",
+                "(IIII)Lcom/example/client/gui/components/Button$Builder;",
                 1,
                 true,
             )],
@@ -1578,13 +1573,13 @@ mod tests {
         let (path, java) = stub_java(&adapter(), &builder).expect("renders");
 
         assert!(
-            path.ends_with("net/minecraft/client/gui/components/Button$Builder.java"),
+            path.ends_with("com/example/client/gui/components/Button$Builder.java"),
             "{path}"
         );
         assert!(java.contains("public class Button$Builder"), "{java}");
         assert!(
             java.contains(
-                "public net.minecraft.client.gui.components.Button$Builder bounds(int argument0,"
+                "public com.example.client.gui.components.Button$Builder bounds(int argument0,"
             ),
             "a nested type is named the same way wherever it appears: {java}"
         );
@@ -1593,7 +1588,7 @@ mod tests {
     #[test]
     fn a_field_stub_keeps_its_declared_type_and_drops_nothing_else() {
         let font = stub(
-            "net/minecraft/client/gui/Font",
+            "com/example/client/gui/Font",
             1,
             &[("lineHeight", "I", 1, false), ("glyphs", "[[J", 4, false)],
         );
@@ -1607,21 +1602,21 @@ mod tests {
     #[test]
     fn the_stub_lock_records_what_was_read_and_says_what_it_does_not_promise() {
         let mut screen = stub(
-            "net/minecraft/client/gui/screens/Screen",
+            "com/example/client/gui/screens/Screen",
             0x0421,
             &[("init", "()V", 4, true)],
         );
-        screen.extends = Some("net/minecraft/A".to_owned());
-        screen.implements = vec!["net/minecraft/B".to_owned()];
+        screen.extends = Some("com/example/A".to_owned());
+        screen.implements = vec!["com/example/B".to_owned()];
 
         let lock = stub_lock(&adapter(), &[screen]);
 
         assert!(lock.contains("extractor = \"classfile\""), "{lock}");
         assert!(
             lock.contains(
-                "[[stub]]\nclass = \"net/minecraft/client/gui/screens/Screen\"\n\
-                           flags = 1057\nextends = \"net/minecraft/A\"\n\
-                           implements = [\"net/minecraft/B\"]"
+                "[[stub]]\nclass = \"com/example/client/gui/screens/Screen\"\n\
+                           flags = 1057\nextends = \"com/example/A\"\n\
+                           implements = [\"com/example/B\"]"
             ),
             "{lock}"
         );
@@ -1673,7 +1668,7 @@ mod tests {
                 .contains("more than one return type")
         );
         assert!(
-            java_type("Lnet/minecraft/A")
+            java_type("Lcom/example/A")
                 .expect_err("unterminated")
                 .contains("never terminated")
         );

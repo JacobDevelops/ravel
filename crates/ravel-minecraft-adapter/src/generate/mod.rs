@@ -486,6 +486,157 @@ mod tests {
         let _ = std::fs::remove_dir_all(&out);
     }
 
+    /// Where the synthetic second version's data lives.
+    ///
+    /// It is a fixture rather than a second directory under `minecraft/versions`
+    /// because [`inputs::pinned`] refuses two of those on purpose: two pinned
+    /// versions would need two hook classes and two exported symbol sets, and
+    /// nothing has decided how those are told apart. A drop-in *replacement*
+    /// asks the question M4-W6 actually asks — whether the generator works on a
+    /// version that is not the pinned one — without deciding a question ADG-3
+    /// left open.
+    const SECOND_VERSION: &str = "tests/fixtures/public/versions";
+
+    /// Stages the synthetic second version as if it were the pinned one.
+    ///
+    /// The directory name is read off the filesystem rather than written here,
+    /// so no source file in any crate spells a version, which is the property
+    /// `ravel-verify-scaffold` enforces and this test would otherwise be the
+    /// first thing to break.
+    fn staged_second_version(name: &str) -> (PathBuf, String) {
+        let source = repository_root().join(SECOND_VERSION);
+        let mut versions = std::fs::read_dir(&source)
+            .expect("the synthetic version fixture should be readable")
+            .flatten()
+            .filter(|entry| entry.path().is_dir())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        versions.sort();
+        let [version] = versions.as_slice() else {
+            panic!("the fixture holds one synthetic version, not {versions:?}");
+        };
+
+        let root = output(name);
+        let directory = root.join("minecraft/versions").join(version);
+        std::fs::create_dir_all(&directory).expect("the staged directory should be made");
+        for entry in std::fs::read_dir(source.join(version)).expect("listable") {
+            let file = entry.expect("a readable entry").file_name();
+            std::fs::copy(source.join(version).join(&file), directory.join(&file))
+                .expect("copyable");
+        }
+        (root, version.clone())
+    }
+
+    /// M4-W6's gate: the shared adapter is not welded to the pinned version.
+    ///
+    /// Nothing about this run is the pinned version's. The version data is another's,
+    /// the classes and members it names are that version's own, and the generator
+    /// reading it is the same code, unedited, that reads the pinned one. What the
+    /// run produces names the second version and nothing but it, which is the
+    /// statement: version-specific knowledge lives in version data, and the crate
+    /// that reads it holds none.
+    ///
+    /// The hook ids are the exception that proves the rule. `ravel-minecraft` says
+    /// an id is the only name that survives a game update, and general crates name
+    /// ids: `ravel-bootstrap` projects events from them. So the fixture reviews the
+    /// same id set the pinned version does, and the assertion below is that both
+    /// tables answer to every one of them. A general crate needs no edit for a
+    /// second version precisely because that set is what it depends on.
+    #[test]
+    fn the_generator_reads_a_second_version_without_naming_the_pinned_one() {
+        let (root, version) = staged_second_version("second-version");
+        let out = output("second-version-out");
+
+        let generated = run(&root, &out).expect("a second version's data should generate");
+
+        let pinned_version = inputs::pinned(repository_root())
+            .expect("the tracked version data should parse")
+            .adapter
+            .minecraft;
+        assert_ne!(
+            version, pinned_version,
+            "a fixture that is the pinned version proves nothing"
+        );
+
+        // No generated artefact may name the pinned version, and the two that
+        // record which version they came from have to record this one. The
+        // exported symbols are the third and name no version at all, which is
+        // itself the right answer: an export is a symbol the JVM resolves by
+        // name, so a version in one would make the ABI version-specific.
+        for artefact in [&generated.bindings, &generated.exports, &generated.java] {
+            let text = std::fs::read_to_string(artefact).expect("readable");
+            assert!(
+                !text.contains(&pinned_version),
+                "nothing generated from the second version may name the pinned one: {}",
+                artefact.display()
+            );
+        }
+        for artefact in [&generated.bindings, &generated.java] {
+            let text = std::fs::read_to_string(artefact).expect("readable");
+            assert!(
+                text.contains(&version),
+                "the artefact should name the version it was generated from: {}",
+                artefact.display()
+            );
+        }
+        let exports = std::fs::read_to_string(&generated.exports).expect("readable");
+        assert!(
+            !exports.contains(&version),
+            "an exported symbol is resolved by name, so no version belongs in one"
+        );
+
+        // Every reviewed id, in both versions, mapped onto different members.
+        let second = inputs::pinned(&root).expect("the staged data should parse");
+        let bindings = std::fs::read_to_string(&generated.bindings).expect("readable");
+        let pinned_inventory = inputs::pinned(repository_root())
+            .expect("the tracked version data should parse")
+            .inventory;
+        let mut ids = pinned_inventory
+            .hooks
+            .iter()
+            .map(|hook| hook.id.as_str())
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        let mut second_ids = second
+            .inventory
+            .hooks
+            .iter()
+            .map(|hook| hook.id.as_str())
+            .collect::<Vec<_>>();
+        second_ids.sort_unstable();
+        assert_eq!(
+            ids, second_ids,
+            "a second version of the same capability surface reviews the same ids"
+        );
+        for hook in &second.inventory.hooks {
+            assert!(
+                bindings.contains(&format!("HookId::new(\"{}\")", hook.id)),
+                "{} reached no generated target",
+                hook.id
+            );
+        }
+        assert!(
+            !pinned_inventory.hooks.iter().any(|hook| second
+                .inventory
+                .hooks
+                .iter()
+                .any(|other| other.id == hook.id && other.class == hook.class)),
+            "a second version that maps an id onto the same class is the same version"
+        );
+
+        // The stub half is version data too, so it moves with the rest.
+        for seed in &second.seeds.stubs {
+            let stub = generated
+                .stubs
+                .join(format!("{}.java", seed.class.replace('.', "/")));
+            let text = std::fs::read_to_string(&stub).expect("the seeded class should be stubbed");
+            assert!(text.contains(&version), "{text}");
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
     #[test]
     fn generation_is_reproducible_byte_for_byte() {
         let root = repository_root();

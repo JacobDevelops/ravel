@@ -567,9 +567,9 @@ mod tests {
 
     #[test]
     fn a_nested_class_is_carried_under_the_binary_name_that_names_it() {
-        let named = names_in("()Lnet/minecraft/core/Holder$Reference;");
+        let named = names_in("()Lcom/example/core/Holder$Reference;");
 
-        assert_eq!(named, ["net/minecraft/core/Holder$Reference"]);
+        assert_eq!(named, ["com/example/core/Holder$Reference"]);
     }
 
     #[test]

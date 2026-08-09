@@ -242,7 +242,7 @@ impl<'local> JavaHandle<'local> {
     /// The type the call site's descriptor declared, in two conventions.
     ///
     /// For an object it is the internal class name with slashes and no
-    /// decoration — `net/minecraft/core/MappedRegistry`. For an array it is the
+    /// decoration — `com/example/core/MappedRegistry`. For an array it is the
     /// array's own descriptor instead — `[J`, `[[I`, `[Ljava/lang/String;` —
     /// because an array has no class name to give, only a descriptor. Matching
     /// on a leading `[` is what tells the two apart.
@@ -405,14 +405,14 @@ mod tests {
     static TARGETS: [HookTarget; 2] = [
         HookTarget::new(
             CHAT,
-            "net/minecraft/util/StringUtil",
+            "com/example/util/StringUtil",
             "isAllowedChatCharacter",
             "(I)Z",
             HookKind::StaticMethod,
         ),
         HookTarget::new(
             INPUT,
-            "net/minecraft/util/SmoothDouble",
+            "com/example/util/SmoothDouble",
             "lastAmount",
             "D",
             HookKind::InstanceField,
@@ -449,7 +449,7 @@ mod tests {
 
         assert_eq!(target.id(), CHAT);
         assert_eq!(target.id().as_str(), "chat.allowed-character");
-        assert_eq!(target.class(), "net/minecraft/util/StringUtil");
+        assert_eq!(target.class(), "com/example/util/StringUtil");
         assert_eq!(target.member(), "isAllowedChatCharacter");
         assert_eq!(target.descriptor(), "(I)Z");
         assert_eq!(target.kind(), HookKind::StaticMethod);
@@ -509,10 +509,7 @@ mod tests {
             HookValue::Float(0.5),
             HookValue::Double(0.25),
             HookValue::Text("hello".to_owned()),
-            HookValue::Handle(JavaHandle::new(
-                "net/minecraft/core/MappedRegistry",
-                &absent,
-            )),
+            HookValue::Handle(JavaHandle::new("com/example/core/MappedRegistry", &absent)),
         ];
 
         assert_eq!(values.len(), 10);
@@ -533,14 +530,14 @@ mod tests {
     #[test]
     fn a_handle_reports_the_class_it_was_declared_with_and_nothing_about_the_object() {
         let absent = JObject::null();
-        let handle = JavaHandle::new("net/minecraft/core/MappedRegistry", &absent);
+        let handle = JavaHandle::new("com/example/core/MappedRegistry", &absent);
 
-        assert_eq!(handle.class(), "net/minecraft/core/MappedRegistry");
+        assert_eq!(handle.class(), "com/example/core/MappedRegistry");
         assert!(handle.is_null());
 
         let rendered = format!("{handle:?}");
         assert!(
-            rendered.contains("net/minecraft/core/MappedRegistry"),
+            rendered.contains("com/example/core/MappedRegistry"),
             "{rendered}"
         );
         assert!(rendered.contains("null: true"), "{rendered}");
@@ -560,7 +557,7 @@ mod tests {
     fn a_null_handle_equals_nothing_because_it_names_nothing() {
         let absent = JObject::null();
         let also_absent = JObject::null();
-        let key = JavaHandle::new("net/minecraft/resources/ResourceKey", &absent);
+        let key = JavaHandle::new("com/example/resources/ResourceKey", &absent);
         let copied = key;
 
         // The failure this guards: `MappedRegistry.register` can pass a null key
@@ -569,18 +566,18 @@ mod tests {
         // its arguments must not be told that two absences are one object.
         assert_ne!(
             key,
-            JavaHandle::new("net/minecraft/core/RegistrationInfo", &also_absent),
+            JavaHandle::new("com/example/core/RegistrationInfo", &also_absent),
             "two nulls in one call are not one object"
         );
         assert_ne!(
             key,
-            JavaHandle::new("net/minecraft/resources/ResourceKey", &absent),
+            JavaHandle::new("com/example/resources/ResourceKey", &absent),
             "not even the same null reference, declared the same way"
         );
         assert_ne!(key, copied, "null is not reflexive, exactly as NAN is not");
         assert_ne!(
             HookValue::Handle(key),
-            HookValue::Text("net/minecraft/resources/ResourceKey".to_owned())
+            HookValue::Text("com/example/resources/ResourceKey".to_owned())
         );
     }
 }

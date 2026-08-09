@@ -4233,6 +4233,59 @@ fn verify_example_inventory(root: &Path, violations: &mut Vec<String>) {
     }
 }
 
+/// What the version-boundary sweep reads, said in every violation it reports.
+///
+/// `crates/` is what "general crate" means and what
+/// `docs/architecture/dependency-rules.md` states the rule over. `tests/` and
+/// `test-mods/` are excluded on purpose — a conformance test or a test mod may
+/// legitimately pin the version it was written against — and saying so in the
+/// failure text is what keeps the exclusion a decision rather than a hole
+/// nobody noticed.
+const SWEPT_SCOPE: &str =
+    "the sweep reads crates/ only; tests/ and test-mods/ are excluded by design";
+
+/// Game class names a file under `crates/` may spell, each with its reason.
+///
+/// Silence is not tolerance here: every occurrence the sweep finds is either
+/// corrected — the adapter's and `ravel-minecraft`'s invented fixtures were,
+/// which is why they are not listed — or named below with a reason someone can
+/// disagree with. Every entry is one file and one class, and an entry that stops
+/// matching is reported as stale, so an excuse cannot outlive its occurrence and
+/// a file's excuse does not cover the next class added to it.
+///
+/// All three entries are the same shape: a test that reads the pinned version's
+/// own data and asserts on what that data says. Such a test cannot be written
+/// against invented names, because the names are the thing under test.
+const VERSION_CLASS_EXCUSES: [(&str, &[&str], &str); 3] = [
+    (
+        "crates/ravel-minecraft-adapter/src/generate/mod.rs",
+        &["net/minecraft/client/gui/screens/Screen"],
+        "generates from the tracked pinned inputs and asserts on the stub tree \
+         they produce, so it names what they name",
+    ),
+    (
+        "crates/ravel-minecraft-adapter/src/generate/resolve.rs",
+        &["net/minecraft/util/StringUtil"],
+        "resolves the pinned inventory's first hook and asserts the class that \
+         inventory names it against",
+    ),
+    (
+        "crates/ravel-minecraft-adapter/src/generate/stubs.rs",
+        &[
+            "net/minecraft/client/gui/components/AbstractSliderButton",
+            "net/minecraft/client/gui/components/AbstractWidget",
+            "net/minecraft/client/gui/components/Button",
+            "net/minecraft/client/gui/components/EditBox",
+            "net/minecraft/client/gui/components/events/GuiEventListener",
+            "net/minecraft/client/gui/screens/Screen",
+            "net/minecraft/network/chat/Component",
+            "net/minecraft/network/chat/FormattedText",
+        ],
+        "asserts which supertype edges the pinned jar's own stub set keeps and \
+         which it drops, and an edge is a fact about those classes",
+    ),
+];
+
 fn verify_version_boundary(root: &Path, violations: &mut Vec<String>) {
     let crates = root.join("crates");
     if let Ok(entries) = fs::read_dir(&crates) {
@@ -4247,13 +4300,24 @@ fn verify_version_boundary(root: &Path, violations: &mut Vec<String>) {
         }
     }
 
-    let versions = fs::read_dir(root.join("minecraft/versions"))
+    // Both version directories, the pinned one and M4-W6's synthetic second one.
+    // A crate that names either is welded to a version, and the synthetic one is
+    // the half that catches the mistake nobody makes on purpose: a general crate
+    // written against whichever version the author happened to have.
+    let versions = ["minecraft/versions", "tests/fixtures/public/versions"]
         .into_iter()
-        .flatten()
+        .flat_map(|directory| fs::read_dir(root.join(directory)).into_iter().flatten())
         .flatten()
         .filter(|entry| entry.path().is_dir())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect::<Vec<_>>();
+
+    let classes = version_class_names(root);
+    let excuses = VERSION_CLASS_EXCUSES
+        .iter()
+        .flat_map(|(file, excused, _)| excused.iter().map(move |class| (*file, *class)))
+        .collect::<Vec<_>>();
+    let mut excuse_matched = vec![false; excuses.len()];
 
     let mut files = Vec::new();
     collect_files(&root.join("crates"), &mut files);
@@ -4264,16 +4328,134 @@ fn verify_version_boundary(root: &Path, violations: &mut Vec<String>) {
         ) {
             continue;
         }
-        if fs::read_to_string(&path)
-            .is_ok_and(|source| versions.iter().any(|version| source.contains(version)))
-        {
-            let relative = path.strip_prefix(root).unwrap_or(&path);
+        let Ok(source) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        if versions.iter().any(|version| source.contains(version)) {
             violations.push(format!(
-                "hardcoded Minecraft version outside version data: {}",
-                relative.display()
+                "hardcoded Minecraft version outside version data ({SWEPT_SCOPE}): {relative}"
+            ));
+        }
+
+        for class in &classes {
+            let dotted = class.replace('/', ".");
+            if !source.contains(class.as_str()) && !source.contains(&dotted) {
+                continue;
+            }
+            if let Some(index) = excuses
+                .iter()
+                .position(|(file, excused)| *file == relative && *excused == class.as_str())
+            {
+                excuse_matched[index] = true;
+                continue;
+            }
+            violations.push(format!(
+                "game class name from version data outside version data ({SWEPT_SCOPE}): \
+                 {relative} names {class}"
             ));
         }
     }
+
+    for (index, matched) in excuse_matched.iter().enumerate() {
+        if !matched {
+            let (file, class) = excuses[index];
+            violations.push(format!(
+                "stale version-class excuse: {file} no longer names {class}, \
+                 so the excuse is unearned and has to go"
+            ));
+        }
+    }
+}
+
+/// Every fully-qualified game class name a version directory supplies, as an
+/// internal name with slashes.
+///
+/// The names come out of the same data the generator reads: each `class` entry in
+/// `hooks.toml`, `stubs.toml` and `mappings.lock`, plus every class a descriptor
+/// in those files refers to, kept only when it sits under a package root a
+/// `class` entry declared. That last filter is what keeps `java/lang/String` out
+/// of a set that is about the game rather than the platform.
+///
+/// Member names are deliberately not swept. `width`, `tick` and `flush` are
+/// ordinary English, and a sweep that fires on them would be turned off within a
+/// week. A class name is long, unambiguous, and the thing a general crate has no
+/// business spelling.
+fn version_class_names(root: &Path) -> Vec<String> {
+    let mut texts = Vec::new();
+    for directory in ["minecraft/versions", "tests/fixtures/public/versions"] {
+        let Ok(entries) = fs::read_dir(root.join(directory)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if !entry.path().is_dir() {
+                continue;
+            }
+            for file in ["hooks.toml", "stubs.toml", "mappings.lock"] {
+                if let Ok(text) = fs::read_to_string(entry.path().join(file)) {
+                    texts.push(text);
+                }
+            }
+        }
+    }
+
+    let mut classes = BTreeSet::new();
+    for text in &texts {
+        for line in text.lines() {
+            if let Some(value) = line.trim().strip_prefix("class = \"")
+                && let Some(value) = value.strip_suffix('"')
+            {
+                classes.insert(value.replace('.', "/"));
+            }
+        }
+    }
+
+    let roots = classes
+        .iter()
+        .filter_map(|class| {
+            let mut segments = class.split('/');
+            Some(format!("{}/{}/", segments.next()?, segments.next()?))
+        })
+        .collect::<BTreeSet<_>>();
+
+    for text in &texts {
+        for reference in descriptor_classes(text) {
+            if roots.iter().any(|prefix| reference.starts_with(prefix)) {
+                classes.insert(reference);
+            }
+        }
+    }
+
+    classes.into_iter().collect()
+}
+
+/// Every class a descriptor in `text` refers to, as an internal name.
+///
+/// A descriptor spells an object type `Lnet/minecraft/util/StringUtil;`, so this
+/// reads each `L`-to-`;` run of descriptor-legal characters. A run without a
+/// slash is not a package-qualified class and is dropped, which is what keeps
+/// the `L` in ordinary prose from being read as a type.
+fn descriptor_classes(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut found = Vec::new();
+    for (start, _) in text.match_indices('L') {
+        let name = start + 1;
+        let mut end = name;
+        while end < bytes.len()
+            && (bytes[end].is_ascii_alphanumeric() || matches!(bytes[end], b'/' | b'$' | b'_'))
+        {
+            end += 1;
+        }
+        if bytes.get(end) == Some(&b';') && text[name..end].contains('/') {
+            found.push(text[name..end].to_owned());
+        }
+    }
+    found
 }
 
 fn tracked_paths(root: &Path) -> Result<Vec<String>, String> {
@@ -4503,16 +4685,16 @@ mod tests {
 
     use super::{
         CampaignInventory, HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS,
-        campaign_document_violations, change_mismatch, declared_hook_names,
-        declares_unsafe_prohibition, denied_hook_names, game_class_literals, hook_counts,
-        hook_document_violations, numbers_before, pinned_commit_mismatch, redacted_path,
-        required_scaffold_paths, round_count_restatements, verify_campaign_inventory,
-        verify_decision_hook_claims, verify_evidence_records, verify_experiment_fence,
-        verify_harness_lifecycles, verify_hook_inventory_document, verify_ignored_boundaries,
-        verify_manifest_percentages, verify_milestone, verify_persistence_reflection,
-        verify_review_round_counts, verify_scaffold, verify_spikes, verify_testkit_fence,
-        verify_tracked_contents, verify_tracked_paths, verify_version_boundary, verify_void_limits,
-        visible_commit,
+        SWEPT_SCOPE, VERSION_CLASS_EXCUSES, campaign_document_violations, change_mismatch,
+        declared_hook_names, declares_unsafe_prohibition, denied_hook_names, game_class_literals,
+        hook_counts, hook_document_violations, numbers_before, pinned_commit_mismatch,
+        redacted_path, required_scaffold_paths, round_count_restatements,
+        verify_campaign_inventory, verify_decision_hook_claims, verify_evidence_records,
+        verify_experiment_fence, verify_harness_lifecycles, verify_hook_inventory_document,
+        verify_ignored_boundaries, verify_manifest_percentages, verify_milestone,
+        verify_persistence_reflection, verify_review_round_counts, verify_scaffold, verify_spikes,
+        verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
+        verify_version_boundary, verify_void_limits, visible_commit,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -5565,6 +5747,16 @@ mod tests {
         let root = temporary_root("versions");
         fs::create_dir_all(root.join("minecraft/versions/test-version"))
             .expect("version directory should be creatable");
+        // A `class` entry declares the package root, and the descriptor beside it
+        // is how a second class reaches the swept set without a `class` line of
+        // its own. `java/lang/String` is there to be ignored: it is not under a
+        // root the data declared.
+        fs::write(
+            root.join("minecraft/versions/test-version/hooks.toml"),
+            "class = \"com.testgame.Thing\"\n\
+             descriptor = \"(Lcom/testgame/Other;Ljava/lang/String;)V\"\n",
+        )
+        .expect("version data should be writable");
         fs::create_dir_all(root.join("crates/ravel-minecraft-test-version/src"))
             .expect("crate directory should be creatable");
         fs::write(
@@ -5572,19 +5764,68 @@ mod tests {
             "const VERSION: &str = \"test-version\";\n",
         )
         .expect("test source should be writable");
+        fs::create_dir_all(root.join("crates/ravel-core/src"))
+            .expect("crate directory should be creatable");
+        fs::write(
+            root.join("crates/ravel-core/src/lib.rs"),
+            "// com.testgame.Thing, com/testgame/Other, java/lang/String\n",
+        )
+        .expect("test source should be writable");
         let mut violations = Vec::new();
 
         verify_version_boundary(&root, &mut violations);
 
-        assert_eq!(violations.len(), 2);
         assert!(
             violations
                 .iter()
-                .any(|violation| violation.starts_with("unexpected per-version Minecraft crate:"))
+                .any(|violation| violation.starts_with("unexpected per-version Minecraft crate:")),
+            "{violations:?}"
         );
-        assert!(violations.iter().any(|violation| {
-            violation.starts_with("hardcoded Minecraft version outside version data:")
-        }));
+        let swept = violations
+            .iter()
+            .filter(|violation| violation.contains(SWEPT_SCOPE))
+            .collect::<Vec<_>>();
+        assert!(
+            swept.iter().any(|violation| violation
+                .contains("hardcoded Minecraft version outside version data")
+                && violation.contains("ravel-minecraft-test-version")),
+            "{violations:?}"
+        );
+        assert!(
+            swept
+                .iter()
+                .any(|violation| violation.contains("names com/testgame/Thing")),
+            "a class the data declares is a name no general crate may spell: {violations:?}"
+        );
+        assert!(
+            swept
+                .iter()
+                .any(|violation| violation.contains("names com/testgame/Other")),
+            "a class only a descriptor names is in the set too: {violations:?}"
+        );
+        assert!(
+            !violations
+                .iter()
+                .any(|violation| violation.contains("java/lang/String")),
+            "the platform is not the game: {violations:?}"
+        );
+        assert_eq!(swept.len(), 3, "{violations:?}");
+
+        // Every excuse names a file this root does not hold, so every excuse is
+        // unearned here. The count is recomputed rather than written down.
+        let excused = VERSION_CLASS_EXCUSES
+            .iter()
+            .map(|(_, classes, _)| classes.len())
+            .sum::<usize>();
+        assert_eq!(
+            violations
+                .iter()
+                .filter(|violation| violation.starts_with("stale version-class excuse:"))
+                .count(),
+            excused,
+            "{violations:?}"
+        );
+        assert_eq!(violations.len(), 4 + excused, "{violations:?}");
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 

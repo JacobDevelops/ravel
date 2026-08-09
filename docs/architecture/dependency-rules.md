@@ -29,8 +29,32 @@ stable contracts toward concrete host internals.
   declarations to check a pack's registry closure and to merge its members' tags;
   a model living in the facade would make a feature crate depend on the facade.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
-  and per-version data.
-  General crates must remain buildable against a synthetic second adapter.
+  and per-version data. M4-W6 discharges this against a second version rather than
+  against a promise: `tests/fixtures/public/versions/` holds a synthetic version's
+  data, laid out as a drop-in replacement for `minecraft/versions/<version>/`, and
+  the shared adapter's generator reads it through the same code path — no branch,
+  no fixture-only argument, no crate added. What it generates names that version
+  and never the pinned one. Two rules hold the boundary in place: no file under
+  `crates/` may spell either version's name or any game class name either
+  version's data supplies, in either spelling, which `ravel-verify-scaffold`
+  enforces over both directories; and a hook id is the one version-derived name a
+  general crate may hold, which is why the fixture reviews the pinned version's
+  own id set mapped onto its own classes. That sweep reads `crates/` and nothing
+  else, because `crates/` is what a general crate is. `tests/` and `test-mods/`
+  are outside it on purpose — a conformance test or a test mod may pin the
+  version it was written against — and every violation the sweep reports says so,
+  so the exclusion stays a decision rather than a hole. Member names are not
+  swept: `width`, `tick` and `flush` are ordinary English, and the class name is
+  the long unambiguous thing a general crate has no business spelling. Where an
+  occurrence under `crates/` is legitimate, it is listed with its reason in
+  `VERSION_CLASS_EXCUSES`, and an entry that stops matching fails the gate as
+  stale.
+  What is *not* proved is a general crate executing against the second version's
+  target table. A build compiles exactly one table, because the generated bindings
+  are `include!`d from `OUT_DIR` and ADG-3 declined to decide how two hook classes
+  and two exported symbol sets would be told apart. So the general crates' claim
+  rests on the id set being identical and on their holding no other version-derived
+  name, both of which are checked, rather than on a second table being run.
 - `ravel-minecraft` is the highest crate that may name a JNI type, and
   `JavaHandle` is the only one it names. A hook argument that refers to a game
   object is a borrowed JNI local reference, and the lifetime that makes it safe

@@ -1,0 +1,68 @@
+# Generated stub provenance for Minecraft 99.0.0-synthetic. Do not edit.
+#
+# Every entry below is one compile-time stub the settings screen is built
+# against, read out of the pinned jars: the client jar first, then the
+# serialization library the game's own signatures name. Descriptors and
+# access flags are the jar's own, which is the point: a hand-written stub
+# transcribes a generic signature, and the JVM links on the erased one.
+#
+# What this file does not promise:
+#
+# - It is checked only where the pinned jars are. A machine without them
+#   generates from this file, so on that machine the lock is the source and
+#   cannot disagree with anything. Drift is caught where the jars exist.
+# - It pins against jar hashes, so it is only as current as those pins. A
+#   Minecraft build nobody has re-pinned against is unchecked.
+# - It carries no hierarchy the stub set does not already hold. A supertype
+#   outside the set is dropped, so a change to one is invisible here.
+# - It covers the members `stubs.toml` seeds and nothing else. A member the
+#   screen starts calling is unpinned until it is seeded.
+#
+# This is a different table from mappings.lock and stays one. That file
+# pins call sites the agent rewrites; this one pins declarations the screen
+# compiles against, and one table meaning both is how the next person
+# misreads it.
+
+schemaVersion = 1
+minecraft = "99.0.0-synthetic"
+extractor = "classfile"
+clientJarSha256 = "1111111111111111111111111111111111111111111111111111111111111111"
+dataFixerJarSha256 = "2222222222222222222222222222222222222222222222222222222222222222"
+
+[[stub]]
+class = "org/exampleengine/screen/FrameSink"
+flags = 1
+
+[[stub.member]]
+name = "flush"
+descriptor = "(I)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "org/exampleengine/screen/Panel"
+flags = 1
+
+[[stub.member]]
+name = "<init>"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "refresh"
+descriptor = "(II)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "sink"
+descriptor = "Lorg/exampleengine/screen/FrameSink;"
+flags = 1
+method = false
+
+[[stub.member]]
+name = "width"
+descriptor = "I"
+flags = 1
+method = false

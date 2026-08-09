@@ -1,0 +1,46 @@
+# Adapter inputs for the synthetic second version.
+#
+# The jar hashes below pin files that do not exist and never will: this version
+# is invented, so there is no artefact to fetch and nothing restricted to track.
+# That is what makes the fixture exercise the jar-less path, which is the path
+# every machine without the pinned game already takes.
+
+schemaVersion = 1
+minecraft = "99.0.0-synthetic"
+
+# Invented, like the rest of this directory. The pinned version records why a
+# real one would say unobfuscated class files; a synthetic one records the same
+# string because the generator compares it to the lock and to nothing else.
+mappingSource = "unobfuscated-class-files"
+
+[inputs.clientJar]
+path = "tests/fixtures/local/tooling/99.0.0-synthetic/client.jar"
+sha256 = "1111111111111111111111111111111111111111111111111111111111111111"
+
+[inputs.dataFixerJar]
+path = "tests/fixtures/local/tooling/99.0.0-synthetic/serialization.jar"
+sha256 = "2222222222222222222222222222222222222222222222222222222222222222"
+
+[inputs.versionManifest]
+path = "tests/fixtures/local/tooling/99.0.0-synthetic/version.json"
+sha256 = "3333333333333333333333333333333333333333333333333333333333333333"
+
+[inputs.hookInventory]
+path = "minecraft/versions/99.0.0-synthetic/hooks.toml"
+sha256 = "3d57fdedc4a7264f48fc09b0e7cf6fdbf8cb74d011f62165c192c54e15b3e091"
+bytes = 11798
+
+[inputs.stubSeeds]
+path = "minecraft/versions/99.0.0-synthetic/stubs.toml"
+sha256 = "e256b32d46fe32c7bd5d75002cc02a34f3e6aba3b1c0c4905d332d690ca3ce1c"
+bytes = 615
+
+[inputs.mappingsLock]
+path = "minecraft/versions/99.0.0-synthetic/mappings.lock"
+sha256 = "9fb7c4f7d239855e9fba6cfea4ef1772fb13bf85d19f0ffdebf5a1066c6588a8"
+bytes = 6959
+
+[inputs.stubsLock]
+path = "minecraft/versions/99.0.0-synthetic/stubs.lock"
+sha256 = "9bef5da3eb3a29e443bd4c883d432a014b59d87b66daaa4860425fb33c50a10d"
+bytes = 2137

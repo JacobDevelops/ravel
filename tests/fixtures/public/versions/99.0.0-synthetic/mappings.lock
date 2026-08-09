@@ -1,0 +1,233 @@
+# Generated mapping provenance for Minecraft 99.0.0-synthetic. Do not edit.
+#
+# Every line pins one resolved member. A change to the jar, the
+# inventory, or the extractor changes this file, which is how drift is
+# noticed before a build trusts a binding.
+
+schemaVersion = 1
+minecraft = "99.0.0-synthetic"
+mappingSource = "unobfuscated-class-files"
+extractor = "classfile"
+clientJarSha256 = "1111111111111111111111111111111111111111111111111111111111111111"
+
+[target."chat.allowed-character"]
+class = "org/exampleengine/text/TextRules"
+member = "chatAllowedCharacter"
+descriptor = "(I)Z"
+static = true
+
+[target."chat.filter-text"]
+class = "org/exampleengine/text/TextRules"
+member = "chatFilterText"
+descriptor = "(Ljava/lang/String;Z)Ljava/lang/String;"
+static = true
+
+[target."chat.filter-text-simple"]
+class = "org/exampleengine/text/TextRules"
+member = "chatFilterTextSimple"
+descriptor = "(Ljava/lang/String;)Ljava/lang/String;"
+static = true
+
+[target."player.name-valid"]
+class = "org/exampleengine/text/TextRules"
+member = "playerNameValid"
+descriptor = "(Ljava/lang/String;)Z"
+static = true
+
+[target."input.smooth-delta"]
+class = "org/exampleengine/input/Smoother"
+member = "inputSmoothDelta"
+descriptor = "(DD)D"
+static = false
+
+[target."input.smooth-last-amount"]
+class = "org/exampleengine/input/Smoother"
+member = "inputSmoothLastAmount"
+descriptor = "D"
+static = false
+
+[target."registry.register"]
+class = "org/exampleengine/registry/KeyedRegistry"
+member = "registryRegister"
+descriptor = "(Lorg/exampleengine/registry/EntryKey;Ljava/lang/Object;Lorg/exampleengine/registry/EntryInfo;)Lorg/exampleengine/registry/EntryHandle;"
+static = false
+
+[target."registry.freeze"]
+class = "org/exampleengine/registry/KeyedRegistry"
+member = "registryFreeze"
+descriptor = "()Lorg/exampleengine/registry/Registry;"
+static = false
+
+[target."registry.closed"]
+class = "org/exampleengine/registry/KeyedRegistry"
+member = "registryClosed"
+descriptor = "Z"
+static = false
+
+[target."registry.built-in-freeze"]
+class = "org/exampleengine/registry/StockRegistries"
+member = "registryBuiltInFreeze"
+descriptor = "()V"
+static = true
+
+[target."registry.built-in-bootstrap"]
+class = "org/exampleengine/registry/StockRegistries"
+member = "registryBuiltInBootstrap"
+descriptor = "()V"
+static = true
+
+[target."recipe.apply"]
+class = "org/exampleengine/craft/RecipeStore"
+member = "recipeApply"
+descriptor = "(Lorg/exampleengine/craft/RecipeMap;Lorg/exampleengine/resource/Resources;Lorg/exampleengine/profile/Profiler;)V"
+static = false
+
+[target."server.tick"]
+class = "org/exampleengine/server/GameServer"
+member = "serverTick"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+static = false
+
+[target."server.tick-integrated"]
+class = "org/exampleengine/server/EmbeddedServer"
+member = "serverTickIntegrated"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+static = false
+
+[target."server.tick-count"]
+class = "org/exampleengine/server/GameServer"
+member = "serverTickCount"
+descriptor = "I"
+static = false
+
+[target."server.average-tick-time"]
+class = "org/exampleengine/server/GameServer"
+member = "serverAverageTickTime"
+descriptor = "()J"
+static = false
+
+[target."server.tick-times"]
+class = "org/exampleengine/server/GameServer"
+member = "serverTickTimes"
+descriptor = "()[J"
+static = false
+
+[target."client.tick"]
+class = "org/exampleengine/client/GameClient"
+member = "clientTick"
+descriptor = "()V"
+static = false
+
+[target."client.run-tick"]
+class = "org/exampleengine/client/GameClient"
+member = "clientRunTick"
+descriptor = "(Z)V"
+static = false
+
+[target."command.table"]
+class = "org/exampleengine/command/CommandRoot"
+member = "commandTable"
+descriptor = "Lorg/exampleengine/command/Dispatcher;"
+static = false
+
+[target."command.perform-prefixed"]
+class = "org/exampleengine/command/CommandRoot"
+member = "commandPerformPrefixed"
+descriptor = "(Lorg/exampleengine/command/CommandSource;Ljava/lang/String;)V"
+static = false
+
+[target."resource.register-reload-listener"]
+class = "org/exampleengine/resource/ReloadableResources"
+member = "resourceRegisterReloadListener"
+descriptor = "(Lorg/exampleengine/resource/ReloadListener;)V"
+static = false
+
+[target."resource.load-server-resources"]
+class = "org/exampleengine/resource/ServerResources"
+member = "resourceLoadServerResources"
+descriptor = "(Lorg/exampleengine/resource/Resources;Lorg/exampleengine/registry/RegistryLayers;Ljava/util/List;Lorg/exampleengine/flag/FlagSet;Lorg/exampleengine/command/CommandScope;Lorg/exampleengine/permission/PermissionSet;Ljava/util/concurrent/Executor;Ljava/util/concurrent/Executor;)Ljava/util/concurrent/CompletableFuture;"
+static = true
+
+[target."resource.reload-client-packs"]
+class = "org/exampleengine/client/GameClient"
+member = "resourceReloadClientPacks"
+descriptor = "()Ljava/util/concurrent/CompletableFuture;"
+static = false
+
+[target."screen.init"]
+class = "org/exampleengine/screen/Panel"
+member = "screenInit"
+descriptor = "()V"
+static = false
+
+[target."screen.init-sized"]
+class = "org/exampleengine/screen/Panel"
+member = "screenInitSized"
+descriptor = "(II)V"
+static = false
+
+[target."screen.tick"]
+class = "org/exampleengine/screen/Panel"
+member = "screenTick"
+descriptor = "()V"
+static = false
+
+[target."screen.extract-render-state"]
+class = "org/exampleengine/screen/Panel"
+member = "screenExtractRenderState"
+descriptor = "(Lorg/exampleengine/screen/FrameSink;IIF)V"
+static = false
+
+[target."screen.set"]
+class = "org/exampleengine/client/GameClient"
+member = "screenSet"
+descriptor = "(Lorg/exampleengine/screen/Panel;)V"
+static = false
+
+[target."screen.title-menu-options"]
+class = "org/exampleengine/screen/TitlePanel"
+member = "screenTitleMenuOptions"
+descriptor = "(II)I"
+static = false
+
+[target."save.compute-if-absent"]
+class = "org/exampleengine/store/RecordStore"
+member = "saveComputeIfAbsent"
+descriptor = "(Lorg/exampleengine/store/RecordType;)Lorg/exampleengine/store/Record;"
+static = false
+
+[target."save.try-write"]
+class = "org/exampleengine/store/RecordStore"
+member = "saveTryWrite"
+descriptor = "(Lorg/exampleengine/store/RecordType;Lorg/exampleengine/store/Blob;)V"
+static = false
+
+[target."save.save-and-join"]
+class = "org/exampleengine/store/RecordStore"
+member = "saveSaveAndJoin"
+descriptor = "()V"
+static = false
+
+[target."save.set-dirty"]
+class = "org/exampleengine/store/Record"
+member = "saveSetDirty"
+descriptor = "()V"
+static = false
+
+[target."save.save-everything"]
+class = "org/exampleengine/server/GameServer"
+member = "saveSaveEverything"
+descriptor = "(ZZZ)Z"
+static = false
+
+[target."world.open-persistence"]
+class = "org/exampleengine/client/GameClient"
+member = "worldOpenPersistence"
+descriptor = "(Lorg/exampleengine/store/WorldStore;Lorg/exampleengine/resource/PackStore;Lorg/exampleengine/world/WorldSeed;Ljava/util/Optional;Z)V"
+static = false
+
+[target."world.save-persistence"]
+class = "org/exampleengine/server/GameServer"
+member = "worldSavePersistence"
+descriptor = "(ZZZ)Z"
+static = false

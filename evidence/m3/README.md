@@ -71,11 +71,17 @@ the other records on whether the world round trip had happened, and
 digests are recomputed and every record now says the same thing.
 
 The revision and the gate numbers are a narrower claim than that, and an earlier
-draft of this paragraph overstated it by calling them "this state's". They are not
-and cannot be. `revision.id` is `3c3520be`, which resolves to change
-`pqkoksqopryu`, six described changes below the tip of this stack; `tests.total` is
-that revision's 813, which is not the count `ravel:verify` runs on this tip and
-cannot be, since every change above it that adds a test moves the tip's; and
+draft of this paragraph overstated it twice: first by calling them "this state's",
+then by counting how far below the tip the pinned revision sits. Both are the same
+mistake. `revision.id` is `3c3520be`, a commit below the tip of this stack and an
+ancestor of it, under every change that landed after it. How many that is moves on
+the next commit, so the count belongs to `jj log` and not to this file; what is
+stated here is the relationship. The commit is also one that change
+`pqkoksqopryu` no longer points at, because every jj rewrite abandons the commit
+and keeps the change: `jj log` reports it hidden, and `jj file show -r` resolves it
+out of the operation log rather than out of visible history. `tests.total` is that
+revision's 813, which is not the count `ravel:verify` runs on this tip and cannot
+be, since every change above it that adds a test moves the tip's; and
 `commands[0].logSha256` names that run's log. That gap is not the drift the review
 found — it is arithmetic. Recording a gate result changes the tree that produced
 it, so `revision.id` can never be the tip commit, and a manifest asserting
@@ -127,7 +133,8 @@ to close on it.
 
 Findings about that machinery are carried rather than fixed, and each is
 recorded as a deviation in `manifest.json`. Input provenance is pinned to
-`revision.id`, a commit every jj rewrite abandons: it resolves today, and a
+`revision.id`, a commit every jj rewrite abandons — this milestone's already is —
+so it resolves today only out of the operation log, and a
 `jj util gc` would turn the check from binding into unconditionally failing for
 every closed milestone — fail-closed, and the opposite of the position the same
 file argues for spike results, which are pinned by change id. Nothing requires a
@@ -213,9 +220,10 @@ per-tick crossing count is recorded.
 ## `linux-process-matrix.json`
 
 It comes from launches rather than from a task, because the thing it measures is
-a launcher starting a game and no task can stand in for that. It now holds three
-launch campaigns, and the most useful thing in it is why the second could not
-simply extend the first.
+a launcher starting a game and no task can stand in for that. It now holds four
+launch campaigns — the earlier 31-target matrix, the world round trip, the surface
+campaign, and the caveat re-observation — and the most useful thing in it is why
+the second could not simply extend the first.
 
 **The earlier matrix could not be carried forward.** Two ADG-7 world persistence
 seams entered the reviewed inventory — `world.open-persistence` on
@@ -230,8 +238,8 @@ to it, so the ADG-7 round trip was unprovable by that campaign whatever input it
 received — which is why M3-W4 and M3-W7 stayed open through it and why its
 saved-data row persisted a vanilla scoreboard.
 
-The current campaign is three launches at 33 callable targets, and its claim is
-narrow on purpose. The rewrite of both persistence methods was already proven
+The world round trip campaign, the second of the four, is three launches at 33
+callable targets, and its claim is narrow on purpose. The rewrite of both persistence methods was already proven
 in-gate by `jvm/harness/PersistenceMain.java` over eight world lifecycles; what
 these launches add is the real game's storage on both ends of it. A world was
 created through the game UI, saved, and exited; a second launch reloaded it and
@@ -251,7 +259,7 @@ it. Removing the world took nothing away from that and bought nothing back: a
 private machine-local directory is no more checkable by another reader than a
 digest of one.
 
-A third campaign then re-observed the rows the first had left inherited, and it
+The third campaign then re-observed the rows the first had left inherited, and it
 did so against the *same build* as the world round trip: the agent jar, screen
 jar, and native library were rebuilt from the working tree and came out
 byte-identical to the digests already recorded, so there is one build and one
@@ -313,9 +321,9 @@ to the width it is drawn at using the game's own font and hands the window's row
 budget out in a stated order, claiming the summary and the accuracy statement
 first — and then re-observed in the real client against the fixed jar.
 
-That re-observation is the `caveatReObservationCampaign` section of the record,
-and it is deliberately narrow: one launch, claiming the profiling surface and
-nothing else. The agent jar and the native library are byte-identical to the ones
+That re-observation is the fourth campaign, the `caveatReObservationCampaign`
+section of the record, and it is deliberately narrow: one launch, claiming the
+profiling surface and nothing else. The agent jar and the native library are byte-identical to the ones
 every other row was observed against, so only the class that drew the clipped
 lines changed. With profiling on and the instance's existing world played for a
 couple of minutes first, the whole report renders: at GUI scale 1 all twelve

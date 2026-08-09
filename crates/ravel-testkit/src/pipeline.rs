@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use ravel_core::{LifecycleState, ModId, Side, StructuredFailure, Version};
 use ravel_host_api::{HostError, HostMod};
 use ravel_loader::{
-    LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,
-    executes_mod_code,
+    LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, admitted, executes_mod_code,
 };
 use ravel_package::{
     CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
@@ -150,6 +149,12 @@ impl PipelineRun {
 /// step, because `LifecycleMachine::advance_all` moves a set together or not at
 /// all.
 ///
+/// Which mods the lifecycle holds is [`ravel_loader::admitted`]'s answer rather
+/// than this harness's: every installed package is admitted, so a package whose
+/// manifest omits `side` is **parked** at [`LifecycleState::Resolved`] instead of
+/// being absent, and the side declaration an author wrote is what parks it. A
+/// parked mod is never entered, so a caller need not supply a value for one.
+///
 /// `mods` are values the caller already holds. This function never loads,
 /// links, opens, or spawns anything to obtain one: ADG-2 selects source
 /// distribution, while the later compilation and binding mechanism produces the
@@ -173,10 +178,10 @@ pub fn run(
 ) -> Result<PipelineRun, PipelineError> {
     let manifests = validate(packages, host)?;
     let plan = resolve(&manifests, side).map_err(PipelineError::Resolution)?;
-    refuse_mods_outside_the_plan(&plan, mods)?;
+    let entries = admitted(&plan, &manifests);
+    refuse_mods_outside_the_set(&entries, mods)?;
 
-    let mut machine = LifecycleMachine::new(side, entries(&plan, &manifests))
-        .map_err(PipelineError::Lifecycle)?;
+    let mut machine = LifecycleMachine::new(side, entries).map_err(PipelineError::Lifecycle)?;
     for state in RUN_ORDER {
         machine
             .advance_all(state)
@@ -226,43 +231,20 @@ fn validate(
     Ok(manifests)
 }
 
-/// Builds the lifecycle view of each mod the plan ordered.
+/// Refuses a mod value nothing in the package set accounts for.
 ///
-/// Every mod in a plan is [`Requirement::Required`]. The resolver has already
-/// dropped an optional dependency that was absent, so everything that reached
-/// the plan is installed and expected to load, and treating any of it as
-/// droppable would grant world access to a set that lost a mod the player
-/// installed. Which mods a failure may be tolerated for is M2-W7's to refine.
-fn entries(plan: &LoadPlan, manifests: &[PackageManifest]) -> Vec<LifecycleEntry> {
-    plan.order()
-        .iter()
-        .filter_map(|id| {
-            manifests
-                .iter()
-                .find(|manifest| manifest.id == *id)
-                .map(|manifest| LifecycleEntry {
-                    mod_id: manifest.id.clone(),
-                    sides: manifest.sides.clone(),
-                    requirement: Requirement::Required,
-                    saved_data_versions: manifest.saved_data_versions.iter().copied().collect(),
-                })
-        })
-        .collect()
-}
-
-/// Refuses a mod value the resolved plan never asked for.
-///
-/// A value for a mod that is not loading is a harness mistake worth catching
-/// early: it would sit untouched through the whole run and its absence from the
-/// transcript would read as a mod that failed rather than one that was never
-/// part of the set.
-fn refuse_mods_outside_the_plan(
-    plan: &LoadPlan,
+/// A value for a mod the set does not contain is a harness mistake worth
+/// catching early: it would sit untouched through the whole run and its absence
+/// from the transcript would read as a mod that failed rather than one that was
+/// never part of the set. A value for an *admitted* mod that this side parks is
+/// allowed, because a caller that supplies one is entitled to find it untouched.
+fn refuse_mods_outside_the_set(
+    entries: &[LifecycleEntry],
     mods: &[&mut dyn HostMod],
 ) -> Result<(), PipelineError> {
-    let planned: BTreeSet<&ModId> = plan.order().iter().collect();
+    let admitted: BTreeSet<&ModId> = entries.iter().map(|entry| &entry.mod_id).collect();
     for host in mods {
-        if !planned.contains(host.id()) {
+        if !admitted.contains(host.id()) {
             return Err(PipelineError::UnexpectedMod {
                 mod_id: host.id().clone(),
             });
@@ -366,9 +348,9 @@ pub enum PipelineError {
         /// The state it would have entered.
         state: LifecycleState,
     },
-    /// The caller supplied a value for a mod the plan never ordered.
+    /// The caller supplied a value for a mod the package set does not contain.
     UnexpectedMod {
-        /// The mod that is not in the plan.
+        /// The mod that is not in the set.
         mod_id: ModId,
     },
 }
@@ -392,7 +374,7 @@ impl fmt::Display for PipelineError {
             ),
             Self::UnexpectedMod { mod_id } => write!(
                 formatter,
-                "`{mod_id}` was supplied to the run, but the plan does not order it"
+                "`{mod_id}` was supplied to the run, but the package set does not contain it"
             ),
         }
     }

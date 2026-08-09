@@ -7,7 +7,8 @@ use std::num::NonZero;
 use ravel_core::{LifecycleState, ModId};
 use ravel_host_api::{HostError, HostMod};
 use ravel_save::{
-    SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataPlan, SavedDataVersion,
+    MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataError,
+    SavedDataPlan, SavedDataVersion,
 };
 use serde::{Deserialize, Serialize};
 
@@ -172,6 +173,36 @@ impl SavedDataMod {
         }
     }
 
+    /// Returns `raw` as a version this mod declares.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a version outside [`VERSIONS`], which would mean this mod had
+    /// stopped agreeing with its own declaration.
+    fn version(raw: u32) -> SavedDataVersion {
+        assert!(
+            VERSIONS.contains(&raw),
+            "this mod declares no version {raw}"
+        );
+        NonZero::new(raw).expect("every declared version is non-zero")
+    }
+
+    /// Runs [`Self::step`] over a stored payload, for one declared version.
+    fn migrate(payload: &serde_json::Value, to: u32) -> Result<serde_json::Value, MigrationFailed> {
+        let mut state: SavedState = serde_json::from_value(payload.clone())
+            .map_err(|error| MigrationFailed::new(error.to_string()))?;
+        Self::step(&mut state, Self::version(to));
+        serde_json::to_value(&state).map_err(|error| MigrationFailed::new(error.to_string()))
+    }
+
+    fn migrate_to_two(payload: &serde_json::Value) -> Result<serde_json::Value, MigrationFailed> {
+        Self::migrate(payload, 2)
+    }
+
+    fn migrate_to_three(payload: &serde_json::Value) -> Result<serde_json::Value, MigrationFailed> {
+        Self::migrate(payload, 3)
+    }
+
     /// Records a visit to the world, which is what a reload has to preserve.
     pub fn visit(&mut self, waypoint: &str) {
         self.state.visits = self.state.visits.saturating_add(1);
@@ -226,6 +257,21 @@ impl HostMod for SavedDataMod {
 
     fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
         Some(self.declaration())
+    }
+
+    /// Declares the step into every version above the oldest.
+    ///
+    /// Each step is [`SavedDataMod::step`] over the stored payload, so there is one
+    /// implementation of the transformation and not a second one that could
+    /// disagree with it. The chain exists because a host opening a world checks
+    /// that every declared version has a way into it before it reads a payload,
+    /// which is a check a typed `match` with a panicking arm cannot answer.
+    fn saved_data_migrations(&self) -> Option<MigrationChain> {
+        Some(
+            MigrationChain::new(self.id.clone())
+                .reaching(Self::version(2), Self::migrate_to_two)
+                .reaching(Self::version(3), Self::migrate_to_three),
+        )
     }
 
     fn open_saved_data(

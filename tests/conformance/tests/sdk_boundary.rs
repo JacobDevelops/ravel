@@ -442,6 +442,17 @@ fn the_facade_closure_is_the_set_this_test_believes_it_is() {
         "memchr",
         "proc-macro2",
         "quote",
+        // M4-W4 put the settings a mod declares behind `config`. The
+        // author-facing items that justify the edge are
+        // `ravel_sdk::config::ConfigurationDeclaration`, which is the document an
+        // author writes, and `ravel_sdk::config::LayeredConfiguration`, which is
+        // the argument to `Mod::configure` — a mod cannot implement that method
+        // without naming the type. The model is `ravel-config`'s because ADG-6
+        // draws the screen in Java off the same declaration and `ravel-loader`
+        // resolves the layers, so a model living in the facade would put the host
+        // under it. It reaches nothing new: `ravel-config` depends on
+        // `ravel-core`, `serde` and `serde_json`, all already here.
+        "ravel-config",
         "ravel-core",
         // M4-W2 put the declaration model a mod writes — registry entries, tag
         // memberships, supplied resources, and the pack they generate — behind

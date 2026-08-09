@@ -7,6 +7,13 @@
 //! to run, or the world is refused. A refusal withholds the world rather than
 //! opening it half-applied.
 //!
+//! [`SavedDataPlan`] decides which versions a world has to cross and
+//! [`MigrationChain`] is what crosses them: one [`MigrationStep`] per version, run
+//! in order, producing a new payload rather than editing the stored one. Every
+//! step or none — a chain that refuses partway leaves the world holding exactly
+//! what it held, which is what makes a refusal a withheld world rather than a
+//! half-migrated one.
+//!
 //! A mod never reads or writes the world file. It answers with one
 //! [`SavedDataEnvelope`] and the loader owns the aggregate those envelopes go
 //! into, which is what keeps [`MAX_AGGREGATE_BYTES`] a property of the whole
@@ -55,6 +62,7 @@
 pub use serde_json::Value as SavedPayload;
 
 pub use ravel_save::{
-    MAX_AGGREGATE_BYTES, PackageConflict, RequiredPackage, SavedDataDeclaration, SavedDataEnvelope,
-    SavedDataError, SavedDataPlan, SavedDataVersion,
+    MAX_AGGREGATE_BYTES, MigrationChain, MigrationFailed, MigrationStep, PackageConflict,
+    RequiredPackage, SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataPlan,
+    SavedDataVersion,
 };

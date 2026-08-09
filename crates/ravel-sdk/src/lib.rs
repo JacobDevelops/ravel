@@ -79,6 +79,14 @@
 //! — and [`sides::ClientOnly`] is where its client-only work goes, so that work is
 //! not merely hidden on a server side but never runs there.
 //!
+//! [`config`] is what a player and a pack may change about a mod, declared as a
+//! document and resolved into the values in force for one launch. [`save`] is the
+//! versioned world data a mod owns, and [`save::MigrationChain`] is how a world
+//! written by an older build reaches the shape this one reads — every step or
+//! none, so a world is refused rather than opened part-migrated. [`services`] is
+//! the one thing here that crosses from one mod to another while both run: a named
+//! call, ordered so a provider starts before anything that needs it.
+//!
 //! # What this crate deliberately does not expose
 //!
 //! `docs/architecture/dependency-rules.md` requires the SDK to expose no
@@ -99,12 +107,14 @@
 // This crate's own tests use the attribute, so it needs that name for itself.
 extern crate self as ravel_sdk;
 
+pub mod config;
 pub mod content;
 pub mod events;
 pub mod generate;
 pub mod network;
 pub mod resources;
 pub mod save;
+pub mod services;
 pub mod sides;
 pub mod tags;
 
@@ -122,6 +132,23 @@ pub use ravel_host_api::HostError as ModError;
 /// implements only the parts of the lifecycle it takes part in.
 pub use ravel_host_api::HostMod as Mod;
 pub use ravel_sdk_macros::declare_mod;
+/// Builds one of the open JSON values this facade carries.
+///
+/// Three surfaces here are deliberately open rather than typed by Ravel: a
+/// [`save::SavedPayload`], a [`services::ServiceRequest`]'s arguments and a
+/// [`services::ServiceResponse`]'s answer, and a [`config`] setting's value. Each
+/// belongs to the mod that shapes it. This is the constructor for all of them, so
+/// an author never has to add a second dependency to write one down.
+///
+/// # Examples
+///
+/// ```
+/// use ravel_sdk::json;
+///
+/// let payload = json!({ "stock": 12, "currency": "coin" });
+/// assert_eq!(payload["stock"], 12);
+/// ```
+pub use serde_json::json;
 
 /// A type `#[declare_mod]` has bound an identity to.
 ///
@@ -176,12 +203,19 @@ pub trait Declared {
 /// assert_eq!(Example::declared_id().as_str(), "example");
 /// ```
 pub mod prelude {
+    pub use crate::config::{ConfigurationDeclaration, LayeredConfiguration, SettingKey};
     pub use crate::content::{
         ContentDeclaration, ContentId, ContentKind, Registrar, RegistrationRefused, RegistryKey,
         claim_all,
     };
     pub use crate::events::{CommandInvocation, GameEvent};
     pub use crate::network::{Direction, Packet, PacketContract, PacketDelivery, PacketId};
+    pub use crate::save::{
+        MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataVersion,
+    };
+    pub use crate::services::{
+        ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest, ServiceResponse,
+    };
     pub use crate::sides::ClientOnly;
     pub use crate::tags::TagId;
     pub use crate::{Declared, LifecycleState, Mod, ModError, ModId, Side, declare_mod};

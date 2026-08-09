@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "owner": "copper_lanterns",
+  "version": 1,
+  "settings": [
+    {
+      "key": "lanterns.capacity",
+      "title": "Lantern capacity",
+      "description": "How many lanterns a stack holds.",
+      "valueSchema": { "type": "integer", "minimum": 1.0, "maximum": 64.0 },
+      "default": 16,
+      "side": "common",
+      "restartRequired": false
+    }
+  ]
+}

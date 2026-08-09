@@ -14,3 +14,6 @@ has drifted stops building here first.
   service other mods call.
 - [`pack-module`](pack-module) — where M4-W5's pack example lives, and why it is not
   a crate in this directory.
+- [`guide-snippets`](guide-snippets) — every Rust block in
+  [`docs/guide/`](../docs/guide), compiled and driven so the author's
+  documentation cannot drift from what the SDK does.

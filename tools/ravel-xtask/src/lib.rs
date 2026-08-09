@@ -55,7 +55,12 @@ const TEST_MOD_NAMES: &[&str] = &[
 
 /// Example crates a mod author reads, and the only crates whose manifests are
 /// deliberately as small as an author's.
-const EXAMPLE_NAMES: &[&str] = &["content-mod", "minimal-mod", "stateful-mod"];
+const EXAMPLE_NAMES: &[&str] = &[
+    "content-mod",
+    "guide-snippets",
+    "minimal-mod",
+    "stateful-mod",
+];
 
 const EXPERIMENT_NAMES: &[&str] = &[
     "adg-1-jvm-entry",

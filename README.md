@@ -21,6 +21,13 @@ package formats are not stable, and which parts of the architecture are still
 behind an open decision gate is recorded in
 [`docs/decisions/README.md`](docs/decisions/README.md).
 
+## Writing a mod
+
+[`docs/guide/`](docs/guide/) is the author's documentation: the crate, the
+package manifest, content, the lifecycle, state, what conformance is checked to
+mean, and what does not work yet. The API reference is the `ravel-sdk` rustdoc,
+and [`examples/`](examples/) holds the worked mods.
+
 ## Project contract
 
 - [`SPEC.md`](SPEC.md) defines the product and capability contract.

@@ -871,6 +871,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-example-guide-snippets"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
+]
+
+[[package]]
 name = "ravel-example-minimal-mod"
 version = "0.0.0"
 dependencies = [

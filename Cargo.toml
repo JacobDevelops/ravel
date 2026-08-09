@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "crates/*",
   "examples/content-mod",
+  "examples/guide-snippets",
   "examples/minimal-mod",
   "examples/stateful-mod",
   "experiments/adg-1-jvm-entry",
@@ -36,6 +37,7 @@ ravel-config = { path = "crates/ravel-config", version = "0.0.0" }
 ravel-core = { path = "crates/ravel-core", version = "0.0.0" }
 ravel-data = { path = "crates/ravel-data", version = "0.0.0" }
 ravel-example-content-mod = { path = "examples/content-mod", version = "0.0.0" }
+ravel-example-guide-snippets = { path = "examples/guide-snippets", version = "0.0.0" }
 ravel-example-minimal-mod = { path = "examples/minimal-mod", version = "0.0.0" }
 ravel-example-stateful-mod = { path = "examples/stateful-mod", version = "0.0.0" }
 ravel-host-api = { path = "crates/ravel-host-api", version = "0.0.0" }

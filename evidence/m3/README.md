@@ -1,11 +1,17 @@
 # M3 evidence
 
-M3-W0 through M3-W7 are closed. M3-W8 is open: every independent round that has
-run returned FAIL. The latest round's blocking finding, B-1, is answered by the
-fifth launch campaign described below, and answering it is not closure — one of
-that round's must-fix findings and all of its moderate and minor ones are still
-open, and the review that has to pass is an independent one. M3 is not closed and
-does not authorize private inventory work.
+M3-W0 through M3-W7 are closed. M3-W8 is open. The eighth tracked round returned
+the only pass so far, and the rounds after it returned FAIL on axes that round had
+left standing in its own ceiling; the last of them is the standing verdict.
+[`review.md`](review.md) holds them all and is where a reader goes for the
+sequence — this document's narrative below stops at the fifth round, which is where
+the launch campaigns it describes stop, and does not resume. The standing verdict's
+blocking findings are answered: the review record now holds every round that has
+run, ADG-1's agent-jar sentence now states the property the build enforces rather
+than a wider one, and the profiling counts claim is reconciled with the campaign
+that re-observed it. Answering them is not closure, because the round that has to
+pass is an independent one reading the state those repairs left. M3 is not closed
+and does not authorize private inventory work.
 
 M3-W4 and M3-W7 close on operator attestation for their live half. The world
 round trip and every native surface row were observed in a real client, and the
@@ -37,16 +43,24 @@ far as the inventory's internal consistency and no further.
 | [`profiling-overhead.json`](profiling-overhead.json) | M3-W6 | What opt-in profiling costs a tick when nobody turned it on, what it can and cannot attribute to a mod, and which metrics it cannot measure at all. |
 | [`linux-process-matrix.json`](linux-process-matrix.json) | M3-W7 | What a real Linux launch proves about the game directory, the rewrite, and the instance — and, at least as importantly, what it could not reach. |
 | [`class-loader-identity.json`](class-loader-identity.json) | M3-W3 | That the loader which loaded a rewritten `net.minecraft` class is the same object as `ClassLoader.getSystemClassLoader()`, which is the premise `appendToSystemClassLoaderSearch` rests on. Measured on an earlier build and an earlier JDK patch than the milestone's, and it says so. |
-| [`review.md`](review.md) | M3-W8 | Each tracked independent M3-W8 round as it was written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. Every round is FAIL, and the record says which round it does not hold and why. |
+| [`review.md`](review.md) | M3-W8 | Each tracked independent M3-W8 round as it was written: verdict, findings with their anchors, what each reviewer recomputed and what it could not, and its stated coverage. The standing verdict is FAIL, and the record says which round it does not hold and why. |
 
 ## M3-W8 review
 
-Every independent round that has run returned FAIL.
+Every independent round that has run returned FAIL except the eighth, whose pass a
+later round superseded.
 [`review.md`](review.md) holds each tracked round verbatim and `review.record`
 binds its digest, so those verdicts are readable rather than summarised from
 memory. `review.md` is the one place that says how many rounds there have been:
 neither this document nor `manifest.json` restates a count, because a count
-written outside the record is falsified by the next round. They are one file rather
+written outside the record is falsified by the next round.
+
+Holding every round is a claim `review.md` had to be repaired to make true. The
+eighth and ninth rounds had their repairs landed with their verdicts left out, and
+the round after them blocked M3 over a record asserting it omitted none while
+omitting both. Both texts were still recoverable from outside the repository and
+are now in the record verbatim. `review.md` states the convention that follows from it: a round's verdict
+goes into the record before, or in the same change as, the repairs that answer it. They are one file rather
 than one file each because `review.record` binds one artifact per milestone and the
 rounds only mean anything read in order: each round verifies the previous round's
 repairs.
@@ -244,9 +258,12 @@ round counts. Not all of the minor ones are open either: the one that found
 is answered where it stood, by `measuredAgainst.javaDiffersFromTheMilestone`.
 
 M3-W8 stays open. Every implementation gate is closed, but the review that has to
-pass is an *independent* one, and every round so far has returned FAIL. Answering
-B-1 is not closure: a later independent round decides that, and the findings the
-recorded rounds left open are still open.
+pass is an *independent* one, and the standing verdict is FAIL. The eighth tracked
+round did return a pass, and the rounds after it found defects on axes it had
+declared unexamined, so a pass no later round has superseded is what M3-W8 still
+needs. Answering B-1 is not closure: a later independent round decides that, and
+the findings the recorded rounds left open are still open. `review.md` holds the
+sequence.
 
 ### What a green closure would and would not prove
 

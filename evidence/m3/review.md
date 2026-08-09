@@ -3,13 +3,16 @@
 Result: FAIL
 
 Independent rounds ran against successive states of the M3 evidence. Each reviewer
-wrote none of the work under review, and every round returned FAIL. The last round
-below is the standing verdict. Round 5's blocking finding B-1 is answered — by the
+wrote none of the work under review. Round 8 returned a pass; every other round
+below returned FAIL, and so does the last one, which is the standing verdict.
+Round 5's blocking finding B-1 is answered — by the
 `profilingReObservationCampaign` in `evidence/m3/linux-process-matrix.json` — and
-so is Round 6's, which is a different B-1 about the world-persistence delivery.
-Answering a blocking finding is not closure: what M3-W8 needs is an independent
-round that returns a pass, and none has. So `evidence/m3/manifest.json` records
-`review.result: "fail"` and M3-W8 stays open.
+so is Round 6's, which is a different B-1 about the world-persistence delivery, so
+is Round 7's, and so is Round 9's single blocking finding. Answering a blocking
+finding is not closure, and neither is a pass that a later round supersedes: what
+M3-W8 needs is an independent round that returns a pass on the state it read, and
+Round 10 did not. So `evidence/m3/manifest.json` records `review.result: "fail"`
+and M3-W8 stays open.
 
 One round is not here. The earliest round of all reviewed the prototype rather than
 the evidence set, and its verdict text was never written into the repository; the
@@ -18,6 +21,15 @@ what that costs a reader. **The numbering below counts only the rounds this file
 holds, so "Round 1" is the second round that ran.** Every round that has run since
 is here, in order, so this file rather than any summary of it is what says how many
 there have been.
+
+That claim went false twice before it was made true. Rounds 8 and 9 had their
+repairs landed and their verdicts left out, and Round 10 blocked M3 over exactly
+that: a file asserting it omits no round while omitting the two most recent. Both
+were recovered verbatim from outside the repository while their texts still
+existed, which is luck rather than a control. The convention this file is held to
+from here is that a round's verdict is written into it before, or in the same
+change as, the repairs that answer the round — because a verdict recoverable only
+from a scratch file is a verdict this record does not have.
 
 They are one record rather than one file each because `review.record` in
 `schemas/evidence.schema.json` binds one hashed artifact per milestone, and these
@@ -29,6 +41,12 @@ previous round's repairs.
 Each verdict is reproduced as written, without softening and with nothing added.
 The `file:line` anchors are as of the tree each reviewer read; later rounds and
 later repairs have moved some of them.
+
+Three mechanical adaptations are made to a round's text and are the only changes to
+it: heading levels are demoted so each round nests under its own, a heading that
+would otherwise repeat one already in this file carries its round number, and a
+fenced block is given a language. All three are because `markdownlint` runs over
+this file under `ravel:verify`.
 
 ---
 
@@ -959,7 +977,7 @@ This round's own heading calls itself Round 7, counting the untracked prototype
 round this file describes but does not hold. Under this file's numbering, which
 counts only the rounds it holds, it is Round 6. Nothing else about it is renamed.
 
-### M3-W8 Independent Review — Round 7
+### M3-W8 Independent Review
 
 #### VERDICT: FAIL
 
@@ -1867,3 +1885,1864 @@ record ownership rule, the digest binding and the verdict binding are all
 genuinely fail-closed — I broke each of them and each refused correctly. What
 the in-gate half still does not hold is the direction in which a world is
 *withheld*, and that is the direction in which a player loses data.
+
+---
+
+## Round 8 — VERDICT: PASS
+
+This round's own heading calls itself Round 8 and names itself the ninth round
+to run, counting the untracked prototype round this file describes but does not
+hold. Under this file's numbering it is Round 8 as well. It is the only round so
+far to return a pass, and it did not close M3: the rounds after it read axes this
+one had left standing in its own ceiling, and both returned FAIL. Its verdict is
+written here after the repairs it asked for had already landed, which is the
+defect Round 10's first finding is about; it is recorded verbatim rather than
+summarised because its text was still recoverable when that finding was fixed.
+
+Result: PASS
+
+### M3-W8 Independent Prototype Review — Round 8 (the ninth round to run)
+
+I had not seen this repository before this round. I reached every conclusion below
+from the artifacts and from breaking them, not from the repository's account of
+itself. I did not read any earlier round's verdict before forming my own view of
+the code under review; I read `review.md` afterwards, to establish what had
+already been raised and what the tree had answered.
+
+I am aware that every round before this one returned FAIL. That is not a reason to
+fail this one and not a reason to pass it. What follows is what I could and could
+not break.
+
+#### VERDICT: PASS
+
+The one blocking defect the previous round failed M3 on is genuinely fixed, and it
+is fixed in the form that round demanded — by a test that dies when the propagation
+is broken, not by rewording. Every other refusal and delivery path I attacked in
+the world-persistence crossing is now constrained by a test that dies. Every gate
+I tried to defeat either refused correctly or refused in a way whose limit its own
+doc comment states. The digests bind, the pinned revision resolves and is the
+commit its own change id is at, the recorded arithmetic is true, and the tree is
+green on every gate component I could execute.
+
+I found two moderate findings (the second with three instances) and two minor ones.
+None of them touches production behaviour, player data, or any claim about the game.
+Every one of them points the safe way — the evidence understating its own machinery,
+or overstating what it still owes — and one is a gate that is weaker than its own doc
+comment claims. Had any pointed the other way I would have failed on it. I do not
+think any is worth a ninth FAIL, and I say below exactly what convinced me and what
+I am willing to be wrong about.
+
+**What convinced me**, concretely, since a PASS is worth less than the reasons for
+it. Four things. First, the blocking defect is dead in the form the last round
+demanded: I restored `let _ =` at `persistence.rs:300-301` and the suite exits 101
+on a named test, and clippy does *not* catch it, so the test is doing real work
+rather than duplicating a lint. Second, I could not find a surviving mutation
+anywhere in the world-persistence crossing — eight mutations across the refusal and
+delivery directions, all eight killed. Third, every gate I attacked failed closed,
+including three that fail closed in *both* directions (a missing count and a wrong
+count; an absent disclosure and an outlived one). Fourth — and this is what moved me
+from hesitation to a verdict — I checked all fourteen of the last substantive round's
+findings against the tree myself and found every one answered, which means this
+milestone is not closing over anything a previous reviewer left standing.
+
+**On the self-referential blocking risk.** `evidence/m3/manifest.json`'s single
+blocking risk is "M3 is not closed", whose stated grounds are that every
+independent round has returned FAIL and that the review which must pass is an
+independent one. This round is independent of the work under review and returns
+PASS, so the stated grounds no longer hold and **that risk may be withdrawn** — on
+that basis and no other. Withdrawing it is not a judgement that nothing in it was
+true; it is that its own condition is now satisfied. Two things in it must survive
+the withdrawal rather than be deleted with it, because they are ceilings and not
+open findings: that M3-W4 and M3-W7 close on operator attestation whose live half
+no reviewer can recompute, and that the closure gate binds which text was attested
+rather than that the attestation was earned. Both are already recorded as separate
+non-blocking risks and deviations. If M3's risks are edited to reflect this round,
+the correct edit is to remove the "M3 is not closed" risk and change nothing else.
+
+#### Method and environment — Round 8
+
+Everything destructive happened in a throwaway copy of the whole repository
+(`rsync -a --exclude target`, `.jj` retained), never in the repository itself. I
+left `CARGO_TARGET_DIR` unset because the JVM gate and the spike scripts hardcode
+`./target/release/…`. When restoring a mutated file I rewrote its bytes and
+touched its mtime rather than moving a preserved copy back, so no kill is
+misattributed to a stale artifact. I established a clean baseline before trusting
+any exit code, and I re-established it after each restore.
+
+`devenv shell` was unusable for this round: the binary cache returned HTTP 504, so
+`devenv tasks run ravel:verify` could not be invoked at all. The pinned toolchain
+was already on `PATH` at 1.95.0, so I ran the gate's constituent commands directly
+with the flags `nix/common.nix` gives them. What I could run and what I could not
+is enumerated in the ceiling; this is the single largest limit on this round.
+
+Baseline, in the copy, before any mutation:
+
+| Command | Exit |
+| --- | --- |
+| `cargo nextest run --workspace --all-features` | 0 — 890 tests run, 890 passed, 0 skipped |
+| `cargo clippy --workspace --all-targets --all-features` | 0 — zero warnings |
+| `cargo llvm-cov nextest --workspace --all-features --fail-under-lines 80 --ignore-filename-regex '(^\|/)experiments/adg-'` | 0 — TOTAL line coverage 86.94% |
+| `cargo run -p ravel-xtask -- verify scaffold` | 0 |
+| `cargo run -p ravel-xtask -- verify spikes` | 0 |
+| `cargo run -p ravel-xtask -- verify milestone M3` | 1 — exactly two violations |
+| `cargo run -p ravel-xtask -- verify milestone M0` / `M1` / `M2` | 0 / 0 / 0 |
+
+The two M3 violations are "milestone must have no blocking deviations or risks"
+and "milestone review must be independent and pass", which is exactly the state
+the milestone claims for itself.
+
+#### What I verified by breaking, and what it establishes — Round 8
+
+##### The refusal fix is real
+
+`crates/ravel-bootstrap/src/persistence.rs:300-301` now reads
+`host.open_saved_data(envelope, &plan).map_err(|error| error.to_string())?`. I
+restored the defect verbatim — `let _ = host.open_saved_data(envelope, &plan);` —
+and ran `cargo test -p ravel-bootstrap`: **exit 101**, one failure,
+`persistence::tests::a_mod_refusing_its_stored_state_withholds_the_world_and_stages_nothing`,
+92 passed 1 failed. The test dies for the right reason: it reaches
+`.expect_err("a mod that cannot read its stored state opens no world")` and finds
+`Ok(())`. The `refuses_open` flag on the test double is what makes the mutation
+observable, and the test opens the same world with the same bytes through an
+accepting double first, so the refusal is the mod's doing and not the fixture's.
+
+The three `HostError::Refused` returns in `test-mods/saved-data/src/lib.rs:242-258`
+each die too. I swallowed each one in turn — replacing its `?` with a `let Ok(..)
+else { return Ok(()) }`, and deleting the plan-mismatch `if` block outright — and
+ran `cargo test -p ravel-bootstrap -p ravel-test-mod-saved-data -p
+ravel-conformance-tests`:
+
+| Mutation | Exit | Killed by |
+| --- | --- | --- |
+| swallow the unparseable-payload refusal | 101 | `a_payload_its_owner_cannot_read_refuses_the_world_rather_than_opening_it_fresh` (conformance) |
+| swallow the mod's own `open()` refusing | 101 | `a_stored_version_this_build_cannot_read_refuses_delivery` |
+| delete the plan-mismatch refusal | 101 | `a_plan_that_disagrees_with_the_envelope_beside_it_refuses_delivery` |
+
+##### The delivery direction is still constrained
+
+These were fixed by an earlier round and I re-attacked all four. Same command,
+each applied alone to `persistence.rs`:
+
+| Mutation | Exit | Killed by |
+| --- | --- | --- |
+| deliver `None` to every mod | 101 | `a_stored_aggregate_reaches_the_mod_that_owns_it`, `a_world_reopened_from_what_its_save_emitted_holds_the_same_state`, `each_owner_in_one_world_receives_its_own_envelope_and_no_other` |
+| build every plan from `None` | 101 | `a_world_written_at_an_older_version_hands_the_mod_the_steps_to_reach_current`, `each_owner_in_one_world_receives_its_own_envelope_and_no_other` |
+| hand every mod the first owner's envelope | 101 | `each_owner_in_one_world_receives_its_own_envelope_and_no_other` |
+| deliver to only the first mod | 101 | `each_owner_in_one_world_receives_its_own_envelope_and_no_other` |
+
+Both directions of the crossing — a world *withheld* and a world *delivered* — are
+now constrained by tests that die. That was the gap the previous round named, and
+it is closed.
+
+##### On the refusal documented as unreachable from production
+
+`test-mods/saved-data/src/lib.rs`'s doc for
+`a_stored_version_this_build_cannot_read_refuses_delivery` says the refusal is
+unreachable from the production crossing because `SavedDataAggregate::open`
+refuses a future version first. **That disclosure is honest and it hides no
+missing coverage.** I traced it: `stage_world` calls
+`SavedDataAggregate::open(bytes, &declarations, &uncheckable)` at
+`persistence.rs:288` before any delivery, and that admission refuses any data
+version outside the owner's declared set, so by the time `open_saved_data` runs the
+version is always one the mod reads. The branch is a defensive backstop, and it is
+asserted directly at the mod's own API — my mutation of it died. Reachability and
+coverage are different questions and the record answers both correctly.
+
+##### Clippy does not catch the swallow
+
+Worth recording because nobody had checked. With the `let _ =` defect in place,
+`cargo clippy -p ravel-bootstrap --all-targets` exits **0** with zero warnings:
+`let _ =` is precisely the idiom that silences `#[must_use]`, and
+`clippy::let_underscore_must_use` is a restriction lint the workspace does not
+enable. The test is the only thing standing between that defect and a green gate.
+That is not a defect in itself — the test exists and dies — but it means this
+class of defect has exactly one guard, and anyone deleting that test deletes the
+whole guard.
+
+##### The attestation boundary is exactly as M3 states it
+
+I confirmed all three legs.
+
+- Flip only `evidence/m3/review.md`'s front-matter `Result:` line to `PASS`:
+  `verify scaffold` **exit 1** and `verify milestone M3` **exit 1**, with two
+  violations — the recomputed digest mismatch, and "records review.result fail
+  while the review record it binds states pass".
+- Flip only `review.result` to `"pass"`: **exit 1**, "records review.result pass
+  while the review record it binds states fail".
+- Make all four edits together — the record's front-matter `Result:` line to
+  `PASS`, `review.result` to `"pass"`, the one blocking risk's `classification` to
+  `"non-blocking"`, and `review.record.sha256` rebound to the record's new bytes:
+  `verify scaffold` **exit 0** and `verify milestone M3` **exit 0**. Nothing else
+  objects.
+
+So the claim is true: the gate binds *which text was attested*, not *that the
+attestation was earned*. **Is stating it sufficient?** For the boundary itself,
+yes — no gate can decide whether a document telling the truth about its own
+conclusion is telling the truth, and a repository that pretends otherwise is worse
+off than one that says so. What makes the statement sufficient rather than an
+excuse is that the two controls which *are* available both work and both were
+proven to work by breaking them individually, and that the boundary is stated in
+the manifest, in `README.md`, and beside the overreaching heading in `review.md`
+rather than in one place a reader might miss. I would add only this, which is a
+remark and not a finding: the residual risk is not that someone forges four
+strings, it is that the four strings are easy enough to write that a future
+maintainer under time pressure may not notice they have crossed from recording a
+verdict to producing one. Nothing in the machinery can help with that.
+
+##### The gates I tried to defeat
+
+Each of these I attacked rather than read. Exit codes are from `cargo run -p
+ravel-xtask -- verify scaffold` unless stated.
+
+**`verify_harness_lifecycles` — fails closed three ways, stronger than advertised.**
+Changing `persistence_lifecycles_declared=9` to `10` in
+`jvm/harness/run-harness.sh`: **exit 1**, both citing records named. Renaming the
+declaration away: **exit 1**, "no record's world-lifecycle count is held to it".
+Rephrasing `evidence/m3/README.md`'s count so the anchored noun window misses it
+(`nine world lifecycles` → `world lifecycles numbering nine`): **exit 1**, "no
+longer writes a count against `world lifecycles`". That third branch is the
+important one — the check requires the count to be *present*, so it cannot be
+evaded by deletion or rewording. The harness's own runtime assertion at
+`run-harness.sh:377` binds the declaration to the runs that happened, and
+`ravel:verify-jvm` is inside `ravel:verify` (`nix/common.nix:530`); I counted the
+nine `persistence_run` invocations statically and they reconcile, but I did not
+execute the JVM harness — see the ceiling.
+
+**`verify_admitted_revisions` and its `unobtainableRevisions` escape — fails
+closed three ways.** Emptying `unobtainableRevisions`: **exit 1**, three
+violations naming the pins that then bind nothing. Corrupting one entry's
+`changeId`: **exit 1**, "discloses the pin … as unobtainable" plus the underlying
+pin failures returning. Adding a disclosure for a pin that does not fail
+(`class-loader-identity.json`): **exit 1**, "discloses the pin … as unobtainable,
+and no record it admits carries it; a disclosure that names no …". So the escape
+is load-bearing in both directions: a pin nothing discloses fails, and a
+disclosure the defect has outlived fails too. This is the strongest piece of
+machinery in the set.
+
+**`verify_admitted_inventory` — closes the hole its own manifest says is open.**
+I dropped an untracked `evidence/m0/probe-record.json` into a milestone directory:
+**exit 1**, "evidence/m0/manifest.json names no record probe-record.json, which
+its own milestone directory tracks; a record no manifest names is a record no
+digest covers". Emptying `evidence/m3`'s `benchmarks.results` and its disclosures
+together: **exit 1**, all four M3 records named, and `verify milestone M3` adds
+"M3 manifest must record all four M3 results under the m3-prototype-v1 protocol".
+See finding F2.
+
+**`verify_evidence_records`' floor — fires.** With `evidence/` present but all
+four manifests removed: **exit 1**, "evidence/ holds no milestone manifest, and a
+manifest sweep over nothing passes vacuously". The historical defects are also
+fixed: hiding `evidence/` entirely gives **exit 1** with named missing files, and
+deleting the four manifests gives **exit 1** naming all four. The failure mode in
+which the scaffold once passed with every milestone manifest deleted no longer
+exists.
+
+**`verify_recorded_verdict` — fires, and its parsing rule matters.** It takes the
+*first* `Result:` line of the record (`lib.rs:1852`, `stated_verdict`). Both legs
+proven above.
+
+**`verify_manifest_percentages`, `verify_void_limits`, `verify_campaign_inventory`.**
+I read their doc comments and did not find a limit worse than stated for these
+three. `verify_manifest_percentages` bans the `%` character in any milestone
+manifest and says so; a spelled-out percentage escapes and it says that too.
+`verify_void_limits` reconciles `VOID_LIMITS` against both the record's metrics and
+the roadmap paragraph ending `are void`, in both directions, and its stated limit
+(moving the declaration into prose that does not say `are void`) is real and is the
+only one I found. `verify_campaign_inventory` states two anchoring limits, and the
+previous round already broke one of them and had it disclosed.
+
+##### Digests, provenance and arithmetic
+
+- All four `benchmarks.results[].sha256` recompute against the tracked records:
+  `sha256sum -c` OK for `class-loader-identity.json`, `pack-compile.json`,
+  `profiling-overhead.json`, `linux-process-matrix.json`.
+- `review.record.sha256` recomputes against `evidence/m3/review.md`: OK.
+- All four `inputs[].sha256` recompute at the pinned revision
+  `724f12b6b80c3f0597c5b7bf4a40b1fdc41e2315` (via `git cat-file -p <rev>:<path> |
+  sha256sum`): OK for `hooks.toml`, `mappings.lock`,
+  `docs/architecture/m3-hook-targets.md`, `docs/decisions/adg-6-configuration-ui.md`.
+- `revision.id` resolves and is the commit `revision.changeId`
+  `xqmmlnzmtkqpuuxymttpzqyvnovxtxtv` is at, which `verify_pinned_commit` requires.
+  Confirmed with `jj log -r xqmmlnzmtkqpuuxymttpzqyvnovxtxtv`.
+- `tests.total` 854 with 0 failed and 0 skipped is internally consistent, and the
+  manifest's explanation of why it is below the tip's count holds: the tip runs 890
+  under the gate's own runner. `lineCoveragePercent` 86.68 is above the floor of 80
+  and near the tip's measured 86.94%. Neither figure is bound by anything, which
+  the manifest states.
+- The three announced M3 pin disclosures on the scaffold run are the two dirty-trial
+  records, both quoted in `unobtainableRevisions`. They are disclosures, not
+  violations: the scaffold exits 0 with them present.
+
+**The inventory arithmetic is true, including which targets the subtraction drops.**
+I counted it out of the record rather than trusting the prose. `jq` over
+`rewrite.targetInventory` gives 15 unique classes and 33 methods with no duplicate
+in either, matching `rewrite.classesInInventory` and
+`rewrite.callableTargetsInInventory` exactly. `rewrite.worldOnlyTargets` holds 8
+entries, and the record's `whyElevenNotFifteen` claims the title-only launch drops
+6 of them and not 8 because two sit in classes the title screen does load. I
+checked the class of every one of the eight: `command.perform-prefixed`,
+`resource.load-server-resources`, `recipe.apply`, `save.compute-if-absent`,
+`save.try-write` and `save.save-and-join` are held by exactly the four classes the
+record names as never loaded — `Commands`, `ReloadableServerResources`,
+`RecipeManager`, `SavedDataStorage` — and `world.open-persistence` and
+`world.save-persistence` are held by `net.minecraft.client.Minecraft` and
+`net.minecraft.server.MinecraftServer`, which are loaded at the title screen. So
+`15 − 4 = 11` and `33 − 6 = 27` are both true and both derived, and the record's
+own explanation of why it is not `33 − 8` is correct. `worldOnlyTargets` also obeys
+its stated membership criterion, and the four targets it deliberately excludes
+(`server.tick`, `server.tick-integrated`, `save.save-everything`, `save.set-dirty`)
+are consistent with a list that accounts for what a title-only launch rewrites
+rather than what it can reach.
+
+**The safety boundary holds.** All 18 crate roots under `crates/` carry
+`#![forbid(unsafe_code)]`, `ravel-bootstrap` included; I checked each one rather
+than sampling. Grepping `crates/`, `tools/`, `test-mods/` and `tests/` for `unsafe`
+outside the experiment fence returns only the prohibition machinery in
+`tools/ravel-xtask/src/lib.rs` and one explanatory string in
+`crates/ravel-observability/src/profiling.rs:179` — no `unsafe` block or `unsafe
+fn` anywhere in the maintained graph. The table in
+`docs/architecture/safety-boundary.md` is still empty, as the hard rule requires.
+
+#### Findings
+
+##### F1 — Moderate. `verify_review_round_counts` is weaker than its own stated limit
+
+**File.** `tools/ravel-xtask/src/lib.rs:716-768`, with `numbers_before` at `:697-714`
+and `COUNT_LOOKBACK` at `:688`.
+
+**What is claimed.** The doc comment states the limit as an ordinal one: "this
+catches a *cardinal* count of rounds, spelled either way — `six rounds`, `5
+rounds`. An ordinal naming one round that has already run … is allowed; an ordinal
+naming a round that has not run yet … does drift and is not caught here. Nothing
+but the record counting for itself closes that one." The manifest and `review.md`
+both present this gate as the fix that makes the recurring stale-round-count
+defect undoable by prose: "so the fix cannot be undone by prose. Reinstating a
+deleted count fails the scaffold gate."
+
+**What is actually true — broke it.** Four ordinary cardinal restatements appended
+to `evidence/m3/README.md` leave `verify scaffold` at **exit 0** with zero
+round-count violations:
+
+1. `Five independent reviews have run against this milestone.` — the noun set is
+   `["rounds", "verdicts", "audits"]`; `reviews` is not in it.
+2. `The independent rounds recorded here number five in total.` — the noun is
+   exactly `rounds`, and the cardinal is a *cardinal*, but `numbers_before` only
+   scans `COUNT_LOOKBACK` words *backwards* from the noun, so a count that follows
+   its noun is unreachable.
+3. `There have been five review iterations.` — `iterations` is not in the noun set.
+4. `The count of completed review round entries is five.` — the window matches the
+   literal word `rounds`; the singular `round` is not matched at all.
+
+Positive controls in the same run prove the gate was live and the harness was
+sound: `Five independent rounds have run.` gives **exit 1** with "restates that 5
+review rounds exist", and `There are 5 verdicts recorded below.` gives **exit 1**
+likewise. Probes 2 and 4 are cardinal counts of *rounds*, which is the thing the
+doc comment says it catches, so this is a limit worse than the one stated — not an
+undisclosed extra limit but a hole inside the disclosed guarantee.
+
+**Why it matters and why it is not blocking.** No such restatement exists in the
+tree right now — I swept `evidence/m3/README.md` and `manifest.json` for every
+sentence containing a round/verdict/audit/review/iteration noun together with a
+numeral and found none, so the previous round's second closure condition is
+genuinely met. What is wrong is the *durability* claim: this is the recurring
+defect class the repository has now found seven times, and the mechanism advertised
+as ending it can be walked around by rephrasing. It will come back.
+
+**Fix.** The shape is already in this codebase, one function away.
+`verify_harness_lifecycles` binds rather than prohibits: it requires the count to
+be present and equal to a single declaration, so both deletion and rewording fail.
+A prohibition cannot have that property, because there is no anchor whose absence
+it can report. Either bind the round count the same way — have `review.md` declare
+it in one machine-readable place and require the other documents to state it and
+match — or, keeping the prohibition, widen it: add `reviews`, `iterations` and the
+singular forms to the noun set, and scan `COUNT_LOOKBACK` words on *both* sides of
+the noun. The second is cheaper and strictly better than what is there; the first
+is what actually closes the class.
+
+##### F2 — Moderate. Three places in the manifest state, in the present tense, something that is no longer true — one of them inside the blocking risk
+
+This is one finding with three instances, because it is one class. The third
+instance is the significant one and I found it last, by trying to settle the very
+question I had listed as my largest doubt.
+
+###### F2a — the blocking risk overstates the outstanding finding set by twelve items
+
+**File.** `evidence/m3/manifest.json`, the blocking risk beginning "M3 is not
+closed." (`:250`), and the M3-W8 `gateStatus` row (`:86`) which says the same thing.
+
+**What is claimed.** "One of that round's must-fix findings and all five moderate
+and six minor findings are still unanswered, no round has yet returned a pass …"
+— "that round" being Round 5. The M3-W8 row states it as "Still unanswered: that
+round's third must-fix finding, its five moderate findings, and its six minor
+ones."
+
+**What is actually true.** All fourteen of Round 5's findings are answered. I
+enumerated them from `review.md:756-955` and checked each against the artifact it
+cites:
+
+| Round 5 finding | Status | How I established it |
+| --- | --- | --- |
+| B-1 profiling build binding | answered | `profilingReObservationCampaign` exists with pre-launch digests |
+| M-1 repealed reviewer note | answered | passage rewritten in `matrixNotCarriedForward` |
+| M-2 `15/33` false of one surface launch | answered | read `howItWasResolved`: now distinguishes the two world-opening launches at 15/33 from the title-only launch at 11/27 |
+| **M-3** the false pinned reason in `profiling.rs` | **answered** | grepped `crates/ravel-observability/src/profiling.rs`: "nothing to size" / "still open" no longer occur anywhere |
+| **D-1** `rewrite.measuredIn` vs the refused third launch | **answered** | `whyTheRefusedLaunchStillRewroteFifteen` (`linux-process-matrix.json:239`) gives the mechanism — `Minecraft.doWorldLoad` takes an already-constructed `WorldStem`, which holds a `ReloadableServerResources` whose constructor instantiates `RecipeManager` and `Commands`, and `Persistence.read` resolves `SavedDataStorage` — so all four world-only classes were loaded before the prologue ran. Substantive and checkable, not a hand-wave |
+| **D-2** undisclosed dirty trials | **answered** | `unobtainableRevisions` + deviation; I broke the escape three ways |
+| **D-3** ADG-7 save-seam refusal untested | **answered** | `missing-save-seam` is the ninth lifecycle at `run-harness.sh:365` |
+| **D-4** undisclosed M3-W0 ceiling | **answered** | a non-blocking risk now states it in those terms |
+| **D-5** no `verify_m3_manifest` | **answered** | exists at `lib.rs:2917`; I watched it fire ("M3 manifest must record all four M3 results under the m3-prototype-v1 protocol") |
+| **m1** unsafe-prohibition check vacuous | **answered, proven by mutation** | `declares_unsafe_prohibition` (`:245-250`) now matches at line start after `trim_start`, so a doc-comment mention cannot satisfy it. I deleted the real `#![forbid(unsafe_code)]` from `crates/ravel-bootstrap/src/lib.rs` while leaving its one doc-comment occurrence in place: scaffold **exit 1**, "missing unsafe prohibition: crates/ravel-bootstrap/src/lib.rs" |
+| **m2** `ravel-testkit` fence unenforced | **answered** | `verify_testkit_fence` exists at `:2415` |
+| **m3** "eighteen" nowhere in the record | **answered** | `eighteen` no longer occurs in `README.md`; `:482` states the seven-row budget |
+| **m4** JDK patch 25.0.1 vs 25.0.4 | **answered** | `class-loader-identity.json:56` `javaDiffersFromTheMilestone` states it plainly and says a reader should treat the result as observed on 25.0.1 |
+| **m5** `prismExitedNaturally` disagreement | **answered** | `:23` `whichCampaignThisDescribes` names the one field the two blocks disagree on and why |
+
+So the sentence is stale, and by the largest margin of the three instances: it
+asserts twelve open findings where there are none. It is also the instance that
+matters most, because it sits inside the one blocking-classified item in the
+manifest and inside the row that describes the review this milestone turns on.
+
+**Why it is not blocking.** Again the direction is safe — it makes M3 look worse
+than it is, so no reader is falsely reassured. And this instance is self-clearing:
+the blocking risk has to be removed as part of closing M3 anyway, and the M3-W8 row
+has to be rewritten to record this round, so the correct fix is simply to not carry
+the sentence forward.
+
+**Note for whoever writes that edit.** Do not replace it with a new count of what
+is outstanding. Say that the rounds are recorded in `review.md` and that the round
+which decided closure is the one that returned a pass. A restated tally of findings
+is the same defect in a new costume, and F1 shows the gate will not catch it.
+
+###### F2b and F2c — two deviations describing holes that are closed
+
+**File.** `evidence/m3/manifest.json`, the deviation beginning "Nothing requires a
+milestone manifest to list the records that sit beside it" (`:220`), and the
+deviation beginning "`verify_evidence_records` has no floor" (`:172`).
+
+**What is claimed.** (a) "Nothing requires a milestone manifest to list the records
+that sit beside it, so a record can be added to a milestone directory and be
+digest-bound by nothing. … a third record added tomorrow would be bound by
+neither. The gate recomputes what a manifest claims and never asks whether the
+claims cover the directory." (b) "`verify_evidence_records` has no floor. It
+discovers manifests by scanning the evidence directory, so an unreadable, renamed,
+or absent `evidence/` yields zero manifests, zero violations, and no message …
+Every other hole in this machinery announces itself; this one is the failure mode
+the check cannot report on itself. A floor means naming the milestones that must be
+present, which is a decision about what the scaffold contract owns rather than a
+repair to the digest check, so it is recorded here instead."
+
+**What is actually true — broke both.** (a) I added exactly the third record the
+deviation says would be bound by neither — an untracked
+`evidence/m0/probe-record.json` — and `verify scaffold` exited **1**:
+"evidence/m0/manifest.json names no record probe-record.json, which its own
+milestone directory tracks; a record no manifest names is a record no digest
+covers." `verify_admitted_inventory` (`lib.rs:1243`) asks precisely the question
+the last sentence says the gate never asks. (b) The floor exists at
+`lib.rs:1029-1036` and announces itself in the words the deviation says are
+unavailable. With `evidence/` present and all four manifests removed, `verify
+scaffold` exited **1** with "evidence/ holds no milestone manifest, and a manifest
+sweep over nothing passes vacuously."
+
+**Why the class matters.** These three are false statements in the document the
+milestone closure gate reads, and they are the eighth, ninth and tenth instances of
+this project's recurring class — an absolute present-tense claim that a later
+commit falsified — in a form no gate covers. The two gated classes are restated
+figures and percentage signs; an obsolete disclosure is neither. The manifest
+itself establishes the governing principle for `unobtainableRevisions` — "a
+disclosure the defect has outlived fails it too" — and does not apply it to its own
+prose. I rank the class moderate rather than blocking because all three point the
+same, safe way: they understate the machinery or overstate what is outstanding, so
+a reader is warned of a weakness that does not exist rather than reassured about one
+that does. Nobody is misled into trusting something unsound. Had any of them run the
+other way I would have failed the milestone on it.
+
+**Fix.** Rewrite F2b and F2c in the past tense, naming the check that closed each —
+the same form the other deviations in this manifest already use when they record a
+defect and its repair. Do not delete them; the audit trail is the point. F2a is
+handled by the closure edit as described above. There is no gate for this class and
+I am not proposing one, because a check that decided whether a paragraph about the
+machinery is still true would have to understand the machinery. What would help is a
+convention rather than a check: a deviation is written as history from the moment it
+is answered, and a risk never carries a tally of findings.
+
+##### F3 — Minor. The conformance file names the wrong tests as its backstop
+
+**File.** `tests/conformance/tests/saved_data.rs:25-33`.
+
+**What is claimed.** The header discloses — correctly, and this is the most
+honest thing in the file — that `reload` "restates that sequence rather than
+calling it, so a `stage_world` that stopped handing the envelope over would leave
+every test in this file green", and then names what constrains it: "`ravel-bootstrap`'s
+`a_stored_aggregate_reaches_the_mod_that_owns_it` and
+`a_world_reopened_from_what_its_save_emitted_holds_the_same_state` are what
+constrain that".
+
+**What is actually true — broke it.** The disclosure is exactly right and I
+confirmed it: with `persistence.rs:300-301` swallowing the refusal, `cargo test -p
+ravel-conformance-tests --test saved_data` exits **0** at 18 passed, 0 failed, and
+`ravel-bootstrap` is not even a dependency of `tests/conformance/Cargo.toml`, so
+the suite structurally cannot reach that code. But the two tests the header names
+are the ones that constrain *delivery*, and neither of them fails under the
+swallow mutation — only
+`a_mod_refusing_its_stored_state_withholds_the_world_and_stages_nothing` does. The
+sentence enumerates the backstop and, since the refusal test was added, the
+enumeration is one test short.
+
+**Fix.** Add that test's name to the sentence. One line.
+
+##### F4 — Minor. Asymmetric disclosure of which mod-side refusals production can reach
+
+**File.** `test-mods/saved-data/src/lib.rs`, the doc for
+`a_plan_that_disagrees_with_the_envelope_beside_it_refuses_delivery` against the
+doc for `a_stored_version_this_build_cannot_read_refuses_delivery`.
+
+**What is claimed.** The second says outright that it is "unreachable from the
+production crossing and asserted here anyway". The first says nothing about
+reachability and reads as though a disagreeing plan is something a world can
+present.
+
+**What is actually true — traced it.** It is equally unreachable. `stage_world`
+builds the plan at `persistence.rs:295-299` from the same envelope's own
+`data_version` that it then delivers, and the mod resolves the plan again from
+what it was handed, so `opened == *plan` always holds on the production path. The
+branch guards a *host* defect — exactly the mutation I applied as "build every
+plan from `None`", which the bootstrap tests kill — not a world's content.
+
+**Why it is minor.** Coverage exists on both sides and no claim anywhere is false;
+what is uneven is that one defensive branch says it is defensive and the other
+does not, which makes a reader count one reachable production refusal where there
+is one, or three, depending on which doc they read. Of the three mod-side
+refusals, exactly one — the unparseable payload — is reachable from a launch.
+
+**Fix.** One sentence on the plan-mismatch test saying it guards the host rather
+than the world, and that the host-side mutation is what the bootstrap suite kills.
+
+#### Reading-only ceiling — Round 8
+
+Everything in this section is a limit on this round, not a finding. Where a
+previous round's ceiling named something and I attacked it, I say so; where I too
+could not reach it, it stays here for the next round.
+
+**The largest limit: I never ran `ravel:verify`.** `devenv shell` failed on an
+HTTP 504 from the binary cache for the whole of this round, so
+`devenv tasks run ravel:verify` was never invoked and I cannot report its exit
+status. I ran its constituent commands directly with the flags `nix/common.nix`
+gives them, and the table above is what I observed. **What I did not run at all:**
+`ravel-format` (formatting across Nix, shell, TOML and Markdown as well as Rust),
+`ravel-audit` (`cargo deny check`, which needs the advisory database and therefore
+network), `ravel-verify-jvm`, `ravel-verify-budget`, and `ravel-verify-stack`. A
+formatting or dependency-advisory failure would be invisible to this round.
+Anyone relying on this verdict should re-run the full gate once the cache is
+reachable; I would not expect a surprise, because the pieces I could run are all
+green and clippy is clean at zero warnings, but I did not prove it.
+
+**I did not execute the JVM persistence harness.** `verify_harness_lifecycles` I
+broke three ways and it held. The harness's own binding of its declaration to the
+runs it made — `run-harness.sh:377`, a plain `-ne` comparison that exits 1 — I
+verified by reading it and by statically counting the nine `persistence_run`
+invocations, which reconcile with `persistence_lifecycles_declared=9`. I did not
+add a tenth case and watch it fail, because doing so needs the release native
+library and a full JVM harness build that the broken shell made expensive. So the
+claim "a case added or removed there fails the harness" is, in this round,
+established by reading and arithmetic rather than by mutation. That is the single
+most valuable thing for the next round to break, because it is the only load-bearing
+assertion in this evidence set that I left unattacked by mutation.
+
+**The live half of M3-W4 and M3-W7 is unrecomputable and I did not try.** The
+world, the raw logs and the screenshots were deleted and only digests survive. A
+digest of a vanished file records a claim rather than verifies one, which the
+manifest and the matrix both say in those terms. Nothing in this round independently
+confirms that a real client opened a world, wrote `data/ravel/mods.dat`, exited and
+reloaded byte-identically. I checked the in-gate half and it runs. The same applies
+to M3-W0: every claim the hook inventory makes about the game is a claim about a
+restricted local client jar this repository does not track, so I could recompute the
+inventory's internal consistency and nothing about the game.
+
+**I withdrew one finding during the round.** I recorded that `review.md` contains
+two sections whose inner heading both read "Round 7" — one under the outer heading
+`## Round 6` — and treated it as a self-contradiction in the one record designated
+as authoritative on how many rounds have run. It is not: `review.md:958-960`
+explains it exactly, saying that round's own heading counts the untracked prototype
+round the file describes but does not hold, that under this file's numbering it is
+Round 6, and that nothing else about it is renamed. The disclosure is present,
+correct and adjacent. I was wrong and the record was right.
+
+**What I did not audit myself.** I delegated five read-heavy audits to independent
+helpers and their results are **not** folded into this verdict, because they had not
+returned by the time I concluded. **Treat these as unexamined by this round:**
+
+1. Schema conformance of the four non-manifest records against `schemas/` — I did
+   not validate `class-loader-identity.json`, `pack-compile.json`,
+   `profiling-overhead.json` or `linux-process-matrix.json` against any schema, and
+   I did not establish whether any gate validates them against one at all. If
+   nothing does, that is a hole this round did not look for.
+2. The internals of `class-loader-identity.json` — every count, sum and derived
+   figure in it is unchecked by me. It has never been attacked by any round.
+3. The caveat and re-observation campaigns of `linux-process-matrix.json` — I did
+   not check whether `profilingReObservationCampaign` or any other campaign repeats
+   the B-1 defect of binding a reading to artifacts hashed before the change whose
+   effect it reports, and I did not verify that `screens.profiling.provenance`
+   attributes every row to a campaign that could have produced it. Given that B-1
+   was found in exactly that shape and the fix was localized, this is where I would
+   look next after the harness.
+4. ADG-1..ADG-6 conformance of M3's implementation, and ADG-7's selected mechanism
+   against the code — I checked the safety boundary and the persistence crossing's
+   behaviour, and I did **not** verify the layering rules against the actual
+   `Cargo.toml` files, the SDK's exposure boundary, or whether ADG-7's prose and
+   `persistence.rs` agree on mechanism rather than merely on outcome.
+5. A full status trace of Round 5's findings — see below.
+
+I closed two items I had originally delegated: the inventory arithmetic and the
+`forbid(unsafe_code)` sweep, both reported above under what I verified.
+`verify_campaign_inventory` also derives the two inventory counts from the record's
+own enumeration on every scaffold run, which agrees with my count.
+
+**On the previous rounds' outstanding findings — settled, not assumed.** I listed
+this as my largest doubt while drafting and then resolved it myself rather than
+leaving it in the ceiling, because a PASS that closes M3 over a dozen live findings
+would be indefensible. I enumerated all fourteen of Round 5's findings from
+`review.md:756-955` and checked every one against the artifact it cites; the table
+under F2a records each and how. All fourteen are answered, the last of them
+(`m1`, the vacuous unsafe-prohibition check) proven by mutation rather than by
+reading. Every finding in Rounds 6 and 7 carries an editor's note claiming it is
+answered, and I spot-checked the three most substantive — the round-count deletion,
+the attestation-boundary statement, and the B-1 propagation fix — and all three are
+truthful. So no earlier round leaves a material item open, and the manifest sentence
+asserting otherwise is itself the stale claim recorded as F2a. What I did **not** do
+is audit Rounds 1 through 4 the same way; their findings are recorded as answered by
+subsequent rounds that re-examined the same evidence, and I took that at second hand.
+
+**What no gate decides, restated because a PASS is where it matters most.** The
+closure gate binds which text was attested, not that the attestation was earned. I
+proved that by producing a green M3 with four coordinated string edits. This
+document is now that text. A reader who wants to know whether M3 was earned has to
+read what I broke and what I did not, and the honest summary of that is: the
+world-persistence crossing is well tested in both directions and I could not find a
+mutation that survived; the evidence machinery is fail-closed everywhere I pushed
+it except one gate that is weaker than its doc claims; and roughly a third of the
+gate, the whole live half of two work packages, and five delegated audits are
+outside what this round checked.
+
+#### The smallest set standing in the way — Round 8
+
+Nothing. M3 closes on this round.
+
+For completeness, the four findings should be fixed, and none is a condition of this
+verdict: F1 by widening or, better, rebinding the round-count check; F2a by not
+carrying its sentence into the closure edit, F2b and F2c by rewriting two deviations
+as history; F3 and F4 by one sentence each.
+
+If a reviewer disagrees with this PASS, the ground I would expect them to take is
+not any of the four findings. It is the ceiling: roughly a third of `ravel:verify`
+never ran in this round because the Nix binary cache was down, the JVM harness's own
+lifecycle assertion is the one load-bearing control I left unmutated, and four audits
+I judged valuable enough to commission — schema conformance of the four records, the
+internals of `class-loader-identity.json`, the caveat and re-observation campaigns,
+and ADG mechanism conformance beyond the safety boundary — went unexamined. A round
+that ran the full gate and attacked those four could reasonably reach a different
+verdict, and if it does, it should say so on that basis rather than on mine.
+
+---
+
+## Round 9 — VERDICT: FAIL
+
+This round's own heading calls itself Round 10, counting the untracked prototype
+round this file describes but does not hold. Under this file's numbering, which
+counts only the rounds it holds, it is Round 9. Nothing else about it is renamed.
+Its verdict is written here after its one blocking finding had already been
+repaired, for the reason the note above gives.
+
+Result: FAIL
+
+### M3-W8 Independent Review — Round 10
+
+I reviewed this repository cold for this round. I read `CLAUDE.md`, `SPEC.md`,
+`ROADMAP.md`'s M3 section and `evidence/m3/` before forming a view, and I read the
+prior round's report because the brief required me to check its four findings. I
+made no edit to any tracked file that survived the call that made it: every
+mutation below was appended to a tracked file, measured, and reverted with
+`jj restore <path>` in the same shell command, and `jj st` reported "The working
+copy has no changes" after each batch. I confirmed that twice.
+
+#### VERDICT: FAIL — on one sentence
+
+Almost everything the brief asked me to judge is in order. F1 is genuinely fixed
+and I proved it by re-running the prior round's own escape probes. F2, F3 and F4
+are closed. The ADG-5 and ADG-6 amendments are honest, substantive, and go further
+than they had to: every checkable claim either makes, I checked, and all of them
+hold. The new gate `verify_decision_hook_claims` fails closed in both the ways it
+advertises and in one the brief did not test, and it is not narrower than its own
+doc comment.
+
+M3 nevertheless cannot close, because `evidence/m3/manifest.json` — the document
+`ravel:verify-milestone:m3` reads and the durable record of what this milestone
+was found to be — asserts that M3-W8 found no ADR-conformance defect, twenty-four
+lines above a deviation in the same file recording an ADR-conformance deviation
+against ADG-5. The two nonconformances that made this round necessary are recorded
+everywhere except in the one row that summarises whether they were found. That row
+is the eleventh-or-later instance of this repository's recurring defect class, and
+unlike every instance the prior round accepted as non-blocking, it points the
+unsafe way: it reassures a reader that the axis this round exists to test came back
+clean.
+
+It is one sentence, and the corrected form already exists two entries above it.
+
+#### Findings — Round 9
+
+##### 1 — BLOCKING. The manifest states that M3-W8 found no ADR-conformance defect, and M3-W8's ADR-conformance audit found two
+
+**File.** `evidence/m3/manifest.json:212`.
+
+**What it says.** `"M3-W8 found no safety, layering, or ADR-conformance defect in
+the reviewed prototype stack."` Unqualified, unscoped, and unattributed to any
+round.
+
+**Why it is wrong.** M3-W8's ADR-conformance audit found two nonconformances
+against accepted decisions, and both are recorded in this tree:
+
+- `docs/decisions/adg-6-configuration-ui.md:333-341` is an amendment whose own
+  first line reads "Amended after M3-W8's ADR-conformance audit", withdrawing two
+  sentences that "described a screen surface this repository does not have".
+- `evidence/m3/manifest.json:236` is a deviation recording that "Every native M3
+  launch loaded libravel_bootstrap.so through the path ADG-5 classes as a
+  workaround rather than a mechanism", naming ADG-5 and stating that "nothing in
+  M3 claims ADG-5 conformance for the native half".
+
+So the manifest contradicts itself inside one array: entry 18 says the ADR
+conformance audit was clean, entry 24 records what it found. `ROADMAP.md:951`
+records the ADG-5 obligation too. Every part of this repository except the row that
+summarises the finding says the audit was not clean.
+
+**Why the "it is historical" reading does not save it.** `:212` is one of three
+rows split out of the prototype round's clean results, alongside `:200`
+(hook integrity) and `:216` (redaction). `:200` was falsified by a later round and
+the repository's response was to correct it in place — it now reads "That was three
+of the four things this row used to claim. The fourth ... did not", and then names
+the check that closed it. That is the convention: these rows are read as current
+claims about M3-W8 and are amended when a later round falsifies them. `:212` has now
+been falsified in exactly the same way and has not been amended. The precedent is
+the repository's own.
+
+**Why BLOCKING rather than moderate.** The prior round classified its whole F2
+class non-blocking on an explicit test it stated itself: every instance "understates
+the machinery or overstates what is outstanding, so a reader is warned of a weakness
+that does not exist rather than reassured about one that does. Had any of them run
+the other way I would have failed the milestone on it." This one runs the other way.
+It is also the specific claim this round was convened to test — the prior PASS was
+insufficient precisely because ADR conformance was never examined, and closing M3
+now would freeze a record saying that examination came back clean. A milestone
+record is the durable artifact; a false sentence in it survives the round that could
+have caught it.
+
+**Fix.** Rewrite `:212` in the form `:200` already uses: state that M3-W8 found no
+safety or layering defect, that its ADR-conformance audit found two — ADG-6's
+withdrawn per-frame screen claims and ADG-5's native-library staging — and name
+where each is recorded and what closed or disclosed it. Nothing else in the
+manifest needs to move for this finding.
+
+##### 2 — Non-blocking. `CLAUDE.md:63` enumerates the accepted decisions and the enumeration is stale
+
+**File.** `CLAUDE.md:63`, against `docs/decisions/adg-7-world-persistence.md:3`.
+
+**What it says.** "ADG-1 to ADG-6 are accepted; read `docs/decisions/` before
+writing anything that touches JVM entry, mod execution, bindings, state ownership,
+launcher integration, or Ravel-owned screens, and follow the mechanism the ADR
+selected."
+
+**Why it is wrong.** `adg-7-world-persistence.md:3` reads "Status: accepted before
+M3-W4", and M3-W4 is closed on it. Seven decisions are accepted, not six, and the
+list of subjects the rule attaches to omits world persistence — the one subject
+M3's largest work package turns on. An agent following this file literally is not
+told that ADG-7's selected mechanism binds it.
+
+**Why it is an instance of the class.** This is an absolute enumeration in prose
+that nothing fails when it drifts, in the file that is the binding contract for
+every agent in this repository. The same file, sixteen lines earlier, forbids
+exactly this: "do not trust a list written here, and do not write one — a milestone
+closes and this sentence would go stale unnoticed." The doctrine is right and the
+line below it violates it.
+
+**Fix.** Name the directory rather than the range, as the milestone-closure sentence
+already does, and add world persistence to the subject list.
+
+##### 3 — Non-blocking. A withdrawn ADG-6 framing survives in a file the new gate cannot see
+
+**File.** `jvm/screen/src/dev/ravel/jvm/screen/RavelSettingsScreen.java:48`.
+
+**What it says.** "ADG-6's omission of `extractRenderState` is not an oversight, it
+is the decision — *Ravel never draws*".
+
+**Why it matters.** The ADG-6 amendment identifies the withdrawn sentence as the one
+saying "the omission of `extractRenderState` from the hook inventory was the
+decision", and this comment carries that phrasing forward verbatim in substance. In
+context it is defensible — the paragraph is about this class not implementing the
+override, which is true and which the amendment itself confirms — but the sentence
+as written attributes the omission to ADG-6 as a decision, which is the design
+property the amendment withdrew. The ambiguity is the whole defect: a reader
+checking whether the withdrawn claim survives anywhere finds it here, phrased as a
+current statement of the decision.
+
+`verify_decision_hook_claims` scans `docs/decisions/*.md` and nothing else, so no
+gate reaches this file. That is not a gate defect — it is the reason this instance
+needs a human edit.
+
+**Fix.** One clause: say the omission is *this screen's*, and that the inventory's
+`screen.extract-render-state` entry is a game-screen observation point, per the
+amendment.
+
+##### 4 — Non-blocking. Three of the four M3 records declare a `schemaVersion` that no schema defines, and the fourth declares none
+
+**Files.** `evidence/m3/pack-compile.json`, `profiling-overhead.json`,
+`linux-process-matrix.json` each carry `schemaVersion`;
+`evidence/m3/class-loader-identity.json` carries none. `nix/common.nix:149-157`
+and `tools/ravel-xtask/src/lib.rs:1420`.
+
+**What is true.** `ravel-typecheck` schema-validates four fixture and performance
+documents and metaschema-checks `schemas/*.schema.json`. The scaffold
+schema-validates the named milestone manifests. No schema exists for the shape of
+any of the four M3 result records, and nothing validates them against one. They are
+bound by digest and by the arithmetic checks written against specific fields, and
+by nothing else.
+
+**Why it is only non-blocking.** The records are digest-bound, several of their
+internal figures are re-derived on every scaffold run by
+`verify_campaign_inventory`, and `schemaVersion` promising nothing is a decorative
+field rather than a false claim about the game. But three records assert
+conformance to a version of a schema that does not exist, and one omits the field
+its siblings carry, which is the same class in a small form. This answers the prior
+round's first open ceiling item, which asked whether anything validates these four
+and did not look.
+
+**Fix.** Either define the schema and validate against it, or drop `schemaVersion`
+from records no schema governs and say in the manifest that these four are bound by
+digest and by named field checks only.
+
+#### F1..F4 from the prior round
+
+| Finding | Status | Evidence |
+| --- | --- | --- |
+| **F1** — `verify_review_round_counts` weaker than its doc comment | **closed**, proven by mutation | `ROUND_NOUNS` at `lib.rs:939` now holds `reviews` and `iterations`; `numbers_after` at `:905-922` scans forward as well as back; the doc comment at `:952-965` now states the limit as "on either side of the noun" and discloses the one remaining hole with its reason. I re-ran the prior round's four escape probes: probes 1, 2 and 3 now exit 1. Probe 4 (singular `round`) still exits 0 and is disclosed at `:934-938` with a justification I accept — holding the singular would report the counts of other things that sit beside a singular round noun all through these records. |
+| **F2a** — blocking risk overstated the outstanding finding set by twelve items | **closed** | `manifest.json:254` no longer carries a tally: it now reads "That round's remaining findings are answered as well, each against the artifact it cited ... `evidence/m3/review.md` holds them and is the one record that counts them." The M3-W8 row at `:86` is the same. Neither restates a figure. The blocking risk itself remains, which is correct while M3 is open. |
+| **F2b** — deviation describing the inventory hole as open | **closed** | `manifest.json:220` now reads "Nothing *required* a milestone manifest to list the records that sit beside it", names `verify_admitted_inventory`, and records that it is proven by mutation. Past tense, fix named, audit trail kept — exactly the form the prior round asked for. |
+| **F2c** — deviation describing the missing floor as open | **closed** | `manifest.json:172` now reads "`verify_evidence_records` had no floor, and now it has one", names where the floor is and what it reports, and records both mutations. |
+| **F3** — conformance header named the wrong backstop tests | **closed** | `tests/conformance/tests/saved_data.rs:29-32` now names `a_mod_refusing_its_stored_state_withholds_the_world_and_stages_nothing` as the third constraining test, with the clause "for the direction where a mod refuses what it was handed". |
+| **F4** — asymmetric reachability disclosure | **closed** | `test-mods/saved-data/src/lib.rs:460-465` now states that the plan-mismatch refusal is "Unreachable from the production crossing for the same reason as the refusal above", that it "guards a host that paired them wrongly rather than a world that presented a disagreeing plan", and names the bootstrap mutation that kills the host-side defect. |
+
+None was "already clean". All four were real and all four are answered in the tree
+as it stands.
+
+#### The ADG-5 and ADG-6 amendments
+
+**ADG-6 — honest and sufficient.** The two withdrawn sentences are gone from
+`Consequences` (I read the diff of change `npqoqpvq` rather than trusting the
+amendment's account of itself) and are replaced by prose that states what the
+inventory has: `screen.extract-render-state` is this version's per-frame seam and
+an observation point. The amendment does not assert a per-frame cost figure — it
+says outright that no M3 record prices the crossing, that the nearest numbers are
+ADG-1's and ADG-4's taken through other paths, and that "anyone who wants the number
+should measure it rather than multiply 10.02 ns by a frame rate, which is arithmetic
+across paths that ADG-4's Limits of this evidence expressly refuses." That is the
+correct handling and it is the opposite of manufacturing a figure.
+
+The checkable part is preserved and I checked it rather than reading it. `grep` for
+`drawString`, `GuiGraphics`, `renderBackground` and `blit(` under `crates/` returns
+nothing. `hooks.toml:227-228` carries the section comment the amendment quotes,
+verbatim. `docs/architecture/m3-hook-targets.md:169` tables the extraction target,
+so the pinned input agrees. `RavelSettingsScreen.java` declares no
+`extractRenderState`. "Ravel never draws" holds, and it holds as a fact about the
+tree rather than as an assertion.
+
+Also corrected honestly in the same pass: the earlier paragraph at `:124-128` now
+states that the per-widget objection "prices per-frame crossing rather than
+forbidding it", which is the reading that survives the amendment rather than a
+retrofit — the original paragraph does argue from an unbounded widget count, not
+from the frame.
+
+**ADG-5 — names a real mechanism and admits nobody owns it.** The amendment selects
+`System.load` on an explicit path from a `-D` property, argues why not the installer
+(the installer spends the decision's own property to solve what an absolute path
+solves), and preserves the load in `Hook`'s static initializer with the JNI
+loader-identity reasoning intact. Its closing section is titled "Nothing is built
+yet, and no work package owns it" and states that `render.rs` still emits
+`System.loadLibrary`, that M3's packages are closed and none named it, that M4-W1
+to M4-W8 do not either, and that "until a package does own it and run it, no
+milestone may claim conformance with the native half of this decision."
+
+I verified all of that. `crates/ravel-minecraft-adapter/src/generate/render.rs:542`
+still emits `System.loadLibrary(LIBRARY)`. `ROADMAP.md:951` carries the obligation
+in the open-questions table. `manifest.json:236` records the deviation, names ADG-5,
+and states the staging arrangement in full including the `WrapperCommand` and the
+third `-D` argument. `adg-1-jvm-entry.md:301-308` carries the correction the
+deviation claims for it — the over-broad "no launcher puts anything anywhere" claim
+now covers only the screen jar.
+
+**On the severity of the ADG-5 deviation.** Non-blocking is right, and for a
+narrower reason than the deviation gives. What the staging affects is how the
+library reached the JVM in operator-run evidence launches. What M3-W4 and M3-W7
+claim is that the game was hooked and that Ravel-owned versioned bytes made a
+round trip through an official world save. Neither claim depends on which mechanism
+put the library on the path, and M3 makes no conformance claim for the native half.
+I would have called it blocking had any M3 gate row claimed ADG-5 conformance, or
+had `ROADMAP.md` recorded the question as discharged without naming the unbuilt
+work. Neither is the case.
+
+#### The new gate `verify_decision_hook_claims`
+
+**It is not narrower than its doc comment, and it is broader in one respect than
+the brief tested.** The doc comment at `lib.rs:348-379` claims two anchors, both
+directions of the ADG-6 pair, that it reads hook ids and member names, and three
+named limits. I confirmed every claim by mutation:
+
+- The member-name anchor fires (mutation A below), matching the withdrawn ADG-6
+  sentence's own phrasing.
+- The absolute per-frame denial fires (mutation B).
+- The hook-**id** anchor fires, and it fires from a *different* decision record: I
+  planted "This decision does **not** hook `screen.extract-render-state`" in
+  `adg-1-jvm-entry.md` and the scaffold named that file (mutation D). So the check
+  covers the whole directory, not just ADG-6, which the doc comment implies and the
+  brief had not tested.
+- The per-frame branch is correctly conditional on the inventory declaring
+  `extractRenderState`, so it cannot fire against a version that has no such seam.
+
+**What it cannot catch**, stated for the next reader:
+
+1. **Inflection and word order.** The anchor is the literal adjacent pair `not
+   hook` with the hook name *following* within `COUNT_LOOKBACK` words. I appended
+   "The `extractRenderState` seam is not hooked by Ravel." — a natural English
+   restatement of the withdrawn claim — and the scaffold exited **0** (mutation C).
+   Both the inflection (`hooked`) and the name-before-denial order put it outside
+   the anchor. The doc comment does disclose this: it says a denial "has to be
+   written as `not hook` followed within `COUNT_LOOKBACK` words by a hook id or a
+   member name", and names "the extraction seam is left alone" as unreached. So it
+   is a disclosed limit rather than a finding — but `not hooked` is the more natural
+   phrasing of the very sentence this gate exists over, and widening `DENIAL` to
+   accept the inflected form would cost one line and close the likeliest recurrence.
+2. **Anything outside `docs/decisions/`.** It reads that directory only. Finding 3
+   above is a live restatement of the withdrawn framing in a Java comment, and no
+   gate reaches it. `docs/architecture/` is not scanned either.
+3. **One per-frame member name, hardcoded** at `:346`. Disclosed at `:377-379`.
+4. **Quotation versus claim.** Disclosed at `:370-375`, and the cost is paid
+   correctly: ADG-6's amendment paraphrases the sentences it repeals rather than
+   reprinting them, which is why it passes.
+5. **Denial of a hook the inventory does *not* declare.** A record may deny a hook
+   that was never declared and nothing objects — correct, but it means the check
+   binds prose to the inventory in one direction only.
+
+#### M3's evidence against the ROADMAP gate
+
+Everything I could recompute, recomputes.
+
+- All four `benchmarks.results[].sha256` recompute against the tracked records, and
+  `review.record.sha256` recomputes against `evidence/m3/review.md`. I hashed all
+  five and compared to `manifest.json:130-143` and `:276`; five for five.
+- `review.md`'s first `Result:` line is `FAIL` and `review.result` is `"fail"`, so
+  the two attestation controls agree. `ravel:verify-milestone:m3` exits 1 on exactly
+  the two conditions the milestone claims for itself.
+- Layering holds where I checked it. `crates/ravel-core/Cargo.toml` declares no
+  Ravel dependency. `crates/ravel-sdk/Cargo.toml` depends on `ravel-config`,
+  `ravel-core`, `ravel-data`, `ravel-network` and `ravel-save` — no bootstrap, no
+  JVM, no version internals. `ravel-testkit` appears in no other crate's
+  `Cargo.toml`.
+- `ravel:verify` and `ravel:verify-stack` both exit 0 on the clean tree, and m0, m1
+  and m2 all exit 0. I ran all six through `devenv shell`, redirected to files, and
+  read `$?` — no pipelines.
+
+**On the known ceiling — M3-W4 and M3-W7 resting on operator attestation.** The
+disclosure is honest and it is complete. It is stated in the M3-W4 gate row
+(`:70`), the M3-W7 gate row (`:82`), a dedicated non-blocking risk (`:242`), a
+second risk extending it to M3-W0 (`:258`), and in `README.md`. It says the
+mechanism, not just the conclusion: the world, the raw logs and the screenshots
+were deleted and only digests survive, and "a digest of a file that no longer exists
+records a claim rather than verifies one". It names what *is* recomputable — the
+in-gate half, `tests/conformance/tests/saved_data.rs` and
+`jvm/harness/PersistenceMain.java` — and it does not dress the attested half up as
+anything else. I accept that ceiling for a milestone whose subject is a live game
+process that cannot be run in CI. What I would not accept is that ceiling plus a
+false claim that the conformance axis was clean, which is finding 1.
+
+#### Mutation exit codes observed
+
+Baseline first, in every case, and `jj st` clean after every batch.
+
+| Run | Exit |
+| --- | --- |
+| `devenv tasks run ravel:verify` (clean tree) | **0** |
+| `devenv tasks run ravel:verify-stack` | **0** |
+| `ravel:verify-milestone:m0` / `m1` / `m2` | **0** / **0** / **0** |
+| `ravel:verify-milestone:m3` | **1** — exactly `milestone must have no blocking deviations or risks` and `milestone review must be independent and pass` |
+| `verify scaffold`, clean tree (mutation baseline) | **0** |
+| **A** — ADG-6: append "It does **not** hook `extractRenderState`, and that omission is the decision." | **1** — "says `extractRenderState` is not hooked while … declares it" |
+| **B** — ADG-6: append "Nothing crosses per frame and nothing crosses per widget." | **1** — names `NO_PER_FRAME` against the declared per-frame member |
+| **C** — ADG-6: append "The `extractRenderState` seam is not hooked by Ravel." | **0** — disclosed limit, see above |
+| **D** — `adg-1-jvm-entry.md`: append "This decision does **not** hook `screen.extract-render-state`." | **1** — names `adg-1-jvm-entry.md`, proving the whole directory is scanned and hook **ids** anchor |
+| **F1-1** — README: "Five independent reviews have run against this milestone." | **1** |
+| **F1-2** — README: "The independent rounds recorded here number five in total." | **1** |
+| **F1-3** — README: "There have been five review iterations." | **1** |
+| **F1-4** — README: "The count of completed review round entries is five." | **0** — singular noun, disclosed limit |
+| **F1-5** — README: "Five independent rounds have run." (positive control) | **1** |
+
+F1 probes 1, 2 and 3 were exit 0 in the prior round and are exit 1 now, which is
+the fix working rather than my harness differing: probe 5 is the prior round's own
+positive control and it behaves identically in both rounds.
+
+#### What I could not verify
+
+The prior round's ceiling is what hid the two nonconformances this round was
+convened over, so I state mine without softening it.
+
+**I did not execute the JVM persistence harness.** This is the item the prior round
+named as the single most valuable thing for the next round to break, and I did not
+break it. `verify_harness_lifecycles` I did not re-attack either — the prior round
+broke it three ways and I took that at second hand. So the claim that
+`run-harness.sh:377` fails when a lifecycle case is added or removed remains
+established by reading and static counting, by two consecutive rounds now.
+
+**I did not audit the internals of any of the four M3 result records.** Every count,
+sum and derived figure inside `class-loader-identity.json` is unchecked by me, and
+that record has still never been attacked by any round. I did not check whether
+`profilingReObservationCampaign` or any other campaign in
+`linux-process-matrix.json` repeats the B-1 defect of binding a reading to
+artifacts hashed before the change whose effect it reports, and I did not verify
+that `screens.profiling.provenance` attributes every row to a campaign that could
+have produced it. The prior round listed both as unexamined and they are still
+unexamined. I answered only the third of its five delegated items — schema
+conformance, which is finding 4 — and the safety-boundary and layering spot checks.
+
+**ADG-1 through ADG-4 conformance is unexamined by me.** I checked ADG-5 and ADG-6
+because the brief named them, and I checked the layering rules and the safety
+boundary's shape. I did not check whether M3's implementation follows the mechanism
+ADG-1, ADG-2, ADG-3 or ADG-4 selected, or whether ADG-7's prose and
+`persistence.rs` agree on mechanism rather than merely on outcome. Round 7's own
+ceiling (`review.md:1822-1824`) said the same thing about ADG-1 through ADG-6 and
+Round 8 repeated it, and the two defects in that stated gap sat there for two
+rounds before anyone looked. Four decisions of that gap are still open. **A future
+round should treat this as the first thing to close, not the last**, because the
+evidence that a stated ceiling does not protect anyone is now two rounds deep.
+
+**I did not re-verify the safety boundary crate by crate.** I took the prior round's
+sweep of eighteen `#![forbid(unsafe_code)]` roots at second hand and confirmed only
+that `docs/architecture/safety-boundary.md`'s table is still empty and that
+`ravel-testkit` is fenced.
+
+**The live half of M3-W4, M3-W7 and M3-W0 is unrecomputable and I did not try.**
+Nothing in this round independently confirms that a real client opened a world,
+wrote its aggregate, exited and reloaded byte-identically, or that any claim the
+hook inventory makes about the game is true of the game. The pinned client jar is a
+restricted local fixture this repository does not track.
+
+**I did not re-derive the inventory arithmetic** (`15 − 4 = 11`, `33 − 6 = 27`) or
+re-check which targets the subtraction drops. The prior round did that by hand and
+`verify_campaign_inventory` re-derives two of the counts on every scaffold run, and
+I relied on both.
+
+**I did not read Rounds 1 through 4's findings.** I checked F1..F4 from Round 8 and
+took Rounds 1-7 as answered on the strength of the prior round's Round-5 table and
+the manifest's account, which is second hand.
+
+#### The smallest set standing in the way — Round 9
+
+One sentence. `evidence/m3/manifest.json:212` must stop saying that M3-W8 found no
+ADR-conformance defect, and must instead record what its ADR-conformance audit
+found — ADG-6's withdrawn per-frame screen claims and ADG-5's unaccepted native
+staging — in the form `:200` already uses for the same kind of correction.
+
+Findings 2, 3 and 4 should be fixed and none is a condition of this verdict. Fix
+finding 1 and I see nothing else standing between M3 and closure: F1..F4 are
+closed, both amendments are honest, the new gate holds, and the attestation ceiling
+is disclosed as fully as a ceiling can be.
+
+---
+
+## Round 10 — VERDICT: FAIL
+
+This round's own heading calls itself Round 11, counting the untracked prototype
+round as the rounds before it did; under this file's numbering it is Round 10. It
+is the last round in this file and so is the standing verdict. Its own first
+finding is that the two rounds above it had not been written down, which is what
+this section and the two above it answer.
+
+Result: FAIL
+
+### M3-W8 Independent Review — Round 11
+
+I reviewed this repository cold. I read `CLAUDE.md`, `SPEC.md`, `ROADMAP.md`'s M3
+section, `docs/decisions/adg-1` through `adg-4`, and `evidence/m3/` before forming
+a view. I made no surviving edit to any tracked file: every mutation below was
+applied, measured, and reverted with `jj restore <path>` in the same shell
+command, and `jj st` reported "The working copy has no changes" after each one. I
+verified that after the last mutation and again before the gate run.
+
+I did the ADG conformance audit first, as the brief required, and it is where my
+second blocking finding comes from. My first blocking finding is not about an ADR
+at all — it is about the record M3 closes on.
+
+#### VERDICT: FAIL — on two things
+
+Most of what I attacked held, and several pieces held better than their own prose
+claims. ADG-2, ADG-3 and ADG-4 conform. The five round-10 repairs are genuinely
+landed and I proved four of them by mutation rather than by reading. The JVM
+harness, disclosed as unexecuted by every prior round, runs and its declared
+lifecycle count is really enforced. The W4/W7 attestation ceiling is disclosed
+honestly and, in one respect, more than honestly.
+
+M3 cannot close because:
+
+1. **`evidence/m3/review.md` asserts that it holds every round that has run, and
+   it is missing the last two — including the round whose findings this tree was
+   just rewritten to answer.** That file is what `review.record` binds and what
+   the milestone gate reads. (Finding 1.)
+2. **ADG-1's invariant that the agent jar names no game type is false of the
+   shipped agent jar**, and the wording conceals a set of game-member references
+   in the always-present artifact that ADG-3's drift gate does not reach and
+   nothing else pins. (Finding 2.)
+3. **`linux-process-matrix.json` asserts, in a field whose name is the claim, that
+   the profiling report's counts advance while the screen is open — and its own
+   later, better-provenanced campaign found they do not.** (Finding 8, verified on
+   referral after my first pass; see the addendum.)
+
+All three point the reassuring way.
+
+Findings 1, 2 and 8 are blocking. Findings 3-7 and 9-12 are not. Findings 8-12 were
+verified after my first pass, on referral, and are in the addendum at the end;
+findings 1-7 keep their original numbers so earlier anchors still resolve.
+
+---
+
+#### Per-ADR conformance
+
+##### ADG-1 — JVM entry and hook mechanism: **conforms on mechanism; one blocking defect (Finding 2)**
+
+Everything mechanism-selecting in this record checks out against the code, the
+pinned data and M3's evidence:
+
+- **Premain agent.** `jvm/bootstrap/dev/ravel/jvm/Agent.java` plus
+  `Premain-Class: dev.ravel.jvm.Agent` written at `jvm/build/build-agent.sh:36`.
+- **`java.lang.classfile` rewrite.** `jvm/bootstrap/dev/ravel/jvm/Transformer.java:3-11`
+  imports `java.lang.classfile.{ClassFile, ClassTransform, CodeBuilder, …}` and
+  nothing else. No shaded bytecode library appears anywhere.
+- **Exported JNI-mangled symbol resolved by `System.loadLibrary`.** Observed live:
+  the harness run I made prints the JVM's own restricted-method warning naming
+  `java.lang.System::loadLibrary has been called by dev.ravel.jvm.Hook`.
+- **Zero maintained unsafe, and no exception.** All 20 crate/tool roots carry
+  `#![forbid(unsafe_code)]`; `docs/architecture/safety-boundary.md:16` is
+  `| *(none)* | — | — |`; `SPEC.md` §3.3 records the mechanism rather than an
+  exception, in the same terms ADG-1 uses. All 14 `jni_mangle` sites name
+  `dev.ravel.jvm.Hook`. `libloading` is in `Cargo.lock` only via `jni`'s optional
+  `invocation` feature and the fenced ADG-2 spike;
+  `cargo tree -p ravel-composed-host -e normal` finds zero, so it is absent from
+  the production graph — which is the property `jvm/README.md:250-252` claims.
+- **Three artifacts.** `jvm/bootstrap/` (agent jar), the native library, and
+  `jvm/screen/` (the sibling jar). `jvm/README.md:3` says three. The count is right.
+- **`appendToSystemClassLoaderSearch`.** `Screens.java:67`, exactly the third
+  mechanism the M3-W3 amendment selected, and lazily behind a hook as claimed.
+- **Sole JNI surface.** Generated `Hook.java` is the only class declaring native
+  methods (43 of them: 33 hook natives matching `hooks.toml`'s 33 method entries,
+  plus 10 runtime exports). `RavelSettingsScreen.java:35` declares none and says so.
+  One transformer, one `HookTarget`, one exporter, one native class — as the
+  Phase C amendment requires.
+- **The Phase C prologue bound is enforced by construction.**
+  `crates/ravel-minecraft-adapter/src/generate/render.rs:196` refuses `refuses = true`
+  on a non-void target. Proven by mutation (MUT-C, exit 101). Exactly one native
+  returns non-void-as-verdict — `worldOpenPersistence` — and `hooks.toml`'s
+  `world.open-persistence` is the one entry carrying `refuses = true`, on a `)V`
+  descriptor.
+- **Class-loader identity amendment.** `evidence/m3/class-loader-identity.json`
+  records `classesRewritten: 10`, `methodsRewritten: 24`, and
+  `jdk.internal.loader.ClassLoaders$AppClassLoader` with a parent chain of
+  AppClassLoader → PlatformClassLoader. ADG-1:271-278's "rewrote 10 classes and
+  24 methods", the loader class name, and "whose only parents are the platform and
+  bootstrap loaders" all match the record exactly.
+
+What does not conform is Finding 2 below, plus non-blocking Finding 6.
+
+##### ADG-2 — Rust mod execution and ABI: **audited, conforms**
+
+- **Source-only is decided and stated in the contract's own voice.** `SPEC.md`
+  §3.4 states the decision, names the ABI obligation as the deciding reason, and
+  lists the accepted costs. It does not cite ADG-2 as its authority, which is what
+  ADG-2:255-259 says it should not do.
+- **The 2026-08-08 schema closure is real and enforced.**
+  `schemas/package.schema.json` requires `source`, has `additionalProperties: false`
+  at the root, and `source` requires `repository` plus `files` with `minItems: 1`,
+  each a `{path, sha256}`. There is no `targets`, no `artifacts`, no `role`, no
+  `platform`, no `architecture` anywhere in the file. **Proven by mutation:**
+  re-adding a `targets` array with a compiled artifact to the tracked no-op package
+  fails with "the no-op manifest is not one `schemas/package.schema.json` accepts"
+  (MUT-D, exit 101). Note that `cargo test -p ravel-package` and
+  `ravel:verify-scaffold` both pass with the mutation in place; the check lives in
+  `tests/conformance/tests/noop_pipeline.rs:213`. That is not a gap — `ravel:verify`
+  runs it — but a reviewer testing this must run the conformance crate.
+- **Fat LTO is not a default.** `Cargo.toml` declares no `[profile]` section at
+  all, so the release profile is cargo's, which matches "an opt-in action and not a
+  build profile".
+- **Every figure in "What compiling a pack costs" reconciles with
+  `pack-compile.json`.** I recomputed all of them: the five-row curve (2.53/3.13/
+  4.55/9.82/32.0 s cold; 0.60/2.02/7.29/29.5 s less baseline; 0.96/0.90/1.05/1.63 s
+  warm; 33.9/46.5/88.1/221/754 MB cache; 0.45/0.66/2.33/7.68/29.0 MB binary), the
+  113 ms marginal (`113.34`), the flat per-mod figures (`126.5, 113.95, 115.25`),
+  the 604 ms one-mod point, 73.8 s at four jobs, 754 MB vs 2.85 GB peak, the chain
+  variant's 33.2 s vs 30.5 s = +8.9%, 1.76 s leaf, 29.8 s vs 1.79 s root, LTO's
+  14.2 vs 29.0 MB and 104 s / 77.4 s with 77.359/1.792 = 43.2×, and the 196 MB
+  toolchain (`195541312` bytes). The synthetic-mod description matches too:
+  `sourceLines: 1161`, `derivedTypes: 11`, `monomorphizations: 16`,
+  `featuresPerMod: 8`, `registryClaimsPerMod: 24`. Nothing drifted.
+- **The rejections hold.** `libloading` out of the production graph; no
+  `extern "C"` mod boundary; `safety-boundary.md`'s table empty.
+
+The only ADG-2-adjacent defect I found is non-blocking Finding 4, and it is in
+`ROADMAP.md` rather than in the ADR.
+
+##### ADG-3 — Minecraft bindings: **audited, conforms**
+
+- **Every entry names class, member and exact descriptor.** All 37 do. The two
+  `filterText` overloads ADG-3:143-145 singles out are both present and
+  distinguished only by descriptor — and the inventory now carries three more
+  same-name pairs (`Screen.init`, `MinecraftServer`/`IntegratedServer.tickServer`,
+  `RecipeManager.apply` against a bridge) which strengthens rather than weakens the
+  claim.
+- **`mappingSource` is recorded.** `adapter.toml:` `mappingSource = "unobfuscated-class-files"`,
+  which is what makes the "an obfuscated future version brings this back" clause
+  operative.
+- **The drift gate fires on the input, before any class is read.** Proven by
+  mutation: editing one capability sentence in `hooks.toml` without re-pinning
+  fails with "an input drifted: hooks.toml hashes acbe46… but the adapter inputs
+  pin fcf9a3…" (MUT-A, exit 101). The inventory hashing itself, which ADG-3's
+  consequence and `adapter.toml`'s own comment both insist on, is real.
+- **The archive dependency the consequence owed to M2-W5 exists and was reviewed.**
+  `miniz_oxide` in `crates/ravel-minecraft-adapter/Cargo.toml`, with
+  `jvm/README.md:240-256` recording the `cargo deny` result, the licence set, the
+  single transitive dependency, and the reader's deliberate narrowness (stored and
+  deflated only, no Zip64, 30675 entries inside the classic limits). The container
+  parsing is hand-written in `generate/jar.rs` (347 lines — ADG-3's "a 200-line
+  reader handles it" is an order-of-magnitude claim about the class file format,
+  not about this file, and I do not read it as a figure).
+- **`mappings.lock` is generated and tracked**, and `adapter.toml` pins both locks
+  with the stated reason that a jar-less machine can still catch a stale one.
+
+Two imprecisions I do not raise as findings. ADG-3's Decision says "the jar named
+in `adapter.toml`" and `adapter.toml` now pins two jars; the second is
+DataFixerUpper and it feeds the stub pipeline rather than hook resolution, so the
+sentence is loose rather than wrong. And ADG-3's Decision says the generator writes
+"a Rust binding plus `mappings.lock`" while it also writes `stubs.lock`; the
+Consequences do name the stub lock, so the record is complete taken as a whole.
+
+##### ADG-4 — State ownership: **audited, conforms — and it is the strongest of the four**
+
+- **Java keeps its state, and nothing mirrors.** `HookValue::Handle` wraps
+  `JavaHandle`, whose entire public surface is `class()` and `is_null()`
+  (`crates/ravel-minecraft/src/lib.rs:193-212`). No field is read through a handle
+  anywhere, so the mirror prohibition is not merely obeyed but unreachable.
+- **The amendment's handle is a borrow, not a copy.** `pub struct JavaHandle<'local>`
+  holds `class: &'static str` and `object: &'local JObject<'local>` — a pointer and
+  a declared name, duplicating no field, which is exactly the arithmetic argument
+  the amendment makes.
+- **The residual lifetime risk the amendment names is closed, and closed the way
+  the amendment says it should be.** `crates/ravel-minecraft/src/lib.rs:142-190`
+  carries three `compile_fail` doctests that kill the three escapes by type:
+  `E0515` on returning a handle from the frame that produced it, `E0277` on sending
+  one to a scoped thread (deliberately scoped rather than spawned, so the test
+  isolates the `Send` route instead of passing on `'static`), and `E0521` on an
+  observer hoarding handles in a `Mutex<Vec<JavaHandle<'static>>>` — which the
+  doc comment correctly identifies as "the escape an author would actually attempt".
+- **The layering the amendment depends on holds.** `JavaHandle::new` is the only
+  signature in `ravel-minecraft` naming a JNI type, `docs/architecture/dependency-rules.md:18-21`
+  records that no mod can reach the crate and that a change making it reachable
+  must seal the constructor, and ADG-2's chosen mechanism is what makes sealing it
+  later a recompile rather than an ABI break. The three records argue the same thing.
+
+The only defect is non-blocking Finding 7, and it runs the safe way: the ADR
+undersells work that is finished.
+
+---
+
+#### Findings — Round 10
+
+##### 1 — BLOCKING. `review.md` claims to hold every round that has run, and the last two rounds are not in it
+
+**Files.** `evidence/m3/review.md:5-6` and `:15-17`; `evidence/m3/manifest.json`,
+the blocking risk; `evidence/m3/README.md:44-52`.
+
+**What they say.**
+
+- `review.md:5-6`: "The last round below is the standing verdict."
+- `review.md:15-17`: "**The numbering below counts only the rounds this file
+  holds, so 'Round 1' is the second round that ran.** Every round that has run
+  since is here, in order, so this file rather than any summary of it is what says
+  how many there have been."
+- The manifest's blocking risk: "Every verdict but the earliest is tracked verbatim
+  at `evidence/m3/review.md` and bound by `review.record`."
+- `README.md:47-49`: "`review.md` is the one place that says how many rounds there
+  have been: neither this document nor `manifest.json` restates a count, because a
+  count written outside the record is falsified by the next round."
+
+**Why it is wrong.** `review.md`'s headings run: the prototype round, then Round 1
+through **Round 7**, whose own text calls itself "the eighth round to run". At
+least two rounds have run since and neither is in the file:
+
+- The round that found the ADG-5 and ADG-6 conformance gaps. Its repairs are in
+  this tree as changes `pvkzxtukwnmx` ("docs: choose ADG-5's native library
+  mechanism"), `npqoqpvqnmwy` ("docs: amend ADG-6 for the per-frame screen seam it
+  has") and `vklntxoskvqm` ("docs: record M3's ADG-5 deviation and drop its stale
+  finding counts").
+- The round immediately preceding this one, whose single blocking finding was
+  `evidence/m3/manifest.json:212` and whose five repairs I verified individually
+  below as changes `kzoquzyr`, `opzyylrm`, `kyrozxmp`, `okysxtvo` and `zurotlxz`.
+
+`jj log -r 'files(evidence/m3/review.md)'` names `oupswvsrymxy` ("docs: record M3's
+latest review round and the fixes it names") as the newest change to touch the
+file, and `oupswvsrymxy` sits **below all eight** of those repair changes in the
+stack. So the tree has twice now landed a round's *repairs* without its *verdict*.
+
+**Why it is blocking rather than moderate.** Three reasons, and the third is the
+one that decides it.
+
+First, direction. Every one of the four sentences above reassures a reader that the
+review record is complete and is the authority on how many rounds have run. It is
+not complete, and a reader who trusts the designated authority is told the standing
+verdict is Round 7's when it is not.
+
+Second, it is a recurrence of the exact defect the file's own longest passage
+exists to prevent. `review.md:11-17` and `README.md:54-61` narrate, at length, that
+the earliest round's verdict was never written into the repository, that its text
+is unrecoverable, and that this "is exactly what a tracked review record exists to
+prevent". Two more rounds' verdicts are now in the same position — except that one
+of them is recoverable today, because its verbatim text exists outside the
+repository, and will stop being recoverable the moment that scratch file goes.
+
+Third, and decisively: `review.record` is the artifact `ravel:verify-milestone:m3`
+binds, and `README.md:251-269` states plainly that what the gate decides is "**which
+text was attested**, not **that the attestation was earned**". Closing M3 now would
+freeze, as the durable and digest-bound record of this milestone's review, a file
+that omits the two most recent rounds while asserting it omits none — including the
+round that caught the manifest asserting its own conformance audit came back clean.
+The failure mode is the same one the previous round failed M3 for, one level up.
+
+**What I am not claiming.** It is likely the closing writer intends to append this
+round to `review.md`. That does not save the finding: two rounds are missing, not
+one; the completeness claim is unqualified rather than "as of the last recorded
+round"; and the pattern has already repeated once, which is what turns a transient
+lag into a defect.
+
+**Fix.** Write the two missing rounds' verdicts into `review.md` verbatim and in
+order, renumbering nothing that is already there. Where a verdict's text is not
+recoverable, say so in the same terms the prototype-round section already uses
+rather than summarising it. Then either qualify the completeness sentences at `:5-6`
+and `:15-17`, or keep them and make them true. The manifest's blocking risk and
+`README.md:44-52` carry the same claim and have to move with it.
+
+##### 2 — BLOCKING. ADG-1's invariant that the agent jar names no game type is false, and the wording conceals an unpinned coupling surface
+
+**Files.** `docs/decisions/adg-1-jvm-entry.md:345` and `:362`;
+`docs/decisions/adg-7-world-persistence.md:337`;
+`jvm/bootstrap/dev/ravel/jvm/Persistence.java:13-14`, `:42-49`, `:198-199`, `:310-314`.
+
+**What they say.**
+
+- ADG-1:345, in "What is still forbidden": "The agent jar must keep naming no game
+  type and must keep compiling without the client jar."
+- ADG-1:362, in the ADG-7 amendment, and this is the load-bearing one — it is the
+  sentence that makes the artifact-scope widening safe: "This is an artifact-scope
+  widening only: **the agent jar still names no game type**, and generated
+  `dev.ravel.jvm.Hook` remains the sole JNI surface."
+- ADG-7:337: "ADG-1 forbids the agent jar from naming a game type, so the storage
+  half cannot live there."
+- `Persistence.java:13-14`: "Everything here is reflective, because this class ships
+  in the always present agent jar and ADG-1 forbids that jar naming a game type."
+
+**Why it is wrong.** `Persistence.java` is compiled into the agent jar —
+`build-agent.sh:33` globs `jvm/bootstrap` wholesale — and it names six game types:
+
+```text
+Persistence.java:42   "net.minecraft.server.MinecraftServer"
+Persistence.java:45   "net.minecraft.world.level.storage.SavedDataStorage"
+Persistence.java:47   "net.minecraft.world.level.storage.LevelResource"
+Persistence.java:48   "net.minecraft.util.datafix.DataFixers"
+Persistence.java:199  "net.minecraft.client.Minecraft"
+Persistence.java:49   "dev.ravel.jvm.screen.RavelWorldData"   (the sibling, not a game type)
+```
+
+and resolves each through `Class.forName(…, ClassLoader.getSystemClassLoader())`.
+
+The repository's own most recent writing on the question settles that this counts
+as naming. `Persistence.java:310-314` explains why it looks members up by name and
+arity instead of by declared parameter type: "several are game types this jar is
+**not allowed to name even as a string it then resolves** — the point of ADG-1's
+rule is that the agent jar does not depend on the game's type graph." That is the
+rule the six constants above break, stated forty lines after they are declared. One
+of the two is wrong; they cannot both be right.
+
+**What actually holds, and it is narrower.** The jar *declares* no game type, so
+`build-agent.sh:34` compiles it with `javac -Xlint:all -Werror -d "$classes"` and
+no `-cp` at all, and it needs no licensed fixture. That property is enforced by
+construction — a source that named a game type as a type would fail to compile —
+and it is the property both of ADG-1's reasons rest on: the licensing and
+contribution argument at ADG-1:213-230, and the loader argument as corrected at
+ADG-1:268-290. Neither reason is damaged. "Names no game type" is not enforced by
+anything and is not true.
+
+**What the false wording conceals, and this is why it is blocking rather than
+cosmetic.** The reflective route reaches a set of game members that no pinned file
+mentions. `grep` across `hooks.toml`, `stubs.toml`, `stubs.lock` and `mappings.lock`
+finds **zero** occurrences of `DataFixers`, `LevelResource`, `getDataStorage`,
+`getWorldPath`, `getLevelPath`, `compositeAccess` or `getDataFixer` — and
+`Persistence.java` additionally depends on `LevelResource.ROOT` and `.DATA` as
+fields, on `SavedDataStorage` having exactly one three-argument constructor
+(`:168`), and on `get`/`set`/`close`/`registries`/`getInstance`/`setScreen`
+resolving by name and arity (`:172-176`, `:200-201`, `:259-261`, `:316-328`).
+
+So ADG-3's drift gate — the mechanism whose whole purpose is that "a change to
+[`mappings.lock`] shows up in a diff, which is what makes a silent rename visible"
+— does not cover any of it. Nothing else does either. The only thing in the
+repository that checks these names is `jvm/harness/persistence/net/minecraft/**`:
+hand-written stand-ins Ravel authored, which declare
+`public SavedDataStorage(Path, Object, Object)`, `getDataStorage()`, `getWorldPath()`,
+`getDataFixer()` and `LevelResource.ROOT`/`.DATA` because `Persistence.java` needs
+them to. The harness's nine world lifecycles assert Ravel's stubs against Ravel's
+reflection.
+
+Contrast the screen half. `build-screen.sh:22-35` compiles `jvm/screen/src` against
+stubs *generated* from `stubs.toml` and pinned in `stubs.lock`, both re-pinned
+against the client jar. So the **optional** artifact has drift detection and the
+**required** one does not — which inverts precisely the failure asymmetry ADG-7
+chose and `Persistence.java:18-23` explains at length. A rename in the next pinned
+version lands as a runtime world refusal, or, on the save path, as a diagnostic and
+a silently skipped save (`Persistence.java:244-249` catches `Throwable`
+deliberately), rather than as a generation failure a diff would show.
+
+**Fix.** Either wording or the lock, and the wording is the smaller of the two.
+State what holds — the agent jar declares no game type and compiles without the
+client jar — at ADG-1:345, at ADG-1:362, at ADG-7:337 and in `Persistence.java`'s
+two comments, so that the four say the same thing as each other and as the code.
+Then record the reflective member set as a version-coupling surface the drift gate
+does not reach, or bring it under `hooks.toml`/`stubs.toml` so that it does. What
+must not survive is a sentence telling a reader the always-present jar has no
+dependence on the game's type graph when it has six class names, roughly eleven
+member names, two field constants and a constructor arity, checked by nothing but
+Ravel's own stubs.
+
+##### 3 — Non-blocking. `ROADMAP.md:712` says two accepted records were amended for M3; four were
+
+"Two accepted records were amended for M3, and neither changed what it decided."
+The status lines say otherwise: ADG-1 (four amendments), ADG-4 ("amended at M3-W0
+to admit opaque handles"), ADG-5 ("amended after M3 to choose the fix that note
+deferred") and ADG-6 ("Amended again after M3-W8's ADR-conformance audit"). Four,
+not two. An absolute count in prose that nothing recomputes. Its direction is
+mildly reassuring — it understates how much amendment M3 required — but no
+mechanism turns on it and each amendment is individually recorded, so it is not
+blocking. The fix is the one `CLAUDE.md:63` was just given: name the records
+instead of counting them.
+
+##### 4 — Non-blocking. `ROADMAP.md:948` says the package-schema reconciliation is live work; it is closed
+
+The gate table row reads "Reconciling `package.schema.json` and `SPEC.md` §3.4 is
+now live work". `ROADMAP.md:707-710`, 240 lines earlier in the same file, says it
+"is now closed as a breaking schema-v1-in-place migration", `SPEC.md` §3.4 says the
+same, ADG-2 records the 2026-08-08 closure, and I proved the closure enforced
+(MUT-D). Non-blocking because it overstates what is outstanding, which is the safe
+direction — but it is a self-contradiction inside one file and an instance of the
+class.
+
+##### 5 — Non-blocking. `evidence/m3/README.md:4` calls the fifth round the latest
+
+"The latest round's blocking finding, B-1, is answered by the fifth launch campaign
+described below". B-1 is the *fifth* round's, as `:223` states correctly ("The fifth
+round found one blocking defect, B-1"). The README's narrative ends at the fifth
+round while calling it the latest; rounds six onward appear nowhere in it. Same root
+cause as Finding 1 and it should be fixed in the same pass. Non-blocking on its own
+because the document defers counting to `review.md` at `:47-49` and because it
+leaves M3 open either way.
+
+##### 6 — Non-blocking. ADG-1:176-177's export-count sentence still says six inventory entries
+
+"The export count scales with the hook surface, not with the crate. Six inventory
+entries with heterogeneous descriptors cannot share one `extern "system"`
+signature, so there is one generated export per hook shape." The inventory holds 37
+entries and generated `Hook.java` declares 33 hook natives. The mechanism sentence
+in front of it is still true and the direction is safe — it understates the export
+surface — but it is a stale absolute count of exactly the hunted kind, and unlike
+`m3-hook-targets.md`'s counts (which are now derived and gated; I broke them and the
+scaffold named both, MUT-F, exit 1) nothing recomputes this one.
+
+##### 7 — Non-blocking. ADG-4:159-165 presents as owed a wrapper that is built and proved
+
+"That risk belongs to a safe wrapper whose type ties a handle to the call that
+produced it, so a handle that outlives its frame does not compile. It is the part of
+this amendment that needs review, and it is the part no measurement here covers."
+Read as of today that describes unbuilt work. It is built: `JavaHandle<'local>`
+holds `&'local JObject<'local>` and three `compile_fail` doctests
+(`crates/ravel-minecraft/src/lib.rs:142-190`) kill the return, the thread and the
+hoarding-observer escapes. Understates the machinery, so safe direction and
+non-blocking. Recorded only so the next reader does not go looking for work that is
+finished, and because the ADR should be able to point at its own proof.
+
+---
+
+#### The five round-10 repairs
+
+All five are landed. Four I proved by mutation rather than by reading.
+
+- **`kzoquzyr` — `manifest.json:212`.** Rewritten in the form `:200` uses. It now
+  reads "M3-W8 found no safety or layering defect… That was two of the three things
+  this row used to claim. The third did not hold: M3-W8's ADR-conformance audit
+  found two nonconformances", names ADG-6's withdrawn `extractRenderState` claims
+  and ADG-5's staging deviation, and points at `verify_decision_hook_claims`.
+  Closed.
+- **`opzyylrm` — `schemaVersion`.** No top-level `schemaVersion` remains in any of
+  the four M3 records. The coordinator's reasoning about the three survivors checks
+  out and I checked it rather than assuming it:
+  `linux-process-matrix.json:91` is inside `decodedRecord` alongside
+  `owner: "saved_data"` and `dataVersion`, `:157` is inside `configurationStore`
+  alongside `owner: "configuration"`, and `schemas/saved-data.schema.json` and
+  `schemas/configuration.schema.json` each define the field; `manifest.json:2` is
+  governed by `schemas/evidence.schema.json`. A fourth occurrence at `:190` is
+  inside a `persistedDocument` transcript string, which is the same case. The
+  deviation's mutation claim also holds: re-adding the field to
+  `class-loader-identity.json` fails the scaffold by name (MUT-E, exit 1). Closed.
+- **`kyrozxmp` — `RavelSettingsScreen`.** `:43-53` now reads "The inventory *does*
+  declare `extractRenderState` — it is 26.1.2's per-frame seam… What ADG-6 commits
+  to is narrower and it is what this class obeys: *Ravel never draws*." Closed.
+- **`okysxtvo` — the decision range.** `AGENTS.md:63-64` now names the directory
+  and adds "do not enumerate them here, because the count and…". Closed. (Finding 3
+  is the same defect surviving in `ROADMAP.md`.)
+- **`zurotlxz` — the inflected passive.** `DENIAL_VERBS` is
+  `["hook", "hooked", "hooking"]`. **Proven by mutation**, four probes appended to
+  `adg-4-state-ownership.md` one at a time:
+  - "The extractRenderState seam is not hooked." → exit **1** (the passive; this is
+    the fix)
+  - "Ravel does not hook extractRenderState." → exit **1** (active)
+  - "screen.extract-render-state is not hooked." → exit **1** (by hook id)
+  - "Ravel never hooks extractRenderState." → exit **0** (escapes)
+
+  The escape is not a finding: the doc comment at `tools/ravel-xtask/src/lib.rs:367-379`
+  states that a denial must be written as `DENIAL` — the literal word `not` —
+  adjacent to a `DENIAL_VERBS` form, and names "the extraction seam is left alone"
+  as unreached. The check is exactly as wide as it says it is. Closed.
+
+#### The JVM harness — executed and mutated
+
+Never run in any prior round. It runs.
+
+- Built the prerequisites (`cargo build -p ravel-minecraft-adapter`,
+  `./jvm/build/build-agent.sh`, `cargo build -p ravel-composed-host --release`) and
+  ran `./jvm/harness/run-harness.sh` → **exit 0**. It exercises the real path: the
+  shutdown reports "rewrote 1 classes and 4 methods; 5 hook invocations reached
+  native code" and later "rewrote 3 classes and 4 methods; 7 hook invocations", the
+  screen sections drive `RavelModsScreen`, `RavelSettingsScreen` and
+  `RavelProfilingScreen` through real widgets, and the JVM's own restricted-method
+  warning confirms `dev.ravel.jvm.Hook` is what calls `System.loadLibrary`.
+- **Mutated `persistence_lifecycles_declared=9` → `8`** → **exit 1**, with
+  "this harness ran 9 world lifecycles and declares 8; update
+  persistence_lifecycles_declared and the evidence/m3 records that cite it". The
+  declared count is genuinely enforced. That disclosure is closed.
+
+#### Mutation exit codes
+
+| ID | Mutation | Expected | Observed |
+| --- | --- | --- | --- |
+| MUT-A | one capability sentence in `hooks.toml`, hash left stale | refuse | **101** — named the hash it got and the hash it pins |
+| MUT-C | `refuses = true` added to `world.save-persistence` (`(ZZZ)Z`), hash re-pinned | refuse | **101** — "does not return void and an early return would have to invent a value" |
+| MUT-D | `targets` + compiled artifact re-added to the tracked no-op package | refuse | **101** — "not one `schemas/package.schema.json` accepts" (via `ravel-conformance-tests`; `ravel-package` and `verify-scaffold` alone pass, exit 0) |
+| MUT-E | top-level `schemaVersion` re-added to `class-loader-identity.json` | refuse | **1** — digest mismatch named the record |
+| MUT-F | `m3-hook-targets.md` counts drifted 37/33 → 36/32 | refuse | **1** — named both counts against `hooks.toml` |
+| Harness | `persistence_lifecycles_declared` 9 → 8 | refuse | **1** |
+| Denial ×4 | four phrasings of a per-frame hook denial | 3 refuse, 1 escape as documented | **1, 1, 1, 0** |
+
+One correction to my own run, recorded because it is the failure mode the brief
+warned about: my first attempt at MUT-D used `-p ravel-conformance`, which is not a
+package name, and exited 101 for that reason. I did not count it. The kill above is
+from `-p ravel-conformance-tests`, and I confirmed the failure text before counting
+it.
+
+#### Gates
+
+On a clean tree, after every mutation was reverted and `jj st` reported no changes:
+
+```text
+ravel:verify              EXIT=0
+ravel:verify-stack        EXIT=0
+ravel:verify-milestone:m0 EXIT=0
+ravel:verify-milestone:m1 EXIT=0
+ravel:verify-milestone:m2 EXIT=0
+ravel:verify-milestone:m3 EXIT=1
+```
+
+m3's two unmet conditions are exactly "milestone must have no blocking deviations
+or risks" and "milestone review must be independent and pass". That is the expected
+state for an open milestone and is not a finding.
+
+#### M3's evidence against ROADMAP.md's M3 gate
+
+The W4/W7 ceiling is disclosed honestly and completely, and I judge it acceptable.
+
+`evidence/m3/README.md:10-18` states it in the first place a reader looks, before
+any table: the world, raw logs and screenshots were deleted with only digests kept,
+and "a digest of a file that no longer exists records a claim rather than verifies
+one", so a reviewer recomputes the in-gate half and "must take the operator's word
+for the rest". `manifest.json` carries the same as its first risk. Three things
+persuade me the disclosure is not doing the minimum:
+
+- It volunteers a ceiling nobody asked for. `README.md:20-31` and the manifest's
+  fifth risk say M3-W0 has "a ceiling of the same shape and it is easy to miss,
+  because that gate closes on tracked files rather than on a launch" — every claim
+  either tracked file makes about the game is a claim about a jar the repository
+  never tracks. That is a reviewer's argument made against the repository's own
+  interest.
+- It refuses the flattering reading of its own cleanup. `README.md:392-394`:
+  removing the world "took nothing away from that and bought nothing back: a
+  private machine-local directory is no more checkable by another reader than a
+  digest of one."
+- It says what a green closure would and would not prove (`README.md:251-269`),
+  including that a prior round closed M3 green with four coordinated edits, and
+  calls that "the design rather than a hole in it".
+
+The two named gaps inside the closed W7 gate — `tick-count` unable to leave zero,
+and the command counter never observed above zero live — are both stated as gaps
+with their mechanisms, not smoothed over.
+
+I also recomputed what the records claim about themselves where a reader could:
+ADG-2's whole pack-compile table (above), ADG-1's class-loader figures (above), and
+`profiling-overhead.json`'s published derivation. That last one reconciles exactly:
+`perTick.nanoseconds` 510.05 = 0.05 + 10000 × 0.051, `breakEven.crossingsPerTick`
+9803920.59 = (500000 − 0.05) / 0.051, the budget limit 500000 ≥ 510.05, and
+`README.md:336-346`'s backwards argument — that the published `breakEven` pins the
+unrounded boundary to about [0.0497, 0.0502], roughly twenty times narrower than
+the rounding interval — is arithmetically correct, which I checked rather than took.
+
+#### What I could not verify — Round 10
+
+My own ceiling, stated plainly, because a prior round's unexamined ceiling is what
+hid two defects.
+
+- **I did not launch the game.** Every claim about a real client is the operator's.
+  I judged the disclosure of that, not the observations behind it.
+- **I read no class file out of the pinned jar myself.** The generator reached the
+  jar twice under my mutations, so the resolution path executed, but I did not
+  independently confirm that any member resolves. Concretely, this limits Finding 2:
+  I cannot say whether `Persistence.java`'s reflective names are correct for 26.1.2
+  today. What I can say is that nothing in the repository would tell us if they
+  stopped being.
+- **I audited ADG-1 through ADG-4 and did not re-audit ADG-5, ADG-6 or ADG-7.**
+  Where they bear on my findings I read the relevant sections and say which lines;
+  their internals are the previous rounds' coverage, not mine. Finding 2 touches
+  ADG-7:337, and a reviewer who re-audits ADG-7 may find more of the same shape in
+  its placement section.
+- **I did not audit `evidence/m1/spikes/`.** ADG-1's and ADG-2's M1 tables are M1's
+  gate; I checked only the M3 figures those records quote.
+- **`linux-process-matrix.json`'s internals are checked only where the README
+  publishes arithmetic over them.** I verified the 15 − 4 = 11 and 33 − 6 = 27
+  subtraction and its stated criterion, and the 37/33/4 inventory reconciliation
+  under MUT-F. I did not walk every field of that record; it is the largest of the
+  four and the one whose claims are least recomputable by construction.
+- **The gate numbers in `manifest.json` — `tests.total`, coverage, `logSha256` —
+  are attestations.** I did not re-derive them, and the record says nobody can.
+- **I ran each gate once**, on a tree I had mutated and restored six times. `jj st`
+  reported no changes before and after every mutation and immediately before the
+  gate run, so I am confident the tree I gated is the tree I was given, but a single
+  run is a single run.
+- **Nothing here is a judgement about whether Findings 1 and 2 are the last of
+  their kind.** Finding 1 is the second instance of a round's repairs landing
+  without its verdict, and Finding 2 is the third accepted decision found
+  describing a surface the repository does not have. I would not read a fourth
+  round finding none as strong evidence there are none.
+
+---
+
+If Findings 1, 2 and 8 are fixed as described, I see nothing else standing between
+M3 and closure. All three are documentation and record repairs rather than
+redesigns. Verifying them is a later round's job, not this one's — and Finding 1 is
+precisely the reason that matters.
+
+---
+
+### Addendum — five record-internals discrepancies, verified on referral
+
+Five discrepancies from a separate arithmetic audit were referred to me for
+independent verification. I checked each against the files rather than accepting
+either the audit's or the coordinator's reading. **All five reproduce.** I agree
+with the coordinator's provisional severity on all five, and I give my own reason
+for the blocking one rather than inheriting theirs.
+
+#### 8 — BLOCKING. The matrix asserts the profiling counts advance while the screen is open; its own later campaign found they do not
+
+**Files.** `evidence/m3/linux-process-matrix.json:203`, against `:733` and `:734`.
+
+**What they say.**
+
+- `:203`, field name `screens.profiling.countsAdvanceWhileTheScreenIsOpen`: "The
+  same two rows were read twice a few seconds apart and moved from 5681 to 6186
+  calls, which is what tells a live report apart from a rendered constant."
+- `:733`, `profilingReObservationCampaign.atScaleOne.readTwiceWithinOneOpening`:
+  "The report was read again eight seconds later without leaving the screen and
+  both per-mod rows were **identical**, so the payload is a snapshot taken when the
+  screen opens rather than a live-updating widget."
+- `:734`, `readAgainAfterReopening`: reopening redrew the rows advanced 2323 → 3445
+  calls, "**That is what tells a live report apart from a rendered constant**, and
+  it is the sense in which the counts advance: across openings, not within one."
+
+**Why it is wrong.** The two readings are contradictory and the second one knows it.
+`:734` reuses `:203`'s exact clause — "what tells a live report apart from a
+rendered constant" — and reassigns it from within-one-opening to across-openings,
+then states the general characterization in the negative: "across openings, not
+within one." That is a correction of `:203` written as if `:203` did not exist.
+Nothing in the file reconciles them, and `:203` is not marked withdrawn.
+
+I checked whether a build change could explain it, because that is the only
+innocent reading. It cannot, on this record's own account: `npozznqz` is described
+throughout as line-wrapping and row-budget work (`:454-457` per the README's
+account: "splits every line to the width it is drawn at… hands the window's row
+budget out in a stated order"), and `lppyxtnz` is described as adding `tick-count`
+to the unmeasurable list in both the Rust and the screen. Neither is claimed to
+change whether the payload is a snapshot. And `:734` does not say the behaviour
+changed — it says what the behaviour is.
+
+**Why blocking.** Four reasons, and the fourth is mine rather than the
+coordinator's.
+
+First, direction. The field's *name* is the claim, and a reader reaches
+`screens.profiling.countsAdvanceWhileTheScreenIsOpen: "…"` and concludes a live
+counter works in the real client. It does not.
+
+Second, subject. This is not a stale count. It is a claim about observed
+user-visible behaviour in the M3-W7 record, on the one surface that already failed
+once, was fixed, and has now been re-observed twice — the surface whose provenance
+the fifth round already blocked M3 over. It is the third unreconciled claim about
+the same screen.
+
+Third, class. It is the same defect round 10 blocked on: a sentence in the durable
+milestone record that is false in the reassuring direction, on the axis the round
+was convened to test. Closing M3 freezes it.
+
+Fourth — and this is what moves it from "should fix" to blocking — **the record
+violates its own stated repair convention, in the very campaign that established
+it.** `evidence/m3/README.md:476` and the fifth campaign's own text set the rule
+after the previous blocking finding: "The withdrawn reading is marked withdrawn
+where it stood rather than restated at some other number, because nobody can now
+say what that build drew." The repository adopted that convention *because* an
+unattributable profiling reading had been left standing. `:203` is a reading the
+same campaign contradicts, left standing at its own number, with no withdrawal
+mark. The convention was written one campaign ago and is already not being applied.
+
+**Fix.** Decide which reading holds. If the snapshot behaviour is what the code
+does — which `:733` observed against digests written before the launch, so it has
+the better provenance — mark `:203` withdrawn where it stands, in the same terms
+the fifth campaign uses, and rename or requalify the field so its name does not
+assert the withdrawn claim. If instead the surface campaign's build really did
+update live and `npozznqz` changed that, say so and name the change, because that
+is a behaviour change no record currently claims. What must not survive is both
+sentences in one file with nothing between them.
+
+#### 9 — Non-blocking. `linux-process-matrix.json:7` says one gap remains open; `openGaps` holds two
+
+`:7`, in `summary`: "One narrower gap remains open and is named in `openGaps`:
+nothing on the game's tick path marks a tick boundary…". `openGaps` at `:596-598`
+holds `profilingTickCounter` and `profilingCommandCounter`. The second argues at
+length that it is "an accurate measurement rather than a broken counter" and
+"materially unlike `profilingTickCounter`" — so there is a defensible intent behind
+the singular — but its own closing sentence is "**Closing that gap is a composition
+change** — put the command-claiming test mod in the composed host and type a
+namespaced root", and `manifest.json`'s third risk lists both counters as gaps
+inside the closed gate. It is a gap by the file's own word and the manifest's.
+Instance thirteen of the recurring class, and it understates the number of open
+gaps, which is the reassuring direction — but nothing turns on it, both entries are
+present and legible, and the distinction the sentence is reaching for is real. The
+fix is to stop counting: name the tick counter as the gap the summary is about and
+let `openGaps` be its own inventory, exactly as `review.md` is meant to be for
+rounds.
+
+#### 10 — Non-blocking. `class-loader-identity.json:53` calls itself the only M3 record with no `trial` block
+
+"This record is the only M3 record with no `trial` block, because it is a launch
+rather than a task: nothing in the repository ran it and no command digest describes
+it." I counted `"trial"` in all five files: `class-loader-identity.json` 0,
+`linux-process-matrix.json` **0**, `manifest.json` 0, `pack-compile.json` 2,
+`profiling-overhead.json` 1. So `linux-process-matrix.json` has none either, at top
+level or nested — and the stated reason applies to it verbatim, since it is the
+launch record par excellence ("it comes from launches rather than from a task,
+because the thing it measures is a launcher starting a game and no task can stand in
+for that", `README.md:353`). Only the word "only" fails; the reason is sound and the
+`hookInventoryDigest: null` disclosure beside it is good work. Non-blocking, and the
+fix is to drop the superlative rather than to recount — the same lesson as Finding 3
+and Finding 9.
+
+#### 11 — Non-blocking. ADG-2:377 compares the four-core variant against a figure its source record forbids
+
+"**A four-core player pays 73.8 s cold at 256 mods against 32.0 s**". The 73.8 s is
+right: `variants.results[1]` is `id: "independent-j4"` and its 256-mod
+`coldMilliseconds` is 73803. The 32.0 s is the curve's `compile.points[4]`
+(32031) — and `pack-compile.json:181`, `variants.method`, states the rule: "the
+curve above is a median of three, so **compare a variant against the
+`independent-j16` control here rather than against the curve directly**." That
+control is `variants.results[0]`, `id: "independent-j16"`, whose 256-mod cold is
+30522 — **30.5 s**. The same ADG-2 bullet list uses 30.5 s correctly twice, for the
+chain variant ("33.2 s against the control's 30.5 s, +8.9%") and for LTO ("104 s
+cold and 77.4 s warm against 30.5 s and 1.79 s"). So the record's method is
+understood and applied in two of three places and broken in the third.
+
+Not arithmetic — a comparison the source record forbids, inside an accepted ADR.
+The effect is small and mildly reassuring: it prices the four-core penalty at 2.31×
+rather than the 2.42× the control gives. Non-blocking because no conclusion moves
+(the bullet's point is more wall clock, less memory, and both halves survive), but I
+agree it should be fixed before closure: an ADR that misuses its own evidence's
+stated method is a conformance defect of exactly the kind this round exists to find,
+and it is a one-number edit.
+
+#### 12 — Non-blocking. `pack-compile.json:163` says `sourceLines` is above it; it is below
+
+`representativeness` ends "…which is why the sentence no longer makes one;
+`sourceLines` above says what this one came to." `sourceLines: 1161` is at `:166`,
+three lines below. The value is right and I verified it against ADG-2's "1,161
+lines". Wording only, and worth mentioning only because the sentence is a repair of
+an earlier superlative and a repair should land clean.
+
+#### The two accepted non-defects, sanity-checked
+
+I checked both rather than re-deriving them, and I agree with both calls.
+
+- **`profiling-overhead.json`'s derived pair.** Confirmed: neither figure reproduces
+  from the printed two-decimal percentiles, and both reproduce exactly under the
+  disclosed caveat — `perTick.nanoseconds` 510.05 = 0.05 + 10000 × 0.051 and
+  `breakEven.crossingsPerTick` 9803920.59 = (500000 − 0.05) / 0.051. `overhead.rounding`
+  names both figures and states the rule, and
+  `tests/conformance/tests/profiling_report.rs` fails the gate if that field goes
+  missing, so nothing here is unbound. The observation that `breakEven` has no
+  `formula` field while `perTick` does is correct — I checked; `breakEven` carries
+  only `crossingsPerTick` and `detail` — and I agree it is not a defect: the
+  derivation is published in prose at `README.md:328-346` and I verified that
+  prose's backwards argument arithmetically. Adding the field would be an
+  improvement, not a repair.
+- **`coldRssSamples`.** Agreed uncheckable and not a finding: no field states a
+  samples-per-duration rule, so nothing is falsified. I reproduced the audit's
+  ratios and they only work against the **sum of all three repeat builds**, not the
+  median — 257/((2526+2351+2550)/25) = 86.5%, then 88.1%, 79.6%, 75.9%, 73.6%. One
+  correction to the characterization, which changes nothing: the series rises at the
+  first step before falling, so it is not monotonic across all five points, though it
+  is from the second onward. Consistent with a sampler whose true period slightly
+  exceeds 25 ms and drifts further under load.
+
+#### One inherited claim I checked and reject
+
+The referred audit reported `minecraft/versions/26.1.2/hooks.toml` as modified and
+uncommitted. That is wrong, and I checked it directly rather than trusting the
+correction either: `jj st` reports "The working copy has no changes",
+`sha256sum minecraft/versions/26.1.2/hooks.toml` is
+`fcf9a3381089702597474398b528a2c4651323d1cc8e58d114ea104b7be2a457` and the file is
+13402 bytes, which are exactly the `sha256` and `bytes` that `adapter.toml`'s
+`[inputs.hookInventory]` pins. The pin is checkable and it checks. I note this
+because a stale dirty-tree report is how an earlier reviewer lost a mutation run,
+and because that audit's numbers were presumably taken on the same tree — the rest
+of its arithmetic reproduced for me, so I read this as a stale observation rather
+than a reason to doubt the other five.
+
+#### Addendum ceiling
+
+Everything in this addendum is a check of a claim someone else located. I did not
+re-walk the four records myself, so the coverage of item 5 of my brief is theirs
+rather than mine, and my own ceiling on `linux-process-matrix.json` stated above
+still stands: it is the largest of the four and the one whose claims are least
+recomputable by construction. Finding 8 was found by that audit and not by me,
+which is itself worth recording — my own pass over the same file caught the
+inventory arithmetic and the attestation disclosure and did not catch a
+contradiction 530 lines apart in it.
+
+The working copy was clean when I began this addendum and clean when I finished; I
+made no edit and ran no mutation for any of it. `jj st`: "The working copy has no
+changes."

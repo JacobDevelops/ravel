@@ -30,15 +30,25 @@
 //!    This is the arrangement that makes client-only code reachable on a server, and
 //!    it is the one a side declaration alone would not catch;
 //! 3. a client-bound packet arriving on a server — refused by the routing before the
-//!    mod is called, and refused again inside the mod if it were.
+//!    mod is called, and refused again inside the mod if it were;
+//! 4. the side declaration a **manifest** makes, driven through the whole
+//!    validate → resolve → drive pipeline, so the rule is checked from the thing an
+//!    author writes and not only from a `LifecycleEntry` a test built by hand.
+//!
+//! Arrangement 4 is the one M4-W3's review found missing. Every arrangement above it
+//! constructs its entries here, so all of them held while `PackageManifest.sides` was
+//! ignored on the way in.
 
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
 use ravel_loader::{
-    DispatchRefused, LifecycleEntry, LifecycleMachine, Requirement, deliver_packet, drive,
-    executes_mod_code,
+    DispatchRefused, LifecycleEntry, LifecycleMachine, ModSurface, Requirement, admitted,
+    deliver_packet, drive, executes_mod_code,
 };
+use ravel_package::PackageManifest;
+use ravel_resolve::resolve;
 use ravel_sdk::network::{
     DeliveryRefused, Direction, PacketDelivery, PacketId, WireError, decode, encode, encode_from,
 };
@@ -48,12 +58,24 @@ use ravel_test_mod_client_only::{
     BUILT_THE_OVERLAY, ClientOnlyMod, Overlay, REDREW_THE_OVERLAY, WorkLog, overlay_id, work_log,
 };
 use ravel_test_mod_networking::{NetworkingMod, PING_VERSION, Ping, ping_id};
+use ravel_test_mod_noop::NoopMod;
+use ravel_testkit::{DiscoveredPackage, Host, PipelineRun, run};
 
 /// The sides a mod that runs everywhere declares.
 const EVERY_SIDE: [Side; 3] = Side::ALL;
 
 /// The sides the server half declares.
-const SERVER_SIDES: [Side; 2] = [Side::IntegratedServer, Side::DedicatedServer];
+///
+/// Derived from [`Side::ALL`] rather than listed. A listed pair would still
+/// compile if a fourth side arrived, and every loop below would quietly stop
+/// testing it — including the two load-time cases, which are the whole of the
+/// first gate property.
+fn server_sides() -> Vec<Side> {
+    Side::ALL
+        .into_iter()
+        .filter(|side| side.is_server())
+        .collect()
+}
 
 fn id(text: &str) -> ModId {
     text.parse().expect("a legal mod id")
@@ -80,7 +102,7 @@ fn started(side: Side, client_sides: &[Side]) -> (LifecycleMachine, WorkLog) {
             Box::new(ClientOnlyMod::new(side, &log)),
         ),
         (
-            entry("networking", &SERVER_SIDES),
+            entry("networking", &server_sides()),
             Box::new(NetworkingMod::new()),
         ),
     ];
@@ -127,7 +149,7 @@ fn running(
 
 #[test]
 fn a_client_only_mod_is_parked_on_every_server_side_and_runs_no_code_at_all() {
-    for side in SERVER_SIDES {
+    for side in server_sides() {
         let (machine, log) = started(side, &ClientOnlyMod::SIDES);
 
         assert_eq!(
@@ -176,7 +198,7 @@ fn a_mod_that_loads_on_a_server_side_still_does_not_run_its_client_only_work_the
     // The mod is entered, registers, and reaches `Running` — and the client-only
     // work still does not run, because `ClientOnly` and not the side declaration is
     // what keeps it out.
-    for side in SERVER_SIDES {
+    for side in server_sides() {
         let (machine, log) = started(side, &EVERY_SIDE);
 
         assert_eq!(
@@ -231,11 +253,187 @@ fn a_value_built_for_the_client_is_still_refused_to_the_server_half_of_one_proce
     assert_eq!(built_for_the_client.get(Side::Client), Ok(&"the overlay"));
 }
 
+// ------------------------- the side declaration a manifest actually makes ---
+
+/// The packages the pipeline runs are read from the repository rather than built
+/// here, because the declaration under test is a manifest field and a value
+/// constructed in this file would not have travelled through one.
+const CLIENT_ONLY_PACKAGE: &str = "tests/fixtures/public/packages/client-only";
+const NOOP_PACKAGE: &str = "tests/fixtures/public/packages/noop";
+
+fn repository_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the crate sits two directories below the repository root")
+        .to_path_buf()
+}
+
+fn discovered(directory: &str) -> DiscoveredPackage {
+    DiscoveredPackage::read(repository_root().join(directory))
+        .expect("the fixture package is readable")
+}
+
+/// The host the set is admitted against, taken from the packages themselves.
+///
+/// Ravel's version is the one this test compiled at, and the Minecraft version is
+/// the client-only package's own declaration, checked against what
+/// `minecraft/versions/` pins. Writing either here would put a version literal
+/// somewhere `SPEC.md` §3.7 does not.
+fn host() -> Host {
+    let manifest = PackageManifest::parse(&discovered(CLIENT_ONLY_PACKAGE).document)
+        .expect("the fixture manifest parses");
+    let minecraft = manifest
+        .compatibility
+        .minecraft
+        .first()
+        .expect("the schema requires at least one Minecraft version")
+        .as_str()
+        .to_owned();
+    assert!(
+        repository_root()
+            .join("minecraft/versions")
+            .join(&minecraft)
+            .is_dir(),
+        "the client-only package declares a Minecraft version `minecraft/versions/` does not pin"
+    );
+    Host {
+        ravel: env!("CARGO_PKG_VERSION")
+            .parse()
+            .expect("the crate version is semver"),
+        minecraft,
+    }
+}
+
+/// Runs the client-only package beside the no-op package on `side`.
+///
+/// The no-op package declares every side, so it loads wherever this is called and
+/// the run is never one that started nothing. A value is supplied for the
+/// client-only mod on every side: on a server side it must come back untouched,
+/// which is a stronger claim than not supplying one.
+fn pipeline_on(side: Side) -> (PipelineRun, WorkLog) {
+    let log = work_log();
+    let mut client = ClientOnlyMod::new(side, &log);
+    let mut noop = NoopMod::new();
+    let completed = run(
+        &[discovered(CLIENT_ONLY_PACKAGE), discovered(NOOP_PACKAGE)],
+        &host(),
+        side,
+        &mut [&mut client as &mut dyn Mod, &mut noop],
+    )
+    .expect("a side-mismatched package is parked, not refused");
+    (completed, log)
+}
+
+#[test]
+fn a_manifest_declaring_the_client_side_alone_is_parked_by_the_pipeline_on_every_server_side() {
+    // The arrangement M4-W3's review asked for. Nothing here names a side but the
+    // one the run is driven on: `sides: ["client"]` is read out of
+    // `tests/fixtures/public/packages/client-only/package.json`, and it is the only
+    // reason this package stops where it does.
+    for side in server_sides() {
+        let (completed, log) = pipeline_on(side);
+        let client_only = ClientOnlyMod::declared_id();
+
+        // Parked, not absent: the run knows about it and took it as far as the last
+        // state that runs no mod code.
+        assert_eq!(
+            completed.states_of(client_only),
+            [LifecycleState::Validated, LifecycleState::Resolved],
+            "`{}` did not park the mod its manifest excludes",
+            side.name()
+        );
+        assert!(
+            !completed.plan().order().contains(client_only),
+            "the resolver ordered a package that does not load on `{}`",
+            side.name()
+        );
+        assert!(
+            log.lock().expect("nothing panicked").is_empty(),
+            "client-only code ran on `{}`",
+            side.name()
+        );
+
+        // And the set it was parked in did run, so this is not a run that stalled.
+        assert_eq!(
+            *completed
+                .states_of(&"noop".parse::<ModId>().expect("a legal mod id"))
+                .last()
+                .expect("the no-op package loads on every side"),
+            LifecycleState::Stopped
+        );
+    }
+}
+
+#[test]
+fn the_same_manifest_on_the_client_loads_and_runs_the_client_only_code() {
+    // The negative control. Without it the test above would pass for a package the
+    // pipeline parks everywhere, and the property would be "nothing ever loads".
+    let (completed, log) = pipeline_on(Side::Client);
+    let client_only = ClientOnlyMod::declared_id();
+
+    assert!(completed.plan().order().contains(client_only));
+    assert_eq!(
+        *completed
+            .states_of(client_only)
+            .last()
+            .expect("the package loads on the client"),
+        LifecycleState::Stopped
+    );
+    assert_eq!(
+        *log.lock().expect("nothing panicked"),
+        [BUILT_THE_OVERLAY],
+        "the client did not run the client-only work"
+    );
+}
+
+#[test]
+fn the_mod_list_marks_a_parked_package_as_installed_and_not_loading_here() {
+    // What a player is shown, from the same declaration. A mod hidden from the list
+    // reads as one that is not installed, so a parked package is listed and marked
+    // rather than dropped, and the mark is the manifest's `sides` field arriving
+    // where a screen can draw it.
+    let side = Side::DedicatedServer;
+    let log = work_log();
+    let manifests: Vec<PackageManifest> = [CLIENT_ONLY_PACKAGE, NOOP_PACKAGE]
+        .into_iter()
+        .map(|directory| {
+            PackageManifest::parse(&discovered(directory).document).expect("a legal manifest")
+        })
+        .collect();
+    let plan = resolve(&manifests, side).expect("a legal package set");
+    let composed: Vec<(LifecycleEntry, Box<dyn Mod>)> = admitted(&plan, &manifests)
+        .into_iter()
+        .map(|entry| {
+            let host: Box<dyn Mod> = if entry.mod_id == *ClientOnlyMod::declared_id() {
+                Box::new(ClientOnlyMod::new(side, &log))
+            } else {
+                Box::new(NoopMod::new())
+            };
+            (entry, host)
+        })
+        .collect();
+    let (machine, _) = drive(side, composed).expect("a parked package does not fail the set");
+
+    let surface = ModSurface::of(&machine);
+    let listed = surface
+        .entries()
+        .iter()
+        .find(|entry| entry.mod_id == *ClientOnlyMod::declared_id())
+        .expect("a parked package is still listed");
+    assert!(
+        !listed.loads_here,
+        "the mod list says a client-only package loads on a dedicated server"
+    );
+    assert_eq!(listed.state, LifecycleState::Resolved);
+    assert!(!surface.has_failure(), "parking is not a failure");
+}
+
 // ------------------------------------------------- packets across the pair ---
 
 #[test]
 fn a_client_bound_packet_arriving_on_a_server_side_reaches_no_mod() {
-    for side in SERVER_SIDES {
+    for side in server_sides() {
         let log = work_log();
         let mut client = ClientOnlyMod::new(side, &log);
         let mut server = NetworkingMod::new();
@@ -245,7 +443,7 @@ fn a_client_bound_packet_arriving_on_a_server_side_reaches_no_mod() {
             side,
             vec![
                 entry("client_only", &EVERY_SIDE),
-                entry("networking", &SERVER_SIDES),
+                entry("networking", &server_sides()),
             ],
             &mut [&mut client, &mut server],
         );
@@ -320,7 +518,7 @@ fn a_server_bound_packet_round_trips_from_the_client_to_the_mod_that_owns_it() {
         Side::DedicatedServer,
         vec![
             entry("client_only", &ClientOnlyMod::SIDES),
-            entry("networking", &SERVER_SIDES),
+            entry("networking", &server_sides()),
         ],
         &mut [&mut client, &mut server],
     );
@@ -368,7 +566,7 @@ fn ping_arriving(payload: Vec<u8>, id_named: PacketId) -> (Option<String>, Netwo
     let mut server = NetworkingMod::new();
     let machine = running(
         Side::DedicatedServer,
-        vec![entry("networking", &SERVER_SIDES)],
+        vec![entry("networking", &server_sides())],
         &mut [&mut server],
     );
 

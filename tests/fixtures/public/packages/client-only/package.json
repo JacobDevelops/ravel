@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "client_only",
+  "version": "0.0.0",
+  "displayName": "Client only",
+  "description": "A package that declares the client side alone, so a manifest's side declaration can be read by the loader.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "26.1.2"
+    ]
+  },
+  "sides": [
+    "client"
+  ],
+  "authors": [
+    {
+      "name": "Ravel"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://tangled.org/jacobdevelops.tngl.sh/ravel",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "c46bc2ab6ca3739a7837bf96ea3d9b79bcacaa21652a92b70dc50d162b9ff8d8"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "b47497df7a148c1413ac63150bca7c208530e98c9c83619b4c2cecd05edbcdbb"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "bcd86474925345433860dad8fd39f29091b551679af9a1935cb5d22a65e2bbb5"
+  }
+}

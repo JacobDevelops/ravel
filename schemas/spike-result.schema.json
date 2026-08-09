@@ -415,6 +415,14 @@
         "driftDetected": {
           "type": "boolean",
           "description": "ADG-3: whether a mutated pinned input made generation fail closed."
+        },
+        "repeatedOutputSha256": {
+          "$ref": "#/$defs/sha256",
+          "description": "ADG-3: digest of a second derivation from the same pinned inputs, resolved and rendered again. Not required, for the same reason as repeatedRunIsIdentical."
+        },
+        "repeatedRunIsIdentical": {
+          "type": "boolean",
+          "description": "ADG-3: whether the two recorded derivation digests agree. Not required, because the two M1-era records were written by an instrument that only refused to report on a mismatch and would be falsified by a field they never observed; the M1 closure rule is what requires a result carrying both digests and requires them equal."
         }
       }
     },

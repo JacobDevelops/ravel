@@ -3,7 +3,13 @@
 //! Two extractors read the same pinned jar and generate the same binding. Two
 //! further mechanisms are recorded as rejected. The generated binding and its
 //! mapping lock are the deliverable; that they are reproducible, and that a
-//! drifted input is refused, is the evidence.
+//! drifted input is refused, is the evidence, and both are recorded rather than
+//! entailed.
+//!
+//! Nothing here writes tracked version data. `ravel-minecraft-adapter` generates
+//! `minecraft/versions/26.1.2/mappings.lock` for production and the gate binds
+//! that file, so a measurement run installing its own lock there would overwrite
+//! production data as a side effect of measuring.
 
 #![forbid(unsafe_code)]
 
@@ -53,13 +59,23 @@ fn run() -> Result<usize, String> {
     for extractor in [Extractor::ClassFile, Extractor::Javap] {
         let evidence = measure(extractor, &layout)?;
         let result = assemble(extractor, &evidence, &layout, &pinned, &revision)?;
+        let repeatable = result
+            .binding_generation
+            .as_ref()
+            .is_some_and(|generation| generation.repeated_run_is_identical);
         write(&layout, &result.candidate.id.clone(), &result)?;
         written += 1;
+        // The record carries the observation either way, and a run that observed
+        // a non-reproducible generation still fails: reproducibility being false
+        // is a finding about the mechanism, not a field to file quietly.
+        if !repeatable {
+            return Err(format!(
+                "the {} extractor derived different bytes the second time from the same \
+                 pinned inputs; the written result records both digests",
+                extractor.flag()
+            ));
+        }
     }
-
-    // The selected extractor's generation is the one that lands in the tracked
-    // version data, so it is written last and from a clean directory.
-    install_mapping_lock(&layout)?;
 
     for rejection in REJECTIONS {
         let result = rejected(rejection, &pinned, &revision)?;
@@ -277,10 +293,21 @@ fn assemble(
         protocol_version: "spike-v1".to_owned(),
         gate: Gate::Bindings,
         candidate: Candidate {
-            id: format!("adg3.{}-extraction", extractor.flag()),
+            // A re-measurement writes a new record rather than overwriting the
+            // M1-era one. A spike result has to name the change that introduced
+            // it, and no later change can honestly claim a file an earlier change
+            // added, so rewriting `adg3-classfile-extraction.json` in place would
+            // either misname its provenance or backdate today's run into a change
+            // whose tree holds a different instrument.
+            id: format!("adg3.{}-extraction-remeasured", extractor.flag()),
             title: match extractor {
-                Extractor::ClassFile => "Parse the pinned jar's class files".to_owned(),
-                Extractor::Javap => "Ask the JDK's javap to describe the pinned jar".to_owned(),
+                Extractor::ClassFile => {
+                    "Parse the pinned jar's class files, re-measured with the repeated run recorded"
+                        .to_owned()
+                }
+                Extractor::Javap => "Ask the JDK's javap to describe the pinned jar, re-measured \
+                                     with the repeated run recorded"
+                    .to_owned(),
             },
             disposition: Disposition::Measured,
             rejection_reason: None,
@@ -359,6 +386,12 @@ fn assemble(
             output_sha256: note(report, "generation.sha256")?,
             output_bytes: whole(metric(report, "generation.bytes")?),
             drift_detected: note(report, "generation.drift")?.starts_with("refused"),
+            // Both digests are recorded, and the boolean is recomputed here from
+            // them, so the record carries the comparison a reader can redo rather
+            // than only the verdict this program reached.
+            repeated_output_sha256: note(report, "generation.repeated.sha256")?,
+            repeated_run_is_identical: note(report, "generation.repeated.sha256")?
+                == note(report, "generation.sha256")?,
         }),
         state_ownership: None,
         prism_integration: None,
@@ -527,22 +560,6 @@ fn rejected(
         prism_integration: None,
         deviations: Vec::new(),
     })
-}
-
-/// Copies the selected extractor's mapping lock into the tracked version data.
-///
-/// The lock is generated, so it is written by the generator rather than by hand,
-/// and a change to the jar or the inventory changes it. That is how a build
-/// notices drift before it trusts a binding.
-fn install_mapping_lock(layout: &Layout) -> Result<(), String> {
-    let generated = layout
-        .work
-        .join(Extractor::ClassFile.flag())
-        .join("mappings.lock");
-    let tracked = layout.root.join(bindings::MAPPINGS_LOCK);
-    fs::copy(&generated, &tracked)
-        .map(|_| ())
-        .map_err(|error| format!("cannot install the mapping lock: {error}"))
 }
 
 fn hashed(directory: &Path) -> Result<Vec<HashedArtifact>, String> {

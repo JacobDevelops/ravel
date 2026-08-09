@@ -70,6 +70,13 @@ pub struct Hook {
     pub kind: Kind,
     /// Why the hook exists, for the humans reviewing the inventory.
     pub capability: String,
+    /// Whether this target's prologue may return from it before its body runs.
+    ///
+    /// The production adapter generates the refusable set from this flag; the
+    /// binding this experiment renders records a target's shape and not its
+    /// power, so the field is accepted and unread. Absent means false.
+    #[serde(default)]
+    pub refuses: bool,
 }
 
 /// Shape of a hook target.
@@ -120,8 +127,20 @@ pub struct Input {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Inputs {
     pub client_jar: Input,
+    /// The library jar carrying the serialization types the game's signatures
+    /// name. The production adapter reads it to stub those classes; this
+    /// experiment resolves hooks out of the client jar alone and only has to
+    /// accept the pin, because refusing an input it does not read would make the
+    /// instrument unrunnable against the tracked adapter inputs.
+    pub data_fixer_jar: Input,
     pub version_manifest: Input,
     pub hook_inventory: Input,
+    /// The tracked list of classes the production adapter stubs.
+    pub stub_seeds: Input,
+    /// The generated mapping lock, pinned to the jars that produced it.
+    pub mappings_lock: Input,
+    /// The generated stub lock, pinned to the jars that produced it.
+    pub stubs_lock: Input,
 }
 
 /// The tracked adapter inputs.

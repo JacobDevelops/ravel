@@ -1,4 +1,4 @@
-//! Generates the pinned 26.1.2 binding with one extractor, once, and reports it.
+//! Derives the pinned 26.1.2 binding with one extractor twice and reports both.
 //!
 //! The trial follows the harness protocol: it does its work, announces
 //! readiness, prints one report, and parks so its memory can be read. A batch
@@ -52,25 +52,30 @@ fn run(arguments: &[String]) -> Result<(), String> {
     let inventory = bindings::inventory(&root, &adapter).map_err(|error| error.to_string())?;
     let jar = root.join(&adapter.inputs.client_jar.path);
 
+    // Deriving twice from the pinned jar must produce the same bytes, or nothing
+    // downstream can trust a cached binding. The repeat runs first and resolves
+    // the jar itself, because a second `generate` over an already-resolved
+    // `&[Resolved]` is a pure render and could only ever agree: extraction is
+    // where a nondeterministic reading of the pinned inputs would live. Both
+    // digests are reported and the runner records and compares them, rather than
+    // this control flow refusing on a mismatch and keeping the observation out of
+    // the evidence.
+    let repeated =
+        bindings::resolve(&jar, &inventory, extractor).map_err(|error| error.to_string())?;
+    let again = bindings::generate(&out, &adapter, &inventory, &repeated, extractor)
+        .map_err(|error| error.to_string())?;
+
     let resolved =
         bindings::resolve(&jar, &inventory, extractor).map_err(|error| error.to_string())?;
     let generated = bindings::generate(&out, &adapter, &inventory, &resolved, extractor)
         .map_err(|error| error.to_string())?;
+    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
 
     if mode == "crash" {
         // Ends the process with the output already renamed into place, so the
         // runner can check whether a half-finished generation is visible.
         std::process::abort();
     }
-
-    // Generating twice must produce the same bytes, or nothing downstream can
-    // trust a cached binding.
-    let again = bindings::generate(&out, &adapter, &inventory, &resolved, extractor)
-        .map_err(|error| error.to_string())?;
-    if again.sha256 != generated.sha256 {
-        return Err("generating twice produced different bytes".to_owned());
-    }
-    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
 
     let agreement = cross_check(&jar, &inventory, extractor);
     let failures = failure_matrix(&jar, &inventory, extractor);
@@ -86,6 +91,10 @@ fn run(arguments: &[String]) -> Result<(), String> {
 
     let mut notes = BTreeMap::new();
     notes.insert("generation.sha256".to_owned(), generated.sha256.clone());
+    notes.insert(
+        "generation.repeated.sha256".to_owned(),
+        again.sha256.clone(),
+    );
     notes.insert("generation.drift".to_owned(), drift);
     notes.insert("extraction.agreement".to_owned(), agreement);
     notes.insert(

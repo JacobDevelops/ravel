@@ -61,9 +61,18 @@ what a build step leaves behind is the retained figure.
   JVM per class is not a build step anyone wants. The ratio is the stable part of
   this: it is per-class process startup, so it grows with the target count while
   the class-file reader amortizes one jar open.
-- **Generation is reproducible.** Each trial generates twice and refuses to report
-  if the two runs differ by a byte. The two extractors' outputs differ only by the
-  four bytes of the extractor's own name recorded in the lock.
+- **Two derivations from the pinned jar produced the same bytes.** Each trial
+  resolves every target against the jar twice and generates from each resolution,
+  and records both digests as `bindingGeneration.outputSha256` and
+  `repeatedOutputSha256`; the measurement fails if they differ, and the M1 closure
+  rule requires the pair to be equal. What that observes is that reading the jar
+  and rendering it are deterministic within one run on one machine — it is not a
+  claim about another machine, another day, or another jar. Two earlier shapes of
+  this claim were weaker: the instrument first only refused to report on a
+  mismatch, which kept the property in its control flow, and then repeated the
+  render over an already-resolved target list, which could not disagree. The two
+  extractors' outputs differ only by the bytes of the extractor's own name
+  recorded in the lock.
 - **A drifted input is refused, not worked around.** Presented with the same jar
   under a hash that does not match the tracked pin, the generator refuses before
   reading a single class. Observed in both trials.

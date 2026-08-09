@@ -445,6 +445,15 @@ pub struct BindingGeneration {
     pub output_sha256: String,
     pub output_bytes: u64,
     pub drift_detected: bool,
+    /// Digest of a second derivation from the same pinned inputs, resolved and
+    /// rendered again rather than re-rendered. This is the load-bearing half: a
+    /// reader can compare it against `output_sha256` themselves, where a boolean
+    /// can only be taken on the instrument's word.
+    pub repeated_output_sha256: String,
+    /// Whether the two digests agree. Recorded because it is what the two
+    /// digests say, and kept beside them rather than instead of them, so a
+    /// record that ever disagrees cannot read as a pass.
+    pub repeated_run_is_identical: bool,
 }
 
 /// ADG-4 state-ownership evidence for the representative object flow.

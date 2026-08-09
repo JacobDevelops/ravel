@@ -18,6 +18,20 @@
     "changeId": "xqmmlnzmtkqpuuxymttpzqyvnovxtxtv",
     "dirty": false
   },
+  "unobtainableRevisions": [
+    {
+      "record": "pack-compile.json",
+      "id": "4c550dae4d47f273a25a0f078ae75d53d90eb083",
+      "changeId": "wpuqwqlrpuvttpzrvqvuxryzwmptuxyt",
+      "reason": "The trial ran on a dirty working copy, so the source behind the figure it contributes to is identified by nothing. The deviation on the dirty M3 trials states what re-measuring would cost and why it would land on a dirty tree again. The pinned commit is visible but is not the commit its own recorded change is at, so it names a tree that change never held."
+    },
+    {
+      "record": "profiling-overhead.json",
+      "id": "c9e6733ad92f0413f7ad9118460a834eb730c53d",
+      "changeId": "ozywquyrzkolywquwrnyxlnrkruynrru",
+      "reason": "The trial ran on a dirty working copy, so the source behind the figure it contributes to is identified by nothing. The deviation on the dirty M3 trials states what re-measuring would cost and why it would land on a dirty tree again. The pinned commit is visible but is not the commit its own recorded change is at, so it names a tree that change never held."
+    }
+  ],
   "versions": {
     "minecraft": "26.1.2",
     "neoforge": "26.1.2.78",
@@ -188,7 +202,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "All three M3 measurement trials were run on a dirty working copy and no revision identifies the code they measured. evidence/m3/pack-compile.json records trial.revision.dirty true at both its curve trial and its variants trial, and evidence/m3/profiling-overhead.json records it at its own, so in each case the recorded changeId and id name a commit the measured tree differed from by an unrecorded amount. That reaches the one limit ravel:verify enforces on every run: the M3-W6 budget in profiling-overhead.json is compared against a later measurement by cargo xtask verify budget, and the code behind the figure it compares against is not identified. It is disclosed rather than repaired. Re-measuring clean is not cheap — the curve trial ran 174 s, the variants trial 1161 s, and both hold only on the linux-reference-v1 hardware profile, so a re-run on any other machine remeasures rather than reproduces — and a re-measurement would land on a working copy that is dirty again for the same structural reason the manifest's own revision block records: recording a result changes the tree that produced it. What is bound rather than trusted is the limit and the arithmetic over it, which tests/conformance/tests/profiling_report.rs and cargo xtask verify budget check on every gate; what is not bound is which source produced the measurement. Note that verify_general_closure requires this manifest's own revision.dirty to be false, so the milestone gate holds the manifest to a standard the trials it inventories do not meet.",
+      "summary": "All three M3 measurement trials were run on a dirty working copy and no revision identifies the code they measured. evidence/m3/pack-compile.json records trial.revision.dirty true at both its curve trial and its variants trial, and evidence/m3/profiling-overhead.json records it at its own, so in each case the recorded changeId and id name a commit the measured tree differed from by an unrecorded amount. That reaches the one limit ravel:verify enforces on every run: the M3-W6 budget in profiling-overhead.json is compared against a later measurement by cargo xtask verify budget, and the code behind the figure it compares against is not identified. It is disclosed rather than repaired. Re-measuring clean is not cheap — the curve trial ran 174 s, the variants trial 1161 s, and both hold only on the linux-reference-v1 hardware profile, so a re-run on any other machine remeasures rather than reproduces — and a re-measurement would land on a working copy that is dirty again for the same structural reason the manifest's own revision block records: recording a result changes the tree that produced it. What is bound rather than trusted is the limit and the arithmetic over it, which tests/conformance/tests/profiling_report.rs and cargo xtask verify budget check on every gate; what is not bound is which source produced the measurement. Note that verify_general_closure requires this manifest's own revision.dirty to be false, so the milestone gate holds the manifest to a standard the trials it inventories do not meet. That disclosure was prose alone and bound nothing: the pins it describes are now listed under unobtainableRevisions above, each quoting the record, commit and change it excuses. verify_admitted_revisions in tools/ravel-xtask/src/lib.rs now applies the same visible-commit and changeId-owns-id tests to every pin inside every record a manifest admits, on every ravel:verify rather than in an opt-in task, and permits a failing pin only where unobtainableRevisions above quotes that record, that commit and that change. So the inventory is that list rather than a number in this sentence, a pin nothing discloses fails the gate, and a disclosure the defect has outlived fails it too.",
       "classification": "non-blocking"
     },
     {

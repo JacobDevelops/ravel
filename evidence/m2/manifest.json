@@ -17,6 +17,20 @@
     "changeId": "pumzmwvxrmlouknqzzpwmwqluusnmooo",
     "dirty": false
   },
+  "unobtainableRevisions": [
+    {
+      "record": "loader-overhead.json",
+      "id": "df717025a48fab4f6ae5702bc481f12a222e689f",
+      "changeId": "wxzwmyllqvrxvzkkyuzrkvlxoykrqoqm",
+      "reason": "M2-W5's launch attestation and M2-W8's budget rest on this trial, and it ran on a dirty working copy, so neither can be tied to a tree a reader can inspect. It cannot be repaired by regeneration: the launcher capture behind the launch record is deleted by design once hashed, and re-running would measure a different tree and report different numbers. The pinned commit is reachable from no visible head, so no clone carries it."
+    },
+    {
+      "record": "prism-launch.json",
+      "id": "df717025a48fab4f6ae5702bc481f12a222e689f",
+      "changeId": "wxzwmyllqvrxvzkkyuzrkvlxoykrqoqm",
+      "reason": "M2-W5's launch attestation and M2-W8's budget rest on this trial, and it ran on a dirty working copy, so neither can be tied to a tree a reader can inspect. It cannot be repaired by regeneration: the launcher capture behind the launch record is deleted by design once hashed, and re-running would measure a different tree and report different numbers. The pinned commit is reachable from no visible head, so no clone carries it."
+    }
+  ],
   "versions": {
     "minecraft": "26.1.2",
     "neoforge": "26.1.2.78",
@@ -174,6 +188,10 @@
     {
       "summary": "The recompute a reader gets outside this working copy is bounded, and both bounds were measured rather than assumed. A git clone --no-local of this repository carries no refs/jj/* at all: in that clone 93772540cf84400f7f2eb0b5d9ae71490851ca65, the commit this manifest pinned before the re-pin, does not exist as an object, while aac3bfd2fbde21d2b2f6347b56dfc4ab30d57d1b is visible and every input digest recorded here recomputes there. So the reachability half is repaired, and it is repaired because the colocated repository exports the visible stack to git HEAD, which a clone follows. What a clone does not get is a jj repository, and without one verify_recorded_inputs and verify_manifest_change announce on stdout that they are skipping rather than reporting a pass; the reader has to run jj git init --colocate before the provenance block means anything. What remains beyond that is publication: nothing in this stack has been pushed, so these commits live in this repository and in clones taken directly from it, and a reader working from a remote has whatever that remote carries and no more. That is disclosed rather than closed because pushing is not in this work's scope, and no claim is made that publishing is imminent. It is classified non-blocking because the provenance checks fail closed — an unresolvable or moved revision is a violation, never a silent pass — and because publishing the stack changes no evidence in this manifest.",
       "classification": "non-blocking"
+    },
+    {
+      "summary": "Both M2 measurement trials name a dirty working copy no reader can obtain. evidence/m2/loader-overhead.json and evidence/m2/prism-launch.json each record trial.revision.dirty true and pin a commit no visible head reaches, under a change that has since moved off it, so the tree behind those measurements is identified by nothing. That is what M2-W5's launch attestation and M2-W8's budget rest on: the counts in prism-launch.json and the budget lines in loader-overhead.json are readable and reconcile against each other, and neither can be tied to any inspectable tree. It cannot be repaired by regeneration — the launcher capture behind the launch record is deleted by design once hashed, and re-running would measure a different tree and report different numbers — so it is disclosed rather than repaired, and it is blocking because a launch attestation and a performance budget whose source is unidentified are the two claims M2 closes on. Until this was written a record a manifest admitted was constrained by nothing at all: setting loader-overhead.json's trial.revision.id to forty zeroes and its changeId to a change that exists nowhere, then rebinding the manifest digest, left verify scaffold at zero. verify_admitted_revisions in tools/ravel-xtask/src/lib.rs now applies the same visible-commit and changeId-owns-id tests to every pin inside every record a manifest admits, on every ravel:verify rather than in an opt-in task, and permits a failing pin only where unobtainableRevisions above quotes that record, that commit and that change. So the inventory is that list rather than a number in this sentence, a pin nothing discloses fails the gate, and a disclosure the defect has outlived fails it too.",
+      "classification": "blocking"
     }
   ],
   "risks": [

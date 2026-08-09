@@ -38,9 +38,14 @@ name to a review the same manifest said nobody could obtain — so the verdict i
 withdrawn as well. A cold audit has since reviewed the gate independently;
 `review.md` is its verdict, reproduced without softening, and
 `review.result` is `fail`. The orphaned digest stays in the manifest's deviations
-so the claim is not lost. M2's measurements are unaffected — every digest here is
-recomputable — and what closes M2 now is an independent review of the repaired
-state that passes.
+so the claim is not lost. Every digest here is recomputable, and that is not the
+same as the measurements being unaffected: `loader-overhead.json` and
+`prism-launch.json` both record a trial run on a dirty working copy whose commit
+no visible head reaches, so M2-W8's budget and M2-W5's launch attestation are
+readable and tied to no inspectable tree. The manifest discloses both pins under
+`unobtainableRevisions` and classifies the finding, and the scaffold refuses any
+pin a record carries that is neither obtainable nor disclosed there. What closes
+M2 now is an independent review of the repaired state that passes.
 
 The audit's blocking finding was that `LifecycleMachine::open_world` had no
 caller outside tests, which made M2-W7's "cannot open a world" a statement about

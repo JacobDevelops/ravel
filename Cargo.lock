@@ -825,6 +825,7 @@ dependencies = [
  "ravel-host-api",
  "ravel-loader",
  "ravel-observability",
+ "ravel-pack",
  "ravel-package",
  "ravel-resolve",
  "ravel-save",
@@ -953,6 +954,7 @@ dependencies = [
  "ravel-data",
  "ravel-package",
  "ravel-resolve",
+ "serde_json",
 ]
 
 [[package]]

@@ -104,11 +104,16 @@ devenv tasks run ravel:verify-spikes
 Results are overwritten in place, so a re-run produces a diff whenever the
 measurement moves. Sub-nanosecond figures move between runs; the boundary costs
 do not. ADG-3 is the exception: its measured records carry `-remeasured` names its
-own change introduced, and the M1-era pair beside them is not rewritten by a re-run.
+own change introduced, and the M1-era measured pair beside them is not rewritten by
+a re-run. Its four rejection records are rewritten by a re-run, with today's
+revision and timestamp, and they are restored rather than committed: a rejection
+records no measurement, and letting a later change claim a file an earlier change
+introduced is the provenance `ravel:verify-spikes` refuses.
 
 Every result records `trial.revision.dirty` as true, which is expected rather than
-a warning. For thirteen of the twenty the measured tree is `id` plus the diff of
-the change named by `changeId`; the exceptions are recorded below. The
+a warning. For most results the measured tree is `id` plus the diff of the change
+named by `changeId`; the exceptions are recorded below, and how many there are is
+not stated here, because nothing recomputes a count written in prose. The
 [measurement gate](../../docs/architecture/m1-measurement-gate.md) explains why a
 jj repository has no cleaner state to measure from.
 
@@ -166,8 +171,12 @@ official pack leaves spare and what Ravel spends, and neither side is measured:
   costs cannot be turned into a frame cost without it. The rate is what M1 can
   say: at ~12.5 ns for a hook that calls a mod — ADG-1's 10.02 added to ADG-2's
   2.50, not a figure any trial measured, because no trial ran a JVM-to-Rust-to-mod
-  chain — crossings reach 10% of a 33.3 ms frame at roughly 266,000 a frame. Whether a real pack is three orders
-  of magnitude below that or at it is unmeasured. `M2-W8` owns the census.
+  chain — crossings reach 10% of a 33.3 ms frame at roughly 266,000 a frame, and
+  10% of a 16.7 ms frame at roughly 133,000. Both are given because nothing here
+  chose a reference frame rate: no document in this repository states one, so the
+  30 fps figure this paragraph used to give alone was a rate, not a target, and at
+  60 fps materiality arrives at half the crossings. Whether a real pack is three
+  orders of magnitude below either or at it is unmeasured. `M2-W8` owns the census.
 - **There is no official-pack baseline.** M0 recorded launches, not performance —
   `evidence/m0/manifest.json` sets `performanceCaptureRequired` false and the
   launch records carry no frame time. The `SPEC.md` §6 pair is an M9 artifact.
@@ -234,12 +243,13 @@ rewrites, and `ravel:verify-spikes` recomputes it against the change that
 introduced the file rather than trusting the claim.
 
 That check exists because the earlier contract — that the field names the parent
-change — could not be recomputed, and seven of the twenty results disagreed with it
-for a week before a human noticed. A provenance claim nothing recalculates is a
+change — could not be recomputed, and the seven results named below disagreed with
+it for a week before a human noticed. A provenance claim nothing recalculates is a
 claim, not provenance.
 
 Those same seven are still wrong in the half that is not checked, and are recorded
-rather than repaired. `changeId` is correct on all twenty and machine-verified, but
+rather than repaired. `changeId` is correct on every recorded result and
+machine-verified, but
 `id` is not: the six ADG-1 results record a predecessor commit of their own change
 rather than of its parent, so reconstructing them as `id` plus that change's diff
 counts the change twice. The ADG-5 result is worse — its `id` resolves to a change

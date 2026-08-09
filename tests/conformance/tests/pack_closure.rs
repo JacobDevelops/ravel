@@ -279,6 +279,23 @@ fn a_resource_the_member_itself_declares_answers_a_reference_to_it() {
 // ---------------------------------------------------------- registry closure ---
 
 #[test]
+fn the_namespace_the_pack_allows_unverified_is_spelled_the_way_the_game_spells_it() {
+    // Every other test here names the constant symbolically, so an assertion about
+    // vanilla moves with the thing it asserts and the spelling is pinned by nothing.
+    // The consequence of a wrong spelling is asymmetric rather than merely wrong: a
+    // real `minecraft:` member would fall into the refusing branch, which is loud,
+    // while whatever the constant did spell would fall into the permissive branch and
+    // be allowed unverified, which is silent. So the literal is written out once, here,
+    // against the namespace the game's own registry uses. That namespace lives inside
+    // the pinned jar, which is not tracked, so this line is the pin and not a
+    // derivation — and it is the one place in this suite where that is the right trade.
+    assert_eq!(
+        VANILLA_NAMESPACE, "minecraft",
+        "the namespace a pack may refer to unverified is the game's own"
+    );
+}
+
+#[test]
 fn a_tag_member_in_the_games_namespace_is_allowed_and_deliberately_unverified() {
     // This is the case M4-W2's review left to W5. Adding a vanilla item to a tag is
     // the ordinary reason a pack exists, so it is allowed — and nothing in this

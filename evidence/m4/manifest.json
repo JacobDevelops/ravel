@@ -65,7 +65,7 @@
         },
         "M4-W8": {
           "status": "open",
-          "evidence": "The global Linux gate and the process matrix are recorded — evidence/m4/linux-process-matrix.json holds every gate process with its exit status, and commands and tests below hold the run itself. The independent review this row also requires has run and has not passed: evidence/m4/review.md holds its verdicts verbatim and the latest one is a fail, and review.result below is fail for that reason and for no other. ravel:verify-milestone:m4 exits nonzero while this is true, which is the gate working rather than failing."
+          "evidence": "The global Linux gate and the process matrix are recorded — evidence/m4/linux-process-matrix.json holds every gate process with its exit status, and commands and tests below hold the run itself. The independent review this row also requires has run and has not closed: evidence/m4/review.md holds its verdicts verbatim, and while the latest round returned a pass it read a tree the repairs answering its own findings then changed, so review.result below is fail for that reason and for no other. ravel:verify-milestone:m4 exits nonzero while this is true, which is the gate working rather than failing."
         }
       }
     }
@@ -165,7 +165,7 @@
   ],
   "risks": [
     {
-      "summary": "M4 is not closed. Its independent review has run and has not passed: evidence/m4/review.md holds every verdict verbatim and the latest is a fail, and review.result below is fail for that reason and for no other reason. ravel:verify-milestone:m4 exits nonzero while that is true. This risk is discharged by an independent round returning a pass on the state it reads, at which point the verdict, review.result and this entry move together.",
+      "summary": "M4 is not closed. Its independent review has run and has not closed: evidence/m4/review.md holds every verdict verbatim, and the latest round returned a pass on a tree that no longer exists, because the repairs answering that round's own findings landed after it and no round has read them. A pass certifies the tree its reviewer read, so review.result below is fail for that reason and for no other reason. ravel:verify-milestone:m4 exits nonzero while that is true. This risk is discharged by an independent round returning a pass with nothing repaired after it, at which point the verdict, review.result and this entry move together.",
       "classification": "non-blocking"
     },
     {
@@ -187,7 +187,7 @@
     "result": "fail",
     "record": {
       "name": "review.md",
-      "sha256": "ff68c73ddaa8936df82712e53ee36b04e1d1d6d95ef8d5c9ba9da393aa5dcdab"
+      "sha256": "7d23be654de2987d3c189da4e977202958f3b43f9e4a4b90b934890f30444e0c"
     }
   },
   "attestations": [

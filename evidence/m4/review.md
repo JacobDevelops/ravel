@@ -3,17 +3,21 @@
 Result: FAIL
 
 **Round 1 ran and returned FAIL**, on three blocking findings and eight
-non-blocking ones. Its verdict is reproduced below and the line above is that
-reviewer's conclusion rather than a placeholder standing in for one. It is also
+non-blocking ones. **Round 2 read the tree Round 1's repairs produced and
+returned PASS**, on six non-blocking findings and four mutations that did not
+fail. Both verdicts are reproduced below and the line above is a reviewer's
+conclusion rather than a placeholder standing in for one. It is also
 the closure state `evidence/m4/manifest.json` records under `review.result`, and
 `schemas/evidence.schema.json` admits exactly three values for it — `pass`, `fail`
 and `not-required`. `verify_recorded_verdict` in `tools/ravel-xtask/src/lib.rs`
 requires this document's first `Result:` line to agree with that field, so the two
 move together.
 
-The line changes to `PASS` only when an independent round returns a pass on the
-state it read, and it changes at the same time as `review.result` and as the
-verdict that round wrote, below.
+A pass certifies the tree its reviewer read and nothing landed on top of it, so
+the line stays `FAIL` after Round 2: the repairs answering that round's six
+findings are changes it never saw. The line changes to `PASS` when a round
+returns a pass and nothing is repaired after it, and it changes at the same time
+as `review.result` and as the verdict that round wrote, below.
 
 ## What this file is
 
@@ -370,3 +374,306 @@ mutation against `verify_recorded_run`'s provenance or `revision.changeId`
 binding, which the coordinating reviewer had already covered. And I read
 `evidence/m3/review.md` only for shape and for the round-count question, not as
 a check on M3.
+
+## Round 2 — VERDICT: PASS
+
+I read `CLAUDE.md`, Round 1's verdict in `evidence/m4/review.md` in place,
+`SPEC.md`, `ROADMAP.md`'s M4 table and its ADG obligation rows,
+`docs/decisions/` including `README.md` and ADG-1 and ADG-6, all five files
+under `evidence/m4/`, all eight documents under `docs/guide/`,
+`nix/common.nix`'s task graph, and in `tools/ravel-xtask/src/lib.rs` the
+functions `verify_m4_process_matrix`, `verify_guide_enumerations`,
+`verify_review_round_counts`, `verify_resolved_class_figure`,
+`verify_m4_gate_figures`, `numeral`, `numbers_before`, `numbers_after` and
+their tests. I read each of the six changes in the repair stack with
+`jj show`. I wrote none of M4 and none of the repairs.
+
+Tree: working copy `rylkmosq` (empty, no description), parent `wmpnxukq`
+`aab2e4c9` "docs: re-record M4's gate run after the round-1 repairs changed
+it". The working copy was clean before every mutation below and is clean
+after all of them.
+
+Baseline I reproduced myself: `devenv tasks run ravel:verify` → **exit 0**,
+1275 tests run, 1275 passed, 0 skipped. `ravel:verify-milestone:m0..m3` →
+exit 0. `ravel:verify-milestone:m4` → exit 1 naming only `- milestone review
+must be independent and pass`.
+
+### Round 1's eleven findings, disposed
+
+**B1 — repaired.** `verify_m4_process_matrix`
+(`tools/ravel-xtask/src/lib.rs:3912`) reconciles the record's `processes`
+against `ravel:verify`'s `after` list in `nix/common.nix:589-602` in both
+directions and refuses a nonzero `exitStatus` under a record whose own
+`result` is `pass`. I confirmed the two lists agree today: thirteen `after`
+entries, thirteen `processes` rows. Round 1's mutations A and B now fail by
+name (below), and so does the relocation escape (mutation L). The rewritten
+deviation 10 (`evidence/m4/manifest.json:158`) now says the opposite of what
+Round 1 refuted and says it correctly — it states that `ravel:verify` does
+not run `ravel:verify-environment`, that the gate returned 0 and could not
+have returned otherwise throughout, and that a person found the defect by
+hand. I verified the underlying fact independently: `ravel:verify-environment`
+is absent from the `after` list.
+
+**B2 — repaired.** `docs/guide/running.md:120-135` now names all six
+variants and no others, and separates `DeliveryRefused::WrongSide` into its
+own paragraph. I checked the list against
+`crates/ravel-network/src/lib.rs`: `WireError` declares exactly `Truncated`,
+`TrailingBytes`, `NotUtf8`, `NotABool`, `Identity`, `Version`. The false
+absolute count is gone — the passage no longer states a number.
+`Delivery::decode` does return `WrongSide` before decoding
+(`crates/ravel-network/src/lib.rs:596` versus the `decode` call at `:615`),
+so the new sentence is true. `verify_guide_enumerations` holds the list in
+both directions; mutations N and O prove it.
+
+**B3 — repaired.** `verify_review_round_counts` now sweeps `ROADMAP.md`
+(`tools/ravel-xtask/src/lib.rs:1061-1072`) and the wrong count is out of
+`ROADMAP.md:976`. Mutation K1 confirms the sweep is live and reports the
+right number. The limit is real and is measured under "the CARDINALS hole"
+below.
+
+**N1 — repaired, and more accurately than Round 1 stated it.** I checked all
+five reflected class names against the pinned files. Three are present in
+both `hooks.toml` and `mappings.lock` — `net.minecraft.client.Minecraft`
+(5 hits each), `net.minecraft.server.MinecraftServer` (6 each) and
+`net.minecraft.world.level.storage.SavedDataStorage` (3 each). Round 1 named
+only the latter two. `LevelResource` and `DataFixers` appear in none of
+`hooks.toml`, `stubs.toml` or `mappings.lock`. `manifest.json:142` and
+`ROADMAP.md:971` now say exactly this, and `ROADMAP.md:971` marks its own
+retraction in place.
+
+**N2 — repaired.** `evidence/m4/linux-process-matrix.json:83` now reads
+"pack example, written to disk and compared against two independent lists".
+
+**N3 — deliberately left alone by decision. Not a defect**, and I did not
+re-open it.
+
+**N4 — repaired.** `ROADMAP.md:786-792` carries the amendment note. I
+spot-checked all eight M4 rows: each is narrowed and each names what it
+excludes.
+
+**N5 — repaired.** `docs/guide/package-manifest.md:154-162` now quotes
+`` `lib.rs` `` and explains the file-not-path rule and the two-files-same-
+basename consequence. I confirmed the code: `IntegrityError::Mismatch`
+formats `{file}` (`crates/ravel-package/src/integrity.rs:204-211`) and
+`file` comes from `path.file_name()` at `:88`.
+
+**N6 — repaired.** `docs/guide/running.md:29-33` states the second filter and
+gives the `ClientTick`-on-a-dedicated-server case. It matches
+`LifecycleMachine::audience` (`crates/ravel-loader/src/events.rs:229-236`),
+which returns empty when `!event.happens_on(self.side())`.
+
+**N7 — repaired but incompletely, and the replacement is itself false.** See
+new finding R3.
+
+**N8's named item — repaired and proven.** `verify_resolved_class_figure`
+(`tools/ravel-xtask/src/lib.rs:1428`) anchors ADG-1's prose figure to
+`PERSISTENCE_REFLECTED_CLASSES.len()`. Mutation Q proves it. The remaining
+roughly fifteen ungated figures are untouched, which is what N8 asked for.
+
+### Round 2 — Mutations that did NOT fail
+
+**Mutation K2 — a spelled round count above twenty survives.** I replaced
+`ROADMAP.md`'s pack-row clause with "hid three blocking defects across forty
+M3 review rounds." `devenv tasks run ravel:verify-scaffold` → **exit 0**.
+
+**Mutation K4 — a hyphenated compound survives.** Same site, "twenty-one M3
+review rounds". `ravel:verify-scaffold` → **exit 0**. `numeral`
+(`tools/ravel-xtask/src/lib.rs:909`) trims only leading and trailing
+non-alphanumerics, so `twenty-one` never matches a `CARDINALS` entry either.
+
+**Mutation M — a false review-round count in M4's own evidence survives.** I
+appended "Four independent review rounds have run against M4." to
+`evidence/m4/README.md`. `ravel:verify-scaffold` → **exit 0**.
+
+**Mutation P — the guide's completeness claim can be satisfied from another
+page.** I deleted `` `WireError::NotUtf8` `` from the enumeration in
+`docs/guide/running.md:124` and added the string to the end of
+`docs/guide/limits.md`. `ravel:verify-scaffold` → **exit 0**, because
+`verify_guide_enumerations` concatenates every file under `docs/guide` before
+comparing.
+
+All four are new findings R4, R5 and R6 below. None of them is a defect Round
+1 blocked on.
+
+### Round 2 — Mutations that failed correctly
+
+| Mutation | Judged by | Exit | Failure text |
+| --- | --- | --- | --- |
+| A (re-run): appended a `processes` row `devenv tasks run ravel:this-task-does-not-exist`, digest rebound | `ravel:verify-scaffold` | 1 | "records ravel:this-task-does-not-exist under processes, which nix/common.nix does not list among the sub-tasks ravel:verify runs; a row the gate never ran took its exit status from somewhere the record does not name" |
+| B (re-run): set the `dependency audit` row's `exitStatus` to 1 under `"result": "pass"`, digest rebound | `ravel:verify-scaffold` | 1 | "records a nonzero exit status for `devenv tasks run ravel:audit` under .processes while its own result is pass; a record that reports a failed process and calls itself green states two things that cannot both be true" |
+| K1 (re-run): "hid three blocking defects across eleven M3 review rounds." into `ROADMAP.md` | `ravel:verify-scaffold` | 1 | "ROADMAP.md restates that 11 review rounds exist; each milestone's review.md is the one record that counts its own rounds, and a count written in the plan is falsified by the next round" |
+| K3: same site, "40 M3 review rounds" in digits | `ravel:verify-scaffold` | 1 | same shape, naming 40 |
+| L: moved the whole `ravel:audit` row from `processes` into `checksOutsideTheGate`, digest rebound | `ravel:verify-scaffold` | 1 | two violations — "omits ravel:audit from processes …" and "records ravel:audit under checksOutsideTheGate while nix/common.nix lists it among the sub-tasks ravel:verify runs; that section is for checks the gate does not run and is not a way out of the reconciliation" |
+| N: removed `` `WireError::NotUtf8` `` from `docs/guide/running.md` | `ravel:verify-scaffold` | 1 | "docs/guide enumerates WireError and omits WireError::NotUtf8, which crates/ravel-network/src/lib.rs declares; a variant left out of a list an author reads as complete is the one their match arm will not have" |
+| O: renamed `WireError::NotABool` to `WireError::NotAByte` in the guide | `ravel:verify-scaffold` | 1 | "docs/guide names WireError::NotAByte and crates/ravel-network/src/lib.rs declares no such variant …" plus the omission of `NotABool` |
+| Q: changed ADG-1's "resolves five classes by name" to "six" | `ravel:verify-scaffold` | 1 | "docs/decisions/adg-1-jvm-entry.md says the persistence adapter resolves 6 classes by name while the declared reflective surface holds 5" |
+| R: edited `linux-process-matrix.json` without rebinding its digest | `ravel:verify-scaffold` | 1 | "evidence/m4/manifest.json records linux-process-matrix.json as 0ed2cc2d… but it hashes 18a9b543…" |
+| S: set the matrix's `gate.tests.run` to 1274, digest rebound, manifest left at 1275 | `ravel:verify-scaffold` | 1 | "records .tests.total 1275 while evidence/m4/linux-process-matrix.json records .gate.tests.run 1274; they describe one gate run" |
+
+Mutation L is the control that answers the brief's third attack: the
+`checksOutsideTheGate` section is not a way out. A gate task moved there
+fails twice, once for each direction of the reconciliation, and any third
+invented section fails the same way because the `processes` side is checked
+for omissions independently.
+
+### Round 2 — The `CARDINALS` hole, sized
+
+The writer's account of Round 1's mutation K is **correct, and I reproduced
+it exactly.** Replacing only the phrase — leaving the following clause ",
+each one found only after the construction that hid it was described" — and
+writing "forty M3 review rounds" gives `ravel:verify-scaffold` exit 1 with a
+single violation reading "ROADMAP.md restates that **1** review rounds
+exist". The catch comes from `one` in `each one`, four words after `rounds`,
+inside `numbers_after`'s window. Nothing read `forty`. Removing that clause
+(mutation K2) gives exit 0.
+
+Four checks are built on `CARDINALS` through `numeral`:
+
+- `verify_campaign_inventory` — `numbers_before(document, &["surface",
+  "launches"])` at `lib.rs:857`
+- `verify_review_round_counts` — `round_count_restatements` at `lib.rs:1082`
+- `verify_harness_lifecycles` — `numbers_before(&document, &["world",
+  "lifecycles"])` at `lib.rs:1255`
+- `verify_resolved_class_figure` — `numbers_before(&record, &["classes",
+  "by", "name"])` at `lib.rs:1437`
+
+Three of the four **fail closed** on the hole: each requires a readable count
+and pushes a violation when `stated.is_empty()`, so a figure spelled above
+twenty makes them fail, not pass. Only `verify_review_round_counts` fails
+open, because it is a prohibition rather than a match — an unreadable numeral
+produces no violation. So the hole reaches exactly one check in the dangerous
+direction, which is narrower than the disclosure implies and worth recording.
+
+Is there a real prose count above twenty escaping today? I swept every `.md`,
+`.json`, `.toml` and `.rs` file outside `target/` and `.jj/` for spelled
+numerals above twenty. Every hit is either a magnitude rather than a count
+("a thousand devirtualized increments", "a few hundred mods", "thirty-thousand-
+entry archive"), a description of a past mutation ("forty zeroes", "thirty-two
+`z`s"), a line offset (`evidence/m3/review.md:2603` "twenty-four lines above"),
+or an experiment's own measured figure (`experiments/m3-pack-compile`
+"already forty of them", which is not swept and not a claim about the gate).
+**No swept document states a round count above twenty today**, and no
+fail-closed check's figure is above twenty either — the largest is
+`sdk-surface.json`'s inventory lists, which are compared as sets and not as
+spelled counts. The hole is real and currently unexercised.
+
+### Round 2 — New findings
+
+**non-blocking — R1. `evidence/m4/README.md:80` and `:97` carry a count the
+repair falsified.** Line 80 reads "Two of its checks exist because a record
+of in-gate work is the easiest kind to let drift:" and is followed by three
+bullets — `verify_m4_gate_figures`, `verify_m4_surface` and, added by
+`tpxmonru`, `verify_m4_process_matrix` at `:91-95`. Line 97 then reads "Both
+are proven by mutation rather than by reading". Both sentences were true
+before the repair and are false now. This is the ungated-prose-count class
+Round 1 catalogued in N8, in the document its own reading list names, in the
+change whose purpose was to close a drift hole.
+
+**non-blocking — R2. `evidence/m4/manifest.json:150` still asserts the
+sentence B1 refuted.** Deviation 9 reads "Every row in
+`evidence/m4/linux-process-matrix.json` is a gate process". The record now
+holds a row under `checksOutsideTheGate` that is by construction not a gate
+process, and the same change rewrote `resultCeiling`
+(`linux-process-matrix.json:18`) to say so — "The one row that is not a gate
+process is under `checksOutsideTheGate`" — and rewrote deviation 10 eight
+lines below this one. The sweep reached the record and missed the manifest.
+It is non-blocking rather than blocking because the deviation's conclusion
+survives its false premise: the row it forgets is itself recomputable and
+reaches nothing about a running game, so no claim about what M4 proves
+changes, and the row a reader would misread carries a field literally named
+`whyItIsNotAGateProcess`.
+
+**non-blocking — R3. `docs/decisions/README.md:23` replaced a false sentence
+with another one.** It now reads "Each gate that took a measurement has one
+task, and two of the gates did not take one." ADG-7 took a measurement and
+has no task — the same file says so at `:37-39`, "a script rather than a task
+because no task runs it". So the first clause is false. The second clause is
+false on its natural reading too, since "one" parallels "a measurement" and
+only ADG-6 took none — which `:41-42` states in as many words, "the one gate
+here decided without a new measurement". I confirmed the facts:
+`nix/common.nix:572-576` declares five `ravel:spike-adg-*` tasks for ADG-1
+to ADG-5, ADG-7 has `jvm/harness/run-datafix-byte-preservation.sh`, and
+ADG-6's `Status` line records that no new measurement was taken. The
+paragraph N7 asked for exists at `:41-46` and is correct; the summary
+sentence above it contradicts it.
+
+**non-blocking — R4. `verify_review_round_counts` does not sweep M4's own
+evidence set, while `evidence/m4/review.md:50-54` states the rule for M4.**
+The swept pairs are M3's record against `evidence/m3/README.md` and
+`evidence/m3/manifest.json`, M2's against its two, plus `ROADMAP.md`
+(`lib.rs:1030-1050`). Nothing under `evidence/m4/` is read. Mutation M
+measures it: a false count in `evidence/m4/README.md` passes with exit 0.
+`review.md:52` is honest — it says the check "enforces that for M2 and M3"
+— so this is an unclosed rule rather than a false claim, and there is no
+wrong M4 count in the tree today. It is the same class as B3 and the repair
+that closed B3 for `ROADMAP.md` did not extend the pairs.
+
+**non-blocking — R5. The `CARDINALS` ceiling as measured** — mutations K2 and
+K4, sized above. The doc comment at `lib.rs:878-883` discloses it accurately
+and argues extending the list is speculation. I record two things it does not
+say: the escape is one-directional and reaches only
+`verify_review_round_counts`, and it also swallows hyphenated compounds like
+`twenty-one`, which "stops at twenty" reads as excluding by one rather than
+by the whole tail.
+
+**non-blocking — R6. `verify_guide_enumerations` proves a weaker property
+than the passage it exists for.** The check concatenates every file under
+`docs/guide` (`lib.rs:1424-1436`) before comparing, so the completeness it
+enforces is over the directory and not over the enumeration in
+`docs/guide/running.md:120-130`, which is the passage that told an author the
+set was whole. Mutation P: with `NotUtf8` deleted from that list and the
+string added anywhere in `limits.md`, the check returns exit 0 while the
+enumeration an author reads is again incomplete. The function's doc comment
+states two other limits explicitly and does not state this one.
+
+### Round 2 — Hard rules
+
+Clean. Every `crates/*/src/lib.rs` carries `#![forbid(unsafe_code)]` — a
+sweep for a root missing it returned nothing. No `#[allow(…)]`,
+`#[expect(…)]` or `#[ignore]` exists anywhere under `crates/`, `tools/` or
+`tests/` except as string literals inside the scaffold check that detects
+them. No `unsafe` block exists outside the experiment fence. The pinned
+artifacts under `minecraft/versions/26.1.2/` are untouched by the repair
+stack; I read them and edited none of them. A redaction sweep over the nine
+files the six changes touch found no credential, account, world name,
+launcher path, instance path, username or absolute user path — the `Prism`
+and `instance` strings in `ROADMAP.md` and `docs/decisions/README.md` are
+subject names, not captured material.
+
+### Round 2 — The re-recorded gate run
+
+Confirmed against a run I made myself on this tree. `devenv tasks run
+ravel:verify` → exit 0, "1275 tests run: 1275 passed, 0 skipped", which
+matches `manifest.json:101-104` (`total` 1275, `passed` 1275, `failed` 0,
+`skipped` 0) and `linux-process-matrix.json:24-27`. Coverage recomputed with
+the record's own `howToRecompute` command gives `TOTAL … 89.24% … 85.66% …
+88.41%`, matching `regionsPercent` 89.24, `functionsPercent` 85.66 and
+`linesPercent` 88.41 exactly; 88.41 is above the recorded floor of 80.
+`revision.changeId` `poylotnsnumzxnxklmnruyuomnlrnqqw` resolves to commit
+`f0519617e778baa0e1c540243f106b597ed6ab8b`, which is `revision.id`, on a real
+ancestor change described "docs: record M4's evidence and the limits it ships
+with". Both `benchmarks.results` digests recompute — `0ed2cc2d…` for the
+matrix, `2b971e2d…` for `sdk-surface.json` — and `review.record.sha256`
+`ff68c73d…` matches `evidence/m4/review.md`. Mutation R proves that binding
+is live and mutation S proves the two documents' figures are reconciled.
+`commands[0].logSha256` and `durationMs` bind a private log and remain
+unverifiable, which is the ceiling `verify_recorded_run` already records.
+
+### Round 2 — What I did not examine
+
+I did not run `ravel:verify-environment`, so the `flake.nix` repair itself is
+still unverified by me; I verified only that the task is outside the gate. I
+did not read `tests/conformance/tests/` beyond confirming
+`guide_snippets.rs` still compiles the guide under the baseline run, so I
+took the gate's green as evidence the M4 suites pass rather than as evidence
+they are the right tests. I did not re-run Round 1's mutations C through J,
+which the repairs did not touch. I did not audit
+`tools/ravel-xtask/src/lib.rs` as a whole — I read the four `CARDINALS`
+consumers, the two new M4 checks, `verify_m4_gate_figures` and their tests.
+I did not verify the roughly fifteen ungated figures of N8 individually
+beyond the sweep for spelled numerals above twenty described above. I did not
+review `test-mods/waystone-ledger` as a mod. I read `evidence/m3/review.md`
+only for the round-count question and the twenty-four-lines hit, not as a
+check on M3. I did not attempt to defeat `gate_sub_tasks`' textual parse of
+`nix/common.nix` by restructuring that file, having judged that it fails
+closed — an unparseable or empty `after` list pushes a violation.

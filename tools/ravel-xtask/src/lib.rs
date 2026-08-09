@@ -1652,10 +1652,31 @@ fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
         }
     }
 
-    // The review itself is a process artifact and stays out of the repository, so
-    // the manifest's hashed record names a document held elsewhere. That is a
-    // weaker guarantee than recomputing the hash here, and deliberately so: the
-    // shared rules still require the claim, only the file no longer ships.
+    // M1-W4's Verification clause asks that a generated 26.1.2 binding be
+    // reproducible from pinned inputs and fail on drift. Only the drift half is
+    // recorded, and nothing asked for the other, so downgrading the one blocking
+    // deviation and flipping `review.result` closed M1 with the clause still unmet.
+    // M2 records `repeatedRunIsIdentical` for exactly this property; this asks ADG-3
+    // for it under the same name. No M1 result carries the field and
+    // `schemas/spike-result.schema.json` has no place for one yet, so this rule
+    // fails today, which is what an unmet Verification clause is supposed to do.
+    let repeated = fs::read_dir(root.join("evidence/m1/spikes/adg-3"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|kind| kind == "json"))
+        .any(|path| {
+            jq_matches(&path, ".bindingGeneration.repeatedRunIsIdentical == true").unwrap_or(false)
+        });
+    if !repeated {
+        violations.push(
+            "M1 closure requires an ADG-3 result recording bindingGeneration \
+             repeatedRunIsIdentical true, which is the reproducibility half of M1-W4's \
+             Verification clause and is recorded nowhere in M1"
+                .to_owned(),
+        );
+    }
 
     // ADG-5 is the one gate whose answer needs the game to actually start.
     let launched = fs::read_dir(root.join("evidence/m1/spikes/adg-5"))

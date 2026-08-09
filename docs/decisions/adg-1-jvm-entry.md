@@ -215,14 +215,22 @@ and the answer is that its restrictive half holds and its arithmetic does not.
 Two independent reasons, and neither is about what is convenient for M3-W3.
 
 **The jar builds without the game, and that is a property rather than an
-accident.** `jvm/build/build-agent.sh` says so where it compiles: "The
-transformer manipulates byte arrays and descriptor strings and never names a game
-type, so nothing here needs the client jar on the class path. That is what lets
-this run on a machine without the restricted fixture." `jvm/README.md` repeats it
-for both build steps, and
+accident.** `jvm/build/build-agent.sh` says so where it compiles: "No source in
+this jar declares a game type: the transformer manipulates byte arrays and
+descriptor strings, and the persistence adapter resolves the game classes it needs
+by name at runtime. So nothing here needs the client jar on the class path, and
+the absent `-cp` is what enforces that rather than records it — which is also what
+lets this run on a machine without the restricted fixture." `jvm/README.md` says
+the same for both build steps, and
 [`m3-hook-targets.md`](../architecture/m3-hook-targets.md) records that the
 generator declares every reference parameter as `java.lang.Object` precisely so
-"`Hook.java` still names no game type and still compiles without the client jar".
+that generated `Hook.java` declares no game type and still compiles without the
+client jar. Neither artifact is free of game *names*: the transformer compares
+target classes against internal names it holds as string literals, `Hook.java`'s
+target table carries the internal name of every class it transforms, and the
+persistence adapter resolves five classes by name — all of which the invariant
+below permits, because a string is not a compile-time reference and needs nothing
+on the class path.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled
 without it. Putting the screen in this jar would make the licensed client jar a
 build input for the agent, for every contributor on every build, in a public

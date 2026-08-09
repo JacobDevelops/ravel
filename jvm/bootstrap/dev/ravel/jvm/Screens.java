@@ -88,7 +88,7 @@ final class Screens {
      * means {@code Screen} is already loaded by the time it matters.
      *
      * <p>Reflection rather than a direct reference, because this class is in the
-     * agent jar and ADG-1 requires that jar to name no game type — and
+     * agent jar and ADG-1 requires that jar to declare no game type — and
      * {@code RavelSettingsScreen}'s supertype is one. The screen is loaded
      * through the system class loader, which
      * {@code evidence/m3/class-loader-identity.json} measured to be the same
@@ -172,7 +172,7 @@ final class Screens {
      * Loads one screen class and calls its {@code open}.
      *
      * <p>Reflection rather than a direct reference, because this class is in the
-     * agent jar and ADG-1 requires that jar to name no game type — and every
+     * agent jar and ADG-1 requires that jar to declare no game type — and every
      * screen's supertype is one.
      *
      * @param name the screen class to load

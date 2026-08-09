@@ -116,8 +116,9 @@ contains no selected mod set.
 name, member names and exact descriptors the reviewed inventory pins, with
 invented bodies. It is not a Minecraft asset — no game bytecode, resource or jar
 is copied, and `minecraft/versions/*/hooks.toml` and `mappings.lock` already
-track the same strings. The transformer names no game type, so nothing here
-needs the client.
+track the same strings. The transformer declares no game type — it compares
+target classes against internal names it holds as string literals — so nothing
+here needs the client.
 
 The script refuses any output but this one:
 

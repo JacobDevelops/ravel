@@ -25,8 +25,8 @@ import net.minecraft.network.chat.Component;
  * other way and no drawing happens outside this class.
  *
  * <p>This class ships in {@code ravel-screen.jar}, beside the agent's own jar
- * rather than inside it: ADG-1 keeps the agent jar naming no game type, and this
- * one names several. {@code dev.ravel.jvm.Screens} appends the jar at
+ * rather than inside it: ADG-1 keeps the agent jar declaring no game type, and
+ * this one declares several. {@code dev.ravel.jvm.Screens} appends the jar at
  * {@code premain} and {@link #open} is what first loads this class, which is why
  * definition is lazy — a {@code Screen} subclass cannot be defined without
  * loading {@code Screen}, and doing that at {@code premain} would drag the game's

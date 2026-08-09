@@ -20,8 +20,11 @@ the first six entries are all `StringUtil` and `SmoothDouble` carrying `(I)Z`,
 reference, including an array, and renders it as `ravel_minecraft::JavaHandle` —
 a borrow of the local reference the JVM handed the exported frame, so a handle
 that outlives its call is a compile error rather than a rule. The generated Java
-declares every such parameter as `java.lang.Object`, so `Hook.java` still names
-no game type and still compiles without the client jar. What is refused now is
+declares every such parameter as `java.lang.Object`, so `Hook.java` declares no
+game type and still compiles without the client jar. It does name game classes —
+its target table carries the internal name of each one as a string — and a string
+reference needs nothing on the class path, which is the distinction ADG-1's
+invariant draws. What is refused now is
 only a descriptor that is not one: an unterminated class name, an array of
 nothing, or a character that is not a descriptor at all.
 

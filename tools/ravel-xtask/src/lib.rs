@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use sha2::{Digest, Sha256};
@@ -974,6 +974,87 @@ fn verify_recorded_review(
         },
         violations,
     );
+    verify_recorded_verdict(&label, manifest_path, &directory.join(name), violations);
+}
+
+/// Requires the bound review record to state the verdict `review.result` claims.
+///
+/// Binding the record made it obtainable and left the two halves free to
+/// disagree: nothing compared the verdict in the document to the field a
+/// milestone closes on. That is not hypothetical. `review.result` was set to
+/// `pass` while `evidence/m1/review.md` still read `Result: FAIL` on line 3, and
+/// `verify milestone M1` exited 0 — the strongest field in the manifest closed a
+/// milestone against the document it names, because agreement was a habit rather
+/// than a rule.
+///
+/// So the record's front matter is parsed and compared. The first `Result:` line
+/// is the verdict, which is the shape all four records already use, and a record
+/// stating none is a violation rather than a pass: a document that does not say
+/// what it concluded cannot corroborate a field that says it for it.
+fn verify_recorded_verdict(
+    label: &str,
+    manifest_path: &Path,
+    record: &Path,
+    violations: &mut Vec<String>,
+) {
+    let claimed = match jq_value(manifest_path, r#".review.result? // """#) {
+        Ok(claimed) => claimed,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    if claimed.is_empty() || claimed == "null" {
+        violations.push(format!(
+            "{label} binds a review record but records no review.result for it to agree with"
+        ));
+        return;
+    }
+    // An unreadable record is already reported by the digest, which cannot hash
+    // what it cannot read, so this stays quiet rather than doubling it.
+    let Ok(text) = fs::read_to_string(record) else {
+        return;
+    };
+    match text.lines().find_map(stated_verdict) {
+        Some(stated) if stated == claimed => {}
+        Some(stated) => violations.push(format!(
+            "{label} records review.result {claimed} while the review record it binds states \
+             {stated}"
+        )),
+        None => violations.push(format!(
+            "{label} binds a review record that states no verdict, so nothing checks that \
+             review.result {claimed} is what the review concluded"
+        )),
+    }
+}
+
+/// The record a manifest binds, when it binds one by path.
+///
+/// A name that reads as prose is reported where the digests are recomputed, so
+/// there is nothing for this to say about one.
+fn bound_review_record(manifest_path: &Path) -> Option<PathBuf> {
+    let name = jq_value(manifest_path, r#"(.review.record? | .name?) // """#).ok()?;
+    if name.is_empty() || name == "null" || !names_a_path(&name) {
+        return None;
+    }
+    manifest_path.parent().map(|directory| directory.join(name))
+}
+
+/// The verdict one line of a review record states, if it states one.
+///
+/// Kept to the `Result:` front matter every tracked record uses, tolerating the
+/// heading and emphasis markers a Markdown record may carry around it. Anything
+/// outside the three verdicts the schema allows is no verdict at all, so a
+/// record whose front matter says something else reports as stating none.
+fn stated_verdict(line: &str) -> Option<String> {
+    let line = line.trim().trim_start_matches(['#', '*', ' ']);
+    let value = line
+        .strip_prefix("Result:")
+        .or_else(|| line.strip_prefix("Result**:"))?;
+    let value = value.trim().trim_matches(['*', ' ']).to_ascii_lowercase();
+    ["pass", "fail", "not-required"]
+        .contains(&value.as_str())
+        .then_some(value)
 }
 
 /// Whether a recorded name is a path in the repository rather than prose.
@@ -1565,6 +1646,18 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
     }
 
     verify_general_closure(manifest_path, milestone, &mut violations);
+    // The verdict rule runs here as well as in the every-manifest sweep, because
+    // this is the gate a milestone is closed by, and the defect it exists for was
+    // exactly that `verify milestone M1` exited 0 on a manifest claiming pass over
+    // a record reading `Result: FAIL`.
+    if let Some(record) = bound_review_record(manifest_path) {
+        verify_recorded_verdict(
+            &relative_label(root, manifest_path),
+            manifest_path,
+            &record,
+            &mut violations,
+        );
+    }
     verify_manifest_change(root, manifest_path, &mut violations);
     if milestone == "M0" {
         verify_m0_manifest(manifest_path, &mut violations);
@@ -1758,11 +1851,14 @@ fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
     // reproducible from pinned inputs and fail on drift. Only the drift half was
     // recorded, and nothing asked for the other, so downgrading the one blocking
     // deviation and flipping `review.result` closed M1 with the clause still unmet.
-    // M2 records `repeatedRunIsIdentical` for exactly this property; this asks ADG-3
-    // for it under the same name. The re-measured ADG-3 results now carry it, so
-    // this rule passes on an observation rather than on an entailment from the
-    // generator's control flow — and it keeps failing if a re-measurement ever
-    // records a generation that did not repeat.
+    // What is asked for is the pair of digests rather than the boolean beside
+    // them. A boolean can be written by hand into a record that repeated nothing,
+    // and it was: adding `repeatedRunIsIdentical` to the M1-era classfile record,
+    // which measured one generation, left this rule passing. Two recorded digests
+    // that have to be equal are refutable instead — an operator holding the pinned
+    // jar re-derives them — so the digests are the check and the boolean is
+    // required with them only so that a record cannot state a disagreement its
+    // own digests do not show.
     let repeated = fs::read_dir(root.join("evidence/m1/spikes/adg-3"))
         .into_iter()
         .flatten()
@@ -1770,16 +1866,36 @@ fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|kind| kind == "json"))
         .any(|path| {
-            jq_matches(&path, ".bindingGeneration.repeatedRunIsIdentical == true").unwrap_or(false)
+            jq_matches(
+                &path,
+                r#"(.bindingGeneration.outputSha256 // "") != ""
+                   and .bindingGeneration.repeatedOutputSha256 == .bindingGeneration.outputSha256
+                   and .bindingGeneration.repeatedRunIsIdentical == true"#,
+            )
+            .unwrap_or(false)
         });
     if !repeated {
         violations.push(
-            "M1 closure requires an ADG-3 result recording bindingGeneration \
-             repeatedRunIsIdentical true, which is the reproducibility half of M1-W4's \
-             Verification clause and is recorded nowhere in M1"
+            "M1 closure requires an ADG-3 result recording bindingGeneration outputSha256 and \
+             repeatedOutputSha256 as the same digest, which is the reproducibility half of \
+             M1-W4's Verification clause"
                 .to_owned(),
         );
     }
+
+    // The ADG-5 launch is operator-run, so no record recomputes it and the
+    // attestation is the only thing standing behind it. M0 and M3 require one for
+    // the same reason; M1 recorded an empty list while resting on the same kind of
+    // launch, which left the strongest unrecomputable claim in the milestone with
+    // nobody's name on it.
+    require_manifest_rule(
+        manifest_path,
+        r#".attestations
+            | any(.platform == "linux" and .architecture == "x86_64" and (.workloads | length > 0))"#,
+        "M1 closure requires a Linux attestation for the operator-run ADG-5 launch, which no \
+         tracked record can recompute",
+        violations,
+    );
 
     // ADG-5 is the one gate whose answer needs the game to actually start.
     let launched = fs::read_dir(root.join("evidence/m1/spikes/adg-5"))
@@ -3042,8 +3158,20 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
+    /// A review record stating the verdict the manifests below claim.
+    const PASS_RECORD: &str = "Result: PASS\n";
+
+    /// The digest of [`PASS_RECORD`].
+    const PASS_RECORD_DIGEST: &str =
+        "d2bcd3b6eb96afdab9d8fa0b8333538ff07cfd0764afc5a3854976209bef21e2";
+
     /// Writes a manifest recording one review record and returns the root.
     fn recorded_review_root(label: &str, record: &str, name: &str, digest: &str) -> PathBuf {
+        reviewed_root(label, "pass", record, name, digest)
+    }
+
+    /// Writes a manifest recording one review verdict and its record.
+    fn reviewed_root(label: &str, result: &str, record: &str, name: &str, digest: &str) -> PathBuf {
         let root = temporary_root(label);
         let milestone = root.join("evidence/m9");
         fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
@@ -3053,7 +3181,7 @@ mod tests {
             format!(
                 r#"{{{RECORDED_RUN},"review":{{"reviewer":"an independent reviewer",
                     "independent":true,
-                    "result":"pass","record":{{"name":"{name}","sha256":"{digest}"}}}}}}"#
+                    "result":"{result}","record":{{"name":"{name}","sha256":"{digest}"}}}}}}"#
             ),
         )
         .expect("manifest should be writable");
@@ -3061,8 +3189,60 @@ mod tests {
     }
 
     #[test]
+    fn a_review_record_stating_another_verdict_than_the_manifest_is_reported() {
+        // The defect this exists for, in both directions: `review.result` was set
+        // to pass while the bound record read `Result: FAIL`, and the milestone
+        // gate closed on the field without reading the document it names.
+        for (result, record, digest) in [
+            (
+                "pass",
+                "Result: FAIL\n",
+                "5fcc61bd66ab279caaa7ec4d95d65cc532deee32d8a74ce93a04cb0cdd4ded44",
+            ),
+            ("fail", PASS_RECORD, PASS_RECORD_DIGEST),
+        ] {
+            let root = reviewed_root("review-verdict", result, record, "review.md", digest);
+
+            let violations = verify_evidence_records(&root);
+
+            let stated = if result == "pass" { "fail" } else { "pass" };
+            assert_eq!(
+                violations,
+                [format!(
+                    "evidence/m9/manifest.json records review.result {result} while the review \
+                     record it binds states {stated}"
+                )],
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
+    }
+
+    #[test]
+    fn a_review_record_stating_no_verdict_is_reported() {
+        let root = recorded_review_root(
+            "review-silent",
+            "a record with no verdict\n",
+            "review.md",
+            "2f3630fd670787672c297ef4a9f7a4acb23eaa18c86ab35bc8940ca3363bde62",
+        );
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m9/manifest.json binds a review record that states no verdict, so \
+                 nothing checks that review.result pass is what the review concluded"
+                    .to_owned()
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
     fn a_recorded_review_digest_is_recomputed_against_the_tracked_record() {
-        let root = recorded_review_root("review-match", "{}\n", "review.md", EMPTY_OBJECT_DIGEST);
+        let root =
+            recorded_review_root("review-match", PASS_RECORD, "review.md", PASS_RECORD_DIGEST);
 
         assert!(verify_evidence_records(&root).is_empty());
         fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -3070,14 +3250,14 @@ mod tests {
 
     #[test]
     fn a_recorded_review_digest_that_binds_nothing_is_reported() {
-        let root = recorded_review_root("review-drift", "{}\n", "review.md", &"0".repeat(64));
+        let root = recorded_review_root("review-drift", PASS_RECORD, "review.md", &"0".repeat(64));
 
         let violations = verify_evidence_records(&root);
 
         assert_eq!(violations.len(), 1, "{violations:?}");
         assert!(
             violations[0].starts_with("evidence/m9/manifest.json records review.md as ")
-                && violations[0].ends_with(&format!(" but it hashes {EMPTY_OBJECT_DIGEST}")),
+                && violations[0].ends_with(&format!(" but it hashes {PASS_RECORD_DIGEST}")),
             "{violations:?}"
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -3090,9 +3270,9 @@ mod tests {
         // no artifact a reader could obtain.
         let root = recorded_review_root(
             "review-title",
-            "{}\n",
+            PASS_RECORD,
             "M9 independent closure review",
-            EMPTY_OBJECT_DIGEST,
+            PASS_RECORD_DIGEST,
         );
 
         let violations = verify_evidence_records(&root);

@@ -20,8 +20,15 @@ fn fixture(name: &str) -> std::path::PathBuf {
 }
 
 fn altered_complete_fixture(needle: &str, replacement: &str) -> PathBuf {
-    let source =
-        fs::read_to_string(fixture("complete-m0.json")).expect("complete fixture must be readable");
+    altered_fixture("complete-m0.json", needle, replacement)
+}
+
+fn altered_m1_fixture(needle: &str, replacement: &str) -> PathBuf {
+    altered_fixture("complete-m1.json", needle, replacement)
+}
+
+fn altered_fixture(name: &str, needle: &str, replacement: &str) -> PathBuf {
+    let source = fs::read_to_string(fixture(name)).expect("complete fixture must be readable");
     let altered = source.replace(needle, replacement);
     assert_ne!(source, altered, "fixture mutation must replace content");
 
@@ -100,6 +107,61 @@ fn synthetic_complete_m0_bundle_passes() {
         "synthetic M0 fixture violations:\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn a_milestone_cannot_close_over_a_record_stating_another_verdict() {
+    // The defect this exists for: `review.result` was set to pass while the bound
+    // record read `Result: FAIL`, and the milestone gate — the one a milestone is
+    // closed by — exited 0 without reading the document the manifest names.
+    let root = temporary_root();
+    fs::create_dir_all(root.join("schemas")).expect("schema directory should be creatable");
+    fs::create_dir_all(root.join("evidence/m0")).expect("evidence directory should be creatable");
+    fs::copy(
+        repository_root().join("schemas/evidence.schema.json"),
+        root.join("schemas/evidence.schema.json"),
+    )
+    .expect("evidence schema should be copied");
+    fs::copy(
+        fixture("complete-m0.json"),
+        root.join("evidence/m0/manifest.json"),
+    )
+    .expect("manifest should be copied");
+    fs::write(
+        root.join("evidence/m0/synthetic-review.md"),
+        "Result: FAIL\n",
+    )
+    .expect("record should be writable");
+
+    let violations = verify_milestone(&root, "M0");
+
+    let expected = "evidence/m0/manifest.json records review.result pass while the review record \
+                    it binds states fail";
+    assert!(
+        violations.iter().any(|violation| violation == expected),
+        "missing expected violation `{expected}` in:\n{}",
+        violations.join("\n")
+    );
+    fs::remove_dir_all(root).expect("evidence root should be removable");
+}
+
+#[test]
+fn m1_closure_is_refused_without_an_attestation_for_the_operator_run_launch() {
+    let manifest = altered_m1_fixture(
+        "\"platform\": \"linux\",\n      \"architecture\": \"x86_64\",\n      \"workloads\"",
+        "\"platform\": \"macos\",\n      \"architecture\": \"x86_64\",\n      \"workloads\"",
+    );
+
+    let violations = verify_evidence_manifest(repository_root(), &manifest, "M1");
+
+    let expected = "M1 closure requires a Linux attestation for the operator-run ADG-5 launch, \
+                    which no tracked record can recompute";
+    assert!(
+        violations.iter().any(|violation| violation == expected),
+        "missing expected violation `{expected}` in:\n{}",
+        violations.join("\n")
+    );
+    fs::remove_file(manifest).expect("altered fixture should be removable");
 }
 
 #[test]

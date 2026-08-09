@@ -180,6 +180,34 @@ fn the_recorded_accuracy_statement_is_the_one_the_collectors_publish() {
     );
 }
 
+/// The derived pair is unfollowable without the rounding rule beside it.
+///
+/// `overhead.perTick.nanoseconds` and `overhead.breakEven.crossingsPerTick` are
+/// computed from the unrounded percentiles, so applying the stated formula to the
+/// two-decimal percentiles printed next to them misses. The fourth M3-W8 round
+/// found that, and `overhead.rounding` is the answer. Nothing writes that field
+/// for the record — the measurement writes the numbers — so this is what stops a
+/// re-run or an edit from dropping it and leaving the derivation unfollowable
+/// again.
+#[test]
+fn the_record_states_the_rounding_the_derived_figures_were_computed_under() {
+    let record = record();
+    let rounding = record["overhead"]["rounding"]
+        .as_str()
+        .expect("the record states the rounding its derived figures were computed under");
+
+    for required in [
+        "perTick.nanoseconds",
+        "breakEven.crossingsPerTick",
+        "two decimals",
+    ] {
+        assert!(
+            rounding.contains(required),
+            "`overhead.rounding` no longer says what `{required}` was rounded from"
+        );
+    }
+}
+
 #[test]
 fn the_normal_mode_budget_holds_against_its_own_measurement() {
     let record = record();

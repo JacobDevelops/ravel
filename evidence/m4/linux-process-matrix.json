@@ -16,13 +16,13 @@
     "whatWouldChangeIt": "A launch campaign of the shape M3-W7 ran. It needs an operator, the display, and the pinned local fixture, and no M4 work package owns one."
   },
   "resultCeiling": "A reader can recompute every row below by running the named command on a checkout with the devenv shell. That is the whole of what this record attests, and it is deliberately more recomputable and less far-reaching than M3's matrix: every row under processes is a gate process, so the matrix proves the gate passes and proves nothing about a running game. The one row that is not a gate process is under checksOutsideTheGate and is labelled as such, because a table headed by ravel:verify's exit status must not carry a row that command never ran.",
-  "measuredAgainst": "a clean working copy at the head of the change stack that lands M4's evidence. Every row below was run individually, in the order listed, on that tree. evidence/m4/manifest.json pins revision.id at the change that introduced it, which is below that head by construction: recording a result changes the tree that produced it, so no evidence record can pin the tree it was measured on and also be part of it. The manifest states the same ceiling as a deviation rather than leaving it to be discovered.",
+  "measuredAgainst": "a clean working copy at the head of the change stack that lands M4's evidence. Every row below was run individually, in the order listed, on that tree. evidence/m4/manifest.json pins revision.id at the change that introduced it, which is below that head by construction: recording a result changes the tree that produced it, so no evidence record can pin the tree it was measured on and also be part of it. The manifest states the same ceiling as a deviation rather than leaving it to be discovered. The figures here were re-measured after the first round of M4-W8's independent review and the repairs answering it, because those repairs added checks and therefore tests: a recorded run that no longer describes the tree it is bound to is the stale figure this record spends its checks preventing.",
   "gate": {
     "command": "devenv tasks run ravel:verify",
     "exitStatus": 0,
     "tests": {
-      "run": 1267,
-      "passed": 1267,
+      "run": 1275,
+      "passed": 1275,
       "failed": 0,
       "skipped": 0,
       "runner": "cargo llvm-cov nextest --workspace --all-features"
@@ -30,7 +30,7 @@
     "coverage": {
       "linesPercent": 88.41,
       "regionsPercent": 89.24,
-      "functionsPercent": 85.59,
+      "functionsPercent": 85.66,
       "floorPercent": 80,
       "source": "the Lines, Regions and Functions columns of cargo llvm-cov's own summary, taken from the same invocation ravel:coverage runs, with the experiments/adg- filename filter that task applies",
       "howToRecompute": "devenv shell -- cargo llvm-cov nextest --workspace --all-features --summary-only --ignore-filename-regex '(^|/)experiments/adg-'"

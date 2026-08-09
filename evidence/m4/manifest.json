@@ -91,15 +91,15 @@
   "commands": [
     {
       "command": "devenv tasks run ravel:verify",
-      "startedAt": "2026-08-09T21:47:43.000Z",
-      "durationMs": 25969,
+      "startedAt": "2026-08-09T22:41:00.000Z",
+      "durationMs": 32822,
       "exitStatus": 0,
-      "logSha256": "a2365df5965e70d9749defcf20207fe3ea62e1d0f688f857f92ec3b0c5153f02"
+      "logSha256": "2bad7ef233510f9b1ad1f826fda9c68b4f36ca4424c3d5023e2bf3643962c3d7"
     }
   ],
   "tests": {
-    "total": 1267,
-    "passed": 1267,
+    "total": 1275,
+    "passed": 1275,
     "failed": 0,
     "skipped": 0,
     "lineCoveragePercent": 88.41
@@ -109,7 +109,7 @@
     "results": [
       {
         "name": "linux-process-matrix.json",
-        "sha256": "ef00faca73f2eb2d45699acf1dbd30d30f44b2120876ea5ac6e29bcb3dcff924"
+        "sha256": "0ed2cc2dc3118ab193749fa7d2cc7e00ebee876fdc833d058bdb5497ad0e38db"
       },
       {
         "name": "sdk-surface.json",
@@ -199,7 +199,7 @@
       ],
       "statement": "The gate run recorded under commands was made on this Linux machine, inside the devenv shell, on the tree revision.id pins. No game process was started for it and none is claimed: the Ravel code exercised is the workspace's own, including the agent and persistence adapter the JVM harness runs in a real JVM over stand-in classes.",
       "attestedBy": "Ravel maintainer, gate run",
-      "attestedAt": "2026-08-09T21:47:43.000Z"
+      "attestedAt": "2026-08-09T22:41:00.000Z"
     }
   ],
   "platformEvidence": []

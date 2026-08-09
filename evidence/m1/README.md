@@ -10,11 +10,14 @@ the deciding considerations — distribution, hot reload, what a package contain
 are properties of a loader that does not exist yet. M3 decides it against the
 prototype. The measurements below are what that decision will use.
 
-[`manifest.json`](manifest.json) closes M1. It is the admission artifact, and
+[`manifest.json`](manifest.json) is M1's admission artifact, and
 `devenv tasks run ravel:verify-milestone:m1` is what checks it: every gate has a
 recorded result, every gate has an accepted ADR, the spike results are hashed under
 the `spike-v1` protocol, an ADG-5 result records an observed stock launch, and the
-manifest names the change that introduced it.
+manifest names the change that introduced it. All of that holds. The gate does not
+pass, and says why: `review.result` records `fail`, because the last cold verdict
+against this evidence is FAIL and none of the corrections that answered it has been
+re-audited. M1's measurements stand and M1's review does not.
 
 The review itself is a process artifact and is not tracked here; the manifest
 records its reviewer, result, and the hash of the record, and that record is held
@@ -22,8 +25,8 @@ outside the repository. The gate checks the claim rather than the document, whic
 is a weaker guarantee than recomputing a hash and is stated so a reader knows
 which one they are getting.
 
-What closing M1 does not mean is that everything is clean. The manifest carries
-eight deviations and four risks, all non-blocking and all recorded rather than
+What M1's measurements do not mean is that everything is clean. The manifest carries
+nine deviations and four risks, all non-blocking and all recorded rather than
 repaired — including that the selected native binding has never run in the real
 game, and that the last cold audit of this evidence returned FAIL before its
 findings were resolved. Read them before relying on anything here.
@@ -108,9 +111,13 @@ while ADG-2 retained that candidate for M3. It also reproduced the `jni_mangle`
 zero-unsafe result from scratch rather than accepting it.
 
 All ten of its findings were resolved. None was re-audited, so the last cold
-verdict against this evidence is FAIL, and the manifest's `review.result` reflects
-the iterative reviewer's pass rather than a cold re-verification. That is recorded
-as a deviation rather than smoothed over.
+verdict against this evidence is FAIL, and `review.result` in the manifest now
+records `fail` to say so. It previously recorded the iterative reviewer's pass
+beside a deviation stating the opposite, which made a recorded `pass` mean one
+thing in M1 and another in M3, where the same situation is recorded as `fail`.
+The consequence is deliberate: `ravel:verify-milestone:m1` now reports
+`milestone review must be independent and pass`, so M1's gate reads open until a
+cold auditor re-verifies this evidence.
 
 ## What this evidence does not establish
 

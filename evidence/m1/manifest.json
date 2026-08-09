@@ -211,7 +211,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "The cold audit returned FAIL with ten findings. All ten were resolved and none has been re-audited, so the last cold verdict recorded against this evidence is FAIL.",
+      "summary": "The cold audit returned FAIL with ten findings. All ten were resolved and none has been re-audited, so the last cold verdict recorded against this evidence is FAIL. review.result records fail accordingly. It previously recorded pass, which contradicted this deviation in the same file and made a recorded pass mean one thing here and another in evidence/m3/manifest.json, where the identical situation is recorded as fail. M3's convention is the one kept, so ravel:verify-milestone:m1 now reports the review as outstanding until a cold auditor re-verifies this evidence.",
       "classification": "non-blocking"
     }
   ],
@@ -236,7 +236,7 @@
   "review": {
     "reviewer": "independent Claude reviewer (M1 architecture, four passes) with a separate cold audit",
     "independent": true,
-    "result": "pass",
+    "result": "fail",
     "record": {
       "name": "M1 independent architecture review",
       "sha256": "5257619f1d017617c833f9efd819c88636c25977097b02c993a2cb9430d3750a"

@@ -2711,18 +2711,6 @@ fn verify_recorded_verdict(
     }
 }
 
-/// The record a manifest binds, when it binds one by path.
-///
-/// A name that reads as prose is reported where the digests are recomputed, so
-/// there is nothing for this to say about one.
-fn bound_review_record(manifest_path: &Path) -> Option<PathBuf> {
-    let name = jq_value(manifest_path, r#"(.review.record? | .name?) // """#).ok()?;
-    if name.is_empty() || name == "null" || !names_a_path(&name) {
-        return None;
-    }
-    manifest_path.parent().map(|directory| directory.join(name))
-}
-
 /// The verdict one line of a review record states, if it states one.
 ///
 /// Kept to the `Result:` front matter every tracked record uses, tolerating the
@@ -3347,17 +3335,23 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
     }
 
     verify_general_closure(manifest_path, milestone, &mut violations);
-    // The verdict rule runs here as well as in the every-manifest sweep, because
-    // this is the gate a milestone is closed by, and the defect it exists for was
-    // exactly that `verify milestone M1` exited 0 on a manifest claiming pass over
-    // a record reading `Result: FAIL`.
-    if let Some(record) = bound_review_record(manifest_path) {
-        verify_recorded_verdict(
-            &relative_label(root, manifest_path),
+    // The review-record rule runs here as well as in the every-manifest sweep,
+    // because this is the gate a milestone is closed by, and both halves of that
+    // rule have already failed open in exactly this way. The verdict half let
+    // `verify milestone M1` exit 0 on a manifest claiming pass over a record
+    // reading `Result: FAIL`; the digest half let `verify milestone M4` exit 0
+    // after `evidence/m4/review.md` was replaced wholesale with five lines saying
+    // `Result: PASS` and that no round ever ran, because the bytes the digest
+    // attested to were only ever recomputed by `ravel:verify`. A gate that closes
+    // a milestone on a review record has to bind the record it closes on.
+    match tracked_paths(root) {
+        Ok(paths) => verify_recorded_review(
+            root,
             manifest_path,
-            &record,
+            &paths.into_iter().collect(),
             &mut violations,
-        );
+        ),
+        Err(error) => violations.push(error),
     }
     verify_manifest_change(root, manifest_path, &mut violations);
     if milestone == "M0" {
@@ -6573,6 +6567,65 @@ mod tests {
             violations
                 .iter()
                 .any(|violation| violation == "manifest milestone must equal M0")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Writes a milestone manifest binding one review record and returns the root.
+    fn milestone_review_root(label: &str, record: &str, digest: &str) -> PathBuf {
+        let root = temporary_root(label);
+        let milestone = root.join("evidence/m0");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("review.md"), record).expect("record should be writable");
+        fs::write(
+            milestone.join("manifest.json"),
+            format!(
+                r#"{{"schemaVersion":1,"milestone":"M0",{RECORDED_RUN},
+                    "review":{{"reviewer":"an independent reviewer","independent":true,
+                    "result":"pass","record":{{"name":"review.md","sha256":"{digest}"}}}}}}"#
+            ),
+        )
+        .expect("manifest should be writable");
+        root
+    }
+
+    #[test]
+    fn the_milestone_gate_recomputes_the_review_record_it_closes_on() {
+        // The defect this exists for: the review record a closed milestone binds
+        // was replaced wholesale with five lines reading `Result: PASS` and saying
+        // no round ever ran, `review.record.sha256` was left at its real value,
+        // and `verify milestone M4` exited 0, because the digest that makes the
+        // record obtainable was recomputed only by the every-manifest sweep.
+        let substituted = "Result: PASS\nNo round ever ran.\n";
+        let hashes = "4f682a1f88a7dbba60f3046cc667ef8fcc6876c6eda74b90dc97a4ddca688091";
+        let root = milestone_review_root("milestone-review", substituted, &"0".repeat(64));
+
+        let violations = verify_milestone(&root, "M0");
+
+        assert!(
+            violations.iter().any(|violation| {
+                violation.starts_with("evidence/m0/manifest.json records review.md as ")
+                    && violation.ends_with(&format!(" but it hashes {hashes}"))
+            }),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn the_milestone_gate_accepts_a_review_record_that_hashes_as_recorded() {
+        // The control for the mutation above: a record whose bytes are the ones
+        // the manifest attested to raises nothing about its digest, so the check
+        // reports substitution rather than the presence of a review record.
+        let root = milestone_review_root("milestone-review-match", PASS_RECORD, PASS_RECORD_DIGEST);
+
+        let violations = verify_milestone(&root, "M0");
+
+        assert!(
+            !violations
+                .iter()
+                .any(|violation| violation.contains("review.md")),
+            "{violations:?}"
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }

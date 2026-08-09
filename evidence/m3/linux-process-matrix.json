@@ -5,7 +5,7 @@
   "workPackage": "M3-W7",
   "result": "pass",
   "resultCeiling": "This `pass` is an operator-run result. Every launch row here was observed by the operator in a real client and recorded as sanitized facts and digests; the worlds, raw logs, and screenshots were deleted afterwards. A reviewer can recompute the in-gate half — the conformance suites and the JVM harness — and can check that this file's digest matches what `evidence/m3/manifest.json` records, but cannot re-derive the live half from anything in the repository. `manifest.json` closes M3-W7 on that basis and says so in the same terms.",
-  "summary": "Stock Minecraft Java Edition 26.1.2 launched through Prism on Linux with Ravel's agent, screen artifact, and native bootstrap only. Injected input followed the ordinary title-screen and world-selection path. Four campaigns are recorded here. The surface campaign re-observed, at 33 callable targets, every row the earlier 31-target campaign had left inherited: the three Ravel screens, the configuration round trip including a restart-required setting, the command and saved-data path, and opt-in profiling. Three of those four passed on their own fresh evidence; profiling did not, because the two longest lines on the report rendered only their tails and the sentence naming what the numbers cannot tell apart was unreadable in the real client. That defect is recorded in `profilingSurfaceDefect`, it was fixed by change `npozznqz`, and the caveat re-observation campaign launched the real client against the fixed screen jar and read the whole report. Every line renders in full at every GUI scale this window offers. With that, every required surface stands observed natively and this record is `pass`. One narrower gap remains open and is named in `openGaps`: nothing on the game's tick path marks a tick boundary, so the collectors' tick counter can never leave zero. The summary no longer states that zero — change `lppyxtnz` names `tick-count` among the metrics this build cannot measure, and that was re-observed in the real client — but the measurement is still missing.",
+  "summary": "Stock Minecraft Java Edition 26.1.2 launched through Prism on Linux with Ravel's agent, screen artifact, and native bootstrap only. Injected input followed the ordinary title-screen and world-selection path. Five campaigns are recorded here. The surface campaign re-observed, at 33 callable targets, every row the earlier 31-target campaign had left inherited: the three Ravel screens, the configuration round trip including a restart-required setting, the command and saved-data path, and opt-in profiling. Three of those four passed on their own fresh evidence; profiling did not, because the two longest lines on the report rendered only their tails and the sentence naming what the numbers cannot tell apart was unreadable in the real client. That defect is recorded in `profilingSurfaceDefect`, it was fixed by change `npozznqz`, and the caveat re-observation campaign launched the real client against the fixed screen jar and read the whole report. Every line renders in full at every GUI scale this window offers. With that, every required surface stands observed natively and this record is `pass`. One narrower gap remains open and is named in `openGaps`: nothing on the game's tick path marks a tick boundary, so the collectors' tick counter can never leave zero. The summary no longer states that zero — change `lppyxtnz` names `tick-count` among the metrics this build cannot measure — but the measurement is still missing. That six-metric line is the fifth campaign, `profilingReObservationCampaign`: one title-only launch reading the report at both GUI scales against a screen jar and native library hashed before the game started, run because the fifth M3-W8 review round found that the reading which reported `lppyxtnz`'s effect had been written into a campaign whose recorded digests predate it. That finding is answered by observation rather than by rewording; the claim it broke is withdrawn where it stood and made afresh where it can be checked. Nothing here decides whether M3 closes.",
   "identity": {
     "platform": "linux",
     "architecture": "x86_64",
@@ -56,9 +56,9 @@
     "currentCallableTargets": 33,
     "reason": "The earlier campaign's matrix is not this campaign's matrix, and the difference is not cosmetic. Two ADG-7 world persistence seams — `world.open-persistence` on `net.minecraft.client.Minecraft.doWorldLoad` and `world.save-persistence` on `net.minecraft.server.MinecraftServer.saveAllChunks` — entered the reviewed inventory, moving the callable-target count from 31 to 33 over the same 15 classes. A matrix is a claim about a specific set of targets in a specific build, so a count that moved invalidates the reconciliation rather than extending it.",
     "secondReason": "The earlier campaign could not have proven the ADG-7 round trip whatever input it received, because no build it ran contained a mod that owns world data. `ravel-composed-host` carried only the configuration mod until change `uyvzkzzs` added `ravel-test-mod-saved-data` to it. That is why M3-W4 and M3-W7 stayed open through the earlier campaign and why its saved-data row persisted a vanilla scoreboard instead of anything Ravel owned.",
-    "whatThisMeansForAReviewer": "Read the screen, settings, profiling, and command rows below as the earlier campaign's findings at 31 targets, not as this campaign's. They were not re-observed here. Read the rewrite counts, the world persistence round trip, and the instance scan as this campaign's, measured at 33.",
+    "whatThisMeansForAReviewer": "Every row below carries its own `provenance`, and none of them is the 31-target campaign's any longer. Read each row against the campaign its `provenance` names and against the artifact digests that campaign records.",
     "status": "resolved for the surface rows",
-    "howItWasResolved": "The surface campaign re-ran the screen, settings, profiling, and command rows against the same build that proved the world round trip — identical agent, screen, and native digests — and its launches reported `rewrote 15 classes and 33 methods` in the agent's own shutdown report. Those rows no longer carry the 31-target campaign's provenance. What remains inherited from it is nothing: the sections below that used to say `Earlier campaign at 31 callable targets` now carry the surface campaign's own observations."
+    "howItWasResolved": "The surface campaign re-ran the screen, settings, profiling, and command rows against the same build that proved the world round trip — identical agent, screen, and native digests — and its two world-opening launches reported `rewrote 15 classes and 33 methods` in the agent's own shutdown report, while its title-only launch reported the expected `11 classes and 27 methods`; `surfaceCampaign.launchDetail` records both and `whyElevenNotFifteen` derives the smaller pair. Those rows no longer carry the 31-target campaign's provenance. What remains inherited from it is nothing: the sections below that used to say `Earlier campaign at 31 callable targets` now carry the surface campaign's own observations."
   },
   "worldPersistenceRoundTrip": {
     "workPackages": [
@@ -204,12 +204,12 @@
       "wallClockTimingDisplayed": true,
       "wallClockLine": "Slow above 2500 us. Times are wall-clock, not CPU time.",
       "caveatsDisplayed": true,
-      "caveatsDefect": "The surface campaign found the caveat and the unsupported-metrics line clipped; see `profilingSurfaceDefect`. Both were fixed by change `npozznqz` and re-observed whole by the caveat re-observation campaign; see `caveatReObservationCampaign`.",
+      "caveatsDefect": "The surface campaign found the caveat and the unsupported-metrics line clipped; see `profilingSurfaceDefect`. Both were fixed by change `npozznqz` and re-observed whole by the caveat re-observation campaign; see `caveatReObservationCampaign`. The unsupported-metrics line's present content was observed separately by `profilingReObservationCampaign`, because the metric list changed again in `lppyxtnz` after the caveat campaign's build was hashed.",
       "tickCountReadZero": true,
-      "tickAndCommandCountNote": "Re-observed after change `lppyxtnz`. The summary line reads `2 mods entered` and states no tick count at all; `tick-count` is named in `Not measurable in this build:` beside the other five metrics. Both mod rows read `(3804 ev, 0 cmd)`. The per-mod call and time figures are real and moving, so the report is collecting. This launch executed no command, so its `0 cmd` is what a run with no commands should show. The earlier campaign's `0 cmd` after four commands through chat is diagnosed in `openGaps.profilingCommandCounter`: those commands were vanilla and unnamespaced, and neither loaded mod claims a command, so nothing was chargeable. The counter is wired and accurate; it has simply never been observed above zero in a real client.",
+      "tickAndCommandCountNote": "Re-observed after change `lppyxtnz` by `profilingReObservationCampaign`, against a screen jar and native library hashed before that launch started. The summary line reads `2 mods entered` and states no tick count at all; `tick-count` is named in `Not measurable in this build:` beside the other five metrics. Both mod rows read `(2323 ev, 0 cmd)`, and `(3445 ev, 0 cmd)` when the screen was reopened. The per-mod call and time figures are real and moving, so the report is collecting. That launch executed no command, so its `0 cmd` is what a run with no commands should show. The earlier campaign's `0 cmd` after four commands through chat is diagnosed in `openGaps.profilingCommandCounter`: those commands were vanilla and unnamespaced, and neither loaded mod claims a command, so nothing was chargeable. The counter is wired and accurate; it has simply never been observed above zero in a real client.",
       "caveatObservedInFull": true,
       "caveatTextAsRendered": "A mod is charged for host work it calls back into. The window is entry to return, so a mod that asks Ravel to resolve a registry key is charged for the lookup as well as for its own code.",
-      "provenance": "The rows, the opt-in mechanism, the live counts, and the wall-clock line are the surface campaign's observations against the screen jar recorded in `artifacts`. The caveat and unsupported-metric lines are the caveat re-observation campaign's, against the fixed screen jar recorded in `caveatReObservationCampaign`."
+      "provenance": "Three campaigns, each row against the digests its own campaign records. The `observedRows`, the opt-in mechanism, the advancing counts, and the wall-clock line are the surface campaign's observations against the screen jar recorded in `artifacts`. That both formerly clipped lines wrap rather than truncate is the caveat re-observation campaign's, against the screen jar recorded in `caveatReObservationCampaign`. The unsupported-metrics line as it stands today — six names, `tick-count` among them, and a summary that states no tick figure — is `profilingReObservationCampaign`'s, against the screen jar and native library it hashed before its launch. No row here is attributed to a build that predates the change it reports."
     }
   },
   "commandAndSavedData": {
@@ -592,7 +592,7 @@
     "relaunchVerifiedValue": "f82bdb1c5bf9295cdcdbeb134547ce09254f56c9edb6269378c81eed66d5df39"
   },
   "openGaps": {
-    "profilingTickCounter": "`Profiler::tick` in `crates/ravel-observability/src/profiling.rs` is exercised only by that module's own unit tests and has no caller anywhere in the production graph, so the counter it increments can never leave zero in a real launch. What is fixed is the report, not the measurement: change `lppyxtnz` names `tick-count` among the metrics the payload cannot measure, and the screen drops its tick clause for any metric the payload calls unmeasurable. Re-observed live against the fixed build — the summary reads `2 mods entered` and `tick-count` appears in the unmeasurable line. The gap that stays open is that nothing on the game's tick path marks a tick boundary at M3; wiring one is what would put the clause back, with nothing on the screen to change.",
+    "profilingTickCounter": "`Profiler::tick` in `crates/ravel-observability/src/profiling.rs` is exercised only by that module's own unit tests and has no caller anywhere in the production graph, so the counter it increments can never leave zero in a real launch. What is fixed is the report, not the measurement: change `lppyxtnz` names `tick-count` among the metrics the payload cannot measure, and the screen drops its tick clause for any metric the payload calls unmeasurable. Re-observed live by `profilingReObservationCampaign` against a build hashed before its launch — the summary reads `2 mods entered` and `tick-count` appears in the unmeasurable line. The gap that stays open is that nothing on the game's tick path marks a tick boundary at M3; wiring one is what would put the clause back, with nothing on the screen to change.",
     "profilingCommandCounter": "Both mod rows read `0 cmd`, and that is an accurate measurement rather than a broken counter. Two independent reasons, each sufficient on its own. The four commands the surface campaign ran were `/scoreboard ...`, which is vanilla and unnamespaced: `Inner::command` in `crates/ravel-bootstrap/src/runtime.rs` requires the root literal to parse as a whole `ContentId`, and `ContentId::parse` refuses a literal with no `:`, so no command work is constructed and nothing is charged. That fall-through is deliberate and documented there — a vanilla command passes untouched rather than being guessed at. Separately, neither mod in the composed host claims a command: neither `ConfigurationMod` nor `SavedDataMod` implements `HostMod::register`, so `route_profiled` in `crates/ravel-loader/src/events.rs` returns unclaimed before it reaches the measuring path. The one test mod that does claim commands is not in the composed host. This is materially unlike `profilingTickCounter`: the increment path from the JNI hook entry through `route_profiled` to `Profiler::charge` exists in the production graph and is exercised by the conformance suite. What has never happened is a real client showing the counter above zero, and this record does not claim it has. Closing that gap is a composition change — put the command-claiming test mod in the composed host and type a namespaced root — not a change to what the collectors do per callback, so it leaves what `profiling-overhead.json` measures alone."
   },
   "caveatReObservationCampaign": {
@@ -622,6 +622,7 @@
     "nativeInvocations": 2140156,
     "profilingProperty": true,
     "howProfilingWasTurnedOn": "`-Dravel.profiling=true` in the instance's `JvmArgs`, with `OverrideJavaArgs` set true, because Prism silently ignores `JvmArgs` otherwise. There is no in-game toggle; the screen reports the state and never sets it.",
+    "buildBoundary": "Both digests above were written by change `qovlymtm`, an ancestor of `lppyxtnz`. Every claim in this campaign is therefore a claim about the build `npozznqz` produced and nothing later. Where a later change's effect was published here it has been withdrawn rather than reworded; see `atScaleOne.readingWithdrawn`.",
     "playBeforeReading": "The instance's one pre-existing world was opened and played for roughly two minutes so the report would carry real rows. No world was created and none was removed; the instance still holds exactly one.",
     "guiScalesOffered": "This window (854x480) offers Auto, 1, and 2, and Auto resolves to 2. Both distinct scales were observed; cycling past 2 wraps to Auto, so no larger scale exists here to test.",
     "atDefaultScale": {
@@ -634,12 +635,117 @@
       "scale": "1",
       "caveatRendersInFull": true,
       "unsupportedMetricsLineRendersInFull": true,
-      "linesDrawn": "Twelve, the whole report, re-observed after change `lppyxtnz` on a launch that stayed on the title screen: `2 mods entered`; `Slow above 2500 us. Times are wall-clock, not CPU time.`; `configuration — 510553 ns in 3804 calls (3804 ev, 0 cmd)`; `saved_data — 109520 ns in 3804 calls (3804 ev, 0 cmd)`; `Not measurable in this build: retained-memory, allocated-memory, cpu-time, transferred-bytes, saved-data-footprint, tick-count` split over three lines; the heading; and the accuracy statement split over four. The summary states no tick count and `tick-count` now stands among the metrics this build cannot measure, which is six metrics over the same three wrapped rows the five took. The per-mod figures are lower than the earlier reading of this line because this launch opened no world; they are this launch's numbers, not the earlier campaign's.",
-      "bothLongLinesWhole": "The two lines that were clipped before are the two that now wrap. Every metric name reaches the player, including `retained-memory` and `allocated-memory`, which the clipping used to swallow, and the accuracy statement reads as a sentence from its subject to its full stop."
+      "linesDrawn": "The whole report, with both formerly clipped lines wrapped rather than truncated: the two summary lines, the two per-mod rows, the unsupported-metrics line split over wrapped rows, the heading, and the accuracy statement split over four.",
+      "bothLongLinesWhole": "The two lines that were clipped before are the two that now wrap. Every metric name this build declares unmeasurable reaches the player, including `retained-memory` and `allocated-memory`, which the clipping used to swallow, and the accuracy statement reads as a sentence from its subject to its full stop.",
+      "readingWithdrawn": "An earlier version of this field enumerated twelve lines naming six unmeasurable metrics including `tick-count`, and said the reading was re-observed after change `lppyxtnz`. That was false of this campaign and is withdrawn. `tick-count` enters the unsupported list only in `lppyxtnz`, which changed both `crates/ravel-observability/src/profiling.rs` and the profiling screen, and both artifact digests this campaign records were written before it — so this campaign's build declared five unmeasurable metrics, not six, and no launch of it can have shown the six-metric line. The line count and the per-mod figures published here were a patch landed after the fact rather than a reading, so they are not restated at some other number; nothing in the record now attributes a specific figure to a launch that cannot be shown to have produced it. What this campaign does stand on is `npozznqz`'s effect, which is that both long lines wrap rather than clip, and that is what `caveatRendersInFull` and `unsupportedMetricsLineRendersInFull` above assert. The six-metric line is observed instead by `profilingReObservationCampaign`, against digests taken before its launch."
     },
     "exitRoute": "Save and Quit to Title, then Quit Game; Java exited on its own with no signal.",
     "instanceConfigurationRestoredAndVerifiedByReadBack": true,
     "instanceWorldCountUnchanged": true
+  },
+  "profilingReObservationCampaign": {
+    "purpose": "Observe the profiling report at both GUI scales against a build whose artifacts were hashed before the game started, so that the unsupported-metrics line — six names since change `lppyxtnz`, `tick-count` among them — is bound to a build that provably produced it. This campaign exists because the fifth M3-W8 review round found blocking finding B-1: the reading that reported `lppyxtnz`'s effect sat inside `caveatReObservationCampaign`, whose recorded digests predate that change.",
+    "answers": "M3-W8 review round 5, blocking finding B-1",
+    "launches": 1,
+    "scopeDiscipline": "Only the profiling surface at two GUI scales is claimed, plus the title-menu entry point and the Mods screen passed through to reach it. The world round trip, the refused `dataVersion` load, `current_dir()`, staging, the `-javaagent` attach, the configuration round trip, the command path, and the instance scan were not re-run and keep the provenance they already carried.",
+    "buildHashedBeforeLaunch": true,
+    "buildOrder": "The three artifacts were built from the working tree, copied into an owner-only private directory outside the repository, and hashed there. The digests below are of that private copy. Nothing was rebuilt between the hashing and the launch, no gate ran in that window, and the same three files were re-hashed after the game exited and were unchanged.",
+    "artifactsRetainedPrivately": "The three hashed files were left in that private directory rather than deleted with the raw log and the screenshots. That is a deliberate departure from the earlier campaigns, and it is the point of this one: a digest of a build that no longer exists is what made B-1 unanswerable, because `target/` is rebuilt by every gate run and the launched build was gone before anyone asked which one it was. The files are private and machine-local, so their survival buys another reader no checkability — the ceiling stated at the top of this record still holds — but it does let the operator recompute these two digests on demand, which the earlier campaigns could not offer for any build they ran.",
+    "artifacts": [
+      {
+        "name": "ravel-agent.jar",
+        "sha256": "404740f4c466262f8be4495a29490f043ebb1df98ee4e0710995b51b33810981",
+        "sameAsSurfaceCampaign": true
+      },
+      {
+        "name": "ravel-screen.jar",
+        "sha256": "242d855c7e91fb9d68b3d228683ef59726b691bda972653524ae41a833601729",
+        "sameAsSurfaceCampaign": false
+      },
+      {
+        "name": "libravel_bootstrap.so",
+        "sha256": "b7ac133e1902269dcb4f8781dd23998888d614775a1f99996524c310ac1ded86",
+        "sameAsSurfaceCampaign": false
+      }
+    ],
+    "whatDiffersFromTheSurfaceCampaignBuild": "Two artifacts of the three. The agent jar is byte-identical to the one every other row here was observed against, so the hook inventory and the native boundary are the same 33 targets. The screen jar and the native library are both new: the screen jar carries `npozznqz` and `lppyxtnz`, and the native library carries `lppyxtnz`'s change to `ProfilingReport::unsupported()` along with every other change to the Rust graph that landed since the surface campaign, `srwvwzmovwqv` among them. That is why no earlier campaign's digests could stand in for this reading, and why this campaign records its own rather than claiming sameness.",
+    "bothSidesOfTheFixAreInTheHashedBuild": "The staged native library contains the string `tick-count` and `crates/ravel-observability/src/profiling.rs` lists `Metric::TickCount` as unsupported; the staged screen jar is built from a `RavelProfilingScreen.java` that drops the summary's tick clause for any metric the payload calls unmeasurable. Both halves of `lppyxtnz` are therefore inside the two digests above, which is the thing `caveatReObservationCampaign` could not say.",
+    "nativeStaging": "Prism owns `<instance>/natives`: it builds that directory during launch and removes it when the game exits, so a library staged beforehand is wiped. The library was copied there from the hashed private directory by the instance's `WrapperCommand`, immediately before it exec'd the java command the launcher had built. The directory was absent before the launch and absent again after it, which is the launcher's behaviour rather than a cleanup step.",
+    "howProfilingWasTurnedOn": "`-Dravel.profiling=true` in the instance's `JvmArgs`, with `OverrideJavaArgs` set true, because Prism silently ignores `JvmArgs` otherwise. There is no in-game toggle; the screen reports the state and never sets it.",
+    "titleOnly": true,
+    "noWorldOpened": "No world was created and none was opened. The report's rows come from title-screen hook traffic alone, which is why the per-mod figures are small. The instance's one pre-existing world was not touched and the instance still holds exactly one.",
+    "rewrote": "11 classes and 27 methods",
+    "nativeInvocations": 49077,
+    "shutdownReport": "`[ravel] rewrote 11 classes and 27 methods; 49077 hook invocations reached native code`, in the agent's own shutdown report on the launch's own output stream.",
+    "whyElevenNotFifteen": "The same title-only shape `surfaceCampaign.launchDetail.first.whyElevenNotFifteen` derives: no world was opened, so `RecipeManager`, `Commands`, `ReloadableServerResources`, and `SavedDataStorage` were never loaded, and 15 − 4 = 11 classes and 33 − 6 = 27 methods.",
+    "guiScalesOffered": "This window (854x480) offers Auto, 1, and 2, and Auto resolves to 2. All three settings were visited and both distinct scales were read.",
+    "atDefaultScale": {
+      "scale": "Auto, which resolved to 2",
+      "caveatRendersInFull": true,
+      "linesDrawn": 7,
+      "linesAsRendered": [
+        "2 mods entered",
+        "Slow above 2500 us. Times are wall-clock, not CPU time.",
+        "What these numbers cannot tell apart:",
+        "A mod is charged for host work it calls back into. The window",
+        "is entry to return, so a mod that asks Ravel to resolve a",
+        "registry key is charged for the lookup as well as for its own",
+        "code."
+      ],
+      "whatTheRowBudgetCut": "The two per-mod rows and the unsupported-metrics line. At scale 2 the window has seven rows and the screen spends them in its stated order, keeping the summary, the heading, and the accuracy statement. Nothing drawn is truncated: this is the documented no-scrolling limit, not clipping. That is the same behaviour `caveatReObservationCampaign.atDefaultScale` recorded, now re-observed against a hashed build."
+    },
+    "atScaleOne": {
+      "scale": "1",
+      "caveatRendersInFull": true,
+      "unsupportedMetricsLineRendersInFull": true,
+      "linesDrawn": 12,
+      "linesAsRendered": [
+        "2 mods entered",
+        "Slow above 2500 us. Times are wall-clock, not CPU time.",
+        "configuration — 252450 ns in 2323 calls (2323 ev, 0 cmd)",
+        "saved_data — 109763 ns in 2323 calls (2323 ev, 0 cmd)",
+        "Not measurable in this build: retained-memory,",
+        "allocated-memory, cpu-time, transferred-bytes,",
+        "saved-data-footprint, tick-count",
+        "What these numbers cannot tell apart:",
+        "A mod is charged for host work it calls back into. The window",
+        "is entry to return, so a mod that asks Ravel to resolve a",
+        "registry key is charged for the lookup as well as for its own",
+        "code."
+      ],
+      "unsupportedMetricsObserved": [
+        "retained-memory",
+        "allocated-memory",
+        "cpu-time",
+        "transferred-bytes",
+        "saved-data-footprint",
+        "tick-count"
+      ],
+      "unsupportedMetricCount": 6,
+      "summaryStatesNoTickCount": "The summary line reads `2 mods entered` and nothing else. It states no tick figure, and `tick-count` stands in the unmeasurable list instead, which is `lppyxtnz`'s whole effect on this surface and is what this launch was run to observe.",
+      "bothLongLinesWhole": "Every one of the six metric names reaches the player, `retained-memory` and `allocated-memory` included, and the accuracy statement reads as a sentence from its subject to its full stop. The two lines that used to clip are the two that wrap; the six names take three wrapped rows.",
+      "readTwiceWithinOneOpening": "The report was read again eight seconds later without leaving the screen and both per-mod rows were identical, so the payload is a snapshot taken when the screen opens rather than a live-updating widget.",
+      "readAgainAfterReopening": "Closing the screen and reopening it from the title menu redrew the same twelve lines with the rows advanced from 2323 to 3445 calls and from 252450 to 375684 ns for `configuration` and 109763 to 159415 ns for `saved_data`. That is what tells a live report apart from a rendered constant, and it is the sense in which the counts advance: across openings, not within one."
+    },
+    "guiScaleRestored": "The scale was cycled 1 → 2 → Auto and left on Auto, the value the instance's options held before the launch, read back on the Video Settings screen.",
+    "exitRoute": "Quit Game from the title menu; Java exited on its own with no signal. No world existed to quit from and none was created.",
+    "launcherNote": "Prism is single-instance and none was running when this launch started. It was launched with the instance id on the command line and the account taken from its own state, which is not recorded here.",
+    "instanceConfigurationRestoredAndVerifiedByReadBack": true,
+    "instanceConfigurationRestoredDetail": "`OverrideJavaArgs`, `JvmArgs`, `WrapperCommand`, `OverrideCommands`, and `ShowConsole` were captured before the launch and written back afterwards from that capture, then read back and compared field by field. The launcher rewrites its own instance file on exit, so the read-back is what establishes the restore rather than the write.",
+    "instanceWorldCountUnchanged": true,
+    "instanceWorldCount": 1,
+    "whatThisDoesNotClaim": "It does not claim the surface campaign's rows, the world round trip, or that M3-W8 closes. It answers one blocking finding by binding one reading to one hashed build. `review.result` stays `fail` and the blocking risk stays in place, because whether M3 closes is a sixth independent review's decision and not this campaign's."
+  },
+  "profilingReObservationCampaignPrivateEvidenceDigests": {
+    "note": "The raw game output stream and the screenshots were held in an owner-only directory outside the repository and are not tracked. The redacted log is the sanitized form of the same stream, with the home directory prefix and the player name replaced; both digests are recorded so a later reader can tell what was hashed. No launcher path, instance path, account material, or full launch command is recorded anywhere in this file.",
+    "launchLogRaw": "9c649a0222cc3dbd0e0e358614ad824f7b72d94df2136841658dd53350129321",
+    "launchLogRedacted": "0aa30e76d067390348f8394fcf9f896f5a448ac8f5366daba1c2f7d3edcd1f4e",
+    "titleWithRavelMods": "d63ebeb8ae9a368ec4d47fba96a1acb435a3ab8a346a277c96e4e812c8be88a2",
+    "modsScreenAtDefaultScale": "cdc29b7b789bdacecea914e2c87d65107d3dbf90de720c12badc744f84ea2b1a",
+    "profilingAtDefaultScale": "c31b68b3f7ac997f538be6c157985236085cdfddb74165a3139f17cf4eedc241",
+    "modsScreenAtScaleOne": "a4a85bbed278e7170a40302bb1de15da9ba139a8b5885139b7327d179197121f",
+    "profilingAtScaleOne": "8fa52cb83dac3b9e6949917d7202763b9ba384cc0f60ee87e4f8632581e84113",
+    "profilingAtScaleOneReopened": "adb0ab5e7dc095dcdbbac707bc8d553696df4d573ba0bcf9d8263781a93497da"
   },
   "caveatReObservationCampaignPrivateEvidenceDigests": {
     "note": "Raw game stdout and screenshots were held outside the repository and deleted when the campaign finished. The redacted log is the sanitized form of the same stream, with filesystem paths, the player name, account and world identifiers, and player coordinates removed; both digests are recorded so a later reader can tell what was hashed.",

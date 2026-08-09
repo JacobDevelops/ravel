@@ -176,23 +176,28 @@ is already an abandoned commit rather than one that might become abandoned, and
 `overhead.perTick`'s derivation could not be followed from the percentiles printed
 beside it until the record stated its own rounding.
 
-The fifth round found one blocking defect and it is not answered. The caveat
-re-observation campaign in `linux-process-matrix.json` records the reading that
-proves the profiling surface renders whole — six unmeasurable metric names,
-including `tick-count` — against screen-jar and native-library digests that were
-written into the record before the change whose effect that reading reports. So
-the campaign's `launches: 1` and its "exactly one artifact" claim cannot both hold,
-no digest names the build the reading actually came from, and the M3-W7 profiling
-row's provenance breaks the rule the same record states about re-observation. The
-same round raised three must-fix findings — a repealed reviewer note left standing,
-a rewrite count that is false of one of three surface launches, and a gate-pinned
-reason in `crates/ravel-observability/src/profiling.rs` that M3-W4's closure
-contradicted — five moderate ones, including that there is no M3-specific manifest
-closure rule at all, and six minor ones. None of them is answered here.
+The fifth round found one blocking defect, B-1, and it is answered by
+re-observation. The caveat re-observation campaign in `linux-process-matrix.json`
+recorded the reading that proves the profiling surface renders whole — six
+unmeasurable metric names, including `tick-count` — against screen-jar and
+native-library digests written into the record before the change whose effect that
+reading reports. So its `launches: 1` and its "exactly one artifact" claim could
+not both hold, no digest named the build the reading came from, and the M3-W7
+profiling row's provenance broke the rule the same record states about
+re-observation. The answer is a fifth campaign rather than a reworded fourth: the
+screen jar and the native library were built, staged privately, and hashed *before*
+the game started, and the six-name line was read at both GUI scales against those
+two digests. The unattributable reading is withdrawn where it stood. Two of the
+same round's must-fix findings are fixed in the same pass — the repealed reviewer
+note in `matrixNotCarriedForward` is rewritten, and the rewrite count now says
+which of the three surface launches reported which pair. What is not answered is
+the third must-fix finding, the five moderate ones including the absence of any
+M3-specific manifest closure rule, and the six minor ones.
 
 M3-W8 stays open. Every implementation gate is closed, but the review that has to
-pass is an *independent* one, every round so far has returned FAIL, and the fifth
-round's blocking finding stands.
+pass is an *independent* one, and every round so far has returned FAIL. Answering
+B-1 is not closure: a sixth independent round decides that, and the fifth round's
+remaining findings are still open.
 
 `pack-compile.json` comes from `devenv tasks run ravel:measure-pack-compile` and
 is the measurement ADG-2 named as deciding its open mechanism: whether an
@@ -266,10 +271,10 @@ the rule in the record itself, and the measurement writes it there.
 ## `linux-process-matrix.json`
 
 It comes from launches rather than from a task, because the thing it measures is
-a launcher starting a game and no task can stand in for that. It now holds four
+a launcher starting a game and no task can stand in for that. It now holds five
 launch campaigns — the earlier 31-target matrix, the world round trip, the surface
-campaign, and the caveat re-observation — and the most useful thing in it is why
-the second could not simply extend the first.
+campaign, the caveat re-observation, and the profiling re-observation — and the
+most useful thing in it is why the second could not simply extend the first.
 
 **The earlier matrix could not be carried forward.** Two ADG-7 world persistence
 seams entered the reviewed inventory — `world.open-persistence` on
@@ -369,19 +374,39 @@ first — and then re-observed in the real client against the fixed jar.
 
 That re-observation is the fourth campaign, the `caveatReObservationCampaign`
 section of the record, and it is deliberately narrow: one launch, claiming the
-profiling surface and nothing else. The agent jar and the native library are byte-identical to the ones
-every other row was observed against, so only the class that drew the clipped
-lines changed. With profiling on and the instance's existing world played for a
-couple of minutes first, the whole report renders: at GUI scale 1 all twelve
-lines, including both mod rows with real call counts and nanosecond totals, the
-six unmeasurable metric names in full — the five above plus `tick-count`, which
-change `lppyxtnz` added and which the same record re-observed over the same three
-wrapped rows the five took — and the accuracy statement whole from its
-subject to its full stop. At the default scale the window has seven rows rather
-than eighteen, and the screen spends them as designed — summary, heading,
-statement — dropping the table and the metric names rather than truncating
-anything. Nothing on the screen is clipped at either scale, and this window
-offers no third one. The record's result is therefore `pass`.
+profiling surface and nothing else. The agent jar and the native library are
+byte-identical to the ones every other row was observed against, so only the class
+that drew the clipped lines changed. With profiling on and the instance's existing
+world played for a couple of minutes first, both formerly clipped lines wrap
+instead of truncating, at GUI scale 1 and at the default scale alike.
+
+**The metric list then changed again, and that needed its own launch.** Change
+`lppyxtnz` added `tick-count` to the unmeasurable five, and it changed both the
+Rust that builds the list and the screen that draws it. An earlier version of this
+record reported that six-name line inside the caveat campaign, whose two recorded
+digests were written before `lppyxtnz` — so the campaign was made to publish an
+effect its own build could not have produced. The fifth review round found that
+and it is what the fifth campaign answers. `profilingReObservationCampaign` builds
+the screen jar and the native library, copies both into a private directory,
+hashes them there, and only then launches; the claim it records is bound to those
+two digests and to nothing else. The withdrawn reading is marked withdrawn where it
+stood rather than restated at some other number, because nobody can now say what
+that build drew.
+
+What the fifth campaign read, on one title-only launch, is the whole report at
+both scales. At GUI scale 1, twelve lines: the summary `2 mods entered` with no
+tick figure in it, the wall-clock line, both mod rows with real call counts and
+nanosecond totals, all six unmeasurable metric names over three wrapped rows —
+`retained-memory`, `allocated-memory`, `cpu-time`, `transferred-bytes`,
+`saved-data-footprint`, `tick-count` — the heading, and the accuracy statement
+whole from its subject to its full stop over four. At the default scale the window
+has seven rows rather than eighteen, and the screen spends them as designed —
+summary, wall-clock line, heading, statement — dropping the table and the metric
+names rather than truncating anything. Nothing is clipped at either scale, and
+this window offers no third one. Reopening the screen redrew the same twelve lines
+with the counts advanced, which is what tells a live report from a rendered
+constant; within a single opening the payload is a snapshot and does not move. The
+record's result is therefore `pass`.
 
 The `M3-W7` gate in [`manifest.json`](manifest.json) is closed on that record
 together with the world round trip M3-W4 turns on. Two counters stay named as

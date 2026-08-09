@@ -402,17 +402,20 @@ fn the_mod_list_marks_a_parked_package_as_installed_and_not_loading_here() {
         })
         .collect();
     let plan = resolve(&manifests, side).expect("a legal package set");
-    let composed: Vec<(LifecycleEntry, Box<dyn Mod>)> = admitted(&plan, &manifests)
-        .into_iter()
-        .map(|entry| {
-            let host: Box<dyn Mod> = if entry.mod_id == *ClientOnlyMod::declared_id() {
-                Box::new(ClientOnlyMod::new(side, &log))
-            } else {
-                Box::new(NoopMod::new())
-            };
-            (entry, host)
-        })
-        .collect();
+    let running = host();
+    let composed: Vec<(LifecycleEntry, Box<dyn Mod>)> =
+        admitted(&plan, &manifests, &running.ravel, &running.minecraft)
+            .expect("the fixture packages declare the version this repository pins")
+            .into_iter()
+            .map(|entry| {
+                let host: Box<dyn Mod> = if entry.mod_id == *ClientOnlyMod::declared_id() {
+                    Box::new(ClientOnlyMod::new(side, &log))
+                } else {
+                    Box::new(NoopMod::new())
+                };
+                (entry, host)
+            })
+            .collect();
     let (machine, _) = drive(side, composed).expect("a parked package does not fail the set");
 
     let surface = ModSurface::of(&machine);

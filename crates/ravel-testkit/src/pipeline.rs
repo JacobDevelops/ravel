@@ -178,7 +178,11 @@ pub fn run(
 ) -> Result<PipelineRun, PipelineError> {
     let manifests = validate(packages, host)?;
     let plan = resolve(&manifests, side).map_err(PipelineError::Resolution)?;
-    let entries = admitted(&plan, &manifests);
+    // `admitted` runs the same two compatibility checks `validate` already ran, and
+    // deliberately so: it is the production boundary, and a harness that skipped it
+    // would be the reason the check has no caller that runs in a game.
+    let entries = admitted(&plan, &manifests, &host.ravel, &host.minecraft)
+        .map_err(PipelineError::Compatibility)?;
     refuse_mods_outside_the_set(&entries, mods)?;
 
     let mut machine = LifecycleMachine::new(side, entries).map_err(PipelineError::Lifecycle)?;

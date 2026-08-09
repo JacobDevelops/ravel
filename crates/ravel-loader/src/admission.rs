@@ -1,5 +1,5 @@
-use ravel_core::ModId;
-use ravel_package::PackageManifest;
+use ravel_core::{ModId, Version};
+use ravel_package::{CompatibilityError, PackageManifest};
 use ravel_resolve::LoadPlan;
 
 use crate::lifecycle::{LifecycleEntry, Requirement};
@@ -34,8 +34,47 @@ use crate::lifecycle::{LifecycleEntry, Requirement};
 /// A manifest the plan names but the set does not contain is skipped, because a
 /// plan is only ever built from a package set and an identity in one and not the
 /// other is not a state this can reach.
-#[must_use]
-pub fn admitted(plan: &LoadPlan, manifests: &[PackageManifest]) -> Vec<LifecycleEntry> {
+///
+/// # Which versions this runs on
+///
+/// The running Minecraft version arrives as an argument and is never read here. A
+/// general crate that named one would be welded to it, which is the boundary
+/// `ravel-verify-scaffold` enforces and `docs/architecture/dependency-rules.md`
+/// records; the caller holds the shared adapter's `minecraft_version()` and this
+/// function holds the rule. So the same code admits a set on a second version, and
+/// what changes between the two is data.
+///
+/// M4-W5's review found `Compatibility::check_minecraft` with no caller outside a
+/// test harness: a mod's declared game version was enforced by `ravel-testkit` and
+/// by nothing else. The rule now lives in production code instead — this is the
+/// one production function that turns manifests into lifecycle entries — and it
+/// still has no in-game caller. Its callers are `ravel-testkit`'s pipeline and
+/// the conformance suite; `ravel-composed-host`, the closest thing here to a
+/// launched host, names this function in its module docs and does not call it,
+/// because it discovers no package and validates none. So a launched game does
+/// not enforce this yet, and `crates/ravel-composed-host/src/lib.rs` is where
+/// that gap is tracked. The harness still checks before it resolves, because
+/// resolving a set that is not admissible reads declarations nothing has vouched
+/// for, and both call the same function so neither can answer differently.
+///
+/// # Errors
+///
+/// Returns the [`CompatibilityError`] of the first manifest, in load order, that
+/// declares a Ravel range the running version is outside of or a Minecraft version
+/// set the running one is not in. A set is admitted whole or not at all: a parked
+/// mod is still installed, so admitting the rest would leave the player running a
+/// set one member of which was built for another game.
+pub fn admitted(
+    plan: &LoadPlan,
+    manifests: &[PackageManifest],
+    ravel: &Version,
+    minecraft: &str,
+) -> Result<Vec<LifecycleEntry>, CompatibilityError> {
+    for manifest in manifests {
+        manifest.compatibility.check_ravel(ravel)?;
+        manifest.compatibility.check_minecraft(minecraft)?;
+    }
+
     let mut entries: Vec<LifecycleEntry> = plan
         .order()
         .iter()
@@ -50,7 +89,7 @@ pub fn admitted(plan: &LoadPlan, manifests: &[PackageManifest]) -> Vec<Lifecycle
     parked.sort_by(|left, right| left.id.cmp(&right.id));
     entries.extend(parked.into_iter().map(entry));
 
-    entries
+    Ok(entries)
 }
 
 fn find<'a>(manifests: &'a [PackageManifest], id: &ModId) -> Option<&'a PackageManifest> {
@@ -75,11 +114,19 @@ fn entry(manifest: &PackageManifest) -> LifecycleEntry {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{Side, SideSet};
-    use ravel_package::PackageManifest;
+    use ravel_core::{Side, SideSet, Version};
+    use ravel_package::{CompatibilityError, PackageManifest};
     use ravel_resolve::resolve;
 
     use super::admitted;
+
+    /// The game every manifest below declares, and nothing a real version names.
+    const GAME: &str = "test-version";
+
+    /// The running Ravel version the declared range admits.
+    fn ravel() -> Version {
+        Version::new(0, 0, 0)
+    }
 
     /// A manifest declaring `sides`, written as the document a package ships.
     ///
@@ -87,12 +134,17 @@ mod tests {
     /// about a manifest: the `sides` list travels the same route an author's
     /// does, through the schema and into the parsed type.
     fn manifest(id: &str, sides: &[&str]) -> PackageManifest {
+        PackageManifest::parse(&manifest_document(id, sides)).expect("a legal manifest")
+    }
+
+    /// The document itself, so a test can narrow one field before parsing it.
+    fn manifest_document(id: &str, sides: &[&str]) -> String {
         let sides = sides
             .iter()
             .map(|side| format!("\"{side}\""))
             .collect::<Vec<_>>()
             .join(", ");
-        let document = format!(
+        format!(
             r#"{{
               "schemaVersion": 1,
               "id": "{id}",
@@ -113,8 +165,7 @@ mod tests {
                 "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
               }}
             }}"#
-        );
-        PackageManifest::parse(&document).expect("a legal manifest")
+        )
     }
 
     fn sides(entries: &[super::LifecycleEntry], id: &str) -> SideSet {
@@ -136,7 +187,7 @@ mod tests {
             ),
         ];
         let plan = resolve(&manifests, Side::Client).expect("both load on the client");
-        let entries = admitted(&plan, &manifests);
+        let entries = admitted(&plan, &manifests, &ravel(), GAME).expect("a compatible set");
 
         assert_eq!(
             sides(&entries, "client_side"),
@@ -165,7 +216,7 @@ mod tests {
             "the resolver drops the client-only one"
         );
 
-        let entries = admitted(&plan, &manifests);
+        let entries = admitted(&plan, &manifests, &ravel(), GAME).expect("a compatible set");
         assert_eq!(
             entries
                 .iter()
@@ -190,10 +241,69 @@ mod tests {
         let reversed = [forward[2].clone(), forward[1].clone(), forward[0].clone()];
 
         for side in Side::ALL {
-            let first = admitted(&resolve(&forward, side).expect("a legal set"), &forward);
-            let second = admitted(&resolve(&reversed, side).expect("a legal set"), &reversed);
+            let first = admitted(
+                &resolve(&forward, side).expect("a legal set"),
+                &forward,
+                &ravel(),
+                GAME,
+            )
+            .expect("a compatible set");
+            let second = admitted(
+                &resolve(&reversed, side).expect("a legal set"),
+                &reversed,
+                &ravel(),
+                GAME,
+            )
+            .expect("a compatible set");
             assert_eq!(first, second, "{}", side.name());
             assert_eq!(first.len(), 3, "every installed package is admitted");
         }
+    }
+
+    /// The gap M4-W5's review found: nothing that runs enforced a declared game.
+    ///
+    /// The running version is a string this test chooses, which is the point — a
+    /// second version changes what is passed in and nothing about the rule.
+    #[test]
+    fn a_mod_built_for_another_game_version_is_refused_and_names_both() {
+        let manifests = [manifest("a_mod", &["client"])];
+        let plan = resolve(&manifests, Side::Client).expect("it loads on the client");
+
+        let refused = admitted(&plan, &manifests, &ravel(), "another-version")
+            .expect_err("the manifest declares a different game");
+
+        let CompatibilityError::Minecraft { declared, running } = refused else {
+            panic!("the refusal should be about the game: {refused:?}");
+        };
+        assert_eq!(declared, [GAME.to_owned()]);
+        assert_eq!(running, "another-version");
+    }
+
+    /// The same rule for Ravel's own version, so one boundary answers both.
+    #[test]
+    fn a_mod_built_for_another_ravel_version_is_refused_before_any_entry_exists() {
+        let manifests = [manifest("a_mod", &["client"])];
+        let plan = resolve(&manifests, Side::Client).expect("it loads on the client");
+        // The declared range is `>=0.0.0`, which no version is below, so the
+        // refusal has to come from a range this manifest could fail. Declaring the
+        // narrower one here keeps the fixture honest about which half is tested.
+        let narrow = PackageManifest::parse(
+            &manifest_document("b_mod", &["client"]).replace(">=0.0.0", ">=9.0.0"),
+        )
+        .expect("a legal manifest");
+        let narrowed = [narrow];
+        let narrowed_plan = resolve(&narrowed, Side::Client).expect("it loads on the client");
+
+        assert!(
+            admitted(&plan, &manifests, &ravel(), GAME).is_ok(),
+            "the wide range admits the running version"
+        );
+        let refused = admitted(&narrowed_plan, &narrowed, &ravel(), GAME)
+            .expect_err("the manifest declares a Ravel version that is not running");
+
+        assert!(
+            matches!(refused, CompatibilityError::Ravel { .. }),
+            "{refused:?}"
+        );
     }
 }

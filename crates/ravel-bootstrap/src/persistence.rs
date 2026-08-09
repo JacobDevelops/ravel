@@ -507,8 +507,8 @@ impl From<SavedDataError> for OpenOutcome {
 mod tests {
     use std::collections::BTreeSet;
     use std::num::NonZero;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::sync::{Arc, Mutex};
 
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
     use ravel_host_api::{HostError, HostMod};
@@ -526,6 +526,7 @@ mod tests {
     use crate::runtime::LoaderRuntime;
 
     const OWNER: &str = "saved_data";
+    const OTHER_OWNER: &str = "other_saved_data";
     const FIRST: &str = "worlds/first";
     const SECOND: &str = "worlds/second";
 
@@ -559,6 +560,24 @@ mod tests {
     struct Held {
         visits: AtomicU32,
         refuses_production: AtomicBool,
+        /// The plan the last open handed this mod, which is otherwise unobservable.
+        ///
+        /// A mod that migrates reads `SavedDataPlan::steps`, so the plan is part
+        /// of what the crossing delivers and not a detail of it. Version
+        /// refusals happen inside `SavedDataAggregate::open`, so a crossing that
+        /// built every plan from `None` would refuse nothing and migrate nothing.
+        opened_with: Mutex<Option<SavedDataPlan>>,
+    }
+
+    impl Held {
+        /// The plan the last open delivered, or a panic saying none arrived.
+        fn opened_with(&self) -> SavedDataPlan {
+            self.opened_with
+                .lock()
+                .expect("no test poisons this lock")
+                .clone()
+                .expect("this mod was never opened")
+        }
     }
 
     struct Owning {
@@ -585,12 +604,17 @@ mod tests {
         fn open_saved_data(
             &mut self,
             envelope: Option<&SavedDataEnvelope>,
-            _plan: &SavedDataPlan,
+            plan: &SavedDataPlan,
         ) -> Result<(), HostError> {
             let visits = envelope.map_or(0, |stored| {
                 u32::try_from(stored.payload()["visits"].as_u64().unwrap_or(0)).unwrap_or(u32::MAX)
             });
             self.held.visits.store(visits, Ordering::SeqCst);
+            *self
+                .held
+                .opened_with
+                .lock()
+                .expect("no test poisons this lock") = Some(plan.clone());
             Ok(())
         }
 
@@ -644,19 +668,50 @@ mod tests {
 
     /// The same runtime, carrying whatever the pipeline before it refused.
     fn running_with(report: ravel_observability::PreWorldReport) -> (LoaderRuntime, Arc<Held>) {
-        let held = Arc::new(Held::default());
-        let host = Owning {
-            id: id(OWNER),
-            held: Arc::clone(&held),
-        };
-        let entry = LifecycleEntry {
-            mod_id: id(OWNER),
-            sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
-            requirement: Requirement::Required,
-            saved_data_versions: BTreeSet::from([version(1), version(2)]),
-        };
-        let mut machine =
-            LifecycleMachine::new(Side::Client, vec![entry]).expect("one mod is a legal plan");
+        let (runtime, mut held) = owners_running(&[OWNER], report);
+        (runtime, held.remove(0))
+    }
+
+    /// A runtime holding two running mods that each own their own saved data.
+    ///
+    /// One owner cannot express a delivery that crosses owners: a lookup for the
+    /// wrong identity misses and degenerates into the absent case, which is
+    /// already covered. Two owners with distinct stored state make handing one
+    /// mod another's envelope a distinguishable failure.
+    fn running_pair() -> (LoaderRuntime, Arc<Held>, Arc<Held>) {
+        let (runtime, mut held) =
+            owners_running(&[OWNER, OTHER_OWNER], crate::runtime::pre_world_report());
+        let second = held.remove(1);
+        (runtime, held.remove(0), second)
+    }
+
+    /// A running runtime whose mods are exactly `owners`, in that order.
+    fn owners_running(
+        owners: &[&str],
+        report: ravel_observability::PreWorldReport,
+    ) -> (LoaderRuntime, Vec<Arc<Held>>) {
+        let held: Vec<Arc<Held>> = owners.iter().map(|_| Arc::new(Held::default())).collect();
+        let hosts: Vec<Box<dyn HostMod>> = owners
+            .iter()
+            .zip(&held)
+            .map(|(owner, held)| {
+                Box::new(Owning {
+                    id: id(owner),
+                    held: Arc::clone(held),
+                }) as Box<dyn HostMod>
+            })
+            .collect();
+        let entries: Vec<LifecycleEntry> = owners
+            .iter()
+            .map(|owner| LifecycleEntry {
+                mod_id: id(owner),
+                sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+                requirement: Requirement::Required,
+                saved_data_versions: BTreeSet::from([version(1), version(2)]),
+            })
+            .collect();
+        let mut machine = LifecycleMachine::new(Side::Client, entries)
+            .expect("independent mods are a legal plan");
         for state in [
             LifecycleState::Validated,
             LifecycleState::Resolved,
@@ -668,12 +723,7 @@ mod tests {
             machine.advance_all(state).expect("a legal step");
         }
         (
-            LoaderRuntime::profiling(
-                machine,
-                vec![Box::new(host)],
-                ravel_observability::Profiler::off(),
-                report,
-            ),
+            LoaderRuntime::profiling(machine, hosts, ravel_observability::Profiler::off(), report),
             held,
         )
     }
@@ -688,16 +738,24 @@ mod tests {
 
     /// What `bytes` records for [`OWNER`], through the same admission a world uses.
     fn visits(bytes: &[u8]) -> u64 {
-        let declarations = [
-            SavedDataDeclaration::new(id(OWNER), [version(1), version(2)]).expect("two versions"),
-        ];
+        visits_for(bytes, &[OWNER], OWNER)
+    }
+
+    /// The same, for one `owner` of an aggregate whose owners are `owners`.
+    fn visits_for(bytes: &[u8], owners: &[&str], owner: &str) -> u64 {
+        let declarations: Vec<SavedDataDeclaration> = owners
+            .iter()
+            .map(|name| {
+                SavedDataDeclaration::new(id(name), [version(1), version(2)]).expect("two versions")
+            })
+            .collect();
         SavedDataAggregate::open(
             Some(bytes),
             &declarations,
             &std::collections::BTreeMap::new(),
         )
         .expect("a produced aggregate is admissible")
-        .envelope(&id(OWNER))
+        .envelope(&id(owner))
         .expect("the owner is in the aggregate")
         .payload()["visits"]
             .as_u64()
@@ -706,14 +764,26 @@ mod tests {
 
     /// The bytes of a world whose one envelope records `count` visits.
     fn stored_visits(count: u32) -> Vec<u8> {
+        stored_at(version(2), count)
+    }
+
+    /// The same, written by a build whose current version was `at`.
+    fn stored_at(at: SavedDataVersion, count: u32) -> Vec<u8> {
+        stored_owning(&[(OWNER, at, count)])
+    }
+
+    /// The bytes of a world holding one envelope per entry.
+    fn stored_owning(entries: &[(&str, SavedDataVersion, u32)]) -> Vec<u8> {
         let mut aggregate = SavedDataAggregate::fresh();
-        aggregate.replace(SavedDataEnvelope::new(
-            id(OWNER),
-            version(2),
-            Vec::new(),
-            None,
-            json!({ "visits": count }),
-        ));
+        for (owner, at, count) in entries {
+            aggregate.replace(SavedDataEnvelope::new(
+                id(owner),
+                *at,
+                Vec::new(),
+                None,
+                json!({ "visits": count }),
+            ));
+        }
         aggregate.to_bytes().expect("bounded")
     }
 
@@ -737,6 +807,89 @@ mod tests {
             5,
             "the world's stored state never reached the mod that owns it"
         );
+    }
+
+    /// The plan half of the delivery, which the envelope cannot stand in for.
+    ///
+    /// A mod migrates by reading `SavedDataPlan::steps`, so an open that hands
+    /// over the right envelope with a plan built from `None` tells a mod its data
+    /// is already current. Nothing refuses that: the version checks all live in
+    /// `SavedDataAggregate::open`, which has already run by then. So an old
+    /// world's data would arrive unmigrated and be written back as if it were
+    /// current, which is the data-loss shape this asserts against.
+    #[test]
+    fn a_world_written_at_an_older_version_hands_the_mod_the_steps_to_reach_current() {
+        let (runtime, held) = running();
+
+        runtime
+            .stage_world(
+                WorldIdentity::of(FIRST),
+                Some(&stored_at(version(1), 5)),
+                false,
+            )
+            .expect("a version this build declares a migration for opens its world");
+
+        let plan = held.opened_with();
+        assert_eq!(plan.owner(), &id(OWNER));
+        assert_eq!(
+            plan.steps(),
+            [version(2)],
+            "the mod was told a world written at version 1 needed no migration"
+        );
+        assert!(!plan.is_current());
+
+        // The other polarity: a world already at the current version really does
+        // get an empty plan, so the assertion above is the stored version's
+        // doing and not something every plan satisfies.
+        let (current, current_held) = running();
+        current
+            .stage_world(
+                WorldIdentity::of(FIRST),
+                Some(&stored_at(version(2), 5)),
+                false,
+            )
+            .expect("a current world opens");
+        assert!(current_held.opened_with().is_current());
+    }
+
+    /// Two owners in one world, so a crossed delivery is expressible.
+    ///
+    /// With a single saved-data owner, handing a mod the wrong envelope is a
+    /// lookup that misses, and a miss is the absent case some other test already
+    /// covers. Two owners with different stored state make the wrong envelope
+    /// arrive as another mod's payload, which is the failure this names.
+    #[test]
+    fn each_owner_in_one_world_receives_its_own_envelope_and_no_other() {
+        let owners = [OWNER, OTHER_OWNER];
+        let stored = stored_owning(&[(OWNER, version(2), 5), (OTHER_OWNER, version(1), 9)]);
+
+        let (runtime, first, second) = running_pair();
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), Some(&stored), false)
+            .expect("a world holding both owners' data opens");
+
+        assert_eq!(
+            first.visits.load(Ordering::SeqCst),
+            5,
+            "`{OWNER}` did not receive its own state"
+        );
+        assert_eq!(
+            second.visits.load(Ordering::SeqCst),
+            9,
+            "`{OTHER_OWNER}` did not receive its own state"
+        );
+        // The plan is addressed the same way, and the two owners stored
+        // different versions, so a crossed plan is visible in its steps too.
+        assert_eq!(first.opened_with().owner(), &id(OWNER));
+        assert_eq!(second.opened_with().owner(), &id(OTHER_OWNER));
+        assert!(first.opened_with().is_current());
+        assert_eq!(second.opened_with().steps(), [version(2)]);
+
+        // And the save side keeps them apart, so the two envelopes are not one
+        // value that happened to be read twice.
+        let written = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+        assert_eq!(visits_for(&written, &owners, OWNER), 5);
+        assert_eq!(visits_for(&written, &owners, OTHER_OWNER), 9);
     }
 
     /// Open, save, open again, through the production pair both times.

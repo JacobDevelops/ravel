@@ -26,9 +26,11 @@
 //! delivery: it restates that sequence rather than calling it, so a
 //! `stage_world` that stopped handing the envelope over would leave every test
 //! in this file green. `ravel-bootstrap`'s
-//! `a_stored_aggregate_reaches_the_mod_that_owns_it` and
-//! `a_world_reopened_from_what_its_save_emitted_holds_the_same_state` are what
-//! constrain that, for the same reason Java is out of reach here: the crossing
+//! `a_stored_aggregate_reaches_the_mod_that_owns_it`,
+//! `a_world_reopened_from_what_its_save_emitted_holds_the_same_state` and — for
+//! the direction where a mod refuses what it was handed —
+//! `a_mod_refusing_its_stored_state_withholds_the_world_and_stages_nothing` are
+//! what constrain that, for the same reason Java is out of reach here: the crossing
 //! and the identity-keyed staging around it are `ravel-bootstrap`'s, which no
 //! maintained crate may depend on, so their own tests own that half.
 //!

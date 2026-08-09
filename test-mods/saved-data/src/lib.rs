@@ -456,6 +456,13 @@ mod tests {
     /// envelope that disagree would migrate a world by the wrong number of steps
     /// and write the result back as current. This mod resolves the plan again from
     /// what it was actually handed and refuses when the two differ.
+    ///
+    /// Unreachable from the production crossing for the same reason as the
+    /// refusal above, and defensive in the same way: `stage_world` builds the plan
+    /// from the very envelope it then delivers, so this branch guards a host that
+    /// paired them wrongly rather than a world that presented a disagreeing plan.
+    /// What kills that host-side defect is `ravel-bootstrap`'s own suite, where
+    /// building every plan from `None` fails a named test.
     #[test]
     fn a_plan_that_disagrees_with_the_envelope_beside_it_refuses_delivery() {
         let mut saved = SavedDataMod::new();

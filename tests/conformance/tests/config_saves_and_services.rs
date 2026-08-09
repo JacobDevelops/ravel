@@ -120,7 +120,7 @@ fn a_world_two_versions_behind_reaches_the_current_shape_through_the_declared_ch
             .expect("the owner is still in the aggregate")
             .data_version(),
         stock.declaration().current(),
-        "the migrated aggregate still reports the version the world was written at"
+        "the aggregate a caller saves from is current too"
     );
 }
 
@@ -134,7 +134,10 @@ fn the_shipped_chain_covers_every_version_the_shipped_declaration_admits() {
         .chain()
         .covers(&stock.declaration())
         .expect("every declared version has a step into it");
-    assert_eq!(stock.declaration().versions().count(), 3);
+    assert!(
+        stock.declaration().versions().count() > 2,
+        "a chain worth testing is longer than one hop"
+    );
 }
 
 #[test]

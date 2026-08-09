@@ -1,8 +1,12 @@
 # Stateful mod example
 
-A Ravel mod with all three kinds of state a mod can have: settings a player or a
-pack chooses, versioned world data that an older save migrates into, and a
-service other mods may call.
+A Ravel mod with the kinds of state that outlive a single call: settings a player
+or a pack chooses, versioned world data that an older save migrates into, and a
+service other mods may call. It is not every kind a mod can hold — a client-only
+value and a packet's contract are state too, and `test-mods/client-only` and
+`test-mods/networking` are where those live. The table below is the list; a
+sentence counting it would be wrong the next time the list grew, which is how the
+sentence this one replaced went stale.
 
 `examples/minimal-mod` is the smallest complete mod. Read that one first; this
 one is what to read when you need to remember something.
@@ -13,7 +17,7 @@ one is what to read when you need to remember something.
 | World data | a version list, a `MigrationChain`, `Mod::open_saved_data` and `Mod::save_saved_data` | `VERSIONS`, `Journal::chain` |
 | A service | a `ServiceDeclaration` and `Mod::answer_service` | `entries_service`, `answer_service` |
 
-## The three rules worth taking from it
+## The rules worth taking from it
 
 **A setting is a document, not a screen.** ADG-6 declares configuration in data
 and draws every Ravel-owned screen in Java, so an author writes JSON and reads

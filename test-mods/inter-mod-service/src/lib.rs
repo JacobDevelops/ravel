@@ -175,7 +175,7 @@ impl StockMod {
             Self::declared_id().clone(),
             STOCK_VERSIONS.into_iter().map(version),
         )
-        .expect("this mod declares three versions")
+        .expect("`STOCK_VERSIONS` is a non-empty list of non-zero versions")
     }
 
     /// Returns the step into every version above the oldest.

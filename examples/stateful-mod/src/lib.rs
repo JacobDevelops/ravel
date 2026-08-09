@@ -151,7 +151,7 @@ impl Journal {
             Self::declared_id().clone(),
             VERSIONS.into_iter().map(version),
         )
-        .expect("this mod declares two versions")
+        .expect("`VERSIONS` is a non-empty list of non-zero versions")
     }
 
     /// Returns the step into every version above the oldest.
@@ -333,7 +333,7 @@ mod tests {
             .expect("every declared version has a step into it");
         assert_eq!(
             journal.declaration().current(),
-            version(*VERSIONS.last().expect("two versions"))
+            version(*VERSIONS.last().expect("`VERSIONS` is not empty"))
         );
     }
 

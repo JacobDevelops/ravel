@@ -44,10 +44,13 @@ import net.minecraft.network.chat.Component;
  * anything.</b> {@code AbstractButton} looks like the obvious base for the button
  * rows and it is not available: it declares
  * {@code protected abstract void extractContents(GuiGraphicsExtractor, int, int,
- * float)}, so subclassing it means implementing render-state extraction. ADG-6's
- * omission of {@code extractRenderState} is not an oversight, it is the decision
- * — <i>Ravel never draws</i> — and a screen that implemented that method would be
- * drawing whatever else the architecture said. {@code AbstractSliderButton} is
+ * float)}, so subclassing it means implementing render-state extraction. The
+ * inventory does declare {@code extractRenderState} — it is 26.1.2's per-frame
+ * seam, and {@code screen.extract-render-state} is where Ravel observes the
+ * game's own screens. What ADG-6 commits to is narrower and it is what this class
+ * obeys: <i>Ravel never draws</i>. So the omission of that override is this
+ * screen's own, and a screen that implemented it would be drawing whatever else
+ * the architecture said. {@code AbstractSliderButton} is
  * subclassed instead, and only because the two methods the jar declares abstract
  * on it are {@code updateMessage} and {@code applyValue}, neither of which is an
  * extraction.

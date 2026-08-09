@@ -20,9 +20,10 @@ stable contracts toward concrete host internals.
   above this crate names `JObject` — an observer sees a handle's declared class
   and whether it is null, and no JNI type at all. Only `JavaHandle::new` names
   one, and it is public solely because the generated exports that call it are
-  compiled into `ravel-bootstrap`. The SDK does not depend on this crate and a
-  mod cannot reach it; a change that makes it mod-reachable must seal that
-  constructor rather than move the dependency.
+  compiled into `ravel-bootstrap`. The SDK does not depend on this crate, so a
+  mod reaches it through nothing the SDK offers and needs it for nothing; a change
+  that puts it in a mod's graph must seal that constructor rather than move the
+  dependency.
 - Feature crates for configuration, data, saves, networking, observability, and
   packs depend on public contracts rather than concrete hook implementations.
 - `ravel-observability` owns the redaction policy `SPEC.md` §9.1 requires, and it

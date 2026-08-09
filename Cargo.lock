@@ -836,6 +836,7 @@ dependencies = [
  "ravel-testkit",
  "serde_json",
  "sha2 0.11.0",
+ "toml",
 ]
 
 [[package]]
@@ -853,6 +854,13 @@ version = "0.0.0"
 dependencies = [
  "ravel-core",
  "ravel-package",
+]
+
+[[package]]
+name = "ravel-example-minimal-mod"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
 ]
 
 [[package]]
@@ -957,16 +965,22 @@ dependencies = [
 name = "ravel-sdk"
 version = "0.0.0"
 dependencies = [
- "ravel-config",
  "ravel-core",
- "ravel-data",
- "ravel-network",
+ "ravel-host-api",
  "ravel-save",
+ "ravel-sdk-macros",
+ "serde_json",
 ]
 
 [[package]]
 name = "ravel-sdk-macros"
 version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "ravel-core",
+ "syn 3.0.3",
+]
 
 [[package]]
 name = "ravel-spike-adg-1-jvm-entry"

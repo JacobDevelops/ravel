@@ -50,6 +50,10 @@ const TEST_MOD_NAMES: &[&str] = &[
     "saved-data",
 ];
 
+/// Example crates a mod author reads, and the only crates whose manifests are
+/// deliberately as small as an author's.
+const EXAMPLE_NAMES: &[&str] = &["minimal-mod"];
+
 const EXPERIMENT_NAMES: &[&str] = &[
     "adg-1-jvm-entry",
     "adg-2-guest",
@@ -184,6 +188,11 @@ pub fn required_scaffold_paths() -> Vec<String> {
                 .map(|name| format!("test-mods/{name}/Cargo.toml")),
         )
         .chain(
+            EXAMPLE_NAMES
+                .iter()
+                .map(|name| format!("examples/{name}/Cargo.toml")),
+        )
+        .chain(
             EXPERIMENT_NAMES
                 .iter()
                 .map(|name| format!("experiments/{name}/Cargo.toml")),
@@ -221,6 +230,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_persistence_reflection(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
+    verify_example_inventory(root, &mut violations);
     verify_experiment_fence(root, &mut violations);
     violations.extend(verify_evidence_records(root));
 
@@ -2773,6 +2783,11 @@ fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
                 .iter()
                 .map(|name| format!("test-mods/{name}/Cargo.toml")),
         )
+        .chain(
+            EXAMPLE_NAMES
+                .iter()
+                .map(|name| format!("examples/{name}/Cargo.toml")),
+        )
         .chain([
             "tests/conformance/Cargo.toml".to_owned(),
             "tools/ravel-cli/Cargo.toml".to_owned(),
@@ -2832,10 +2847,10 @@ fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
 /// `ravel-testkit.workspace = true` to `crates/ravel-loader/Cargo.toml` left the
 /// scaffold at zero. No live violation existed, which is why it went unnoticed.
 ///
-/// The rule is held against the shipped libraries and the test mods, which are
-/// what a player's build graph contains. `tools/ravel-cli` and
-/// `tests/conformance` are harnesses that legitimately drive testkit, and testkit
-/// is not held against itself.
+/// The rule is held against the shipped libraries, the test mods, and the
+/// examples, which are what a player's or an author's build graph contains.
+/// `tools/ravel-cli` and `tests/conformance` are harnesses that legitimately
+/// drive testkit, and testkit is not held against itself.
 fn verify_testkit_fence(root: &Path, violations: &mut Vec<String>) {
     let fenced = CRATE_NAMES
         .iter()
@@ -2845,6 +2860,11 @@ fn verify_testkit_fence(root: &Path, violations: &mut Vec<String>) {
             TEST_MOD_NAMES
                 .iter()
                 .map(|name| format!("test-mods/{name}/Cargo.toml")),
+        )
+        .chain(
+            EXAMPLE_NAMES
+                .iter()
+                .map(|name| format!("examples/{name}/Cargo.toml")),
         );
 
     for relative in fenced {
@@ -3713,6 +3733,11 @@ fn maintained_rust_roots() -> Vec<String> {
                 .iter()
                 .map(|name| format!("test-mods/{name}/src/lib.rs")),
         )
+        .chain(
+            EXAMPLE_NAMES
+                .iter()
+                .map(|name| format!("examples/{name}/src/lib.rs")),
+        )
         .collect()
 }
 
@@ -4078,6 +4103,31 @@ fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
             Ok(true) => {}
             Ok(false) => violations.push(format!("invalid JSON schema document: {relative}")),
             Err(error) => violations.push(error),
+        }
+    }
+}
+
+/// Holds `EXAMPLE_NAMES` to what `examples/` actually contains.
+///
+/// `required_scaffold_paths` reads the list forwards, so a name in it with no
+/// directory already fails. Nothing read it backwards, and the fences, the
+/// unsafe-prohibition sweep, and the maintained Rust roots are all driven from
+/// the list — so an example added without editing it would sit outside every one
+/// of them.
+fn verify_example_inventory(root: &Path, violations: &mut Vec<String>) {
+    let directory = root.join("examples");
+    let Ok(entries) = fs::read_dir(&directory) else {
+        violations.push("cannot read examples".to_owned());
+        return;
+    };
+
+    for entry in entries.flatten() {
+        if !entry.path().join("Cargo.toml").is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !EXAMPLE_NAMES.contains(&name.as_str()) {
+            violations.push(format!("example is not listed in EXAMPLE_NAMES: {name}"));
         }
     }
 }

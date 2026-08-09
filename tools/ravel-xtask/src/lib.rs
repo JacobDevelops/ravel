@@ -99,6 +99,7 @@ const MILESTONE_MANIFESTS: &[(&str, &str)] = &[
     ("evidence/m1/manifest.json", "M1"),
     ("evidence/m2/manifest.json", "M2"),
     ("evidence/m3/manifest.json", "M3"),
+    ("evidence/m4/manifest.json", "M4"),
 ];
 
 const ROOT_FILES: &[&str] = &[
@@ -1642,6 +1643,17 @@ fn verify_manifest_invariants(
         );
     }
     verify_manifest_change(root, manifest_path, violations);
+    if milestone == "M4" {
+        // These two ask whether two documents in the tree agree with each other
+        // and with the repository, which is what this function's doc comment
+        // calls a rule the repository decides. A review verdict has no bearing on
+        // either, so holding them in the opt-in milestone task alone would leave
+        // the gate every agent is told to run unable to see an inventory that had
+        // gone stale. The milestone gate runs them too, and the two never run in
+        // the same invocation.
+        verify_m4_surface(root, violations);
+        verify_m4_gate_figures(root, manifest_path, violations);
+    }
 }
 
 /// Names a path relative to the repository, for a violation a reader has to act on.
@@ -3038,6 +3050,9 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
     if milestone == "M3" {
         verify_m3_manifest(root, manifest_path, &mut violations);
     }
+    if milestone == "M4" {
+        verify_m4_manifest(root, manifest_path, &mut violations);
+    }
 
     violations
 }
@@ -3613,6 +3628,286 @@ const M3_RECORDS: &[(&str, &str, &str)] = &[
 
 /// Decision records M3 cannot close without.
 const M3_DECISIONS: &[&str] = &["adg-6-configuration-ui.md", "adg-7-world-persistence.md"];
+
+/// Checks what closing M4 requires beyond the rules every milestone shares.
+///
+/// M4 is the SDK breadth milestone, so its closure is about a surface a mod
+/// author can reach and a boundary that author is told about. Three things are
+/// bound rather than described, because M4's evidence is in-gate throughout and a
+/// record of in-gate work is the easiest kind to let drift: the inventory the
+/// surface record claims is reconciled against the directories it names, the gate
+/// figures the matrix record reports are reconciled against the manifest's own
+/// `tests` block, and the matrix has to say in a field rather than in prose that
+/// no game process was launched for it. That last one is the difference between
+/// this milestone's matrix and M3's, and it is the difference a reader is most
+/// likely to miss, so it is a field a gate reads rather than a sentence.
+fn verify_m4_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        manifest_path,
+        ".workPackages | sort == [\"M4-W1\", \"M4-W2\", \"M4-W3\", \"M4-W4\", \"M4-W5\", \"M4-W6\", \"M4-W7\", \"M4-W8\"]",
+        "M4 manifest must include every work package from M4-W1 through M4-W8 exactly once",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#".benchmarks.protocolVersion == "m4-surface-v1"
+            and ([.benchmarks.results[].name] | sort
+                == ["linux-process-matrix.json", "sdk-surface.json"])"#,
+        "M4 manifest must record both M4 results under the m4-surface-v1 protocol, so that each \
+         one is covered by a recomputed digest",
+        violations,
+    );
+    // M4-W8 is the review itself, whose status is the verdict the milestone gate
+    // reads separately. The other seven are implementation work packages and each
+    // one carries its own status and the evidence it rests on.
+    require_manifest_rule(
+        manifest_path,
+        r#"(.environment.settings.gateStatus | type == "object")
+            and ((.workPackages - (.environment.settings.gateStatus | keys)) == [])
+            and ([.environment.settings.gateStatus | to_entries[]
+                    | select(.key != "M4-W8") | .value]
+                 | length == 7
+                 and all(.status == "closed"
+                         and (.evidence | type == "string" and length > 0)))"#,
+        "M4 closure requires a gateStatus row for every work package, each implementation row \
+         closed and naming its evidence",
+        violations,
+    );
+    // The gate run is native Linux and a person says which machine ran it, the
+    // same way M3's launch is attested. What the attestation may not do is stand
+    // in for a launch, which is why the matrix's `gameLaunch.occurred` is checked
+    // below rather than left to this statement's prose.
+    require_manifest_rule(
+        manifest_path,
+        r#".attestations | any(
+            .platform == "linux"
+            and .architecture == "x86_64"
+            and (.workloads | index("ravel") != null)
+        )"#,
+        "M4 closure requires a native Linux attestation for the recorded gate run",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        "(.deviations | length) > 0 and (.risks | length) > 0",
+        "M4 recorded deviations and risks, and an empty finding set satisfies every rule phrased \
+         as a refusal, so closure requires them to still be there",
+        violations,
+    );
+
+    for decision in M4_DECISIONS {
+        if !root.join("docs/decisions").join(decision).is_file() {
+            violations.push(format!(
+                "M4 closure requires the decision record {decision}"
+            ));
+        }
+    }
+
+    for (file, rule, requirement) in M4_RECORDS {
+        let path = root.join("evidence/m4").join(file);
+        if !path.is_file() {
+            violations.push(format!("M4 closure requires the record evidence/m4/{file}"));
+            continue;
+        }
+        if !jq_matches(&path, rule).unwrap_or(false) {
+            violations.push(format!("M4 closure requires {requirement}"));
+        }
+        verify_redaction(&path, &format!("evidence/m4/{file}"), violations);
+    }
+
+    verify_m4_surface(root, violations);
+    verify_m4_gate_figures(root, manifest_path, violations);
+}
+
+/// The records M4 cannot close without, and what each one has to say.
+///
+/// Each rule is the `ROADMAP.md` M4-W8 row read as a question the file has to
+/// answer rather than as a file that has to exist. Every count is type-checked
+/// before it is compared, for the reason M2's launch rule gives: jq orders strings
+/// above numbers, so an unguarded `> 0` accepts "not measured".
+const M4_RECORDS: &[(&str, &str, &str)] = &[
+    (
+        // The M4-W8 gate row asks for a global Linux gate and a process matrix.
+        // Every row is a process that ran, so a row with no exit status is a row
+        // that describes an intention, and `doesNotProve` is required on each
+        // because the whole difference between this matrix and M3's is what a
+        // gate process cannot reach.
+        "linux-process-matrix.json",
+        r#".milestone == "M4"
+            and .workPackage == "M4-W8"
+            and .protocol == "m4-gate-matrix-v1"
+            and .result == "pass"
+            and .platform.os == "linux"
+            and .platform.architecture == "x86_64"
+            and .gameLaunch.occurred == false
+            and (.gameLaunch.whyItIsNotHere | type == "string" and length > 0)
+            and (.gate.exitStatus | type == "number")
+            and .gate.exitStatus == 0
+            and (.gate.tests.run | type == "number")
+            and .gate.tests.run > 0
+            and (.processes | type == "array" and length > 0)
+            and (.processes | all(
+                (.surface | type == "string" and length > 0)
+                and (.command | type == "string" and length > 0)
+                and (.exitStatus | type == "number")
+                and .exitStatus == 0
+                and (.proves | type == "string" and length > 0)
+                and (.doesNotProve | type == "string" and length > 0)))"#,
+        "a Linux process matrix in which every recorded gate process exited zero and says what it \
+         does not prove, and which states in a field rather than in prose that no game process \
+         was launched for it",
+    ),
+    (
+        // M4's deliverable is a surface, so the record that inventories it is
+        // held to naming what each work package shipped and what it left unproven.
+        // The lists themselves are reconciled against the tree by
+        // `verify_m4_surface`, because a list nothing recomputes is a count in
+        // different brackets.
+        "sdk-surface.json",
+        r#".milestone == "M4"
+            and .workPackage == "M4-W8"
+            and .protocol == "m4-surface-v1"
+            and (.inventory.crates | type == "array" and length > 0)
+            and (.inventory.testMods | type == "array" and length > 0)
+            and (.inventory.examples | type == "array" and length > 0)
+            and (.inventory.guideDocuments | type == "array" and length > 0)
+            and (.inventory.conformanceSuites | type == "array" and length > 0)
+            and ([.workPackages[].id] | sort
+                == ["M4-W1", "M4-W2", "M4-W3", "M4-W4", "M4-W5", "M4-W6", "M4-W7"])
+            and (.workPackages | all(
+                (.shipped | type == "string" and length > 0)
+                and (.provenBy | type == "array" and length > 0)
+                and (.notProven | type == "string" and length > 0)))"#,
+        "an SDK surface record inventorying what each of M4-W1 through M4-W7 shipped, what proves \
+         it, and what it does not prove",
+    ),
+];
+
+/// Decision records M4 cannot close without.
+///
+/// ADG-2 is the distribution and execution decision every packaging surface in
+/// M4 implements, and ADG-3 is the binding decision M4-W6's version isolation is
+/// an argument about. M4 accepted no decision of its own.
+const M4_DECISIONS: &[&str] = &["adg-2-mod-execution.md", "adg-3-bindings.md"];
+
+/// Reconciles the recorded SDK surface against the repository it inventories.
+///
+/// A list in an evidence record is a count in prose wearing different brackets:
+/// nothing recomputed it, so a crate added or a guide page deleted after the
+/// record was written left it describing a tree that no longer exists. Each list
+/// is compared by name rather than by length, in both directions, so a rename
+/// fails as loudly as an addition and a deletion is not absorbed by an addition
+/// somewhere else in the same list.
+///
+/// The crate, test-mod and example lists are compared against the constants
+/// `CLAUDE.md` already makes an author maintain, and those constants are
+/// themselves compared against their directories by [`verify_inventory`], so this
+/// check inherits that reconciliation rather than restating it.
+fn verify_m4_surface(root: &Path, violations: &mut Vec<String>) {
+    let record = root.join("evidence/m4/sdk-surface.json");
+    if !record.is_file() {
+        // Its absence is already a violation where the record set is checked.
+        return;
+    }
+    let expected = [
+        ("crates", listed_names(CRATE_NAMES)),
+        ("testMods", listed_names(TEST_MOD_NAMES)),
+        ("examples", listed_names(EXAMPLE_NAMES)),
+        ("guideDocuments", files_named(root, "docs/guide", "md")),
+        (
+            "conformanceSuites",
+            files_named(root, "tests/conformance/tests", "rs"),
+        ),
+    ];
+    for (field, expected) in expected {
+        let recorded = match jq_value(&record, &format!(".inventory.{field}[]?")) {
+            Ok(value) => value
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect::<BTreeSet<_>>(),
+            Err(error) => {
+                violations.push(error);
+                continue;
+            }
+        };
+        for missing in expected.difference(&recorded) {
+            violations.push(format!(
+                "evidence/m4/sdk-surface.json omits {missing} from inventory.{field}, which the \
+                 repository holds"
+            ));
+        }
+        for extra in recorded.difference(&expected) {
+            violations.push(format!(
+                "evidence/m4/sdk-surface.json names {extra} under inventory.{field}, which the \
+                 repository does not hold"
+            ));
+        }
+    }
+}
+
+/// The names one maintained list holds.
+fn listed_names(names: &[&str]) -> BTreeSet<String> {
+    names.iter().map(|name| (*name).to_owned()).collect()
+}
+
+/// The file names one directory holds with one extension.
+fn files_named(root: &Path, directory: &str, extension: &str) -> BTreeSet<String> {
+    let Ok(entries) = fs::read_dir(root.join(directory)) else {
+        return BTreeSet::new();
+    };
+    entries
+        .flatten()
+        .filter(|entry| entry.path().is_file())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| {
+            Path::new(name)
+                .extension()
+                .is_some_and(|found| found == extension)
+        })
+        .collect()
+}
+
+/// Requires M4's manifest and its matrix record to report the same gate run.
+///
+/// Both documents state the run's figures, which is one figure written twice and
+/// therefore one figure free to go stale in one place. The manifest's block is
+/// already held to its own arithmetic and to the coverage floor by
+/// [`verify_recorded_run`]; what nothing checked is that it describes the run the
+/// record beside it reports. A mismatch here means one of the two was edited
+/// without the other, and there is no reading under which that is harmless.
+fn verify_m4_gate_figures(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    let record = root.join("evidence/m4/linux-process-matrix.json");
+    if !record.is_file() {
+        return;
+    }
+    for (claimed_at, measured_at) in [
+        (".tests.total", ".gate.tests.run"),
+        (".tests.passed", ".gate.tests.passed"),
+        (".tests.failed", ".gate.tests.failed"),
+        (".tests.skipped", ".gate.tests.skipped"),
+        (".tests.lineCoveragePercent", ".gate.coverage.linesPercent"),
+    ] {
+        let (Ok(claimed), Ok(measured)) = (
+            jq_value(manifest_path, claimed_at),
+            jq_value(&record, measured_at),
+        ) else {
+            violations.push(format!(
+                "evidence/m4/manifest.json {claimed_at} and evidence/m4/linux-process-matrix.json \
+                 {measured_at} cannot both be read, so nothing reconciles them"
+            ));
+            continue;
+        };
+        if claimed != measured {
+            violations.push(format!(
+                "evidence/m4/manifest.json records {claimed_at} {claimed} while \
+                 evidence/m4/linux-process-matrix.json records {measured_at} {measured}; they \
+                 describe one gate run"
+            ));
+        }
+    }
+}
 
 /// Decision records M1 cannot close without.
 const M1_DECISIONS: &[&str] = &[
@@ -4722,14 +5017,15 @@ mod tests {
     use std::process::Command;
 
     use super::{
-        CampaignInventory, HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS,
-        SWEPT_SCOPE, VERSION_CLASS_EXCUSES, campaign_document_violations, change_mismatch,
-        declared_hook_names, declares_unsafe_prohibition, denied_hook_names, game_class_literals,
-        hook_counts, hook_document_violations, numbers_before, pinned_commit_mismatch,
-        redacted_path, required_scaffold_paths, round_count_restatements,
-        verify_campaign_inventory, verify_decision_hook_claims, verify_evidence_records,
-        verify_experiment_fence, verify_harness_lifecycles, verify_hook_inventory_document,
-        verify_ignored_boundaries, verify_manifest_percentages, verify_milestone,
+        CRATE_NAMES, CampaignInventory, EXAMPLE_NAMES, HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts,
+        MILESTONE_MANIFESTS, SWEPT_SCOPE, TEST_MOD_NAMES, VERSION_CLASS_EXCUSES,
+        campaign_document_violations, change_mismatch, declared_hook_names,
+        declares_unsafe_prohibition, denied_hook_names, game_class_literals, hook_counts,
+        hook_document_violations, numbers_before, pinned_commit_mismatch, redacted_path,
+        required_scaffold_paths, round_count_restatements, verify_campaign_inventory,
+        verify_decision_hook_claims, verify_evidence_records, verify_experiment_fence,
+        verify_harness_lifecycles, verify_hook_inventory_document, verify_ignored_boundaries,
+        verify_m4_gate_figures, verify_m4_surface, verify_manifest_percentages, verify_milestone,
         verify_persistence_reflection, verify_review_round_counts, verify_scaffold, verify_spikes,
         verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
         verify_version_boundary, verify_void_limits, visible_commit,
@@ -6473,6 +6769,149 @@ mod tests {
         verify_hook_inventory_document(&root, &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
+    }
+
+    /// A root holding one M4 surface record over a tree of known shape.
+    ///
+    /// The guide and conformance directories are given one file each rather than
+    /// the repository's own, so the expectation the check computes is small
+    /// enough to write out and the test does not go stale when a guide page is
+    /// added.
+    fn surface_root(label: &str, guide: &[&str], suites: &[&str], record: &str) -> PathBuf {
+        let root = temporary_root(label);
+        for (directory, files) in [("docs/guide", guide), ("tests/conformance/tests", suites)] {
+            let directory = root.join(directory);
+            fs::create_dir_all(&directory).expect("directory should be creatable");
+            for file in files {
+                fs::write(directory.join(file), "").expect("file should be writable");
+            }
+        }
+        let milestone = root.join("evidence/m4");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("sdk-surface.json"), record).expect("record should be writable");
+        root
+    }
+
+    /// The surface record naming exactly what a `surface_root` tree holds.
+    fn surface_record(guide: &[&str], suites: &[&str]) -> String {
+        let quoted = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| format!("\"{name}\""))
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        format!(
+            r#"{{"inventory":{{"crates":[{}],"testMods":[{}],"examples":[{}],
+                "guideDocuments":[{}],"conformanceSuites":[{}]}}}}"#,
+            quoted(CRATE_NAMES),
+            quoted(TEST_MOD_NAMES),
+            quoted(EXAMPLE_NAMES),
+            quoted(guide),
+            quoted(suites),
+        )
+    }
+
+    #[test]
+    fn a_surface_inventory_naming_what_the_repository_holds_is_accepted() {
+        let root = surface_root(
+            "surface-agrees",
+            &["README.md"],
+            &["one.rs"],
+            &surface_record(&["README.md"], &["one.rs"]),
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_surface(&root, &mut violations);
+
+        assert!(violations.is_empty(), "{violations:?}");
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_surface_inventory_that_has_drifted_from_the_repository_is_reported() {
+        // Both directions, in one record: a guide page the tree holds and the
+        // record omits, and a suite the record names and the tree does not. An
+        // inventory checked by length alone would report neither.
+        let root = surface_root(
+            "surface-drifted",
+            &["README.md", "limits.md"],
+            &["one.rs"],
+            &surface_record(&["README.md"], &["one.rs", "deleted.rs"]),
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_surface(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m4/sdk-surface.json omits limits.md from inventory.guideDocuments, \
+                 which the repository holds",
+                "evidence/m4/sdk-surface.json names deleted.rs under inventory.conformanceSuites, \
+                 which the repository does not hold",
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A root holding an M4 manifest and matrix record with the given figures.
+    fn gate_figures_root(label: &str, manifest: &str, matrix: &str) -> PathBuf {
+        let root = temporary_root(label);
+        let milestone = root.join("evidence/m4");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("manifest.json"), manifest).expect("manifest should be writable");
+        fs::write(milestone.join("linux-process-matrix.json"), matrix)
+            .expect("record should be writable");
+        root
+    }
+
+    #[test]
+    fn a_manifest_and_a_matrix_reporting_the_same_run_are_accepted() {
+        let root = gate_figures_root(
+            "gate-figures-agree",
+            r#"{"tests":{"total":9,"passed":9,"failed":0,"skipped":0,
+                "lineCoveragePercent":85.97}}"#,
+            r#"{"gate":{"tests":{"run":9,"passed":9,"failed":0,"skipped":0},
+                "coverage":{"linesPercent":85.97}}}"#,
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_gate_figures(
+            &root,
+            &root.join("evidence/m4/manifest.json"),
+            &mut violations,
+        );
+
+        assert!(violations.is_empty(), "{violations:?}");
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_manifest_and_a_matrix_reporting_different_runs_are_reported() {
+        // One run written down twice is one figure free to go stale in one place.
+        let root = gate_figures_root(
+            "gate-figures-differ",
+            r#"{"tests":{"total":9,"passed":9,"failed":0,"skipped":0,
+                "lineCoveragePercent":85.97}}"#,
+            r#"{"gate":{"tests":{"run":8,"passed":9,"failed":0,"skipped":0},
+                "coverage":{"linesPercent":85.97}}}"#,
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_gate_figures(
+            &root,
+            &root.join("evidence/m4/manifest.json"),
+            &mut violations,
+        );
+
+        assert_eq!(
+            violations,
+            ["evidence/m4/manifest.json records .tests.total 9 while \
+                 evidence/m4/linux-process-matrix.json records .gate.tests.run 8; they describe \
+                 one gate run",]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
     fn temporary_root(label: &str) -> PathBuf {

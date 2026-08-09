@@ -302,6 +302,17 @@ const M2_MANIFEST: &str = "evidence/m2/manifest.json";
 /// [`REVIEW_RECORD`] counts M3's.
 const M2_REVIEW_RECORD: &str = "evidence/m2/review.md";
 
+/// M4's evidence README, which describes what the gate binds and how to
+/// recompute it.
+const M4_CAMPAIGN_DOCUMENT: &str = "evidence/m4/README.md";
+
+/// M4's admission artifact.
+const M4_MANIFEST: &str = "evidence/m4/manifest.json";
+
+/// The record that counts M4's independent rounds, for the reason
+/// [`REVIEW_RECORD`] counts M3's.
+const M4_REVIEW_RECORD: &str = "evidence/m4/review.md";
+
 /// The plan, which belongs to no milestone's evidence and cites all of it.
 const PLAN_DOCUMENT: &str = "ROADMAP.md";
 
@@ -874,13 +885,9 @@ fn campaign_document_violations(document: &str, derived: &CampaignInventory) -> 
     violations
 }
 
-/// How a count of things can be spelled in this repository's prose.
+/// The units a count is spelled from, and every count up to twenty.
 ///
-/// It stops at twenty, which is a limit rather than a boundary: a count written
-/// in digits is read at any size, and a count spelled `forty` is read by nothing.
-/// Every stale figure any round has found here was below twenty and every one of
-/// them was spelled, so extending the list is speculation and stating where it
-/// ends is not. A prose count above twenty escapes every check built on this.
+/// See [`numeral`] for where the reading stops and what escapes above it.
 const CARDINALS: [&str; 21] = [
     "zero",
     "one",
@@ -905,7 +912,28 @@ const CARDINALS: [&str; 21] = [
     "twenty",
 ];
 
+/// The tens a compound count is spelled from, `twenty` first.
+const TENS: [&str; 8] = [
+    "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+];
+
 /// One word read as a number, whether it was written in digits or spelled out.
+///
+/// Spelled reading stops at ninety-nine, and the ceiling is stated rather than
+/// implied. It used to stop at twenty on the argument that every stale figure any
+/// round had found was below twenty, so extending was speculation. That argument
+/// no longer holds: a round measured the hole and found it swallowed the whole
+/// tail rather than stopping at twenty — `forty` was read by nothing, and so was
+/// `twenty-one`, because the hyphen matched no entry either. M3 took twelve
+/// independent review rounds, so a milestone reaching a count above twenty is a
+/// thing that happens rather than a thing to speculate about.
+///
+/// What still escapes: a hundred and above, and a compound written without a
+/// hyphen (`twenty one`, `one hundred and five`), which reads as its parts. A
+/// count written in digits is read at any size and always was. Of the checks
+/// built on this, only [`verify_review_round_counts`] fails open on an unreadable
+/// numeral, because it is a prohibition rather than a match; the others require a
+/// readable count and report its absence.
 fn numeral(word: &str) -> Option<usize> {
     let word = word
         .trim_matches(|character: char| !character.is_alphanumeric())
@@ -913,7 +941,26 @@ fn numeral(word: &str) -> Option<usize> {
     if !word.is_empty() && word.chars().all(|character| character.is_ascii_digit()) {
         return word.parse().ok();
     }
-    CARDINALS.iter().position(|spelled| *spelled == word)
+    if let Some(count) = CARDINALS.iter().position(|spelled| *spelled == word) {
+        return Some(count);
+    }
+    if let Some(tens) = TENS.iter().position(|spelled| *spelled == word) {
+        return Some(tens_value(tens));
+    }
+    let (tens, unit) = word.split_once('-')?;
+    let tens = TENS.iter().position(|spelled| *spelled == tens)?;
+    let unit = CARDINALS.iter().position(|spelled| *spelled == unit)?;
+    // `twenty-zero` and `twenty-eleven` are not counts anyone writes, and reading
+    // them would invent a figure the prose never stated.
+    if !(1..=9).contains(&unit) {
+        return None;
+    }
+    Some(tens_value(tens) + unit)
+}
+
+/// What one entry of [`TENS`] is worth, `twenty` being the first.
+fn tens_value(at: usize) -> usize {
+    (at + 2) * 10
 }
 
 /// How far back from a noun a number counting it may sit.
@@ -1028,9 +1075,16 @@ fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
     // `evidence/m1/README.md` each restate one — cannot go stale because no further
     // round will run against them. Bringing them in would mean rewording a closed
     // milestone's prose to satisfy a rule written after it.
+    //
+    // M4 is here because its own record states the rule and named this check as
+    // the enforcement while nothing under `evidence/m4/` was swept — a round
+    // measured the gap by putting a false count in `evidence/m4/README.md` and
+    // getting exit 0. A rule a record cites and the gate does not run is the
+    // shape the round-count class keeps coming back in.
     for (record, documents) in [
         (REVIEW_RECORD, [CAMPAIGN_DOCUMENT, M3_MANIFEST]),
         (M2_REVIEW_RECORD, [M2_CAMPAIGN_DOCUMENT, M2_MANIFEST]),
+        (M4_REVIEW_RECORD, [M4_CAMPAIGN_DOCUMENT, M4_MANIFEST]),
     ] {
         if !root.join(record).is_file() {
             violations.push(format!("missing required file: {record}"));
@@ -7011,6 +7065,30 @@ mod tests {
         // count of it, and prose that states no figure states none.
         assert!(numbers_before("the fourth round of review", &["round"]).is_empty());
         assert!(numbers_before("every round returned FAIL", &["rounds"]).is_empty());
+    }
+
+    /// The tail a round walked the count checks around by spelling it.
+    ///
+    /// `forty` and `twenty-one` both left the gate at zero against a document the
+    /// sweep reads, so both are held here by the spelling that escaped.
+    #[test]
+    fn a_count_spelled_above_twenty_is_read_up_to_ninety_nine() {
+        assert_eq!(numbers_before("forty M3 review rounds", &["rounds"]), [40]);
+        assert_eq!(
+            numbers_before("twenty-one M3 review rounds", &["rounds"]),
+            [21]
+        );
+        assert_eq!(numbers_before("ninety-nine rounds", &["rounds"]), [99]);
+        assert_eq!(numbers_before("thirty rounds", &["rounds"]), [30]);
+
+        // The stated ceiling, held so that moving it is a decision rather than an
+        // accident: a hundred and above is read by nothing, a compound without its
+        // hyphen reads as its parts, and a hyphenated pair that is not a count is
+        // not invented into one.
+        assert!(numbers_before("a hundred rounds", &["rounds"]).is_empty());
+        assert!(numbers_before("thirty-thousand-entry rounds", &["rounds"]).is_empty());
+        assert!(numbers_before("twenty-eleven rounds", &["rounds"]).is_empty());
+        assert_eq!(numbers_before("twenty one rounds", &["rounds"]), [1]);
     }
 
     /// The restatements an independent round walked the round-count check around.

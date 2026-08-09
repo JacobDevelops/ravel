@@ -202,6 +202,6 @@
     }
   ],
   "schemaVersion": 1,
-  "summary": "The no-op package validated, resolved, and ran through every SPEC.md section 14 state, in the same order on every side it declares.",
+  "summary": "The no-op package validated, resolved, and ran through the eight SPEC.md section 14 states a successful run reaches, in the same order on every side it declares. Of the ten states, discovered precedes this transcript and failed cannot appear in a run that succeeded.",
   "workPackage": "M2-W6"
 }

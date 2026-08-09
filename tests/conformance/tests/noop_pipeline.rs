@@ -148,8 +148,10 @@ fn record() -> Value {
         "record": "m2-w6-noop-pipeline",
         "milestone": "M2",
         "workPackage": "M2-W6",
-        "summary": "The no-op package validated, resolved, and ran through every SPEC.md \
-                    section 14 state, in the same order on every side it declares.",
+        "summary": "The no-op package validated, resolved, and ran through the eight SPEC.md \
+                    section 14 states a successful run reaches, in the same order on every side it \
+                    declares. Of the ten states, discovered precedes this transcript and failed \
+                    cannot appear in a run that succeeded.",
         "package": {
             "id": manifest.id.to_string(),
             "version": manifest.version.to_string(),
@@ -225,7 +227,7 @@ fn the_no_op_package_is_one_the_published_schemas_validate() {
 }
 
 #[test]
-fn the_no_op_package_reaches_every_spec_state_in_order_on_every_side_it_declares() {
+fn the_no_op_package_reaches_every_state_a_successful_run_can_reach_in_order_on_every_side() {
     let expected = [
         LifecycleState::Validated,
         LifecycleState::Resolved,

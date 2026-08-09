@@ -212,6 +212,13 @@ line rather than elsewhere in the log, or that the client reached a world or exi
 cleanly. `ravel:verify-milestone:m1` enforces that a result records the boolean and
 the log hash, which is a check on the record rather than on the launch.
 
+Until the cold audit's second reading, only this paragraph said that. The record's
+own `prismIntegration.detail` asserted that the pinned game launched with both
+arguments on its command line and no other mod loader named — a conclusion three
+substring tests do not reach. It now states the three tests and what they leave
+unchecked, and `experiments/adg-5-prism/src/main.rs` was changed with it so a re-run
+writes the same sentence instead of restoring the old one.
+
 Provenance is recorded twice, because the two halves answer different questions.
 `trial.revision.id` is a commit that existed when the trial ran; every jj rewrite
 abandons it, so it records what ran and cannot be resolved to anything.

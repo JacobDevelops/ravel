@@ -387,8 +387,13 @@ fn launch_sentence(observed: &Observed) -> String {
                  needs an authenticated session, which is an operator step."
             .to_owned(),
         Some(log) => match log.objection() {
-            None => "An operator's instance log shows the pinned game launched with Ravel's \
-                     agent argument on its command line and no other mod loader named."
+            None => "An operator's instance log was read and three substring tests passed on \
+                     it: `-javaagent:` appears, `-Djava.library.path=` appears, and none of \
+                     five known mod loader names does. Those three tests are the whole proof. \
+                     Nothing here checks that the launch was of the pinned 26.1.2, that the \
+                     launcher was the pinned Prism, that either argument sat on the game's \
+                     command line rather than elsewhere in the log, or that the client reached \
+                     a world or exited cleanly."
                 .to_owned(),
             Some(objection) => format!(
                 "An operator's instance log was read and does not prove a \

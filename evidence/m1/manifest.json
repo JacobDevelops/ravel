@@ -173,7 +173,7 @@
       },
       {
         "name": "spikes/adg-5/adg5-stock-jvm-arguments.json",
-        "sha256": "6be4aca5626a4016982b6d9cf1082b59a12cd5ac5ebd93c8f80090d7ea2edbea"
+        "sha256": "12c5ea371259438f30a028aeb22bef483d7665e773716b6bda1f3622033ca2da"
       }
     ]
   },
@@ -199,7 +199,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "ADG-5 records a stock launch as three substring tests over a redacted log. Nothing verifies the launched version, the launcher identity, that the arguments sat on the game command line, or that the client reached a world or exited cleanly.",
+      "summary": "ADG-5 records a stock launch as three substring tests over a redacted log. Nothing verifies the launched version, the launcher identity, that the arguments sat on the game command line, or that the client reached a world or exited cleanly. The record used to overstate that: prismIntegration.detail asserted the pinned game launched with both arguments on its command line and no other mod loader named, which is a conclusion the three tests do not reach, and only evidence/m1/README.md said so honestly. The record now states the three tests and what they leave unchecked, and experiments/adg-5-prism/src/main.rs was changed in the same pass so a re-run of the gate writes the same sentence rather than restoring the old one.",
       "classification": "non-blocking"
     },
     {

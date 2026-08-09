@@ -148,7 +148,7 @@
     "stockLaunch": true,
     "changedLines": 0,
     "ownership": "none-required",
-    "detail": "the pinned launcher exposes OverrideJavaArgs and JvmArgs, so the two arguments ADG-1 needs can be set on an instance without changing the launcher. It also exposes OverrideCommands and WrapperCommand, so the rejected hosted-VM candidate would not have needed a patch either. An operator's instance log shows the pinned game launched with both arguments on its command line and no other mod loader named."
+    "detail": "the pinned launcher exposes OverrideJavaArgs and JvmArgs, so the two arguments ADG-1 needs can be set on an instance without changing the launcher. It also exposes OverrideCommands and WrapperCommand, so the rejected hosted-VM candidate would not have needed a patch either. An operator's instance log was read and three substring tests passed on it: `-javaagent:` appears, `-Djava.library.path=` appears, and none of five known mod loader names does. Those three tests are the whole proof. Nothing here checks that the launch was of the pinned 26.1.2, that the launcher was the pinned Prism, that either argument sat on the game's command line rather than elsewhere in the log, or that the client reached a world or exited cleanly."
   },
   "deviations": [
     {

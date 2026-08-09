@@ -238,6 +238,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
         Ok(paths) => {
             violations.extend(verify_tracked_paths(paths.iter().map(String::as_str)));
             violations.extend(verify_tracked_contents(root, &paths));
+            verify_game_type_claims(root, &paths, &mut violations);
         }
         Err(error) => violations.push(error),
     }
@@ -1360,6 +1361,76 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
                  {AGENT_JAR_SOURCES} resolves it; a declared name nothing uses says the surface \
                  drifted rather than that it is pinned"
             ));
+        }
+    }
+}
+
+/// Refuses the claim that an artifact *names* no game type, in tracked text.
+///
+/// Two M3 repair passes each swept for the sentence "names no game type" by hand
+/// and each left sites behind, and a third pass found more. A grep finds them all
+/// at once, which is why this is a gate rather than a fourth sweep. The claim is
+/// false of two shipped artifacts: `jvm/bootstrap/dev/ravel/jvm/Transformer.java`
+/// holds game class names as string constants and compares against them, and
+/// generated `Hook.java` carries the internal name of every class it transforms.
+/// What holds is narrower and enforced by construction — the jar *declares* no
+/// game type, so `jvm/build/build-agent.sh` compiles it with no `-cp` at all and
+/// needs no licensed fixture, and a source declaring one would fail to compile.
+///
+/// So the naming form is refused and the declaring form is left alone. A
+/// quotation of the naming form is left alone too: `docs/decisions/adg-1-jvm-entry.md`
+/// and [`verify_persistence_reflection`]'s own documentation each quote
+/// "names no game type" in order to say it was false, and a record of a mistake is
+/// not the mistake.
+///
+/// **What it cannot catch, stated because a gate that promises more than it
+/// enforces is the defect this repository keeps finding.** It matches four verbs
+/// against one noun phrase within one line, so the same false claim survives any
+/// rewording — "carries no game class", "mentions no Minecraft type", or a
+/// sentence that breaks across two lines. It reads what a file says and never what
+/// an artifact holds, so it cannot tell a true claim from a false one, only a
+/// refused phrasing from a permitted one: the declaring form would pass here even
+/// if `build-agent.sh` grew a `-cp`. And it exempts `evidence/`, whose closed
+/// manifests and review records report the false claim as a finding and cannot be
+/// edited to satisfy a gate — so a new evidence record could reintroduce it
+/// unseen.
+fn verify_game_type_claims(root: &Path, paths: &[String], violations: &mut Vec<String>) {
+    // Assembled rather than written out, so the refused phrasing is not a literal
+    // in this file and this check does not open by reporting itself.
+    let claims: Vec<String> = ["name", "names", "named", "naming"]
+        .into_iter()
+        .map(|verb| format!("{verb} no game type"))
+        .collect();
+
+    for relative in paths {
+        // A symlink's tracked content is its target path, which carries no prose.
+        let path = root.join(relative);
+        if relative.starts_with("evidence/") || path.is_symlink() {
+            continue;
+        }
+        let text = match fs::read(&path) {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Err(error) => {
+                violations.push(format!("cannot scan tracked file {relative}: {error}"));
+                continue;
+            }
+        };
+
+        for (index, line) in text.lines().enumerate() {
+            for claim in &claims {
+                if !line.contains(claim.as_str()) || line.contains(&format!("\"{claim}\"")) {
+                    continue;
+                }
+                violations.push(format!(
+                    "{relative}:{} says an artifact `{claim}`. That is false of the always \
+                     present agent jar and of generated Hook.java, both of which carry game \
+                     class names as strings. State the claim ADG-1 enforces instead — the jar \
+                     *declares* no game type, so it compiles with no `-cp` and no licensed \
+                     fixture — or put the false form in quotation marks where the point is that \
+                     it was false.",
+                    index + 1
+                ));
+            }
         }
     }
 }

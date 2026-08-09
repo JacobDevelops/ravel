@@ -320,8 +320,8 @@ Placement is already settled above: implementation extends the sibling Java
 artifact, its build script, the generated stubs, and the lock pipeline, and that
 artifact's persistence capability is required even though its screens are
 optional. This section records why the alternative that was considered — a
-reflection-only adapter inside the agent jar, naming no game type and seeding no
-stub — cannot be built. The pinned 26.1.2 class files refuse it:
+reflection-only adapter inside the agent jar, declaring no game type and seeding
+no stub — cannot be built. The pinned 26.1.2 class files refuse it:
 
 ```text
 public abstract class net.minecraft.world.level.saveddata.SavedData

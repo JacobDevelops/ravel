@@ -235,8 +235,13 @@ two digests. The unattributable reading is withdrawn where it stood. Two of the
 same round's must-fix findings are fixed in the same pass — the repealed reviewer
 note in `matrixNotCarriedForward` is rewritten, and the rewrite count now says
 which of the three surface launches reported which pair. What is not answered is
-the third must-fix finding, the five moderate ones including the absence of any
-M3-specific manifest closure rule, and the six minor ones.
+that round's remaining must-fix finding and its moderate findings, including the
+absence of any M3-specific manifest closure rule. `review.md` holds those findings
+and is the one record that says how many of each kind there are; this document no
+longer restates the figures, for the reason `manifest.json` already gives about
+round counts. Not all of the minor ones are open either: the one that found
+`class-loader-identity.json` recording a different Java patch from the milestone's
+is answered where it stood, by `measuredAgainst.javaDiffersFromTheMilestone`.
 
 M3-W8 stays open. Every implementation gate is closed, but the review that has to
 pass is an *independent* one, and every round so far has returned FAIL. Answering

@@ -24,7 +24,7 @@
   "correctsPriorAssertion": {
     "detail": "jvm/README.md says stock Minecraft 26.1 runs on the application class loader 'which delegates to the system loader, so it finds that same copy'. The copy is found, so the consequence the sentence draws is right. The mechanism it names is not: delegation implies two loaders, and the launch has one object playing both parts. The correction matters because ADG-1's candidate 2 was read as blocked by that sentence, and it is not.",
     "measuredInstead": "The two are the same object, so the resolution needs no delegation at all.",
-    "statedIn": "jvm/README.md",
+    "statedIn": "jvm/README.md, as it read when this launch was recorded. The quoted sentence is not in that file today: it was rewritten in the same terms as this correction, and the wording survives only where docs/decisions/adg-1-jvm-entry.md quotes it historically. The attribution is kept because it names where the assertion was made, not where a reader will find it",
     "wasContradicted": true
   },
   "deviations": [

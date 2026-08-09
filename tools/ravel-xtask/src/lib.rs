@@ -36,6 +36,7 @@ const CRATE_NAMES: &[&str] = &[
 ];
 
 const TEST_MOD_NAMES: &[&str] = &[
+    "client-only",
     "commands",
     "configuration",
     "dependency-base",

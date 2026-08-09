@@ -1,21 +1,26 @@
 # Ravel's JVM side
 
-Two artefacts enter the game process today — the premain agent jar and the
-native library — and this directory holds the Java sources of the first.
+Three artefacts enter the game process — the premain agent jar, the native
+library, and the screen jar — and this directory holds the Java sources of the
+first and the third.
 
-A third arrives with M3-W3. [ADG-6](../docs/decisions/adg-6-configuration-ui.md)
-draws Ravel's screens in Java, and
-[ADG-1's amendment](../docs/decisions/adg-1-jvm-entry.md) settles that the screen
-is a separate artefact rather than something this jar grows: a screen names game
-types, and this jar deliberately compiles without the client jar and sits on the
-system loader, which does not resolve `net.minecraft.*`. Where that artefact's
-sources live, and how it reaches a loader that does resolve them, is M3-W3's to
-decide and is not this directory yet.
+[ADG-6](../docs/decisions/adg-6-configuration-ui.md) draws Ravel's screens in
+Java, and [ADG-1's amendment](../docs/decisions/adg-1-jvm-entry.md) settles that
+the screen is a separate artefact rather than something the agent jar grows: a
+screen names game types, and the agent jar deliberately compiles without the
+client jar. M3-W3 answered how it reaches a loader that resolves those types —
+the agent appends the screen jar to the system class loader's search path through
+the `Instrumentation` it already holds, and that loader is the one that loads the
+game, which ADG-1's second amendment measured rather than assumed.
 
 - `bootstrap/` — the premain agent's tracked sources: the entry point, the class
   transformer, and the record the generator fills. Package `dev.ravel.jvm`.
 - `build/build-agent.sh` — builds `target/ravel-jvm/ravel-agent.jar` from those
   sources plus the generated `Hook` class.
+- `screen/` — the screen artefact's tracked sources, package
+  `dev.ravel.jvm.screen`. These name game types and so need the restricted client
+  jar to compile, which is exactly why they are not in `bootstrap/`.
+- `build/build-screen.sh` — builds the screen jar from those sources.
 - `harness/` — a stub class and a `main` that run the whole path against a real
   JVM without the game. See [Proving it without the game](#proving-it-without-the-game).
 

@@ -252,8 +252,11 @@ symbol, the loader binding, and the zero-unsafe result are untouched, and the
 restrictive clause — "only the entry point and the generated hook surface" — is
 upheld rather than widened. What changes is a count in the same sentence: three
 artifacts enter the game process, not two. `jvm/README.md` carried the same
-arithmetic in its opening line and now records both the count and the reason the
-screen is not this jar's to grow.
+arithmetic in its opening line, and this paragraph claimed it had been corrected
+in the same pass when it had not: that file went on saying two artefacts entered
+the process, promising a third "with M3-W3", and deferring where the screen's
+sources lived, for as long as `jvm/screen/` existed beside it. It records the
+count and the reason now, and the deferral is gone because M3-W3 answered it.
 
 The distinction matters because the tempting reading was the opposite one. It
 would have been easy to treat "only the entry point and the generated hook
@@ -295,9 +298,15 @@ system class loader's search path itself, through the `Instrumentation` it
 already holds.**
 
 M3-W3 selected it, and it is better than either option below on their own terms.
-It keeps ADG-5 intact, because Ravel still adds only JVM arguments to a stock
-instance and no launcher puts anything anywhere — which is the cost that sank the
-first option. And the screen stays ordinary readable Java compiled ahead of
+It costs [ADG-5](adg-5-prism-integration.md) nothing that the first option would
+have cost: the *screen jar* reaches the loader through an argument Ravel already
+passes, and nothing puts that jar anywhere. What the clause here originally said
+was broader — that no launcher puts anything anywhere — and that was false of the
+launches M3 went on to run: each of them staged the native library into the
+instance's natives directory from the instance's `WrapperCommand`. That is ADG-5's
+own outstanding correction rather than this mechanism's, it is recorded as an M3
+deviation, and ADG-5's amendment is where the fix is chosen. The claim that holds
+here is about this artifact. And the screen stays ordinary readable Java compiled ahead of
 time, which is what the second option gives up by emitting a GUI as
 `java.lang.classfile` builder calls.
 

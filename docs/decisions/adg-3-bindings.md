@@ -125,9 +125,14 @@ worth more than either extractor alone, and it costs half a second.
 
 ## Consequences
 
-- Version data is three tracked files per version: the reviewed hook inventory,
-  the adapter inputs with their upstream hashes, and the generated mapping lock.
-  The jar itself is never tracked; its hash is.
+- Version data is tracked files per version rather than jars: the reviewed hook
+  inventory, the reviewed stub seeds, the adapter inputs with their upstream
+  hashes, and the generated mapping and stub locks. The set grew after this record
+  was written — `adapter.toml` names the two stub files as well — which is why the
+  count is not restated here; `adapter.toml`'s `inputs` block is the inventory and
+  nothing else should try to be. The mechanism is unaffected: whatever the
+  generation reads from is tracked and hashed, and the jar itself is never
+  tracked; its hash is.
 - The build needs a zip reader. This experiment shells out to `unzip`, which is
   fine for a measurement and not fine for production: M2-W5 picks a Rust archive
   dependency, and that is a dependency decision with its own `cargo deny` review.

@@ -948,7 +948,7 @@ distribution, rollback, and private-history isolation.
 | Rust execution/package/ABI model | ADG-2 / M1 **and M3** | discharged at M3: source distribution, compiled on the player's machine. Reconciling `package.schema.json` and `SPEC.md` §3.4 is now live work |
 | Binding extraction and generation | ADG-3 / M1 | discharged |
 | Java/Rust state ownership | ADG-4 / M1 | discharged; amended at M3-W0 to admit opaque handles |
-| Stock Prism versus minimal patch | ADG-5 / M1 | discharged, with a correction outstanding: the library-path argument does not work and choosing the fix amends ADG-5 |
+| Stock Prism versus minimal patch | ADG-5 / M1 | discharged; the library-path argument does not work and ADG-5's amendment chose the fix — `System.load` on a path given by a `-D` property. No work package owns building it, so the native half has no conformance claim until one does |
 | Configuration and UI schema | ADG-6 before M3-W3 | discharged; declared in data, drawn in Java |
 | Where the generated screen artifact loads | M3-W3 | discharged; ADG-1 records M3-W3 selecting `Instrumentation.appendToSystemClassLoaderSearch` for the sibling screen jar |
 | Per-counterpart rights and implementation method | M5 | blocks publication; may block lawful implementation |

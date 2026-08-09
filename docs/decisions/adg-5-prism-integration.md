@@ -2,7 +2,11 @@
 
 Status: accepted at M1-W6. The mechanism is decided, the launcher surface is
 verified, and the pinned game has been observed launching with Ravel's two
-arguments attached through a stock launcher.
+arguments attached through a stock launcher. Corrected after M2's launch, which
+found the second argument does not work, and amended after M3 to choose the fix
+that note deferred. The amendment is at "Amendment: `System.load` on a
+Ravel-owned path"; the decision — two stock instance settings, no launcher
+change — is what it restores rather than what it changes.
 
 ## Decision
 
@@ -175,3 +179,58 @@ stopped by the time a shutdown hook runs, so the line has to be written to the
 process's own standard output. `evidence/m2/prism-launch.json` records what it
 printed — two classes and five methods rewritten inside the official client, and
 144 hook invocations reaching native code.
+
+## Amendment: `System.load` on a Ravel-owned path
+
+Amended after M3, on what M3's launches actually did rather than on a new
+measurement. The note above left this ADR in the worst available state: it
+classified the natives-staging path as a workaround, told nobody to build on it,
+named two proper fixes, and said choosing between them amends this ADR. Nothing
+chose. Every native M3 launch then used the workaround, and it went further than
+M2's did — the library was staged into the instance's natives directory *from the
+instance's own `WrapperCommand`*, which is Ravel-supplied code running inside the
+launcher's launch sequence, with `OverrideCommands` and `ShowConsole` set beside
+it and a third `-D` argument past the two this decision names. So the native half
+of this decision has had no accepted mechanism at all since M2-W5.
+
+**The mechanism this ADR selects is `System.load` on an explicit path supplied by
+a `-D` property.** The generated `Hook` reads a Ravel-owned absolute path out of a
+system property and loads the library from there. The appended
+`-Djava.library.path` and the natives staging that propped it up are both
+withdrawn: the appended path does not work for the reason the note above records,
+and the staging is what this amendment exists to stop.
+
+**Why this one and not the installer.** Staging writes a Ravel file into a
+directory the launcher owns, populates on launch, and deletes on exit, so the file
+can be wiped between launches and the failure mode is an `UnsatisfiedLinkError` in
+a launch that worked yesterday. The workaround is fragile precisely because it
+borrows the launcher's storage. An installer that owns the instance's natives
+directory makes that borrowing permanent: it spends "Ravel adds two arguments to
+one instance and owns no part of the launcher" — the property in "Decision" above,
+and the property that made this gate worth having — to solve a problem an absolute
+path solves. `System.load` restores it, and returns the instance to two settings:
+`-javaagent`, and one `-D` naming the library.
+
+### What survives the change and what has to
+
+The load stays in `Hook`'s own static initializer. The comment the generator emits
+there is the part that must not be lost: JNI binds a loaded library to the loader
+of the class whose code called, and resolves native methods only against that
+loader's copy of the declaring class, so loading from the declaring class's own
+initializer makes those two loaders the same one by construction. `System.load`
+called from the same initializer keeps that property exactly — what binds the
+library is which class's code called, not which overload it called. ADG-1's "What
+is still forbidden" also continues to hold: no second class binds its own library.
+
+### Nothing is built yet, and no work package owns it
+
+`crates/ravel-minecraft-adapter/src/generate/render.rs` still emits
+`System.loadLibrary(LIBRARY)`, and this amendment does not change it. The change
+is launcher-integration work — a generator edit, a property name, and a launch
+argument set that has to be proven in a real launch — and **no work package owns
+it.** M3's implementation packages are closed and none of them named it; M4-W1 to
+M4-W8 are SDK breadth and none of them names the launcher either. The obligation
+is recorded here and in `ROADMAP.md`'s open-questions row rather than assigned to
+a package that does not exist, and until a package does own it and run it, no
+milestone may claim conformance with the native half of this decision. M3 does
+not: its manifest records the staging as a deviation naming this ADR.

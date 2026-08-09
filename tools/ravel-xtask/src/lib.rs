@@ -687,24 +687,27 @@ fn verify_recorded_run(root: &Path, manifest_path: &Path, violations: &mut Vec<S
 /// Recomputes every input digest against the revision the manifest pins.
 ///
 /// An input digest is a claim about one revision, so it has to be hashed there.
-/// `revision.id` is that revision: it names the commit the recorded commands
-/// ran on, which is what the milestone was measured against. `revision.changeId`
-/// names only the change that carries the manifest, which is revised long after
-/// the measurement — M3's was, and not one of its inputs hashes to its recorded
-/// value there — so hashing at the change would check the wrong tree, and
-/// hashing at `@` would check a tree the milestone never saw.
+/// `revision.id` is that revision, and `verify_pinned_commit` requires it to be
+/// the visible commit `revision.changeId` is at — so it is the state of the
+/// milestone's own change as the repository holds it now, not the tree the
+/// recorded commands ran on. Those ran earlier and on a commit the rewrites
+/// abandoned; `tests` and `commands` are attestations about that run and nothing
+/// recomputes them, which each manifest's deviations state.
 ///
-/// The revision the commands ran on need not be one the manifest exists in, and
-/// M1's is not: `evidence/m1/manifest.json` pins a commit the file is absent from,
-/// which its own deviations disclose. That is checked for exactly what it binds —
-/// the inputs, which are present there and match — and nothing here reads the
-/// pinned revision as a claim about the manifest itself.
+/// What this binds is narrower and real: the files the milestone names as its
+/// inputs hash, at the revision it pins, to the values it records. Hashing them in
+/// the working copy instead would rewrite history rather than verify it, because
+/// `inputs[]` names files outside the evidence directory that go on changing after
+/// a milestone closes.
 ///
-/// The revision is resolved through jj, and a checkout without one is skipped:
-/// `revision.id` is frequently a commit no branch reaches, so a plain git tree
-/// would report every input unreadable and turn a provenance check into noise.
-/// The skip says so on stdout, because a whole provenance check that evaporates
-/// in silence reads exactly like one that passed.
+/// The revision is resolved through jj, and a checkout without a jj repository is
+/// skipped rather than failed, because there is nothing there to resolve a revision
+/// with. That is the one gap left: a clone of this repository does reach the pinned
+/// commits, since the colocated repository exports the visible stack to git HEAD, so
+/// `jj git init --colocate` in a clone recomputes every digest — but a plain git tree
+/// cannot, and reporting every input unreadable there would turn a provenance check
+/// into noise. The skip says so on stdout, because a whole provenance check that
+/// evaporates in silence reads exactly like one that passed.
 fn verify_recorded_inputs(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
     let label = manifest_path
         .strip_prefix(root)
@@ -1206,10 +1209,109 @@ fn verify_manifest_change(root: &Path, manifest_path: &Path, violations: &mut Ve
     match jq_value(manifest_path, ".revision.changeId") {
         Ok(recorded) if recorded != "null" && !recorded.is_empty() => {
             violations.extend(change_mismatch(&label, &recorded, &owner));
+            verify_pinned_commit(root, &label, &recorded, manifest_path, violations);
         }
         Ok(_) => violations.push(format!("{label} records no change id")),
         Err(error) => violations.push(error),
     }
+}
+
+/// Requires `revision.id` to be the visible commit `revision.changeId` is at now.
+///
+/// A commit id is not a name. Every jj rewrite abandons the commit and keeps the
+/// change, so a manifest pinned by commit id dangles the moment its own change is
+/// revised. The dangling is invisible here and only here: the abandoned commit
+/// survives in this working copy's operation log, so `jj file show -r` still reads
+/// it, while a clone carries no `refs/jj/*` and holds no such object at all. All four
+/// milestone manifests were in that state, and every input digest in all four was
+/// unreadable in a fresh clone as a result.
+///
+/// So the pinned commit has to be one visible history reaches, and it has to be the
+/// commit the pinned change is at. A rewrite that moves the change then fails the
+/// gate and forces a re-pin with the inputs re-hashed there, which is the only way
+/// a recorded commit id stays a true statement about anything.
+fn verify_pinned_commit(
+    root: &Path,
+    label: &str,
+    change: &str,
+    manifest_path: &Path,
+    violations: &mut Vec<String>,
+) {
+    let recorded = match jq_value(manifest_path, ".revision.id") {
+        Ok(value) if value != "null" && !value.is_empty() => value,
+        Ok(_) => {
+            violations.push(format!(
+                "{label} records change {change} but no commit it pins"
+            ));
+            return;
+        }
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let current = match visible_commit(root, change) {
+        Ok(current) => current,
+        Err(error) => {
+            violations.push(format!("{label} records change {change}, which {error}"));
+            return;
+        }
+    };
+    if let Err(error) = visible_commit(root, &recorded) {
+        violations.push(format!(
+            "{label} pins revision.id {recorded}, which {error}; re-pin it to {current}, the \
+             commit change {change} is at now, and re-hash every input there"
+        ));
+        return;
+    }
+    violations.extend(pinned_commit_mismatch(label, change, &recorded, &current));
+}
+
+/// Compares a pinned commit against the one its change is at.
+fn pinned_commit_mismatch(
+    label: &str,
+    change: &str,
+    recorded: &str,
+    current: &str,
+) -> Option<String> {
+    if recorded == current {
+        return None;
+    }
+    Some(format!(
+        "{label} pins revision.id {recorded} but change {change} is at {current}; a commit id does \
+         not survive a rewrite, so re-pin it and re-hash every input there"
+    ))
+}
+
+/// Resolves a revision to the one commit visible history reaches through it.
+///
+/// Resolving is not the check. `jj file show -r` reads an abandoned commit out of
+/// this machine's operation log, and `jj log -r <abandoned>` prints it, so neither
+/// distinguishes a commit a clone would carry from one only this working copy can
+/// see. `::visible_heads()` is that distinction: it is what publishing the stack
+/// would put in a clone, and an abandoned commit is outside it.
+fn visible_commit(root: &Path, revision: &str) -> Result<String, String> {
+    let output = Command::new("jj")
+        .args([
+            "log",
+            "-r",
+            &format!("::visible_heads() & ({revision})"),
+            "--no-graph",
+            "-T",
+            r#"commit_id ++ "\n""#,
+        ])
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("cannot be resolved: {error}"))?;
+    let resolved = String::from_utf8_lossy(&output.stdout);
+    let mut commits = resolved.lines().filter(|line| !line.trim().is_empty());
+    let Some(commit) = commits.next() else {
+        return Err("names no commit in visible history".to_owned());
+    };
+    if commits.next().is_some() {
+        return Err("names more than one visible commit".to_owned());
+    }
+    Ok(commit.to_owned())
 }
 
 /// Compares a recorded change against the one that introduced the file.
@@ -2844,11 +2946,11 @@ mod tests {
 
     use super::{
         HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS, change_mismatch,
-        declares_unsafe_prohibition, hook_counts, hook_document_violations, redacted_path,
-        required_scaffold_paths, verify_evidence_records, verify_experiment_fence,
+        declares_unsafe_prohibition, hook_counts, hook_document_violations, pinned_commit_mismatch,
+        redacted_path, required_scaffold_paths, verify_evidence_records, verify_experiment_fence,
         verify_hook_inventory_document, verify_ignored_boundaries, verify_milestone,
         verify_scaffold, verify_spikes, verify_testkit_fence, verify_tracked_contents,
-        verify_tracked_paths, verify_version_boundary,
+        verify_tracked_paths, verify_version_boundary, visible_commit,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -3190,6 +3292,69 @@ mod tests {
                 "evidence/m9/manifest.json records input absent.txt: cannot read it at revision \
                  {revision}"
             )]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_pinned_commit_that_is_the_change_head_agrees() {
+        assert_eq!(pinned_commit_mismatch("m9", "kkxp", "abc", "abc"), None);
+    }
+
+    #[test]
+    fn a_pinned_commit_the_change_has_moved_off_is_reported() {
+        // The hole this exists for: all four manifests pinned a commit their own
+        // change no longer held, and every one of them resolved here and nowhere
+        // else, so twenty input digests bound nothing in a clone.
+        let reported = pinned_commit_mismatch("evidence/m9/manifest.json", "kkxp", "abc", "def")
+            .expect("a moved change should be reported");
+
+        assert!(
+            reported.starts_with(
+                "evidence/m9/manifest.json pins revision.id abc but change kkxp is at def"
+            ),
+            "{reported}"
+        );
+    }
+
+    #[test]
+    fn an_abandoned_commit_is_not_visible_although_jj_still_reads_it() {
+        // `jj file show -r` reads an abandoned commit out of the operation log, so
+        // resolving one is not evidence a clone could. This is the distinction the
+        // whole re-pin rests on.
+        let (root, abandoned) = pinned_input_root("visible-abandoned");
+        let described = Command::new("jj")
+            .args(["describe", "-m", "moves the change off that commit"])
+            .current_dir(&root)
+            .output()
+            .expect("jj should be available");
+        assert!(described.status.success(), "{described:?}");
+
+        let readable = Command::new("jj")
+            .args(["file", "show", "-r", &abandoned, "--", "input.txt"])
+            .current_dir(&root)
+            .output()
+            .expect("jj should be available");
+        assert!(readable.status.success(), "{readable:?}");
+        assert_eq!(
+            visible_commit(&root, &abandoned),
+            Err("names no commit in visible history".to_owned())
+        );
+
+        let current = visible_commit(&root, "@").expect("the working copy should be visible");
+        assert_ne!(current, abandoned);
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_revision_naming_nothing_is_not_visible() {
+        // All-zeros is jj's root commit and is visible, so the bogus id here is a
+        // hash no object carries.
+        let (root, _) = pinned_input_root("visible-bogus");
+
+        assert_eq!(
+            visible_commit(&root, &"1".repeat(40)),
+            Err("names no commit in visible history".to_owned())
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }

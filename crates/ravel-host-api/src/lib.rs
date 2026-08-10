@@ -2,8 +2,10 @@
 
 //! Provisional host contract whose mechanism is selected by ADG-2.
 
+mod interception;
 mod services;
 
+pub use interception::{InterceptionRefused, Occasion, Outcome, Point, Points, Round};
 pub use services::{
     ServiceCallFailed, ServiceDeclaration, ServiceDeclarationError, ServiceDirectory, ServiceId,
     ServiceRequest, ServiceResponse, ServiceUnavailable,

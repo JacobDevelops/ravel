@@ -3,8 +3,10 @@
 //! Versioned saved-data admission, migration and canonical aggregate contracts.
 
 mod migrate;
+mod shaping;
 
 pub use migrate::{MigrationChain, MigrationFailed, MigrationStep};
+pub use shaping::{ShapingError, ShapingMismatch, ShapingRecord, WorldShaping};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;

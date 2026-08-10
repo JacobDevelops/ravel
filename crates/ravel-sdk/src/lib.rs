@@ -69,11 +69,21 @@
 //! - [`resources`] — supplied paths, which have one supplier, so the later mod
 //!   overrides and the mods it shadowed are named;
 //! - [`generate`] — the pack a declaration produces, byte for byte the same each
-//!   time it is produced.
+//!   time it is produced;
+//! - [`server_data`] — entries the server resolves, whose path Ravel derives and
+//!   whose one barrier answers whether a path is already claimed;
+//! - [`audio`] — the sounds a mod owns and the events that play them, where
+//!   playing on a server is refused rather than skipped;
+//! - [`world_shaping`] — the set of mods that shaped a world, written into the
+//!   world at creation and refused when it no longer matches;
+//! - [`render_stages`] — the published places a mod contributes drawing to, and
+//!   the order among the mods at each one.
 //!
 //! # What a mod does while it runs
 //!
-//! [`events`] is what the game did and what a player typed. [`network`] is what a
+//! [`events`] is what the game did and what a player typed; [`interception`] is
+//! what the game is about to do, where a mod answers at a published point and may
+//! refuse or replace the outcome under a declared contract. [`network`] is what a
 //! mod declares it sends between a client and a server: a contract, and a value
 //! that round-trips under it or is refused — declared and testable today, and not
 //! yet carried anywhere, which that module states plainly. [`sides`] is which of
@@ -108,16 +118,21 @@
 // This crate's own tests use the attribute, so it needs that name for itself.
 extern crate self as ravel_sdk;
 
+pub mod audio;
 pub mod config;
 pub mod content;
 pub mod events;
 pub mod generate;
+pub mod interception;
 pub mod network;
+pub mod render_stages;
 pub mod resources;
 pub mod save;
+pub mod server_data;
 pub mod services;
 pub mod sides;
 pub mod tags;
+pub mod world_shaping;
 
 pub use ravel_core::{LifecycleState, ModId, ModIdError, Side, SideSet, Version, VersionRange};
 /// Why a mod refused the step the loader asked it to take.
@@ -259,21 +274,26 @@ pub trait Declared {
 /// assert_eq!(Example::declared_id().as_str(), "example");
 /// ```
 pub mod prelude {
+    pub use crate::audio::AudioDeclaration;
     pub use crate::config::{ConfigurationDeclaration, LayeredConfiguration, SettingKey};
     pub use crate::content::{
         ContentDeclaration, ContentId, ContentKind, Registrar, RegistrationRefused, RegistryKey,
         claim_all,
     };
     pub use crate::events::{CommandInvocation, GameEvent};
+    pub use crate::interception::{Outcome, Point, Points};
     pub use crate::network::{Direction, Packet, PacketContract, PacketDelivery, PacketId};
+    pub use crate::render_stages::{RenderStage, StageDeclaration};
     pub use crate::save::{
         MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataVersion,
     };
+    pub use crate::server_data::{ServerDataDeclaration, ServerDataKind};
     pub use crate::services::{
         ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest, ServiceResponse,
     };
     pub use crate::sides::ClientOnly;
     pub use crate::tags::TagId;
+    pub use crate::world_shaping::{ShapingRecord, WorldShaping};
     pub use crate::{Declared, LifecycleState, Mod, ModError, ModId, Side, declare_mod};
 }
 

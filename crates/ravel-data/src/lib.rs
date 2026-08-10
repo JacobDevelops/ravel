@@ -20,12 +20,20 @@
 //! supplies the resolved order, which is `ravel-loader`'s to decide, and this
 //! crate is what turns that order into an answer a report or a game can use.
 
+mod audio;
 mod declare;
 mod generate;
+mod render_stages;
 mod resources;
+mod server_data;
 mod tags;
 
+pub use audio::{AudioDeclaration, AudioEntry, AudioError, AudioEvent, PlayRequest};
 pub use declare::{ContentDeclaration, DeclarationError};
 pub use generate::{GeneratedData, GeneratedFile};
+pub use render_stages::{RenderStage, StageDeclaration, StageOrder, StageRefused};
 pub use resources::{Override, Resource, ResourceSet};
+pub use server_data::{
+    GeneratedServerData, ServerDataDeclaration, ServerDataEntry, ServerDataError, ServerDataKind,
+};
 pub use tags::{TagError, TagId, TagSet};

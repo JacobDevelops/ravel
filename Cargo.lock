@@ -835,15 +835,20 @@ dependencies = [
  "ravel-resolve",
  "ravel-save",
  "ravel-sdk",
+ "ravel-test-mod-audio",
  "ravel-test-mod-client-only",
  "ravel-test-mod-commands",
  "ravel-test-mod-configuration",
  "ravel-test-mod-events",
  "ravel-test-mod-inter-mod-service",
+ "ravel-test-mod-interception",
  "ravel-test-mod-networking",
  "ravel-test-mod-noop",
+ "ravel-test-mod-render-stages",
  "ravel-test-mod-resources",
  "ravel-test-mod-saved-data",
+ "ravel-test-mod-server-data",
+ "ravel-test-mod-world-shaping",
  "ravel-testkit",
  "serde_json",
  "sha2 0.11.0",
@@ -1113,6 +1118,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-test-mod-audio"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
+]
+
+[[package]]
 name = "ravel-test-mod-client-only"
 version = "0.0.0"
 dependencies = [
@@ -1177,6 +1189,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-test-mod-interception"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
+]
+
+[[package]]
 name = "ravel-test-mod-networking"
 version = "0.0.0"
 dependencies = [
@@ -1198,6 +1217,13 @@ version = "0.0.0"
 dependencies = [
  "ravel-core",
  "ravel-host-api",
+ "ravel-sdk",
+]
+
+[[package]]
+name = "ravel-test-mod-render-stages"
+version = "0.0.0"
+dependencies = [
  "ravel-sdk",
 ]
 
@@ -1225,7 +1251,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-test-mod-server-data"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
+]
+
+[[package]]
 name = "ravel-test-mod-server-only"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
+]
+
+[[package]]
+name = "ravel-test-mod-world-shaping"
 version = "0.0.0"
 dependencies = [
  "ravel-sdk",

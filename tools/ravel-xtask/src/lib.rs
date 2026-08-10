@@ -38,6 +38,7 @@ const CRATE_NAMES: &[&str] = &[
 ];
 
 const TEST_MOD_NAMES: &[&str] = &[
+    "audio",
     "client-only",
     "commands",
     "configuration",
@@ -46,13 +47,17 @@ const TEST_MOD_NAMES: &[&str] = &[
     "events",
     "failure-cases",
     "inter-mod-service",
+    "interception",
     "networking",
     "noop",
     "registries",
+    "render-stages",
     "resources",
     "saved-data",
+    "server-data",
     "server-only",
     "waystone-ledger",
+    "world-shaping",
 ];
 
 /// Example crates a mod author reads, and the only crates whose manifests are

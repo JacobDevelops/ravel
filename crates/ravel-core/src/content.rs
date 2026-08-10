@@ -184,6 +184,9 @@ impl ContentId {
         if path.starts_with('/') || path.ends_with('/') {
             return Err(ContentIdError::PathBoundary);
         }
+        if crate::paths::is_traversal(path) {
+            return Err(ContentIdError::PathTraversal);
+        }
 
         for (index, character) in path.chars().enumerate() {
             let allowed = character.is_ascii_lowercase()
@@ -254,6 +257,14 @@ pub enum ContentIdError {
     EmptyPath,
     /// The path starts or ends with `/`, so it names a directory.
     PathBoundary,
+    /// The path holds a `..` segment, so it names something outside itself.
+    ///
+    /// A content path is turned into a pack path wherever content is generated
+    /// — a tag file, a server-resolved entry — and a [`crate::RelativePath`]
+    /// refuses a `..` segment. Refusing it here as well is what keeps the two
+    /// rules one rule: without it a name is a legal content id whose derived
+    /// path cannot exist, and the derivation has nowhere to put the failure.
+    PathTraversal,
     /// A path character is outside the documented charset.
     PathCharacter {
         /// The rejected character.
@@ -274,6 +285,10 @@ impl fmt::Display for ContentIdError {
             Self::EmptyPath => formatter.write_str("a content id's path cannot be empty"),
             Self::PathBoundary => formatter.write_str(
                 "a content id's path names an entry, so it cannot start or end with `/`",
+            ),
+            Self::PathTraversal => formatter.write_str(
+                "a content id's path names something inside its own namespace, so it cannot hold \
+                 a `..` segment",
             ),
             Self::PathCharacter { character, index } => write!(
                 formatter,
@@ -427,7 +442,7 @@ impl std::error::Error for RegistryKeyError {
 #[cfg(test)]
 mod tests {
     use super::{ContentId, ContentIdError, ContentKind, RegistryKey, RegistryKeyError};
-    use crate::ModId;
+    use crate::{ModId, RelativePath, RelativePathError};
 
     fn id(text: &str) -> ContentId {
         text.parse().expect("a legal content id")
@@ -484,6 +499,34 @@ mod tests {
             "example_mod:copper/".parse::<ContentId>(),
             Err(ContentIdError::PathBoundary)
         );
+    }
+
+    /// The rule a content path and a pack path share, checked from the content
+    /// side. A `..` segment used to be legal here and refused there, so a name
+    /// that declared successfully could not have its file written.
+    #[test]
+    fn a_path_that_would_leave_its_own_namespace_is_refused_by_both_path_types() {
+        let namespace: ModId = "example_mod".parse().expect("a legal mod id");
+        for candidate in ["../elsewhere", "a/../b", "smelting/.."] {
+            assert_eq!(
+                ContentId::new(namespace.clone(), candidate).unwrap_err(),
+                ContentIdError::PathTraversal,
+                "{candidate}"
+            );
+        }
+
+        // The pack path the first of those would be derived into, refused from
+        // the other side, which is the disagreement the shared rule closed.
+        assert_eq!(
+            RelativePath::try_from("data/example_mod/../elsewhere.json".to_owned()),
+            Err(RelativePathError::Traversal)
+        );
+
+        // A dot that is not a whole segment is an ordinary character in both, so
+        // the shared rule refuses traversal rather than dots.
+        let dotted = ContentId::new(namespace, "a..b").expect("`a..b` is not a traversal");
+        assert_eq!(dotted.path(), "a..b");
+        assert!(RelativePath::try_from("data/example_mod/a..b.json".to_owned()).is_ok());
     }
 
     #[test]

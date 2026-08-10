@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
+use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure, precedence};
 use ravel_host_api::{
     HostError, HostMod, ServiceCallFailed, ServiceDeclaration, ServiceDirectory, ServiceId,
     ServiceRequest, ServiceResponse, ServiceUnavailable,
@@ -147,15 +147,16 @@ fn providers(declarations: &BTreeMap<ModId, ServiceDeclaration>) -> BTreeMap<Ser
 
 /// Returns the mods in provider-before-consumer order.
 ///
-/// Kahn's algorithm over a `BTreeSet` of ready mods, so the order is the
-/// lexicographically smallest topological one and two runs of the same
-/// declarations produce the same order.
+/// The order itself is [`ravel_core::precedence`], which every surface that
+/// orders mods among each other shares, so a service graph and a drawing stage
+/// cannot disagree about what "after" means. What stays here is the part that is
+/// about services: turning a required service into an edge, and refusing a
+/// service nothing provides.
 fn dependency_order(
     declarations: &BTreeMap<ModId, ServiceDeclaration>,
     providers: &BTreeMap<ServiceId, ModId>,
 ) -> Result<Vec<ModId>, ServiceRefused> {
-    let mut consumers: BTreeMap<&ModId, BTreeSet<&ModId>> = BTreeMap::new();
-    let mut waiting: BTreeMap<&ModId, usize> = declarations.keys().map(|id| (id, 0)).collect();
+    let mut consumers: BTreeMap<ModId, BTreeSet<ModId>> = BTreeMap::new();
 
     for (mod_id, declaration) in declarations {
         for service in declaration.requires() {
@@ -165,42 +166,16 @@ fn dependency_order(
                     consumer: mod_id.clone(),
                     service: service.clone(),
                 })?;
-            if consumers.entry(provider).or_default().insert(mod_id) {
-                *waiting.entry(mod_id).or_default() += 1;
-            }
+            consumers
+                .entry(provider.clone())
+                .or_default()
+                .insert(mod_id.clone());
         }
     }
 
-    let mut ready: BTreeSet<&ModId> = waiting
-        .iter()
-        .filter(|(_, count)| **count == 0)
-        .map(|(id, _)| *id)
-        .collect();
-    let mut order = Vec::with_capacity(declarations.len());
-    while let Some(next) = ready.pop_first() {
-        order.push(next.clone());
-        for consumer in consumers.get(next).into_iter().flatten() {
-            let count = waiting
-                .get_mut(*consumer)
-                .expect("every consumer is a declared mod");
-            *count -= 1;
-            if *count == 0 {
-                ready.insert(consumer);
-            }
-        }
-    }
-
-    if order.len() != declarations.len() {
-        let held: BTreeSet<ModId> = declarations
-            .keys()
-            .filter(|id| !order.contains(id))
-            .map(|id| (*id).clone())
-            .collect();
-        return Err(ServiceRefused::Cycle {
-            participants: held.into_iter().collect(),
-        });
-    }
-    Ok(order)
+    precedence(declarations.keys().cloned(), &consumers).map_err(|cycle| ServiceRefused::Cycle {
+        participants: cycle.participants().to_vec(),
+    })
 }
 
 /// Rearranges `mods` so the ones `order` names come first, in that order.

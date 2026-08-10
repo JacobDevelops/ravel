@@ -107,11 +107,22 @@ impl RelativePath {
         if candidate.contains(LINE_TERMINATORS) {
             return Err(RelativePathError::LineBreak);
         }
-        if candidate.split('/').any(|segment| segment == "..") {
+        if is_traversal(candidate) {
             return Err(RelativePathError::Traversal);
         }
         Ok(())
     }
+}
+
+/// Returns whether `candidate` holds a `..` segment.
+///
+/// One rule, in one place. A content path and a pack path both refuse to leave
+/// the directory they are relative to, and two spellings of that would be two
+/// answers: a name one accepted and the other refused would be a name that
+/// declares successfully and panics when its path is derived, which is exactly
+/// what happened before this was shared.
+pub(crate) fn is_traversal(candidate: &str) -> bool {
+    candidate.split('/').any(|segment| segment == "..")
 }
 
 impl TryFrom<String> for RelativePath {

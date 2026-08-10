@@ -4792,11 +4792,22 @@ const M5_RECORDS: &[(&str, &str, &str)] = &[(
         and (.boundArtifacts | all(
             (.name | type == "string" and length > 0)
             and (.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
-            and (.holds | type == "string" and length > 0)))
+            and (.holds | type == "string" and length > 0)
+            and (.class == "material" or .class == "machinery")))
         and ((.boundArtifacts | map(.name) | unique | length)
-             == (.boundArtifacts | length))"#,
+             == (.boundArtifacts | length))
+        and (.primitiveScan.class == "machinery")
+        and (.machineryAmendments | type == "array")
+        and (.machineryAmendments | all(
+            (.milestone | type == "string" and length > 0)
+            and (.reason | type == "string" and length > 0)
+            and (.entries | type == "array" and length > 0)
+            and (.figures | type == "array")))
+        and ((.boundArtifacts | map(select(.class == "machinery") | .name)) as $machinery
+             | .machineryAmendments | all(.entries | all(. as $e | $machinery | index($e) != null)))"#,
     "an inventory summary carrying every aggregate as a number, a digest over every \
-     private file it binds, and its own disclosure of what the read observation watches and \
+     private file it binds with the class that digest freezes, its trail of machinery \
+     amendments, and its own disclosure of what the read observation watches and \
      which of its claims rest on judgement",
 )];
 
@@ -4806,7 +4817,16 @@ const M5_RECORDS: &[(&str, &str, &str)] = &[(
 /// decides how a judged claim is written is what makes publishing it legitimate
 /// rather than a figure with no basis. It is not an ADG: `SPEC.md` §15 owns those
 /// numbers and reserves the unused ones for other subjects.
-const M5_DECISIONS: &[&str] = &["claims-without-a-second-reading.md"];
+const M5_DECISIONS: &[&str] = &[
+    "claims-without-a-second-reading.md",
+    // M5's bound digests freeze two different things, and the record now says
+    // which is which per entry. What a class means — permanent for material,
+    // amendable in the open for machinery — is decided there rather than in the
+    // summary that carries the labels, so M5's record does not resolve without
+    // it. It was written for M6 and reaches back into M5's record, which is the
+    // amendment that record licenses.
+    "machinery-is-not-material.md",
+];
 
 /// Checks what closing M5 requires beyond the rules every milestone shares.
 ///

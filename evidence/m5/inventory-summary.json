@@ -104,89 +104,136 @@
   "boundArtifacts": [
     {
       "name": "inventory/atm11-0.2.1/references.json",
+      "class": "material",
       "sha256": "6e115dc782ccb66733fdad26c905cda81317e804b4035d4e326564445f5555d1",
       "holds": "one record per pinned reference, reconciled against the fixture by count and by project and file identity"
     },
     {
       "name": "inventory/atm11-0.2.1/graph.json",
+      "class": "material",
       "sha256": "ce572d7b4f9752f13bd4bacdae2609a85e27123b4f823c429a1a4dd6e8afbcc8",
       "holds": "the dependency and integration graph whose node, edge and cluster figures are carried above"
     },
     {
       "name": "inventory/atm11-0.2.1/surfaces.json",
+      "class": "material",
       "sha256": "619b3c79112f4475784db72aa3389113dba08e4e9a4db872757fa9afcb7fca5c",
       "holds": "the behaviour-surface catalogue whose class-file, model, texture, recipe and nested-jar figures are carried above"
     },
     {
       "name": "inventory/atm11-0.2.1/rights.json",
+      "class": "material",
       "sha256": "43732ee695f03bbd12a40099f4abf3e28455cfbf19dee78207c87286a20d53a7",
       "holds": "the per-artifact rights triage, including the source-use verdicts carried above"
     },
     {
       "name": "inventory/atm11-0.2.1/plans.json",
+      "class": "material",
       "sha256": "2c3e659c4184c31c74efeed394beffc252dd841725daa73790e7a6ad35cbc808",
       "holds": "one counterpart plan per artifact, with owner, method, dependencies, tests and risk score"
     },
     {
       "name": "provenance/atm11-0.2.1.json",
+      "class": "material",
       "sha256": "da611f4d58ceb8fd7254348e3d170b105432d5609b0fa5adddf3b9611476e24a",
       "holds": "the provenance record binding the rights surfaces to the triaged artifact set"
     },
     {
       "name": "proposals/sdk-gaps.json",
+      "class": "material",
       "sha256": "b38935e29a07ba56f3098ad1386c9c7c1d728dea9ac89ad356b3fd7cd6c53449",
       "holds": "the public-safe capability proposals M5-W7 produced, held to a published lexicon"
     },
     {
       "name": "checks/licence-families.tsv",
+      "class": "machinery",
       "sha256": "0f4f46e495cadbb8fd5da7933dd68fdcf6341bf3bc39b2391620f017a77de4bb",
       "holds": "the first judged claim above: each distinct declared string, its family, and whether assets are reserved apart from code"
     },
     {
       "name": "checks/licence-status.tsv",
+      "class": "machinery",
       "sha256": "fdbeab223f98e29b5b2769c29df4522983de20760783752174151fe46e0a98f3",
       "holds": "the second judged claim above: each family, the code status it carries, and the reason for it"
     },
     {
       "name": "checks/verify.sh",
-      "sha256": "453c21ea28c492f4ad98db828467263941c687f5ed2e017141bfa4f58069295c",
+      "class": "machinery",
+      "sha256": "51edfc18d0a2590fc8c4b59aa03a2b77e6f55ec2141e079a7a38f060444e4f98",
       "holds": "the private gate whose exit status and summary lines every figure above was read from"
     },
     {
       "name": "checks/read-observation.sh",
+      "class": "machinery",
       "sha256": "543b573331361fa69ef1dedf3df48fa93b192333e73fb0385839188611705eb1",
       "holds": "the wrappers the read observation installs, and therefore the exact bound disclosed above"
     },
     {
       "name": "checks/verify-reads.sh",
+      "class": "machinery",
       "sha256": "8fc522a8e859d131cda0b306b3731ed7cdd80d624108767b1bd04972ce8f67d3",
       "holds": "the classification of every observed read, and the refusal that fires on an entry body"
     },
     {
       "name": "checks/verify-primitives.sh",
+      "class": "machinery",
       "sha256": "d77f84738f1a6d5a54aa45c646ec9a7a24c14d464cda35c558d13d94a8952b3b",
       "holds": "the second reading of the read observation premise: what the gate reaches, swept for read primitives"
     },
     {
       "name": "checks/read-primitive-vocabulary.tsv",
+      "class": "machinery",
       "sha256": "a611e39078f1177188214ea07f5787eb9d49331845fc0cc59f200ca7c579549f",
       "holds": "one row per declared read primitive with its class, pattern, probe and reason; the accounted half whose limit is disclosed above"
     },
     {
       "name": "checks/read-primitives.tsv",
-      "sha256": "f39f0d431f294aa4480568399b8e28959f39901b264259f4210a69c9536ade8d",
+      "class": "machinery",
+      "sha256": "36749bca7b017f6628f67b0cd07baebc0f0ef4feac0c68cb9e02cb86ae9ce7c9",
       "holds": "every accounted occurrence, held congruent with the vocabulary in both directions"
     }
   ],
   "primitiveScan": {
-    "filesScanned": 33,
+    "class": "machinery",
+    "filesScanned": 34,
     "primitivesDeclared": 26,
     "refused": 12,
     "accounted": 14,
-    "accountedUses": 77,
-    "occurrenceRows": 32,
-    "aUseIsAnOccurrence": "Two on one line are two. This figure read 74 until round 7, because the scan counted matching lines and the occurrence table beside it had been written from that output, so the two agreed and the row that would have contradicted them was never built. Two lines under checks/ carry two occurrences each; the true figure for the tree round 7 read was 76, and it is 77 here because the repair added a reader of its own.",
+    "accountedUses": 79,
+    "occurrenceRows": 33,
+    "aUseIsAnOccurrence": "Two on one line are two. This figure read 74 until round 7, because the scan counted matching lines and the occurrence table beside it had been written from that output, so the two agreed and the row that would have contradicted them was never built. Two lines under checks/ carry two occurrences each; the true figure for the tree round 7 read was 76, and it read 77 at M5's closure because the repair added a reader of its own. It reads 79 now, and the difference is not a correction: M6 adopted a check into that gate and machineryAmendments below records which milestone moved it and why. Every figure in this block is a count of the gate rather than of the inventory, which is why it is amendable at all.",
     "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions.",
     "whoReadsTheseFigures": "The private gate holds every figure in this block to the figure it computes, so one that goes stale because that workspace moved fails there rather than ageing quietly here. That is a bind against drift and not a second count: nothing counts the occurrences a second way, and a hand that changes the scan and rewrites this block together passes."
-  }
+  },
+  "machineryAmendments": [
+    {
+      "milestone": "M6",
+      "reason": "M6-W1 built a check that holds the frozen foundation wave to the inventory it claims to come from, and parked it outside the private gate because adopting it would change checks/verify.sh and the count of files under checks/, both of which this record binds. ROADMAP.md requires M6 to ship checking that is enforcing rather than advisory, and a check the gate does not call is advisory by construction. docs/decisions/machinery-is-not-material.md decides that this records the tree M5 certified rather than an invariant of every later tree, so the check moved into the gate and the figures that are counts of the gate rather than of the inventory are rebound here. No figure about the material moved, and no material digest is touched by this entry.",
+      "entries": [
+        "checks/verify.sh",
+        "checks/read-primitives.tsv"
+      ],
+      "figures": [
+        {
+          "field": "primitiveScan.filesScanned",
+          "from": 33,
+          "to": 34,
+          "why": "checks/verify-wave.sh joined the directory the scan reads"
+        },
+        {
+          "field": "primitiveScan.accountedUses",
+          "from": 77,
+          "to": 79,
+          "why": "that check hashes the two inventory files its manifest is frozen against, which is two accounted uses of sha256sum"
+        },
+        {
+          "field": "primitiveScan.occurrenceRows",
+          "from": 32,
+          "to": 33,
+          "why": "those uses are one row in checks/read-primitives.tsv, with the reason beside them"
+        }
+      ],
+      "workPackage": "M6-W1"
+    }
+  ]
 }

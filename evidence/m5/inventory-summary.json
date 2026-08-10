@@ -1,0 +1,159 @@
+{
+  "milestone": "M5",
+  "workPackage": "M5-W8",
+  "protocol": "m5-inventory-v1",
+  "result": "pass",
+  "fixture": "ATM11 0.2.1",
+  "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is a count over material this repository does not hold and may not hold. The files those counts came from are bound below by digest, which is the whole of the binding available: a digest names bytes without disclosing them, and a reader outside the private workspace can confirm that a figure was computed over the bytes named here only by being given those bytes.",
+  "artifacts": {
+    "total": 235,
+    "catalogued": 235,
+    "uncatalogued": 0,
+    "planned": 235
+  },
+  "graph": {
+    "nodes": 260,
+    "resolvedNodes": 253,
+    "blockedNodes": 7,
+    "edges": 703,
+    "resolvedEdges": 703,
+    "blockedEdges": 0,
+    "clusters": 143,
+    "largestCluster": 35,
+    "blockedNodeReason": "declared no dependency metadata, so the node exists and its edges are unknown rather than absent"
+  },
+  "rights": {
+    "artifacts": 235,
+    "sourceUse": {
+      "permitted": 104,
+      "conditional": 43,
+      "prohibited": 73,
+      "unresolved": 15
+    },
+    "publishable": 0,
+    "licenceFamilies": 10,
+    "distinctDeclaredStrings": 56
+  },
+  "surfaces": {
+    "catalogued": 235,
+    "unclassified": 0,
+    "classFiles": 71235,
+    "models": 48128,
+    "textures": 32104,
+    "recipes": 29501,
+    "languageFiles": 2066,
+    "nestedJars": 57,
+    "artifactsCarryingNestedJars": 36
+  },
+  "plans": {
+    "planned": 235,
+    "canonicalIds": 235,
+    "readingSource": 104,
+    "notReadingSource": 131,
+    "dependencyEdges": 133
+  },
+  "proposals": {
+    "capabilities": 6,
+    "entriesCovered": 221,
+    "families": 10,
+    "testCases": 12,
+    "publishedWords": 715
+  },
+  "reads": {
+    "producersWatched": 6,
+    "archiveReads": 1448401,
+    "entryBodyReads": 0
+  },
+  "disclosure": {
+    "readObservation": {
+      "watches": "four methods of Python's zipfile — namelist, infolist, open and ZipExtFile.read — and the unzip binary, shimmed ahead of the real one on PATH",
+      "bound": "This observes reads through the two channels it wraps. It does not establish that they are the only channels, and the premise that they were is a claim that has already been falsified once: an independent reviewer added a reader using only the standard library through an unwrapped channel, decompressed entry bodies to disk, and the observation printed zero entry bodies read and exited zero. So the figure below is what was seen through the watched channels, and metadata-only is an observed property of those channels rather than a proved property of the run. What it is not is a declaration nobody checked, which is what it replaced.",
+      "notWatched": "reads of files that are not archives — the pinned manifest, the acquisition log, the workspace's own tracked files, and the pack override tree"
+    },
+    "judgedClaims": [
+      {
+        "claim": "the licence family each distinct declared licence string belongs to",
+        "basis": "judged",
+        "decidedBy": "docs/decisions/claims-without-a-second-reading.md",
+        "recordedIn": "a tracked table of one row per distinct declared string",
+        "whyNoSecondReading": "nothing about a licence is derivable from the artifact it governs, so a mutation changing the classifying code and the table together passes"
+      },
+      {
+        "claim": "the source-use verdict each licence family carries",
+        "basis": "judged",
+        "decidedBy": "docs/decisions/claims-without-a-second-reading.md",
+        "recordedIn": "a tracked table of one row per family, each row carrying its reason",
+        "whyNoSecondReading": "this is the decision that moves artifacts between prohibited and cleared, and it sits one function below the family test; flipping one line moves 65 artifacts without moving a single family"
+      },
+      {
+        "claim": "whether an author reserved their assets apart from their code",
+        "basis": "judged",
+        "decidedBy": "docs/decisions/claims-without-a-second-reading.md",
+        "recordedIn": "a column beside each distinct declared string",
+        "whyNoSecondReading": "a reservation is a statement in prose the author wrote, and no count over the artifact contradicts a wrong reading of it"
+      }
+    ]
+  },
+  "boundArtifacts": [
+    {
+      "name": "inventory/atm11-0.2.1/references.json",
+      "sha256": "6e115dc782ccb66733fdad26c905cda81317e804b4035d4e326564445f5555d1",
+      "holds": "one record per pinned reference, reconciled against the fixture by count and by project and file identity"
+    },
+    {
+      "name": "inventory/atm11-0.2.1/graph.json",
+      "sha256": "ce572d7b4f9752f13bd4bacdae2609a85e27123b4f823c429a1a4dd6e8afbcc8",
+      "holds": "the dependency and integration graph whose node, edge and cluster figures are carried above"
+    },
+    {
+      "name": "inventory/atm11-0.2.1/surfaces.json",
+      "sha256": "619b3c79112f4475784db72aa3389113dba08e4e9a4db872757fa9afcb7fca5c",
+      "holds": "the behaviour-surface catalogue whose class-file, model, texture, recipe and nested-jar figures are carried above"
+    },
+    {
+      "name": "inventory/atm11-0.2.1/rights.json",
+      "sha256": "43732ee695f03bbd12a40099f4abf3e28455cfbf19dee78207c87286a20d53a7",
+      "holds": "the per-artifact rights triage, including the source-use verdicts carried above"
+    },
+    {
+      "name": "inventory/atm11-0.2.1/plans.json",
+      "sha256": "2c3e659c4184c31c74efeed394beffc252dd841725daa73790e7a6ad35cbc808",
+      "holds": "one counterpart plan per artifact, with owner, method, dependencies, tests and risk score"
+    },
+    {
+      "name": "provenance/atm11-0.2.1.json",
+      "sha256": "da611f4d58ceb8fd7254348e3d170b105432d5609b0fa5adddf3b9611476e24a",
+      "holds": "the provenance record binding the rights surfaces to the triaged artifact set"
+    },
+    {
+      "name": "proposals/sdk-gaps.json",
+      "sha256": "b38935e29a07ba56f3098ad1386c9c7c1d728dea9ac89ad356b3fd7cd6c53449",
+      "holds": "the public-safe capability proposals M5-W7 produced, held to a published lexicon"
+    },
+    {
+      "name": "checks/licence-families.tsv",
+      "sha256": "0f4f46e495cadbb8fd5da7933dd68fdcf6341bf3bc39b2391620f017a77de4bb",
+      "holds": "the first judged claim above: each distinct declared string, its family, and whether assets are reserved apart from code"
+    },
+    {
+      "name": "checks/licence-status.tsv",
+      "sha256": "fdbeab223f98e29b5b2769c29df4522983de20760783752174151fe46e0a98f3",
+      "holds": "the second judged claim above: each family, the code status it carries, and the reason for it"
+    },
+    {
+      "name": "checks/verify.sh",
+      "sha256": "453c21ea28c492f4ad98db828467263941c687f5ed2e017141bfa4f58069295c",
+      "holds": "the private gate whose exit status and summary lines every figure above was read from"
+    },
+    {
+      "name": "checks/read-observation.sh",
+      "sha256": "c84c20529d6758ed2f7b631959d9a29d56c9c9be8358b2aa55348b859c8707e5",
+      "holds": "the wrappers the read observation installs, and therefore the exact bound disclosed above"
+    },
+    {
+      "name": "checks/verify-reads.sh",
+      "sha256": "68b279a0a0121bf4ea8fdcfc385e75851de871c047203fb8db250f3b974f63d0",
+      "holds": "the classification of every observed read, and the refusal that fires on an entry body"
+    }
+  ]
+}

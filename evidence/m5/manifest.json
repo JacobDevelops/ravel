@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "native",
+  "milestone": "M5",
+  "workPackages": [
+    "M5-W1",
+    "M5-W2",
+    "M5-W3",
+    "M5-W4",
+    "M5-W5",
+    "M5-W6",
+    "M5-W7",
+    "M5-W8"
+  ],
+  "revision": {
+    "id": "PENDING",
+    "changeId": "pendingpendingpendingpendingpend",
+    "dirty": false
+  },
+  "versions": {
+    "minecraft": "26.1.2",
+    "neoforge": "26.1.2.78",
+    "prism": "11.0.3",
+    "fixture": "ATM11 0.2.1",
+    "java": "25.0.4",
+    "rust": "1.95.0",
+    "nix": "2.33.3",
+    "devenv": "2.1.2"
+  },
+  "environment": {
+    "platform": "linux",
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1",
+    "settings": {
+      "scope": "a rights-aware, implementation-independent work inventory over the pinned fixture, built entirely in a separate private workspace and published here as aggregates and digests",
+      "whatThisMilestoneDidNotDo": "No counterpart was implemented, no game process was launched, and no upstream source was read. Nothing of the inventory itself is in this repository: the figures below are counts, and evidence/m5/inventory-summary.json binds the files they were counted from by digest without disclosing them.",
+      "inventory": {
+        "artifacts": 235,
+        "planned": 235,
+        "graphNodes": 260,
+        "graphEdges": 703,
+        "clusters": 143,
+        "sourceProhibited": 73,
+        "sourceUnresolved": 15,
+        "publishable": 0,
+        "readingSource": 104,
+        "dependencyEdges": 133,
+        "archiveReads": 1448401,
+        "entryBodyReads": 0,
+        "digestsBound": 12
+      },
+      "howToReadTheseFigures": "Each figure here is derived by the gate from the parts evidence/m5/inventory-summary.json records, and those parts are held to each other by the recorded arithmetic. What no public gate can do is re-take the measurement: the material was never here. That limit is a deviation below rather than a footnote, because it is the largest single thing a reader of this manifest should know.",
+      "gateStatus": {
+        "M5-W1": {
+          "status": "closed",
+          "evidence": "The compatibility work lives in a separate repository and this one refuses to name it. verify_tracked_paths and verify_tracked_contents in tools/ravel-xtask/src/lib.rs sweep every tracked path and every tracked byte for that name and for a Cargo path dependency that walks above this root, which is the two shapes a leak could arrive as. docs/architecture/public-private-boundary.md describes the split without naming it, for the same reason. The private side carries its own boundary check over its tracked files, and its digest is bound in the summary record."
+        },
+        "M5-W2": {
+          "status": "closed",
+          "evidence": "One record per pinned reference, reconciled against the fixture by count and by project and file identity, with no corrections outstanding. 235 references and 235 catalogued artifacts is the figure every later work package is held to; the reconciliation runs inside the private gate, whose digest and exit status are bound in the summary record."
+        },
+        "M5-W3": {
+          "status": "closed",
+          "evidence": "The dependency and integration graph: 260 nodes, 703 edges and 143 clusters, the largest holding 35 members. Every node either resolves or carries a blocking classification, and 7 do — each because the artifact declared no dependency metadata at all, so its edges are unknown rather than absent. No edge is blocked. The node and edge decompositions close against their totals in the summary record, which is what the public gate checks."
+        },
+        "M5-W4": {
+          "status": "closed",
+          "evidence": "Behaviour surfaces catalogued for all 235 acquired artifacts with none left unclassified: 71235 class files, 48128 models, 32104 textures, 29501 recipes and 2066 language files, with 57 nested libraries read out of 36 artifacts and counted into the groups above. The class-file figure is a path heuristic over entry names rather than a decompilation, which is what makes it lawful to have taken; no entry body was read to produce it, subject to the bound the summary record discloses."
+        },
+        "M5-W5": {
+          "status": "closed",
+          "evidence": "Rights triage over all 235 artifacts: 73 source-prohibited, 15 source-unresolved, 43 conditional, 104 permitted, and 0 publishable. Nothing here is cleared for publication and the inventory says so in a number rather than in prose. Three of the decisions behind those verdicts are judgements no measurement can falsify, and the summary record names each one, points at the decision record governing it, and says why no second reading exists. Prohibited source use is what routes an entry to black-box respecification in M5-W6."
+        },
+        "M5-W6": {
+          "status": "closed",
+          "evidence": "235 counterpart plans, one per artifact, each carrying a Ravel-native canonical ID, an owner, a method, its dependencies, its test set and a risk score, with 235 distinct IDs. 104 plans read source and 131 do not, and that split is derived from the rights verdicts rather than chosen: every artifact whose source use is prohibited, conditional or unresolved is planned as respecification. 133 dependency edges close inside the planned set."
+        },
+        "M5-W7": {
+          "status": "closed",
+          "evidence": "6 general SDK capability proposals covering 221 of the 235 entries, with 10 families proposed and 12 original test cases. Publishability is enforced positively rather than by prohibition: every word of every publishable file has to appear in a published lexicon, so an upstream name cannot arrive by being overlooked. 715 words are published under that rule. M6-W2 is where these are resolved in this repository."
+        },
+        "M5-W8": {
+          "status": "closed",
+          "evidence": "The private gate exits 0 over every work package above, and its digest is bound in evidence/m5/inventory-summary.json. The independent review this row also requires has run and has not closed: evidence/m5/review.md holds the history, and it is the one place that counts the rounds. The last round returned a blocking finding, the repairs answering it are a disclosure rather than a fix, and no round has read the tree those repairs left — so review.result below is fail and review.record binds the bytes that say so. What that verdict does not assert either way is that the defect class M5 spent its review campaign on is closed; it is disclosed instead, as the review record's termination condition explains and the second deviation below states."
+        }
+      }
+    }
+  },
+  "inputs": [
+    {
+      "name": "docs/architecture/public-private-boundary.md",
+      "sha256": "PENDING"
+    },
+    {
+      "name": "SPEC.md",
+      "sha256": "PENDING"
+    },
+    {
+      "name": "schemas/evidence.schema.json",
+      "sha256": "PENDING"
+    },
+    {
+      "name": "ROADMAP.md",
+      "sha256": "PENDING"
+    }
+  ],
+  "commands": [
+    {
+      "command": "devenv tasks run ravel:verify",
+      "startedAt": "PENDING",
+      "durationMs": 0,
+      "exitStatus": 0,
+      "logSha256": "PENDING"
+    }
+  ],
+  "tests": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "lineCoveragePercent": 0
+  },
+  "benchmarks": {
+    "protocolVersion": "m5-inventory-v1",
+    "results": [
+      {
+        "name": "inventory-summary.json",
+        "sha256": "PENDING"
+      }
+    ]
+  },
+  "deviations": [
+    {
+      "summary": "No public gate can falsify a figure in this manifest that is wrong in the private inventory. The material was never in this repository and may not be, so what runs here binds three things and no more: that evidence/m5/inventory-summary.json agrees with itself arithmetically, that the figures in this manifest follow from the record's own parts rather than being stated twice, and that the private files those parts were computed from hash to the digests recorded. A hand that changed a producer and its record together in the private workspace would satisfy all three. The second reading that would catch it is the private gate, which re-derives each total from its rows and which this repository cannot run. Owner: nobody, because there is nothing to own — this is a property of publishing aggregates over material a public tree cannot hold, and it is stated so that no reader mistakes a green ravel:verify-milestone:m5 for a recomputation of the inventory.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The defect class M5's review campaign found is disclosed rather than closed, and this manifest closes with it open. The class is one shape: a producer and its checker share a rule, so they agree, and the rows that would contradict them are never built. Every repair closed its instance and the class reappeared one step over, inside whatever had just been built to catch its predecessor. That loop does not terminate on its own, so the condition M5 stopped on is that no published figure is falsified, not that a round found nothing. evidence/m5/review.md is the record, states the instances and their classifications, and is the one place that counts the rounds. What a later milestone must not do is read this closure as the class being solved.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The read observation that makes the metadata-only method an observed property rather than a declaration watches two channels, and the premise that those are the only channels has already been falsified once. It wraps four methods of Python's zipfile and shims the unzip binary; a reviewer then added a reader using only the standard library through a channel neither wrapper covers, decompressed entry bodies to disk, and the observation printed zero entry bodies read and exited zero. The figure carried here — 1448401 archive reads classified, 0 entry bodies — is therefore what was seen through the watched channels. evidence/m5/inventory-summary.json states that bound in the record beside the figure, which is where a reader acquires a false sense of coverage. What remains true and is worth keeping: the method is now observed rather than asserted, and the earlier arrangement, in which a table of phrases stood in for what the code did, is gone. Owner: the private workspace, whose own file asserting its completeness still says so in the words the governing decision record refuses; that is a live non-conformance rather than a closed one.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "Three rights decisions are judgements no measurement can falsify, and the figures they produce are published anyway. Nothing about a licence is derivable from the artifact it governs, so a mutation that changes the classifying code and the recording table together passes every check in both repositories. The counts most affected are the source-use verdicts and, downstream of them, the split between plans that read source and plans that do not: one line deciding what an all-rights-reserved declaration permits moves 65 artifacts and 65 plans without moving a single licence family. What the tables buy is stated exactly in docs/decisions/claims-without-a-second-reading.md and repeated in the summary record: they move the decision out of a regex and into a small diff a reviewer reads. They do not verify it. Owner: the decision record, which is amended when a judgement changes rather than having the value edited underneath it.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The recorded gate run, the test counts and the coverage figure in this manifest are the operator's attestation rather than something a gate recomputes. A manifest cannot contain the digest of the commit that contains it, so commands and tests are recorded against an earlier commit and this document is written above it; revision.dirty records that tree's state at execution time. What binds is the arithmetic between the counts, the coverage floor, and every digest a reader can recompute. Nothing in this stack has been pushed, so recomputing the input digests needs a jj repository: in a clone without one, both provenance checks announce that they are skipping rather than report a pass.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "The anchor rule this milestone introduces reaches findings that name distinguishable symbols and does not claim to reach every phrasing. A candidate is taken seriously only when it is four characters or more and carries either an underscore or an interior capital, because this tree defines items whose names are ordinary English words and requiring an anchor for every sentence containing one would make the rule unusable. So a finding that named such an item, and only such an item, would escape. The floor is stated beside the check that applies it rather than left for a reader to discover, and the check that a recorded anchor still holds has no such floor: it sweeps every tracked Rust source. This entry anchors itself on verify_tracked_contents, which is M5-W1's boundary sweep and the symbol the W1 row above names, so that the rule is exercised by the milestone that introduces it rather than only described: the claim is that nothing outside tools/ravel-xtask/ calls it, and a caller added anywhere else fails this gate.",
+      "classification": "non-blocking",
+      "anchor": {
+        "symbol": "verify_tracked_contents",
+        "paths": [
+          "tools/ravel-xtask/"
+        ]
+      }
+    }
+  ],
+  "risks": [
+    {
+      "summary": "M6 consumes this inventory as if it were measured, and most of it is. The part that is not is the rights half, and the whole selection rubric depends on it: an entry's method, and therefore whether a counterpart may be informed by reading source at all, follows from a source-use verdict that rests on a judgement. If one of those judgements is wrong, the error is not a wrong count — it is a counterpart built the wrong way, and the wrongness is legal rather than technical, so no test would find it. The mitigation available is the one the decision record names: the judgements are rows a reviewer reads, and a changed judgement is an amendment rather than an edit. M6-W1 should re-read them before freezing its wave rather than inheriting them.",
+      "classification": "non-blocking"
+    },
+    {
+      "summary": "A reader who sees 235 of 235 planned may take it as coverage of the pack's behaviour, and it is coverage of the pack's artifacts. A plan names an owner, a method, dependencies, a test set and a risk score; it does not establish that the behaviour behind the artifact is understood, and nothing in M5 ran the fixture or observed it running. The class-file, model, texture and recipe figures are counts of entries in archives, not of features. What M5 delivers is a work inventory that is complete over the artifact set and honest about resting on entry names; what it does not deliver is any evidence that a counterpart built from one of these plans would behave like the thing it replaces.",
+      "classification": "non-blocking"
+    }
+  ],
+  "review": {
+    "reviewer": "independent Claude reviewer (M5-W8, independent of the work under review; the record below is a history assembled at closure rather than a set of reproduced verdicts, and it says why; it is also the one place that says how many rounds have run)",
+    "independent": true,
+    "result": "fail",
+    "record": {
+      "name": "review.md",
+      "sha256": "PENDING"
+    }
+  },
+  "attestations": [
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "workloads": [
+        "official-atm11"
+      ],
+      "statement": "The inventory recorded here was built and re-verified on this Linux machine against the pinned official ATM11 fixture, inside the private workspace, and the gate run recorded under commands was made in this repository inside the devenv shell. No game process was started for either and none is claimed. The private gate exited 0 on the tree whose files the summary record binds by digest.",
+      "attestedBy": "Ravel maintainer, inventory and gate run",
+      "attestedAt": "2026-08-10T00:00:00.000Z"
+    }
+  ],
+  "platformEvidence": []
+}

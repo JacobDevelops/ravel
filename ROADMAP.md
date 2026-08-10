@@ -950,12 +950,22 @@ unclassified entries.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
+| M7-W0 | Ship the SDK capability the waves consume | M6 | public SDK changes plus original test mods | public M4-class gates pass before private counterparts consume them |
 | M7-W1 | Freeze waves and cluster ownership | M6 | ordered wave manifests | graph closure proves no wave depends on a later unavailable wave |
-| M7-W2 | Implement and test each counterpart | M7-W1 | one package and evidence record per entry | standard per-counterpart suite passes, including lawful differential tests |
+| M7-W2 | Implement and test each counterpart | M7-W0..W1 | one package and evidence record per entry | standard per-counterpart suite passes, including lawful differential tests |
 | M7-W3 | Test integration clusters after each wave | M7-W2 | cluster reports | cross-mod registry, recipe, resource, side, save and performance cases pass |
 | M7-W4 | Re-run full closure and rights status | each wave | burn-up ledger | accepted/blocked/unstarted totals equal verified fixture total |
 | M7-W5 | Final 100% audit | all waves | complete library manifest | 235/235 or evidence-corrected total; zero unresolved dependencies/registries; all provenance present |
 | M7-W6 | Independent review and gate | M7-W5 | private review/evidence | all package and cluster suites pass; M7 gate passes |
+
+M7-W0 exists because a counterpart cannot be written against a capability the SDK
+does not have, and M6-W2 was the only work package anywhere that shipped one. The
+first entry to need it proved the point: library provision was the sixth gap
+M5-W7 proposed and the one M6 deferred, thirty-six inventory entries depend on it,
+and it shipped here rather than in M6 because M6's scope is the foundation wave
+and those thirty-six are not in it. Its number is lower than its dependants
+because a work package id is a stable name rather than a position; the *Depends
+on* column carries the order, as it does everywhere else in this document.
 
 “Counterpart present” means its package builds for its supported compilation targets, passes
 the standard suite, implements its accepted behaviour specification, records

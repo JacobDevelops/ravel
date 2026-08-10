@@ -80,10 +80,11 @@
           "evidence": "6 general SDK capability proposals covering 221 of the 235 entries, with 10 families proposed and 12 original test cases. Publishability is enforced positively rather than by prohibition: every word of every publishable file has to appear in a published lexicon, so an upstream name cannot arrive by being overlooked. 715 words are published under that rule. M6-W2 is where these are resolved in this repository."
         },
         "M5-W8": {
-          "status": "closed",
-          "evidence": "The private gate exits 0 over every work package above, and its digest is bound in evidence/m5/inventory-summary.json. The independent review this row also requires has run and has not closed: evidence/m5/review.md holds the history, and it is the one place that counts the rounds. The last round returned a blocking finding, the repairs answering it are a disclosure rather than a fix, and no round has read the tree those repairs left — so review.result below is fail and review.record binds the bytes that say so. What that verdict does not assert either way is that the defect class M5 spent its review campaign on is closed; it is disclosed instead, as the review record's termination condition explains and the second deviation below states."
+          "status": "open",
+          "evidence": "The independent review has run repeatedly and every round so far has returned fail; the most recent returned a blocking finding that names this evidence as the thing that fails, because a manifest here would record a green gate as proof of a sentence the gate does not hold. evidence/m5/review.md is the record and the one place that counts the rounds, so no count is written here. A repair is in progress and no round has read the tree it leaves, so review.result is fail and review.record binds the bytes that say so. What is closed and proved is the public half: the gate this milestone introduces, its arithmetic reconciliation, its digest binding, its changeId provenance and the deviation-anchor rule, each proved by mutation rather than by a single green run."
         }
-      }
+      },
+      "figuresAreProvisional": "Every figure under inventory below is provisional and is recorded as such rather than as settled. The workspace they were taken from is being rewritten to answer the most recent review round's blocking finding, and the read-observation figures are the ones that finding is about. They are carried here so that the gate's arithmetic and the manifest's structure can be exercised and mutation-proved before the numbers are final; they are not carried as evidence. review.result is fail, evidence/m5/review.md says why, and no reader should treat a figure here as established until a round has certified the tree the repair leaves."
     }
   },
   "inputs": [
@@ -125,7 +126,7 @@
     "results": [
       {
         "name": "inventory-summary.json",
-        "sha256": "410ae8a3e1350ee3f4e66ac6c880b485a50777e333d135388585fba0cc7146c8"
+        "sha256": "28536f655f4186377283e3d361671da6db4b904b7e5391c1c09b18676933cbe9"
       }
     ]
   },
@@ -135,11 +136,11 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "The defect class M5's review campaign found is disclosed rather than closed, and this manifest closes with it open. The class is one shape: a producer and its checker share a rule, so they agree, and the rows that would contradict them are never built. Every repair closed its instance and the class reappeared one step over, inside whatever had just been built to catch its predecessor. That loop does not terminate on its own, so the condition M5 stopped on is that no published figure is falsified, not that a round found nothing. evidence/m5/review.md is the record, states the instances and their classifications, and is the one place that counts the rounds. What a later milestone must not do is read this closure as the class being solved.",
+      "summary": "The defect class this milestone's review campaign found is disclosed rather than closed, and M5 will close with it open. The class is one shape: a producer and its checker share a rule, so they agree, and the rows that would contradict them are never built. Every independent round so far has returned fail, and each raised at least one blocking instance of the class. Each repair was genuine and each round confirmed its predecessor's repair held; each time the class reappeared inside the machinery that had just been built to catch its predecessor, climbing most recently out of the data entirely and into claims about what the checking machinery can see. That loop does not terminate on its own, so the condition M5 stops on is that no published figure is falsified and every remaining limit is disclosed as a limit rather than presented as closed. The second half is what the recent findings added: a mechanism that reads as proof while proving less than it claims is worse than an obviously unbound claim, because nothing downstream of it is read sceptically. evidence/m5/review.md is the record, states the instances, and is the one place that counts the rounds, so no count is written here. A later milestone must not read M5's closure as the class being solved.",
       "classification": "non-blocking"
     },
     {
-      "summary": "The read observation that makes the metadata-only method an observed property rather than a declaration watches two channels, and the premise that those are the only channels has already been falsified once. It wraps four methods of Python's zipfile and shims the unzip binary; a reviewer then added a reader using only the standard library through a channel neither wrapper covers, decompressed entry bodies to disk, and the observation printed zero entry bodies read and exited zero. The figure carried here — 1448401 archive reads classified, 0 entry bodies — is therefore what was seen through the watched channels. evidence/m5/inventory-summary.json states that bound in the record beside the figure, which is where a reader acquires a false sense of coverage. What remains true and is worth keeping: the method is now observed rather than asserted, and the earlier arrangement, in which a table of phrases stood in for what the code did, is gone. Owner: the private workspace, whose own file asserting its completeness still says so in the words the governing decision record refuses; that is a live non-conformance rather than a closed one.",
+      "summary": "The claim that this inventory was taken by metadata only is not currently established, and this manifest records no gate run as proof of it. That sentence is what makes opening source-prohibited artifacts lawful, so it is the most consequential claim M5 makes. It was asserted, then replaced by an observation that wraps the channels through which archives are opened and classifies every read — which was a real improvement — and the most recent review round then falsified the premise underneath it. The file installing those wrappers declares that there are exactly two ways to open an archive in that workspace and that a reader added anywhere is seen by construction; nothing checks that premise, and what is watched is four methods of one standard-library class rather than the standard library. A reviewer injected a reader using only unwatched standard library calls, it decompressed 50357 class files and wrote their bytecode to disk, and the gate exited zero while printing that no entry bodies had been read. A repair is in progress and the figures carried above for that observation are provisional. Owner: the private workspace for the mechanism, and the next review round for whether the repair holds. docs/decisions/claims-without-a-second-reading.md is the general rule this instance forced: a mechanism that claims to observe exhaustively must either verify its own premise by a second reading or state, in the file that acts on the claim and in what it prints, what it does not catch.",
       "classification": "non-blocking"
     },
     {
@@ -177,7 +178,7 @@
     "result": "fail",
     "record": {
       "name": "review.md",
-      "sha256": "bdc9cd98b74ac387d71aeb03c6bb1d95c74a758087158d14ca5f446c53ca82de"
+      "sha256": "666e5ba787a5fb727c624c56fc3e4c34f48b39ecc3804e8e9a3fbced237ce455"
     }
   },
   "attestations": [

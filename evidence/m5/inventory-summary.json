@@ -2,9 +2,9 @@
   "milestone": "M5",
   "workPackage": "M5-W8",
   "protocol": "m5-inventory-v1",
-  "result": "pass",
+  "result": "provisional",
   "fixture": "ATM11 0.2.1",
-  "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is a count over material this repository does not hold and may not hold. The files those counts came from are bound below by digest, which is the whole of the binding available: a digest names bytes without disclosing them, and a reader outside the private workspace can confirm that a figure was computed over the bytes named here only by being given those bytes.",
+  "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is provisional: the workspace is being rewritten to answer the most recent review round's blocking finding, and these numbers are carried so the gate's arithmetic can be exercised and mutation-proved before they are final. Every figure is a count over material this repository does not hold and may not hold. The files those counts came from are bound below by digest, and that binding is for a reader who holds the private workspace and hashes it: nothing in this repository recomputes those digests, because the files are not here.",
   "artifacts": {
     "total": 235,
     "catalogued": 235,
@@ -67,7 +67,7 @@
   "disclosure": {
     "readObservation": {
       "watches": "four methods of Python's zipfile — namelist, infolist, open and ZipExtFile.read — and the unzip binary, shimmed ahead of the real one on PATH",
-      "bound": "This observes reads through the two channels it wraps. It does not establish that they are the only channels, and the premise that they were is a claim that has already been falsified once: an independent reviewer added a reader using only the standard library through an unwrapped channel, decompressed entry bodies to disk, and the observation printed zero entry bodies read and exited zero. So the figure below is what was seen through the watched channels, and metadata-only is an observed property of those channels rather than a proved property of the run. What it is not is a declaration nobody checked, which is what it replaced.",
+      "bound": "This observes reads through the two channels it wraps and establishes nothing about any other channel. The premise that they were the only channels was asserted in the file installing the wrappers, checked by nothing, and falsified: a reviewer added a reader using only unwatched standard library calls, it decompressed 50357 class files and wrote their bytecode to disk, and the gate exited zero while printing that no entry bodies had been read. So the figures below are what was seen through two watched channels, and the metadata-only method is not currently an established property of the run. A repair is in progress. What replaced the earlier arrangement is still worth keeping — a table of phrases standing in for what the code does is gone — but an unbound claim that looks bound is worse than one that looks unbound, and this record says which this is.",
       "notWatched": "reads of files that are not archives — the pinned manifest, the acquisition log, the workspace's own tracked files, and the pack override tree"
     },
     "judgedClaims": [

@@ -233,12 +233,16 @@ section is the most useful thing in this file.
 3. **The metadata-only claim is bounded, not proved.** See Round 6. What the
    figure `0 entry bodies read` means is: through the two watched channels, over
    the six producers that were run. It does not mean no entry body was read.
-4. **The public gate cannot re-take any measurement in this manifest.** It checks
-   that the summary record's parts sum to its totals, that the manifest's figures
-   follow from those parts, and that the private files hash to what is recorded.
-   A figure that is wrong in the private inventory, and consistently wrong,
-   survives all three. There is no public second reading and there cannot be one
-   while the material stays private.
+4. **The public gate cannot re-take any measurement in this manifest, and it
+   recomputes none of the digests that bind it.** It checks two things: that the
+   summary record's parts sum to its totals, and that the manifest's figures
+   follow from those parts. The twelve digests over private files are recorded
+   and nothing here hashes them — falsifying one and rebinding the record's own
+   digest leaves `ravel:verify` at exit 0, which was measured rather than
+   assumed. They bind for a reader holding the private workspace and for nobody
+   else. A figure that is wrong in the private inventory, and consistently
+   wrong, survives everything public. There is no public second reading and
+   there cannot be one while the material stays private.
 5. **The graph's 7 blocked nodes are unknowns, not zeros.** Those artifacts
    declared no dependency metadata. Their edges are absent from the 703 because
    nobody knows them, and any downstream reasoning about cluster boundaries

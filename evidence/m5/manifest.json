@@ -13,8 +13,8 @@
     "M5-W8"
   ],
   "revision": {
-    "id": "PENDING",
-    "changeId": "pendingpendingpendingpendingpend",
+    "id": "098be06a37a13f868445d426ed7f2ec2469d0000",
+    "changeId": "yyxlmtrullnvrznupyppskuorqknpvuk",
     "dirty": false
   },
   "versions": {
@@ -89,49 +89,49 @@
   "inputs": [
     {
       "name": "docs/architecture/public-private-boundary.md",
-      "sha256": "PENDING"
+      "sha256": "8a43d164ccc278660d3b206467382b441a95739461efd5c54699f6006abf3a38"
     },
     {
       "name": "SPEC.md",
-      "sha256": "PENDING"
+      "sha256": "77baa2f29f9de2aca32dfd735d940ed2f8c9586027cc4943c9cd50d9a7757acd"
     },
     {
       "name": "schemas/evidence.schema.json",
-      "sha256": "PENDING"
+      "sha256": "2459e4b8e64f0b974e08653c2cf00183dbe4d28662f099df60d299a3e6fc6d1f"
     },
     {
       "name": "ROADMAP.md",
-      "sha256": "PENDING"
+      "sha256": "9be043f308062ff7a8f5340ba494bf07d5b089e1d93e9016827199ba4463fa45"
     }
   ],
   "commands": [
     {
       "command": "devenv tasks run ravel:verify",
-      "startedAt": "PENDING",
-      "durationMs": 0,
+      "startedAt": "2026-08-10T07:23:19.000Z",
+      "durationMs": 41319,
       "exitStatus": 0,
-      "logSha256": "PENDING"
+      "logSha256": "5f0b11946a5e7e2cebab636c5cd2592c0791f14e7a3c22f2e030b0b96487266e"
     }
   ],
   "tests": {
-    "total": 0,
-    "passed": 0,
+    "total": 1308,
+    "passed": 1308,
     "failed": 0,
     "skipped": 0,
-    "lineCoveragePercent": 0
+    "lineCoveragePercent": 88.32
   },
   "benchmarks": {
     "protocolVersion": "m5-inventory-v1",
     "results": [
       {
         "name": "inventory-summary.json",
-        "sha256": "PENDING"
+        "sha256": "410ae8a3e1350ee3f4e66ac6c880b485a50777e333d135388585fba0cc7146c8"
       }
     ]
   },
   "deviations": [
     {
-      "summary": "No public gate can falsify a figure in this manifest that is wrong in the private inventory. The material was never in this repository and may not be, so what runs here binds three things and no more: that evidence/m5/inventory-summary.json agrees with itself arithmetically, that the figures in this manifest follow from the record's own parts rather than being stated twice, and that the private files those parts were computed from hash to the digests recorded. A hand that changed a producer and its record together in the private workspace would satisfy all three. The second reading that would catch it is the private gate, which re-derives each total from its rows and which this repository cannot run. Owner: nobody, because there is nothing to own — this is a property of publishing aggregates over material a public tree cannot hold, and it is stated so that no reader mistakes a green ravel:verify-milestone:m5 for a recomputation of the inventory.",
+      "summary": "No public gate can falsify a figure in this manifest that is wrong in the private inventory, and it cannot recompute a single one of the digests that bind it. The material was never in this repository and may not be, so what runs here binds exactly two things: that evidence/m5/inventory-summary.json agrees with itself arithmetically — each published total decomposed into parts that have to sum to it — and that the figures in this manifest follow from those parts rather than being stated twice. That was proved by mutation: moving one part, one total, or one manifest figure alone fails the gate and names the field. What was also proved by mutation is the limit. The twelve digests under boundArtifacts in the summary record name files this repository does not hold, so nothing recomputes them: replacing one with sixty-four letter a's and rebinding the record's own digest leaves ravel:verify at exit 0. Those digests bind for a reader who has the private workspace and hashes it, and for nobody else. Recomputing them here would mean this repository reaching into a sibling tree it is forbidden to name, which is a worse thing to have than an unrecomputed digest. Nor would the arithmetic catch a hand that changed a producer and its record together in the private workspace; the second reading that would is the private gate, which re-derives each total from its rows and which this repository cannot run. Owner: nobody, because there is nothing to own — this is a property of publishing aggregates over material a public tree cannot hold, and it is stated so that no reader mistakes a green ravel:verify-milestone:m5 for a recomputation of the inventory.",
       "classification": "non-blocking"
     },
     {
@@ -177,7 +177,7 @@
     "result": "fail",
     "record": {
       "name": "review.md",
-      "sha256": "PENDING"
+      "sha256": "bdc9cd98b74ac387d71aeb03c6bb1d95c74a758087158d14ca5f446c53ca82de"
     }
   },
   "attestations": [

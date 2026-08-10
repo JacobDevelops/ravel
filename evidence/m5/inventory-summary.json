@@ -195,7 +195,7 @@
   ],
   "primitiveScan": {
     "class": "machinery",
-    "filesScanned": 35,
+    "filesScanned": 36,
     "primitivesDeclared": 26,
     "refused": 12,
     "accounted": 14,
@@ -250,6 +250,20 @@
         }
       ],
       "workPackage": "M6-W5"
+    },
+    {
+      "milestone": "M6",
+      "reason": "M6-W3 wrote the first behaviour specifications, and the rewrite-integrity check M6-W5 built could not be run over them: it scans counterpart packages and its lexicon rules hold a Rust package's own directory and file names to a published list, which prose has none of. So a specification could carry an upstream identifier in front of every implementer who read it and nothing would refuse it. checks/verify-spec-identifiers.sh applies that check's identifier rules — the same jq queries over the same two inventory records, the same hand-excused words, the same normalization, rules U1 and N1 only — to a directory of prose. It was proved by mutation before being relied on: a verbatim mod id exits nonzero under U1, a separator-and-case variant that U1 misses exits nonzero under N1, an empty directory is refused, and an unmutated control exits zero. Adding it changes the count of scanned files under checks/, which this record publishes. docs/decisions/machinery-is-not-material.md decides that figure records the tree M5 certified rather than an invariant of every later tree, so it is amended here with the reason beside it. No figure about the material moved, and no material digest is touched by this entry.",
+      "entries": [],
+      "figures": [
+        {
+          "field": "primitiveScan.filesScanned",
+          "from": 35,
+          "to": 36,
+          "why": "checks/verify-spec-identifiers.sh joined the directory the scan reads. It introduces no read primitive the vocabulary does not already name, so accountedUses and occurrenceRows are unchanged and are not amended here"
+        }
+      ],
+      "workPackage": "M6-W3"
     }
   ]
 }

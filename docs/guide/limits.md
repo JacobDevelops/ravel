@@ -52,6 +52,40 @@ packet is a specification of what your mod will send, tested today and carried
 later. Design against it if you like; do not plan a feature whose value arrives
 when the packet does.
 
+**Three more surfaces are declared and not yet carried, for the same reason a
+packet is not.** A sound, a drawing stage and an interception point are each a
+declaration you can write, test and refuse against today, with nothing on the
+other end of them:
+
+- `audio` — you declare the sounds your mod owns and the events that play them,
+  and `AudioDeclaration::play` answers with a `PlayRequest` describing what would
+  be played. Nothing reaches audio hardware. The side rule is real and enforced:
+  asking to play on a server is refused rather than skipped, so a mod that would
+  have worked only in single-player finds out in its own tests.
+- `render_stages` — you declare which published stages your mod contributes to
+  and which mods it follows at them, and Ravel decides the order, refusing a cycle
+  and a stage nothing publishes. **This is not a way to draw.** No drawing path
+  exists for a mod, `docs/decisions/adg-6-configuration-and-screens.md` settled
+  that Ravel's own screens are declared in data and drawn in Java, and a
+  contribution today says where your drawing would go rather than putting anything
+  on the display.
+- `interception` — you declare that your mod answers at a published `Point`, and
+  a round asks every mod in the declared order, ending at the first refusal.
+  Nothing in a running game asks a round. A point is a place the host calls out
+  from, so this is never a patch your mod applies; there is simply no caller yet.
+
+Declaring against any of the three is designing against a specification that is
+tested now and connected later. `world_shaping` and `server_data` are different:
+what they produce — a record a world stores, files a pack holds — is real output
+today, and only the game's reading of it waits on the same wiring every pack
+waits on.
+
+**A mod cannot declare a shared library it provides.** There is no `provision`
+module. Ordering named calls between two mods that are both installed is
+`services` and works; saying which mod *supplies* a library, at what version, and
+refusing a set where two disagree is a separate question nothing answers.
+`ROADMAP.md` carries the row and puts it after this milestone.
+
 **Configuration composition is fixed too.** The same launch path hardcodes which
 mods' settings are resolved, against a constant pack configuration path. A
 settings document from a package it does not know about is not read.

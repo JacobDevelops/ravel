@@ -4,6 +4,7 @@
 
 mod admission;
 mod config;
+mod discovery;
 mod driver;
 mod events;
 mod lifecycle;
@@ -15,6 +16,9 @@ mod world;
 
 pub use admission::admitted;
 pub use config::{ConfigRefused, Configured, open_configuration};
+pub use discovery::{
+    Discovered, DiscoveredPackage, DiscoveryRefused, MANIFEST_FILE, PACKAGES_DIRECTORY, discover,
+};
 pub use driver::{DriveError, drive};
 pub use events::{
     Delivery, DispatchRefused, broadcast, broadcast_profiled, deliver_packet, route, route_profiled,

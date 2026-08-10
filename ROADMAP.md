@@ -1044,10 +1044,34 @@ warm, and what the shared toolchain and build cache decision exists to serve.
 
 That splits this row into three pieces rather than two: discovery, which is
 shipped; **a build step that composes the discovered set into a host binary on the
-player's machine**, which nothing owns yet and which is the real distance between
-a validated package and a running one; and the carry legs. The middle piece is
-where "seamless for the player" is won or lost, because it is the one that turns
+player's machine**, also shipped; and the carry legs. The middle piece is where
+"seamless for the player" is won or lost, because it is the one that turns
 installing a mod into waiting for a compile.
+
+**"Carry legs" is the wrong plural.** A design pass over all four found that
+packet-send, audio and drawing are not three problems but one mechanism used
+three times. Every one of Ravel's hook targets points inward — the game calls
+Ravel — and no Rust in this repository holds any way to call outward: a
+`JavaHandle` carries no method but `is_null`. The only thing that acts on the
+game is Ravel's own Java, which already does it for the settings screen, reaching
+Rust across a hand-written native and performing the result against the game.
+Every outbound action is that shape with a different verb at the end, so the
+mechanism is built once and reused. Interception shares none of it.
+
+**The order is decided by which cost grows.** Audio costs one stub-seed and lock
+re-pin ceremony, and that price is the same whenever it is paid. Interception
+costs a change to the `HostMod` contract, because a mod today has no way to
+register an answer at all — the surface is missing both ends rather than the one
+`docs/guide/limits.md` describes. A contract change obliges every mod to be
+swept, so its price rises with every counterpart that exists when it lands, and
+the counterpart library is about to be written. **Interception therefore goes
+first, while the number of mods to sweep is nearly zero**, and it can be proved
+at `WorldIsSaved`, whose hooks are already pinned and carried, so the contract
+change needs no ceremony to demonstrate. Audio follows, paying its fixed price
+and building the outbound mechanism the rest reuse. Packets need both directions,
+two ceremonies and a launched client and server for the full claim, so they come
+after. Drawing is not work at all: ADG-6 already decided that Ravel-owned screens
+are drawn in Java, so it is restated as declarable-only rather than carried.
 
 ### M9 — Linux performance acceptance
 

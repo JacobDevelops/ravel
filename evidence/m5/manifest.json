@@ -107,18 +107,18 @@
   "commands": [
     {
       "command": "devenv tasks run ravel:verify",
-      "startedAt": "2026-08-10T07:42:26.000Z",
-      "durationMs": 27389,
+      "startedAt": "2026-08-10T08:50:29.000Z",
+      "durationMs": 90429,
       "exitStatus": 0,
-      "logSha256": "7e4c4f1d5d6bba39d8e5df359fa0a2a8931fd1a33f6c7d2310ba97ecec198480"
+      "logSha256": "7d16daf7448348e86e5ac596db0a1319e82a43ac3812c2e510dc2dad6c0bc265"
     }
   ],
   "tests": {
-    "total": 1308,
-    "passed": 1308,
+    "total": 1309,
+    "passed": 1309,
     "failed": 0,
     "skipped": 0,
-    "lineCoveragePercent": 88.29
+    "lineCoveragePercent": 88.28
   },
   "benchmarks": {
     "protocolVersion": "m5-inventory-v1",

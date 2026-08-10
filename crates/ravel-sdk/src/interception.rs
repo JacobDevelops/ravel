@@ -6,10 +6,25 @@
 //! still stands. The first [`Outcome::Refuse`] ends the round, so a mod that
 //! refused is not overruled by a later one it never knew about.
 //!
+//! # Writing one
+//!
+//! Two methods on [`crate::Mod`], and both have defaults, so a mod that
+//! intercepts nothing writes neither:
+//!
+//! - `interception_declaration` returns an [`InterceptionDeclaration`] naming
+//!   the points you answer at and the mods you are asked after.
+//! - `intercept` is what the host calls when it reaches one, and what you return
+//!   is [`Outcome::Proceed`] or [`Outcome::Refuse`].
+//!
+//! Declaring a point and not implementing `intercept` is refused loudly rather
+//! than treated as proceeding, for the same reason declaring settings and not
+//! reading them is: a declaration nothing answers is a mod whose author believes
+//! it decides something.
+//!
 //! A mod that needs the game's own outcome replaced rather than composed with
-//! declares that instead, through [`Points::replace_at`]. Refusing and
-//! proceeding compose, because either answer is still the game's own; replacing
-//! does not, so exactly one mod may do it at a point and [`Points::admit`]
+//! declares that instead, through [`InterceptionDeclaration::replace_at`].
+//! Refusing and proceeding compose, because either answer is still the game's
+//! own; replacing does not, so exactly one mod may do it at a point and the host
 //! refuses a set where two do — at the barrier, naming both, rather than as a
 //! race decided by load order.
 //!
@@ -26,40 +41,62 @@
 //! relationship [`crate::events::GameEvent`] has and the reason both sets are
 //! closed.
 //!
-//! **Nothing calls out at any point yet.** No host in this workspace asks a
-//! round, exactly as none carries a packet. What ships is the declaration, the
-//! order, and the two refusals, all decidable without a game.
+//! # What is carried, and what is not
+//!
+//! **One point is reached in a running game: [`Point::WorldIsSaved`].** Its hook
+//! is pinned and the host asks a round there, so a mod that refuses withholds
+//! Ravel's own world write for that pass — which is exactly what that seam does,
+//! and not more: it does not stop Minecraft saving the world. What was withheld
+//! is offered again at the next save rather than discarded.
+//!
+//! [`Point::BlockIsBroken`] and [`Point::ItemIsUsed`] are declared and not yet
+//! reached. No hook resolves them in the pinned version data, so a mod that
+//! declares one is writing against a specification: the declaration, the order
+//! and the refusals are all real and checked today, and the call is not.
 //!
 //! # Examples
 //!
 //! ```
-//! use ravel_sdk::interception::{Outcome, Points};
-//! use ravel_sdk::ModId;
+//! use ravel_sdk::interception::{InterceptionDeclaration, Occasion, Outcome};
+//! use ravel_sdk::prelude::*;
 //!
-//! let guard: ModId = "guard_mod".parse()?;
-//! let ledger: ModId = "ledger_mod".parse()?;
+//! #[derive(Default)]
+//! struct Guard {
+//!     armed: bool,
+//! }
 //!
-//! let mut points = Points::default();
-//! points.answer_at(&ledger, "block_is_broken", |_| Outcome::Proceed);
-//! points.answer_at(&guard, "block_is_broken", |occasion| {
-//!     let _ = occasion.point();
-//!     Outcome::Refuse
-//! });
-//! // The guard answers first, so what it refuses the ledger never sees.
-//! points.after(&ledger, &guard);
+//! #[declare_mod(id = "guard_mod")]
+//! impl Mod for Guard {
+//!     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+//!         let _ = state;
+//!         Ok(())
+//!     }
 //!
-//! let round = points.ask("block_is_broken").expect("a published point is asked");
-//! assert_eq!(round.asked(), [guard.clone()]);
-//! assert_eq!(round.outcome(), Outcome::Refuse);
+//!     fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+//!         let mut declared = InterceptionDeclaration::new(Self::declared_id().clone());
+//!         declared.answer_at("block_is_broken");
+//!         // Asked before `ledger_mod`, so what this refuses the ledger never sees.
+//!         Some(declared)
+//!     }
 //!
-//! // Two mods replacing one outcome is refused before any round runs.
-//! let mut contested = Points::default();
-//! contested.replace_at(&guard, "block_is_broken", |_| Outcome::Proceed);
-//! contested.replace_at(&ledger, "block_is_broken", |_| Outcome::Proceed);
-//! let refusal = contested.admit().expect_err("two replacements are a conflict");
-//! assert_eq!(refusal.point(), "block_is_broken");
-//! assert_eq!(refusal.claimants(), [guard, ledger]);
-//! # Ok::<(), ravel_sdk::ModIdError>(())
+//!     fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, ModError> {
+//!         let _ = occasion.point();
+//!         Ok(if self.armed {
+//!             Outcome::Refuse
+//!         } else {
+//!             Outcome::Proceed
+//!         })
+//!     }
+//! }
+//!
+//! let mut guard = Guard { armed: true };
+//! let occasion = Occasion::at(
+//!     ravel_sdk::interception::Point::BlockIsBroken,
+//!     Side::IntegratedServer,
+//! );
+//! assert_eq!(guard.intercept(occasion), Ok(Outcome::Refuse));
 //! ```
 
-pub use ravel_host_api::{InterceptionRefused, Occasion, Outcome, Point, Points, Round};
+pub use ravel_host_api::{
+    InterceptionDeclaration, InterceptionRefused, Occasion, Outcome, Point, Points, Round,
+};

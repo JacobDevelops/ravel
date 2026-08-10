@@ -6,7 +6,9 @@ mod interception;
 mod provision;
 mod services;
 
-pub use interception::{InterceptionRefused, Occasion, Outcome, Point, Points, Round};
+pub use interception::{
+    InterceptionDeclaration, InterceptionRefused, Occasion, Outcome, Point, Points, Round,
+};
 pub use provision::{Provided, Provision, ProvisionRefused, Resolved};
 pub use services::{
     ServiceCallFailed, ServiceDeclaration, ServiceDeclarationError, ServiceDirectory, ServiceId,
@@ -413,6 +415,40 @@ pub trait HostMod: Send {
     /// a player's file, and hands the result back through [`HostMod::configure`].
     fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
         None
+    }
+
+    /// Declares the points this mod answers at, when it answers at any.
+    ///
+    /// A mod that intercepts nothing returns [`None`] and implements nothing
+    /// else. A host folds every declaration it gets into one [`Points`], which
+    /// is what decides the order among mods and refuses a set that cannot be
+    /// asked — neither of which any single mod can decide about itself.
+    fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+        None
+    }
+
+    /// Answers at a point the host is calling out from.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HostError::Unsupported`] from the default for a mod that
+    /// declared a point and did not implement this, for the same reason
+    /// [`HostMod::configure`] does: a declaration nothing answers is a mod that
+    /// silently proceeds where its author believed it decided. A mod that
+    /// declared nothing is never asked, and proceeds if it somehow is.
+    ///
+    /// An implementation returns [`Outcome::Refuse`] to stop what the host was
+    /// about to do. The round ends there and no later mod is asked, so a
+    /// refusal is never overruled by a mod that never saw it.
+    fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, HostError> {
+        let _ = occasion;
+        if self.interception_declaration().is_none() {
+            return Ok(Outcome::Proceed);
+        }
+        Err(HostError::Unsupported {
+            mod_id: self.id().clone(),
+            state: LifecycleState::Running,
+        })
     }
 
     /// Applies the settings in force for this launch.

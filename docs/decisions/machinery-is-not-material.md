@@ -409,3 +409,54 @@ pretend otherwise.
 
 It is a rule about gates, not about evidence. Every closed record in this
 repository keeps exactly the words it had.
+
+## Amendment: a frozen list names its successor
+
+### What forced this third amendment
+
+M6 found an SDK capability the plan had not predicted — a mod cannot express
+optional, presence-gated integration — and had nowhere to record it. The private
+ledger's proposals file is M5 material, frozen with six entries; its resolutions
+file accepts only rows closing an existing proposal. So a correct check refused
+correct data, and the only ways forward were to falsify a resolution, to edit
+frozen material, or to stop. The agent holding it stopped and asked, which is the
+only one of the three that was not a defect.
+
+That is the third instance of one shape. M5 froze the private check directory and
+a later milestone had to adopt a check into it. M4 froze a test-mod inventory that
+every later test mod silently invalidated. Now M5's frozen findings list has
+blocked a finding. Each was discovered when live work hit the wall rather than
+when the record was designed, and the two earlier ones were each repaired in their
+own terms without anyone naming the pattern.
+
+### The decision on successors
+
+**A record that freezes a list later work can extend names its successor at
+closure.** Not the successor's contents — those are unknown — but where the next
+entry goes and which check will read it. A closed list with no named successor is
+a wall that a future correct finding will hit, and the milestone that closes it is
+the only party that still knows whether the list can grow.
+
+Where the successor is a second file rather than an amendment, the check that
+reads the first widens to read both, and **the widening is proved by mutation**:
+an id colliding across the two files must fail, and the pre-existing rule the
+check enforced must still fail on its original case. Widening what a check reads
+is the ordinary way a check stops enforcing while still exiting zero.
+
+### Why this is a rule about design rather than repair
+
+Each of the three instances was cheap to repair once found, and the repairs were
+all different: adopt-and-record for the check directory, a first-question ruling
+for the inventory, a successor file here. What was expensive each time was finding
+out — always at the moment someone needed the record to do something it could not.
+Naming a successor costs one sentence at closure and is written while the answer
+is still known. That asymmetry is the whole argument.
+
+### Limits of the successor rule
+
+It does not say a frozen list must be extensible. Some are genuinely complete, and
+for those the honest successor is a sentence saying no entry can follow and why.
+
+It cannot help a record already closed without one. The three named above are
+repaired individually, and this rule binds the next closure rather than reaching
+back to them.

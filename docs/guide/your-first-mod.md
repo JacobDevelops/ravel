@@ -70,7 +70,9 @@ never parses or stores its own identity. Every other method on `Mod` has a
 default, so you implement only the parts of the lifecycle you take part in:
 `register` to claim content, `observe` to react to the game, `configure` to read
 settings, `open_saved_data` and `save_saved_data` to own world data,
-`answer_service` and `use_services` to talk to other mods.
+`answer_service` and `use_services` to talk to other mods, and
+`interception_declaration` with `intercept` to answer at a point before the game
+does something.
 
 `#[declare_mod]` also implements `Declared`, which gives you
 `CopperLanterns::declared_id()` — the identity as an associated function, usable

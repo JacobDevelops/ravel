@@ -2,15 +2,21 @@
 
 //! Behaviour interception test mod.
 //!
-//! The mod for [`ravel_sdk::interception`]. It answers at a published point,
-//! refuses there under a condition it owns, and is ordered against another mod —
-//! which is what `ROADMAP.md`'s M6-W2 row asks an original mod to exercise.
+//! The mod for [`ravel_sdk::interception`]. It declares that it answers at a
+//! published point, refuses there under a condition it owns, and declares that
+//! it is asked before another mod — which is what `ROADMAP.md`'s M6-W2 row asks
+//! an original mod to exercise.
 //!
 //! It patches nothing. A point is a place the host calls out from, so what this
-//! mod declares is an answer the host would ask for, and this crate carries
+//! mod declares is an answer the host asks for, and this crate carries
 //! `#![forbid(unsafe_code)]` like every other.
+//!
+//! What this mod cannot do by itself is run a round: the order among mods and
+//! the asking are the host's, and a mod that built its own would be answering
+//! its own question. `tests/conformance/tests/sdk_gaps.rs` drives this mod
+//! through the host's round, which is the only place the two halves meet.
 
-use ravel_sdk::interception::{InterceptionRefused, Outcome, Point, Points, Round};
+use ravel_sdk::interception::{InterceptionDeclaration, Occasion, Outcome, Point};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
@@ -25,22 +31,21 @@ pub const POINT: Point = Point::BlockIsBroken;
 ///
 /// ```
 /// use ravel_sdk::interception::Outcome;
-/// use ravel_sdk::Declared;
 /// use ravel_test_mod_interception::InterceptionMod;
 ///
-/// // Guarding, this mod refuses and the round ends at it.
-/// let round = InterceptionMod::round(true).expect("a published point is asked");
-/// assert_eq!(round.outcome(), Outcome::Refuse);
-/// assert_eq!(round.asked(), [InterceptionMod::declared_id().clone()]);
+/// // Guarding, it refuses; the host ends the round there.
+/// let mut guarding = InterceptionMod::guarding();
+/// assert_eq!(guarding.answer(), Outcome::Refuse);
 ///
-/// // Not guarding, the mod after it is asked too.
-/// let round = InterceptionMod::round(false).expect("a published point is asked");
-/// assert_eq!(round.outcome(), Outcome::Proceed);
-/// assert_eq!(round.asked().len(), 2);
+/// // Not guarding, it has nothing to say and the round carries on.
+/// let mut open = InterceptionMod::new();
+/// assert_eq!(open.answer(), Outcome::Proceed);
 /// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct InterceptionMod {
     entered: Vec<LifecycleState>,
+    guarding: bool,
+    asked: Vec<Point>,
 }
 
 impl InterceptionMod {
@@ -50,13 +55,31 @@ impl InterceptionMod {
         Self::default()
     }
 
+    /// Builds it with the condition it refuses under already holding.
+    #[must_use]
+    pub fn guarding() -> Self {
+        Self {
+            guarding: true,
+            ..Self::default()
+        }
+    }
+
     /// Returns the states this mod was taken through, in order.
     #[must_use]
     pub fn entered(&self) -> &[LifecycleState] {
         &self.entered
     }
 
-    /// Returns the mod this one is declared to run before.
+    /// Returns the points this mod has been asked at, in order.
+    ///
+    /// A mod that was never asked and a mod that answered `Proceed` are
+    /// indistinguishable from the outside, and they are different things.
+    #[must_use]
+    pub fn asked(&self) -> &[Point] {
+        &self.asked
+    }
+
+    /// Returns the mod this one is declared to be asked before.
     ///
     /// # Panics
     ///
@@ -66,29 +89,16 @@ impl InterceptionMod {
         "follower_mod".parse().expect("a legal mod id")
     }
 
-    /// Declares this mod and one that follows it, and asks the point.
+    /// Answers as the host would ask it to, without a host.
     ///
-    /// `guarding` is this mod's own condition. It refuses when it holds, which
-    /// is what a mod at a point is for: the answer is the mod's, and Ravel owns
-    /// only the order and what a refusal means.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`InterceptionRefused`] when the set cannot be asked, which this
-    /// set can: one point, two mods, one edge, no replacement.
-    pub fn round(guarding: bool) -> Result<Round, InterceptionRefused> {
-        let follower = Self::follower();
-        let mut points = Points::default();
-        points.answer_at(Self::declared_id(), POINT.as_str(), move |_| {
-            if guarding {
-                Outcome::Refuse
-            } else {
-                Outcome::Proceed
-            }
-        });
-        points.answer_at(&follower, POINT.as_str(), |_| Outcome::Proceed);
-        points.after(&follower, Self::declared_id());
-        points.ask(POINT.as_str())
+    /// The condition is this mod's own: what a mod at a point decides is the
+    /// mod's business, and Ravel owns only the order and what a refusal means.
+    pub fn answer(&mut self) -> Outcome {
+        if self.guarding {
+            Outcome::Refuse
+        } else {
+            Outcome::Proceed
+        }
     }
 }
 
@@ -98,12 +108,23 @@ impl Mod for InterceptionMod {
         self.entered.push(state);
         Ok(())
     }
+
+    fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+        let mut declared = InterceptionDeclaration::new(Self::declared_id().clone());
+        declared.answer_at(POINT.as_str());
+        Some(declared)
+    }
+
+    fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, ModError> {
+        self.asked.push(occasion.point());
+        Ok(self.answer())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use ravel_sdk::interception::{Outcome, Points};
-    use ravel_sdk::{Declared, Side};
+    use ravel_sdk::interception::{Occasion, Outcome, Point};
+    use ravel_sdk::{Declared, Mod, Side};
 
     use super::{InterceptionMod, MOD_ID, POINT};
 
@@ -112,55 +133,34 @@ mod tests {
         assert_eq!(InterceptionMod::declared_id().as_str(), MOD_ID);
     }
 
+    /// The declaration is the mod's whole half of the contract.
     #[test]
-    fn this_mod_is_asked_before_the_mod_declared_to_follow_it() {
-        let round = InterceptionMod::round(false).expect("a published point is asked");
-        let mine = round
-            .asked()
-            .iter()
-            .position(|id| id == InterceptionMod::declared_id())
-            .expect("this mod answers here");
-        let theirs = round
-            .asked()
-            .iter()
-            .position(|id| id == &InterceptionMod::follower())
-            .expect("the follower answers here");
+    fn this_mod_declares_the_point_it_answers_at_and_owns_the_declaration() {
+        let declared = InterceptionMod::new()
+            .interception_declaration()
+            .expect("this mod answers somewhere");
 
-        assert!(mine < theirs);
-        assert_eq!(round.outcome(), Outcome::Proceed);
-    }
-
-    /// The mod after the refusal is absent from the round rather than present
-    /// with a discarded answer, which is the difference between ending a round
-    /// and reconciling one.
-    #[test]
-    fn a_refusal_from_this_mod_ends_the_round_before_the_follower_is_asked() {
-        let round = InterceptionMod::round(true).expect("a published point is asked");
-
-        assert_eq!(round.outcome(), Outcome::Refuse);
-        assert_eq!(round.asked(), [InterceptionMod::declared_id().clone()]);
-        assert!(!round.asked().contains(&InterceptionMod::follower()));
-        assert_eq!(round.point(), POINT);
-    }
-
-    #[test]
-    fn a_second_mod_replacing_the_outcome_this_mod_replaces_is_refused() {
-        let follower = InterceptionMod::follower();
-        let mut points = Points::default();
-        points.replace_at(InterceptionMod::declared_id(), POINT.as_str(), |_| {
-            Outcome::Proceed
-        });
-        points.replace_at(&follower, POINT.as_str(), |_| Outcome::Proceed);
-
-        let refusal = points
-            .admit()
-            .expect_err("two replacements at one point are a conflict");
-
-        assert_eq!(refusal.point(), POINT.as_str());
-        assert_eq!(
-            refusal.claimants(),
-            [InterceptionMod::declared_id().clone(), follower]
+        assert_eq!(declared.owner(), InterceptionMod::declared_id());
+        assert_eq!(declared.points(), [POINT.as_str()]);
+        assert!(declared.answers_at(POINT));
+        assert!(
+            !declared.answers_at(Point::WorldIsSaved),
+            "a point this mod never declared"
         );
+    }
+
+    /// Being asked is observable, and the answer is this mod's own condition.
+    #[test]
+    fn the_mod_records_being_asked_and_refuses_only_while_guarding() {
+        let occasion = Occasion::at(POINT, Side::IntegratedServer);
+
+        let mut open = InterceptionMod::new();
+        assert_eq!(open.intercept(occasion), Ok(Outcome::Proceed));
+        assert_eq!(open.asked(), [POINT]);
+
+        let mut guarding = InterceptionMod::guarding();
+        assert_eq!(guarding.intercept(occasion), Ok(Outcome::Refuse));
+        assert_eq!(guarding.asked(), [POINT]);
     }
 
     #[test]

@@ -75,10 +75,10 @@ packet is a specification of what your mod will send, tested today and carried
 later. Design against it if you like; do not plan a feature whose value arrives
 when the packet does.
 
-**Three more surfaces are declared and not yet carried, for the same reason a
-packet is not.** A sound, a drawing stage and an interception point are each a
-declaration you can write, test and refuse against today, with nothing on the
-other end of them:
+**Two more surfaces are declared and not carried at all, for the same reason a
+packet is not, and a third is now partly carried.** A sound and a drawing stage
+are each a declaration you can write, test and refuse against today with nothing
+on the other end; interception has an end now, for one of its three points:
 
 - `audio` — you declare the sounds your mod owns and the events that play them,
   and `AudioDeclaration::play` answers with a `PlayRequest` describing what would
@@ -92,10 +92,20 @@ other end of them:
   that Ravel's own screens are declared in data and drawn in Java, and a
   contribution today says where your drawing would go rather than putting anything
   on the display.
-- `interception` — you declare that your mod answers at a published `Point`, and
-  a round asks every mod in the declared order, ending at the first refusal.
-  Nothing in a running game asks a round. A point is a place the host calls out
-  from, so this is never a patch your mod applies; there is simply no caller yet.
+- `interception` — **partly carried, and the first of these four to be.** You
+  declare the points you answer at with `interception_declaration` and answer
+  with `intercept`; the host orders the set, refuses one it cannot ask, and asks
+  each mod in turn until the first refusal. One point is reached in a running
+  game: `world_is_saved`, where refusing withholds *Ravel's* world write for that
+  pass — not Minecraft's save, which is not what that seam does. What was
+  withheld is offered again at the next save. `block_is_broken` and
+  `item_is_used` are still declarable-only: no hook resolves them in the pinned
+  version data, so nothing asks there yet.
+
+  Until this landed the surface was missing *both* ends, and this guide said only
+  that no caller existed. There was also no way for a mod to register an answer
+  at all — `Points` took a closure, and a host holds its mods as trait objects
+  and cannot get a closure out of one. The declaration is what replaced it.
 
 Declaring against any of the three is designing against a specification that is
 tested now and connected later. `world_shaping` and `server_data` are different:

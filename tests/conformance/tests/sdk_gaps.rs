@@ -44,7 +44,7 @@ use ravel_sdk::server_data::{ServerDataDeclaration, ServerDataKind};
 use ravel_sdk::world_shaping::{ShapingRecord, WorldShaping};
 use ravel_sdk::{Declared, Version, VersionRange};
 use ravel_test_mod_audio::AudioMod;
-use ravel_test_mod_interception::InterceptionMod;
+use ravel_test_mod_interception::{InterceptionMod, POINT};
 use ravel_test_mod_provision::{LIBRARY, ProvisionMod, VERSION};
 use ravel_test_mod_render_stages::RenderStagesMod;
 use ravel_test_mod_server_data::ServerDataMod;
@@ -322,10 +322,15 @@ fn a_contribution_to_a_stage_nothing_publishes_is_refused_at_declaration() {
 
 // --- RVL-GAP-05, behaviour interception -----------------------------------
 
+/// The shipped test mod, asked by the host rather than by itself.
+///
+/// The mod declares and answers; `ravel_loader::intercept` orders the set and
+/// asks it. Until both halves existed this test could only run a round the mod
+/// built for itself, which asked nothing of the host at all.
 #[test]
 fn a_refusal_at_a_point_ends_the_round_where_it_was_given() {
-    let guarded = InterceptionMod::round(true).expect("a published point is asked");
-    let open = InterceptionMod::round(false).expect("a published point is asked");
+    let guarded = round(true);
+    let open = round(false);
 
     assert_eq!(guarded.outcome(), Outcome::Refuse);
     assert_eq!(guarded.asked(), [InterceptionMod::declared_id().clone()]);
@@ -337,14 +342,105 @@ fn a_refusal_at_a_point_ends_the_round_where_it_was_given() {
     assert!(open.asked().contains(InterceptionMod::declared_id()));
 }
 
+/// Drives the host's round over the shipped mod and one declared to follow it.
+///
+/// The follower's id sorts *before* the mod it follows, so the order this
+/// returns is right only because the declared edge was read: without it the
+/// smallest topological order asks the follower first and both assertions above
+/// change.
+fn round(guarding: bool) -> ravel_sdk::interception::Round {
+    struct Follower {
+        id: ravel_sdk::ModId,
+        after: ravel_sdk::ModId,
+        asked: bool,
+    }
+
+    impl ravel_host_api::HostMod for Follower {
+        fn id(&self) -> &ravel_sdk::ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _: ravel_sdk::LifecycleState) -> Result<(), ravel_sdk::ModError> {
+            Ok(())
+        }
+
+        fn interception_declaration(
+            &self,
+        ) -> Option<ravel_sdk::interception::InterceptionDeclaration> {
+            let mut declared =
+                ravel_sdk::interception::InterceptionDeclaration::new(self.id.clone());
+            declared.answer_at(POINT.as_str());
+            declared.after(&self.after);
+            Some(declared)
+        }
+
+        fn intercept(
+            &mut self,
+            _: ravel_sdk::interception::Occasion,
+        ) -> Result<Outcome, ravel_sdk::ModError> {
+            self.asked = true;
+            Ok(Outcome::Proceed)
+        }
+    }
+
+    let mut guard = if guarding {
+        InterceptionMod::guarding()
+    } else {
+        InterceptionMod::new()
+    };
+    let mut follower = Follower {
+        id: id("alpha_follower"),
+        after: InterceptionMod::declared_id().clone(),
+        asked: false,
+    };
+    let mut mods: Vec<&mut dyn ravel_host_api::HostMod> = vec![&mut follower, &mut guard];
+    let machine = interception_machine();
+
+    let round = ravel_loader::intercept(&machine, &mut mods, POINT).expect("a legal set");
+    assert_eq!(
+        follower.asked,
+        round.asked().contains(&id("alpha_follower")),
+        "the round and the mod disagree about whether it was asked"
+    );
+    round
+}
+
+/// Both mods running on an integrated server, which is where a point is reached.
+fn interception_machine() -> ravel_loader::LifecycleMachine {
+    let entries = [InterceptionMod::declared_id().clone(), id("alpha_follower")]
+        .into_iter()
+        .map(|mod_id| ravel_loader::LifecycleEntry {
+            mod_id,
+            sides: ravel_core::SideSet::new([ravel_sdk::Side::IntegratedServer])
+                .expect("a non-empty side set"),
+            requirement: ravel_loader::Requirement::Required,
+            saved_data_versions: std::collections::BTreeSet::new(),
+        })
+        .collect();
+    let mut machine =
+        ravel_loader::LifecycleMachine::new(ravel_sdk::Side::IntegratedServer, entries)
+            .expect("a legal plan");
+    for state in [
+        ravel_sdk::LifecycleState::Validated,
+        ravel_sdk::LifecycleState::Resolved,
+        ravel_sdk::LifecycleState::Loaded,
+        ravel_sdk::LifecycleState::Constructed,
+        ravel_sdk::LifecycleState::Registered,
+        ravel_sdk::LifecycleState::Running,
+    ] {
+        machine.advance_all(state).expect("a legal step");
+    }
+    machine
+}
+
 #[test]
 fn two_mods_replacing_one_outcome_are_refused_at_the_barrier_naming_both() {
     let first = id("first_probe");
     let second = id("second_probe");
 
     let mut points = Points::default();
-    points.replace_at(&first, "block_is_broken", |_| Outcome::Proceed);
-    points.replace_at(&second, "block_is_broken", |_| Outcome::Proceed);
+    points.replace_at(&first, "block_is_broken");
+    points.replace_at(&second, "block_is_broken");
 
     let refusal = points
         .admit()
@@ -356,9 +452,7 @@ fn two_mods_replacing_one_outcome_are_refused_at_the_barrier_naming_both() {
 #[test]
 fn a_point_no_adapter_publishes_is_refused_rather_than_answered_empty() {
     let mut points = Points::default();
-    points.answer_at(&id("probe"), "a_point_nobody_publishes", |_| {
-        Outcome::Proceed
-    });
+    points.answer_at(&id("probe"), "a_point_nobody_publishes");
 
     let refusal = points
         .admit()

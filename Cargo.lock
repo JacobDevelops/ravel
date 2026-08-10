@@ -855,6 +855,7 @@ dependencies = [
  "ravel-test-mod-interception",
  "ravel-test-mod-networking",
  "ravel-test-mod-noop",
+ "ravel-test-mod-optional-service",
  "ravel-test-mod-provision",
  "ravel-test-mod-render-stages",
  "ravel-test-mod-resources",
@@ -1234,6 +1235,13 @@ version = "0.0.0"
 dependencies = [
  "ravel-core",
  "ravel-host-api",
+ "ravel-sdk",
+]
+
+[[package]]
+name = "ravel-test-mod-optional-service"
+version = "0.0.0"
+dependencies = [
  "ravel-sdk",
 ]
 

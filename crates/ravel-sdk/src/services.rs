@@ -17,6 +17,27 @@
 //! started. A call to a mod later in the order is not something to avoid — there
 //! is nothing there to call.
 //!
+//! # Requiring a mod and merely using one
+//!
+//! A declaration has a third half. [`ServiceDeclaration::requires`] means your mod
+//! does not start without the service, so a set missing its provider is refused
+//! the way an unresolved package is. [`ServiceDeclaration::may_use`], declared
+//! with [`ServiceDeclaration::with_optional`], means your mod uses the service
+//! when something answers it and does without when nothing does — the set loads
+//! either way.
+//!
+//! That is the *only* difference. An optionally declared service whose provider is
+//! running is still composed before you, and calling it is still legal rather than
+//! [`ServiceUnavailable::Undeclared`]. So "is that mod installed" is answered once,
+//! by the loader, before anything runs; you never get told a mod is absent because
+//! you were composed too early.
+//!
+//! When nothing answers, the call fails with [`ServiceUnavailable::Absent`], which
+//! [`ServiceCallFailed::is_absent`] reports. It is the one outcome an optional
+//! consumer carries on past. A provider that was *reached* and refused arrives as
+//! [`ServiceCallFailed::Refused`] and is a different event: the mod is installed
+//! and said no. Branch on the variant, never on the rendered sentence.
+//!
 //! # A request and its answer are data
 //!
 //! [`ServiceRequest::arguments`] and [`ServiceResponse::value`] are JSON, not a
@@ -107,6 +128,82 @@
 //!     ServiceDeclaration::new(Shop::declared_id().clone(), [prices()], []).is_err()
 //! );
 //! assert_eq!(prices().to_string(), "base:prices");
+//! ```
+//!
+//! # Example: a mod that uses another only if it is installed
+//!
+//! ```
+//! use ravel_sdk::content::ContentId;
+//! use ravel_sdk::services::{
+//!     ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest,
+//! };
+//! use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod, json};
+//!
+//! fn landmarks() -> ServiceId {
+//!     let atlas = "atlas".parse().expect("a legal mod id");
+//!     ServiceId::new(ContentId::new(atlas, "landmarks").expect("a legal path"))
+//! }
+//!
+//! #[derive(Default)]
+//! struct Compass {
+//!     alone: bool,
+//! }
+//!
+//! #[declare_mod(id = "compass")]
+//! impl Mod for Compass {
+//!     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+//!         let _ = state;
+//!         Ok(())
+//!     }
+//!
+//!     fn service_declaration(&self) -> Option<ServiceDeclaration> {
+//!         // Nothing required, one service used if something answers it.
+//!         ServiceDeclaration::with_optional(
+//!             Self::declared_id().clone(),
+//!             [],
+//!             [],
+//!             [landmarks()],
+//!         )
+//!         .ok()
+//!     }
+//!
+//!     fn use_services(
+//!         &mut self,
+//!         directory: &mut dyn ServiceDirectory,
+//!     ) -> Result<(), ModError> {
+//!         match directory.call(&ServiceRequest::new(landmarks(), json!(null))) {
+//!             Ok(_answer) => Ok(()),
+//!             // The one outcome an optional consumer carries on past.
+//!             Err(failed) if failed.is_absent() => {
+//!                 self.alone = true;
+//!                 Ok(())
+//!             }
+//!             // A provider that was reached and said no is a different event.
+//!             Err(failed) => Err(ModError::Refused {
+//!                 mod_id: Self::declared_id().clone(),
+//!                 state: LifecycleState::Constructed,
+//!                 detail: failed.to_string(),
+//!             }),
+//!         }
+//!     }
+//! }
+//!
+//! let declaration = Compass::default()
+//!     .service_declaration()
+//!     .expect("it declares one service");
+//! assert!(declaration.may_do_without(&landmarks()));
+//! assert_eq!(declaration.requires().count(), 0);
+//!
+//! // One service cannot be both: the two sides disagree about a missing provider.
+//! assert!(
+//!     ServiceDeclaration::with_optional(
+//!         Compass::declared_id().clone(),
+//!         [],
+//!         [landmarks()],
+//!         [landmarks()],
+//!     )
+//!     .is_err()
+//! );
 //! ```
 
 pub use ravel_host_api::{

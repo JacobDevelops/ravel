@@ -45,6 +45,17 @@ impl ServiceOrder {
 /// [`ServiceRefused::NoProvider`] rather than left waiting for a mod that will
 /// never run. That is `SPEC.md` §14's side rule reaching the service graph.
 ///
+/// # Optional services
+///
+/// A service a mod declared it *may use* orders exactly as a required one when
+/// something running answers it, and refuses nothing when nothing does: the set
+/// loads and the consumer's call reports [`ravel_host_api::ServiceUnavailable::Absent`].
+/// Absence is decided once, here, by the same graph that decides the order — so a
+/// consumer never sees "not installed" for a mod that is installed and merely
+/// ordered later. A parked provider is absent for the same reason it is a missing
+/// one for a required service, and a mod parked on this side is offered nothing
+/// whether its needs are optional or not.
+///
 /// # Failure closure
 ///
 /// Nothing is partially wired. A refusal stops the walk, so every mod after the
@@ -75,7 +86,7 @@ pub fn open_services(
         let Some(declaration) = declarations.get(consumer.id()) else {
             continue;
         };
-        if declaration.requires().next().is_none() {
+        if declaration.requires().next().is_none() && declaration.may_use().next().is_none() {
             continue;
         }
 
@@ -152,6 +163,23 @@ fn providers(declarations: &BTreeMap<ModId, ServiceDeclaration>) -> BTreeMap<Ser
 /// cannot disagree about what "after" means. What stays here is the part that is
 /// about services: turning a required service into an edge, and refusing a
 /// service nothing provides.
+///
+/// # Optional edges
+///
+/// A service a mod declared it *may use* becomes an ordinary edge when something
+/// running answers it, and no edge at all when nothing does. Presence is a fact
+/// about the resolved set rather than about iteration order, so the graph — and
+/// therefore the order — is the same however the caller supplied the mods.
+///
+/// A present optional edge is a **real** edge, including for cycle detection. The
+/// alternative was to drop optional edges to break a cycle, and it was rejected:
+/// dropping one runs the consumer before a provider that *is* installed, so its
+/// call would have to report absence for a mod the player can see in the list.
+/// "Is it installed" would then be answered by the shape of the graph rather than
+/// by the install, and there is no non-arbitrary rule for which edge to drop —
+/// the same reason [`ServiceRefused::Cycle`] names every participant instead of
+/// picking one. So an optional declaration changes exactly one thing: whether a
+/// missing provider refuses the set.
 fn dependency_order(
     declarations: &BTreeMap<ModId, ServiceDeclaration>,
     providers: &BTreeMap<ServiceId, ModId>,
@@ -166,6 +194,15 @@ fn dependency_order(
                     consumer: mod_id.clone(),
                     service: service.clone(),
                 })?;
+            consumers
+                .entry(provider.clone())
+                .or_default()
+                .insert(mod_id.clone());
+        }
+        for service in declaration.may_use() {
+            let Some(provider) = providers.get(service) else {
+                continue;
+            };
             consumers
                 .entry(provider.clone())
                 .or_default()
@@ -201,11 +238,7 @@ struct Started<'a, 'm> {
 
 impl ServiceDirectory for Started<'_, '_> {
     fn call(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ServiceCallFailed> {
-        if !self
-            .declaration
-            .requires()
-            .any(|service| service == &request.id)
-        {
+        if !self.declaration.calls(&request.id) {
             return Err(ServiceCallFailed::Unavailable(
                 ServiceUnavailable::Undeclared {
                     caller: self.caller.clone(),
@@ -213,15 +246,24 @@ impl ServiceDirectory for Started<'_, '_> {
                 },
             ));
         }
-        let provider = self
+        // Nothing before this mod in the order answers it. For a required service
+        // that is a set the loader should already have refused; for an optional one
+        // it is the answer — nothing running provides it, because a provider that
+        // did would have been ordered ahead of this call.
+        let Some(provider) = self
             .mods
             .iter_mut()
             .find(|host| host.id() == request.id.owner())
-            .ok_or_else(|| {
-                ServiceCallFailed::Unavailable(ServiceUnavailable::NoProvider {
-                    service: request.id.clone(),
-                })
-            })?;
+        else {
+            let service = request.id.clone();
+            return Err(ServiceCallFailed::Unavailable(
+                if self.declaration.may_do_without(&service) {
+                    ServiceUnavailable::Absent { service }
+                } else {
+                    ServiceUnavailable::NoProvider { service }
+                },
+            ));
+        };
         provider
             .answer_service(request)
             .map_err(ServiceCallFailed::Refused)
@@ -719,6 +761,334 @@ mod tests {
         let opened =
             open_services(&machine, &mut [&mut plain]).expect("nothing to resolve resolves");
         assert!(opened.order().is_empty());
+    }
+
+    /// A consumer that declares a service optional and carries on without it.
+    ///
+    /// Deliberately not a mode of [`Wired`]: the existing fixtures state the
+    /// required contract, and a shared fixture taught to tolerate absence would
+    /// stop stating it.
+    struct Hedging {
+        id: ModId,
+        declaration: ServiceDeclaration,
+        reached: Vec<String>,
+        absent: Vec<ServiceId>,
+    }
+
+    impl Hedging {
+        fn new(name: &str, provides: &[ServiceId], may_use: &[ServiceId]) -> Self {
+            Self {
+                id: id(name),
+                declaration: ServiceDeclaration::with_optional(
+                    id(name),
+                    provides.to_vec(),
+                    Vec::new(),
+                    may_use.to_vec(),
+                )
+                .expect("a legal declaration"),
+                reached: Vec::new(),
+                absent: Vec::new(),
+            }
+        }
+    }
+
+    impl HostMod for Hedging {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            Ok(())
+        }
+
+        fn service_declaration(&self) -> Option<ServiceDeclaration> {
+            Some(self.declaration.clone())
+        }
+
+        fn answer_service(
+            &mut self,
+            _request: &ServiceRequest,
+        ) -> Result<ServiceResponse, HostError> {
+            Ok(ServiceResponse::new(json!(self.id.as_str())))
+        }
+
+        /// Carries on past absence and past nothing else.
+        ///
+        /// The branch is on the outcome's own shape rather than on its sentence,
+        /// which is the property this fixture is here to exercise: a provider that
+        /// was reached and refused still refuses this mod.
+        fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), HostError> {
+            let optional: Vec<ServiceId> = self.declaration.may_use().cloned().collect();
+            for wanted in optional {
+                match directory.call(&ServiceRequest::new(wanted.clone(), json!(null))) {
+                    Ok(answer) => self
+                        .reached
+                        .push(answer.value().as_str().unwrap_or_default().to_owned()),
+                    Err(failed) if failed.is_absent() => self.absent.push(wanted),
+                    Err(failed) => {
+                        return Err(HostError::Refused {
+                            mod_id: self.id.clone(),
+                            state: LifecycleState::Constructed,
+                            detail: failed.to_string(),
+                        });
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    /// A provider that is installed, runs, and says no to every call.
+    struct Grudging {
+        id: ModId,
+        declaration: ServiceDeclaration,
+    }
+
+    impl Grudging {
+        fn new(name: &str, provides: &[ServiceId]) -> Self {
+            Self {
+                id: id(name),
+                declaration: ServiceDeclaration::new(id(name), provides.to_vec(), [])
+                    .expect("a legal declaration"),
+            }
+        }
+    }
+
+    impl HostMod for Grudging {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            Ok(())
+        }
+
+        fn service_declaration(&self) -> Option<ServiceDeclaration> {
+            Some(self.declaration.clone())
+        }
+
+        fn answer_service(
+            &mut self,
+            _request: &ServiceRequest,
+        ) -> Result<ServiceResponse, HostError> {
+            Err(HostError::Refused {
+                mod_id: self.id.clone(),
+                state: LifecycleState::Running,
+                detail: "this provider is not answering today".to_owned(),
+            })
+        }
+    }
+
+    #[test]
+    fn an_installed_optional_provider_is_composed_before_the_mod_that_may_use_it() {
+        // The ordering half. A set that loads but wires the consumer first would
+        // pass every "it still loads" assertion and be wrong only in a running game,
+        // so the order and the answer are both checked here.
+        let mut consumer = Hedging::new("consumer", &[], &[service("zenith", "prices")]);
+        let mut base = Wired::new("zenith", &[service("zenith", "prices")], &[]);
+        let machine = machine(vec![
+            entry("consumer", &[Side::DedicatedServer]),
+            entry("zenith", &[Side::DedicatedServer]),
+        ]);
+
+        // Supplied consumer-first, so a slice order would have called it too early.
+        let opened =
+            open_services(&machine, &mut [&mut consumer, &mut base]).expect("the graph resolves");
+
+        assert_eq!(opened.order(), [id("zenith"), id("consumer")]);
+        assert_eq!(consumer.reached, ["zenith"]);
+        assert!(
+            consumer.absent.is_empty(),
+            "an installed provider read as absent"
+        );
+        assert_eq!(base.answered, [service("zenith", "prices")]);
+    }
+
+    #[test]
+    fn a_set_whose_optional_provider_is_not_installed_loads_and_the_call_reports_absence() {
+        // The same declaration as a requirement would refuse the whole set here.
+        let mut consumer = Hedging::new("consumer", &[], &[service("absent", "prices")]);
+        let machine = machine(vec![entry("consumer", &[Side::DedicatedServer])]);
+
+        let opened =
+            open_services(&machine, &mut [&mut consumer]).expect("an absent provider refuses none");
+
+        assert_eq!(opened.order(), [id("consumer")]);
+        assert_eq!(consumer.absent, [service("absent", "prices")]);
+        assert!(consumer.reached.is_empty());
+    }
+
+    #[test]
+    fn a_required_service_nothing_answers_still_refuses_the_set_beside_an_optional_one() {
+        // The two sides in one declaration: the optional name is missing and says
+        // nothing, the required name is missing and refuses.
+        let mut consumer = Hedging::new("consumer", &[], &[service("absent", "prices")]);
+        consumer.declaration = ServiceDeclaration::with_optional(
+            id("consumer"),
+            [],
+            [service("gone", "clock")],
+            [service("absent", "prices")],
+        )
+        .expect("a legal declaration");
+        let machine = machine(vec![entry("consumer", &[Side::DedicatedServer])]);
+
+        assert_eq!(
+            open_services(&machine, &mut [&mut consumer]),
+            Err(ServiceRefused::NoProvider {
+                consumer: id("consumer"),
+                service: service("gone", "clock"),
+            })
+        );
+    }
+
+    #[test]
+    fn a_provider_that_answered_and_refused_is_not_absence() {
+        // The distinction a consumer branches on. `base` is installed and running,
+        // so its refusal is an answer about the call and not about the install —
+        // and the consumer must not swallow it as "nobody there".
+        let mut consumer = Hedging::new("consumer", &[], &[service("zenith", "prices")]);
+        let mut base = Grudging::new("zenith", &[service("zenith", "prices")]);
+        let machine = machine(vec![
+            entry("consumer", &[Side::DedicatedServer]),
+            entry("zenith", &[Side::DedicatedServer]),
+        ]);
+
+        let refusal = open_services(&machine, &mut [&mut consumer, &mut base])
+            .expect_err("the provider said no");
+
+        assert!(matches!(
+            refusal,
+            ServiceRefused::Consumer { ref mod_id, .. } if mod_id == &id("consumer")
+        ));
+        assert!(
+            refusal.to_string().contains("not answering today"),
+            "{refusal}"
+        );
+        assert!(
+            consumer.absent.is_empty(),
+            "a refusal from a running provider was read as absence"
+        );
+    }
+
+    #[test]
+    fn a_cycle_through_an_installed_optional_provider_is_refused_like_any_other() {
+        // `first` may use `second`'s service and `second` requires `first`'s. Both
+        // are installed, so the optional edge is real and there is no order. Dropping
+        // it to break the cycle was rejected: it would run `first` before a `second`
+        // the player has installed and tell it `second` is not there.
+        let mut first = Hedging::new(
+            "first",
+            &[service("first", "left")],
+            &[service("second", "right")],
+        );
+        let mut second = Wired::new(
+            "second",
+            &[service("second", "right")],
+            &[service("first", "left")],
+        );
+        let machine = machine(vec![
+            entry("first", &[Side::DedicatedServer]),
+            entry("second", &[Side::DedicatedServer]),
+        ]);
+
+        let refusal = open_services(&machine, &mut [&mut first, &mut second])
+            .expect_err("no order starts either");
+        assert_eq!(
+            refusal,
+            ServiceRefused::Cycle {
+                participants: vec![id("first"), id("second")],
+            }
+        );
+        assert!(first.reached.is_empty() && first.absent.is_empty());
+    }
+
+    #[test]
+    fn the_same_optional_edge_draws_no_cycle_when_its_provider_is_not_installed() {
+        // The counterpart of the test above, and the row that stops "an optional edge
+        // is a real edge" from being the same claim as "an optional edge always
+        // exists": the identical declaration loads once `second` is gone.
+        let mut first = Hedging::new(
+            "first",
+            &[service("first", "left")],
+            &[service("second", "right")],
+        );
+        let machine = machine(vec![entry("first", &[Side::DedicatedServer])]);
+
+        let opened = open_services(&machine, &mut [&mut first]).expect("no edge, no cycle");
+        assert_eq!(opened.order(), [id("first")]);
+        assert_eq!(first.absent, [service("second", "right")]);
+    }
+
+    #[test]
+    fn an_optional_provider_this_side_parks_is_absent_rather_than_a_refusal_or_a_wait() {
+        let mut consumer = Hedging::new("consumer", &[], &[service("zenith", "prices")]);
+        let mut base = Wired::new("zenith", &[service("zenith", "prices")], &[]);
+        let machine = machine(vec![
+            entry("consumer", &[Side::DedicatedServer]),
+            entry("zenith", &[Side::Client]),
+        ]);
+
+        let opened = open_services(&machine, &mut [&mut consumer, &mut base])
+            .expect("a parked provider refuses no optional consumer");
+
+        assert_eq!(opened.order(), [id("consumer")]);
+        assert_eq!(consumer.absent, [service("zenith", "prices")]);
+        assert!(base.answered.is_empty(), "a parked mod answered a call");
+    }
+
+    #[test]
+    fn a_graph_holding_an_optional_edge_opens_in_the_same_order_whatever_order_it_arrives_in() {
+        let build = || {
+            (
+                Wired::new("zenith", &[service("zenith", "prices")], &[]),
+                Hedging::new("consumer", &[], &[service("zenith", "prices")]),
+                Wired::new("other", &[service("other", "clock")], &[]),
+            )
+        };
+        let entries = vec![
+            entry("zenith", &[Side::DedicatedServer]),
+            entry("consumer", &[Side::DedicatedServer]),
+            entry("other", &[Side::DedicatedServer]),
+        ];
+
+        let (mut base, mut consumer, mut other) = build();
+        let forward = open_services(
+            &machine(entries.clone()),
+            &mut [&mut base, &mut consumer, &mut other],
+        )
+        .expect("resolves");
+
+        let (mut base, mut consumer, mut other) = build();
+        let reversed = open_services(
+            &machine(entries),
+            &mut [&mut other, &mut consumer, &mut base],
+        )
+        .expect("resolves");
+
+        assert_eq!(forward, reversed);
+        assert_eq!(
+            forward.order(),
+            [id("other"), id("zenith"), id("consumer")],
+            "the order is not the smallest topological one"
+        );
+        assert_eq!(consumer.reached, ["zenith"]);
+    }
+
+    #[test]
+    fn a_mod_with_only_optional_services_is_still_offered_them() {
+        // The guard that skips a mod with nothing to call reads both sides. Reading
+        // only `requires` would silently never call an optional-only consumer, which
+        // is indistinguishable from a working absent branch until a provider exists.
+        let mut consumer = Hedging::new("consumer", &[], &[service("zenith", "prices")]);
+        let mut base = Wired::new("zenith", &[service("zenith", "prices")], &[]);
+        let machine = machine(vec![
+            entry("consumer", &[Side::DedicatedServer]),
+            entry("zenith", &[Side::DedicatedServer]),
+        ]);
+
+        open_services(&machine, &mut [&mut base, &mut consumer]).expect("resolves");
+        assert_eq!(base.answered, [service("zenith", "prices")]);
+        assert_eq!(consumer.reached, ["zenith"]);
     }
 
     #[test]

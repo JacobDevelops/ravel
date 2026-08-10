@@ -16,6 +16,7 @@ use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{JNI_FALSE, jboolean};
 use jni::{Env, EnvUnowned};
 use ravel_core::ModId;
+use ravel_host_api::{HostMod, Outcome, Point};
 use ravel_save::{
     MAX_AGGREGATE_BYTES, SavedDataAggregate, SavedDataDeclaration, SavedDataError, SavedDataPlan,
 };
@@ -75,6 +76,12 @@ pub enum OpenOutcome {
 #[derive(Debug, Eq, PartialEq)]
 pub enum SaveOutcome {
     Unchanged,
+    /// A mod refused at `world_is_saved`, so Ravel offers nothing this pass.
+    ///
+    /// Distinct from [`SaveOutcome::Unchanged`], which says Ravel has nothing
+    /// new to write. This says it has something and was told not to, and the
+    /// difference is what a player reading a report needs.
+    Withheld,
     Replacement(Vec<u8>),
     Failed(String),
     IdentityMismatch(String),
@@ -308,8 +315,56 @@ impl LoaderRuntime {
         Ok(())
     }
 
+    /// Asks the mods whether Ravel may write its data for this save.
+    ///
+    /// `Point::WorldIsSaved` is the one published point a pinned hook already
+    /// reaches, and this is what makes it a point rather than a name. What a
+    /// refusal governs is exactly what this seam does: the hook offers *Ravel's*
+    /// aggregate for the saving world, so a mod that refuses withholds that
+    /// offer for this pass. It does not stop Minecraft saving the world, and
+    /// nothing here pretends it could — the capability the pinned target carries
+    /// is the capability a mod gets.
+    ///
+    /// The aggregate stays dirty when a round refuses, so the next save offers
+    /// it again. A refusal that silently discarded a mod's unwritten state would
+    /// be data loss dressed as a veto.
+    fn may_write(inner: &mut crate::runtime::Inner) -> Result<Option<ModId>, String> {
+        let crate::runtime::Inner { machine, mods, .. } = inner;
+        let mut borrowed: Vec<&mut dyn HostMod> = mods.iter_mut().map(|host| &mut **host).collect();
+        let round = ravel_loader::intercept(machine, &mut borrowed, Point::WorldIsSaved)
+            .map_err(|refused| refused.to_string())?;
+        if let Some(failure) = round.failure() {
+            return Err(failure.to_string());
+        }
+        if round.outcome() == Outcome::Proceed {
+            return Ok(None);
+        }
+        // The mod that refused is the last one asked, because the round ends
+        // there and no later mod is reached.
+        Ok(Some(
+            round
+                .asked()
+                .last()
+                .cloned()
+                .expect("a refusal comes from a mod that was asked"),
+        ))
+    }
+
     pub(crate) fn save_world(&self, identity: &WorldIdentity) -> SaveOutcome {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        match Self::may_write(&mut inner) {
+            Ok(None) => {}
+            // The live aggregate is left as it is, dirty flag included, so the
+            // next save asks again and offers whatever was withheld.
+            Ok(Some(refused)) => {
+                inner.persistence.notice(format!(
+                    "`{refused}` refused Ravel's world write at `{}`",
+                    Point::WorldIsSaved
+                ));
+                return SaveOutcome::Withheld;
+            }
+            Err(error) => return SaveOutcome::Failed(error),
+        }
         if inner
             .persistence
             .live
@@ -484,7 +539,12 @@ pub fn ravel_save_world_persistence<'local>(
         |env: &mut Env<'local>| -> Result<JByteArray<'local>, HookError> {
             let identity = text(env, &identity)?;
             let answer = match save(&identity) {
-                SaveOutcome::Unchanged => vec![UNCHANGED],
+                // A withheld write and an unchanged one are the same
+                // instruction to the game — write nothing — and they are kept
+                // apart on this side because a report a player reads needs them
+                // apart. Adding a tag would be a protocol the Java adapter has
+                // no use for.
+                SaveOutcome::Unchanged | SaveOutcome::Withheld => vec![UNCHANGED],
                 SaveOutcome::Replacement(bytes) => tagged(REPLACEMENT, &bytes),
                 SaveOutcome::Failed(detail) => tagged(FAILED, detail.as_bytes()),
                 SaveOutcome::IdentityMismatch(detail) => {
@@ -511,7 +571,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
-    use ravel_host_api::{HostError, HostMod};
+    use ravel_host_api::{HostError, HostMod, InterceptionDeclaration, Occasion, Outcome, Point};
     use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
     use ravel_save::{
         MAX_AGGREGATE_BYTES, SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope,
@@ -741,6 +801,207 @@ mod tests {
             LoaderRuntime::profiling(machine, hosts, ravel_observability::Profiler::off(), report),
             held,
         )
+    }
+
+    /// The identity of the mod that guards the save, chosen to sort *after* the
+    /// owner it must be asked before.
+    ///
+    /// `world_owner` sorts before `zephyr_guard`, and the guard is declared
+    /// `after` nothing while the owner is declared after the guard. So the
+    /// asked order is only ever right because the declared edge was read: drop
+    /// the edge and `precedence` answers the lexicographic order, which puts the
+    /// owner first and the guard's refusal after the write it was meant to stop.
+    const GUARD: &str = "zephyr_guard";
+
+    /// A mod that answers at `world_is_saved` and owns no world data.
+    struct Guarding {
+        id: ModId,
+        refusing: Arc<AtomicBool>,
+        asked: Arc<AtomicU32>,
+    }
+
+    impl HostMod for Guarding {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            Ok(())
+        }
+
+        fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+            let mut declared = InterceptionDeclaration::new(self.id.clone());
+            declared.answer_at(Point::WorldIsSaved.as_str());
+            Some(declared)
+        }
+
+        fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, HostError> {
+            assert_eq!(occasion.point(), Point::WorldIsSaved);
+            self.asked.fetch_add(1, Ordering::SeqCst);
+            Ok(if self.refusing.load(Ordering::SeqCst) {
+                Outcome::Refuse
+            } else {
+                Outcome::Proceed
+            })
+        }
+    }
+
+    /// A runtime whose set is one world owner and one mod that guards the save.
+    fn guarded_running() -> (LoaderRuntime, Arc<Held>, Arc<AtomicBool>, Arc<AtomicU32>) {
+        let held = Arc::new(Held::default());
+        let refusing = Arc::new(AtomicBool::new(false));
+        let asked = Arc::new(AtomicU32::new(0));
+        let hosts: Vec<Box<dyn HostMod>> = vec![
+            Box::new(Owning {
+                id: id(OWNER),
+                held: Arc::clone(&held),
+            }),
+            Box::new(Guarding {
+                id: id(GUARD),
+                refusing: Arc::clone(&refusing),
+                asked: Arc::clone(&asked),
+            }),
+        ];
+        let entries: Vec<LifecycleEntry> = [OWNER, GUARD]
+            .iter()
+            .map(|owner| LifecycleEntry {
+                mod_id: id(owner),
+                sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+                requirement: Requirement::Required,
+                saved_data_versions: if *owner == OWNER {
+                    BTreeSet::from([version(1), version(2)])
+                } else {
+                    BTreeSet::new()
+                },
+            })
+            .collect();
+        let mut machine = LifecycleMachine::new(Side::Client, entries)
+            .expect("independent mods are a legal plan");
+        for state in [
+            LifecycleState::Validated,
+            LifecycleState::Resolved,
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
+        ] {
+            machine.advance_all(state).expect("a legal step");
+        }
+        (
+            LoaderRuntime::profiling(
+                machine,
+                hosts,
+                ravel_observability::Profiler::off(),
+                crate::runtime::pre_world_report(),
+            ),
+            held,
+            refusing,
+            asked,
+        )
+    }
+
+    /// The carried half: a mod's answer decides whether Ravel writes.
+    ///
+    /// Both directions in one test, against one runtime, because the claim is
+    /// that the *answer* decides: the same set that withholds a save produces
+    /// one the moment the mod stops refusing. A test that only refused would
+    /// pass against a seam that never wrote at all.
+    #[test]
+    fn a_mod_refusing_at_world_is_saved_withholds_ravels_write_and_a_later_save_offers_it() {
+        let (runtime, held, refusing, asked) = guarded_running();
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("a fresh world is staged");
+        // After staging, because opening a fresh world is what hands the mod its
+        // starting state.
+        held.visits.store(7, Ordering::SeqCst);
+
+        refusing.store(true, Ordering::SeqCst);
+        let withheld = runtime.save_world(&WorldIdentity::of(FIRST));
+        assert_eq!(withheld, SaveOutcome::Withheld);
+        assert_eq!(asked.load(Ordering::SeqCst), 1, "the round was not asked");
+        assert!(
+            runtime
+                .persistence_observations()
+                .iter()
+                .any(|notice| notice.contains(GUARD) && notice.contains("world_is_saved")),
+            "a withheld write is invisible to the player: {:?}",
+            runtime.persistence_observations()
+        );
+
+        // The same runtime, the same unwritten state, with the mod no longer
+        // refusing. What was withheld is offered rather than lost.
+        refusing.store(false, Ordering::SeqCst);
+        let bytes = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+        assert_eq!(asked.load(Ordering::SeqCst), 2);
+        assert_eq!(visits(&bytes), 7);
+    }
+
+    /// A mod that fails while answering fails the save rather than writing.
+    #[test]
+    fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
+        struct Failing {
+            id: ModId,
+        }
+
+        impl HostMod for Failing {
+            fn id(&self) -> &ModId {
+                &self.id
+            }
+
+            fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+                Ok(())
+            }
+
+            fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+                let mut declared = InterceptionDeclaration::new(self.id.clone());
+                declared.answer_at(Point::WorldIsSaved.as_str());
+                Some(declared)
+            }
+
+            fn intercept(&mut self, _occasion: Occasion) -> Result<Outcome, HostError> {
+                Err(HostError::Refused {
+                    mod_id: self.id.clone(),
+                    state: LifecycleState::Running,
+                    detail: "the guard broke".to_owned(),
+                })
+            }
+        }
+
+        let hosts: Vec<Box<dyn HostMod>> = vec![Box::new(Failing { id: id(GUARD) })];
+        let entries = vec![LifecycleEntry {
+            mod_id: id(GUARD),
+            sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+            requirement: Requirement::Required,
+            saved_data_versions: BTreeSet::new(),
+        }];
+        let mut machine = LifecycleMachine::new(Side::Client, entries).expect("a legal plan");
+        for state in [
+            LifecycleState::Validated,
+            LifecycleState::Resolved,
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
+        ] {
+            machine.advance_all(state).expect("a legal step");
+        }
+        let runtime = LoaderRuntime::profiling(
+            machine,
+            hosts,
+            ravel_observability::Profiler::off(),
+            crate::runtime::pre_world_report(),
+        );
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("a fresh world is staged");
+
+        let outcome = runtime.save_world(&WorldIdentity::of(FIRST));
+        let SaveOutcome::Failed(detail) = &outcome else {
+            panic!("a mod that failed while answering should fail the save: {outcome:?}");
+        };
+        assert!(detail.contains(GUARD), "{detail}");
+        assert!(detail.contains("the guard broke"), "{detail}");
     }
 
     /// The bytes a save produced, or a panic naming what it did instead.

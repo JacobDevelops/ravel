@@ -776,6 +776,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-build"
+version = "0.0.0"
+dependencies = [
+ "ravel-core",
+ "ravel-host-runtime",
+ "ravel-loader",
+ "ravel-package",
+ "sha2 0.11.0",
+ "toml",
+]
+
+[[package]]
 name = "ravel-cli"
 version = "0.0.0"
 dependencies = [
@@ -793,13 +805,12 @@ name = "ravel-composed-host"
 version = "0.0.0"
 dependencies = [
  "jni",
- "ravel-bootstrap",
  "ravel-config",
  "ravel-core",
  "ravel-host-api",
+ "ravel-host-runtime",
  "ravel-loader",
  "ravel-package",
- "ravel-resolve",
  "ravel-test-mod-client-only",
  "ravel-test-mod-configuration",
  "ravel-test-mod-saved-data",
@@ -910,6 +921,20 @@ dependencies = [
  "ravel-network",
  "ravel-save",
  "serde_json",
+]
+
+[[package]]
+name = "ravel-host-runtime"
+version = "0.0.0"
+dependencies = [
+ "jni",
+ "ravel-bootstrap",
+ "ravel-config",
+ "ravel-core",
+ "ravel-host-api",
+ "ravel-loader",
+ "ravel-package",
+ "ravel-resolve",
 ]
 
 [[package]]

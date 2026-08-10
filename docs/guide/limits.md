@@ -18,15 +18,28 @@ source files and provenance record verified against the digests it records. That
 is where launch-time integrity verification lives; `cargo xtask package digests
 --check` is the same check at packaging time.
 
-The leg that is still missing is the one that makes a discovered package run.
-ADG-2 makes a mod's code Rust source the host is built from, so a package you
-install has a manifest and no compiled value behind it — there is nothing for the
-lifecycle to construct. A launch therefore refuses rather than pretending: an
-installed package this build was not compiled from stops the launch and is named,
-and an installed package whose bytes do not match its manifest stops it too. You
-can build a conforming mod, test it thoroughly as a library, and install it into
-an instance to have it validated. You cannot yet drop it into an instance and see
-it run.
+The leg between the two is now built and is not yet wired to a launch.
+`ravel-build` takes what discovery found, generates a Cargo workspace naming
+every installed package, and compiles it into the host library the JVM loads —
+on your machine, from your source, into the build cache Ravel shares per
+machine. Your mod says what to construct by writing `ravel_sdk::export_mod!` once
+at the root of its crate; a package that does not fails the build naming itself
+rather than yielding a host quietly one mod smaller.
+
+What no code does yet is call that on your behalf during a launch. Nothing in the
+launch path builds a host, and nothing chooses between the host a build produced
+and the statically composed one the launcher stages today. So the shipped launch
+still behaves as above: an installed package this build was not compiled from
+stops the launch and is named, and an installed package whose bytes do not match
+its manifest stops it too. You can build a conforming mod, test it thoroughly as
+a library, and install it into an instance to have it validated and compiled into
+a host. You cannot yet drop it into an instance and see it run.
+
+One thing to plan around while that is true: a generated workspace supplies
+`ravel-sdk` and nothing else. A mod whose `Cargo.toml` writes
+`serde.workspace = true` builds in this repository and does not build once
+installed, because the generated workspace declares no such dependency to
+inherit. Name your own dependencies with explicit versions.
 
 **A launch reads its side, but only as far as the distribution it started from.**
 `initialize` no longer asserts a side. It asks its own JVM which Minecraft

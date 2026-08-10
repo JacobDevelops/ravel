@@ -330,11 +330,89 @@ pub mod settings {
     }
 }
 
+/// `docs/guide/state.md` — Using a mod only if it is installed.
+pub mod optional_service {
+    use ravel_sdk::prelude::*;
+    use ravel_sdk::{JsonValue, json};
+
+    /// The service the atlas answers, which this mod uses when one is installed.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `atlas:landmarks` stops being a legal service name, which would
+    /// mean the mod this one may use can no longer be named.
+    #[must_use]
+    pub fn landmarks() -> ServiceId {
+        let atlas = "atlas".parse().expect("a legal mod id");
+        ServiceId::new(ContentId::new(atlas, "landmarks").expect("a legal path"))
+    }
+
+    /// A mod that is better with the atlas installed and works without it.
+    #[derive(Default)]
+    pub struct Compass {
+        landmarks: Option<JsonValue>,
+        alone: bool,
+    }
+
+    impl Compass {
+        /// Returns what an atlas named, when one did.
+        #[must_use]
+        pub const fn landmarks(&self) -> Option<&JsonValue> {
+            self.landmarks.as_ref()
+        }
+
+        /// Returns whether this mod asked and found no atlas.
+        #[must_use]
+        pub const fn alone(&self) -> bool {
+            self.alone
+        }
+    }
+
+    #[declare_mod(id = "compass")]
+    impl Mod for Compass {
+        fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+            let _ = state;
+            Ok(())
+        }
+
+        fn service_declaration(&self) -> Option<ServiceDeclaration> {
+            ServiceDeclaration::with_optional(
+                Self::declared_id().clone(),
+                [],            // what you answer
+                [],            // what you need
+                [landmarks()], // what you use if something answers it
+            )
+            .ok()
+        }
+
+        fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
+            match directory.call(&ServiceRequest::new(landmarks(), json!({ "within": 512 }))) {
+                Ok(answer) => {
+                    self.landmarks = answer.value().get("landmarks").cloned();
+                    Ok(())
+                }
+                // The one outcome you carry on past: nothing here answers it.
+                Err(failed) if failed.is_absent() => {
+                    self.alone = true;
+                    Ok(())
+                }
+                // The atlas is installed and said no, which is a different thing.
+                Err(failed) => Err(ModError::Refused {
+                    mod_id: Self::declared_id().clone(),
+                    state: LifecycleState::Constructed,
+                    detail: failed.to_string(),
+                }),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ravel_sdk::config::LayeredConfiguration;
     use ravel_sdk::prelude::*;
     use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan};
+    use ravel_sdk::services::{ServiceCallFailed, ServiceUnavailable};
     use ravel_sdk::{JsonValue, json};
 
     /// A registrar that accepts everything, as the guide tells an author to write.
@@ -488,5 +566,72 @@ mod tests {
 
         assert_eq!(capacity(&json!(16)), Some(16));
         assert_eq!(capacity(&json!("sixteen")), None);
+    }
+
+    /// A directory that answers one fixed way, so each branch can be driven.
+    ///
+    /// What a real host does with these declarations is checked over
+    /// `ravel_loader::open_services` in
+    /// `tests/conformance/tests/optional_services.rs`; this only reaches the three
+    /// branches the guide tells an author to write.
+    struct Fixed(Result<ServiceResponse, ServiceCallFailed>);
+
+    impl ServiceDirectory for Fixed {
+        fn call(
+            &mut self,
+            _request: &ServiceRequest,
+        ) -> Result<ServiceResponse, ServiceCallFailed> {
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn the_optional_service_snippet_declares_nothing_required() {
+        let compass = crate::optional_service::Compass::default();
+        let declaration = compass
+            .service_declaration()
+            .expect("the snippet declares one service");
+        // The guide's claim: this mod never stops a set from loading.
+        assert_eq!(declaration.requires().count(), 0);
+        assert!(declaration.may_do_without(&crate::optional_service::landmarks()));
+        assert!(declaration.calls(&crate::optional_service::landmarks()));
+    }
+
+    #[test]
+    fn the_optional_service_snippet_carries_on_past_absence_and_nothing_else() {
+        let mut answered = crate::optional_service::Compass::default();
+        answered
+            .use_services(&mut Fixed(Ok(ServiceResponse::new(
+                json!({ "landmarks": ["spire"] }),
+            ))))
+            .expect("an answered call");
+        assert_eq!(answered.landmarks(), Some(&json!(["spire"])));
+        assert!(!answered.alone());
+
+        let mut alone = crate::optional_service::Compass::default();
+        alone
+            .use_services(&mut Fixed(Err(ServiceCallFailed::Unavailable(
+                ServiceUnavailable::Absent {
+                    service: crate::optional_service::landmarks(),
+                },
+            ))))
+            .expect("absence is not failure");
+        assert!(alone.alone() && alone.landmarks().is_none());
+
+        // An atlas that was reached and refused is a different event, and the
+        // guide tells an author not to swallow it.
+        let mut refused = crate::optional_service::Compass::default();
+        assert!(
+            refused
+                .use_services(&mut Fixed(Err(ServiceCallFailed::Refused(
+                    ModError::Refused {
+                        mod_id: crate::optional_service::Compass::declared_id().clone(),
+                        state: LifecycleState::Running,
+                        detail: "no survey loaded".to_owned(),
+                    }
+                ))))
+                .is_err()
+        );
+        assert!(!refused.alone());
     }
 }

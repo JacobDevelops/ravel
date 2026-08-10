@@ -264,6 +264,78 @@ follow.
 A provider parked on this side is a service nothing answers. If you require a
 service from a client-only mod, your mod does not start on a dedicated server.
 
+### Using a mod only if it is installed
+
+Most compatibility between two mods is not a requirement. If your mod is better
+when another is installed and fine without it, `requires` is the wrong word: it
+makes your mod's presence stop the game unless the other one is there. Say it
+with the third half of the declaration instead.
+
+```rust
+fn service_declaration(&self) -> Option<ServiceDeclaration> {
+    ServiceDeclaration::with_optional(
+        Self::declared_id().clone(),
+        [],            // what you answer
+        [],            // what you need
+        [landmarks()], // what you use if something answers it
+    )
+    .ok()
+}
+```
+
+`with_optional` is `new` plus that fourth argument, and `new` still means "none
+of this is optional". What the optional half changes is one thing: a missing
+provider no longer refuses the set. Everything else is the same. A provider that
+*is* running is still composed before you, so you never get told a mod is missing
+because you happened to be composed first, and calling an optionally declared
+service is legal rather than `Undeclared`.
+
+Then branch on the outcome in `use_services`:
+
+```rust
+fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
+    match directory.call(&ServiceRequest::new(landmarks(), json!({ "within": 512 }))) {
+        Ok(answer) => {
+            self.landmarks = answer.value().get("landmarks").cloned();
+            Ok(())
+        }
+        // The one outcome you carry on past: nothing here answers it.
+        Err(failed) if failed.is_absent() => {
+            self.alone = true;
+            Ok(())
+        }
+        // The atlas is installed and said no, which is a different thing.
+        Err(failed) => Err(ModError::Refused {
+            mod_id: Self::declared_id().clone(),
+            state: LifecycleState::Constructed,
+            detail: failed.to_string(),
+        }),
+    }
+}
+```
+
+`is_absent` is true for exactly one thing: nothing in this set answers a service
+you declared you may use. A provider that was reached and refused is not that,
+and swallowing it would hide a broken mod as an uninstalled one — no player could
+tell the two apart from the mod list. Branch on `is_absent` (or match
+`ServiceUnavailable::Absent`) rather than on the sentence the failure renders to.
+
+Absence covers a provider that is not installed and a provider parked on the
+other side, because both mean nothing answers this session.
+
+Two declarations are refused when you build them. One service on both the
+required and the optional side is `RequiredAndOptional`: the two sides disagree
+about a missing provider and the loader will not pick for you. A service you both
+answer and may use is `MayUseItself`, for the same reason requiring what you
+answer is — the provider is present by construction, so it is a self-edge and no
+order starts you.
+
+An optional edge whose provider is installed counts for cycles too. If you may
+use a mod that requires you, and both are installed, that is a cycle and the set
+is refused naming both. The alternative — dropping your optional edge to break it
+— would run you before a mod the player installed and then tell you it was not
+there.
+
 Requests and answers are JSON, not a Rust type both mods name. A mod is
 distributed as source, so a consumer naming the provider's Rust type would be
 pinned to the provider's build instead of to the version range its manifest

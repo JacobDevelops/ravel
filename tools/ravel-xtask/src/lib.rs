@@ -236,6 +236,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_decision_hook_claims(root, &mut violations);
     verify_campaign_inventory(root, &mut violations);
     verify_review_round_counts(root, &mut violations);
+    verify_review_blocking_counts(root, &mut violations);
     verify_manifest_percentages(root, &mut violations);
     verify_void_limits(root, &mut violations);
     verify_harness_lifecycles(root, &mut violations);
@@ -1136,6 +1137,89 @@ fn round_count_restatements(document: &str) -> Vec<(usize, &'static str)> {
             counts.into_iter().map(move |count| (count, noun))
         })
         .collect()
+}
+
+/// Every per-round blocking count a review record's round headings declare.
+///
+/// A heading reads `### Round 5 — FAIL, two blocking`, so the figure sits
+/// against the word `blocking` and [`numbers_before`] is what reads it. Only
+/// the first such figure on a heading is taken; a heading naming two counts is
+/// a heading nobody writes, and reading both would invent a tally.
+fn round_heading_blocking_counts(document: &str) -> Vec<usize> {
+    document
+        .lines()
+        .filter(|line| line.starts_with(ROUND_HEADING))
+        .filter_map(|line| numbers_before(line, &["blocking"]).first().copied())
+        .collect()
+}
+
+/// How a review record marks the start of one round's section.
+const ROUND_HEADING: &str = "### Round ";
+
+/// Holds a review record's headline tally of blocking findings to its own
+/// per-round headings.
+///
+/// `evidence/m5/review.md` opened by saying six rounds raised nine blocking
+/// findings. Its own headings summed to eight: the ninth item in its list of
+/// instances was found by the round-4 repair, and the record itself treats
+/// repair-found instances as a separate category one paragraph later. So the
+/// document the manifest names as the one place that counts published a wrong
+/// version of the count it exists to hold, in the direction that flattered the
+/// campaign, and nothing anywhere summed the headings that would have said so.
+///
+/// The fix is the one the rest of this file uses: give the figure a single
+/// source and derive the rest. The headings are that source, because each is
+/// written by the round it describes and none of them can be edited without
+/// editing the section under it.
+///
+/// Known limits, stated rather than implied. This reads the summary a record
+/// opens with — everything before its first round heading — and not the round
+/// sections, because a count inside a section is a count of that round and
+/// disagreeing with the campaign total is what it is for. And it reaches a
+/// record whose rounds carry their blocking count in the heading; M3's and M4's
+/// records are laid out differently and are not retrofitted, for the reason
+/// `docs/decisions/claims-without-a-second-reading.md` gives about rewriting
+/// evidence a review already certified.
+fn verify_review_blocking_counts(root: &Path, violations: &mut Vec<String>) {
+    for (record, _) in round_count_subjects() {
+        let path = root.join(&record);
+        if !path.is_file() {
+            continue;
+        }
+        // An unreadable record is already reported by the round-count sweep.
+        let Ok(document) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let per_round = round_heading_blocking_counts(&document);
+        if per_round.is_empty() {
+            continue;
+        }
+        let total: usize = per_round.iter().sum();
+        let rounds = per_round.len();
+        let summary = document
+            .split(ROUND_HEADING)
+            .next()
+            .unwrap_or_default()
+            .to_owned();
+
+        let mut stated = numbers_before(&summary, &["blocking", "findings"]);
+        stated.extend(numbers_after(&summary, &["blocking", "findings"]));
+        if stated.is_empty() {
+            violations.push(format!(
+                "{record} states no tally of the blocking findings its {rounds} round headings \
+                 declare; the summary carries that figure so a reader is not left to sum them"
+            ));
+        }
+        for count in stated {
+            if count != total {
+                violations.push(format!(
+                    "{record} states that {count} blocking findings were raised; its own round \
+                     headings declare {total} across {rounds} rounds, and the headings are where \
+                     that figure is written"
+                ));
+            }
+        }
+    }
 }
 
 /// Keeps a percentage out of a manifest's prose, because nothing recomputes one.
@@ -5137,14 +5221,34 @@ pub fn verify_tracked_paths<'a>(paths: impl IntoIterator<Item = &'a str>) -> Vec
 /// references in tracked text.
 ///
 /// The last of those is M5-W1's own verification criterion, held here rather
-/// than asserted in prose. The private compatibility workspace is a separate
-/// repository, so a leak would arrive as one of two things: a tracked file that
-/// names it, or a manifest whose path dependency walks out of this checkout to
-/// reach it. Both are refused, and the name is refused everywhere rather than
-/// only in manifests — `docs/architecture/public-private-boundary.md` describes
-/// the private workspace without naming it for exactly this reason, and a
-/// document that started naming it would be the first sign the split had
+/// than asserted in prose. Four rules run, and they are named rather than
+/// summarised: a PEM private-key header, a credential assignment, the private
+/// compatibility workspace's name as a lowercase substring, and a Cargo `path =`
+/// value that walks out of this checkout. The name is refused everywhere rather
+/// than only in manifests — `docs/architecture/public-private-boundary.md`
+/// describes the private workspace without naming it for exactly this reason,
+/// and a document that started naming it would be the first sign the split had
 /// stopped being a split.
+///
+/// This used to say those were "the two shapes a leak could arrive as". That
+/// was a completeness claim, written once by the hand relying on it, and the
+/// tree falsified it: a member mod's catalogue ids sat verbatim in a test
+/// fixture, and `evidence/m5/review.md` had already written the counterexample
+/// down. `docs/decisions/claims-without-a-second-reading.md` is the record that
+/// forbids the shape, so what is not enforced is stated here instead.
+///
+/// **Not enforced, deliberately.** An absolute path naming a user's home
+/// directory is not refused: this repository's redaction machinery and its
+/// tests have to carry that shape to redact it, so the rule would need an
+/// exclusion list, and an exclusion list is the hole the rule exists to not
+/// have. An upstream identifier drawn from the private inventory is not
+/// refused either: deciding one would mean holding the inventory here, which is
+/// the thing the split forbids. Both were adjudicated: a public catalogue
+/// identifier is public, and the private side sweeps this checkout for its own
+/// identifiers on every run of its gate, which is where that question is
+/// answered. `contents_scan_discloses_what_it_does_not_refuse` holds this
+/// paragraph to the code, so adding either rule fails a test rather than
+/// leaving the disclosure quietly false.
 #[must_use]
 pub fn verify_tracked_contents(root: &Path, paths: &[String]) -> Vec<String> {
     let private = private_workspace_name();
@@ -7230,6 +7334,43 @@ mod tests {
         assert_eq!(
             violations,
             ["tracked file contains credential material: notes.txt"]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Holds `verify_tracked_contents`'s disclosure to what it does.
+    ///
+    /// The doc comment says two shapes are deliberately not refused. A sentence
+    /// like that is exactly the claim this project keeps finding false, and the
+    /// only thing that makes it not a claim is something that fails when it
+    /// stops being true. So the two shapes are planted here and required to
+    /// pass: whoever adds either rule breaks this test and has to delete the
+    /// paragraph that says the rule is absent, in the same edit.
+    #[test]
+    fn contents_scan_discloses_what_it_does_not_refuse() {
+        let root = temporary_root("disclosure");
+        fs::write(
+            root.join("notes.txt"),
+            "cache lives at /home/someone/.local/state/ravel\n",
+        )
+        .expect("absolute path sample should be writable");
+        // Shaped like an upstream mod id and belonging to nothing; the scan has
+        // no identifier rule at all, so no real one is needed to show that.
+        fs::write(
+            root.join("fixture.json"),
+            "{\"files\": [{\"projectID\": 1, \"modId\": \"someupstreammod\"}]}\n",
+        )
+        .expect("identifier sample should be writable");
+
+        let violations =
+            verify_tracked_contents(&root, &["notes.txt".to_owned(), "fixture.json".to_owned()]);
+
+        assert_eq!(
+            violations,
+            Vec::<String>::new(),
+            "an absolute home path and an upstream-shaped identifier are disclosed as not refused; \
+             if either now fails, update the disclosure on verify_tracked_contents and in \
+             evidence/m5/manifest.json rather than this assertion"
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }

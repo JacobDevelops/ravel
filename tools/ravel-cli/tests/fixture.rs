@@ -94,6 +94,12 @@ fn reconstruction_reuses_a_verified_archive_inside_the_ignored_boundary() {
     let source_root = root.join("tests/fixtures/local/synthetic/source");
     fs::create_dir_all(&source_root).expect("fixture source root should be creatable");
     let manifest = source_root.join("manifest.json");
+    // The file row's ids are placeholders. They were a real member mod's
+    // catalogue ids, copied verbatim out of the pack, and nothing here reads
+    // them — which made them a real upstream identifier sitting in a literal a
+    // reviewer would read as synthetic, with no check anywhere that would say
+    // so. Public catalogue ids are not a leak; a fixture that claims to be
+    // synthetic and is not is a worse thing to keep than an accurate one.
     fs::write(
         &manifest,
         r#"{
@@ -106,7 +112,7 @@ fn reconstruction_reuses_a_verified_archive_inside_the_ignored_boundary() {
           "name": "All the Mods 11",
           "version": "0.2.1",
           "author": "ATMTeam",
-          "files": [{"projectID": 986583, "fileID": 8171043, "required": true}],
+          "files": [{"projectID": 1, "fileID": 2, "required": true}],
           "overrides": "overrides"
         }"#,
     )

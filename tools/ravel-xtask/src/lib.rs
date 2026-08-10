@@ -4647,7 +4647,7 @@ const M5_RECORDS: &[(&str, &str, &str)] = &[(
     r#".milestone == "M5"
         and .workPackage == "M5-W8"
         and .protocol == "m5-inventory-v1"
-        and .result == "pass"
+        and (.result == "pass" or .result == "provisional")
         and .disclosure.readObservation.bound != null
         and (.disclosure.readObservation.bound | type == "string" and length > 0)
         and (.disclosure.judgedClaims | type == "array" and length > 0)
@@ -4753,6 +4753,22 @@ fn verify_m5_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
          as a refusal, so closure requires them to still be there",
         violations,
     );
+    // A provisional figure is a legitimate thing for this manifest to carry while
+    // the workspace behind it is being repaired — it is what lets the gate's
+    // arithmetic be exercised and mutation-proved before the numbers are final.
+    // What it may not do is close a milestone. `ravel:verify` accepts the
+    // provisional record, because a repository holding one is not broken; only
+    // closure refuses it, and it refuses it here rather than leaving a reader to
+    // notice that the record and the manifest disagree about how settled they are.
+    let record = root.join("evidence/m5/inventory-summary.json");
+    if record.is_file() && jq_matches(&record, r#".result == "provisional""#).unwrap_or(false) {
+        violations.push(
+            "M5 closure requires final figures: evidence/m5/inventory-summary.json records itself \
+             as provisional, which is a true statement about an inventory under repair and not \
+             something a milestone can close over"
+                .to_owned(),
+        );
+    }
 
     for decision in M5_DECISIONS {
         if !root.join("docs/decisions").join(decision).is_file() {

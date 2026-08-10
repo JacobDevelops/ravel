@@ -5,16 +5,27 @@ what you can plan today, and the guide states them because finding them by
 experiment costs a day each.
 
 **A launched game does not discover your package.** The launch path shipped today
-composes a fixed set of mods in Rust source; it reads no `package.json`, so
-nothing about your manifest — including its `sides` — has any effect in a running
-game. `crates/ravel-composed-host/src/lib.rs` says so itself, under a section
-headed "Open obligation: this host reads no manifest": both lifecycle entries are
-written by hand there and the sides each mod runs on are constants in that file.
-The mapping from a validated package set to lifecycle entries exists and is
-production code — `ravel_loader::admitted` does read `manifest.sides` — but
-nothing calls it in a launch, because that host discovers no package and
-validates none. You can build a conforming mod and test it thoroughly as a
-library. You cannot yet drop it into an instance and see it run.
+composes a fixed set of mods in Rust source, and it will only ever run a mod this
+binary was compiled from. It reads the `package.json` of each of *those* — the
+manifests are compiled in beside the code, `ravel_loader::admitted` turns them
+into the entries the lifecycle holds, and a `sides` list that omits the running
+side parks its mod before any of its code runs. What is missing is discovery: a
+package sitting in an instance directory is found by nothing, so its manifest is
+read by nothing either. You can build a conforming mod and test it thoroughly as
+a library. You cannot yet drop it into an instance and see it run.
+
+Nothing in the launch verifies package integrity either. The host hashes no
+source tree, because the source it would hash is the source it was compiled from;
+`cargo xtask package digests --check` is where that check lives today.
+
+**A launch always believes it is a client.** The side is the one thing the host
+still asserts rather than reads: `initialize` passes `Side::Client` because
+nothing in the premain environment says whether Ravel was attached to a client or
+to a dedicated server. Everything below that point honours the side it is given —
+`compose` takes it as an argument and its tests drive all three — so a dedicated
+server launch would park client-only mods correctly the moment the process can
+name itself. Until then, do not read a green side test as proof that a dedicated
+server run has happened.
 
 **A mod cannot send a packet.** You can declare a `PacketContract`, implement
 `Packet`, encode a value, decode it back, and prove every refusal in your own

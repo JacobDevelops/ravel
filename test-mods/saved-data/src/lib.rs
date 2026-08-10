@@ -17,10 +17,11 @@ pub const MOD_ID: &str = "saved_data";
 
 /// Every version of its data this build can read, lowest first.
 ///
-/// A packaged mod declares these in its manifest and the loader carries them
-/// into the plan as `saved_data_versions`; this mod is driven without a package,
-/// so it states them here and the world fixtures under
-/// `tests/fixtures/public/worlds/` are written against the same three.
+/// A packaged mod declares these in its manifest and the loader carries them into
+/// the plan as `saved_data_versions`; `package.json` beside this file declares the
+/// same three, which is what the composed host admits this mod under, and the
+/// world fixtures under `tests/fixtures/public/worlds/` are written against them.
+/// A test in `ravel-composed-host` fails if the two lists ever part company.
 const VERSIONS: [u32; 3] = [1, 2, 3];
 
 /// The data this mod owns in a world.

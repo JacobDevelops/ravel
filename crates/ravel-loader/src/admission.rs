@@ -46,16 +46,16 @@ use crate::lifecycle::{LifecycleEntry, Requirement};
 ///
 /// M4-W5's review found `Compatibility::check_minecraft` with no caller outside a
 /// test harness: a mod's declared game version was enforced by `ravel-testkit` and
-/// by nothing else. The rule now lives in production code instead — this is the
-/// one production function that turns manifests into lifecycle entries — and it
-/// still has no in-game caller. Its callers are `ravel-testkit`'s pipeline and
-/// the conformance suite; `ravel-composed-host`, the closest thing here to a
-/// launched host, names this function in its module docs and does not call it,
-/// because it discovers no package and validates none. So a launched game does
-/// not enforce this yet, and `crates/ravel-composed-host/src/lib.rs` is where
-/// that gap is tracked. The harness still checks before it resolves, because
-/// resolving a set that is not admissible reads declarations nothing has vouched
-/// for, and both call the same function so neither can answer differently.
+/// by nothing else. The rule moved into production code then — this is the one
+/// production function that turns manifests into lifecycle entries — but for a
+/// milestone it still had no in-game caller, because `ravel-composed-host` wrote
+/// its lifecycle entries by hand. It calls this now: the composed set ships each
+/// member's `package.json`, and both compatibility checks and every `sides`
+/// declaration take effect in a launch. What a launch still does not do is
+/// discover a package it was not compiled from. `ravel-testkit`'s pipeline and the
+/// conformance suite are the other callers; the harness checks before it resolves,
+/// because resolving a set that is not admissible reads declarations nothing has
+/// vouched for, and all of them call this function so none can answer differently.
 ///
 /// # Errors
 ///

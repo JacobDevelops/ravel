@@ -1,7 +1,12 @@
 # Machinery is not material
 
 Status: accepted before M6-W2, for every repository and workspace inside this
-project's boundary. It is not an architecture decision gate and carries no ADG
+project's boundary; amended before M6-W3 to decide what a material record may
+hold, after M6-W2 shipped five of the six capabilities M5 filed as gaps and found
+the frozen record could not say so. The amendment is recorded under "Amendment: a
+material record carries a finding, not a lifecycle" below, and nothing about
+which files are material changed. It is not an architecture decision gate and
+carries no ADG
 number: `SPEC.md` §15 owns those, and its unused numbers — ADG-8 for
 official-server interoperability and ADG-9 for the official Minecraft host — are
 reserved for subjects this record is not about. It is the second record in the
@@ -216,3 +221,191 @@ recorded where the mutation was run.
 - **It says nothing about how much machinery a milestone should bind.** Binding
   the gate's scripts at all is a choice M5 made, and this record makes that choice
   survivable rather than revisiting it.
+
+## Amendment: a material record carries a finding, not a lifecycle
+
+Amended before M6-W3. **A record classed material may hold only what its
+milestone found. A field that tracks what happened to the finding afterwards does
+not belong in it, and the fix when one is already there is to separate the
+finding from the disposition — never to unfreeze the material.** The two classes
+above are unchanged, and so is every file's class.
+
+### What forced the amendment
+
+M5-W7 filed six SDK capability gaps in the private workspace's
+`proposals/sdk-gaps.json`, each naming the module a shipped answer would occupy
+and each carrying `publicSurface.shipped: false`. That record is classed
+material, so its digest is a permanent bind and, under the rule above, no later
+milestone may amend it.
+
+M6-W2 shipped five of the six. The private gate then failed five times over,
+saying that a shipped capability is not a gap — and there was no way to make it
+pass honestly. Leaving the frozen `false` was a lie about the SDK. Setting it
+`true` was a different failure and an unreachable one besides: the field is
+frozen twice, once by the digest and once by the recomputation the check ends
+with, which writes it `false` from the vocabulary. A correct, expected, planned
+outcome — a gap being closed by the work package whose job was to close it — made
+the gate red, and every state the record could reach was red too.
+
+That is not a defect in the freeze and not a defect in the check. Both did
+exactly what this record decides they should. The defect is in the record: one
+file was carrying two different kinds of statement, and only one of them was
+permanent.
+
+### The distinction
+
+A **finding** is what a milestone measured, about the tree it measured. "These
+six capabilities were absent from Ravel's SDK when M5 counted the inventory" is
+permanently true and will never stop being true, whatever ships later. That is
+what material means, and freezing it costs nothing because nothing about it can
+change.
+
+A **lifecycle** is what happened to the finding afterwards — resolved, deferred,
+withdrawn, superseded. It is not a measurement of the earlier tree at all. It is
+a later milestone's fact about a later tree, and putting it inside the earlier
+milestone's record freezes the status along with the finding. The record then
+asserts, permanently, a present tense it has no authority over.
+
+`shipped: false` reads like a measurement and behaves like a status. That is
+exactly the ambiguity that made it wrong to hold: as a measurement it is true
+forever and belongs where it is; as a status it went stale the moment M6-W2
+landed and belongs somewhere M6 owns.
+
+### What the fix is, and what it is not
+
+The disposition moves to a record the later milestone owns. In the instance that
+forced this, M6 writes `resolutions/sdk-gaps.json` in the private workspace: one
+row per gap a work package closed, naming the proposal, the work package that
+closed it, and the public SDK module the answer now occupies. M5's record is not
+touched, not reclassified, and not amended. The frozen field is superseded rather
+than deleted — deleting it would move the material — and the check that meets it
+says so where a reader meets it too.
+
+The check's rule becomes a question asked of two sides that can disagree: the
+public SDK tree, which is where "does this ship" is read, and the ledger, which
+is where "did anyone resolve it" is read. Neither is generated from the other. A
+module that ships with no ledger row is a gap closed by nobody; a ledger row
+whose module does not ship is a resolution nobody delivered; a row naming a
+proposal that does not exist, or naming no work package, fails on its own terms.
+Absence from the ledger is the ordinary state of an open gap and is not an
+omission — the sixth capability has no row, because nothing has shipped it.
+
+What this is not is an exception to the rule above. Nothing here unfreezes a
+material digest, admits a third class, or lets a milestone amend its own material
+figures once closed. It narrows what may be *written into* a material record in
+the first place, which is a constraint on the producer rather than a relaxation
+for the checker.
+
+### Consequences of this amendment
+
+- A milestone writing a record it expects to be classed material writes findings
+  only. A field whose value a later milestone would want to change is a field
+  that belongs in that later milestone's own record.
+- A material record that already carries one is repaired by adding the
+  disposition elsewhere and superseding the frozen field in place, with the
+  supersession stated where the field is read. The frozen value stays what it was
+  and stops being consulted.
+- The read that decides a superseded field's real answer comes from the tree
+  itself, not from the record that supersedes it, so the disposition and the
+  world can still contradict each other.
+
+### Limits of this amendment
+
+- **"Finding" and "lifecycle" is a judgement made when the record is written.**
+  Nothing here can be computed. `shipped` was written as a measurement in good
+  faith and turned out to be a status, and a reviewer reading the field name at
+  the time would not obviously have caught it. The tell that generalises is
+  tense: a field whose truth is stated in the present, about a thing outside the
+  record, is a status wearing a measurement's clothes.
+- **A superseded field is still there to mislead.** The repair leaves a false-
+  looking `false` in a published record, and what stops it being read as current
+  is prose at the point of use rather than anything structural. Deleting it would
+  be cleaner and would move the material, so the ambiguity is paid rather than
+  removed.
+- **This says nothing about how many dispositions a finding may collect.** One
+  ledger per finding-set is what the instance needed. Whether a gap that is
+  resolved, then regressed, then resolved again wants a history rather than a row
+  is undecided, and the row is what exists.
+
+## Amendment: a closed record measures its own tree
+
+Accepted before M7's first work package, while resolving the third instance of
+the same obstruction. It does not retrofit anything and it does not rewrite a
+closed record. It narrows what a gate is entitled to ask one.
+
+### What forced this second amendment
+
+`evidence/m4/sdk-surface.json` enumerates the SDK surface M4 closed on: its
+crates, test mods, examples, guide documents and conformance suites.
+`verify_m4_surface` reconciled that enumeration against the repository in both
+directions on every gate run. So a later milestone that added any of those five
+things put the gate into violation until somebody edited M4's closed evidence —
+silently, with no trail, because no mechanism recorded that an amendment had
+happened at all.
+
+It happened when M6-W2 added five test mods. It happened again when the M4
+evidence amendment was parked as its own change. It happened a third time when
+M7's library-provision work added a `provision` test mod, and that time it was
+the sole failure of an otherwise green gate. Three milestones, one obstruction,
+and each repair had been to edit the closed record again.
+
+The record above already refuses to retrofit the machinery class below M5, on the
+grounds that rewriting a closed milestone's record to satisfy a rule written
+afterwards is the thing it refuses in the other direction. That refusal stands and
+is not what changed. What the third instance exposed is that the obstruction was
+never really about classing M4's entries — it was about a *gate* holding a closed
+record to a tree that did not exist when the record was written.
+
+### The distinction between the two questions
+
+A closed record states what its milestone measured. That statement is about one
+tree, at one moment, and it is permanently true of that tree.
+
+Two questions can be asked of it later, and they are not the same question:
+
+- **Does everything this record named still exist?** A deletion falsifies what the
+  record claims to have measured, so the record is genuinely wrong now, and the
+  gate is right to say so.
+- **Is everything that exists named in this record?** A later addition falsifies
+  nothing. The record never claimed to enumerate future trees, and reading it as
+  though it did converts ordinary growth into a defect in a closed milestone.
+
+The second question is legitimate — surfaces should be accounted for — but it is
+the *current* milestone's question, and its answer belongs to the milestone that
+adds the surface, in that milestone's own evidence. Asking it of a closed record
+is what forced the silent amendments.
+
+### The decision
+
+A gate may hold a closed record to the first question and not to the second.
+`verify_m4_surface` checks in one direction: every name M4 recorded must still be
+present. Growth is not a violation.
+
+### Consequences of the closed-record rule
+
+- M4's closed evidence stops needing edits, which is the point. Task-level
+  amendment machinery for it becomes unnecessary rather than deferred.
+- **A named loss of coverage.** For crates, test mods and examples nothing is
+  given up: `verify_inventory` reconciles the maintained constants against their
+  directories independently. For guide documents and conformance suites there is
+  no such constant, so a file added to either after M4's closure is now accounted
+  for by nothing in this check. That is deliberate and it is a real gap. It is not
+  replaced with speculative machinery here, because the duty belongs to the
+  milestone that adds such a file, and inventing a mechanism before something
+  needs it is what this project's standing preference refuses.
+- The general rule reaches further than M4. Any closed record enumerating a
+  living directory is subject to the same reading, and the next one written should
+  be built knowing a gate will only ever ask it the first question.
+
+### Limits of the closed-record rule
+
+It says nothing about records that bind by digest, which are already governed
+above; a digest that no longer matches is the first question, not the second.
+
+It assumes the second question is always answerable by the adding milestone. Where
+a surface is added by no milestone in particular — a stray file, a document
+written between work packages — nothing now catches it, and this record does not
+pretend otherwise.
+
+It is a rule about gates, not about evidence. Every closed record in this
+repository keeps exactly the words it had.

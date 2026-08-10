@@ -51,6 +51,7 @@ const TEST_MOD_NAMES: &[&str] = &[
     "registries",
     "resources",
     "saved-data",
+    "server-only",
     "waystone-ledger",
 ];
 

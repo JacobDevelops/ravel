@@ -23,6 +23,7 @@ ravel-resolve.workspace = true
 ravel-test-mod-client-only.workspace = true
 ravel-test-mod-configuration.workspace = true
 ravel-test-mod-saved-data.workspace = true
+ravel-test-mod-server-only.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

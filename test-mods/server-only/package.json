@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "server_only",
+  "version": "0.0.0",
+  "displayName": "Server Only",
+  "description": "Server-only side test mod.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "26.1.2"
+    ]
+  },
+  "sides": [
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "authors": [
+    {
+      "name": "Ravel"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://example.invalid/ravel-test-mods",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "b11a4899a055f3b6a2ef00ac7299135dac2db26c493cb8ee65ac93bc7ab6e514"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "5fbf5821028f161b6d9c3aafd37507572a0b4e790ab114caf0a3e246fa8481ec"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "a8075d9fed8a0cfc1e08f60eb6919bc8cf911c69c031f9622047a78d0d1062a5"
+  }
+}

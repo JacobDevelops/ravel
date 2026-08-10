@@ -803,6 +803,7 @@ dependencies = [
  "ravel-test-mod-client-only",
  "ravel-test-mod-configuration",
  "ravel-test-mod-saved-data",
+ "ravel-test-mod-server-only",
  "serde_json",
 ]
 
@@ -1221,6 +1222,13 @@ dependencies = [
  "ravel-sdk",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ravel-test-mod-server-only"
+version = "0.0.0"
+dependencies = [
+ "ravel-sdk",
 ]
 
 [[package]]

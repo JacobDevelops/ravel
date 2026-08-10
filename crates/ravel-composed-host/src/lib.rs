@@ -48,6 +48,7 @@ use ravel_resolve::{ResolutionError, resolve};
 use ravel_test_mod_client_only::{ClientOnlyMod, work_log};
 use ravel_test_mod_configuration::ConfigurationMod;
 use ravel_test_mod_saved_data::SavedDataMod;
+use ravel_test_mod_server_only::{ServerOnlyMod, work_log as server_work_log};
 
 /// The override path copied from the selected pack manifest into this generated host.
 pub const PACK_CONFIGURATION_PATH: &str = "ravel-pack/configuration.json";
@@ -60,6 +61,7 @@ pub const PACK_CONFIGURATION_PATH: &str = "ravel-pack/configuration.json";
 const CONFIGURATION_PACKAGE: &str = include_str!("../../../test-mods/configuration/package.json");
 const SAVED_DATA_PACKAGE: &str = include_str!("../../../test-mods/saved-data/package.json");
 const CLIENT_ONLY_PACKAGE: &str = include_str!("../../../test-mods/client-only/package.json");
+const SERVER_ONLY_PACKAGE: &str = include_str!("../../../test-mods/server-only/package.json");
 
 /// One member of the composed set: the package it ships as, and its value.
 ///
@@ -122,6 +124,14 @@ pub fn compose(game_directory: &Path, side: Side) -> Result<Composition, LaunchE
             Member {
                 package: CLIENT_ONLY_PACKAGE,
                 host: Box::new(ClientOnlyMod::new(side, &work_log())),
+            },
+            // The other half of the same rule. With only the member above, a
+            // launch proved a declaration keeping code off a server and nothing
+            // proved the reverse, so the shipped set showed one direction of a
+            // two-directional rule.
+            Member {
+                package: SERVER_ONLY_PACKAGE,
+                host: Box::new(ServerOnlyMod::new(side, &server_work_log())),
             },
         ],
     )?;
@@ -315,7 +325,7 @@ mod tests {
 
     use super::{
         CLIENT_ONLY_PACKAGE, CONFIGURATION_PACKAGE, Member, PACK_CONFIGURATION_PATH,
-        SAVED_DATA_PACKAGE, admit, compose,
+        SAVED_DATA_PACKAGE, SERVER_ONLY_PACKAGE, admit, compose,
     };
 
     fn directory(name: &str) -> std::path::PathBuf {
@@ -340,6 +350,10 @@ mod tests {
 
     fn client_owner() -> ModId {
         "client_only".parse().expect("the tracked mod id is valid")
+    }
+
+    fn server_owner() -> ModId {
+        "server_only".parse().expect("the tracked mod id is valid")
     }
 
     /// A mod that records every lifecycle step it was taken into.
@@ -484,10 +498,67 @@ mod tests {
         );
         assert_eq!(machine.state(&owner()), Ok(LifecycleState::Running));
         assert_eq!(machine.state(&saved_owner()), Ok(LifecycleState::Running));
+        assert_eq!(
+            machine.state(&server_owner()),
+            Ok(LifecycleState::Running),
+            "a server-only mod was kept off the side it declares"
+        );
         assert!(
             mods.iter().any(|held| held.id() == &client_owner()),
             "a parked mod is installed rather than absent"
         );
+    }
+
+    /// The other direction of the same rule, through the same shipped path.
+    ///
+    /// `server_only` ships no `"client"` in its `sides`, so a client admits it —
+    /// a player sees it listed — and never starts it. Without this the shipped
+    /// composition proved one direction of a two-directional rule.
+    #[test]
+    fn the_server_only_member_is_admitted_and_parked_on_the_client() {
+        let game = directory("client");
+        let (machine, mods, _) =
+            compose(&game, Side::Client).expect("the tracked composition should start");
+
+        assert_eq!(
+            machine.state(&server_owner()),
+            Ok(LifecycleState::Resolved),
+            "a server-only mod started on the client"
+        );
+        assert_eq!(machine.state(&client_owner()), Ok(LifecycleState::Running));
+        assert_eq!(machine.state(&owner()), Ok(LifecycleState::Running));
+        assert!(
+            mods.iter().any(|held| held.id() == &server_owner()),
+            "a parked mod is installed rather than absent"
+        );
+    }
+
+    /// Every side, and on each one the pair disagrees about who runs.
+    ///
+    /// The two members above are one test each; this is what makes them a rule.
+    /// On the client exactly one of the pair runs and on each server side the
+    /// other does, so a composition that started everything everywhere — or
+    /// nothing anywhere — fails here rather than passing two half-tests.
+    #[test]
+    fn the_shipped_pair_runs_on_opposite_sides_of_every_launch() {
+        for side in Side::ALL {
+            let game = directory(&format!("pair-{}", side.name()));
+            let (machine, _, _) =
+                compose(&game, side).expect("the tracked composition should start");
+
+            assert_eq!(
+                machine.state(&client_owner()) == Ok(LifecycleState::Running),
+                side == Side::Client,
+                "client_only on `{}`",
+                side.name()
+            );
+            assert_eq!(
+                machine.state(&server_owner()) == Ok(LifecycleState::Running),
+                side.is_server(),
+                "server_only on `{}`",
+                side.name()
+            );
+        }
     }
 
     #[test]
@@ -499,10 +570,15 @@ mod tests {
         for id in [owner(), saved_owner(), client_owner()] {
             assert_eq!(machine.state(&id), Ok(LifecycleState::Running), "{id}");
         }
+        assert_eq!(
+            machine.state(&server_owner()),
+            Ok(LifecycleState::Resolved),
+            "the server-only member is parked on the client"
+        );
 
         let driven: Vec<&ModId> = mods.iter().map(|held| held.id()).collect();
-        assert_eq!(driven.len(), 3);
-        for id in [owner(), saved_owner(), client_owner()] {
+        assert_eq!(driven.len(), 4);
+        for id in [owner(), saved_owner(), client_owner(), server_owner()] {
             assert!(driven.contains(&&id), "{id}");
         }
 
@@ -519,6 +595,7 @@ mod tests {
             (CONFIGURATION_PACKAGE, owner()),
             (SAVED_DATA_PACKAGE, saved_owner()),
             (CLIENT_ONLY_PACKAGE, client_owner()),
+            (SERVER_ONLY_PACKAGE, server_owner()),
         ];
         let running = environment();
         for (document, expected) in manifests {

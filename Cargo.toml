@@ -65,6 +65,7 @@ ravel-test-mod-networking = { path = "test-mods/networking", version = "0.0.0" }
 ravel-test-mod-noop = { path = "test-mods/noop", version = "0.0.0" }
 ravel-test-mod-resources = { path = "test-mods/resources", version = "0.0.0" }
 ravel-test-mod-saved-data = { path = "test-mods/saved-data", version = "0.0.0" }
+ravel-test-mod-server-only = { path = "test-mods/server-only", version = "0.0.0" }
 waystone-ledger = { path = "test-mods/waystone-ledger", version = "0.2.0" }
 ravel-composed-host = { path = "crates/ravel-composed-host", version = "0.0.0" }
 ravel-testkit = { path = "crates/ravel-testkit", version = "0.0.0" }

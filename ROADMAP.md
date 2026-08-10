@@ -823,10 +823,10 @@ nontrivial gameplay clusters before scaling to every entry.
 | --- | --- | --- | --- | --- |
 | M6-W1 | Select foundation wave from M5 rubric | M5 | frozen wave manifest and cluster scenario | every selection reason and dependency is explicit |
 | M6-W2 | Resolve general SDK gaps publicly | M5-W7 | public SDK changes plus original test mods | public M4-class gates pass before private counterparts consume them |
-| M6-W3 | Implement foundation libraries/APIs | M6-W1..W2 | individually packaged counterparts | per-package unit, registration, save, side, performance and provenance suites pass |
+| M6-W3 | Specify, then implement, foundation libraries/APIs | M6-W1..W2 | one accepted behaviour specification per entry, then individually packaged counterparts | no specification carries an upstream identifier; per-package unit, registration, save, side, performance and provenance suites pass |
 | M6-W4 | Implement smallest gameplay cluster | M6-W3 | cluster packages and integration | fresh play, save, exit and reload scenario passes |
 | M6-W5 | Validate counterpart-authoring process | M6-W3..W4 | counterpart template, checklist and evidence schema | a second independent counterpart follows it without hidden loader hooks; the rewrite-integrity check below runs over both counterparts and passes |
-| M6-W6 | Review and gate | M6-W5 | private review/evidence | admitted set is green, provenance complete, the rewrite-integrity check is enforcing rather than advisory, and the M6 gate passes |
+| M6-W6 | Review and gate | M6-W5 | private review/evidence | admitted set is green, provenance complete, the rewrite-integrity check is enforcing rather than advisory, each counterpart records which of its observable areas are declarable-only, and the M6 gate passes |
 
 M6-W2 resolved five of the six general SDK capabilities M5-W7 proposed:
 server-resolved data, world shaping, audio, drawing stages, and behaviour
@@ -838,10 +838,86 @@ states where an author reads it, in the same terms `docs/guide/limits.md` alread
 uses about packets.
 
 Every counterpart is an original Rust implementation of an accepted behaviour
-specification. It is written either from upstream source that its licence permits
-reading or from observed declared behaviour alone, and for most of the inventory
-only the second route is open. Nothing decompiles, transliterates, or
-mechanically translates Java, and no step of this plan produces Rust from a jar.
+specification. Nothing decompiles, transliterates, or mechanically translates
+Java, and no step of this plan produces Rust from a jar.
+
+**A green counterpart is not an exercised one, and M6-W6 makes it say so.** The
+six general capabilities are abstractions a mod declares against and tests
+against; none of them carries anything into a running game, and the shipped host
+discovers no package at all, so every counterpart in this milestone is a
+library-tested artefact rather than something a player has seen work. A gate that
+reported only "the admitted set is green" would therefore be satisfied by a pack
+whose behaviour has never run once — the tests would be agreeing with the
+declarations, and the case that contradicts them would be the one nobody built.
+So each counterpart records which of its observable areas are *declarable-only*:
+the abstraction exists, the implementation is real, the suites pass, and no
+running process exercises it. That figure is not a defect to be driven to zero
+here — it is the honest denominator this milestone's green sits over, and it is
+what later carry work is ordered by.
+
+**A specification and its implementation are written by different hands.** A
+reader reads upstream source and writes prose stating what the entry does — what
+registers, what is read and written, what is observable, what invariants hold,
+which mechanisms are required and which are incidental. An implementer works from
+that prose alone and never opens the source. The split is what makes a
+specification safe to implement from: a document describing *behaviour* yields an
+independent design, while one describing the original's structure yields a
+transliteration wearing new names. Which route a specification took — source, or
+declared and observed behaviour where no source exists — is recorded per entry,
+and the private workspace's source-access policy governs what a reader may read.
+
+**The specification step is the expensive half, and its cost is judgement rather
+than reading.** M6-W3's five entries put a floor under the estimate: the smallest,
+at 32 source files with no data or assets, took roughly forty minutes, of which
+reading was under half. Effort tracks the number of distinct behaviours rather
+than file count. The two costly parts are deciding whether a mechanism is required
+or incidental — which cannot be answered from the source, because it turns on what
+Ravel's own plan ports — and noticing behaviour that is load-bearing while looking
+like a detail, which only a whole reading catches and whose loss produces a
+counterpart that passes every test and is quietly wrong.
+
+**A single reader's specification carries a defect rate nothing can measure.**
+M6-W3 ran the one experiment available: two readers specified the wave's smallest
+entry — 32 source files, no data, no assets — from the pinned source without
+seeing each other's work. They disagreed three times. Twice the first was wrong by
+omission, having read one of two forms a thing takes; once the second was wrong
+about a registration path that has no opt-out. Three defects on the easiest entry,
+surfaced only because two people read it independently, and each one would
+otherwise have reached a counterpart that then passed its tests. Prose is
+therefore paired where it is load-bearing or it is not trusted, and agreement
+between a reader and a reviewer of that reader's document measures nothing —
+the second reading has to start from the source.
+
+That cost does not multiply across the inventory unchanged, and M7 does not
+attempt it. Prose is not M7's default artefact: an entry is contracted by the test
+kinds `plans.json` already lists for it, plus a behaviour-delta note for what a
+Rust author would otherwise guess, and prose is reserved for entries whose
+behaviour is executed and whose contract a test list cannot carry. A conformance
+description is machine-checkable, which is what makes a single author's error
+visible; prose is not, which is why prose pairs or does not scale. **A content
+mod never gets a prose specification of its catalogue** — its systems are
+specified and its catalogue is data, and restating a catalogue in prose is both
+wasted and the transliteration failure this process exists to prevent.
+
+A library specification currently covers every facility at equal
+weight because the M5 graph records that one entry depends on another without
+recording *what for*, so most of that volume specifies dead surface. Recording
+consumed capability per dependency edge is mechanical, and it is the precondition
+for scaling. Beyond the foundation wave, an entry whose behaviour is predominantly
+*declared* — recipes, loot, tags, models, worldgen — is contracted by its data and
+by the test kinds `plans.json` already lists per entry, which is cheaper than prose
+and machine-checkable in a way prose is not; prose is reserved for entries whose
+behaviour is *executed*, where an implementer would otherwise guess.
+
+**No check can see a transliteration through prose.** The rewrite-integrity check
+below reads names, and structure is not a name, so a specification that carries the
+original's shape under entirely new words passes every rule and so does the Rust
+written from it. The defence is the reader's discipline, and discipline is the
+first thing a schedule erodes. M6-W5 therefore samples: a fresh reader who has seen
+neither the specification nor the source judges whether a finished counterpart
+reads as an independent design. That is a weak instrument and it is the strongest
+one available, so its answers are recorded over time rather than taken one at a
+time.
 
 **Rewrite integrity is M6's obligation to enforce, not to assert.** M6 ships a
 check of the same shape as M5-W7's public-safety screen: a published lexicon of the

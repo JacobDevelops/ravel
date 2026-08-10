@@ -79,28 +79,52 @@ in
         nixfmt --check devenv.nix flake.nix nix/*.nix
         shfmt -d .envrc
 
+        # Every walk below prunes `tests/fixtures/local/`, and a prune rule that
+        # widens by a directory stops covering the public fixtures beside it
+        # without saying so. This is the gate on that: the public fixtures are
+        # repository content and have to reach the formatter.
+        require_public_fixtures() {
+          local kind="$1"
+          shift
+          local missing
+          missing="$(
+            comm -23 \
+              <(find ./tests/fixtures/public -type f -name "$kind" | sort) \
+              <(printf '%s\n' "$@" | sort)
+          )"
+          if [ -n "$missing" ]; then
+            echo "the $kind exclusion reaches past tests/fixtures/local and drops:" >&2
+            echo "$missing" >&2
+            exit 1
+          fi
+        }
+
+        # Restricted local material is ignored rather than repository content, so
+        # it is not held to the repository's formatting. Its README is tracked and
+        # stays in.
         mapfile -d "" toml_files < <(
           find . -type f -name "*.toml" \
             -not -path "./.devenv/*" \
             -not -path "./.direnv/*" \
             -not -path "./.jj/*" \
             -not -path "./target/*" \
+            -not -path "./tests/fixtures/local/*" \
             -print0
         )
+        require_public_fixtures "*.toml" "''${toml_files[@]}"
         taplo format --check "''${toml_files[@]}"
 
-        # Restricted local material is ignored rather than repository content, so
-        # it is not held to the repository's formatting. Its README is tracked and
-        # stays in.
         mapfile -d "" markdown_files < <(
           find . -type f -name "*.md" \
             -not -path "./.devenv/*" \
             -not -path "./.direnv/*" \
             -not -path "./.jj/*" \
             -not -path "./target/*" \
-            -not \( -path "./tests/fixtures/local/*" ! -name "README.md" \) \
+            -not \( -path "./tests/fixtures/local/*" \
+              ! -path "./tests/fixtures/local/README.md" \) \
             -print0
         )
+        require_public_fixtures "*.md" "''${markdown_files[@]}"
         markdownlint "''${markdown_files[@]}"
       '';
     };

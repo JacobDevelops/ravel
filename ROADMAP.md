@@ -794,7 +794,7 @@ is a question a reader has to be able to answer from the tree.
 ### M5 — Private compatibility inventory
 
 **Purpose:** convert the pinned official fixture into a rights-aware,
-implementation-independent work inventory without porting code.
+implementation-independent work inventory without implementing any counterpart.
 
 This milestone runs in the private workspace and consumes released local
 artifacts from M4.
@@ -806,7 +806,7 @@ artifacts from M4.
 | M5-W3 | Build dependency and integration graph | M5-W2 | machine-readable graph and clusters | every node/edge resolves or has a blocking classification |
 | M5-W4 | Catalogue behaviour surfaces | M5-W2 | config/resource/KubeJS/packet/save/side inventories | every source artifact maps to a record or evidenced dead/unreachable classification |
 | M5-W5 | Complete rights and provenance triage | M5-W2 | per-code/asset/name/branding rights status | unresolved status blocks publication but not private black-box work; prohibited source use is flagged |
-| M5-W6 | Assign canonical IDs and port plans | M5-W3..W5 | owner, method, dependencies, tests and risk score per entry | 100% inventory coverage; IDs are unique and Ravel-native |
+| M5-W6 | Assign canonical IDs and counterpart plans | M5-W3..W5 | owner, method, dependencies, tests and risk score per entry | 100% inventory coverage; IDs are unique and Ravel-native |
 | M5-W7 | Produce general SDK gap proposals | M5-W4..W6 | public-safe capability proposals and original test cases | proposals contain no restricted code/assets/source-derived notes |
 | M5-W8 | Inventory review and gate | M5-W1..W7 | private evidence manifest | 235/235 or evidence-corrected total has a complete plan; M5 gate passes |
 
@@ -816,8 +816,8 @@ impact, and vertical-slice value on a documented 1–5 scale.
 
 ### M6 — Foundation counterpart set
 
-**Purpose:** validate the port factory and the smallest nontrivial gameplay
-clusters before scaling to every entry.
+**Purpose:** validate the counterpart-authoring process and the smallest
+nontrivial gameplay clusters before scaling to every entry.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
@@ -825,13 +825,38 @@ clusters before scaling to every entry.
 | M6-W2 | Resolve general SDK gaps publicly | M5-W7 | public SDK changes plus original test mods | public M4-class gates pass before private counterparts consume them |
 | M6-W3 | Implement foundation libraries/APIs | M6-W1..W2 | individually packaged counterparts | per-package unit, registration, save, side, performance and provenance suites pass |
 | M6-W4 | Implement smallest gameplay cluster | M6-W3 | cluster packages and integration | fresh play, save, exit and reload scenario passes |
-| M6-W5 | Validate port factory | M6-W3..W4 | counterpart template, checklist and evidence schema | a second independent counterpart follows it without hidden loader hooks |
-| M6-W6 | Review and gate | M6-W5 | private review/evidence | admitted set is green, provenance complete, M6 gate passes |
+| M6-W5 | Validate counterpart-authoring process | M6-W3..W4 | counterpart template, checklist and evidence schema | a second independent counterpart follows it without hidden loader hooks; the rewrite-integrity check below runs over both counterparts and passes |
+| M6-W6 | Review and gate | M6-W5 | private review/evidence | admitted set is green, provenance complete, the rewrite-integrity check is enforcing rather than advisory, and the M6 gate passes |
+
+Every counterpart is an original Rust implementation of an accepted behaviour
+specification. It is written either from upstream source that its licence permits
+reading or from observed declared behaviour alone, and for most of the inventory
+only the second route is open. Nothing decompiles, transliterates, or
+mechanically translates Java, and no step of this plan produces Rust from a jar.
+
+**Rewrite integrity is M6's obligation to enforce, not to assert.** M6 ships a
+check of the same shape as M5-W7's public-safety screen: a published lexicon of the
+names a Ravel counterpart is allowed to carry, plus an identifier set derived
+from the M5 inventory holding the upstream package, class, member, and field
+names that identify the original implementation. The check reads every
+counterpart source file and every generated artefact in the counterpart's
+package, and a file carrying an identifier from the upstream set — or a name
+outside the lexicon that matches one under the repository's documented
+normalization — fails it. Failing means a nonzero exit that fails the M6 gate,
+not a warning. A transliteration carries the original's names; a rewrite does
+not, so this is the property that distinguishes them mechanically.
+
+The check is proved by mutation before M6-W6 may close: inject an upstream
+identifier into a counterpart source file and into a generated artefact, and
+record that each injection produces a nonzero exit. An M6 whose check exits zero
+on both injections has not satisfied this obligation, and neither has one that
+enforces the rule over source files only. M7-W2's per-counterpart suite and
+M8-W3's Rust pack modules run the same check with the same failure meaning.
 
 ### M7 — Complete counterpart library
 
-**Purpose:** execute the validated port factory until every pinned manifest
-entry has an accepted reusable Rust counterpart.
+**Purpose:** execute the validated counterpart-authoring process until every
+pinned manifest entry has an accepted reusable Rust counterpart.
 
 Work proceeds in dependency-ordered waves. A wave cannot close with failing or
 unclassified entries.
@@ -859,7 +884,7 @@ reachable executable pack behaviour.
 | --- | --- | --- | --- | --- |
 | M8-W1 | Pin pack manifest and counterpart versions | M7 | reproducible private pack manifest | package, target, dependency and integrity closure pass |
 | M8-W2 | Port configuration and declarative content | M8-W1 | schema-validated config/data | every M5 inventory record maps to output or evidenced exclusion |
-| M8-W3 | Port custom KubeJS behaviour to Rust modules | M8-W1 | compiled safe-Rust pack modules | scenario equivalence passes; runtime scan finds no JS engine |
+| M8-W3 | Reimplement custom KubeJS behaviour as Rust modules | M8-W1 | compiled safe-Rust pack modules | scenario equivalence passes; runtime scan finds no JS engine |
 | M8-W4 | Build full scenario suite | M8-W2..W3 | fresh-world and integration scenarios | intended content/progression inventory has complete scenario coverage |
 | M8-W5 | Repeated save/reload soak | M8-W4 | world and migration evidence | repeated clean shutdown/reload cycles preserve state; failure cases fail closed |
 | M8-W6 | Independent pack review and gate | M8-W1..W5 | private review/evidence | no Java/JavaScript mods execute; all pack/scenario suites and M8 gate pass |

@@ -11,7 +11,8 @@ code, observable behaviour, assets, names, branding, quests, scripts,
 permissions, licences, notices, and attribution as separate surfaces.
 Unresolved or prohibited rights block publication.
 
-Compatible open-source inputs may inform a port only under their licence terms.
+Compatible open-source inputs may inform a reimplementation only under their
+licence terms.
 Closed, All Rights Reserved, or unclear implementations require an independent
 behaviour-only specification unless explicit permission or a compatible licence
 allows more. Translating an implementation into Rust does not by itself resolve

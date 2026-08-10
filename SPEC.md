@@ -551,7 +551,8 @@ Pack completion requires:
 - every manifest counterpart present;
 - every counterpart's automated suite passing;
 - dependency and registry closure;
-- all pack-level configuration and scripted behaviour ported;
+- all pack-level configuration converted and all scripted behaviour
+  reimplemented;
 - clean fresh-world creation and repeated save/reload;
 - performance contract passing on the constrained target;
 - a manual end-to-end playthrough of the full intended quest/progression path.
@@ -660,8 +661,10 @@ This section is project policy, not legal advice.
 
 ### 11.1 Source-use policy
 
-- Compatible open-source mod: a source-informed port is allowed when all licence
-  terms, notices, and attribution requirements are followed.
+- Compatible open-source mod: a source-informed reimplementation is allowed when
+  all licence terms, notices, and attribution requirements are followed. It is
+  still an original Rust implementation; reading the source informs it and does
+  not license translating it.
 - Closed, All Rights Reserved, or unclear mod: implementation proceeds from a
   behavioural specification and independent code. Line-by-line or machine
   translation is prohibited.
@@ -1017,14 +1020,14 @@ In the private workspace:
 - catalogue configs, resources, KubeJS behaviour, packets, saves, licences, and
   sides;
 - define canonical Ravel IDs and attribution records;
-- rank ports by foundation value, compatibility risk, memory impact, and
+- rank counterparts by foundation value, compatibility risk, memory impact, and
   vertical-slice usefulness;
 - perform a compatibility-driven SDK gap analysis without implementing a
   counterpart.
 
 Exit:
 
-- every manifest entry has an owner record and port plan;
+- every manifest entry has an owner record and counterpart plan;
 - shared libraries and integration clusters are explicit;
 - required SDK additions are expressed as general capability proposals with
   original test-mod acceptance cases;
@@ -1032,8 +1035,9 @@ Exit:
 
 ### M6 — Foundation counterpart set
 
-Port shared libraries, APIs, and the smallest end-to-end gameplay clusters.
-Extend Ravel only through general capabilities, not one-off hidden ATM hooks.
+Write original Rust counterparts for shared libraries, APIs, and the smallest
+end-to-end gameplay clusters. Extend Ravel only through general capabilities, not
+one-off hidden ATM hooks.
 
 Exit:
 
@@ -1058,8 +1062,8 @@ Exit:
 
 ### M8 — Complete Ravel pack
 
-Port pinned configurations and all executable KubeJS behaviour to declarative
-data or Rust modules. Dead or unreachable fixture content may be excluded only
+Convert pinned configurations to declarative data and reimplement all executable
+KubeJS behaviour as Rust modules. Dead or unreachable fixture content may be excluded only
 when the inventory records evidence for that classification. Assemble the
 separate Ravel pack.
 
@@ -1172,7 +1176,8 @@ These are intentionally unresolved:
 4. Can stock Prism launch Ravel without modification?
 5. What are the single-pair official ATM11 comparisons on Linux, and later on
    the target Mac after Linux M10?
-6. Which ATM11 counterparts permit source-informed ports and asset reuse?
+6. Which ATM11 counterparts permit source-informed reimplementation and asset
+   reuse?
 7. Can official Minecraft plus Ravel meet the constrained Mac target?
 8. What protocol surface is required for pinned ATM11 server interoperability?
 9. What rights, identity, signing, and moderation model should a future registry

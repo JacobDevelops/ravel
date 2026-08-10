@@ -2,9 +2,9 @@
   "milestone": "M5",
   "workPackage": "M5-W8",
   "protocol": "m5-inventory-v1",
-  "result": "provisional",
+  "result": "pass",
   "fixture": "ATM11 0.2.1",
-  "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is provisional: the workspace is being rewritten to answer the most recent review round's blocking finding, and these numbers are carried so the gate's arithmetic can be exercised and mutation-proved before they are final. Every figure is a count over material this repository does not hold and may not hold. The files those counts came from are bound below by digest, and that binding is for a reader who holds the private workspace and hashes it: nothing in this repository recomputes those digests, because the files are not here.",
+  "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is a count over material this repository does not hold and may not hold, taken from one clean run of that workspace's own gate on its settled tree, and every one of them was re-derived here from the underlying rows rather than read off that gate's summary. The files those counts came from are bound below by digest, and that binding is for a reader who holds the private workspace and hashes it: nothing in this repository recomputes those digests, because the files are not here.",
   "artifacts": {
     "total": 235,
     "catalogued": 235,
@@ -50,7 +50,8 @@
     "canonicalIds": 235,
     "readingSource": 104,
     "notReadingSource": 131,
-    "dependencyEdges": 133
+    "dependencyEdges": 133,
+    "ownerLanes": 4
   },
   "proposals": {
     "capabilities": 6,
@@ -60,15 +61,18 @@
     "publishedWords": 715
   },
   "reads": {
-    "producersWatched": 6,
+    "producersWatched": 5,
+    "surfaceRecountAlsoWatched": true,
     "archiveReads": 1448401,
-    "entryBodyReads": 0
+    "entryBodyReads": 0,
+    "whyNotSix": "An earlier form of this figure counted six producers. The sixth was the surface recount, which the code itself does not call a producer, and an independent round found the line saying so. Five producers and the recount are watched; the figure is written as the two things it is rather than as one number that was wrong."
   },
   "disclosure": {
     "readObservation": {
-      "watches": "four methods of Python's zipfile — namelist, infolist, open and ZipExtFile.read — and the unzip binary, shimmed ahead of the real one on PATH",
-      "bound": "This observes reads through the two channels it wraps and establishes nothing about any other channel. The premise that they were the only channels was asserted in the file installing the wrappers, checked by nothing, and falsified: a reviewer added a reader using only unwatched standard library calls, it decompressed 50357 class files and wrote their bytecode to disk, and the gate exited zero while printing that no entry bodies had been read. So the figures below are what was seen through two watched channels, and the metadata-only method is not currently an established property of the run. A repair is in progress. What replaced the earlier arrangement is still worth keeping — a table of phrases standing in for what the code does is gone — but an unbound claim that looks bound is worse than one that looks unbound, and this record says which this is.",
-      "notWatched": "reads of files that are not archives — the pinned manifest, the acquisition log, the workspace's own tracked files, and the pack override tree"
+      "watches": "Two wrapped channels — four methods of Python's zipfile, and the unzip binary shimmed ahead of the real one on PATH — plus, since the repair, a second reading of the premise itself: a scan computes what the gate reaches, sweeps it for read primitives, and requires every occurrence to be routed through a watched channel or accounted for by name.",
+      "bound": "The premise that the wrapped channels were the only channels used to be asserted in the file installing the wrappers and checked by nothing. An independent round falsified it: a reader using only unwatched standard library calls decompressed 50357 class files and wrote their bytecode to disk while the gate exited zero and printed that no entry bodies had been read. That is repaired. The premise now gets a second reading rather than an assertion, the interpreter shim resolves the script it is pointed at instead of accounting for a variable, and twelve mutations across seven channels now exit nonzero. What the repair does not claim is the important part, and it is stated here rather than left to be discovered: see uncaughtCase below.",
+      "notWatched": "Reads of files that are not archives — the pinned manifest, the acquisition log, the workspace's own tracked files and the pack override tree. The primitive scan additionally reads static text, so a name computed at run time is opaque to it, it never reads text a run generates, and it recognises only the primitives its vocabulary names, so a channel nobody has thought of is invisible until somebody adds a row.",
+      "uncaughtCase": "One mutation still exits zero, and it is disclosed rather than hidden. A fully coordinated hand that deletes a primitive's refusal row, injects the reader, and writes its occurrence rows in the same edit passes, because the accounted half is a table and a table records what it is told. It leaves a tell rather than a failure: the gate's own line visibly reports one fewer refused primitive than it should. That is a tell, not a check, and it is not claimed as caught. This catches an accident and a careless hand; it does not catch a determined one. docs/decisions/claims-without-a-second-reading.md is the record governing a claim of exactly this shape, and the obligation it imposes — that a mechanism state what it does not catch, in the file that acts on the claim and in what it prints — is met: the private gate prints its own limits on every run, pass or fail, and emptying that disclosure is itself a failure."
     },
     "judgedClaims": [
       {
@@ -147,13 +151,37 @@
     },
     {
       "name": "checks/read-observation.sh",
-      "sha256": "c84c20529d6758ed2f7b631959d9a29d56c9c9be8358b2aa55348b859c8707e5",
+      "sha256": "543b573331361fa69ef1dedf3df48fa93b192333e73fb0385839188611705eb1",
       "holds": "the wrappers the read observation installs, and therefore the exact bound disclosed above"
     },
     {
       "name": "checks/verify-reads.sh",
-      "sha256": "68b279a0a0121bf4ea8fdcfc385e75851de871c047203fb8db250f3b974f63d0",
+      "sha256": "49b77ba61302af38d78a626171c0cb5f83e6c36046fe37d35acb8a88d1926d17",
       "holds": "the classification of every observed read, and the refusal that fires on an entry body"
+    },
+    {
+      "name": "checks/verify-primitives.sh",
+      "sha256": "dba8fb15a0b10ce469866244aae1b112d32641a959d000cf629b6bd8112674e2",
+      "holds": "the second reading of the read observation premise: what the gate reaches, swept for read primitives"
+    },
+    {
+      "name": "checks/read-primitive-vocabulary.tsv",
+      "sha256": "861f1713166b05f71dc3250a1d57b5b3950dbdc0d1954d591b84a3d591da038a",
+      "holds": "one row per declared read primitive with its class, pattern, probe and reason; the accounted half whose limit is disclosed above"
+    },
+    {
+      "name": "checks/read-primitives.tsv",
+      "sha256": "8d051b9d768b41bb4dc603b19ed6c4821971854b22d3a3c74599bb9b214b3ab0",
+      "holds": "every accounted occurrence, held congruent with the vocabulary in both directions"
     }
-  ]
+  ],
+  "primitiveScan": {
+    "filesScanned": 33,
+    "primitivesDeclared": 26,
+    "refused": 12,
+    "accounted": 14,
+    "accountedUses": 74,
+    "occurrenceRows": 31,
+    "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions."
+  }
 }

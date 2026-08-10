@@ -47,9 +47,9 @@
         "dependencyEdges": 133,
         "archiveReads": 1448401,
         "entryBodyReads": 0,
-        "digestsBound": 12
+        "digestsBound": 15
       },
-      "howToReadTheseFigures": "Each figure here is derived by the gate from the parts evidence/m5/inventory-summary.json records, and those parts are held to each other by the recorded arithmetic. What no public gate can do is re-take the measurement: the material was never here. That limit is a deviation below rather than a footnote, because it is the largest single thing a reader of this manifest should know.",
+      "howToReadTheseFigures": "Each figure here is derived by the gate from the parts evidence/m5/inventory-summary.json records, and those parts are held to each other by the recorded arithmetic. The figures are settled: they come from one clean run of the private gate on its repaired tree, and every one was re-derived from the underlying rows rather than read off that gate's summary line. What no public gate can do is re-take the measurement or recompute the digests that bind it, because the material was never here. That limit is the first deviation below rather than a footnote, because it is the largest single thing a reader of this manifest should know.",
       "gateStatus": {
         "M5-W1": {
           "status": "closed",
@@ -65,7 +65,7 @@
         },
         "M5-W4": {
           "status": "closed",
-          "evidence": "Behaviour surfaces catalogued for all 235 acquired artifacts with none left unclassified: 71235 class files, 48128 models, 32104 textures, 29501 recipes and 2066 language files, with 57 nested libraries read out of 36 artifacts and counted into the groups above. The class-file figure is a path heuristic over entry names rather than a decompilation, which is what makes it lawful to have taken; no entry body was read to produce it, subject to the bound the summary record discloses."
+          "evidence": "Behaviour surfaces catalogued for all 235 acquired artifacts with none left unclassified: 71235 class files, 48128 models, 32104 textures, 29501 recipes and 2066 language files, with 57 nested libraries read out of 36 artifacts and counted into the groups above. Each of those figures was re-derived here from the per-artifact rows rather than taken from a total. The class-file figure is a path heuristic over entry names rather than a decompilation, which is what makes it lawful to have taken; the third deviation below states exactly how far the mechanism establishing that goes and where it stops."
         },
         "M5-W5": {
           "status": "closed",
@@ -83,8 +83,7 @@
           "status": "open",
           "evidence": "The independent review has run repeatedly and every round so far has returned fail; the most recent returned a blocking finding that names this evidence as the thing that fails, because a manifest here would record a green gate as proof of a sentence the gate does not hold. evidence/m5/review.md is the record and the one place that counts the rounds, so no count is written here. A repair is in progress and no round has read the tree it leaves, so review.result is fail and review.record binds the bytes that say so. What is closed and proved is the public half: the gate this milestone introduces, its arithmetic reconciliation, its digest binding, its changeId provenance and the deviation-anchor rule, each proved by mutation rather than by a single green run."
         }
-      },
-      "figuresAreProvisional": "Every figure under inventory below is provisional and is recorded as such rather than as settled. The workspace they were taken from is being rewritten to answer the most recent review round's blocking finding, and the read-observation figures are the ones that finding is about. They are carried here so that the gate's arithmetic and the manifest's structure can be exercised and mutation-proved before the numbers are final; they are not carried as evidence. review.result is fail, evidence/m5/review.md says why, and no reader should treat a figure here as established until a round has certified the tree the repair leaves."
+      }
     }
   },
   "inputs": [
@@ -108,10 +107,10 @@
   "commands": [
     {
       "command": "devenv tasks run ravel:verify",
-      "startedAt": "2026-08-10T07:34:15.000Z",
-      "durationMs": 29203,
+      "startedAt": "2026-08-10T07:42:26.000Z",
+      "durationMs": 27389,
       "exitStatus": 0,
-      "logSha256": "35fe7a931048f482de2434cae8ae6e756e29f7b9145a4a1868f283e8f15a47ee"
+      "logSha256": "7e4c4f1d5d6bba39d8e5df359fa0a2a8931fd1a33f6c7d2310ba97ecec198480"
     }
   ],
   "tests": {
@@ -126,7 +125,7 @@
     "results": [
       {
         "name": "inventory-summary.json",
-        "sha256": "28536f655f4186377283e3d361671da6db4b904b7e5391c1c09b18676933cbe9"
+        "sha256": "3ae36ad54463c572279fbcbf9ed9b24e89d6db452549253589f339f9110196eb"
       }
     ]
   },
@@ -140,7 +139,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "The claim that this inventory was taken by metadata only is not currently established, and this manifest records no gate run as proof of it. That sentence is what makes opening source-prohibited artifacts lawful, so it is the most consequential claim M5 makes. It was asserted, then replaced by an observation that wraps the channels through which archives are opened and classifies every read — which was a real improvement — and the most recent review round then falsified the premise underneath it. The file installing those wrappers declares that there are exactly two ways to open an archive in that workspace and that a reader added anywhere is seen by construction; nothing checks that premise, and what is watched is four methods of one standard-library class rather than the standard library. A reviewer injected a reader using only unwatched standard library calls, it decompressed 50357 class files and wrote their bytecode to disk, and the gate exited zero while printing that no entry bodies had been read. A repair is in progress and the figures carried above for that observation are provisional. Owner: the private workspace for the mechanism, and the next review round for whether the repair holds. docs/decisions/claims-without-a-second-reading.md is the general rule this instance forced: a mechanism that claims to observe exhaustively must either verify its own premise by a second reading or state, in the file that acts on the claim and in what it prints, what it does not catch.",
+      "summary": "The claim that this inventory was taken by metadata only is now held by a second reading of its own premise, and one way past it is disclosed rather than caught. That sentence is what makes opening source-prohibited artifacts lawful, so it is the most consequential claim M5 makes. It was asserted; then replaced by an observation wrapping the channels through which archives are opened; then an independent round falsified the premise that those were the only channels, using unwatched standard library calls to decompress 50357 class files and write their bytecode to disk while the gate exited zero and printed that no entry bodies had been read. The repair does not widen the watched set and call it done. It computes what the gate reaches, sweeps that closure for read primitives, and requires every occurrence to be routed through a watched channel or accounted for by name with a reason, with the vocabulary congruent three ways: each pattern must match its own recorded probe, an accounted primitive nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions. An interpreter invocation whose script is a variable is resolved at run time rather than accounted for as text. Twelve mutations across seven channels exit nonzero. One does not: a fully coordinated hand that deletes a refusal row, injects the reader and writes its occurrence rows in one edit passes, leaving a visible tell in the printed line rather than a failure. That is disclosed in evidence/m5/inventory-summary.json beside the figure, the private gate prints its own limits on every run whether it passes or fails, and emptying that disclosure is itself a failure. So the honest statement is the one the mechanism makes about itself: this catches an accident and a careless hand, and does not catch a determined one. Owner: docs/decisions/claims-without-a-second-reading.md for the rule, and the next review round for whether the repair holds.",
       "classification": "non-blocking"
     },
     {
@@ -178,7 +177,7 @@
     "result": "fail",
     "record": {
       "name": "review.md",
-      "sha256": "666e5ba787a5fb727c624c56fc3e4c34f48b39ecc3804e8e9a3fbced237ce455"
+      "sha256": "da583161c21b899f33745c18a3e16500ef92491e61ff217bcba85f3cbb96966e"
     }
   },
   "attestations": [

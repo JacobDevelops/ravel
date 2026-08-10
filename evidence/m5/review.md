@@ -6,15 +6,18 @@ Result: FAIL
 them they raised nine blocking findings, and all nine are instances of a single
 defect class. The most recent round returned FAIL on the ninth, which is the
 most serious of the campaign: it falsified the premise under the mechanism that
-licenses the whole inventory. A repair is in progress and no round has read the
-tree it leaves, so the line above is `FAIL` and `evidence/m5/manifest.json`
-records the same under `review.result`. `verify_recorded_verdict` in
+licenses the whole inventory. That finding has since been repaired, the repair
+found and closed a tenth instance of its own on the way, and the figures this
+milestone publishes are settled. **No round has read the repaired tree**, so the
+line above is `FAIL` and `evidence/m5/manifest.json` records the same under
+`review.result`. `verify_recorded_verdict` in
 `tools/ravel-xtask/src/lib.rs` requires the two to agree, so they move together.
 
 A pass certifies the tree its reviewer read, with nothing landed on top of it.
-The next round is what can close this milestone, over the tree the current
-repair leaves. `evidence/m4/review.md` states the same rule and stayed `FAIL`
-between its own rounds for the same reason.
+The next round is what can close this milestone, and the tree it reads includes
+this record and the public gate beside it as well as the repair.
+`evidence/m4/review.md` states the same rule and stayed `FAIL` between its own
+rounds for the same reason.
 
 ## What this file is
 
@@ -250,6 +253,37 @@ The finding names this milestone's evidence as the thing that fails: an evidence
 manifest here would record a green gate as proof of a sentence the gate does not
 hold. That is why this record and the manifest say `FAIL`.
 
+**The repair, and what it does not claim.** The premise now gets a second
+reading instead of an assertion. A check computes what the gate actually
+reaches, sweeps that closure for read primitives, and requires every occurrence
+to be routed through a watched channel or accounted for by name with a reason.
+The vocabulary behind it is congruent three ways: each declared pattern must
+match the probe recorded beside it, an accounted primitive that nothing uses is
+stale and fails, and the occurrence table and the vocabulary must name the same
+primitives in both directions. The rule earned itself immediately by failing its
+own author's tree over a reason too short to be a reason, which was rewritten
+rather than having the threshold lowered.
+
+**A tenth instance was found and closed by the repair itself, unprompted.** The
+scan reads static text, so it could account for an interpreter invocation while
+being unable to resolve the variable naming the script it was pointed at — the
+same shape one level down. The interpreter shim now records the script it was
+given and requires it to be a scanned file in the checked tree. That is closed
+at run time rather than disclosed.
+
+Twelve mutations across seven channels now exit nonzero, including both of the
+round's own probes. **One exits zero and is disclosed rather than hidden**: a
+fully coordinated hand that deletes a primitive's refusal row, injects the
+reader, and writes its occurrence rows in the same edit passes, because the
+accounted half is a table and a table records what it is told. It leaves a tell
+rather than a failure — the gate's own line visibly reports one fewer refused
+primitive than it should — and the repair explicitly does not claim it as
+caught. The gate prints what it cannot reach on every run, pass or fail, ending
+with the honest sentence: this catches an accident and a careless hand, and does
+not catch a determined one. Emptying that disclosure is itself a failure.
+
+Whether that is enough is the next round's question, not this record's.
+
 Five non-blocking findings, including two prose counts that had gone stale and a
 gate line hardcoding the number it reports.
 
@@ -267,15 +301,18 @@ treating the licence decisions as judged rather than measured, and it is why
 An honest account of where a reader should not extend their confidence. This is
 the most useful section in this file.
 
-1. **The figures this milestone publishes are provisional while a repair is in
-   progress.** The workspace they come from is being rewritten to answer round
-   6, and the read-observation figures in particular will change. The manifest
-   marks them as provisional rather than presenting them as settled.
-2. **`metadata-only` is not currently an established property.** It is the
-   sentence that makes opening source-prohibited artifacts lawful, and round 6
-   showed the mechanism asserting it does not hold it. Until a round certifies
-   the repair, nothing in this repository should be read as evidence for it, and
-   the manifest says so in a deviation rather than in a footnote.
+1. **No round has read the repaired tree.** The figures are settled and every
+   one was re-derived from the underlying rows rather than read off a summary
+   line, but the mechanism that licenses taking them was rewritten after the
+   last round finished. That is the whole reason the verdict above is `FAIL`.
+2. **`metadata-only` is held by a second reading with one disclosed way past
+   it.** A coordinated hand that deletes a refusal row and writes the matching
+   occurrence rows in the same edit passes, leaving a visible tell rather than a
+   failure. The mechanism says so about itself, on every run, and this record
+   repeats it rather than letting a green gate imply more. What changed is real
+   — the premise is now checked instead of asserted, and a tenth instance was
+   closed on the way — and it is still not a claim that a determined hand is
+   caught.
 3. **The rights figures rest on judgements no measurement can falsify** — the
    licence family, the source-use verdict a family carries, and whether an
    author reserved their assets apart from their code. Two independent reviewers
@@ -318,5 +355,15 @@ the most useful section in this file.
 - **The completeness obligation now has a decision record.** A mechanism that
   claims to observe exhaustively must either verify its own premise by a second
   reading or state, in the file that acts on the claim and in what the mechanism
-  prints, what it does not catch. Whether the repair satisfies that is the next
-  round's question.
+  prints, what it does not catch. The repair does both. Whether it does them
+  well enough is the next round's question.
+- **Two operational hazards, reported by the repair against itself**, recorded
+  here as fair warning to whoever runs this next. The tracked-file comparison is
+  racy under concurrent version-control access: two gate runs at once both
+  snapshot the working copy, and one reported a tracked file as missing that was
+  not. Three sequential runs pass and an independent directory walk agrees
+  exactly, so it is an operational hazard rather than a defect — but it means a
+  single red run under concurrency is not evidence of anything. And a process
+  wait loop matched its own command line, so the command clearing it killed the
+  gate mid-run. Neither is a finding about the inventory; both will waste
+  somebody's afternoon if they are not written down.

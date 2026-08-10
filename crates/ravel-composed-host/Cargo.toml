@@ -18,6 +18,9 @@ ravel-config.workspace = true
 ravel-core.workspace = true
 ravel-host-api.workspace = true
 ravel-loader.workspace = true
+ravel-package.workspace = true
+ravel-resolve.workspace = true
+ravel-test-mod-client-only.workspace = true
 ravel-test-mod-configuration.workspace = true
 ravel-test-mod-saved-data.workspace = true
 

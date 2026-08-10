@@ -16,7 +16,7 @@ mod wire;
 pub use dispatch::register;
 pub use guard::HookError;
 pub use persistence::{OpenOutcome, SaveOutcome, observations, save, stage};
-pub use runtime::{LoaderRuntime, install, pre_world_report};
+pub use runtime::{LoaderRuntime, environment, install, pre_world_report};
 pub use settings::install as install_settings;
 
 /// The generated JNI exports, one per hook shape.

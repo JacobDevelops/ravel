@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "configuration",
+  "version": "0.0.0",
+  "displayName": "Configuration",
+  "description": "Configuration schema and generated-UI test mod.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "26.1.2"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "configurationSchemas": [
+    "configuration.json"
+  ],
+  "authors": [
+    {
+      "name": "Ravel"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://example.invalid/ravel-test-mods",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "cec8b3f9a285bf706925767a9d2f392e91a60a64711f6517423dee826460412e"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "a2f1e22ba830c5f0b3ddf9325c3c9e2a63ce3970a6316266c94f0349bac224e3"
+      },
+      {
+        "path": "configuration.json",
+        "sha256": "c35e9f1505e24908ac030faa371f8ffd224516dadb014cc80cbc2d2e26bec793"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "f711d63db431dc170b655adebcd608b47f2230b5193f1042e8403a3ec4602149"
+  }
+}

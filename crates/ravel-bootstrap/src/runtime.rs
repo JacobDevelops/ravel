@@ -405,7 +405,18 @@ impl Inner {
 }
 
 /// Where this process is running, for a failure that has to say so.
-fn environment() -> FailureEnvironment {
+///
+/// Public because it is also what a launch admits its package set against: the
+/// composed host checks every member's `compatibility` against these two versions,
+/// and a second answer computed somewhere else could admit a set this one would
+/// have blamed. One function, so a refusal and an admission cannot disagree.
+///
+/// # Panics
+///
+/// Panics if this crate's own version stops parsing as semver, which would mean
+/// the workspace no longer carries the version every crate in it declares.
+#[must_use]
+pub fn environment() -> FailureEnvironment {
     FailureEnvironment {
         ravel: env!("CARGO_PKG_VERSION")
             .parse()

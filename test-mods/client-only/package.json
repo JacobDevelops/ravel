@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "client_only",
+  "version": "0.0.0",
+  "displayName": "Client Only",
+  "description": "Client-only side and packet handling test mod.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "26.1.2"
+    ]
+  },
+  "sides": [
+    "client"
+  ],
+  "authors": [
+    {
+      "name": "Ravel"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://example.invalid/ravel-test-mods",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "fd18546cdff177470df02cb79f44e08b84e119aec74b155e8254181d2f5bbec4"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "3a3fdfb725121f63bb79082fccb5d4bcace87b0d8f3769663b8e0dcab6294f3c"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "41b3db7b0ca606cfcf101d9d04799d06cdd9e58e61008cc3b5b5d9a6795f58e9"
+  }
+}

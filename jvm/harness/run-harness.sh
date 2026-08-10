@@ -443,7 +443,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:default:true
-mods=1:16:client1:01:21:113:configuration7:running8:required4:true5:false1:01:210:saved_data7:running8:required4:true5:false1:0
+mods=1:16:client1:01:31:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code
 [ravel] rewritten targets: net.minecraft.util.StringUtil=4'
 expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
@@ -549,7 +549,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=verbose:player:false
-mods=1:16:client1:01:21:113:configuration7:running8:required4:true5:false1:01:210:saved_data7:running8:required4:true5:false1:0
+mods=1:16:client1:01:31:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 
 printf '%s\n' "$relaunch_observed"
@@ -678,12 +678,13 @@ driven_stderr="$work/profiling-driven-stderr"
 	-cp ".:$screen" ProfilingScreenMain driven >"$driven_stdout" 2>"$driven_stderr")
 driven_observed="$(<"$driven_stdout")"
 # The two smallest windows spend every row on the summary and the statement, so
-# they draw no mod row to read a count off; that is the documented row budget
-# rather than a lost measurement.
+# they draw no mod row to read a count off, and the third draws one mod row out of
+# the composition's three; that is the documented row budget rather than a lost
+# measurement, and only the largest window shows the whole set.
 driven_expected='driven=320x240 fits=true within=true ticks=none entered=none
 driven=480x270 fits=true within=true ticks=none entered=none
-driven=640x360 fits=true within=true ticks=none entered=4,4
-driven=960x540 fits=true within=true ticks=none entered=4,4
+driven=640x360 fits=true within=true ticks=none entered=4
+driven=960x540 fits=true within=true ticks=none entered=4,4,4
 [ravel] rewrote 2 classes and 3 methods; 8 hook invocations reached native code'
 
 printf '%s\n' "$driven_observed"
@@ -717,7 +718,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:player:true
-mods=1:16:client1:01:21:113:configuration7:running8:required4:true5:false1:01:210:saved_data7:running8:required4:true5:false1:0
+mods=1:16:client1:01:31:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 
 printf '%s\n' "$ui_relaunch_observed"
@@ -746,7 +747,7 @@ buttons=1
 label=Ravel Mods
 buttonY=130
 screen=dev.ravel.jvm.screen.RavelModsScreen
-modWidgets=6
+modWidgets=7
 entry=Configuration Settings
 settings=dev.ravel.jvm.screen.RavelSettingsScreen
 entry=Profiling

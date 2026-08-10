@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "saved_data",
+  "version": "0.0.0",
+  "displayName": "Saved Data",
+  "description": "Saved-data versioning and migration test mod.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "26.1.2"
+    ]
+  },
+  "sides": [
+    "client",
+    "dedicated-server"
+  ],
+  "savedDataVersions": [
+    1,
+    2,
+    3
+  ],
+  "authors": [
+    {
+      "name": "Ravel"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://example.invalid/ravel-test-mods",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "ad2d1f8e4640165ce90d0b558a19294e7aae9dc40a225c398ff1eab42b9bd1ce"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "97754bcd6900657552e697f62d06bc2a42914629cbc46bdb9d9e25347de1792e"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "d41f1710330f4314debe9c361dd743ff8b9ffbaae6ac5335da0090248554f4b2"
+  }
+}

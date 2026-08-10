@@ -159,7 +159,7 @@
     {
       "name": "checks/verify.sh",
       "class": "machinery",
-      "sha256": "51edfc18d0a2590fc8c4b59aa03a2b77e6f55ec2141e079a7a38f060444e4f98",
+      "sha256": "cde3a64a59fca5258fb4f98f01d237afa0dba5b33f488ec1ae197c3e75333c15",
       "holds": "the private gate whose exit status and summary lines every figure above was read from"
     },
     {
@@ -195,7 +195,7 @@
   ],
   "primitiveScan": {
     "class": "machinery",
-    "filesScanned": 34,
+    "filesScanned": 35,
     "primitivesDeclared": 26,
     "refused": 12,
     "accounted": 14,
@@ -234,6 +234,22 @@
         }
       ],
       "workPackage": "M6-W1"
+    },
+    {
+      "milestone": "M6",
+      "reason": "M6-W5 built the rewrite-integrity check ROADMAP.md requires of M6 — a published lexicon of the names a Ravel counterpart may carry, an upstream identifier set read out of the M5 inventory as data, and a nonzero exit on a counterpart file that carries an upstream name or a name that becomes one under the documented normalization. It was built before M6-W3 writes the first counterpart, deliberately, so that counterparts are written under it rather than audited against it afterwards, and it refuses an empty counterpart set, so it fails the private gate until that counterpart exists. Adding it changes checks/verify.sh, which this record binds, and the count of scanned files under checks/, which this record publishes. docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry.",
+      "entries": [
+        "checks/verify.sh"
+      ],
+      "figures": [
+        {
+          "field": "primitiveScan.filesScanned",
+          "from": 34,
+          "to": 35,
+          "why": "checks/verify-counterparts.sh joined the directory the scan reads. The lexicon, the normalization table and the fixture verdict table joined it too and are named as data rather than scanned as code, which is why one check adds one to this figure and not four"
+        }
+      ],
+      "workPackage": "M6-W5"
     }
   ]
 }

@@ -494,32 +494,36 @@ mod tests {
 
     #[test]
     fn a_provider_is_offered_its_services_before_the_mod_that_requires_them() {
-        let mut consumer = Wired::new("consumer", &[], &[service("base", "prices")]);
-        let mut base = Wired::new("base", &[service("base", "prices")], &[]);
+        let mut consumer = Wired::new("consumer", &[], &[service("warehouse", "prices")]);
+        let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
         let machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
-            entry("base", &[Side::DedicatedServer]),
+            entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
         // The caller supplies the consumer first, so an order that simply used the
-        // slice would have called it before its provider existed.
-        let opened =
-            open_services(&machine, &mut [&mut consumer, &mut base]).expect("the graph resolves");
+        // slice would have called it before its provider existed. The names are
+        // chosen the same way: `consumer` sorts before `warehouse`, so an
+        // implementation that only sorted would fail here too. It is worth saying
+        // because it was not true — the pair used to be `base` and `consumer`, and
+        // deleting the ordering edge left this test passing.
+        let opened = open_services(&machine, &mut [&mut consumer, &mut warehouse])
+            .expect("the graph resolves");
 
-        assert_eq!(opened.order(), [id("base"), id("consumer")]);
-        assert_eq!(consumer.reached, ["base"]);
-        assert_eq!(base.answered, [service("base", "prices")]);
+        assert_eq!(opened.order(), [id("warehouse"), id("consumer")]);
+        assert_eq!(consumer.reached, ["warehouse"]);
+        assert_eq!(warehouse.answered, [service("warehouse", "prices")]);
     }
 
     #[test]
     fn a_mod_answering_for_another_identity_is_refused_before_any_mod_is_offered_anything() {
-        // `thief` hands back `base`'s declaration. Without the owner check its
+        // `thief` hands back `warehouse`'s declaration. Without the owner check its
         // edges are recorded against `thief`, and the consumer's call for
-        // `base:prices` then finds no provider at all — a refusal one step from
+        // `warehouse:prices` then finds no provider at all — a refusal one step from
         // where the mistake was made and naming nobody who can fix it.
-        let prices = service("base", "prices");
+        let prices = service("warehouse", "prices");
         let mut thief =
-            Wired::new("thief", &[], &[]).answering_for("base", std::slice::from_ref(&prices));
+            Wired::new("thief", &[], &[]).answering_for("warehouse", std::slice::from_ref(&prices));
         let mut consumer = Wired::new("consumer", &[], std::slice::from_ref(&prices));
         let machine = machine(vec![
             entry("thief", &[Side::DedicatedServer]),
@@ -533,12 +537,12 @@ mod tests {
             refused,
             ServiceRefused::ForeignDeclaration {
                 mod_id: id("thief"),
-                owner: id("base"),
+                owner: id("warehouse"),
             }
         );
         let text = refused.to_string();
         assert!(text.contains("thief"), "{text}");
-        assert!(text.contains("base"), "{text}");
+        assert!(text.contains("warehouse"), "{text}");
         assert!(
             consumer.reached.is_empty() && thief.answered.is_empty(),
             "the refusal came before anything was wired"
@@ -547,25 +551,29 @@ mod tests {
 
     #[test]
     fn a_chain_of_three_is_opened_from_the_end_nothing_depends_on() {
-        let mut top = Wired::new("top", &[], &[service("middle", "sum")]);
-        let mut middle = Wired::new(
-            "middle",
-            &[service("middle", "sum")],
-            &[service("base", "prices")],
+        // The three names sort in exactly the reverse of the order the chain
+        // requires, so the only thing that can produce the expected order is the
+        // edges. A chain named `base`, `middle`, `top` sorts into the right answer
+        // on its own and says nothing.
+        let mut anvil = Wired::new("anvil", &[], &[service("mill", "sum")]);
+        let mut mill = Wired::new(
+            "mill",
+            &[service("mill", "sum")],
+            &[service("warehouse", "prices")],
         );
-        let mut base = Wired::new("base", &[service("base", "prices")], &[]);
+        let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
         let machine = machine(vec![
-            entry("top", &[Side::DedicatedServer]),
-            entry("middle", &[Side::DedicatedServer]),
-            entry("base", &[Side::DedicatedServer]),
+            entry("anvil", &[Side::DedicatedServer]),
+            entry("mill", &[Side::DedicatedServer]),
+            entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        let opened = open_services(&machine, &mut [&mut top, &mut middle, &mut base])
+        let opened = open_services(&machine, &mut [&mut anvil, &mut mill, &mut warehouse])
             .expect("the chain resolves");
 
-        assert_eq!(opened.order(), [id("base"), id("middle"), id("top")]);
-        assert_eq!(middle.reached, ["base"]);
-        assert_eq!(top.reached, ["middle"]);
+        assert_eq!(opened.order(), [id("warehouse"), id("mill"), id("anvil")]);
+        assert_eq!(mill.reached, ["warehouse"]);
+        assert_eq!(anvil.reached, ["mill"]);
     }
 
     #[test]
@@ -623,55 +631,58 @@ mod tests {
         // The provider is installed and declares the client alone, so it never
         // runs here. A consumer that required it must be refused now: waiting for
         // a mod that will not run is the deadlock this rule avoids.
-        let mut consumer = Wired::new("consumer", &[], &[service("base", "prices")]);
-        let mut base = Wired::new("base", &[service("base", "prices")], &[]);
+        let mut consumer = Wired::new("consumer", &[], &[service("warehouse", "prices")]);
+        let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
         let machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
-            entry("base", &[Side::Client]),
+            entry("warehouse", &[Side::Client]),
         ]);
 
         assert_eq!(
-            open_services(&machine, &mut [&mut consumer, &mut base]),
+            open_services(&machine, &mut [&mut consumer, &mut warehouse]),
             Err(ServiceRefused::NoProvider {
                 consumer: id("consumer"),
-                service: service("base", "prices"),
+                service: service("warehouse", "prices"),
             })
         );
-        assert!(base.answered.is_empty(), "a parked mod answered a call");
+        assert!(
+            warehouse.answered.is_empty(),
+            "a parked mod answered a call"
+        );
     }
 
     #[test]
     fn a_consumer_that_refuses_stops_the_walk_and_leaves_the_rest_unwired() {
-        // `middle` refuses, so `top` — which comes after it in the order — is never
+        // `mill` refuses, so `anvil` — which comes after it in the order — is never
         // offered its services at all. Half a wired set is what this is about: the
         // caller has to be able to refuse the whole thing.
-        let mut top = Wired::new("top", &[], &[service("middle", "sum")]);
-        let mut middle = Wired::new(
-            "middle",
-            &[service("middle", "sum")],
-            &[service("base", "prices")],
+        let mut anvil = Wired::new("anvil", &[], &[service("mill", "sum")]);
+        let mut mill = Wired::new(
+            "mill",
+            &[service("mill", "sum")],
+            &[service("warehouse", "prices")],
         )
         .refusing();
-        let mut base = Wired::new("base", &[service("base", "prices")], &[]);
+        let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
         let machine = machine(vec![
-            entry("top", &[Side::DedicatedServer]),
-            entry("middle", &[Side::DedicatedServer]),
-            entry("base", &[Side::DedicatedServer]),
+            entry("anvil", &[Side::DedicatedServer]),
+            entry("mill", &[Side::DedicatedServer]),
+            entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        let refusal = open_services(&machine, &mut [&mut top, &mut middle, &mut base])
-            .expect_err("the middle mod refuses");
+        let refusal = open_services(&machine, &mut [&mut anvil, &mut mill, &mut warehouse])
+            .expect_err("the mod in the mill of the chain refuses");
         assert!(matches!(
             refusal,
-            ServiceRefused::Consumer { ref mod_id, .. } if mod_id == &id("middle")
+            ServiceRefused::Consumer { ref mod_id, .. } if mod_id == &id("mill")
         ));
-        assert!(refusal.to_string().contains("middle"), "{refusal}");
+        assert!(refusal.to_string().contains("mill"), "{refusal}");
         assert!(
-            top.reached.is_empty(),
+            anvil.reached.is_empty(),
             "a mod after the refusal was wired anyway"
         );
         assert!(
-            middle.answered.is_empty(),
+            mill.answered.is_empty(),
             "the refusing mod answered a call it never got to make"
         );
     }
@@ -697,7 +708,7 @@ mod tests {
                 ServiceDeclaration::new(
                     self.id.clone(),
                     Vec::new(),
-                    vec![service("base", "prices")],
+                    vec![service("warehouse", "prices")],
                 )
                 .ok()
             }
@@ -707,7 +718,10 @@ mod tests {
                 directory: &mut dyn ServiceDirectory,
             ) -> Result<(), HostError> {
                 let failed = directory
-                    .call(&ServiceRequest::new(service("base", "stock"), json!(null)))
+                    .call(&ServiceRequest::new(
+                        service("warehouse", "stock"),
+                        json!(null),
+                    ))
                     .expect_err("undeclared");
                 Err(HostError::Refused {
                     mod_id: self.id.clone(),
@@ -718,24 +732,27 @@ mod tests {
         }
 
         let mut sneaking = Sneaking { id: id("consumer") };
-        let mut base = Wired::new(
-            "base",
-            &[service("base", "prices"), service("base", "stock")],
+        let mut warehouse = Wired::new(
+            "warehouse",
+            &[
+                service("warehouse", "prices"),
+                service("warehouse", "stock"),
+            ],
             &[],
         );
         let machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
-            entry("base", &[Side::DedicatedServer]),
+            entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        let refusal = open_services(&machine, &mut [&mut sneaking, &mut base])
+        let refusal = open_services(&machine, &mut [&mut sneaking, &mut warehouse])
             .expect_err("the call was not declared");
         assert!(
             refusal.to_string().contains("does not require"),
             "{refusal}"
         );
         assert!(
-            base.answered.is_empty(),
+            warehouse.answered.is_empty(),
             "an undeclared call reached the provider"
         );
     }
@@ -884,24 +901,24 @@ mod tests {
         // The ordering half. A set that loads but wires the consumer first would
         // pass every "it still loads" assertion and be wrong only in a running game,
         // so the order and the answer are both checked here.
-        let mut consumer = Hedging::new("consumer", &[], &[service("zenith", "prices")]);
-        let mut base = Wired::new("zenith", &[service("zenith", "prices")], &[]);
+        let mut consumer = Hedging::new("consumer", &[], &[service("warehouse", "prices")]);
+        let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
         let machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
-            entry("zenith", &[Side::DedicatedServer]),
+            entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
         // Supplied consumer-first, so a slice order would have called it too early.
-        let opened =
-            open_services(&machine, &mut [&mut consumer, &mut base]).expect("the graph resolves");
+        let opened = open_services(&machine, &mut [&mut consumer, &mut warehouse])
+            .expect("the graph resolves");
 
-        assert_eq!(opened.order(), [id("zenith"), id("consumer")]);
-        assert_eq!(consumer.reached, ["zenith"]);
+        assert_eq!(opened.order(), [id("warehouse"), id("consumer")]);
+        assert_eq!(consumer.reached, ["warehouse"]);
         assert!(
             consumer.absent.is_empty(),
             "an installed provider read as absent"
         );
-        assert_eq!(base.answered, [service("zenith", "prices")]);
+        assert_eq!(warehouse.answered, [service("warehouse", "prices")]);
     }
 
     #[test]
@@ -943,17 +960,17 @@ mod tests {
 
     #[test]
     fn a_provider_that_answered_and_refused_is_not_absence() {
-        // The distinction a consumer branches on. `base` is installed and running,
+        // The distinction a consumer branches on. `warehouse` is installed and running,
         // so its refusal is an answer about the call and not about the install —
         // and the consumer must not swallow it as "nobody there".
-        let mut consumer = Hedging::new("consumer", &[], &[service("zenith", "prices")]);
-        let mut base = Grudging::new("zenith", &[service("zenith", "prices")]);
+        let mut consumer = Hedging::new("consumer", &[], &[service("warehouse", "prices")]);
+        let mut warehouse = Grudging::new("warehouse", &[service("warehouse", "prices")]);
         let machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
-            entry("zenith", &[Side::DedicatedServer]),
+            entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        let refusal = open_services(&machine, &mut [&mut consumer, &mut base])
+        let refusal = open_services(&machine, &mut [&mut consumer, &mut warehouse])
             .expect_err("the provider said no");
 
         assert!(matches!(
@@ -1021,57 +1038,60 @@ mod tests {
 
     #[test]
     fn an_optional_provider_this_side_parks_is_absent_rather_than_a_refusal_or_a_wait() {
-        let mut consumer = Hedging::new("consumer", &[], &[service("zenith", "prices")]);
-        let mut base = Wired::new("zenith", &[service("zenith", "prices")], &[]);
+        let mut consumer = Hedging::new("consumer", &[], &[service("warehouse", "prices")]);
+        let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
         let machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
-            entry("zenith", &[Side::Client]),
+            entry("warehouse", &[Side::Client]),
         ]);
 
-        let opened = open_services(&machine, &mut [&mut consumer, &mut base])
+        let opened = open_services(&machine, &mut [&mut consumer, &mut warehouse])
             .expect("a parked provider refuses no optional consumer");
 
         assert_eq!(opened.order(), [id("consumer")]);
-        assert_eq!(consumer.absent, [service("zenith", "prices")]);
-        assert!(base.answered.is_empty(), "a parked mod answered a call");
+        assert_eq!(consumer.absent, [service("warehouse", "prices")]);
+        assert!(
+            warehouse.answered.is_empty(),
+            "a parked mod answered a call"
+        );
     }
 
     #[test]
     fn a_graph_holding_an_optional_edge_opens_in_the_same_order_whatever_order_it_arrives_in() {
         let build = || {
             (
-                Wired::new("zenith", &[service("zenith", "prices")], &[]),
-                Hedging::new("consumer", &[], &[service("zenith", "prices")]),
+                Wired::new("warehouse", &[service("warehouse", "prices")], &[]),
+                Hedging::new("consumer", &[], &[service("warehouse", "prices")]),
                 Wired::new("other", &[service("other", "clock")], &[]),
             )
         };
         let entries = vec![
-            entry("zenith", &[Side::DedicatedServer]),
+            entry("warehouse", &[Side::DedicatedServer]),
             entry("consumer", &[Side::DedicatedServer]),
             entry("other", &[Side::DedicatedServer]),
         ];
 
-        let (mut base, mut consumer, mut other) = build();
+        let (mut warehouse, mut consumer, mut other) = build();
         let forward = open_services(
             &machine(entries.clone()),
-            &mut [&mut base, &mut consumer, &mut other],
+            &mut [&mut warehouse, &mut consumer, &mut other],
         )
         .expect("resolves");
 
-        let (mut base, mut consumer, mut other) = build();
+        let (mut warehouse, mut consumer, mut other) = build();
         let reversed = open_services(
             &machine(entries),
-            &mut [&mut other, &mut consumer, &mut base],
+            &mut [&mut other, &mut consumer, &mut warehouse],
         )
         .expect("resolves");
 
         assert_eq!(forward, reversed);
         assert_eq!(
             forward.order(),
-            [id("other"), id("zenith"), id("consumer")],
+            [id("other"), id("warehouse"), id("consumer")],
             "the order is not the smallest topological one"
         );
-        assert_eq!(consumer.reached, ["zenith"]);
+        assert_eq!(consumer.reached, ["warehouse"]);
     }
 
     #[test]
@@ -1079,51 +1099,54 @@ mod tests {
         // The guard that skips a mod with nothing to call reads both sides. Reading
         // only `requires` would silently never call an optional-only consumer, which
         // is indistinguishable from a working absent branch until a provider exists.
-        let mut consumer = Hedging::new("consumer", &[], &[service("zenith", "prices")]);
-        let mut base = Wired::new("zenith", &[service("zenith", "prices")], &[]);
+        let mut consumer = Hedging::new("consumer", &[], &[service("warehouse", "prices")]);
+        let mut warehouse = Wired::new("warehouse", &[service("warehouse", "prices")], &[]);
         let machine = machine(vec![
             entry("consumer", &[Side::DedicatedServer]),
-            entry("zenith", &[Side::DedicatedServer]),
+            entry("warehouse", &[Side::DedicatedServer]),
         ]);
 
-        open_services(&machine, &mut [&mut base, &mut consumer]).expect("resolves");
-        assert_eq!(base.answered, [service("zenith", "prices")]);
-        assert_eq!(consumer.reached, ["zenith"]);
+        open_services(&machine, &mut [&mut warehouse, &mut consumer]).expect("resolves");
+        assert_eq!(warehouse.answered, [service("warehouse", "prices")]);
+        assert_eq!(consumer.reached, ["warehouse"]);
     }
 
     #[test]
     fn the_same_declarations_open_in_the_same_order_whatever_order_they_arrive_in() {
         let build = || {
             (
-                Wired::new("base", &[service("base", "prices")], &[]),
-                Wired::new("consumer", &[], &[service("base", "prices")]),
+                Wired::new("warehouse", &[service("warehouse", "prices")], &[]),
+                Wired::new("consumer", &[], &[service("warehouse", "prices")]),
                 Wired::new("other", &[service("other", "clock")], &[]),
             )
         };
         let entries = vec![
-            entry("base", &[Side::DedicatedServer]),
+            entry("warehouse", &[Side::DedicatedServer]),
             entry("consumer", &[Side::DedicatedServer]),
             entry("other", &[Side::DedicatedServer]),
         ];
 
-        let (mut base, mut consumer, mut other) = build();
+        let (mut warehouse, mut consumer, mut other) = build();
         let forward = open_services(
             &machine(entries.clone()),
-            &mut [&mut base, &mut consumer, &mut other],
+            &mut [&mut warehouse, &mut consumer, &mut other],
         )
         .expect("resolves");
 
-        let (mut base, mut consumer, mut other) = build();
+        let (mut warehouse, mut consumer, mut other) = build();
         let reversed = open_services(
             &machine(entries),
-            &mut [&mut other, &mut consumer, &mut base],
+            &mut [&mut other, &mut consumer, &mut warehouse],
         )
         .expect("resolves");
 
         assert_eq!(forward, reversed);
+        // Not identity order, and that is the point of these three names: sorted
+        // alone gives `consumer, other, warehouse`, so an implementation that only
+        // sorted would be caught here rather than agreeing by accident.
         assert_eq!(
             forward.order(),
-            [id("base"), id("consumer"), id("other")],
+            [id("other"), id("warehouse"), id("consumer")],
             "the order is not the smallest topological one"
         );
     }

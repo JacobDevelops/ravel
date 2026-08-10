@@ -13,19 +13,18 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni.workspace = true
-ravel-bootstrap-runtime = { package = "ravel-bootstrap", path = "../ravel-bootstrap", version = "0.0.0" }
-ravel-config.workspace = true
 ravel-core.workspace = true
-ravel-host-api.workspace = true
-ravel-loader.workspace = true
-ravel-package.workspace = true
-ravel-resolve.workspace = true
+ravel-host-runtime.workspace = true
 ravel-test-mod-client-only.workspace = true
 ravel-test-mod-configuration.workspace = true
 ravel-test-mod-saved-data.workspace = true
 ravel-test-mod-server-only.workspace = true
 
 [dev-dependencies]
+ravel-loader.workspace = true
+ravel-package.workspace = true
+ravel-config.workspace = true
+ravel-host-api.workspace = true
 serde_json.workspace = true
 
 [lints]

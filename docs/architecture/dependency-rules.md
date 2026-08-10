@@ -91,6 +91,22 @@ stable contracts toward concrete host internals.
   [`safety-boundary.md`](safety-boundary.md) — it exposes only safe Rust upward, and no other
   maintained crate depends on it. The SDK never re-exports it, and a mod cannot
   reach it.
+
+- **Two crates contradict the sentence above and this record does not resolve
+  it.** `ravel-composed-host` has depended on `ravel-bootstrap` since it was
+  written, and `ravel-host-runtime` — the composition both hosts run — does now.
+  Both are hosts: a host is the binary the JVM loads, which is the one place a
+  JVM entry belongs, and neither is reachable from a mod. So the rule as written
+  is either about *non-host* crates and has always been stated too widely, or the
+  two hosts are a defect. Which of those it is decides whether a third host may
+  exist, and that is an architecture decision rather than an implementation one.
+  It is recorded here rather than edited away.
+
+- `ravel-build` generates a host and links none of it. It depends on
+  `ravel-loader`, `ravel-package` and `ravel-core` to read what an instance holds,
+  and on nothing below them; the generated workspace hands an installed mod
+  `ravel-sdk` and nothing else, so a player's mod reaches no bootstrap, JVM or
+  version internal either.
 - Measurement experiments under `experiments/` are not production crates. No
   production crate depends on one, and `ravel:verify-scaffold` enforces that.
 

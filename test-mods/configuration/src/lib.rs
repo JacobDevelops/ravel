@@ -42,7 +42,7 @@ impl ConfigurationMod {
             observations: Vec::new(),
         };
         value
-            .configure(&configuration)
+            .apply(&configuration)
             .expect("the packaged configuration belongs to this mod");
         value
     }
@@ -60,11 +60,15 @@ impl ConfigurationMod {
 
     /// Applies one resolved configuration to subsequent behavior.
     ///
+    /// The host reaches this through [`HostMod::configure`] rather than by
+    /// name. It stays separate because [`Self::new`] applies the author defaults
+    /// before the mod is a `HostMod` at all.
+    ///
     /// # Errors
     ///
     /// Returns an error when the configuration belongs to another mod or no
     /// longer contains the typed settings this mod consumes.
-    pub fn configure(&mut self, configuration: &LayeredConfiguration) -> Result<(), String> {
+    pub fn apply(&mut self, configuration: &LayeredConfiguration) -> Result<(), String> {
         if configuration.owner() != &self.id {
             return Err(format!(
                 "configuration belongs to `{}`, not `{}`",
@@ -121,6 +125,29 @@ impl HostMod for ConfigurationMod {
             self.observations.push(self.behavior());
         }
         Ok(())
+    }
+
+    /// Declares the settings this mod owns.
+    ///
+    /// A host reads this rather than naming [`ConfigurationMod::declaration`],
+    /// which is what lets a host composed from packages it never heard of layer
+    /// this mod's settings at all.
+    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
+        Some(Self::declaration())
+    }
+
+    /// Applies the settings in force for this launch.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HostError::Refused`] with whatever [`ConfigurationMod::apply`]
+    /// said, which is this mod's own rule about a document it was handed.
+    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
+        Self::apply(self, resolved).map_err(|detail| HostError::Refused {
+            mod_id: self.id.clone(),
+            state: LifecycleState::Constructed,
+            detail,
+        })
     }
 }
 
@@ -247,7 +274,7 @@ mod tests {
             LayeredConfiguration::resolve(ConfigurationMod::declaration(), None, Some(&player))
                 .expect("player values resolve");
         let mut configured = ConfigurationMod::new();
-        configured.configure(&configuration).expect("same owner");
+        configured.apply(&configuration).expect("same owner");
         configured
             .enter(LifecycleState::Running)
             .expect("configuration mod runs");
@@ -270,7 +297,7 @@ mod tests {
             .expect("empty declaration resolves");
 
         let error = ConfigurationMod::new()
-            .configure(&configuration)
+            .apply(&configuration)
             .expect_err("the owner differs");
         assert!(error.contains("other_mod"), "{error}");
     }

@@ -4,7 +4,7 @@
   "protocol": "m5-inventory-v1",
   "result": "pass",
   "fixture": "ATM11 0.2.1",
-  "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is a count over material this repository does not hold and may not hold, taken from one clean run of that workspace's own gate on its settled tree, and every one of them was re-derived here from the underlying rows rather than read off that gate's summary. The files those counts came from are bound below by digest, and that binding is for a reader who holds the private workspace and hashes it: nothing in this repository recomputes those digests, because the files are not here.",
+  "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is a count over material this repository does not hold and may not hold, taken from one clean run of that workspace's own gate on its settled tree, and every one of them was re-derived here from the underlying rows rather than read off that gate's summary. The files those counts came from are bound below by digest. Nothing in this repository recomputes those digests, because the files are not here — but something does: the private gate holds all fifteen and recomputes every one of them against this record on each of its runs, so a file there that moves without its digest moving here fails a gate rather than ageing quietly into a false line. That is the whole of what the binding buys. It does not tell a reader here whether the figures are right; it stops the two trees drifting apart, and a hand that moves a file and rewrites this record together still passes.",
   "artifacts": {
     "total": 235,
     "catalogued": 235,
@@ -20,6 +20,8 @@
     "blockedEdges": 0,
     "clusters": 143,
     "largestCluster": 35,
+    "clusterRule": "Connected components over edges of type required only, counting an edge whose endpoints are both nodes. The rule is published because it is not the obvious one and the figure is not reproducible without it: clustering over every internal edge gives 121 components with a largest of 101, internal only gives 126 and 97, and internal together with required gives 150 and 34. A reader re-deriving this the obvious way disagrees by 22 clusters and by a factor of three in the largest.",
+    "edgeEndpoints": "703 edges, of which 210 point at ids that are nodes here, 445 at platform ids (neoforge and minecraft) and 48 at ids absent from the pack. Each edge records which, and all three are classified resolved, so resolvedEdges being equal to edges is not a claim that every endpoint is a node.",
     "blockedNodeReason": "declared no dependency metadata, so the node exists and its edges are unknown rather than absent"
   },
   "rights": {
@@ -37,6 +39,7 @@
   "surfaces": {
     "catalogued": 235,
     "unclassified": 0,
+    "unclassifiedCountsArtifacts": "Zero of the 235 artifacts are left unclassified. It does not say that every entry inside them fell into a family, and a reader should not take it that way. The families here count entries of named kinds — the kinds a port plan is sized from — and their totals sum to 230,370 entries across thirteen families, which is fewer than the archives hold. Entries in no family are not a gap; they are the parts of an archive nothing in M5 needed to size. No figure in M5 is a count of every entry in the pack.",
     "classFiles": 71235,
     "models": 48128,
     "textures": 32104,
@@ -156,22 +159,22 @@
     },
     {
       "name": "checks/verify-reads.sh",
-      "sha256": "49b77ba61302af38d78a626171c0cb5f83e6c36046fe37d35acb8a88d1926d17",
+      "sha256": "8fc522a8e859d131cda0b306b3731ed7cdd80d624108767b1bd04972ce8f67d3",
       "holds": "the classification of every observed read, and the refusal that fires on an entry body"
     },
     {
       "name": "checks/verify-primitives.sh",
-      "sha256": "dba8fb15a0b10ce469866244aae1b112d32641a959d000cf629b6bd8112674e2",
+      "sha256": "d77f84738f1a6d5a54aa45c646ec9a7a24c14d464cda35c558d13d94a8952b3b",
       "holds": "the second reading of the read observation premise: what the gate reaches, swept for read primitives"
     },
     {
       "name": "checks/read-primitive-vocabulary.tsv",
-      "sha256": "861f1713166b05f71dc3250a1d57b5b3950dbdc0d1954d591b84a3d591da038a",
+      "sha256": "a611e39078f1177188214ea07f5787eb9d49331845fc0cc59f200ca7c579549f",
       "holds": "one row per declared read primitive with its class, pattern, probe and reason; the accounted half whose limit is disclosed above"
     },
     {
       "name": "checks/read-primitives.tsv",
-      "sha256": "8d051b9d768b41bb4dc603b19ed6c4821971854b22d3a3c74599bb9b214b3ab0",
+      "sha256": "f39f0d431f294aa4480568399b8e28959f39901b264259f4210a69c9536ade8d",
       "holds": "every accounted occurrence, held congruent with the vocabulary in both directions"
     }
   ],
@@ -180,8 +183,10 @@
     "primitivesDeclared": 26,
     "refused": 12,
     "accounted": 14,
-    "accountedUses": 74,
-    "occurrenceRows": 31,
-    "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions."
+    "accountedUses": 77,
+    "occurrenceRows": 32,
+    "aUseIsAnOccurrence": "Two on one line are two. This figure read 74 until round 7, because the scan counted matching lines and the occurrence table beside it had been written from that output, so the two agreed and the row that would have contradicted them was never built. Two lines under checks/ carry two occurrences each; the true figure for the tree round 7 read was 76, and it is 77 here because the repair added a reader of its own.",
+    "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions.",
+    "whoReadsTheseFigures": "The private gate holds every figure in this block to the figure it computes, so one that goes stale because that workspace moved fails there rather than ageing quietly here. That is a bind against drift and not a second count: nothing counts the occurrences a second way, and a hand that changes the scan and rewrites this block together passes."
   }
 }

@@ -3,12 +3,21 @@
 Result: FAIL
 
 **Six independent rounds have run and every one of them returned FAIL.** Between
-them they raised nine blocking findings, and all nine are instances of a single
-defect class. The most recent round returned FAIL on the ninth, which is the
-most serious of the campaign: it falsified the premise under the mechanism that
-licenses the whole inventory. That finding has since been repaired, the repair
-found and closed a tenth instance of its own on the way, and the figures this
-milestone publishes are settled. **No round has read the repaired tree**, so the
+them they raised eight blocking findings — the per-round headings below are the
+only place that number is written, and it is their sum. Nine instances of a
+single defect class have been found: the eight the rounds raised, and one the
+round-4 repair found in its own work. The most recent round returned FAIL on the
+ninth instance, which is the most serious of the campaign: it falsified the
+premise under the mechanism that licenses the whole inventory. That finding has
+since been repaired, the repair found and closed a tenth instance of its own on
+the way, and the figures this milestone publishes are settled.
+
+That headline overstated the rounds' tally by one until round 7, folding the
+repair-found instance into the reviewer-found total — in the flattering
+direction, in the document this manifest names as the one place that counts.
+`verify_review_blocking_counts` in `tools/ravel-xtask/src/lib.rs` now sums the
+per-round headings and requires this summary to agree with them, so the figure
+has one source and a heading that changes drags the sentence with it. **No round has read the repaired tree**, so the
 line above is `FAIL` and `evidence/m5/manifest.json` records the same under
 `review.result`. `verify_recorded_verdict` in
 `tools/ravel-xtask/src/lib.rs` requires the two to agree, so they move together.
@@ -114,8 +123,10 @@ is decided rather than restated here.
 ## The rounds
 
 Each round re-derived the committed figures from readers its reviewer wrote
-independently, mutated the workspace on a throwaway copy rather than in place,
-and confirmed both working copies unchanged at the end.
+independently and confirmed both working copies unchanged at the end. Rounds 2
+onward mutated a throwaway copy; round 1 mutated in place and restored from `cp`
+backups, which is the same discipline with a worse failure mode and is written
+here rather than smoothed into the sentence that describes the others.
 
 ### Round 1 — FAIL, two blocking
 
@@ -156,8 +167,8 @@ claim with the whole gate green.
 ### Round 3 — FAIL, one blocking
 
 Round 2's repair held; all six headline figures reproduced exactly against a
-reader written from scratch. The new finding was the third instance, one level
-up from round 2's: not what a nested declaration says, but **which nested
+reader written from scratch. The new finding was the fourth instance, one level
+up from round 2's third: not what a nested declaration says, but **which nested
 libraries exist at all**.
 
 Both readers enumerated nested libraries from exactly one manifest and returned
@@ -178,7 +189,7 @@ Round 3's repair held: its figures reproduced, its three newly found archives
 were the only three in the fixture, and its new accounting caught every
 discovery narrowing the reviewer could invent.
 
-The fourth instance was one file over. Round 3's repair had built a depth-aware
+The fifth instance was one file over. Round 3's repair had built a depth-aware
 listing, produced twice and compared byte for byte — and **no consumer that
 counts a behaviour surface read it**. The catalogue still stopped at the outer
 archive, producer and independent recount alike, the recount reading the same
@@ -214,9 +225,13 @@ made a producer read and write out the bodies of **1,113 class files** and the
 gate exited 0, still asserting metadata-only, nothing decompiled, no restricted
 content read, and an unchanged reading list.
 
-Five non-blocking findings, including the campaign's only figure correction: one
-texture counted by neither reader because both classified the file extension
-case-sensitively — the same question asked twice by one hand.
+Five non-blocking findings, including a figure correction of one texture counted
+by neither reader because both classified the file extension case-sensitively —
+the same question asked twice by one hand. This called itself the campaign's only
+figure correction until round 7, which the section three above it contradicts: the
+round-4 finding moved 12,571 class files and the size band of ten plans. Corrected
+headline figures are the ordinary outcome of a round here, not the exception, and
+a sentence calling one of them unique was the campaign reading better than it was.
 
 ### Round 6 — FAIL, one blocking
 
@@ -325,8 +340,12 @@ the most useful section in this file.
    and that the manifest's figures follow from those parts. The digests over
    private files are recorded and nothing here hashes them — falsifying one and
    rebinding the record's own digest leaves `ravel:verify` at exit 0, which was
-   measured rather than assumed. They bind for a reader holding the private
-   workspace and for nobody else.
+   measured rather than assumed. That is a limit of this gate and it read as a
+   limit of the system until round 7: the private gate holds both trees, and it
+   now recomputes all fifteen digests against the published record on every run,
+   so the two cannot drift apart. Neither side recomputes a figure the other
+   produced, and a hand that moves a file and rewrites the record together still
+   passes.
 5. **This record is sanitized**, so a reader is taking its account of six rounds
    on trust rather than reading the verdicts. See the section above for why, and
    treat the round descriptions as a reviewer's findings restated by a different
@@ -336,7 +355,15 @@ the most useful section in this file.
    knows them, and any reasoning about cluster boundaries inherits that.
 7. **235 of 235 planned is coverage of artifacts, not of behaviour.** Nothing in
    M5 ran the fixture. The surface counts are counts of entries in archives.
-8. **Two limits stayed open across every round and are disclosed rather than
+8. **Rounds ran invalid probes and this record used not to say so.** Round 5
+   read a gate that never ran as a green baseline and built a probe on top of
+   it; round 7 stopped a licence probe one rebuild short and called its own
+   result incomplete rather than a finding. Both were caught by the reviewer who
+   made them, which is the reason to record them: a campaign in which reviewers
+   repeatedly mistook a non-running gate for a green one is a fact about how far
+   these verdicts should be trusted, and leaving it out made the section above
+   read cleaner than the work was.
+9. **Two limits stayed open across every round and are disclosed rather than
    closed**: whether the two directories both readers treat as the nested-library
    locations are the complete set a loader loads from — the second opinion there
    is a loader, and this workspace does not run one — and whether a declared

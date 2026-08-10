@@ -398,6 +398,32 @@
         },
         "classification": {
           "enum": ["blocking", "non-blocking"]
+        },
+        "anchor": {
+          "$ref": "#/$defs/symbolAnchor"
+        }
+      }
+    },
+    "symbolAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "paths"],
+      "description": "The one claim inside a finding that a machine can hold: the named Rust symbol has no caller outside this path set. A finding is prose no measurement takes, so it ages into a false statement in silence; the anchor is what makes that failure loud. ADG-8 makes it mandatory for M5 onward and says why it is not retrofitted.",
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "A Rust item name the finding's own summary names, and which the tracked sources define."
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Repository-relative path prefixes. Every tracked Rust source naming the symbol must sit under one of them, or the anchor is stale and the gate says so.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+          }
         }
       }
     },

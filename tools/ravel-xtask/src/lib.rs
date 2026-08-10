@@ -101,6 +101,7 @@ const MILESTONE_MANIFESTS: &[(&str, &str)] = &[
     ("evidence/m2/manifest.json", "M2"),
     ("evidence/m3/manifest.json", "M3"),
     ("evidence/m4/manifest.json", "M4"),
+    ("evidence/m5/manifest.json", "M5"),
 ];
 
 const ROOT_FILES: &[&str] = &[
@@ -287,32 +288,15 @@ const CAMPAIGN_MATRIX: &str = "evidence/m3/linux-process-matrix.json";
 /// The prose that restates that record's inventory figures.
 const CAMPAIGN_DOCUMENT: &str = "evidence/m3/README.md";
 
-/// The manifest that records M3's gate state, and restates review prose.
-const M3_MANIFEST: &str = "evidence/m3/manifest.json";
-
-/// The one record that says how many independent M3-W8 rounds have run.
-const REVIEW_RECORD: &str = "evidence/m3/review.md";
-
-/// M2's evidence README, which summarises the audits its record holds.
-const M2_CAMPAIGN_DOCUMENT: &str = "evidence/m2/README.md";
-
-/// M2's admission artifact.
-const M2_MANIFEST: &str = "evidence/m2/manifest.json";
-
-/// The record that counts M2's independent audits, for the reason
-/// [`REVIEW_RECORD`] counts M3's.
-const M2_REVIEW_RECORD: &str = "evidence/m2/review.md";
-
-/// M4's evidence README, which describes what the gate binds and how to
-/// recompute it.
-const M4_CAMPAIGN_DOCUMENT: &str = "evidence/m4/README.md";
-
-/// M4's admission artifact.
-const M4_MANIFEST: &str = "evidence/m4/manifest.json";
-
-/// The record that counts M4's independent rounds, for the reason
-/// [`REVIEW_RECORD`] counts M3's.
-const M4_REVIEW_RECORD: &str = "evidence/m4/review.md";
+/// The milestones whose prose is exempt from the round-count rule.
+///
+/// Both are closed and their reviews are over, so the counts their records
+/// restate cannot go stale: no further round will run against them. Bringing them
+/// in would mean rewording a closed milestone's prose to satisfy a rule written
+/// after it. Every other milestone is swept, and the set is derived from
+/// [`MILESTONE_MANIFESTS`] rather than listed, for the reason
+/// [`round_count_subjects`] gives.
+const ROUND_COUNT_EXEMPT: [&str; 2] = ["M0", "M1"];
 
 /// The plan, which belongs to no milestone's evidence and cites all of it.
 const PLAN_DOCUMENT: &str = "ROADMAP.md";
@@ -1064,34 +1048,18 @@ const ROUND_NOUNS: [&str; 5] = ["rounds", "verdicts", "audits", "reviews", "iter
 /// noun has to be plural — and the numeral immediately after the noun is walked
 /// past for the reason [`numbers_after`] gives.
 fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
-    // M2 is held to the same rule as M3, and for the same reason rather than by
-    // analogy: its record now carries successive audits too, its manifest and
-    // README both summarise them, and the figure that went stale in M3 went stale
-    // in five sites of exactly that kind. Applying the rule before a count is
-    // written is the only time it costs nothing.
-    //
-    // M0 and M1 are deliberately outside this, and the choice is recorded here so it
-    // is not read as an oversight: both are closed, their reviews are over, and the
-    // counts their records restate — `evidence/m1/manifest.json` and
-    // `evidence/m1/README.md` each restate one — cannot go stale because no further
-    // round will run against them. Bringing them in would mean rewording a closed
-    // milestone's prose to satisfy a rule written after it.
-    //
-    // M4 is here because its own record states the rule and named this check as
-    // the enforcement while nothing under `evidence/m4/` was swept — a round
-    // measured the gap by putting a false count in `evidence/m4/README.md` and
-    // getting exit 0. A rule a record cites and the gate does not run is the
-    // shape the round-count class keeps coming back in.
-    for (record, documents) in [
-        (REVIEW_RECORD, [CAMPAIGN_DOCUMENT, M3_MANIFEST]),
-        (M2_REVIEW_RECORD, [M2_CAMPAIGN_DOCUMENT, M2_MANIFEST]),
-        (M4_REVIEW_RECORD, [M4_CAMPAIGN_DOCUMENT, M4_MANIFEST]),
-    ] {
-        if !root.join(record).is_file() {
+    for (record, documents) in round_count_subjects() {
+        if !root.join(&record).is_file() {
             violations.push(format!("missing required file: {record}"));
         }
         for relative in documents {
-            match fs::read_to_string(root.join(relative)) {
+            // A milestone need not carry a README; M0 does not. What it may not
+            // do is carry one nobody sweeps, so an absent document is skipped and
+            // a present unreadable one is reported.
+            if !root.join(&relative).exists() {
+                continue;
+            }
+            match fs::read_to_string(root.join(&relative)) {
                 Ok(document) => {
                     for (count, noun) in round_count_restatements(&document) {
                         violations.push(format!(
@@ -1125,6 +1093,35 @@ fn verify_review_round_counts(root: &Path, violations: &mut Vec<String>) {
         }
         Err(error) => violations.push(format!("cannot read {PLAN_DOCUMENT}: {error}")),
     }
+}
+
+/// The record that counts each milestone's rounds, and the prose held to it.
+///
+/// This used to be three hand-written tuples, and every milestone that gained a
+/// review record had to be remembered into them. It was not: M4's own evidence
+/// cited this check as the enforcement while nothing under `evidence/m4/` was
+/// swept, and a round measured that gap by writing a false count into
+/// `evidence/m4/README.md` and getting exit 0. The rule was correct and its
+/// subject list was stale, which is the same defect the round count itself keeps
+/// producing — one statement of a fact, and a second place that has to be kept
+/// agreeing with it by hand.
+///
+/// So the subjects are derived from [`MILESTONE_MANIFESTS`] rather than listed.
+/// A milestone that gains a manifest is swept the day it lands, and the only
+/// thing left to maintain is [`ROUND_COUNT_EXEMPT`], which is a statement about
+/// two closed milestones rather than a list that grows.
+fn round_count_subjects() -> Vec<(String, [String; 2])> {
+    MILESTONE_MANIFESTS
+        .iter()
+        .filter(|(_, milestone)| !ROUND_COUNT_EXEMPT.contains(milestone))
+        .map(|(manifest, milestone)| {
+            let directory = format!("evidence/{}", milestone.to_ascii_lowercase());
+            (
+                format!("{directory}/review.md"),
+                [format!("{directory}/README.md"), (*manifest).to_owned()],
+            )
+        })
+        .collect()
 }
 
 /// Every count of review rounds one document states, with the noun it counted.
@@ -1965,6 +1962,11 @@ fn verify_manifest_invariants(
         );
     }
     verify_manifest_change(root, manifest_path, violations);
+    // Whether a finding anchors the symbol it names is decided by this repository
+    // and by no reviewer, so it runs on every gate rather than only where a
+    // milestone is closed. A deviation goes stale between milestones, which is
+    // exactly when nobody is running the closure task.
+    verify_finding_anchors(root, manifest_path, milestone, violations);
     if milestone == "M4" {
         // These two ask whether two documents in the tree agree with each other
         // and with the repository, which is what this function's doc comment
@@ -1977,6 +1979,221 @@ fn verify_manifest_invariants(
         verify_m4_process_matrix(root, violations);
         verify_m4_gate_figures(root, manifest_path, violations);
     }
+    if milestone == "M5" {
+        // The same argument as M4's above: whether the recorded arithmetic closes
+        // and whether the manifest's figures follow from the record's parts are
+        // questions about two documents in this tree, which no review verdict
+        // bears on. Holding them in the opt-in milestone task alone would leave
+        // the gate every agent is told to run unable to see an inventory that had
+        // drifted from its own summary.
+        verify_m5_inventory_arithmetic(root, violations);
+        verify_m5_carried_figures(root, manifest_path, violations);
+    }
+}
+
+/// The first milestone whose findings must anchor the symbols they name.
+///
+/// Not retrofitted, and the boundary is a date rather than a judgement about
+/// which older findings would have passed: rewriting a closed milestone's
+/// findings to satisfy a rule written after them changes evidence an independent
+/// review already certified.
+const FIRST_ANCHORED_MILESTONE: u32 = 5;
+
+/// The Rust item keywords a definition can follow.
+const RUST_DEFINITION_KEYWORDS: [&str; 8] = [
+    "fn", "struct", "enum", "trait", "union", "const", "static", "type",
+];
+
+/// Requires a finding that names a Rust symbol to carry a checkable anchor.
+///
+/// A deviation is prose that no measurement takes, so it does not fail when it
+/// stops being true — it ages into a false statement while every gate stays
+/// green. M4's own evidence carries the shape: a deviation said a symbol had no
+/// caller in a running game, the sides half of it was repaired afterwards, and
+/// nothing in the repository could have noticed if the repair had left the
+/// sentence behind.
+///
+/// The anchor does not verify the finding, and this check does not pretend to.
+/// It holds the one narrow claim inside a finding that a machine can hold — that
+/// the named symbol has no caller outside a stated path set — so that the tree
+/// moving out from under a finding is loud. `docs/decisions/` records the
+/// decision that makes it mandatory from M5 forward and states what it buys.
+///
+/// Both halves are checked against the tree rather than against the author. What
+/// counts as a Rust symbol is decided by what the tracked sources actually
+/// define, not by the writer's intention, so a finding cannot exempt itself by
+/// declining to think about the rule; and a recorded anchor is checked by
+/// sweeping the tracked sources, so it cannot be satisfied by assertion.
+///
+/// Known limit, stated rather than implied: a candidate is only taken seriously
+/// when it is distinguishable from ordinary prose — four characters or more, and
+/// either carrying an underscore or an interior capital. A symbol named `open`
+/// or `side` is defined in this tree and is also an English word, and requiring
+/// an anchor for every sentence containing one would make the rule unusable. So
+/// this reaches findings that name real internal symbols and does not claim to
+/// reach every possible phrasing.
+fn verify_finding_anchors(
+    root: &Path,
+    manifest_path: &Path,
+    milestone: &str,
+    violations: &mut Vec<String>,
+) {
+    let label = relative_label(root, manifest_path);
+    let tracked = match tracked_paths(root) {
+        Ok(tracked) => tracked,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let sources = tracked
+        .iter()
+        .filter(|path| {
+            Path::new(path)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let defined = defined_rust_symbols(root, &sources);
+
+    let findings = match jq_value(
+        manifest_path,
+        r#"(.deviations[]?, .risks[]?)
+            | (.summary | gsub("[\n\t]"; " "))
+              + "\t" + (.anchor.symbol // "")
+              + "\t" + ((.anchor.paths // []) | join(","))"#,
+    ) {
+        Ok(findings) => findings,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    let anchored_from = milestone
+        .strip_prefix('M')
+        .and_then(|number| number.parse::<u32>().ok())
+        .is_some_and(|number| number >= FIRST_ANCHORED_MILESTONE);
+
+    for finding in findings.lines().filter(|line| !line.trim().is_empty()) {
+        let mut fields = finding.split('\t');
+        let summary = fields.next().unwrap_or_default();
+        let symbol = fields.next().unwrap_or_default();
+        let paths = fields.next().unwrap_or_default();
+        let named = named_rust_symbols(summary, &defined);
+
+        if symbol.is_empty() {
+            if anchored_from && !named.is_empty() {
+                violations.push(format!(
+                    "{label} carries a finding naming the Rust {} {} with no anchor; a finding \
+                     naming a symbol must claim something a grep can falsify",
+                    if named.len() == 1 {
+                        "symbol"
+                    } else {
+                        "symbols"
+                    },
+                    named.join(", ")
+                ));
+            }
+            continue;
+        }
+
+        if !named.iter().any(|candidate| candidate == symbol) {
+            violations.push(format!(
+                "{label} anchors a finding on {symbol}, which the finding's own summary does not \
+                 name; an anchor over a symbol nobody wrote about constrains nothing"
+            ));
+        }
+        if !defined.contains(symbol) {
+            violations.push(format!(
+                "{label} anchors a finding on {symbol}, which no tracked Rust source defines"
+            ));
+            continue;
+        }
+        let allowed = paths
+            .split(',')
+            .filter(|prefix| !prefix.is_empty())
+            .collect::<Vec<_>>();
+        for source in sources_naming(root, &sources, symbol) {
+            if !allowed.iter().any(|prefix| source.starts_with(prefix)) {
+                violations.push(format!(
+                    "{label} anchors a finding on {symbol} outside {paths}, and \
+                     {source} names it; the finding has outlived the tree it describes"
+                ));
+            }
+        }
+    }
+}
+
+/// Every item name the tracked Rust sources define, filtered to the ones a
+/// finding could be naming on purpose.
+fn defined_rust_symbols(root: &Path, sources: &[String]) -> BTreeSet<String> {
+    let mut defined = BTreeSet::new();
+    for relative in sources {
+        let Ok(source) = fs::read_to_string(root.join(relative)) else {
+            continue;
+        };
+        for line in source.lines() {
+            let mut words = line.split_whitespace();
+            while let Some(word) = words.next() {
+                let keyword = word.trim_end_matches('!');
+                if keyword == "macro_rules" || RUST_DEFINITION_KEYWORDS.contains(&keyword) {
+                    let Some(name) = words.clone().next() else {
+                        continue;
+                    };
+                    let name = name
+                        .split(|character: char| !is_identifier_character(character))
+                        .next()
+                        .unwrap_or_default();
+                    if distinguishable_symbol(name) {
+                        defined.insert(name.to_owned());
+                    }
+                }
+            }
+        }
+    }
+    defined
+}
+
+/// The identifiers one finding's summary names that the tree defines.
+fn named_rust_symbols(summary: &str, defined: &BTreeSet<String>) -> Vec<String> {
+    summary
+        .split(|character: char| !is_identifier_character(character))
+        .filter(|word| defined.contains(*word))
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// Every tracked Rust source that names one symbol.
+fn sources_naming(root: &Path, sources: &[String], symbol: &str) -> Vec<String> {
+    sources
+        .iter()
+        .filter(|relative| {
+            fs::read_to_string(root.join(relative)).is_ok_and(|source| {
+                source
+                    .split(|character: char| !is_identifier_character(character))
+                    .any(|word| word == symbol)
+            })
+        })
+        .cloned()
+        .collect()
+}
+
+fn is_identifier_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_'
+}
+
+/// Whether a name is one a finding would have written deliberately.
+fn distinguishable_symbol(name: &str) -> bool {
+    name.len() >= 4
+        && name.starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
+        && (name.contains('_')
+            || name
+                .chars()
+                .skip(1)
+                .any(|character| character.is_ascii_uppercase()))
 }
 
 /// Names a path relative to the repository, for a violation a reader has to act on.
@@ -3355,6 +3572,7 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
         Err(error) => violations.push(error),
     }
     verify_manifest_change(root, manifest_path, &mut violations);
+    verify_finding_anchors(root, manifest_path, milestone, &mut violations);
     if milestone == "M0" {
         verify_m0_manifest(manifest_path, &mut violations);
     }
@@ -3369,6 +3587,9 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
     }
     if milestone == "M4" {
         verify_m4_manifest(root, manifest_path, &mut violations);
+    }
+    if milestone == "M5" {
+        verify_m5_manifest(root, manifest_path, &mut violations);
     }
 
     violations
@@ -4409,6 +4630,322 @@ fn verify_m4_gate_figures(root: &Path, manifest_path: &Path, violations: &mut Ve
                 "evidence/m4/manifest.json records {claimed_at} {claimed} while \
                  evidence/m4/linux-process-matrix.json records {measured_at} {measured}; they \
                  describe one gate run"
+            ));
+        }
+    }
+}
+
+/// The record M5 cannot close without, and what it has to say.
+///
+/// M5's deliverable sits in a private workspace, so the public record is an
+/// aggregate: counts, verdicts, and digests over files this repository does not
+/// hold. Every field is type-checked before it is compared, because jq orders
+/// strings above numbers and an unguarded `> 0` accepts the string "not
+/// measured".
+const M5_RECORDS: &[(&str, &str, &str)] = &[(
+    "inventory-summary.json",
+    r#".milestone == "M5"
+        and .workPackage == "M5-W8"
+        and .protocol == "m5-inventory-v1"
+        and .result == "pass"
+        and .disclosure.readObservation.bound != null
+        and (.disclosure.readObservation.bound | type == "string" and length > 0)
+        and (.disclosure.judgedClaims | type == "array" and length > 0)
+        and (.disclosure.judgedClaims | all(
+            (.claim | type == "string" and length > 0)
+            and (.basis == "judged")
+            and (.decidedBy | type == "string" and length > 0)))
+        and (.artifacts | type == "object")
+        and ([.artifacts.total, .artifacts.catalogued, .artifacts.uncatalogued,
+              .artifacts.planned]
+             | all(type == "number"))
+        and (.graph | type == "object")
+        and ([.graph.nodes, .graph.resolvedNodes, .graph.blockedNodes, .graph.edges,
+              .graph.resolvedEdges, .graph.blockedEdges, .graph.clusters,
+              .graph.largestCluster]
+             | all(type == "number"))
+        and (.rights | type == "object")
+        and ([.rights.sourceUse.permitted, .rights.sourceUse.conditional,
+              .rights.sourceUse.prohibited, .rights.sourceUse.unresolved,
+              .rights.publishable]
+             | all(type == "number"))
+        and (.surfaces | type == "object")
+        and ([.surfaces.classFiles, .surfaces.models, .surfaces.textures,
+              .surfaces.recipes, .surfaces.catalogued, .surfaces.unclassified,
+              .surfaces.nestedJars]
+             | all(type == "number"))
+        and (.plans | type == "object")
+        and ([.plans.planned, .plans.readingSource, .plans.notReadingSource,
+              .plans.dependencyEdges, .plans.canonicalIds]
+             | all(type == "number"))
+        and (.reads | type == "object")
+        and ([.reads.producersWatched, .reads.archiveReads, .reads.entryBodyReads]
+             | all(type == "number"))
+        and (.boundArtifacts | type == "array" and length > 0)
+        and (.boundArtifacts | all(
+            (.name | type == "string" and length > 0)
+            and (.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+            and (.holds | type == "string" and length > 0)))
+        and ((.boundArtifacts | map(.name) | unique | length)
+             == (.boundArtifacts | length))"#,
+    "an inventory summary carrying every aggregate as a number, a digest over every \
+     private file it binds, and its own disclosure of what the read observation watches and \
+     which of its claims rest on judgement",
+)];
+
+/// Decision records M5 cannot close without.
+///
+/// The rights half of M5's inventory is a judged claim, and the record that
+/// decides how a judged claim is written is what makes publishing it legitimate
+/// rather than a figure with no basis. It is not an ADG: `SPEC.md` §15 owns those
+/// numbers and reserves the unused ones for other subjects.
+const M5_DECISIONS: &[&str] = &["claims-without-a-second-reading.md"];
+
+/// Checks what closing M5 requires beyond the rules every milestone shares.
+///
+/// M5 catalogues a fixture it may not publish, so its closure is almost entirely
+/// about the boundary: the numbers reconcile with each other, the private files
+/// behind them are bound by digest, and the two claims that cannot be recomputed
+/// anywhere say so in the record rather than being carried as if they were
+/// measurements.
+fn verify_m5_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        manifest_path,
+        ".workPackages | sort == [\"M5-W1\", \"M5-W2\", \"M5-W3\", \"M5-W4\", \"M5-W5\", \"M5-W6\", \"M5-W7\", \"M5-W8\"]",
+        "M5 manifest must include every work package from M5-W1 through M5-W8 exactly once",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#".benchmarks.protocolVersion == "m5-inventory-v1"
+            and ([.benchmarks.results[].name] == ["inventory-summary.json"])"#,
+        "M5 manifest must record its inventory summary under the m5-inventory-v1 protocol, so \
+         that the record carrying every figure is covered by a recomputed digest",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#"(.environment.settings.gateStatus | type == "object")
+            and ((.workPackages - (.environment.settings.gateStatus | keys)) == [])
+            and ([.environment.settings.gateStatus | to_entries[]
+                    | select(.key != "M5-W8") | .value]
+                 | length == 7
+                 and all(.status == "closed"
+                         and (.evidence | type == "string" and length > 0)))"#,
+        "M5 closure requires a gateStatus row for every work package, each implementation row \
+         closed and naming its evidence",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#".attestations | any(
+            .platform == "linux"
+            and .architecture == "x86_64"
+            and (.workloads | index("official-atm11") != null)
+        )"#,
+        "M5 closure requires a native Linux attestation for the recorded inventory run",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        "(.deviations | length) > 0 and (.risks | length) > 0",
+        "M5 recorded deviations and risks, and an empty finding set satisfies every rule phrased \
+         as a refusal, so closure requires them to still be there",
+        violations,
+    );
+
+    for decision in M5_DECISIONS {
+        if !root.join("docs/decisions").join(decision).is_file() {
+            violations.push(format!(
+                "M5 closure requires the decision record {decision}"
+            ));
+        }
+    }
+
+    for (file, rule, requirement) in M5_RECORDS {
+        let path = root.join("evidence/m5").join(file);
+        if !path.is_file() {
+            violations.push(format!("M5 closure requires the record evidence/m5/{file}"));
+            continue;
+        }
+        if !jq_matches(&path, rule).unwrap_or(false) {
+            violations.push(format!("M5 closure requires {requirement}"));
+        }
+        verify_redaction(&path, &format!("evidence/m5/{file}"), violations);
+    }
+
+    verify_m5_inventory_arithmetic(root, violations);
+    verify_m5_carried_figures(root, manifest_path, violations);
+}
+
+/// The sums the inventory summary has to close, inside the record itself.
+///
+/// A headline figure with no parts beside it is a number nothing can contradict.
+/// Each of these decomposes one published total into the pieces it was built
+/// from, so that changing the total alone, or one piece alone, stops the record
+/// agreeing with itself. This is what the public gate can hold: it cannot re-take
+/// the measurement, and it says so in the manifest's own deviations rather than
+/// implying otherwise here.
+const M5_ARITHMETIC: &[(&str, &str)] = &[
+    (
+        ".artifacts.catalogued + .artifacts.uncatalogued == .artifacts.total",
+        "every artifact is either catalogued or not",
+    ),
+    (
+        ".artifacts.planned == .artifacts.total and .artifacts.uncatalogued == 0",
+        "M5-W8's gate row asks that every artifact carry a complete plan",
+    ),
+    (
+        ".plans.planned == .artifacts.total",
+        "M5-W8's gate row asks for a plan per catalogued artifact",
+    ),
+    (
+        ".plans.readingSource + .plans.notReadingSource == .artifacts.total",
+        "a plan either reads source or does not",
+    ),
+    (
+        ".plans.canonicalIds == .artifacts.total",
+        "M5-W6 assigns one canonical ID per entry",
+    ),
+    (
+        ".rights.sourceUse.permitted + .rights.sourceUse.conditional
+            + .rights.sourceUse.prohibited + .rights.sourceUse.unresolved
+            == .artifacts.total",
+        "every triaged artifact carries exactly one source-use verdict",
+    ),
+    (
+        ".surfaces.catalogued + .surfaces.unclassified == .artifacts.total",
+        "every acquired artifact is catalogued or is counted as unclassified",
+    ),
+    (
+        ".graph.resolvedNodes + .graph.blockedNodes == .graph.nodes",
+        "every node resolves or carries a blocking classification",
+    ),
+    (
+        ".graph.resolvedEdges + .graph.blockedEdges == .graph.edges",
+        "every edge resolves or carries a blocking classification",
+    ),
+    (
+        ".graph.clusters > 0 and .graph.largestCluster > 0
+            and .graph.largestCluster <= .graph.nodes",
+        "a cluster is a set of nodes, so the largest cannot exceed the graph",
+    ),
+    (
+        ".reads.producersWatched > 0 and .reads.archiveReads > 0",
+        "an observation that classified nothing observed nothing",
+    ),
+    (
+        ".reads.entryBodyReads == 0",
+        "reading an entry body is what the metadata-only method excludes",
+    ),
+];
+
+fn verify_m5_inventory_arithmetic(root: &Path, violations: &mut Vec<String>) {
+    let record = root.join("evidence/m5/inventory-summary.json");
+    if !record.is_file() {
+        // Its absence is already a violation where the record set is checked.
+        return;
+    }
+    for (filter, requirement) in M5_ARITHMETIC {
+        if !jq_matches(&record, filter).unwrap_or(false) {
+            violations.push(format!(
+                "evidence/m5/inventory-summary.json does not satisfy `{filter}`, and {requirement}"
+            ));
+        }
+    }
+}
+
+/// The figures the manifest carries, recomputed from the record's own parts.
+///
+/// The manifest states the headline totals because a reader of the manifest
+/// should not have to open a second file to learn what M5 counted. Stating a
+/// figure twice is how figures drift, so none of these is compared against a
+/// copy: each is compared against a sum or a field the record derives it from,
+/// and the record's parts are held to each other by [`M5_ARITHMETIC`]. Changing
+/// one number anywhere breaks one of the two.
+const M5_CARRIED_FIGURES: &[(&str, &str)] = &[
+    (
+        ".environment.settings.inventory.artifacts",
+        ".artifacts.catalogued + .artifacts.uncatalogued",
+    ),
+    (
+        ".environment.settings.inventory.planned",
+        ".artifacts.planned",
+    ),
+    (
+        ".environment.settings.inventory.graphNodes",
+        ".graph.resolvedNodes + .graph.blockedNodes",
+    ),
+    (
+        ".environment.settings.inventory.graphEdges",
+        ".graph.resolvedEdges + .graph.blockedEdges",
+    ),
+    (
+        ".environment.settings.inventory.clusters",
+        ".graph.clusters",
+    ),
+    (
+        ".environment.settings.inventory.sourceProhibited",
+        ".rights.sourceUse.prohibited",
+    ),
+    (
+        ".environment.settings.inventory.sourceUnresolved",
+        ".rights.sourceUse.unresolved",
+    ),
+    (
+        ".environment.settings.inventory.publishable",
+        ".rights.publishable",
+    ),
+    (
+        ".environment.settings.inventory.readingSource",
+        ".plans.readingSource",
+    ),
+    (
+        ".environment.settings.inventory.dependencyEdges",
+        ".plans.dependencyEdges",
+    ),
+    (
+        ".environment.settings.inventory.archiveReads",
+        ".reads.archiveReads",
+    ),
+    (
+        ".environment.settings.inventory.entryBodyReads",
+        ".reads.entryBodyReads",
+    ),
+    (
+        ".environment.settings.inventory.digestsBound",
+        ".boundArtifacts | length",
+    ),
+];
+
+fn verify_m5_carried_figures(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    let record = root.join("evidence/m5/inventory-summary.json");
+    if !record.is_file() {
+        return;
+    }
+    for (claimed_at, derived_from) in M5_CARRIED_FIGURES {
+        let (Ok(claimed), Ok(derived)) = (
+            jq_value(manifest_path, claimed_at),
+            jq_value(&record, derived_from),
+        ) else {
+            violations.push(format!(
+                "evidence/m5/manifest.json {claimed_at} and evidence/m5/inventory-summary.json \
+                 `{derived_from}` cannot both be read, so nothing reconciles them"
+            ));
+            continue;
+        };
+        if claimed == "null" || derived == "null" {
+            violations.push(format!(
+                "evidence/m5/manifest.json {claimed_at} or the record's `{derived_from}` is \
+                 absent; a figure the gate cannot resolve is a figure nothing binds"
+            ));
+            continue;
+        }
+        if claimed != derived {
+            violations.push(format!(
+                "evidence/m5/manifest.json records {claimed_at} {claimed} while \
+                 evidence/m5/inventory-summary.json derives {derived} from `{derived_from}`; one \
+                 inventory produced both"
             ));
         }
     }
@@ -5660,6 +6197,11 @@ mod tests {
         verify_persistence_reflection, verify_review_round_counts, verify_scaffold, verify_spikes,
         verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
         verify_version_boundary, verify_void_limits, visible_commit,
+    };
+    use super::{
+        ROUND_COUNT_EXEMPT, defined_rust_symbols, distinguishable_symbol, named_rust_symbols,
+        round_count_subjects, sources_naming, verify_m5_carried_figures,
+        verify_m5_inventory_arithmetic,
     };
 
     /// A passing gate run, which every fixture below records.
@@ -7920,6 +8462,196 @@ mod tests {
             ]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A summary record whose parts close against every total.
+    fn balanced_summary() -> String {
+        r#"{"artifacts":{"total":10,"catalogued":10,"uncatalogued":0,"planned":10},
+            "graph":{"nodes":12,"resolvedNodes":11,"blockedNodes":1,"edges":20,
+                "resolvedEdges":20,"blockedEdges":0,"clusters":3,"largestCluster":5},
+            "rights":{"sourceUse":{"permitted":4,"conditional":3,"prohibited":2,
+                "unresolved":1},"publishable":0},
+            "surfaces":{"catalogued":10,"unclassified":0},
+            "plans":{"planned":10,"readingSource":4,"notReadingSource":6,
+                "canonicalIds":10,"dependencyEdges":7},
+            "reads":{"producersWatched":2,"archiveReads":99,"entryBodyReads":0},
+            "boundArtifacts":[{"name":"a.json","sha256":"0","holds":"x"}]}"#
+            .to_owned()
+    }
+
+    fn summary_root(label: &str, summary: &str) -> PathBuf {
+        let root = temporary_root(label);
+        let milestone = root.join("evidence/m5");
+        fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
+        fs::write(milestone.join("inventory-summary.json"), summary)
+            .expect("summary should be writable");
+        root
+    }
+
+    #[test]
+    fn a_balanced_inventory_summary_closes_its_own_arithmetic() {
+        let root = summary_root("m5-arithmetic-balanced", &balanced_summary());
+        let mut violations = Vec::new();
+
+        verify_m5_inventory_arithmetic(&root, &mut violations);
+
+        assert!(
+            violations.is_empty(),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn moving_one_part_of_an_inventory_total_stops_it_summing() {
+        // The whole point of recording a decomposition: the total and its pieces
+        // cannot drift apart quietly, whichever of them a hand edits.
+        let root = summary_root(
+            "m5-arithmetic-drift",
+            &balanced_summary().replace(r#""prohibited":2"#, r#""prohibited":3"#),
+        );
+        let mut violations = Vec::new();
+
+        verify_m5_inventory_arithmetic(&root, &mut violations);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("exactly one source-use verdict")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn an_entry_body_read_is_refused_however_the_record_reads() {
+        let root = summary_root(
+            "m5-arithmetic-reads",
+            &balanced_summary().replace(r#""entryBodyReads":0"#, r#""entryBodyReads":1"#),
+        );
+        let mut violations = Vec::new();
+
+        verify_m5_inventory_arithmetic(&root, &mut violations);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("metadata-only method excludes")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_manifest_figure_must_follow_from_the_record_it_summarises() {
+        let root = summary_root("m5-carried-figures", &balanced_summary());
+        let manifest = root.join("evidence/m5/manifest.json");
+        fs::write(
+            &manifest,
+            r#"{"environment":{"settings":{"inventory":{"artifacts":11,"planned":10,
+                "graphNodes":12,"graphEdges":20,"clusters":3,"sourceProhibited":2,
+                "sourceUnresolved":1,"publishable":0,"readingSource":4,
+                "dependencyEdges":7,"archiveReads":99,"entryBodyReads":0,
+                "digestsBound":1}}}}"#,
+        )
+        .expect("manifest should be writable");
+        let mut violations = Vec::new();
+
+        verify_m5_carried_figures(&root, &manifest, &mut violations);
+
+        assert_eq!(
+            violations.len(),
+            1,
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        assert!(
+            violations[0].contains("records .environment.settings.inventory.artifacts 11"),
+            "violation was: {}",
+            violations[0]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_symbol_a_finding_could_not_have_meant_is_not_a_symbol() {
+        // The detection floor this rule discloses, exercised rather than
+        // described: `open` is defined all over this tree and is also a word.
+        assert!(!distinguishable_symbol("open"));
+        assert!(!distinguishable_symbol("run"));
+        assert!(distinguishable_symbol("verify_tracked_contents"));
+        assert!(distinguishable_symbol("LoaderRuntime"));
+    }
+
+    #[test]
+    fn the_tree_decides_what_a_finding_named_rather_than_its_author() {
+        let root = temporary_root("m5-defined-symbols");
+        fs::write(
+            root.join("source.rs"),
+            "fn verify_something_narrow() {}\nstruct WidgetHandle;\nfn go() {}\n",
+        )
+        .expect("source should be writable");
+        let sources = vec!["source.rs".to_owned()];
+
+        let defined = defined_rust_symbols(&root, &sources);
+
+        assert!(defined.contains("verify_something_narrow"));
+        assert!(defined.contains("WidgetHandle"));
+        assert!(
+            !defined.contains("go"),
+            "a two-letter item is below the floor"
+        );
+        assert_eq!(
+            named_rust_symbols("the WidgetHandle is never built", &defined),
+            vec!["WidgetHandle".to_owned()]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn an_anchor_goes_stale_when_a_caller_appears_outside_its_path_set() {
+        let root = temporary_root("m5-anchor-stale");
+        fs::create_dir_all(root.join("elsewhere")).expect("directory should be creatable");
+        fs::write(root.join("source.rs"), "fn verify_something_narrow() {}\n")
+            .expect("source should be writable");
+        fs::write(
+            root.join("elsewhere/caller.rs"),
+            "fn call() { verify_something_narrow(); }\n",
+        )
+        .expect("source should be writable");
+        let sources = vec!["source.rs".to_owned(), "elsewhere/caller.rs".to_owned()];
+
+        let naming = sources_naming(&root, &sources, "verify_something_narrow");
+
+        assert_eq!(naming, vec!["source.rs", "elsewhere/caller.rs"]);
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn the_round_count_rule_sweeps_every_milestone_it_is_not_exempt_from() {
+        let subjects = round_count_subjects();
+
+        // Derived from the manifest list, so a milestone cannot be forgotten into
+        // it — which is exactly how M4 escaped the rule its own record cited.
+        assert_eq!(
+            subjects.len(),
+            MILESTONE_MANIFESTS.len() - ROUND_COUNT_EXEMPT.len()
+        );
+        assert!(
+            subjects
+                .iter()
+                .any(|(record, _)| record == "evidence/m5/review.md"),
+            "M5 must be swept: {subjects:?}"
+        );
+        assert!(
+            !subjects
+                .iter()
+                .any(|(record, _)| record == "evidence/m0/review.md"),
+            "M0 is exempt: {subjects:?}"
+        );
     }
 
     fn temporary_root(label: &str) -> PathBuf {

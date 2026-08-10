@@ -774,3 +774,88 @@ if [ "$menu_diagnostic" != "$menu_expected_diagnostic" ]; then
 	printf '%s\n' "$menu_expected_diagnostic" >&2
 	exit 1
 fi
+
+# The running side, read from the JVM rather than assumed.
+#
+# Ravel asks premain's own JVM which Minecraft classes it can load:
+# `net/minecraft/client/main/Main` is in the client distribution and not the
+# dedicated server one, and `net/minecraft/SharedConstants` is in both. Every run
+# above put the first on its class path, which is why they are clients. These
+# three vary exactly that and nothing else, so what changes in the answer is the
+# class path and not the code.
+#
+# Two of them also carry the composed set's side rule end to end: `client_only`
+# runs on the client and is parked on the dedicated server, `server_only` does the
+# opposite, and both are decided by the `sides` list each mod ships.
+side="$work/side"
+mkdir -p "$side/client" "$side/dedicated" "$side/undeterminable"
+javac -Xlint:all -Werror -d "$side/client" \
+	"$root/jvm/harness/net/minecraft/client/main/Main.java"
+javac -Xlint:all -Werror -d "$side/dedicated" \
+	"$root/jvm/harness/net/minecraft/SharedConstants.java"
+javac -Xlint:all -Werror -cp "$jar" -d "$side/classes" "$root/jvm/harness/SideMain.java"
+
+side_expected='client=mods=1:16:client1:01:41:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:01:411:server_only8:resolved8:required5:false5:false1:0
+dedicated=mods=1:116:dedicated-server1:01:41:113:configuration7:running8:required4:true5:false1:01:210:saved_data7:running8:required4:true5:false1:01:311:server_only7:running8:required4:true5:false1:01:411:client_only8:resolved8:required5:false5:false1:0'
+side_observed=""
+for case in client dedicated; do
+	case_stdout="$side/$case-stdout"
+	case_stderr="$side/$case-stderr"
+	(cd "$side/$case" && java \
+		-javaagent:"$agent" \
+		-Djava.library.path="$library" \
+		-cp ".:$side/classes" SideMain >"$case_stdout" 2>"$case_stderr")
+	side_observed="$side_observed$case=$(head -n 1 "$case_stdout")"$'\n'
+	while IFS= read -r line; do
+		printf '%s\n' "$line" >&2
+	done <"$case_stderr"
+done
+side_observed="${side_observed%$'\n'}"
+
+printf '%s\n' "$side_observed"
+
+if [ "$side_observed" != "$side_expected" ]; then
+	echo >&2
+	echo "the side the JVM was asked for did not decide what ran; expected:" >&2
+	printf '%s\n' "$side_expected" >&2
+	exit 1
+fi
+
+# The missing input. A JVM that can load neither class is one Ravel cannot place,
+# and the launch fails there rather than composing a set for a guessed side.
+undeterminable_stdout="$side/undeterminable-stdout"
+undeterminable_stderr="$side/undeterminable-stderr"
+set +e
+(cd "$side/undeterminable" && java \
+	-javaagent:"$agent" \
+	-Djava.library.path="$library" \
+	-cp ".:$side/classes" SideMain >"$undeterminable_stdout" 2>"$undeterminable_stderr")
+undeterminable_status=$?
+set -e
+
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$undeterminable_stderr"
+
+if [ "$undeterminable_status" -eq 0 ]; then
+	echo >&2
+	echo "a JVM holding no Minecraft at all still started a mod set" >&2
+	exit 1
+fi
+
+for named in "net/minecraft/client/main/Main" "net/minecraft/SharedConstants"; do
+	if ! grep -q "$named" "$undeterminable_stderr"; then
+		echo >&2
+		echo "the refusal did not name \`$named\` as a class it could not load" >&2
+		exit 1
+	fi
+done
+
+# The JVM prints its own abort on standard output, so what is checked is that
+# no mod surface is among it: `SideMain` never ran.
+if grep -q '^mods=' "$undeterminable_stdout"; then
+	echo >&2
+	echo "a launch that cannot name its side still produced a mod surface:" >&2
+	grep '^mods=' "$undeterminable_stdout" >&2
+	exit 1
+fi

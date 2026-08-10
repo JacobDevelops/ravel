@@ -26,10 +26,13 @@
 //! so is integrity verification — nothing here re-hashes a source tree, because
 //! the source it would hash is the source it was compiled from.
 //!
-//! The side itself is still [`Side::Client`] in [`initialize`], because nothing
-//! in the premain environment tells Ravel whether it was attached to a client or
-//! to a dedicated server. That is a separate open question from this one, and
-//! `docs/guide/limits.md` states it.
+//! The side is no longer written here. [`initialize`] asks the JVM it is running
+//! inside which distribution it was started from, and a launch that cannot get an
+//! answer installs nothing rather than composing a set for a guessed side;
+//! `ravel_bootstrap_runtime::side` is that question and the reasons for it. What
+//! it cannot answer is [`Side::IntegratedServer`], which is not a distribution but
+//! a server inside a client process, so a mod declaring only that side is parked
+//! on a client launch. `docs/guide/limits.md` states it.
 
 use std::fmt;
 use std::path::Path;
@@ -37,7 +40,8 @@ use std::path::Path;
 use jni::EnvUnowned;
 use jni::objects::JClass;
 use ravel_bootstrap_runtime::{
-    HookError, environment, install, install_settings, pre_world_report,
+    HookError, SideError, environment, install, install_settings, pre_world_report,
+    side as running_side,
 };
 use ravel_config::{LayerError, LayeredConfiguration, file};
 use ravel_core::{ModId, Side};
@@ -194,9 +198,12 @@ fn admit(side: Side, members: Vec<Member<'_>>) -> Result<Admitted, LaunchError> 
     Ok(composed)
 }
 
-fn initialize() -> Result<(), LaunchError> {
+fn initialize(env: &mut jni::Env<'_>) -> Result<(), LaunchError> {
     let game_directory = std::env::current_dir().map_err(LaunchError::CurrentDirectory)?;
-    let side = Side::Client;
+    // Asked of the JVM this launch is inside rather than written here. Every rule
+    // below depends on it, so a launch that cannot name its side installs nothing
+    // instead of composing a set for a side it guessed.
+    let side = running_side(env).map_err(LaunchError::Side)?;
     let (machine, mods, configurations) = compose(&game_directory, side)?;
     install_settings(side, configurations);
     // The report this host hands over holds no refusal, and that is a statement
@@ -213,7 +220,7 @@ fn initialize() -> Result<(), LaunchError> {
 /// Starts the player-local statically composed set before game methods run.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelInitialize")]
 pub fn ravel_initialize<'local>(mut env: EnvUnowned<'local>, _class: JClass<'local>) {
-    env.with_env(|_| initialize())
+    env.with_env(initialize)
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 
@@ -224,6 +231,8 @@ pub enum LaunchError {
     Jvm(jni::errors::Error),
     /// The process could not name its launch directory.
     CurrentDirectory(std::io::Error),
+    /// The JVM could not say which side this process is.
+    Side(SideError),
     /// The selected pack's override document could not be read.
     PackFile(file::FileError),
     /// The player's existing value document could not be read.
@@ -253,6 +262,7 @@ impl fmt::Display for LaunchError {
             Self::CurrentDirectory(error) => {
                 write!(formatter, "the launch directory cannot be read: {error}")
             }
+            Self::Side(error) => write!(formatter, "the running side cannot be named: {error}"),
             Self::PackFile(error) => {
                 write!(formatter, "pack configuration cannot be read: {error}")
             }
@@ -300,6 +310,7 @@ impl std::error::Error for LaunchError {
         match self {
             Self::Jvm(error) => Some(error),
             Self::CurrentDirectory(error) => Some(error),
+            Self::Side(error) => Some(error),
             Self::PackFile(error) | Self::PlayerFile(error) => Some(error),
             Self::Manifest(error) => Some(error),
             Self::Compatibility(error) => Some(error),

@@ -18,14 +18,27 @@ Nothing in the launch verifies package integrity either. The host hashes no
 source tree, because the source it would hash is the source it was compiled from;
 `cargo xtask package digests --check` is where that check lives today.
 
-**A launch always believes it is a client.** The side is the one thing the host
-still asserts rather than reads: `initialize` passes `Side::Client` because
-nothing in the premain environment says whether Ravel was attached to a client or
-to a dedicated server. Everything below that point honours the side it is given —
-`compose` takes it as an argument and its tests drive all three — so a dedicated
-server launch would park client-only mods correctly the moment the process can
-name itself. Until then, do not read a green side test as proof that a dedicated
-server run has happened.
+**A launch reads its side, but only as far as the distribution it started from.**
+`initialize` no longer asserts a side. It asks its own JVM which Minecraft
+classes it can load: `net/minecraft/client/main/Main` is in the client
+distribution and not in the dedicated server one, and a process that can load
+neither that nor `net/minecraft/SharedConstants` refuses to start a mod set at
+all rather than guessing. So a client launch is a client and a dedicated server
+launch is a dedicated server, and the `sides` list your package ships decides
+which of the two your mod runs on.
+
+Two things that follow are worth planning around. **An integrated server is never
+answered.** It is a server inside a client process rather than a distribution, so
+nothing on a class path can name it: a single-player launch is composed as
+`Side::Client`, and a mod that declares `integrated-server` and not `client` is
+parked there. Declare both if your mod should run in single-player.
+
+**And no dedicated server launch has happened.** That the server distribution
+carries `SharedConstants` and not the client's entry point is Mojang's split, not
+something this repository has measured — no server jar is a pinned input and none
+may be tracked. The JVM harness runs the whole path on a class path built to look
+like each distribution, which proves the side is read and that it decides what
+loads; it is not a launched server.
 
 **A mod cannot send a packet.** You can declare a `PacketContract`, implement
 `Packet`, encode a value, decode it back, and prove every refusal in your own

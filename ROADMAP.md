@@ -979,12 +979,55 @@ reachable executable pack behaviour.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
+| M8-W0 | Carry the loader into a running game | M4 | package discovery in a launch, a build step that composes the discovered set on the player's machine, plus a carry leg for each declared abstraction | a package the player installed — one no Ravel developer compiled — is discovered, resolved, built into the host on the player's machine and observed to act in a running game; every surface M6 recorded as declarable-only is either carried or restated as still declarable-only with its reason |
 | M8-W1 | Pin pack manifest and counterpart versions | M7 | reproducible private pack manifest | package, target, dependency and integrity closure pass |
 | M8-W2 | Port configuration and declarative content | M8-W1 | schema-validated config/data | every M5 inventory record maps to output or evidenced exclusion |
 | M8-W3 | Reimplement custom KubeJS behaviour as Rust modules | M8-W1 | compiled safe-Rust pack modules | scenario equivalence passes; runtime scan finds no JS engine |
 | M8-W4 | Build full scenario suite | M8-W2..W3 | fresh-world and integration scenarios | intended content/progression inventory has complete scenario coverage |
 | M8-W5 | Repeated save/reload soak | M8-W4 | world and migration evidence | repeated clean shutdown/reload cycles preserve state; failure cases fail closed |
-| M8-W6 | Independent pack review and gate | M8-W1..W5 | private review/evidence | no Java/JavaScript mods execute; all pack/scenario suites and M8 gate pass |
+| M8-W6 | Independent pack review and gate | M8-W0..W5 | private review/evidence | no Java/JavaScript mods execute; all pack/scenario suites and M8 gate pass |
+
+M8-W0 exists because nothing else owned the thing every other row here assumes. A
+launch discovers no package today: the shipped host runs only mods it was
+compiled from, which M4 recorded as a deviation and `docs/guide/limits.md` states
+to authors. But `SPEC.md` §3.5 lists "mod discovery from an installed instance"
+among the responsibilities Ravel *owns*, and §16 lists "package discovery and
+validation" among M2's deliverables. So this is not a capability the plan chose
+to defer — it is one the plan believed it already had, and the disclosure that it
+does not was written into a milestone's deviations rather than into a work
+package that restores it.
+
+What that costs is easy to understate. Every counterpart M6 and M7 produce is
+unrunnable by construction until it lands, and three later rows cannot honestly
+pass without it: M8-W4's fresh-world scenarios, M8-W5's save/reload soak, and the
+whole of M10, which asks a player to walk a progression through a running game.
+Those rows would otherwise be met by suites that never launch anything, which is
+the same failure the declarable-only rule above exists to prevent — a green that
+measures the tests rather than the game.
+
+Its *Depends on* column reads M4 rather than M7 because discovery needs the SDK
+and the loader, not the counterparts; it is placed in M8 because M8 is where its
+absence first stops a row from passing. As with M7-W0, the id is a stable name
+rather than a position.
+
+**This row's verification originally read "run by a launched game without being
+compiled into the host", and that was impossible rather than merely hard.** ADG-2
+makes a mod's code Rust source, so a discovered package has a manifest and no
+value: nothing exists to construct or enter. The first implementer said so
+plainly instead of claiming the row, which is the only reason it is being fixed
+here rather than at M8's gate. The correction is that "compiled into the host" is
+the *mechanism*, not the thing to avoid — what must never happen is a Ravel
+developer compiling a player's mod. The host is built on the player's machine
+from whatever that player installed, which is what `evidence/m3/pack-compile.json`
+measured when it timed a 256-mod pack at about 32 seconds cold and 1.6 seconds
+warm, and what the shared toolchain and build cache decision exists to serve.
+
+That splits this row into three pieces rather than two: discovery, which is
+shipped; **a build step that composes the discovered set into a host binary on the
+player's machine**, which nothing owns yet and which is the real distance between
+a validated package and a running one; and the carry legs. The middle piece is
+where "seamless for the player" is won or lost, because it is the one that turns
+installing a mod into waiting for a compile.
 
 ### M9 — Linux performance acceptance
 

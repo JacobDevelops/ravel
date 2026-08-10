@@ -4,19 +4,29 @@ The mod API is experimental and may break. Beyond that, the limits below change
 what you can plan today, and the guide states them because finding them by
 experiment costs a day each.
 
-**A launched game does not discover your package.** The launch path shipped today
-composes a fixed set of mods in Rust source, and it will only ever run a mod this
-binary was compiled from. It reads the `package.json` of each of *those* — the
+**A launched game finds your package and cannot run it.** The launch path shipped
+today composes a fixed set of mods in Rust source, and it will only ever run a mod
+this binary was compiled from. It reads the `package.json` of each of *those* — the
 manifests are compiled in beside the code, `ravel_loader::admitted` turns them
 into the entries the lifecycle holds, and a `sides` list that omits the running
-side parks its mod before any of its code runs. What is missing is discovery: a
-package sitting in an instance directory is found by nothing, so its manifest is
-read by nothing either. You can build a conforming mod and test it thoroughly as
-a library. You cannot yet drop it into an instance and see it run.
+side parks its mod before any of its code runs.
 
-Nothing in the launch verifies package integrity either. The host hashes no
-source tree, because the source it would hash is the source it was compiled from;
-`cargo xtask package digests --check` is where that check lives today.
+What a launch does now do is discover. `ravel_loader::discover` reads
+`ravel/mods` under the game directory, and every package installed there is
+located, its manifest validated against the package schema, and its declared
+source files and provenance record verified against the digests it records. That
+is where launch-time integrity verification lives; `cargo xtask package digests
+--check` is the same check at packaging time.
+
+The leg that is still missing is the one that makes a discovered package run.
+ADG-2 makes a mod's code Rust source the host is built from, so a package you
+install has a manifest and no compiled value behind it — there is nothing for the
+lifecycle to construct. A launch therefore refuses rather than pretending: an
+installed package this build was not compiled from stops the launch and is named,
+and an installed package whose bytes do not match its manifest stops it too. You
+can build a conforming mod, test it thoroughly as a library, and install it into
+an instance to have it validated. You cannot yet drop it into an instance and see
+it run.
 
 **A launch reads its side, but only as far as the distribution it started from.**
 `initialize` no longer asserts a side. It asks its own JVM which Minecraft

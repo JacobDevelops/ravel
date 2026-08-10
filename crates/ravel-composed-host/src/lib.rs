@@ -19,12 +19,17 @@
 //!
 //! # What this still does not do
 //!
-//! The manifests are compiled in rather than discovered, which is what a
-//! statically composed host is: ADG-2 makes the mod set Rust source this binary
-//! was built from, so a manifest for a mod whose code is not compiled in has
-//! nothing to name. Discovery of an arbitrary package on disk is still open, and
-//! so is integrity verification — nothing here re-hashes a source tree, because
-//! the source it would hash is the source it was compiled from.
+//! The manifests it *admits* are compiled in rather than discovered, which is
+//! what a statically composed host is: ADG-2 makes the mod set Rust source this
+//! binary was built from, so a manifest for a mod whose code is not compiled in
+//! has nothing to name.
+//!
+//! What is no longer open is discovery itself. [`account_for_installed`] asks
+//! [`ravel_loader::discover`] what the instance holds, which validates every
+//! installed package's manifest and verifies its declared digests, so a launch
+//! now hashes source trees it did not compile. What it cannot do is run one: a
+//! discovered package has no value behind it, so the launch is refused and the
+//! package named rather than silently ignored.
 //!
 //! The side is no longer written here. [`initialize`] asks the JVM it is running
 //! inside which distribution it was started from, and a launch that cannot get an
@@ -46,7 +51,9 @@ use ravel_bootstrap_runtime::{
 use ravel_config::{LayerError, LayeredConfiguration, file};
 use ravel_core::{ModId, Side};
 use ravel_host_api::HostMod;
-use ravel_loader::{DriveError, LifecycleEntry, LifecycleMachine, admitted, drive};
+use ravel_loader::{
+    DiscoveryRefused, DriveError, LifecycleEntry, LifecycleMachine, admitted, discover, drive,
+};
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
 use ravel_test_mod_client_only::{ClientOnlyMod, work_log};
@@ -108,41 +115,80 @@ pub fn compose(game_directory: &Path, side: Side) -> Result<Composition, LaunchE
         .configure(&resolved)
         .map_err(LaunchError::Configuration)?;
 
-    let composed = admit(
-        side,
-        vec![
-            Member {
-                package: CONFIGURATION_PACKAGE,
-                host: Box::new(configuration),
-            },
-            // The world-owning half of the composition. Until this was here no mod
-            // in a running build owned world data, so the saved-data round trip
-            // could not be observed in a launch at all.
-            Member {
-                package: SAVED_DATA_PACKAGE,
-                host: Box::new(SavedDataMod::new()),
-            },
-            // The client-only half. Its own module doc calls itself the mod the
-            // side gate is about, and until it was composed here nothing in a
-            // launch could show a declaration keeping code off a server.
-            Member {
-                package: CLIENT_ONLY_PACKAGE,
-                host: Box::new(ClientOnlyMod::new(side, &work_log())),
-            },
-            // The other half of the same rule. With only the member above, a
-            // launch proved a declaration keeping code off a server and nothing
-            // proved the reverse, so the shipped set showed one direction of a
-            // two-directional rule.
-            Member {
-                package: SERVER_ONLY_PACKAGE,
-                host: Box::new(ServerOnlyMod::new(side, &server_work_log())),
-            },
-        ],
-    )?;
+    let members = vec![
+        Member {
+            package: CONFIGURATION_PACKAGE,
+            host: Box::new(configuration),
+        },
+        // The world-owning half of the composition. Until this was here no mod
+        // in a running build owned world data, so the saved-data round trip
+        // could not be observed in a launch at all.
+        Member {
+            package: SAVED_DATA_PACKAGE,
+            host: Box::new(SavedDataMod::new()),
+        },
+        // The client-only half. Its own module doc calls itself the mod the
+        // side gate is about, and until it was composed here nothing in a
+        // launch could show a declaration keeping code off a server.
+        Member {
+            package: CLIENT_ONLY_PACKAGE,
+            host: Box::new(ClientOnlyMod::new(side, &work_log())),
+        },
+        // The other half of the same rule. With only the member above, a
+        // launch proved a declaration keeping code off a server and nothing
+        // proved the reverse, so the shipped set showed one direction of a
+        // two-directional rule.
+        Member {
+            package: SERVER_ONLY_PACKAGE,
+            host: Box::new(ServerOnlyMod::new(side, &server_work_log())),
+        },
+    ];
 
+    account_for_installed(game_directory, &members)?;
+    let composed = admit(side, members)?;
     let (machine, mods) = drive(side, composed).map_err(LaunchError::Drive)?;
 
     Ok((machine, mods, vec![resolved]))
+}
+
+/// Discovers what the instance has installed and refuses anything unrunnable.
+///
+/// This is [`ravel_loader::discover`]'s caller in a launch, and it is where a
+/// package that was never compiled into this binary stops being invisible.
+/// Discovery locates each installed package, validates its manifest against the
+/// package schema, and verifies its declared source and provenance digests — so
+/// a launch that finds a package now checks its integrity, which `SPEC.md` §10
+/// requires and no launch did before.
+///
+/// What it cannot do is run one. ADG-2 makes a mod's code Rust source this
+/// binary was built from, so a package installed into an instance has a manifest
+/// and no value: there is nothing to construct and nothing to enter. The honest
+/// answer is to refuse the launch and name it. Admitting it would order a mod
+/// with no code behind it; ignoring it would start a game the player believes
+/// holds a mod that is not there, which is the failure `SPEC.md` §9.2's
+/// pre-world report exists to prevent.
+///
+/// An installed package that *is* a compiled-in member is accounted for and its
+/// integrity checked, and the document [`admit`] admits stays the compiled-in
+/// one: the code that will run came from that source tree, so the manifest that
+/// describes it is the one packaged beside it.
+///
+/// # Errors
+///
+/// Returns [`LaunchError::Discovery`] when the instance's packages cannot be
+/// established, and [`LaunchError::NotComposed`] when an installed package names
+/// no compiled-in value.
+fn account_for_installed(game_directory: &Path, members: &[Member<'_>]) -> Result<(), LaunchError> {
+    for installed in discover(game_directory)
+        .map_err(LaunchError::Discovery)?
+        .packages()
+    {
+        let id = &installed.manifest().id;
+        if !members.iter().any(|member| member.host.id() == id) {
+            return Err(LaunchError::NotComposed(id.clone()));
+        }
+    }
+    Ok(())
 }
 
 /// Turns the composed members into the entries the lifecycle is driven from.
@@ -237,6 +283,10 @@ pub enum LaunchError {
     PackFile(file::FileError),
     /// The player's existing value document could not be read.
     PlayerFile(file::FileError),
+    /// The instance's installed packages could not be established.
+    Discovery(DiscoveryRefused),
+    /// An installed package names no value this binary was compiled from.
+    NotComposed(ModId),
     /// A composed member's shipped package manifest does not parse.
     Manifest(ManifestError),
     /// A composed member declares a Ravel or Minecraft version this build is not.
@@ -269,6 +319,15 @@ impl fmt::Display for LaunchError {
             Self::PlayerFile(error) => {
                 write!(formatter, "player configuration cannot be read: {error}")
             }
+            Self::Discovery(error) => write!(
+                formatter,
+                "the installed packages cannot be established: {error}"
+            ),
+            Self::NotComposed(mod_id) => write!(
+                formatter,
+                "`{mod_id}` is installed and this build was not compiled from it, so its code \
+                 cannot run"
+            ),
             Self::Manifest(error) => {
                 write!(formatter, "a composed package does not parse: {error}")
             }
@@ -312,11 +371,12 @@ impl std::error::Error for LaunchError {
             Self::CurrentDirectory(error) => Some(error),
             Self::Side(error) => Some(error),
             Self::PackFile(error) | Self::PlayerFile(error) => Some(error),
+            Self::Discovery(error) => Some(error),
             Self::Manifest(error) => Some(error),
             Self::Compatibility(error) => Some(error),
             Self::Resolution(error) => Some(error),
             Self::Layer(error) => Some(error),
-            Self::Composition(_) | Self::Configuration(_) => None,
+            Self::Composition(_) | Self::NotComposed(_) | Self::Configuration(_) => None,
             Self::Drive(error) => Some(error),
             Self::Install(error) => Some(error),
         }
@@ -335,8 +395,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        CLIENT_ONLY_PACKAGE, CONFIGURATION_PACKAGE, Member, PACK_CONFIGURATION_PATH,
-        SAVED_DATA_PACKAGE, SERVER_ONLY_PACKAGE, admit, compose,
+        CLIENT_ONLY_PACKAGE, CONFIGURATION_PACKAGE, DiscoveryRefused, LaunchError, Member,
+        PACK_CONFIGURATION_PATH, SAVED_DATA_PACKAGE, SERVER_ONLY_PACKAGE, admit, compose,
     };
 
     fn directory(name: &str) -> std::path::PathBuf {
@@ -636,6 +696,100 @@ mod tests {
             declared,
             "the manifest and the mod disagree about the versions it can read"
         );
+    }
+
+    /// The bytes an installed fixture carries, and the digests they hash to.
+    ///
+    /// The digests came from `sha256sum` rather than from the library the code
+    /// under test hashes with, so the fixture and the check do not agree by
+    /// construction. `OTHER_DIGEST` is the digest of bytes no fixture writes.
+    const INSTALLED_SOURCE: &[u8] = b"pub fn load() {}\n";
+    const INSTALLED_RECORD: &[u8] = br#"{"origin":"example"}"#;
+    const SOURCE_DIGEST: &str = "d43fb0c057531a1578825aa660a5cc1b415a10ae8eb1b42994ca7ceda27d6706";
+    const RECORD_DIGEST: &str = "5cf5e6735c38fa43af69f9fe2210ca13d9fd75cc98cd9650ee969c0498a28ab0";
+    const OTHER_DIGEST: &str = "a126bbfe4662a8d151f8e62afbb278a4a273e01fe0a88fc1545b25d017f19fb3";
+
+    /// Installs a package into an instance the way a player would.
+    fn install(game: &std::path::Path, id: &str, source_digest: &str) {
+        let running = environment();
+        let root = game
+            .join(ravel_loader::PACKAGES_DIRECTORY)
+            .join(format!("{id}-1.0.0"));
+        std::fs::create_dir_all(root.join("src")).expect("a package directory is creatable");
+        std::fs::write(
+            root.join(ravel_loader::MANIFEST_FILE),
+            format!(
+                r#"{{
+                  "schemaVersion": 1,
+                  "id": "{id}",
+                  "version": "1.0.0",
+                  "compatibility": {{
+                    "ravel": ">={ravel}",
+                    "minecraft": ["{minecraft}"]
+                  }},
+                  "sides": ["client"],
+                  "authors": [{{ "name": "Ravel" }}],
+                  "license": "MIT",
+                  "source": {{
+                    "repository": "https://example.invalid/{id}",
+                    "files": [{{ "path": "src/lib.rs", "sha256": "{source_digest}" }}]
+                  }},
+                  "provenance": {{
+                    "record": "provenance.json",
+                    "sha256": "{RECORD_DIGEST}"
+                  }}
+                }}"#,
+                ravel = running.ravel,
+                minecraft = running.minecraft,
+            ),
+        )
+        .expect("manifest written");
+        std::fs::write(root.join("src/lib.rs"), INSTALLED_SOURCE).expect("source written");
+        std::fs::write(root.join("provenance.json"), INSTALLED_RECORD).expect("record written");
+    }
+
+    /// A launch now finds what an instance holds, and says so when it cannot run it.
+    #[test]
+    fn a_package_installed_into_the_instance_that_this_build_cannot_run_refuses_the_launch() {
+        let game = directory("installed-stranger");
+        install(&game, "stranger_mod", SOURCE_DIGEST);
+
+        let Err(refused) = compose(&game, Side::Client) else {
+            panic!("a package no value was compiled from should refuse the launch");
+        };
+        let LaunchError::NotComposed(mod_id) = &refused else {
+            panic!("the refusal should name the installed package: {refused:?}");
+        };
+        assert_eq!(mod_id.as_str(), "stranger_mod");
+        assert!(refused.to_string().contains("stranger_mod"));
+    }
+
+    /// The integrity check `docs/guide/limits.md` recorded as absent from a launch.
+    #[test]
+    fn an_installed_package_whose_source_is_not_what_it_declares_refuses_the_launch() {
+        let game = directory("installed-altered");
+        install(&game, "client_only", OTHER_DIGEST);
+
+        let Err(refused) = compose(&game, Side::Client) else {
+            panic!("a package whose source was altered should refuse the launch");
+        };
+        assert!(
+            matches!(
+                refused,
+                LaunchError::Discovery(DiscoveryRefused::Integrity { .. })
+            ),
+            "{refused:?}"
+        );
+    }
+
+    /// And an intact package this build *was* compiled from still starts the set.
+    #[test]
+    fn an_installed_package_this_build_was_compiled_from_launches() {
+        let game = directory("installed-known");
+        install(&game, "client_only", SOURCE_DIGEST);
+
+        let (machine, _, _) = compose(&game, Side::Client).expect("the composition should start");
+        assert_eq!(machine.state(&client_owner()), Ok(LifecycleState::Running));
     }
 
     #[test]

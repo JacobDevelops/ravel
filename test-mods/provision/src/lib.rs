@@ -208,3 +208,6 @@ mod tests {
         assert_eq!(declared.version(), VERSION);
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(ProvisionMod::new());

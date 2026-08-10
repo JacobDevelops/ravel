@@ -140,3 +140,6 @@ mod tests {
         }
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(AudioMod::new());

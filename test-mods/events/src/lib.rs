@@ -247,3 +247,6 @@ mod tests {
         assert_eq!(events.steps().len(), 2);
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(EventsMod::new());

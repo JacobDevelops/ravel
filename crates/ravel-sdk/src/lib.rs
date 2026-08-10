@@ -226,6 +226,87 @@ pub use serde_json::Value as JsonValue;
 /// ```
 pub use serde_json::json;
 
+/// Names the value a host constructs this package's mod from.
+///
+/// `#[declare_mod]` binds an identity to a type. This binds the *package* to a
+/// value, which is the other half a host needs: a mod a player installed arrives
+/// as source, and the host built for it on that machine has to write down an
+/// expression that produces the mod. This macro is where that expression lives,
+/// so it is written once, by the author, in their own crate.
+///
+/// Write it once at the root of the crate a package builds. A crate that exports
+/// nothing fails the generated host's compile naming itself, rather than
+/// yielding a host quietly one mod smaller.
+///
+/// # When the mod needs to know its side
+///
+/// A host builds its members after it has asked the JVM which side it is, so a
+/// mod whose construction depends on the side can name it. The second form binds
+/// the running [`Side`] and the expression may use it. Prefer the first form;
+/// reach for this one only when the value cannot be built without the side.
+///
+/// # Examples
+///
+/// ```
+/// use ravel_sdk::{LifecycleState, Mod, ModError, Side, declare_mod, export_mod};
+///
+/// #[derive(Default)]
+/// struct Example;
+///
+/// #[declare_mod(id = "example")]
+/// impl Mod for Example {
+///     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+///         let _ = state;
+///         Ok(())
+///     }
+/// }
+///
+/// export_mod!(Example::default());
+///
+/// // What a host calls, with the side it is running on.
+/// assert_eq!(__ravel_entry(Side::Client).id().as_str(), "example");
+/// ```
+///
+/// A mod that is built differently on each side:
+///
+/// ```
+/// use ravel_sdk::{LifecycleState, Mod, ModError, Side, declare_mod, export_mod};
+///
+/// struct Example {
+///     side: Side,
+/// }
+///
+/// #[declare_mod(id = "example")]
+/// impl Mod for Example {
+///     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+///         let _ = state;
+///         Ok(())
+///     }
+/// }
+///
+/// export_mod!(|side| Example { side });
+/// ```
+#[macro_export]
+macro_rules! export_mod {
+    (|$side:ident| $value:expr) => {
+        /// The mod this package builds, as a host constructs it.
+        ///
+        /// Written by `ravel_sdk::export_mod!`. A host calls it by this name and
+        /// nothing else calls it at all.
+        #[doc(hidden)]
+        pub fn __ravel_entry(side: $crate::Side) -> ::std::boxed::Box<dyn $crate::Mod> {
+            let $side = side;
+            ::std::boxed::Box::new($value)
+        }
+    };
+    ($value:expr) => {
+        $crate::export_mod!(|__ravel_side| {
+            let _ = __ravel_side;
+            $value
+        });
+    };
+}
+
 /// A type `#[declare_mod]` has bound an identity to.
 ///
 /// The attribute implements this, and it is the only thing in the SDK an author
@@ -299,7 +380,9 @@ pub mod prelude {
     pub use crate::sides::ClientOnly;
     pub use crate::tags::TagId;
     pub use crate::world_shaping::{ShapingRecord, WorldShaping};
-    pub use crate::{Declared, LifecycleState, Mod, ModError, ModId, Side, declare_mod};
+    pub use crate::{
+        Declared, LifecycleState, Mod, ModError, ModId, Side, declare_mod, export_mod,
+    };
 }
 
 #[cfg(test)]

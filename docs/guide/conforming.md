@@ -69,6 +69,11 @@ put a path in a refusal detail expecting a player to see it.
   be named from it. Call the method on the value, or name `ravel_sdk::JsonValue`.
 - **Naming a tag member the owning mod never declared.** Refused even when that
   mod is present, at pack validation.
+- **A crate that never writes `export_mod!`.** Your own tests construct your mod
+  by name and pass; the host built on a player's machine cannot, because nothing
+  in your crate says which value to construct. It is caught — the build refuses
+  and names your crate — but it is caught on the player's machine rather than in
+  your suite, so write the line when you write the type.
 - **Expecting a rendering path.** There is none.
 - **Expecting registries beyond block, item, recipe, command.** There are none.
 - **A manifest `id` that differs from `#[declare_mod(id = …)]`.** *Nothing checks

@@ -161,3 +161,6 @@ mod tests {
         assert_eq!(refusal.unknown_contributors(), [absent]);
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(RenderStagesMod::new());

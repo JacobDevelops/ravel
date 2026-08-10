@@ -302,3 +302,6 @@ mod tests {
         assert!(error.contains("other_mod"), "{error}");
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(ConfigurationMod::new());

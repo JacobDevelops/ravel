@@ -1318,3 +1318,6 @@ mod tests {
         assert!(!detail.contains('\\'), "{detail}");
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(|side| WaystoneLedger::new(side));

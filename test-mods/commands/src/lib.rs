@@ -325,3 +325,6 @@ mod tests {
         assert_eq!(commands.invocations()[0].side, Side::DedicatedServer);
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(CommandsMod::new());

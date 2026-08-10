@@ -148,3 +148,6 @@ mod tests {
         assert_eq!(first.entered(), steps);
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(NoopMod::new());

@@ -37,6 +37,8 @@ pub mod first_mod {
         }
     }
 
+    export_mod!(CopperLanterns::default());
+
     impl CopperLanterns {
         /// Returns the tick count the guide's struct carries.
         #[must_use]
@@ -117,7 +119,8 @@ pub mod content {
 
 /// `docs/guide/running.md` — Sides.
 pub mod client_only {
-    use ravel_sdk::sides::{ClientOnly, Side};
+    use ravel_sdk::prelude::*;
+    use ravel_sdk::sides::ClientOnly;
 
     /// What a mod keeps because it is on the client.
     #[derive(Default)]
@@ -149,9 +152,21 @@ pub mod client_only {
         }
     }
 
-    // Outside the copied lines: the two entry points the crate's tests drive the
-    // snippet through, because the snippet's own methods are the mod's private
-    // business and an author writes no more than what the guide shows.
+    // Outside the copied lines, and below them so the lines above stay a
+    // contiguous copy of the guide: the mod half this snippet's struct belongs
+    // to, the export `docs/guide/your-first-mod.md` shows for a side-dependent
+    // mod, and the two entry points the crate's tests drive the snippet
+    // through.
+    #[declare_mod(id = "copper_lanterns")]
+    impl Mod for CopperLanterns {
+        fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+            let _ = state;
+            Ok(())
+        }
+    }
+
+    export_mod!(|side| CopperLanterns::new(side));
+
     impl CopperLanterns {
         /// Builds the snippet's mod for `side` and records the one line it records.
         #[must_use]

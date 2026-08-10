@@ -365,3 +365,6 @@ mod tests {
         assert!(host.answered().is_empty());
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(NetworkingMod::default());

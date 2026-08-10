@@ -142,3 +142,6 @@ mod tests {
         assert_eq!(refusal.arrived(), [WorldShapingMod::declared_id().clone()]);
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(WorldShapingMod::new());

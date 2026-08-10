@@ -170,3 +170,6 @@ mod tests {
         assert!(!POINT.happens_on(Side::Client));
     }
 }
+
+// The value a host constructs this package's mod from.
+ravel_sdk::export_mod!(InterceptionMod::new());

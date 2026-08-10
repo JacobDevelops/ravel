@@ -921,6 +921,26 @@ reads as an independent design. That is a weak instrument and it is the stronges
 one available, so its answers are recorded over time rather than taken one at a
 time.
 
+**It then happened, on the first counterpart written, and the sample was not what
+caught it.** RVL-097's blind implementer produced a parallel handler trio — an
+entry handler, a configuration handler and an integration loader — plus an
+executable taxonomy of the entry kinds, none of it wired to the `Mod` lifecycle
+the SDK actually exposes. Every identifier rule passed it, exactly as the
+paragraph above predicted. What caught it was review of the *design*, before any
+sampling of the finished article, and the cause was found one step upstream: the
+specification had handed the implementer that structure, so a blind implementer
+reproducing it faithfully was behaving correctly. Fixing only the Rust would have
+left the defect loaded and pointed at every entry after it.
+
+So a cheaper instrument than sampling exists, and M6-W5 gains it: **a
+specification is reviewed for structure before an implementer sees it, and any
+noun in it that exists only because the original had one is removed.** That
+review needs no source access, no comparison and no judgement about a finished
+counterpart — it is one reading of one document asking one question. It cannot
+replace the sample, because prose can carry shape without naming a single
+structural noun; it catches the loud cases early and cheaply and leaves the sample
+for the quiet ones.
+
 **Rewrite integrity is M6's obligation to enforce, not to assert.** M6 ships a
 check of the same shape as M5-W7's public-safety screen: a published lexicon of the
 names a Ravel counterpart is allowed to carry, plus an identifier set derived

@@ -4412,9 +4412,9 @@ const M4_RECORDS: &[(&str, &str, &str)] = &[
     (
         // M4's deliverable is a surface, so the record that inventories it is
         // held to naming what each work package shipped and what it left unproven.
-        // The lists themselves are reconciled against the tree by
-        // `verify_m4_surface`, because a list nothing recomputes is a count in
-        // different brackets.
+        // The lists themselves are held against the tree by `verify_m4_surface`,
+        // which fails on a name the repository no longer holds and says nothing
+        // about a surface added after M4 closed.
         "sdk-surface.json",
         r#".milestone == "M4"
             and .workPackage == "M4-W8"
@@ -4445,23 +4445,35 @@ const M4_DECISIONS: &[&str] = &["adg-2-mod-execution.md", "adg-3-bindings.md"];
 /// Reconciles the recorded SDK surface against the repository it inventories.
 ///
 /// A list in an evidence record is a count in prose wearing different brackets:
-/// nothing recomputed it, so a crate added or a guide page deleted after the
-/// record was written left it describing a tree that no longer exists. Each list
-/// is compared by name rather than by length, in both directions, so a rename
-/// fails as loudly as an addition and a deletion is not absorbed by an addition
-/// somewhere else in the same list.
+/// nothing recomputed it, so a guide page deleted after the record was written
+/// left it naming a document the tree no longer holds. Each list is compared by
+/// name rather than by length, so a rename fails as loudly as a deletion instead
+/// of being absorbed by whatever took the old name's place.
 ///
-/// The crate, test-mod and example lists are compared against the constants
-/// `CLAUDE.md` already makes an author maintain, and those constants are
-/// themselves compared against their directories by [`verify_inventory`], so this
-/// check inherits that reconciliation rather than restating it.
+/// The comparison runs one way only: every name the record holds has to exist,
+/// and a surface the repository holds that the record does not name is not a
+/// violation. M4 is closed, and a closed record measures the tree at closure
+/// rather than asserting anything about later trees. Holding it to the current
+/// tree made every later milestone that adds a crate, test mod, example, guide
+/// page or conformance suite edit M4's closed evidence to stay green — a silent
+/// amendment with no trail, which is worse than the drift it was catching.
+/// Accounting for a newly added surface belongs to the milestone that adds it.
+///
+/// What that withdraws: for crates, test mods and examples, nothing, because
+/// `CRATE_NAMES`, `TEST_MOD_NAMES` and `EXAMPLE_NAMES` are reconciled against
+/// their own directories by [`verify_inventory`] and this check only ever
+/// inherited that. For `guideDocuments` and `conformanceSuites` there is no such
+/// constant, so a guide page or conformance suite added after M4 closed is now
+/// checked by nothing here. That coverage is deliberately given up rather than
+/// replaced: the milestone that adds the file is the one that owes evidence for
+/// it.
 fn verify_m4_surface(root: &Path, violations: &mut Vec<String>) {
     let record = root.join("evidence/m4/sdk-surface.json");
     if !record.is_file() {
         // Its absence is already a violation where the record set is checked.
         return;
     }
-    let expected = [
+    let present = [
         ("crates", listed_names(CRATE_NAMES)),
         ("testMods", listed_names(TEST_MOD_NAMES)),
         ("examples", listed_names(EXAMPLE_NAMES)),
@@ -4471,7 +4483,7 @@ fn verify_m4_surface(root: &Path, violations: &mut Vec<String>) {
             files_named(root, "tests/conformance/tests", "rs"),
         ),
     ];
-    for (field, expected) in expected {
+    for (field, present) in present {
         let recorded = match jq_value(&record, &format!(".inventory.{field}[]?")) {
             Ok(value) => value
                 .lines()
@@ -4484,13 +4496,7 @@ fn verify_m4_surface(root: &Path, violations: &mut Vec<String>) {
                 continue;
             }
         };
-        for missing in expected.difference(&recorded) {
-            violations.push(format!(
-                "evidence/m4/sdk-surface.json omits {missing} from inventory.{field}, which the \
-                 repository holds"
-            ));
-        }
-        for extra in recorded.difference(&expected) {
+        for extra in recorded.difference(&present) {
             violations.push(format!(
                 "evidence/m4/sdk-surface.json names {extra} under inventory.{field}, which the \
                  repository does not hold"
@@ -8291,15 +8297,15 @@ mod tests {
     }
 
     #[test]
-    fn a_surface_inventory_that_has_drifted_from_the_repository_is_reported() {
-        // Both directions, in one record: a guide page the tree holds and the
-        // record omits, and a suite the record names and the tree does not. An
-        // inventory checked by length alone would report neither.
+    fn a_surface_inventory_naming_what_the_repository_lost_is_reported() {
+        // A guide page and a conformance suite the record names and the tree
+        // does not: the deletion falsifies what M4 measured, and an inventory
+        // checked by length alone would report neither.
         let root = surface_root(
             "surface-drifted",
-            &["README.md", "limits.md"],
+            &["README.md"],
             &["one.rs"],
-            &surface_record(&["README.md"], &["one.rs", "deleted.rs"]),
+            &surface_record(&["README.md", "removed.md"], &["one.rs", "deleted.rs"]),
         );
 
         let mut violations = Vec::new();
@@ -8308,12 +8314,31 @@ mod tests {
         assert_eq!(
             violations,
             [
-                "evidence/m4/sdk-surface.json omits limits.md from inventory.guideDocuments, \
-                 which the repository holds",
+                "evidence/m4/sdk-surface.json names removed.md under inventory.guideDocuments, \
+                 which the repository does not hold",
                 "evidence/m4/sdk-surface.json names deleted.rs under inventory.conformanceSuites, \
                  which the repository does not hold",
             ]
         );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_surface_inventory_omitting_what_a_later_milestone_added_is_accepted() {
+        // The record measured M4's tree; a guide page and a conformance suite
+        // added afterwards are the adding milestone's to account for. Reporting
+        // them here would make every later milestone edit M4's closed evidence.
+        let root = surface_root(
+            "surface-later-additions",
+            &["README.md", "added-later.md"],
+            &["one.rs", "added_later.rs"],
+            &surface_record(&["README.md"], &["one.rs"]),
+        );
+
+        let mut violations = Vec::new();
+        verify_m4_surface(&root, &mut violations);
+
+        assert!(violations.is_empty(), "{violations:?}");
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 

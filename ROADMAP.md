@@ -992,6 +992,31 @@ the standard suite, implements its accepted behaviour specification, records
 provenance and rights status, and participates in dependency/registry closure.
 A stub or metadata-only placeholder does not count.
 
+**A counterpart implements what the original adds to Ravel, not what the original
+added to its own loader.** The first foundation entry attempted made this
+concrete. Its central idea is declarative registration — declare a configuration
+object per thing, hand the set to a handler that registers each into the right
+registry, gives it a configuration entry and makes it disableable. Upstream needed
+a library for that because its loader did not provide it. **Ravel provides it**:
+`register` with a `Registrar`, `configuration_declaration` and `configure`, and
+the accepted decision that configuration is declared in data. A counterpart
+reimplementing that mechanism would duplicate the platform, and a dependent mod
+would then reach the platform through a second, worse door.
+
+So an entry's counterpart is scoped to the remainder: the content it genuinely
+ships, and anything it offers dependents that Ravel does not — offered through
+`services`, which is the only cross-mod capability surface and needs no second
+one. Where that remainder is small the counterpart is small, and where it is empty
+the honest output is a record saying the platform absorbed the entry rather than a
+package built to look busy. **An entry that reduces to nothing is a result, not a
+failure**, and it must be recorded as one rather than filled with invented content
+— the same attempt reached for dummy registry keys to fill the shape, which would
+have put false claims about the pack's contents into registry closure.
+
+How far this reduces the library is unmeasured. M7-W1's routing counts, per entry,
+how much is absorbed by capability Ravel already ships; until that count exists the
+235 figure is an upper bound on packages rather than an estimate of work.
+
 ### M8 — Complete Ravel pack
 
 **Purpose:** assemble the counterpart library with pinned configuration and all

@@ -12,7 +12,7 @@
   },
   "gameLaunch": {
     "occurred": false,
-    "whyItIsNotHere": "M4 is the SDK breadth milestone and every surface it added is exercised inside the gate. No game process was started for it, so nothing recorded here observes Ravel inside Minecraft. That is a field rather than a sentence because it is the single most misreadable thing about this record: M3's matrix of the same name is an operator-run native launch, and this one is not. What a launch would add is the half nothing here reaches — a mod discovered from a package, a declared side honoured by a running host, a packet crossing a connection — and each of those is recorded as an owed obligation in evidence/m4/manifest.json rather than as a gap this record closes.",
+    "whyItIsNotHere": "M4 is the SDK breadth milestone and every surface it added is exercised inside the gate. No game process was started for it, so nothing recorded here observes Ravel inside Minecraft. That is a field rather than a sentence because it is the single most misreadable thing about this record: M3's matrix of the same name is an operator-run native launch, and this one is not. What a launch would add is the half nothing here reaches — a mod discovered from a package, a declared side honoured by a host inside the game rather than by the harness that stands in for it, a packet crossing a connection — and each of those is recorded as an owed obligation in evidence/m4/manifest.json rather than as a gap this record closes.",
     "whatWouldChangeIt": "A launch campaign of the shape M3-W7 ran. It needs an operator, the display, and the pinned local fixture, and no M4 work package owns one."
   },
   "resultCeiling": "A reader can recompute every row below by running the named command on a checkout with the devenv shell. That is the whole of what this record attests, and it is deliberately more recomputable and less far-reaching than M3's matrix: every row under processes is a gate process, so the matrix proves the gate passes and proves nothing about a running game. The one row that is not a gate process is under checksOutsideTheGate and is labelled as such, because a table headed by ravel:verify's exit status must not carry a row that command never ran.",
@@ -49,7 +49,7 @@
       "command": "devenv tasks run ravel:typecheck",
       "exitStatus": 0,
       "proves": "The workspace type-checks with all features, and the tracked JSON documents validate against the schemas under schemas/, which is where a package manifest's grammar is decided.",
-      "doesNotProve": "That a manifest validating against the schema describes a mod any launch will load. Nothing in a launch path reads a package manifest at all."
+      "doesNotProve": "That a manifest validating against the schema describes a mod any launch will load. At the recorded run nothing in a launch path read a package manifest at all; the composed host was given manifests to admit its members from after this milestone closed, and even then only the manifests compiled in beside the code, so nothing here reaches a manifest a launch discovered."
     },
     {
       "surface": "lint",
@@ -141,7 +141,7 @@
   ],
   "whatAGreenMatrixDoesNotSay": [
     "That a mod can send a packet. Nothing in Ravel carries a mod's packet to the other end; the encode and decode halves are what these rows exercise.",
-    "That a mod's declared sides are honoured. The shipped host reads no manifest, so no row here observes a side declaration having an effect.",
+    "That a mod's declared sides are honoured. The shipped host read no manifest at the recorded run, so no row here observed a side declaration having an effect. That was repaired after the milestone closed and the JVM harness row now does observe it, which is a fact about the tree rather than about this record; what stays true of every row is that none of them is a game process.",
     "That a written pack can be read back. No row reads one with Ravel.",
     "That a general crate runs against the second version's target table. The version rows prove a generator run and a name sweep, and one build compiles one table."
   ],

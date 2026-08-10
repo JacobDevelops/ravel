@@ -27,6 +27,7 @@
       "ravel-testkit"
     ],
     "testMods": [
+      "audio",
       "client-only",
       "commands",
       "configuration",
@@ -35,13 +36,17 @@
       "events",
       "failure-cases",
       "inter-mod-service",
+      "interception",
       "networking",
       "noop",
       "registries",
+      "render-stages",
       "resources",
       "saved-data",
+      "server-data",
       "server-only",
-      "waystone-ledger"
+      "waystone-ledger",
+      "world-shaping"
     ],
     "examples": [
       "content-mod",
@@ -73,6 +78,7 @@
       "profiling_report.rs",
       "saved_data.rs",
       "sdk_boundary.rs",
+      "sdk_gaps.rs",
       "sides_and_packets.rs"
     ]
   },
@@ -108,7 +114,7 @@
         "test-mods/networking",
         "test-mods/client-only"
       ],
-      "notProven": "Two things, and both are disclosed rather than implied. A mod cannot send a packet: encoding and decoding are real and checked, and the leg after encoding does not exist — no wire adapter is written, no launch path moves a byte on a mod's behalf, and Mod::receive_packet has no caller in a running game. And no mod's declared sides are honoured by anything that runs: crates/ravel-composed-host/src/lib.rs hardcodes both lifecycle entries and the sides each runs on, and nothing in a launch path calls ravel_loader::admitted."
+      "notProven": "Two things, and both are disclosed rather than implied. A mod cannot send a packet: encoding and decoding are real and checked, and the leg after encoding does not exist — no wire adapter is written, no launch path moves a byte on a mod's behalf, and Mod::receive_packet has no caller in a running game. And no mod's declared sides were honoured by anything that runs: at closure crates/ravel-composed-host/src/lib.rs hardcoded both lifecycle entries and the sides each runs on, and nothing in a launch path called ravel_loader::admitted. That half was repaired after the milestone closed — each member now ships the manifest it is packaged under, the composed host admits the set through ravel_loader::admitted, and the running side is read from the JVM rather than assumed — and this entry states what M4 closed on rather than what the tree does today. What is still not proven is discovery: the manifests are compiled in rather than found."
     },
     {
       "id": "M4-W4",

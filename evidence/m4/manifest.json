@@ -45,7 +45,7 @@
         },
         "M4-W3": {
           "status": "closed",
-          "evidence": "Sides on the facade, the client-only side rule in ravel-core, packet contracts and their wire format in ravel-network, routing from a contract to the mod that owns it, and the client and server halves of test-mods/networking. tests/conformance/tests/sides_and_packets.rs checks both properties the row names. The row is closed on the abstractions it asks for and on nothing beyond them, and two limits are recorded as deviations rather than folded in here: a mod cannot send a packet, and the shipped host reads no manifest, so no mod's declared sides are honoured by anything that runs."
+          "evidence": "Sides on the facade, the client-only side rule in ravel-core, packet contracts and their wire format in ravel-network, routing from a contract to the mod that owns it, and the client and server halves of test-mods/networking. tests/conformance/tests/sides_and_packets.rs checks both properties the row names. The row is closed on the abstractions it asks for and on nothing beyond them, and two limits are recorded as deviations rather than folded in here: a mod cannot send a packet, and the shipped host read no manifest, so no mod's declared sides were honoured by anything that runs. The second was repaired after the milestone closed and its deviation below names the repair; the row is left stating what it closed on."
         },
         "M4-W4": {
           "status": "closed",
@@ -109,11 +109,11 @@
     "results": [
       {
         "name": "linux-process-matrix.json",
-        "sha256": "2b1234c72bb79bac585497c2f0643a6a283d0012e8277f83bafc9a3d6acb940f"
+        "sha256": "531c50e310c65bcdffc97a89b41479cd196865722e59dd3b7928c97445af8aed"
       },
       {
         "name": "sdk-surface.json",
-        "sha256": "e0d30e36af4cd16ab3375ad773f0f5fb2a24755e544789e432fa015fdc1beeb4"
+        "sha256": "5adf0c1609320697a0f57da05d93fbeed45e53780506a7d88cada10743593049"
       }
     ]
   },
@@ -123,7 +123,7 @@
       "classification": "non-blocking"
     },
     {
-      "summary": "The shipped host reads no manifest, so M4 proves no mod's declared sides are honoured by anything that runs. crates/ravel-composed-host/src/lib.rs writes both lifecycle entries by hand and hardcodes a constant configuration path, under a section headed for exactly this. The mapping from a validated package set to lifecycle entries is production code and does read a manifest's sides — ravel_loader::admitted — and nothing in a launch path calls it, because that host discovers no package and validates none. What M4-W3 proves is therefore the rule and the pipeline, checked in tests/conformance/tests/sides_and_packets.rs, and not the rule taking effect in a launch. The same absence is why M4-W4's configuration composition is fixed: a settings document from a package the host does not know about is never read. docs/guide/limits.md states both to an author before they plan around them. Owner: package discovery in a launch path, which no M4 work package owned; M8's pack work is the first place it can honestly land.",
+      "summary": "The shipped host read no manifest, so M4 proved no mod's declared sides were honoured by anything that runs. At closure crates/ravel-composed-host/src/lib.rs wrote both lifecycle entries by hand and hardcoded a constant configuration path, under a section headed for exactly this. The mapping from a validated package set to lifecycle entries was production code and did read a manifest's sides — ravel_loader::admitted — and nothing in a launch path called it, because that host discovered no package and validated none. What M4-W3 proved was therefore the rule and the pipeline, checked in tests/conformance/tests/sides_and_packets.rs, and not the rule taking effect in a launch. The sides half was repaired after the milestone closed, which ROADMAP.md's M4-W3 row records in the same shape: every member now ships the package manifest it is packaged under, the composed host admits the whole set through ravel_loader::admitted rather than writing entries by hand, a server-only member proves the rule in the direction the client-only one cannot, and ravel_bootstrap_runtime::side asks the JVM which distribution it was started from instead of assuming a client. This entry stands rather than being deleted because it states what was true at closure, which is the tree the recorded review pass certifies. What the repair did not reach is discovery: the manifests are compiled in rather than found, so a package sitting in an instance directory is still read by nothing, and M4-W4's configuration composition stays fixed for the same reason — a settings document from a package the host does not know about is never read. docs/guide/limits.md states what is left to an author before they plan around it. Owner: package discovery in a launch path, which no M4 work package owned; M8's pack work is the first place it can honestly land.",
       "classification": "non-blocking"
     },
     {

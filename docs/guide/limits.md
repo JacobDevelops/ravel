@@ -80,11 +80,19 @@ what they produce — a record a world stores, files a pack holds — is real ou
 today, and only the game's reading of it waits on the same wiring every pack
 waits on.
 
-**A mod cannot declare a shared library it provides.** There is no `provision`
-module. Ordering named calls between two mods that are both installed is
-`services` and works; saying which mod *supplies* a library, at what version, and
-refusing a set where two disagree is a separate question nothing answers.
-`ROADMAP.md` carries the row and puts it after this milestone.
+**A shared library your mod provides is declared and nothing reads the
+declaration.** `provision` is the fourth surface in that state, and it is
+different from the three above in one way worth knowing: the thing a library
+declaration is usually *for* — getting one copy of a library loaded instead of
+several — is not waiting on anything, because it never applies. A mod is source
+your player's machine compiles, so a library two mods build on is an ordinary
+Cargo dependency and Cargo resolves it once. What `provision` decides is the part
+Cargo cannot see: that of the mods installed together, exactly one claims to
+supply `shared_maths`, and that the version it supplies is inside every range the
+others declared. `Provision::resolve` names the provider or refuses the set,
+naming the library and the mods on both sides. What no launch does yet is build
+one from the packages it composed — nothing today turns your `provides` into a
+fact about a running game, for the same reason nothing carries your packet.
 
 **Configuration composition is fixed too.** The same launch path hardcodes which
 mods' settings are resolved, against a constant pack configuration path. A

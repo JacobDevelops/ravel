@@ -50,6 +50,7 @@ const TEST_MOD_NAMES: &[&str] = &[
     "interception",
     "networking",
     "noop",
+    "provision",
     "registries",
     "render-stages",
     "resources",

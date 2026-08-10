@@ -65,6 +65,7 @@ ravel-test-mod-inter-mod-service = { path = "test-mods/inter-mod-service", versi
 ravel-test-mod-interception = { path = "test-mods/interception", version = "0.0.0" }
 ravel-test-mod-networking = { path = "test-mods/networking", version = "0.0.0" }
 ravel-test-mod-noop = { path = "test-mods/noop", version = "0.0.0" }
+ravel-test-mod-provision = { path = "test-mods/provision", version = "0.0.0" }
 ravel-test-mod-render-stages = { path = "test-mods/render-stages", version = "0.0.0" }
 ravel-test-mod-resources = { path = "test-mods/resources", version = "0.0.0" }
 ravel-test-mod-saved-data = { path = "test-mods/saved-data", version = "0.0.0" }

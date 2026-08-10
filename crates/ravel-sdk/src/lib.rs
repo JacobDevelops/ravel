@@ -97,6 +97,10 @@
 //! none, so a world is refused rather than opened part-migrated. [`services`] is
 //! the one thing here that crosses from one mod to another while both run: a named
 //! call, ordered so a provider starts before anything that needs it.
+//! [`provision`] is the neighbouring question about the same two mods: which one
+//! *supplies* a shared library and at what version, resolved to one provider per
+//! library for a launch and refused — naming both sides — when the set has no
+//! single answer.
 //!
 //! # What this crate deliberately does not expose
 //!
@@ -125,6 +129,7 @@ pub mod events;
 pub mod generate;
 pub mod interception;
 pub mod network;
+pub mod provision;
 pub mod render_stages;
 pub mod resources;
 pub mod save;

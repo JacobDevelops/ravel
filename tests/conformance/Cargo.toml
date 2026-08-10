@@ -33,6 +33,7 @@ ravel-test-mod-inter-mod-service.workspace = true
 ravel-test-mod-interception.workspace = true
 ravel-test-mod-networking.workspace = true
 ravel-test-mod-noop.workspace = true
+ravel-test-mod-provision.workspace = true
 ravel-test-mod-render-stages.workspace = true
 ravel-test-mod-resources.workspace = true
 ravel-test-mod-saved-data.workspace = true

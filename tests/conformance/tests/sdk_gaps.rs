@@ -1,12 +1,15 @@
 #![forbid(unsafe_code)]
 
-//! The five capabilities M6-W2 adds to the public SDK, checked against the
-//! original test mods that use them.
+//! The six general SDK capabilities M5-W7 proposed, checked against the original
+//! test mods that use them.
 //!
 //! `ROADMAP.md`'s M6-W2 row asks for public SDK changes plus original test mods,
 //! verified by the M4-class gates. Those gates are unit, registration, save,
 //! side and provenance; this file is the cross-crate half of them, and each
 //! capability's own refusals are unit-tested in the crate that implements it.
+//! M6-W2 shipped five of the six; the sixth, library provision, is the last
+//! section here and landed in M7 for the reason `ROADMAP.md`'s open-questions
+//! row gives.
 //!
 //! Two rules hold every check here, and both exist because a suite that agrees
 //! with the implementation proves nothing:
@@ -22,7 +25,8 @@
 //!   for.
 //!
 //! What none of this proves is that anything happens in a game. Nothing carries
-//! a sound, draws at a stage, or asks at a point — the same disclosure
+//! a sound, draws at a stage, asks at a point, or builds a provision from the
+//! packages a launch composed — the same disclosure
 //! `docs/guide/limits.md` already makes about packets — and each SDK module says
 //! so where an author reads it. What is shipped and what is checked here is the
 //! declaration, the order, and the refusals.
@@ -32,20 +36,26 @@ use std::collections::BTreeSet;
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
 use ravel_host_api::HostMod;
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
-use ravel_sdk::Declared;
 use ravel_sdk::audio::AudioError;
 use ravel_sdk::interception::{Outcome, Points};
+use ravel_sdk::provision::{Provided, Provision};
 use ravel_sdk::render_stages::{RenderStage, StageDeclaration};
 use ravel_sdk::server_data::{ServerDataDeclaration, ServerDataKind};
 use ravel_sdk::world_shaping::{ShapingRecord, WorldShaping};
+use ravel_sdk::{Declared, Version, VersionRange};
 use ravel_test_mod_audio::AudioMod;
 use ravel_test_mod_interception::InterceptionMod;
+use ravel_test_mod_provision::{LIBRARY, ProvisionMod, VERSION};
 use ravel_test_mod_render_stages::RenderStagesMod;
 use ravel_test_mod_server_data::ServerDataMod;
 use ravel_test_mod_world_shaping::WorldShapingMod;
 
 fn id(text: &str) -> ModId {
     text.parse().expect("a legal mod id")
+}
+
+fn range(grammar: &str) -> VersionRange {
+    VersionRange::parse(grammar).expect("a well formed range")
 }
 
 fn entry(mod_id: &ModId) -> LifecycleEntry {
@@ -60,7 +70,7 @@ fn entry(mod_id: &ModId) -> LifecycleEntry {
 /// Drives every mod through the loader's own plan, to the registration window
 /// and out the far side.
 ///
-/// The five mods declare no content, so nothing is claimed here and nothing can
+/// The six mods declare no content, so nothing is claimed here and nothing can
 /// be refused. What this checks is that a mod written against the new modules is
 /// an ordinary mod: the plan admits it, the machine takes it through every
 /// state, and the registration barrier opens and closes for it like any other.
@@ -100,17 +110,19 @@ fn every_mod_written_against_a_new_module_is_an_ordinary_mod_to_the_loader() {
     let mut audio = AudioMod::new();
     let mut render_stages = RenderStagesMod::new();
     let mut interception = InterceptionMod::new();
+    let mut provision = ProvisionMod::new();
 
-    let mut mods: [&mut dyn HostMod; 5] = [
+    let mut mods: [&mut dyn HostMod; 6] = [
         &mut server_data,
         &mut world_shaping,
         &mut audio,
         &mut render_stages,
         &mut interception,
+        &mut provision,
     ];
     let machine = drive(&mut mods);
 
-    assert_eq!(machine.order().count(), 5);
+    assert_eq!(machine.order().count(), 6);
     assert_eq!(
         server_data.entered(),
         [
@@ -121,6 +133,7 @@ fn every_mod_written_against_a_new_module_is_an_ordinary_mod_to_the_loader() {
         ]
     );
     assert_eq!(interception.entered().len(), 4);
+    assert_eq!(provision.entered().len(), 4);
 }
 
 // --- RVL-GAP-01, server-resolved data -------------------------------------
@@ -351,4 +364,80 @@ fn a_point_no_adapter_publishes_is_refused_rather_than_answered_empty() {
         .admit()
         .expect_err("a name nothing publishes names nothing");
     assert_eq!(refusal.point(), "a_point_nobody_publishes");
+}
+
+// --- RVL-GAP-06, library provision ----------------------------------------
+
+/// The version is reached through the range that accepted it rather than
+/// compared to the constant the test mod also publishes. Asserting the two
+/// constants are equal would agree with any resolution, including one that
+/// returns what it was handed without deciding anything.
+#[test]
+fn a_consumer_binds_to_the_one_provider_at_a_version_inside_the_range_it_asked_for() {
+    let consumer = id("consumer_probe");
+    let wanted = range(">=2, <3");
+
+    let resolved = ProvisionMod::supplying(&consumer, wanted.clone())
+        .expect("one provider answers one requirement");
+
+    assert_eq!(
+        resolved.provider_of(LIBRARY),
+        Some(ProvisionMod::declared_id())
+    );
+    let bound: Version = resolved
+        .version_of(LIBRARY)
+        .expect("the provider resolved at a version")
+        .parse()
+        .expect("the resolved version is a version");
+    assert!(wanted.matches(&bound), "{bound}");
+    assert_eq!(resolved.libraries().collect::<Vec<&str>>(), [LIBRARY]);
+}
+
+#[test]
+fn two_mods_providing_one_library_are_refused_at_resolution_naming_both() {
+    let rival = id("rival_probe");
+
+    let refusal = ProvisionMod::beside(&rival, VERSION).expect_err("one launch takes one provider");
+
+    assert_eq!(refusal.library(), LIBRARY);
+    assert_eq!(
+        refusal.providers(),
+        [ProvisionMod::declared_id().clone(), rival]
+    );
+    assert!(!refusal.has_no_provider());
+}
+
+#[test]
+fn no_version_that_answers_every_requirement_is_refused_naming_the_mod_left_out() {
+    let older = id("older_probe");
+    let newer = id("newer_probe");
+
+    let mut provision = Provision::default();
+    ProvisionMod::provide(&mut provision);
+    provision.requires(&older, LIBRARY, range("^1"));
+    provision.requires(&newer, LIBRARY, range("^2"));
+
+    let refusal = provision
+        .resolve()
+        .expect_err("no single version answers both, so the set is refused");
+
+    assert_eq!(refusal.library(), LIBRARY);
+    assert_eq!(refusal.unsatisfied(), [older]);
+}
+
+#[test]
+fn a_required_library_nothing_provides_is_refused_before_anything_runs() {
+    let consumer = id("consumer_probe");
+
+    let mut provision = Provision::default();
+    provision.provides(&consumer, Provided::new("shared_words", "1.0.0"));
+    provision.requires(&consumer, "shared_numbers", range("^2"));
+
+    let refusal = provision
+        .resolve()
+        .expect_err("a library nothing provides is refused");
+
+    assert_eq!(refusal.library(), "shared_numbers");
+    assert!(refusal.has_no_provider());
+    assert_eq!(refusal.unsatisfied(), [consumer]);
 }

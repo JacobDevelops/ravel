@@ -1,32 +1,39 @@
 # M5-W8 Independent Inventory Review
 
-Result: FAIL
+Result: PASS
 
-**Six independent rounds have run and every one of them returned FAIL.** Between
-them they raised eight blocking findings — the per-round headings below are the
-only place that number is written, and it is their sum. Nine instances of a
-single defect class have been found: the eight the rounds raised, and one the
-round-4 repair found in its own work. The most recent round returned FAIL on the
-ninth instance, which is the most serious of the campaign: it falsified the
-premise under the mechanism that licenses the whole inventory. That finding has
-since been repaired, the repair found and closed a tenth instance of its own on
-the way, and the figures this milestone publishes are settled.
+**Eight independent rounds have run. Seven returned FAIL and the last returned
+PASS.** Between them they raised thirteen blocking findings — the per-round
+headings below are the only place that number is written, and it is their sum.
+Eleven instances of a single defect class have been found. Not every blocking
+finding is an instance of it, and two of the instances were found by a repair
+auditing its own work rather than by a round.
 
-That headline overstated the rounds' tally by one until round 7, folding the
+That headline overstated the rounds' tally by one until round 7, folding a
 repair-found instance into the reviewer-found total — in the flattering
 direction, in the document this manifest names as the one place that counts.
 `verify_review_blocking_counts` in `tools/ravel-xtask/src/lib.rs` now sums the
 per-round headings and requires this summary to agree with them, so the figure
-has one source and a heading that changes drags the sentence with it. **No round has read the repaired tree**, so the
-line above is `FAIL` and `evidence/m5/manifest.json` records the same under
-`review.result`. `verify_recorded_verdict` in
-`tools/ravel-xtask/src/lib.rs` requires the two to agree, so they move together.
+has one source and a heading that changes drags the sentence with it.
+
+It also understated how many rounds had run, until this closing round, and that
+matters more than the correction. Rounds 7 and 8 had both run and neither had a
+heading here, so the stated count and the count derived from the headings agreed
+at six — the class itself, in the record that exists to describe the class. The
+rows that would have contradicted them were the two missing round sections.
+Nothing in this repository knows independently how many rounds were run: the
+check compares this document to itself, and a round that is never written in is
+invisible to it exactly as it was here. That limit is disclosed below rather
+than closed, under the rule `docs/decisions/claims-without-a-second-reading.md`
+decides.
 
 A pass certifies the tree its reviewer read, with nothing landed on top of it.
-The next round is what can close this milestone, and the tree it reads includes
-this record and the public gate beside it as well as the repair.
-`evidence/m4/review.md` states the same rule and stayed `FAIL` between its own
-rounds for the same reason.
+Round 8 read the repaired tree — the repair, this record, and the public gate
+beside it — and nothing has landed on top of it since, which is why the line
+above is `PASS` and `evidence/m5/manifest.json` records the same under
+`review.result`. `verify_recorded_verdict` in `tools/ravel-xtask/src/lib.rs`
+requires the two to agree, so they move together. `evidence/m4/review.md` states
+the same rule and stayed `FAIL` between its own rounds for the same reason.
 
 ## What this file is
 
@@ -79,13 +86,17 @@ is one reading written twice. Whatever that shared rule is wrong about is
 invisible by construction: no row exists that disagrees, because the rule that
 would have built such a row is the rule under test.
 
-**Nine instances across six rounds**: a hand-rolled declaration parser shared by
+**Eleven instances across eight rounds**: a hand-rolled declaration parser shared by
 both readers; a provenance record bound to nothing it asserted; a shared rule
 discarding nested declarations; a shared discovery rule for which nested
 libraries exist at all; a shared depth rule stopping the behaviour catalogue at
 the outer archive; a shared licence-family rule; the family-to-status rule one
-function below it; a derivation list keyed on filenames rather than on code; and
-finally a completeness premise about which channels can open an archive.
+function below it; a derivation list keyed on filenames rather than on code; a
+completeness premise about which channels can open an archive; an interpreter
+invoked with a script name computed at run time, which a scan of static text
+cannot resolve; and finally a scan that counted matching lines while the table
+beside it called them uses — where that table had been generated from the same
+miscount, so the two agreed and the published figure was short by two.
 
 The pattern matters more than any instance. Each repair was genuine — every
 round confirmed its predecessor's repair held and re-derived the figures itself
@@ -311,15 +322,82 @@ that the workspace had missed. That is the strongest available support for
 treating the licence decisions as judged rather than measured, and it is why
 `docs/decisions/claims-without-a-second-reading.md` exists.
 
+### Round 7 — FAIL, five blocking
+
+The first round to read the public evidence record itself rather than the
+inventory behind it, and every one of its findings is about this repository's
+own prose and machinery.
+
+**B1.** The read-primitive scan counted with a line-counting flag while the
+table beside it called its rows uses. Two lines under the private workspace's
+checks carry two occurrences each, so the published `accountedUses` was 74 where
+the tree held 76 — and the occurrence table had been generated from that same
+miscount, so table and scan agreed and no row disagreed with either. The
+eleventh instance of the class, inside the machinery the round-6 repair built to
+catch the ninth.
+
+**B2.** The manifest's digest deviation said "the twelve digests under
+`boundArtifacts`". There are fifteen.
+
+**B3.** The same deviation presented a closable limit as a necessary one. It
+said the digests bound for a reader with the private workspace and for nobody
+else, and that recomputing them would mean this repository reaching into a
+sibling tree it may not name. The dependency runs the other way and always did:
+the private workspace already reads this checkout in eight places and hashes
+files, so the reader the sentence said existed for nobody was its own gate.
+
+**B4.** M5-W1 closed on a completeness claim the tree falsifies — the tracked
+content sweep called its two rules "the two shapes a leak could arrive as",
+which the record's own history contradicted.
+
+**B5.** This record published two false figures about itself: nine blocking
+findings where its headings summed to eight, and a claim that one correction was
+the campaign's only figure correction, contradicted three sections above it.
+
+All five were repaired. The repair rebuilt the occurrence count from matches
+rather than lines, closed B3 from the private side rather than rewording it, and
+wrote the provenance of the wrong figure into the table that carried it.
+
+### Round 8 — PASS, zero blocking
+
+The closing certification: a reader over the repaired tree, deliberately scoped
+to confirming round 7's five findings closed rather than opening a fresh hunt,
+because seven rounds of hunting had reached the point where each new round
+found the class in the machinery the last repair built and the campaign's cost
+had stopped being proportionate to what it was still buying.
+
+All five confirmed closed, each by reading or running the mechanism rather than
+the sentence describing it. The digest bind of B3 was confirmed to execute and
+to cover every entry, and afterwards proved by mutation: falsifying one
+published digest makes the private boundary check exit 1 naming the file whose
+digest no longer matches, and restoring it returns exit 0 with the tree
+byte-identical. The round looked specifically for a twelfth instance in the
+repair's own counting machinery and found the shape present but disclosed, which
+this record's stopping condition makes non-blocking.
+
+Two non-blocking observations, both recorded below: a too-narrow pattern for a
+refused primitive is indistinguishable from a clean workspace, and the private
+boundary check prints its bound count rather than comparing it.
+
+The round did not run the full private gate, spending two narrow checks instead,
+and did not re-derive any inventory figure. Both gaps are its own disclosure,
+not a discovery of this record.
+
 ## What is weakest here
 
 An honest account of where a reader should not extend their confidence. This is
 the most useful section in this file.
 
-1. **No round has read the repaired tree.** The figures are settled and every
-   one was re-derived from the underlying rows rather than read off a summary
-   line, but the mechanism that licenses taking them was rewritten after the
-   last round finished. That is the whole reason the verdict above is `FAIL`.
+1. **Nothing here knows independently how many rounds ran, or what they found.**
+   This document is the only record of the campaign in this repository, and the
+   check that holds its tally honest compares the summary to the headings in the
+   same file. That caught a wrong total and cannot catch a missing round: rounds
+   7 and 8 went unwritten here while both had run, and the stated count and the
+   derived count agreed at six the whole time. A heading is now required to
+   carry a blocking count, so a round written in cannot slip out of the sum —
+   but a round never written in at all remains invisible, and the verdicts
+   themselves are held where restricted review material is held. A reader is
+   trusting that the sections below are all of them.
 2. **`metadata-only` is held by a second reading with one disclosed way past
    it.** A coordinated hand that deletes a refusal row and writes the matching
    occurrence rows in the same edit passes, leaving a visible tell rather than a
@@ -346,8 +424,8 @@ the most useful section in this file.
    so the two cannot drift apart. Neither side recomputes a figure the other
    produced, and a hand that moves a file and rewrites the record together still
    passes.
-5. **This record is sanitized**, so a reader is taking its account of six rounds
-   on trust rather than reading the verdicts. See the section above for why, and
+5. **This record is sanitized**, so a reader is taking its account of eight
+   rounds on trust rather than reading the verdicts. See the section above for why, and
    treat the round descriptions as a reviewer's findings restated by a different
    hand.
 6. **The graph's blocked nodes are unknowns, not zeros.** Those artifacts
@@ -376,9 +454,11 @@ the most useful section in this file.
   `evidence/m5/manifest.json`. A later milestone must not read M5's eventual
   closure as the class being solved, and should expect the next instance inside
   whatever M5 built last.
-- **A round that reads the post-repair tree is owed.** Until one runs, the
-  verdict above is `FAIL` and `ravel:verify-milestone:m5` exits 1, which is a
-  true statement about an open milestone rather than a broken repository.
+- **The round that reads the post-repair tree has run**, and is round 8 above.
+  It is the round that closes this milestone, and it is also the narrowest round
+  of the campaign: it certified the repair rather than re-deriving the
+  inventory, and it says so itself. A later milestone reading this record should
+  weigh round 8 as a certification and rounds 1 through 6 as the derivations.
 - **The completeness obligation now has a decision record.** A mechanism that
   claims to observe exhaustively must either verify its own premise by a second
   reading or state, in the file that acts on the claim and in what the mechanism

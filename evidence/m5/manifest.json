@@ -174,10 +174,10 @@
   "review": {
     "reviewer": "independent Claude reviewer (M5-W8, independent of the work under review; the record below is a history assembled at closure rather than a set of reproduced verdicts, and it says why; it is also the one place that says how many rounds have run)",
     "independent": true,
-    "result": "fail",
+    "result": "pass",
     "record": {
       "name": "review.md",
-      "sha256": "dd10228edb35f85f45e0f2f4adb1615313c236db7f8c46f13ec52355ff570c1a"
+      "sha256": "ddc355c9482d1f0e4802b971941457c14f5ecd738914c825411b2a2d91c9a5fb"
     }
   },
   "attestations": [

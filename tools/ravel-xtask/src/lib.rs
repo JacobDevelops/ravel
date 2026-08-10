@@ -1145,11 +1145,21 @@ fn round_count_restatements(document: &str) -> Vec<(usize, &'static str)> {
 /// against the word `blocking` and [`numbers_before`] is what reads it. Only
 /// the first such figure on a heading is taken; a heading naming two counts is
 /// a heading nobody writes, and reading both would invent a tally.
-fn round_heading_blocking_counts(document: &str) -> Vec<usize> {
+/// Each round heading, paired with the blocking count it declares.
+///
+/// A heading that declares none reads as `None` rather than being dropped: a
+/// round without a count used to vanish from the sum and from the round tally
+/// together, so the record agreed with itself by losing the row that disagreed.
+fn round_heading_blocking_counts(document: &str) -> Vec<(String, Option<usize>)> {
     document
         .lines()
         .filter(|line| line.starts_with(ROUND_HEADING))
-        .filter_map(|line| numbers_before(line, &["blocking"]).first().copied())
+        .map(|line| {
+            (
+                line.to_owned(),
+                numbers_before(line, &["blocking"]).first().copied(),
+            )
+        })
         .collect()
 }
 
@@ -1194,7 +1204,20 @@ fn verify_review_blocking_counts(root: &Path, violations: &mut Vec<String>) {
         if per_round.is_empty() {
             continue;
         }
-        let total: usize = per_round.iter().sum();
+        // A record whose headings never carry a count uses another layout and is
+        // out of scope; one that carries a count anywhere has to carry it
+        // everywhere, or the round without one drops out of the sum unseen.
+        if per_round.iter().all(|(_, count)| count.is_none()) {
+            continue;
+        }
+        for (heading, _) in per_round.iter().filter(|(_, count)| count.is_none()) {
+            violations.push(format!(
+                "{record} has a round heading that declares no blocking count, so the round is \
+                 absent from the tally it belongs to: {}",
+                heading.trim()
+            ));
+        }
+        let total: usize = per_round.iter().filter_map(|(_, count)| *count).sum();
         let rounds = per_round.len();
         let summary = document
             .split(ROUND_HEADING)

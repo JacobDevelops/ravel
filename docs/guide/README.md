@@ -5,13 +5,17 @@ a Rust crate. It is distributed as source and compiled on the machine that
 installs it, so there is no ABI to match, no binary to build per platform, and no
 Java to write.
 
-**Know this before you read the rest: a launched game does not yet discover your
-package.** The launch path shipped today composes a fixed set of mods in Rust
-source and reads no `package.json`, so a mod you write can be built, tested and
-held to every criterion in this guide as a library, and cannot be dropped into an
-instance and watched run. Nor can it send a declared packet — nothing carries one
-yet. Both limits, and the rest, are in [What does not work yet](limits.md); read
-that document before you plan anything, not after.
+**Know this before you read the rest: a launched game finds your package and
+cannot run it.** Discovery is real — a launch reads `ravel/mods`, validates each
+installed manifest against the package schema, and verifies the digests it
+records. What it cannot do is admit what it found: the mods a launch runs are the
+ones this binary was compiled from, so an installed package the composition does
+not name refuses the launch rather than joining it. A mod you write can be built,
+tested and held to every criterion in this guide as a library, and cannot be
+dropped into an instance and watched run. Nor can it send a declared packet —
+nothing carries one yet. Both limits, and the rest, are in
+[What does not work yet](limits.md); read that document before you plan anything,
+not after.
 
 This directory is the author's documentation. It is the only part of `docs/` that
 is written for someone outside this repository; everything else here records

@@ -104,9 +104,13 @@ to a mod's own.
 contract you can declare, encode, decode and test, and not a message that travels:
 no wire adapter is written and no launch path carries a mod's bytes between a
 client and a server. `encode_from` gives you a payload and there is nothing to
-give it to, and `receive_packet` has no caller in a running game. Declaring a
-packet today is stating what your mod will send, and testing that the statement
-holds. [What does not work yet](limits.md) says the same and says when.
+give it to. The arrival half is further along than the departure: the loader's
+delivery path is written and tested, and it refuses a delivery claiming the wrong
+side, a direction that may not be received here, and an owner that is absent or
+not reacting, before anything reaches `receive_packet`. What is missing is
+transport — nothing in a running game builds the delivery that path waits for.
+Declaring a packet today is stating what your mod will send, and testing that the
+statement holds. [What does not work yet](limits.md) says the same and says when.
 
 Declare a `PacketContract` — an id in your namespace, a `Direction`, a version —
 and implement `Packet` for the value that will travel under it. `encode` and

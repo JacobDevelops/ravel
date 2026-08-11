@@ -65,15 +65,19 @@ loads; it is not a launched server.
 
 **A mod cannot send a packet.** You can declare a `PacketContract`, implement
 `Packet`, encode a value, decode it back, and prove every refusal in your own
-tests — all of that is real and all of it is checked. What does not exist is the
-leg after encoding. No wire adapter is written; no launch path moves a byte
-between a client and a server on a mod's behalf; `encode_from` hands you bytes
-and there is nothing to hand them to, and the receiving half — `Mod::receive_packet`
-— has no caller in a running game either. `ROADMAP.md` puts the wire adapters
-after the abstractions, and this is what "after" currently means: a declared
-packet is a specification of what your mod will send, tested today and carried
-later. Design against it if you like; do not plan a feature whose value arrives
-when the packet does.
+tests — all of that is real and all of it is checked. The receiving half is
+further along than "declared": `ravel_loader::deliver_packet` is written and
+tested, and it is what refuses a delivery claiming the wrong side, a direction
+that may not be received here, and an owner that is absent or not reacting,
+before handing the rest to `Mod::receive_packet`. What does not exist is
+transport. No wire adapter is written and no launch path moves a byte between a
+client and a server, so `encode_from` hands you bytes with nothing to hand them
+to, and nothing in a running game ever builds the `PacketDelivery` that delivery
+path is waiting for. `ROADMAP.md` puts the wire adapters after the abstractions,
+and this is what "after" currently means: a declared packet is a specification of
+what your mod will send, tested today and carried later — with the loader-side
+half of the arrival already built. Design against it if you like; do not plan a
+feature whose value arrives when the packet does.
 
 **Two more surfaces are declared and not carried at all, for the same reason a
 packet is not, and a third is now partly carried.** A sound and a drawing stage
@@ -84,7 +88,12 @@ on the other end; interception has an end now, for one of its three points:
   and `AudioDeclaration::play` answers with a `PlayRequest` describing what would
   be played. Nothing reaches audio hardware. The side rule is real and enforced:
   asking to play on a server is refused rather than skipped, so a mod that would
-  have worked only in single-player finds out in its own tests.
+  have worked only in single-player finds out in its own tests. The bytes you
+  hand `AudioDeclaration::entry` stay in the declaration: `ravel-pack` never
+  reads an `AudioDeclaration`, so no pack file carries a sound because you
+  declared one. Getting the file into a pack is a separate
+  `ContentDeclaration::resource` call with the same bytes, and nothing checks
+  that the two agree.
 - `render_stages` — you declare which published stages your mod contributes to
   and which mods it follows at them, and Ravel decides the order, refusing a cycle
   and a stage nothing publishes. **This is not a way to draw.** No drawing path

@@ -24,12 +24,17 @@
 //!   matches the writer; a derived path is spelled out here rather than asked
 //!   for.
 //!
-//! What none of this proves is that anything happens in a game. Nothing carries
-//! a sound, draws at a stage, asks at a point, or builds a provision from the
-//! packages a launch composed — the same disclosure
-//! `docs/guide/limits.md` already makes about packets — and each SDK module says
-//! so where an author reads it. What is shipped and what is checked here is the
-//! declaration, the order, and the refusals.
+//! What almost none of this proves is that anything happens in a game. Nothing
+//! carries a sound, draws at a stage, or builds a provision from the packages a
+//! launch composed — the same disclosure `docs/guide/limits.md` already makes
+//! about packets — and each SDK module says so where an author reads it.
+//!
+//! Interception is the one exception, and only in part: `ravel-bootstrap` asks a
+//! round at `Point::WorldIsSaved` before writing Ravel's aggregate, so that
+//! point is reached by a running game. `Point::BlockIsBroken` and
+//! `Point::ItemIsUsed` resolve to no pinned hook and are reached by nothing.
+//! What is shipped and what is checked here is the declaration, the order, and
+//! the refusals.
 
 use std::collections::BTreeSet;
 

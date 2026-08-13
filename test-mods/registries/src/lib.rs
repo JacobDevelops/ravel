@@ -2,7 +2,10 @@
 
 //! Registry and content test mod.
 
-use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey};
+use ravel_core::{
+    BlockBehaviour, ContentBehaviour, ContentId, ContentKind, ItemBehaviour, LifecycleState, ModId,
+    RegistryKey,
+};
 use ravel_host_api::{HostError, HostMod, Registrar};
 
 /// The canonical identity this mod is packaged and validated under.
@@ -19,6 +22,27 @@ const CLAIMS: [(ContentKind, &str); 3] = [
     (ContentKind::Item, "copper"),
     (ContentKind::Recipe, "smelting/copper"),
 ];
+
+/// How this mod's content behaves, or nothing for a kind with no value.
+///
+/// Deliberately not the defaults. A test mod that described what it would have
+/// got anyway proves that a description arrived only by proving nothing: the
+/// registered value would look identical if every field were dropped in transit.
+const fn behaviour(kind: ContentKind) -> Option<ContentBehaviour> {
+    match kind {
+        ContentKind::Block => Some(ContentBehaviour::Block(BlockBehaviour {
+            hardness: 50.0,
+            explosion_resistance: 1200.0,
+            requires_correct_tool: true,
+            random_ticks: false,
+        })),
+        ContentKind::Item => Some(ContentBehaviour::Item(ItemBehaviour {
+            stack_size: 16,
+            fire_resistant: true,
+        })),
+        ContentKind::Recipe | ContentKind::Command => None,
+    }
+}
 
 /// A mod that registers one block, one item, and one recipe.
 ///
@@ -133,13 +157,18 @@ impl HostMod for RegistriesMod {
     /// not give it and why.
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
         for key in self.claims() {
-            registrar
-                .claim(key.clone())
-                .map_err(|refused| HostError::Refused {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Constructed,
-                    detail: refused.to_string(),
-                })?;
+            // Described where there is something to describe, and claimed plainly
+            // where there is not. A recipe names no value a registry builds, so
+            // there is nothing about it to say.
+            let claimed = match behaviour(key.kind()) {
+                Some(behaviour) => registrar.claim_describing(key.clone(), behaviour),
+                None => registrar.claim(key.clone()),
+            };
+            claimed.map_err(|refused| HostError::Refused {
+                mod_id: self.id.clone(),
+                state: LifecycleState::Constructed,
+                detail: refused.to_string(),
+            })?;
             self.registered.push(key);
         }
         Ok(())

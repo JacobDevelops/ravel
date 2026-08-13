@@ -45,6 +45,7 @@ use ravel_core::Side;
 use ravel_host_runtime::{Member, initialize as run};
 use ravel_test_mod_client_only::{ClientOnlyMod, work_log};
 use ravel_test_mod_configuration::ConfigurationMod;
+use ravel_test_mod_registries::RegistriesMod;
 use ravel_test_mod_saved_data::SavedDataMod;
 use ravel_test_mod_server_only::{ServerOnlyMod, work_log as server_work_log};
 
@@ -59,6 +60,7 @@ const CONFIGURATION_PACKAGE: &str = include_str!("../../../test-mods/configurati
 const SAVED_DATA_PACKAGE: &str = include_str!("../../../test-mods/saved-data/package.json");
 const CLIENT_ONLY_PACKAGE: &str = include_str!("../../../test-mods/client-only/package.json");
 const SERVER_ONLY_PACKAGE: &str = include_str!("../../../test-mods/server-only/package.json");
+const REGISTRIES_PACKAGE: &str = include_str!("../../../test-mods/registries/package.json");
 
 /// The members this build was compiled from, for a launch on `side`.
 fn members(side: Side) -> Vec<Member> {
@@ -80,6 +82,14 @@ fn members(side: Side) -> Vec<Member> {
         Member {
             package: CLIENT_ONLY_PACKAGE.to_owned(),
             host: Box::new(ClientOnlyMod::new(side, &work_log())),
+        },
+        // The content-owning half. Until this was here no mod in a running
+        // build claimed a registry identifier, so the claim table the content
+        // adapter reads was empty in every launch and the surface that carries
+        // a block into the game had nothing to carry.
+        Member {
+            package: REGISTRIES_PACKAGE.to_owned(),
+            host: Box::new(RegistriesMod::new()),
         },
         // The other half of the same rule. With only the member above, a
         // launch proved a declaration keeping code off a server and nothing
@@ -149,6 +159,10 @@ mod tests {
 
     fn saved_owner() -> ModId {
         "saved_data".parse().expect("the tracked mod id is valid")
+    }
+
+    fn registries_owner() -> ModId {
+        "registries".parse().expect("the tracked mod id is valid")
     }
 
     fn client_owner() -> ModId {
@@ -236,7 +250,7 @@ mod tests {
         let (machine, mods, configurations) =
             compose(&game, Side::Client).expect("the tracked composition should start");
 
-        for id in [owner(), saved_owner(), client_owner()] {
+        for id in [owner(), saved_owner(), client_owner(), registries_owner()] {
             assert_eq!(machine.state(&id), Ok(LifecycleState::Running), "{id}");
         }
         assert_eq!(
@@ -246,8 +260,14 @@ mod tests {
         );
 
         let driven: Vec<&ModId> = mods.iter().map(|held| held.id()).collect();
-        assert_eq!(driven.len(), 4);
-        for id in [owner(), saved_owner(), client_owner(), server_owner()] {
+        assert_eq!(driven.len(), 5);
+        for id in [
+            owner(),
+            saved_owner(),
+            client_owner(),
+            server_owner(),
+            registries_owner(),
+        ] {
             assert!(driven.contains(&&id), "{id}");
         }
 

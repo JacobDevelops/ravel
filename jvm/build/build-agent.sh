@@ -28,8 +28,8 @@ rm -rf "$classes"
 mkdir -p "$classes"
 
 # No source in this jar declares a game type: the transformer manipulates byte
-# arrays and descriptor strings, and the persistence adapter resolves the game
-# classes it needs by name at runtime. So nothing here needs the client jar on the
+# arrays and descriptor strings, and the persistence and content adapters resolve
+# the game classes they need by name at runtime. So nothing here needs the client jar on the
 # class path, and the absent `-cp` is what enforces that rather than records it —
 # which is also what lets this run on a machine without the restricted fixture.
 mapfile -d '' sources < <(find "$root/jvm/bootstrap" "$generated" -name '*.java' -print0 | sort -z)

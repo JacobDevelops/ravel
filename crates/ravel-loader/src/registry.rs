@@ -1,4 +1,4 @@
-use ravel_core::{ModId, RegistryKey};
+use ravel_core::{ContentBehaviour, ModId, RegistryKey};
 use ravel_host_api::{Registrar, RegistrationRefused};
 
 use crate::lifecycle::{LifecycleError, LifecycleMachine};
@@ -47,10 +47,37 @@ impl<'a> Registration<'a> {
 
 impl Registrar for Registration<'_> {
     fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused> {
+        self.record(key, None)
+    }
+
+    fn claim_describing(
+        &mut self,
+        key: RegistryKey,
+        behaviour: ContentBehaviour,
+    ) -> Result<(), RegistrationRefused> {
+        self.record(key, Some(behaviour))
+    }
+
+    fn claimed(&self) -> &[RegistryKey] {
+        &self.claimed
+    }
+
+    fn loads(&self, mod_id: &ModId) -> bool {
+        self.machine.loads(mod_id)
+    }
+}
+
+impl Registration<'_> {
+    /// Makes one claim, described or not, and translates the loader's refusal.
+    fn record(
+        &mut self,
+        key: RegistryKey,
+        behaviour: Option<ContentBehaviour>,
+    ) -> Result<(), RegistrationRefused> {
         let identifier = key.to_string();
         match self
             .machine
-            .claim_registry_identifier(&self.mod_id, &identifier)
+            .claim_described_registry_identifier(&self.mod_id, &identifier, behaviour)
         {
             Ok(()) => {
                 self.claimed.push(key);
@@ -73,14 +100,6 @@ impl Registrar for Registration<'_> {
                 Err(RegistrationRefused::Closed { key })
             }
         }
-    }
-
-    fn claimed(&self) -> &[RegistryKey] {
-        &self.claimed
-    }
-
-    fn loads(&self, mod_id: &ModId) -> bool {
-        self.machine.loads(mod_id)
     }
 }
 

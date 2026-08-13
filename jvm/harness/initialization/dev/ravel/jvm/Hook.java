@@ -35,6 +35,21 @@ public final class Hook {
                     }
             : Boolean.getBoolean("ravel.test.transform.persistence")
                     ? persistenceTargets()
+            : Boolean.getBoolean("ravel.test.transform.content")
+                    ? new HookTarget[] {
+                        // The seam content is registered at, with the internal
+                        // name, member and descriptor the pinned inventory
+                        // carries for `registry.built-in-freeze`. The prologue
+                        // runs before the body that closes the registries.
+                        new HookTarget(
+                                "net/minecraft/core/registries/BuiltInRegistries",
+                                "freeze",
+                                "()V",
+                                true,
+                                "registryBuiltInFreeze",
+                                "()V",
+                                false),
+                    }
             : Boolean.getBoolean("ravel.test.transform.members")
                     ? new HookTarget[] {
                         // One method target in each of the four classes that
@@ -193,6 +208,8 @@ public final class Hook {
             className = "dev.ravel.jvm.refusal.RefusalTarget";
         } else if (Boolean.getBoolean("ravel.test.transform.persistence")) {
             className = "net.minecraft.client.Minecraft";
+        } else if (Boolean.getBoolean("ravel.test.transform.content")) {
+            className = "net.minecraft.core.registries.BuiltInRegistries";
         } else if (Boolean.getBoolean("ravel.test.transform.members")) {
             className = "net.minecraft.util.SmoothDouble";
         } else {
@@ -231,6 +248,56 @@ public final class Hook {
 
     public static void registryFreeze() {
         invocations++;
+    }
+
+    public static void registryBuiltInFreeze() {
+        invocations++;
+    }
+
+    /**
+     * Answers the content crossing the way the property asks.
+     *
+     * <p>The property names the claims a set admitted, comma separated and
+     * spelled the way the barrier spells them, and this encodes them onto the
+     * wire the adapter reads. {@code null} is what the JVM receives when the
+     * native failed and {@code empty} is a launch with no set installed;
+     * {@code malformed} is a payload built under a contract this adapter never
+     * agreed to, which it must refuse whole rather than read half of.
+     */
+    public static String ravelAdmittedContent() {
+        invocations++;
+        String answer = System.getProperty("ravel.test.content.admitted", "empty");
+        if (answer.equals("null")) {
+            return null;
+        }
+        if (answer.equals("empty")) {
+            return "";
+        }
+        if (answer.equals("malformed")) {
+            return field("2") + field("1");
+        }
+        String[] claims = answer.split(",");
+        StringBuilder payload = new StringBuilder(field("1")).append(field(
+                String.valueOf(claims.length)));
+        for (String claim : claims) {
+            // kind:namespace:path followed by that kind's behaviour fields, which
+            // is the shape the real payload has and the reason a row's width is
+            // not fixed.
+            String[] parts = claim.split(":");
+            payload.append(field(parts[0]))
+                    .append(field(parts[1]))
+                    .append(field(parts[2]))
+                    .append(field(parts[1]));
+            for (int at = 3; at < parts.length; at++) {
+                payload.append(field(parts[at]));
+            }
+        }
+        return payload.toString();
+    }
+
+    /** One length-prefixed field, counted in the units a Java string counts in. */
+    private static String field(String value) {
+        return value.length() + ":" + value;
     }
 
     public static void commandPerformPrefixed(Object source, String command) {

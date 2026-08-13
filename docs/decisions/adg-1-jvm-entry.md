@@ -217,8 +217,8 @@ Two independent reasons, and neither is about what is convenient for M3-W3.
 **The jar builds without the game, and that is a property rather than an
 accident.** `jvm/build/build-agent.sh` says so where it compiles: "No source in
 this jar declares a game type: the transformer manipulates byte arrays and
-descriptor strings, and the persistence adapter resolves the game classes it needs
-by name at runtime. So nothing here needs the client jar on the class path, and
+descriptor strings, and the persistence and content adapters resolve the game
+classes they need by name at runtime. So nothing here needs the client jar on the class path, and
 the absent `-cp` is what enforces that rather than records it — which is also what
 lets this run on a machine without the restricted fixture." `jvm/README.md` says
 the same for both build steps, and
@@ -228,7 +228,7 @@ that generated `Hook.java` declares no game type and still compiles without the
 client jar. Neither artifact is free of game *names*: the transformer compares
 target classes against internal names it holds as string literals, `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-persistence adapter resolves five classes by name — all of which the invariant
+two adapters between them resolve thirteen classes by name — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
 on the class path.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled
@@ -381,16 +381,18 @@ no game type and still compiles with no client jar on the class path, and genera
 What the widening does add, and what an earlier form of this sentence concealed by
 saying the agent jar "names no game type", is a set of game names the always
 present jar resolves reflectively.
-`jvm/bootstrap/dev/ravel/jvm/Persistence.java` names the game classes it needs as
-string constants, resolves each through `Class.forName` against the system class
-loader, and reaches their members by name and arity. None of those names appears in
+`jvm/bootstrap/dev/ravel/jvm/Persistence.java` and
+`jvm/bootstrap/dev/ravel/jvm/Content.java` name the game classes they need as
+string constants, resolve each through `Class.forName` against the system class
+loader, and reach their members by name — by arity in the first and by parameter
+type in the second, where three `Registry.register` overloads share one arity. None of those names appears in
 `hooks.toml`, `stubs.toml`, `stubs.lock` or `mappings.lock`, so ADG-3's drift gate
 does not reach them: the *optional* screen jar compiles against stubs generated
 from a pinned lock and the *required* agent jar has no such binding. Neither of
 this decision's two reasons is damaged — the licensing and contribution argument
 above and the loader argument as corrected both rest on the jar declaring no game
 type, which still holds — but the coupling is real and is recorded rather than
-implied. `verify_persistence_reflection` pins the class set so a new unpinned name
+implied. `verify_persistence_reflection` pins the class set for both adapters so a new unpinned name
 cannot be added silently, and states in its own doc comment that it cannot detect a
 game-side rename because the names are in no lock.
 `evidence/m3/manifest.json` records the whole surface as a named non-blocking

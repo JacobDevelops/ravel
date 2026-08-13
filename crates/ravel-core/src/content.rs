@@ -614,3 +614,110 @@ mod tests {
         ));
     }
 }
+
+/// How one registered block behaves once it exists.
+///
+/// The values a mod can describe today, and no more. Every field here is a
+/// primitive the pinned version’s block properties take directly, which
+/// is the whole selection rule: a property whose setter needs a game object
+/// would mean this type naming one, and `docs/architecture/dependency-rules.md`
+/// keeps every game name out of `ravel-core`. Adding a field means finding the
+/// primitive setter first.
+///
+/// The defaults are the game's own for a plain stone-like block, so a mod that
+/// describes nothing gets what it got before this type existed.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct BlockBehaviour {
+    /// How long the block takes to break. Negative means unbreakable.
+    pub hardness: f32,
+    /// How well the block resists an explosion.
+    pub explosion_resistance: f32,
+    /// Whether the block drops nothing when broken with the wrong tool.
+    pub requires_correct_tool: bool,
+    /// Whether the block is offered a random tick.
+    pub random_ticks: bool,
+}
+
+impl Default for BlockBehaviour {
+    fn default() -> Self {
+        Self {
+            hardness: 1.5,
+            explosion_resistance: 6.0,
+            requires_correct_tool: false,
+            random_ticks: false,
+        }
+    }
+}
+
+/// How one registered item behaves once it exists.
+///
+/// The same selection rule as [`BlockBehaviour`], and the same reason.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct ItemBehaviour {
+    /// How many of the item one stack holds.
+    pub stack_size: u8,
+    /// Whether the item survives fire and lava.
+    pub fire_resistant: bool,
+}
+
+impl Default for ItemBehaviour {
+    fn default() -> Self {
+        Self {
+            stack_size: 64,
+            fire_resistant: false,
+        }
+    }
+}
+
+/// How one claimed identifier behaves.
+///
+/// Carried beside the claim rather than inside [`RegistryKey`], because the key
+/// is an identity and `SPEC.md` §14 makes it immutable across a barrier while
+/// behaviour is a description of the value the identity names.
+///
+/// The kind is present in both this and the key it accompanies, and the two must
+/// agree: an item described as a block is a mod asking for a value no registry
+/// takes. [`Self::describes`] is what asks.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ContentBehaviour {
+    /// A block's behaviour.
+    Block(BlockBehaviour),
+    /// An item's behaviour.
+    Item(ItemBehaviour),
+}
+
+impl ContentBehaviour {
+    /// Returns the kind of content this describes.
+    #[must_use]
+    pub const fn kind(&self) -> ContentKind {
+        match self {
+            Self::Block(_) => ContentKind::Block,
+            Self::Item(_) => ContentKind::Item,
+        }
+    }
+
+    /// Returns whether this describes content of `kind`.
+    #[must_use]
+    pub const fn describes(&self, kind: ContentKind) -> bool {
+        matches!(
+            (self, kind),
+            (Self::Block(_), ContentKind::Block) | (Self::Item(_), ContentKind::Item)
+        )
+    }
+
+    /// The default behaviour for `kind`, or nothing for a kind that has none.
+    ///
+    /// A recipe and a command are registry claims with no value to describe, so
+    /// there is deliberately no behaviour to default to rather than an empty one
+    /// that reads as "described and unremarkable".
+    #[must_use]
+    pub fn default_for(kind: ContentKind) -> Option<Self> {
+        match kind {
+            ContentKind::Block => Some(Self::Block(BlockBehaviour::default())),
+            ContentKind::Item => Some(Self::Item(ItemBehaviour::default())),
+            ContentKind::Recipe | ContentKind::Command => None,
+        }
+    }
+}

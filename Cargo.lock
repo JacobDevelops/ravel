@@ -815,6 +815,7 @@ dependencies = [
  "ravel-package",
  "ravel-test-mod-client-only",
  "ravel-test-mod-configuration",
+ "ravel-test-mod-registries",
  "ravel-test-mod-saved-data",
  "ravel-test-mod-server-only",
  "serde_json",

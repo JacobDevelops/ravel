@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "registries",
+  "version": "0.0.0",
+  "displayName": "Registries",
+  "description": "Content registration test mod claiming one block, one item and one recipe.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      "26.1.2"
+    ]
+  },
+  "sides": [
+    "client",
+    "dedicated-server"
+  ],
+  "authors": [
+    {
+      "name": "Ravel"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://example.invalid/ravel-test-mods",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "c00111cc32ac70876bae446f830bfbf0483f6331c36cd34cad63b88cb746958e"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "a4c6f6fd30c577dcff92cc93a0a4313493dcc2d59bd94dee1b19894f67b0e506"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "56d50c716c4b7012db3b86e37944f790cbc0bc8b584f93b154ab906777a1aeba"
+  }
+}

@@ -14,7 +14,8 @@ mod states;
 use serde::{Deserialize, Serialize};
 
 pub use content::{
-    ContentId, ContentIdError, ContentKind, ContentKindError, RegistryKey, RegistryKeyError,
+    BlockBehaviour, ContentBehaviour, ContentId, ContentIdError, ContentKind, ContentKindError,
+    ItemBehaviour, RegistryKey, RegistryKeyError,
 };
 pub use diagnostics::{
     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,

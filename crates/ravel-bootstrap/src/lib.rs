@@ -2,6 +2,7 @@
 
 //! JVM entry point binding the generated hook surface to Ravel.
 
+mod content;
 mod dispatch;
 mod game_directory;
 mod guard;

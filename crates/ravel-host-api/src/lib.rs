@@ -18,7 +18,9 @@ pub use services::{
 use std::fmt;
 
 use ravel_config::{ConfigurationDeclaration, LayeredConfiguration};
-use ravel_core::{FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure};
+use ravel_core::{
+    ContentBehaviour, FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure,
+};
 use ravel_network::PacketDelivery;
 use ravel_save::{MigrationChain, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
 
@@ -532,6 +534,30 @@ pub trait Registrar {
     /// Returns [`RegistrationRefused`] when the identifier is already owned, or
     /// when the barrier has closed.
     fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused>;
+
+    /// Claims `key` and describes how the value it names behaves.
+    ///
+    /// The description has to describe the kind `key` names; a registrar that
+    /// carries behaviour refuses the pair otherwise, because an item described
+    /// as a block is a value no registry builds.
+    ///
+    /// # Errors
+    ///
+    /// Every refusal [`Registrar::claim`] makes, and a [`RegistrationRefused`]
+    /// for a description that does not match the key's kind.
+    ///
+    /// The default carries the claim and drops the description, which is what a
+    /// registrar with nowhere to put behaviour honestly does — a test probe, or
+    /// a host whose content surface is a name and no more. The loader's own
+    /// registrar overrides it and keeps both.
+    fn claim_describing(
+        &mut self,
+        key: RegistryKey,
+        behaviour: ContentBehaviour,
+    ) -> Result<(), RegistrationRefused> {
+        let _ = behaviour;
+        self.claim(key)
+    }
 
     /// Returns the identifiers this mod has already claimed, in claim order.
     fn claimed(&self) -> &[RegistryKey];

@@ -3,7 +3,8 @@ use std::fmt;
 use std::num::NonZeroU32;
 
 use ravel_core::{
-    FailureAttribution, FailureKind, LifecycleState, ModId, Side, SideSet, StructuredFailure,
+    ContentBehaviour, ContentKind, FailureAttribution, FailureKind, LifecycleState, ModId,
+    RegistryKey, Side, SideSet, StructuredFailure,
 };
 
 /// Whether a lifecycle state can run mod code.
@@ -160,6 +161,13 @@ pub struct LifecycleMachine {
     entries: Vec<Tracked>,
     transcript: Vec<LifecycleEvent>,
     claims: BTreeMap<String, ModId>,
+    /// How each claimed identifier's value behaves.
+    ///
+    /// Beside the claim table rather than inside it because the two answer
+    /// different questions and only one of them is a barrier: `claims` decides
+    /// conflicts and is written by every claim, and this is written only by a
+    /// claim that described something. A key here is always a key there.
+    behaviours: BTreeMap<String, ContentBehaviour>,
     world_mutated: bool,
     halted: Option<ModId>,
 }
@@ -198,6 +206,7 @@ impl LifecycleMachine {
             entries,
             transcript: Vec::new(),
             claims: BTreeMap::new(),
+            behaviours: BTreeMap::new(),
             world_mutated: false,
             halted: None,
         })
@@ -325,6 +334,38 @@ impl LifecycleMachine {
             .values()
             .filter(|owner| *owner == mod_id)
             .count()
+    }
+
+    /// Returns every admitted registry claim, with the identity that owns it.
+    ///
+    /// This is the claim table read out rather than counted, and it exists
+    /// because something outside the loader has to carry these into the game:
+    /// the barrier decides *that* a mod owns `block:example:copper`, and a
+    /// registry in the running game is where that becomes a block. The order is
+    /// the table's own, which is sorted by identifier, so two runs over one set
+    /// produce the same sequence and a caller that turns it into registrations
+    /// cannot make the game's contents depend on map iteration order.
+    ///
+    /// A claim whose identifier does not parse as a [`RegistryKey`] is skipped.
+    /// The barrier stores identifiers as text, and every claim reaching it came
+    /// from a key that was formatted into that text, so the parse cannot fail
+    /// for anything this loader admitted; skipping rather than panicking means
+    /// a future claimant that writes the table by another route degrades to
+    /// carrying less content instead of taking the game down.
+    pub fn claimed_content(&self) -> impl Iterator<Item = (RegistryKey, &ModId, ContentBehaviour)> {
+        self.claims.iter().filter_map(|(identifier, owner)| {
+            let key: RegistryKey = identifier.parse().ok()?;
+            // A claim that described nothing gets the kind's default, and a kind
+            // with no value to describe is not carried at all. That is what
+            // keeps "described plainly" and "not a thing a registry builds"
+            // from arriving as the same answer.
+            let behaviour = self
+                .behaviours
+                .get(identifier)
+                .copied()
+                .or_else(|| ContentBehaviour::default_for(key.kind()))?;
+            Some((key, owner, behaviour))
+        })
     }
 
     /// Moves one mod to its next state.
@@ -460,6 +501,27 @@ impl LifecycleMachine {
         mod_id: &ModId,
         identifier: &str,
     ) -> Result<(), LifecycleError> {
+        self.claim_described_registry_identifier(mod_id, identifier, None)
+    }
+
+    /// Claims `identifier` and records how the value it names behaves.
+    ///
+    /// The behaviour is checked against the identifier's own kind rather than
+    /// trusted: a mod describing `item:example_mod:copper` as a block has asked
+    /// for a value no registry takes, and admitting it would move the failure to
+    /// the moment the game tries to build one.
+    ///
+    /// # Errors
+    ///
+    /// Every refusal [`Self::claim_registry_identifier`] makes, plus
+    /// [`LifecycleError::MismatchedContentBehaviour`] when the description does
+    /// not describe the kind the identifier names.
+    pub fn claim_described_registry_identifier(
+        &mut self,
+        mod_id: &ModId,
+        identifier: &str,
+        behaviour: Option<ContentBehaviour>,
+    ) -> Result<(), LifecycleError> {
         let closed = self.registration_barrier_closed();
         let tracked = self.tracked(mod_id)?;
         if closed {
@@ -483,8 +545,25 @@ impl LifecycleMachine {
             });
         }
 
-        self.claims
-            .insert(identifier.to_owned(), tracked.entry.mod_id.clone());
+        // Checked before either table is written, so a refused description
+        // leaves no identifier owned. A claim that half happened would be a name
+        // a mod can neither re-claim nor use.
+        if let Some(behaviour) = behaviour
+            && !identifier
+                .parse::<RegistryKey>()
+                .is_ok_and(|key| behaviour.describes(key.kind()))
+        {
+            return Err(LifecycleError::MismatchedContentBehaviour {
+                identifier: identifier.to_owned(),
+                described: behaviour.kind(),
+            });
+        }
+
+        let owner = tracked.entry.mod_id.clone();
+        if let Some(behaviour) = behaviour {
+            self.behaviours.insert(identifier.to_owned(), behaviour);
+        }
+        self.claims.insert(identifier.to_owned(), owner);
         Ok(())
     }
 
@@ -720,6 +799,13 @@ pub enum LifecycleError {
         /// The mod that claimed it second.
         claimant: ModId,
     },
+    /// A mod described claimed content as a kind the identifier does not name.
+    MismatchedContentBehaviour {
+        /// The identifier that was described.
+        identifier: String,
+        /// The kind the description describes.
+        described: ContentKind,
+    },
     /// A mod is not running, so the set cannot open a world.
     WorldAccessBlocked {
         /// The mod that is not running.
@@ -801,6 +887,14 @@ impl fmt::Display for LifecycleError {
                 "`{claimant}` claimed the registry identifier `{identifier}`, which `{owner}` \
                  already owns"
             ),
+            Self::MismatchedContentBehaviour {
+                identifier,
+                described,
+            } => write!(
+                formatter,
+                "`{identifier}` was described as {described} content, which is not the kind it \
+                 names"
+            ),
             Self::WorldAccessBlocked { mod_id, state } => write!(
                 formatter,
                 "`{mod_id}` is `{}` rather than running, so the set cannot open a world",
@@ -843,7 +937,11 @@ impl StructuredFailure for LifecycleError {
             Self::RegistrationWindow { state, .. } | Self::WorldAccessBlocked { state, .. } => {
                 *state
             }
-            Self::ConflictingRegistryClaim { .. } => LifecycleState::Constructed,
+            // Both are refusals of a claim, and a claim is only ever made from
+            // the one state the window is open in.
+            Self::ConflictingRegistryClaim { .. } | Self::MismatchedContentBehaviour { .. } => {
+                LifecycleState::Constructed
+            }
             Self::RegistrationBarrierOpen { .. } | Self::RegistrationBarrierClosed { .. } => {
                 LifecycleState::Registered
             }
@@ -878,8 +976,8 @@ mod tests {
     use std::collections::BTreeSet;
 
     use ravel_core::{
-        FailureAttribution, FailureEnvironment, FailureKind, LifecycleState, ModId, Redaction,
-        Side, SideSet, StructuredFailure,
+        ContentBehaviour, ContentKind, FailureAttribution, FailureEnvironment, FailureKind,
+        LifecycleState, ModId, Redaction, Side, SideSet, StructuredFailure,
     };
     use ravel_observability::redact;
 
@@ -1157,6 +1255,148 @@ mod tests {
             .expect("the window is open while constructed");
         assert_eq!(machine.registry_owner("example_mod:block"), Some(&mod_id));
         assert_eq!(machine.registry_owner("example_mod:item"), None);
+    }
+
+    #[test]
+    fn every_admitted_claim_can_be_read_back_as_a_typed_key() {
+        let mut machine = LifecycleMachine::new(
+            Side::Client,
+            vec![
+                entry("first_mod", &[Side::Client]),
+                entry("second_mod", &[Side::Client]),
+            ],
+        )
+        .expect("two mods are a valid plan");
+        for state in [
+            LifecycleState::Validated,
+            LifecycleState::Resolved,
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+        ] {
+            machine.advance_all(state).expect("legal");
+        }
+
+        // Claimed out of sorted order, and by two different owners, so the order
+        // the table answers in is the table's and not the claimant's.
+        machine
+            .claim_registry_identifier(&id("second_mod"), "item:second_mod:ingot")
+            .expect("accepted");
+        machine
+            .claim_registry_identifier(&id("first_mod"), "block:first_mod:copper")
+            .expect("accepted");
+
+        let claimed: Vec<(String, ModId)> = machine
+            .claimed_content()
+            .map(|(key, owner, _)| (key.to_string(), owner.clone()))
+            .collect();
+
+        assert_eq!(
+            claimed,
+            vec![
+                ("block:first_mod:copper".to_owned(), id("first_mod")),
+                ("item:second_mod:ingot".to_owned(), id("second_mod")),
+            ],
+            "the order is the table's own, so what a game registers cannot \
+             depend on the order mods happened to claim in"
+        );
+
+        let kinds: Vec<ContentKind> = machine
+            .claimed_content()
+            .map(|(key, _, _)| key.kind())
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![ContentKind::Block, ContentKind::Item],
+            "a claim carries which registry it belongs in, not just its name"
+        );
+    }
+
+    #[test]
+    fn a_claim_carries_what_the_mod_described_and_its_kind_default_otherwise() {
+        let mut machine = machine_at(LifecycleState::Constructed);
+        let mod_id = id("example_mod");
+        machine
+            .claim_described_registry_identifier(
+                &mod_id,
+                "block:example_mod:obsidian",
+                Some(ContentBehaviour::Block(ravel_core::BlockBehaviour {
+                    hardness: 50.0,
+                    explosion_resistance: 1200.0,
+                    requires_correct_tool: true,
+                    random_ticks: false,
+                })),
+            )
+            .expect("accepted");
+        machine
+            .claim_registry_identifier(&mod_id, "item:example_mod:ingot")
+            .expect("accepted");
+
+        let described: Vec<ContentBehaviour> = machine
+            .claimed_content()
+            .map(|(_, _, behaviour)| behaviour)
+            .collect();
+
+        assert_eq!(
+            described,
+            vec![
+                ContentBehaviour::Block(ravel_core::BlockBehaviour {
+                    hardness: 50.0,
+                    explosion_resistance: 1200.0,
+                    requires_correct_tool: true,
+                    random_ticks: false,
+                }),
+                ContentBehaviour::Item(ravel_core::ItemBehaviour::default()),
+            ],
+            "a claim that described nothing gets its kind's default rather than \
+             arriving undescribed"
+        );
+    }
+
+    #[test]
+    fn content_described_as_a_kind_its_name_does_not_carry_is_refused_whole() {
+        let mut machine = machine_at(LifecycleState::Constructed);
+        let mod_id = id("example_mod");
+
+        let error = machine
+            .claim_described_registry_identifier(
+                &mod_id,
+                "item:example_mod:copper",
+                Some(ContentBehaviour::Block(
+                    ravel_core::BlockBehaviour::default(),
+                )),
+            )
+            .expect_err("an item described as a block is a value no registry builds");
+
+        assert!(
+            matches!(error, LifecycleError::MismatchedContentBehaviour { .. }),
+            "{error}"
+        );
+        assert_eq!(
+            machine.registry_claims(&mod_id),
+            0,
+            "a refused description leaves no identifier owned, or the mod holds a \
+             name it can neither re-claim nor use"
+        );
+    }
+
+    #[test]
+    fn a_claim_that_names_no_kind_is_skipped_rather_than_taking_the_game_down() {
+        let mut machine = machine_at(LifecycleState::Constructed);
+        machine
+            .claim_registry_identifier(&id("example_mod"), "example_mod:block")
+            .expect("the barrier stores whatever text it is given");
+
+        assert_eq!(
+            machine.claimed_content().count(),
+            0,
+            "an identifier the barrier holds that names no kind carries no \
+             content, and carrying less is not the same as failing"
+        );
+        assert_eq!(
+            machine.registry_claims(&id("example_mod")),
+            1,
+            "the barrier still owns it, so the footprint is unchanged"
+        );
     }
 
     #[test]

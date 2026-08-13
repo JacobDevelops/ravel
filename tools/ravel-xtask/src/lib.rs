@@ -1456,13 +1456,23 @@ const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
 
 /// Every game class the agent jar resolves reflectively, as a declared set.
 ///
-/// ADG-7's persistence adapter is the only source that resolves one. Adding a name
-/// to that source without adding it here fails the scaffold, which is the whole
-/// point of the list.
-const PERSISTENCE_REFLECTED_CLASSES: [&str; 5] = [
+/// Two sources resolve one, and for the same reason: ADG-4 admits a hook that
+/// observes or vetoes, so anything the host has to *perform* — storing a world's
+/// aggregate, registering a mod's block — is performed by a hand-written adapter
+/// that reaches the game by name. Adding a name to either source without adding it
+/// here fails the scaffold, which is the whole point of the list.
+const AGENT_REFLECTED_CLASSES: [&str; 13] = [
     "net.minecraft.client.Minecraft",
+    "net.minecraft.core.Registry",
+    "net.minecraft.core.registries.Registries",
+    "net.minecraft.resources.Identifier",
+    "net.minecraft.resources.ResourceKey",
     "net.minecraft.server.MinecraftServer",
     "net.minecraft.util.datafix.DataFixers",
+    "net.minecraft.world.item.Item",
+    "net.minecraft.world.item.Item$Properties",
+    "net.minecraft.world.level.block.Block",
+    "net.minecraft.world.level.block.state.BlockBehaviour$Properties",
     "net.minecraft.world.level.storage.LevelResource",
     "net.minecraft.world.level.storage.SavedDataStorage",
 ];
@@ -1549,7 +1559,7 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
             }
         };
         for name in game_class_literals(&source) {
-            if PERSISTENCE_REFLECTED_CLASSES.contains(&name.as_str()) {
+            if AGENT_REFLECTED_CLASSES.contains(&name.as_str()) {
                 resolved.push(name);
                 continue;
             }
@@ -1565,7 +1575,7 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
         }
     }
 
-    for declared in PERSISTENCE_REFLECTED_CLASSES {
+    for declared in AGENT_REFLECTED_CLASSES {
         if !resolved.iter().any(|name| name == declared) {
             violations.push(format!(
                 "the agent jar's declared reflective surface names {declared} and no source under \
@@ -1602,11 +1612,11 @@ fn verify_resolved_class_figure(root: &Path, violations: &mut Vec<String>) {
             return;
         }
     };
-    let declared = PERSISTENCE_REFLECTED_CLASSES.len();
+    let declared = AGENT_REFLECTED_CLASSES.len();
     let stated = numbers_before(&record, &["classes", "by", "name"]);
     if stated.is_empty() {
         violations.push(format!(
-            "{JVM_ENTRY_DECISION} states no count of the classes the persistence adapter resolves \
+            "{JVM_ENTRY_DECISION} states no count of the classes the agent jar's adapters resolve \
              by name; the figure is the one thing about that set a reader takes on trust, so it is \
              required rather than optional"
         ));
@@ -1615,7 +1625,7 @@ fn verify_resolved_class_figure(root: &Path, violations: &mut Vec<String>) {
     for count in stated {
         if count != declared {
             violations.push(format!(
-                "{JVM_ENTRY_DECISION} says the persistence adapter resolves {count} classes by \
+                "{JVM_ENTRY_DECISION} says the agent jar's adapters resolve {count} classes by \
                  name while the declared reflective surface holds {declared}"
             ));
         }

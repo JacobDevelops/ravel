@@ -71,6 +71,7 @@ ravel-test-mod-optional-service = { path = "test-mods/optional-service", version
 ravel-test-mod-provision = { path = "test-mods/provision", version = "0.0.0" }
 ravel-test-mod-render-stages = { path = "test-mods/render-stages", version = "0.0.0" }
 ravel-test-mod-resources = { path = "test-mods/resources", version = "0.0.0" }
+ravel-test-mod-registries = { path = "test-mods/registries", version = "0.0.0" }
 ravel-test-mod-saved-data = { path = "test-mods/saved-data", version = "0.0.0" }
 ravel-test-mod-server-data = { path = "test-mods/server-data", version = "0.0.0" }
 ravel-test-mod-server-only = { path = "test-mods/server-only", version = "0.0.0" }

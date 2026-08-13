@@ -738,7 +738,26 @@ fn written_declarations() -> &'static str {
          \x20    * @param identity what the game calls the saving world, unmassaged\n\
          \x20    * @return the tagged answer, or {@code null} when the native failed\n\
          \x20    */\n\
-         \x20   public static native byte[] ravelSaveWorldPersistence(String identity);\n\
+         \x20   public static native byte[] ravelSaveWorldPersistence(String identity);\n\n\
+         \x20   /**\n\
+         \x20    * Everything Ravel's registration barrier admitted, to register.\n\
+         \x20    *\n\
+         \x20    * <p>The barrier decides that a mod owns an identifier and a\n\
+         \x20    * registry in the running game is where that becomes a block, so\n\
+         \x20    * this is the read the content adapter performs at the last point\n\
+         \x20    * the built-in registries still accept entries. A hook could not\n\
+         \x20    * do it: ADG-4 admits observing and vetoing, and registering is\n\
+         \x20    * an action.\n\
+         \x20    *\n\
+         \x20    * <p>The payload carries only the kinds a registry can take,\n\
+         \x20    * because which claims are registrable is an admission question\n\
+         \x20    * and admission is native. Empty is a launch with no set\n\
+         \x20    * installed. Null is neither: it is what the JVM receives when\n\
+         \x20    * the native failed, and nothing is registered on it.\n\
+         \x20    *\n\
+         \x20    * @return the admitted content, empty before a set is installed\n\
+         \x20    */\n\
+         \x20   public static native String ravelAdmittedContent();\n\
          }"
 }
 

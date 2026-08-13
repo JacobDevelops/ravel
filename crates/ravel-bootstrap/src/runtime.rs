@@ -221,6 +221,36 @@ impl LoaderRuntime {
             .fail(mod_id, attribution)
             .expect("a mod the machine holds can fail");
     }
+
+    /// Claims one registry identifier on the held machine, as a mod would.
+    ///
+    /// Exists so the content crossing can be read against a set that actually
+    /// claimed something, without that test reaching into the machine itself.
+    pub(crate) fn claim(
+        &self,
+        mod_id: &ravel_core::ModId,
+        identifier: &str,
+    ) -> Result<(), ravel_loader::LifecycleError> {
+        self.inner
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .machine
+            .claim_registry_identifier(mod_id, identifier)
+    }
+
+    /// Claims one identifier and describes it, as a mod would.
+    pub(crate) fn describe(
+        &self,
+        mod_id: &ravel_core::ModId,
+        identifier: &str,
+        behaviour: ravel_core::ContentBehaviour,
+    ) -> Result<(), ravel_loader::LifecycleError> {
+        self.inner
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .machine
+            .claim_described_registry_identifier(mod_id, identifier, Some(behaviour))
+    }
 }
 
 /// A runtime that both the hook registry and the mod list screen hold.
@@ -271,6 +301,7 @@ pub fn install(
     ));
     // One installation point for every reader, so there is no launch in which
     // hooks reach the mod set but a screen finds nothing.
+    crate::content::install(Arc::clone(&runtime));
     crate::mods::install(Arc::clone(&runtime));
     crate::persistence::install(Arc::clone(&runtime));
     crate::profiling::install(Arc::clone(&runtime));

@@ -56,6 +56,7 @@ public final class Transformer implements ClassFileTransformer {
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;Ljava/lang/Object;Z)Z");
     private static final MethodTypeDesc WORLD_SAVE =
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
+    private static final MethodTypeDesc REGISTER_CONTENT = MethodTypeDesc.ofDescriptor("()V");
 
     private final Map<String, List<HookTarget>> byClass;
     private final AtomicInteger transformedClasses = new AtomicInteger();
@@ -97,6 +98,19 @@ public final class Transformer implements ClassFileTransformer {
     /** Gives the rewritten save method a public path to ADG-7's adapter. */
     public static void saveWorldPersistence(Object server) {
         Persistence.save(server);
+    }
+
+    /**
+     * Gives the rewritten freeze method a public path to the content adapter.
+     *
+     * <p>Named here for the same reason as the two above: registering is an
+     * action, ADG-4's hooks observe and veto, so the action is a second call at
+     * the same seam rather than a widened hook contract. It takes nothing — the
+     * set to register is read across the adapter's own crossing, not out of the
+     * host method's arguments.
+     */
+    public static void registerContent() {
+        Content.register();
     }
 
     /** Classes this transformer rewrote. */
@@ -302,6 +316,19 @@ public final class Transformer implements ClassFileTransformer {
                 && target.member().equals("saveAllChunks");
     }
 
+    /**
+     * The seam content is registered at.
+     *
+     * <p>The prologue runs before the body that closes the built-in registries,
+     * so this is the last moment they still accept an entry and every vanilla
+     * entry is already in them. Registering earlier would put a mod's block in
+     * front of the game's own.
+     */
+    private static boolean isBuiltInFreeze(HookTarget target) {
+        return target.internalClass().equals("net/minecraft/core/registries/BuiltInRegistries")
+                && target.member().equals("freeze");
+    }
+
     private static boolean isTitleMenu(HookTarget target) {
         return target.internalClass().equals("net/minecraft/client/gui/screens/TitleScreen")
                 && target.member().equals("createNormalMenuOptions")
@@ -377,6 +404,8 @@ public final class Transformer implements ClassFileTransformer {
                     // identity can come from.
                     builder.aload(0);
                     builder.invokestatic(TRANSFORMER, "saveWorldPersistence", WORLD_SAVE);
+                } else if (isBuiltInFreeze(target)) {
+                    builder.invokestatic(TRANSFORMER, "registerContent", REGISTER_CONTENT);
                 }
             }
             if (isTitleMenu(target)

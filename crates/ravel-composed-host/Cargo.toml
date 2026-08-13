@@ -17,6 +17,7 @@ ravel-core.workspace = true
 ravel-host-runtime.workspace = true
 ravel-test-mod-client-only.workspace = true
 ravel-test-mod-configuration.workspace = true
+ravel-test-mod-registries.workspace = true
 ravel-test-mod-saved-data.workspace = true
 ravel-test-mod-server-only.workspace = true
 

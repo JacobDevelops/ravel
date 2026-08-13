@@ -72,6 +72,7 @@ order_agent="$order/agent/ravel-agent.jar"
 mkdir -p "$order/classes" "$(dirname "$order_agent")" "$order/agent-classes"
 javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Agent.java" \
+	"$root/jvm/bootstrap/dev/ravel/jvm/Content.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/HookTarget.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Persistence.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Screens.java" \
@@ -380,6 +381,89 @@ if [ "$persistence_lifecycles" -ne "$persistence_lifecycles_declared" ]; then
 	exit 1
 fi
 
+# The content-registration seam, against a stand-in game. The adapter is
+# reflective and reads the admitted set across its own crossing, so a stand-in
+# carrying the pinned names and descriptors exercises the real control flow:
+# what is stood in for is the game, not Ravel. The stand-in registries refuse a
+# duplicate and refuse everything once frozen, and the properties objects refuse
+# to describe a block or an item that was never given an id — so a registration
+# that only looked like one fails here.
+content="$work/content"
+content_agent="$content/agent/ravel-agent.jar"
+mkdir -p "$content/classes" "$(dirname "$content_agent")"
+mapfile -d '' content_sources < <(find "$root/jvm/harness/content" -name '*.java' -print0 | sort -z)
+javac -Xlint:all -Werror -d "$content/classes" "${content_sources[@]}"
+# `ContentMain` needs the agent classes only to read the stand-in hook's counter.
+# A real launch never compiles against them.
+javac -Xlint:all -Werror -cp "$content/classes:$order/agent-classes" -d "$content/classes" \
+	"$root/jvm/harness/ContentMain.java"
+cp "$order_agent" "$content_agent"
+
+# Each run is one initialization: the registries freeze once, and what they hold
+# afterwards is the whole answer.
+content_run() {
+	local label="$1" admitted="$2" expected="$3"
+	local out="$content/$label-stdout"
+	local err="$content/$label-stderr"
+	(cd "$content/classes" && java \
+		-javaagent:"$content_agent" \
+		-Dravel.test.transform.content=true \
+		-Dravel.test.content.admitted="$admitted" \
+		-cp . ContentMain >"$out" 2>"$err")
+	local observed
+	observed="$(<"$out")"
+	printf '%s\n' "$observed"
+	while IFS= read -r line; do
+		printf '%s\n' "$line" >&2
+	done <"$err"
+	if [ "$observed" != "$expected" ]; then
+		echo >&2
+		echo "content registration run '$label' did not produce the recorded output; expected:" >&2
+		printf '%s\n' "$expected" >&2
+		exit 1
+	fi
+}
+
+# The whole point of the surface: a block and an item a mod declared are in the
+# game's registries, under the mod's own namespace, as values of the game's own
+# types. Two crossings — the hook's, and the adapter's read.
+content_run admitted \
+	'block:example_mod:copper:50.0:1200.0:true:false,item:example_mod:ingot:16:true' \
+	'block=example_mod:copper->Block(50.0/1200.0/true/false)
+item=example_mod:ingot->Item(16/true)
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+
+# Nothing admitted is a launch with no set installed, and it registers nothing
+# rather than failing. The crossing still happens, which is what says the empty
+# answer came from Rust and not from a seam that never fired.
+content_run empty empty 'block=
+item=
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+
+# Null is what the JVM receives when the native failed. Nothing is registered on
+# it, because registering a set nothing checked is the worse half of the trade.
+content_run null-answer null 'block=
+item=
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+
+# A payload built under a contract this adapter never agreed to is refused whole
+# rather than read half of.
+content_run malformed malformed 'block=
+item=
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+content_malformed_diagnostic="$(grep '^\[ravel\] content' "$content/malformed-stderr")"
+content_malformed_expected='[ravel] content registration was offered a payload it cannot read'
+if [ "$content_malformed_diagnostic" != "$content_malformed_expected" ]; then
+	echo >&2
+	echo "a malformed content payload did not refuse with the recorded diagnostic; expected:" >&2
+	printf '%s\n' "$content_malformed_expected" >&2
+	exit 1
+fi
+
 failure_stdout="$order/failure-stdout"
 failure_stderr="$order/failure-stderr"
 (cd "$order/classes" && java \
@@ -443,7 +527,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:default:true
-mods=1:16:client1:01:41:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:01:411:server_only8:resolved8:required5:false5:false1:0
+mods=1:16:client1:01:51:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:registries7:running8:required4:true5:false1:01:410:saved_data7:running8:required4:true5:false1:01:511:server_only8:resolved8:required5:false5:false1:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code
 [ravel] rewritten targets: net.minecraft.util.StringUtil=4'
 expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
@@ -549,7 +633,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=verbose:player:false
-mods=1:16:client1:01:41:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:01:411:server_only8:resolved8:required5:false5:false1:0
+mods=1:16:client1:01:51:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:registries7:running8:required4:true5:false1:01:410:saved_data7:running8:required4:true5:false1:01:511:server_only8:resolved8:required5:false5:false1:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 
 printf '%s\n' "$relaunch_observed"
@@ -684,7 +768,7 @@ driven_observed="$(<"$driven_stdout")"
 driven_expected='driven=320x240 fits=true within=true ticks=none entered=none
 driven=480x270 fits=true within=true ticks=none entered=none
 driven=640x360 fits=true within=true ticks=none entered=4
-driven=960x540 fits=true within=true ticks=none entered=0,4,4,4
+driven=960x540 fits=true within=true ticks=none entered=0,4,4,4,4
 [ravel] rewrote 2 classes and 3 methods; 8 hook invocations reached native code'
 
 printf '%s\n' "$driven_observed"
@@ -718,7 +802,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:player:true
-mods=1:16:client1:01:41:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:01:411:server_only8:resolved8:required5:false5:false1:0
+mods=1:16:client1:01:51:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:registries7:running8:required4:true5:false1:01:410:saved_data7:running8:required4:true5:false1:01:511:server_only8:resolved8:required5:false5:false1:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 
 printf '%s\n' "$ui_relaunch_observed"
@@ -747,7 +831,7 @@ buttons=1
 label=Ravel Mods
 buttonY=130
 screen=dev.ravel.jvm.screen.RavelModsScreen
-modWidgets=8
+modWidgets=9
 entry=Configuration Settings
 settings=dev.ravel.jvm.screen.RavelSettingsScreen
 entry=Profiling
@@ -795,8 +879,8 @@ javac -Xlint:all -Werror -d "$side/dedicated" \
 	"$root/jvm/harness/net/minecraft/SharedConstants.java"
 javac -Xlint:all -Werror -cp "$jar" -d "$side/classes" "$root/jvm/harness/SideMain.java"
 
-side_expected='client=mods=1:16:client1:01:41:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:01:411:server_only8:resolved8:required5:false5:false1:0
-dedicated=mods=1:116:dedicated-server1:01:41:113:configuration7:running8:required4:true5:false1:01:210:saved_data7:running8:required4:true5:false1:01:311:server_only7:running8:required4:true5:false1:01:411:client_only8:resolved8:required5:false5:false1:0'
+side_expected='client=mods=1:16:client1:01:51:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:registries7:running8:required4:true5:false1:01:410:saved_data7:running8:required4:true5:false1:01:511:server_only8:resolved8:required5:false5:false1:0
+dedicated=mods=1:116:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false1:01:210:registries7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:01:411:server_only7:running8:required4:true5:false1:01:511:client_only8:resolved8:required5:false5:false1:0'
 side_observed=""
 for case in client dedicated; do
 	case_stdout="$side/$case-stdout"

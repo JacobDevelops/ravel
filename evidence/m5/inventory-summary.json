@@ -159,7 +159,7 @@
     {
       "name": "checks/verify.sh",
       "class": "machinery",
-      "sha256": "cde3a64a59fca5258fb4f98f01d237afa0dba5b33f488ec1ae197c3e75333c15",
+      "sha256": "00275ece8e42bc1a4124461e905c20df8eb2e78e43d633022ce23a06228213a1",
       "holds": "the private gate whose exit status and summary lines every figure above was read from"
     },
     {
@@ -253,8 +253,10 @@
     },
     {
       "milestone": "M6",
-      "reason": "M6-W3 wrote the first behaviour specifications, and the rewrite-integrity check M6-W5 built could not be run over them: it scans counterpart packages and its lexicon rules hold a Rust package's own directory and file names to a published list, which prose has none of. So a specification could carry an upstream identifier in front of every implementer who read it and nothing would refuse it. checks/verify-spec-identifiers.sh applies that check's identifier rules — the same jq queries over the same two inventory records, the same hand-excused words, the same normalization, rules U1 and N1 only — to a directory of prose. It was proved by mutation before being relied on: a verbatim mod id exits nonzero under U1, a separator-and-case variant that U1 misses exits nonzero under N1, an empty directory is refused, and an unmutated control exits zero. Adding it changes the count of scanned files under checks/, which this record publishes. docs/decisions/machinery-is-not-material.md decides that figure records the tree M5 certified rather than an invariant of every later tree, so it is amended here with the reason beside it. No figure about the material moved, and no material digest is touched by this entry.",
-      "entries": [],
+      "reason": "M6-W3 wrote the first behaviour specifications, and the rewrite-integrity check M6-W5 built could not be run over them: it scans counterpart packages and its lexicon rules hold a Rust package's own directory and file names to a published list, which prose has none of. So a specification could carry an upstream identifier in front of every implementer who read it and nothing would refuse it. checks/verify-spec-identifiers.sh applies that check's identifier rules — the same jq queries over the same two inventory records, the same hand-excused words, the same normalization, rules U1 and N1 only — to a directory of prose. It was proved by mutation before being relied on: a verbatim mod id exits nonzero under U1, a separator-and-case variant that U1 misses exits nonzero under N1, an empty directory is refused, and an unmutated control exits zero. Adding it changes the count of scanned files under checks/, which this record publishes, and calling it changes checks/verify.sh, which this record binds. docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. The check was written before checks/verify.sh called it, and a check the gate does not call is advisory by construction — the same defect this record's M6-W1 entry names in its own reason. It is now the last line of the gate, so a specification carrying an upstream identifier fails the private gate rather than a script nobody runs. No figure about the material moved, and no material digest is touched by this entry.",
+      "entries": [
+        "checks/verify.sh"
+      ],
       "figures": [
         {
           "field": "primitiveScan.filesScanned",

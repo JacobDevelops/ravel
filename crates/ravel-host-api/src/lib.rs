@@ -535,6 +535,21 @@ pub trait Registrar {
 
     /// Returns the identifiers this mod has already claimed, in claim order.
     fn claimed(&self) -> &[RegistryKey];
+
+    /// Returns whether `mod_id` is a mod this launch is running.
+    ///
+    /// This is what an optional integration branches on. A mod that declares an
+    /// `optional` dependency is admitted whether or not that dependency is
+    /// there — the resolver treats the relationship as an ordering preference
+    /// rather than a requirement — so the mod itself is what decides whether to
+    /// register the integration, and this is the only question it needs to
+    /// decide it.
+    ///
+    /// `false` covers three different absences and does not distinguish them: no
+    /// such mod in the plan, a mod this side parks, and a mod that failed. A
+    /// mod integrating with any of them would register content backed by
+    /// nothing, so one answer serves all three.
+    fn loads(&self, mod_id: &ModId) -> bool;
 }
 
 /// Why the loader refused a registration claim.
@@ -649,6 +664,12 @@ mod tests {
 
         fn claimed(&self) -> &[RegistryKey] {
             &self.claimed
+        }
+
+        // A table holds claims and no load plan, so it knows of no other mod.
+        fn loads(&self, mod_id: &ModId) -> bool {
+            let _ = mod_id;
+            false
         }
     }
 

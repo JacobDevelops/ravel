@@ -407,6 +407,11 @@ mod tests {
         fn claimed(&self) -> &[RegistryKey] {
             &self.claimed
         }
+
+        fn loads(&self, mod_id: &ModId) -> bool {
+            let _ = mod_id;
+            false
+        }
     }
 
     #[derive(Default)]

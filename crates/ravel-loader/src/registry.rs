@@ -78,6 +78,10 @@ impl Registrar for Registration<'_> {
     fn claimed(&self) -> &[RegistryKey] {
         &self.claimed
     }
+
+    fn loads(&self, mod_id: &ModId) -> bool {
+        self.machine.loads(mod_id)
+    }
 }
 
 impl LifecycleMachine {

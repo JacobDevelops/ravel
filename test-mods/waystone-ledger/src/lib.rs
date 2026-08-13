@@ -725,6 +725,12 @@ mod tests {
         fn claimed(&self) -> &[RegistryKey] {
             &self.claimed
         }
+
+        // A double holds no load plan, so it knows of no other mod.
+        fn loads(&self, mod_id: &ModId) -> bool {
+            let _ = mod_id;
+            false
+        }
     }
 
     /// A registrar that refuses claims of one kind as already owned.
@@ -748,6 +754,12 @@ mod tests {
 
         fn claimed(&self) -> &[RegistryKey] {
             &self.claimed
+        }
+
+        // A double holds no load plan, so it knows of no other mod.
+        fn loads(&self, mod_id: &ModId) -> bool {
+            let _ = mod_id;
+            false
         }
     }
 

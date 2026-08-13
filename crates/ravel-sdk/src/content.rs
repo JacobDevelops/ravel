@@ -86,7 +86,7 @@ use crate::ModError;
 /// use ravel_sdk::content::{
 ///     ContentDeclaration, ContentKind, Registrar, RegistrationRefused, RegistryKey, claim_all,
 /// };
-/// use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
+/// use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod};
 ///
 /// struct Example;
 ///
@@ -111,6 +111,11 @@ use crate::ModError;
 ///
 ///     fn claimed(&self) -> &[RegistryKey] {
 ///         &self.claimed
+///     }
+///
+///     fn loads(&self, mod_id: &ModId) -> bool {
+///         let _ = mod_id;
+///         false
 ///     }
 /// }
 ///

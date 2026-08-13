@@ -330,6 +330,57 @@ pub mod settings {
     }
 }
 
+/// `docs/guide/package-manifest.md` — Registering content only when the mod it
+/// integrates with is running.
+pub mod optional_integration {
+    use ravel_sdk::prelude::*;
+
+    /// What this mod registers when the lanterns mod is running, and nothing
+    /// otherwise.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `lit_copper` stops being a legal content path, which would mean
+    /// the integration can no longer be named.
+    #[must_use]
+    pub fn integration() -> ContentDeclaration {
+        let owner: ModId = "foundry".parse().expect("`foundry` is a legal mod id");
+        let mut declaration = ContentDeclaration::new(owner);
+        declaration
+            .entry(ContentKind::Recipe, "lit_copper")
+            .expect("a legal entry");
+        declaration
+    }
+
+    /// A mod whose recipe exists only when another mod does.
+    pub struct Foundry {
+        lanterns: ModId,
+    }
+
+    impl Default for Foundry {
+        fn default() -> Self {
+            Self {
+                lanterns: "lanterns".parse().expect("`lanterns` is a legal mod id"),
+            }
+        }
+    }
+
+    #[declare_mod(id = "foundry")]
+    impl Mod for Foundry {
+        fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+            let _ = state;
+            Ok(())
+        }
+
+        fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
+            if registrar.loads(&self.lanterns) {
+                claim_all(&integration(), registrar)?;
+            }
+            Ok(())
+        }
+    }
+}
+
 /// `docs/guide/state.md` — Using a mod only if it is installed.
 pub mod optional_service {
     use ravel_sdk::prelude::*;
@@ -429,6 +480,12 @@ mod tests {
 
         fn claimed(&self) -> &[RegistryKey] {
             &self.claimed
+        }
+
+        // A double holds no load plan, so it knows of no other mod.
+        fn loads(&self, mod_id: &ModId) -> bool {
+            let _ = mod_id;
+            false
         }
     }
 

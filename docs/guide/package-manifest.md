@@ -6,12 +6,14 @@ from. The manifest is the only place the loader learns a mod's identity, its
 compatibility, and the sides it may load on, and package metadata is validated
 before any of a mod's code runs.
 
-**In a launched game today, none of that happens to your package.** The shipped
-launch path composes a fixed set of mods in Rust source and reads no
-`package.json` at all, so the fields below decide what a validated package means
-— which is what the repository's own suites hold your manifest to — and decide
-nothing about a running instance. Write the manifest as though it were read,
-because it will be; do not expect a `sides` array to park anything this week. See
+**A launched game reads your manifest and still will not run your mod.** A launch
+discovers `ravel/mods`, validates every installed manifest against the schema
+below, and verifies the digests each one records — so a malformed or altered
+package stops the launch by name. What it will not do is admit what it found: the
+mods a launch runs are the ones its host was compiled from, and an installed
+package that host does not name refuses the launch rather than joining it.
+`ravel-cli host build` is what compiles a host that names them. Until a launch
+runs that itself, write the manifest as though it were read, because it is. See
 [What does not work yet](limits.md).
 
 [`schemas/package.schema.json`](../../schemas/package.schema.json) is the
@@ -111,6 +113,37 @@ side is parked before any of its code runs there.
 `after` and is how you get deterministic load ordering when ordering actually
 matters; declare it only when it does. `sides` narrows a dependency to particular
 sides.
+
+An `optional` relationship is an ordering preference and not a requirement, so
+your mod is admitted whether or not that mod is there. That leaves you needing to
+know which happened, and `Registrar::loads` is the question: pass the other mod's
+id during `register` and it answers whether this launch is running it. Claim the
+integration's content inside that branch and it exists only when the thing it
+integrates with does.
+
+```rust
+fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
+    if registrar.loads(&self.lanterns) {
+        claim_all(&integration(), registrar)?;
+    }
+    Ok(())
+}
+```
+
+`false` is three different absences and does not tell them apart: the mod is not
+installed, or it is installed and its `sides` list parks it on this side, or it
+ran and failed. Integrating with any of those would register content backed by
+nothing, so one answer covers all three. An off switch is yours to add on top —
+declare a boolean setting and check it beside the `loads` call — because a player
+turning an integration off is a different question from the target being absent.
+
+There is a second way to depend on a mod optionally, and it answers a different
+question. [Using a mod only if it is installed](state.md#using-a-mod-only-if-it-is-installed)
+declares an optional *service* and branches on whether anything answered the
+call. Use that when the integration is you calling into the other mod, and it
+only works when that mod offers a service. Use `loads` when the integration is
+content you register, because registration closes before services are called and
+because a mod that answers nothing is still a mod you can build a recipe around.
 
 **`savedDataVersions`** lists every version of world data this build can read.
 It must agree with what your `Mod::saved_data_declaration` declares.

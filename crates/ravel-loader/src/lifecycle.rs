@@ -278,6 +278,35 @@ impl LifecycleMachine {
         Ok(&self.tracked(mod_id)?.entry)
     }
 
+    /// Returns whether a mod is one this launch is actually running.
+    ///
+    /// This is the question an optional integration asks: not whether a package
+    /// is installed, but whether the mod it would integrate with is in this
+    /// plan, loads on this side, and has not failed. All three have to hold, and
+    /// each is a different way the answer is no — an id outside the plan is not
+    /// installed, a mod parked by its `sides` declaration is installed and will
+    /// not run here, and a failed optional mod ran and stopped. A mod that
+    /// integrated with any of the three would be building on something absent.
+    ///
+    /// The answer changes as the set advances, which is why it is a question
+    /// rather than a list handed out once: a mod asking during registration is
+    /// told what is true at the barrier, and a mod that fails afterwards is a
+    /// failure the integrating mod sees through its own calls rather than
+    /// through this.
+    /// The side is read from the entry's own declaration rather than through
+    /// [`Self::is_parked`], which is a fact about the *state machine* — a mod is
+    /// parked once the set has resolved and left it behind — and would answer
+    /// yes for a server-only mod on a client before the set reaches
+    /// [`LifecycleState::Resolved`]. What a mod is asking is whether the other
+    /// mod will run here, and its `sides` list decides that from the moment the
+    /// plan is admitted.
+    #[must_use]
+    pub fn loads(&self, mod_id: &ModId) -> bool {
+        self.tracked(mod_id).is_ok_and(|tracked| {
+            tracked.entry.sides.loads_on(self.side) && tracked.state != LifecycleState::Failed
+        })
+    }
+
     /// Returns the identity that owns a registry identifier.
     #[must_use]
     pub fn registry_owner(&self, identifier: &str) -> Option<&ModId> {
@@ -899,6 +928,50 @@ mod tests {
             },
             message: redact("the dependency is absent"),
         }
+    }
+
+    /// `loads` answers the question an optional integration asks, and every way
+    /// the answer is no is a different absence.
+    ///
+    /// Written against a client machine holding a client mod, a server-only mod
+    /// and a mod that fails: the first runs here, the second is installed and
+    /// parked by its own `sides` declaration, the third ran and stopped, and a
+    /// fourth id was never in the plan at all.
+    #[test]
+    fn loading_is_answered_for_every_way_a_mod_can_be_absent() {
+        let mut machine = LifecycleMachine::new(
+            Side::Client,
+            vec![
+                entry("example_mod", &[Side::Client]),
+                entry("server_side_mod", &[Side::DedicatedServer]),
+                entry("failing_mod", &[Side::Client]),
+            ],
+        )
+        .expect("three mods are a valid plan");
+
+        assert!(
+            machine.loads(&id("example_mod")),
+            "a mod this side loads is one an integration can build on"
+        );
+        assert!(
+            !machine.loads(&id("server_side_mod")),
+            "a mod parked by its own sides declaration does not run here"
+        );
+        assert!(
+            !machine.loads(&id("never_installed")),
+            "an id outside the plan names nothing"
+        );
+
+        machine
+            .fail(
+                &id("failing_mod"),
+                attribution("failing_mod", LifecycleState::Failed),
+            )
+            .expect("failure is reachable from discovered");
+        assert!(
+            !machine.loads(&id("failing_mod")),
+            "a mod that failed is not one an integration can build on"
+        );
     }
 
     /// Drives a single-mod machine to `target` through legal steps only.

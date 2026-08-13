@@ -835,9 +835,13 @@ library provision, was deferred to M7 for the reason the open-questions row belo
 gives, and is now built there: `ravel_sdk::provision`, `test-mods/provision`, and
 the last section of `tests/conformance/tests/sdk_gaps.rs`. None of the six
 carries anything into a running game — nothing plays a sound, draws at a stage,
-asks at an interception point, or reads a provision — which each module states
-where an author reads it, in the same terms `docs/guide/limits.md` already uses
-about packets.
+or reads a provision — which each module states where an author reads it, in the
+same terms `docs/guide/limits.md` already uses about packets. **Interception is
+the exception and was not one when this paragraph was written.**
+`ravel-bootstrap` asks a round at `Point::WorldIsSaved` before a world's
+persistence is written, so that point is reached by a running game and a mod's
+refusal there holds. `BlockIsBroken` and `ItemIsUsed` are still declared and
+asked by nothing.
 
 Every counterpart is an original Rust implementation of an accepted behaviour
 specification. Nothing decompiles, transliterates, or mechanically translates

@@ -83,6 +83,7 @@ const EXPERIMENT_NAMES: &[&str] = &[
     "m2-loader-overhead",
     "m3-pack-compile",
     "m3-profiling-overhead",
+    "m6-outward-crossing",
     "spike-harness",
 ];
 

@@ -429,6 +429,19 @@ in
       '';
     };
 
+    ravel-measure-outward-crossing = {
+      description = "Measure the three ways a mod's game action could reach the running game.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        # Release, because the quantity measured is a boundary crossing and a
+        # debug build would measure the profile rather than the crossing.
+        cargo build --locked --release -p ravel-spike-m6-outward-crossing
+        ./target/release/ravel-spike-m6-outward-crossing
+      '';
+    };
+
     ravel-verify-budget = {
       description = "Compare the recorded runs against the regression budget.";
       exec = ''
@@ -602,6 +615,7 @@ in
     "ravel:measure-pack-compile".exec = "ravel-measure-pack-compile";
     "ravel:measure-pack-compile-variants".exec = "ravel-measure-pack-compile-variants";
     "ravel:measure-profiling-overhead".exec = "ravel-measure-profiling-overhead";
+    "ravel:measure-outward-crossing".exec = "ravel-measure-outward-crossing";
     "ravel:verify-budget".exec = "ravel-verify-budget";
     "ravel:verify-stack".exec = "ravel-verify-stack";
     "ravel:verify-environment".exec = "ravel-verify-environment";

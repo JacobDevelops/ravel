@@ -1,0 +1,212 @@
+{
+  "candidates": [
+    {
+      "id": "direct-lookup",
+      "perActionCount": [
+        {
+          "actionsPerRequest": 1,
+          "boundaryBytesPerRequest": 32.0,
+          "crossingsPerRequest": 2.0,
+          "nanosecondsPerAction": {
+            "collector": "spike.trial",
+            "median": 154.671875,
+            "p95": 242.8125,
+            "p99": 270.984375,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          },
+          "nanosecondsPerRequest": {
+            "collector": "spike.trial",
+            "median": 154.671875,
+            "p95": 242.8125,
+            "p99": 270.984375,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          }
+        },
+        {
+          "actionsPerRequest": 8,
+          "boundaryBytesPerRequest": 172.0,
+          "crossingsPerRequest": 9.0,
+          "nanosecondsPerAction": {
+            "collector": "spike.trial",
+            "median": 123.57421875,
+            "p95": 159.833984375,
+            "p99": 206.34765625,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          },
+          "nanosecondsPerRequest": {
+            "collector": "spike.trial",
+            "median": 988.59375,
+            "p95": 1278.671875,
+            "p99": 1650.78125,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          }
+        }
+      ],
+      "residualRisk": "a refused action leaves a pending Java exception on the calling thread, and every JNI call the native side makes before clearing it is undefined; the obligation is the loader's and no type in the workspace expresses it",
+      "title": "Rust calls the game method through JNI, resolving it per action"
+    },
+    {
+      "id": "direct-cached",
+      "perActionCount": [
+        {
+          "actionsPerRequest": 1,
+          "boundaryBytesPerRequest": 32.0,
+          "crossingsPerRequest": 2.0,
+          "nanosecondsPerAction": {
+            "collector": "spike.trial",
+            "median": 75.453125,
+            "p95": 110.375,
+            "p99": 126.171875,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          },
+          "nanosecondsPerRequest": {
+            "collector": "spike.trial",
+            "median": 75.453125,
+            "p95": 110.375,
+            "p99": 126.171875,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          }
+        },
+        {
+          "actionsPerRequest": 8,
+          "boundaryBytesPerRequest": 172.0,
+          "crossingsPerRequest": 9.0,
+          "nanosecondsPerAction": {
+            "collector": "spike.trial",
+            "median": 53.12890625,
+            "p95": 73.576171875,
+            "p99": 87.626953125,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          },
+          "nanosecondsPerRequest": {
+            "collector": "spike.trial",
+            "median": 425.03125,
+            "p95": 588.609375,
+            "p99": 701.015625,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          }
+        }
+      ],
+      "residualRisk": "a refused action leaves a pending Java exception on the calling thread, and every JNI call the native side makes before clearing it is undefined; the obligation is the loader's and no type in the workspace expresses it",
+      "title": "Rust calls the game method through JNI, through a cached identifier"
+    },
+    {
+      "id": "deferred",
+      "perActionCount": [
+        {
+          "actionsPerRequest": 1,
+          "boundaryBytesPerRequest": 16.0,
+          "crossingsPerRequest": 1.0,
+          "nanosecondsPerAction": {
+            "collector": "spike.trial",
+            "median": 89.078125,
+            "p95": 129.625,
+            "p99": 143.40625,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          },
+          "nanosecondsPerRequest": {
+            "collector": "spike.trial",
+            "median": 89.078125,
+            "p95": 129.625,
+            "p99": 143.40625,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          }
+        },
+        {
+          "actionsPerRequest": 8,
+          "boundaryBytesPerRequest": 100.0,
+          "crossingsPerRequest": 1.0,
+          "nanosecondsPerAction": {
+            "collector": "spike.trial",
+            "median": 13.265625,
+            "p95": 17.591796875,
+            "p99": 21.310546875,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          },
+          "nanosecondsPerRequest": {
+            "collector": "spike.trial",
+            "median": 106.125,
+            "p95": 140.734375,
+            "p99": 170.484375,
+            "quality": "estimated",
+            "sampleCount": 20000,
+            "status": "measured"
+          }
+        }
+      ],
+      "residualRisk": "the action happens after the answer, so nothing a mod asked for can be reported back to the mod in the same call, and an adapter that drops an instruction fails silently unless something checks",
+      "title": "Rust answers with an instruction and the Java adapter performs it"
+    }
+  ],
+  "failures": [
+    {
+      "detail": "the native side reported: a pending exception (Java exception was thrown), now cleared",
+      "outcome": "failed-closed",
+      "scenario": "direct-refusal"
+    },
+    {
+      "detail": "the adapter caught IllegalStateException with no native frame on the stack",
+      "outcome": "failed-closed",
+      "scenario": "deferred-refusal"
+    },
+    {
+      "detail": "UnsatisfiedLinkError",
+      "outcome": "failed-closed",
+      "scenario": "unavailable-runtime"
+    }
+  ],
+  "identity": {
+    "buildProfile": "release",
+    "clock": "monotonic",
+    "hardwareProfile": "linux-reference-v1",
+    "hardwareProfileSha256": "532b589e5763a650ce154bfe6ebb9c77d615cb160bcc83e3627a3b3bb539c96c",
+    "javaMeasured": "25.0.4",
+    "javaPinned": "25.0.1",
+    "minecraft": "26.1.2",
+    "target": "x86_64-linux"
+  },
+  "milestone": "M6",
+  "record": "m6-w2-outward-crossing",
+  "schemaVersion": 1,
+  "summary": "What it costs to carry a game action a mod asked for outward into the running game, measured across the three mechanisms that could carry it, so that ADG-6's deferred question is decided on a number rather than on a preference.",
+  "trial": {
+    "commandSha256": "a80080d869e4ce61fbc04f2b051a656a1bfbc32386fe17f875d669e82c64a206",
+    "measuredRequests": 1280000,
+    "revision": {
+      "changeId": "pspvmmuztymsnopuomtusyulqkllsmyz",
+      "dirty": true,
+      "id": "e6f6d5664d51c62c174504e647ed7c7f7176ecc1"
+    },
+    "startedAt": "2026-08-13T09:58:35Z",
+    "warmupRequests": 100000
+  },
+  "whatThisDoesNotSay": [
+    "The performed action is arithmetic, not a game method. A real game call does work both candidates pay identically, so the difference measured here is the crossing and the difference a player would feel is smaller.",
+    "The deferred candidate's Java side calls the action directly. An adapter that had to resolve the target reflectively, as `dev.ravel.jvm.Persistence` does, would pay a reflective dispatch this record does not include.",
+    "Nothing here measures ordering. A deferred instruction happens after the answer, and whether that is acceptable is a question about each surface rather than a number.",
+    "One machine, one JVM, one action shape. These are orders of magnitude for a decision, not a budget anything is held to."
+  ],
+  "workPackage": "M6-W2"
+}

@@ -15,6 +15,7 @@ members = [
   "experiments/m2-loader-overhead",
   "experiments/m3-pack-compile",
   "experiments/m3-profiling-overhead",
+  "experiments/m6-outward-crossing",
   "experiments/spike-harness",
   "test-mods/*",
   "tests/conformance",

@@ -1,0 +1,31 @@
+[package]
+name = "ravel-spike-m6-outward-crossing"
+description = "M6-W2 outward crossing measured across the three ways a mod's game action could reach the game"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "ravel_spike_outward"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "ravel-spike-m6-outward-crossing"
+path = "src/main.rs"
+
+[dependencies]
+jni = "0.22.4"
+ravel-spike-harness.workspace = true
+serde_json.workspace = true
+
+# The exported JNI symbols the JVM resolves are unsafe attributes, and the
+# cached-identifier candidate exists precisely to price the unchecked call, so
+# this measurement crate allows them. The runner needs none.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = "deny"
+pedantic = "deny"

@@ -2,6 +2,7 @@
 
 //! Developer-facing fixture and benchmark operations.
 
+mod host;
 mod linux_supervisor;
 mod performance_markers;
 
@@ -18,6 +19,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub use host::{BuiltHost, HostError, build_host};
 pub use linux_supervisor::{exec_initial_linux_child, supervise_initial_linux_process};
 pub use performance_markers::{
     InitialLinuxPerformanceCounts, InitialLinuxPerformanceMarkerCommand,

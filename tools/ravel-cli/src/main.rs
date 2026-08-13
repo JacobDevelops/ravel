@@ -81,7 +81,34 @@ fn supervised_exit_code(status: ExitStatus) -> ExitCode {
 }
 
 fn dispatch(args: &[String], root: &std::path::Path) -> Option<Result<(), CliError>> {
-    dispatch_fixture(args, root).or_else(|| dispatch_performance(args, root))
+    dispatch_fixture(args, root)
+        .or_else(|| dispatch_host(args, root))
+        .or_else(|| dispatch_performance(args, root))
+}
+
+fn dispatch_host(args: &[String], root: &std::path::Path) -> Option<Result<(), CliError>> {
+    let result = match args {
+        [host, build, instance, cache] if host == "host" && build == "build" => {
+            build_host(&PathBuf::from(instance), root, &PathBuf::from(cache))
+        }
+        _ => return None,
+    };
+    Some(result)
+}
+
+fn build_host(
+    instance: &std::path::Path,
+    root: &std::path::Path,
+    cache: &std::path::Path,
+) -> Result<(), CliError> {
+    let built = ravel_cli::build_host(instance, root, cache).map_err(CliError::Host)?;
+    println!(
+        "Built a host for {} package(s) at fingerprint {}: {}",
+        built.members.len(),
+        built.fingerprint,
+        built.library.display()
+    );
+    Ok(())
 }
 
 fn dispatch_fixture(args: &[String], root: &std::path::Path) -> Option<Result<(), CliError>> {
@@ -203,6 +230,7 @@ fn dispatch_performance(args: &[String], root: &std::path::Path) -> Option<Resul
 fn print_usage() {
     eprintln!(
         "usage:\n  ravel-cli fixture reconstruct [descriptor.json]\n  \
+         ravel-cli host build instance-directory cache-directory\n  \
          ravel-cli fixture verify [descriptor.json archive.zip]\n  \
          ravel-cli performance verify-tracy-frames tracy-frames.csv\n  \
          ravel-cli performance export-tracy-frames capture.tracy tracy-frames.csv\n  \
@@ -405,6 +433,7 @@ fn exec_initial_linux_child(
 #[derive(Debug)]
 enum CliError {
     Fixture(ravel_cli::FixtureError),
+    Host(ravel_cli::HostError),
     Performance(ravel_cli::PerformanceError),
 }
 
@@ -412,6 +441,7 @@ impl fmt::Display for CliError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Fixture(error) => error.fmt(formatter),
+            Self::Host(error) => error.fmt(formatter),
             Self::Performance(error) => error.fmt(formatter),
         }
     }

@@ -791,6 +791,8 @@ dependencies = [
 name = "ravel-cli"
 version = "0.0.0"
 dependencies = [
+ "ravel-build",
+ "ravel-loader",
  "ravel-pack",
  "ravel-package",
  "ravel-testkit",

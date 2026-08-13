@@ -8,6 +8,8 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+ravel-build.workspace = true
+ravel-loader.workspace = true
 ravel-pack.workspace = true
 ravel-package.workspace = true
 ravel-testkit.workspace = true

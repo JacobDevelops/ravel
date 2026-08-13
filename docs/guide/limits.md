@@ -18,17 +18,20 @@ source files and provenance record verified against the digests it records. That
 is where launch-time integrity verification lives; `cargo xtask package digests
 --check` is the same check at packaging time.
 
-The leg between the two is now built and is not yet wired to a launch.
-`ravel-build` takes what discovery found, generates a Cargo workspace naming
+The leg between the two is now built and has a caller, and that caller is not a
+launch. `ravel-cli host build <instance> <cache>` runs it: discover the instance,
+plan a host naming what was found, compile it, and print the library path and the
+mods it was built from. `ravel-build` takes what discovery found, generates a Cargo workspace naming
 every installed package, and compiles it into the host library the JVM loads —
 on your machine, from your source, into the build cache Ravel shares per
 machine. Your mod says what to construct by writing `ravel_sdk::export_mod!` once
 at the root of its crate; a package that does not fails the build naming itself
 rather than yielding a host quietly one mod smaller.
 
-What no code does yet is call that on your behalf during a launch. Nothing in the
-launch path builds a host, and nothing chooses between the host a build produced
-and the statically composed one the launcher stages today. So the shipped launch
+What no code does yet is run that command on your behalf. Nothing in the launch
+path builds a host, and nothing chooses between the host a build produced and the
+statically composed one the launcher stages today, so the built library reaches
+the JVM only if you stage it there yourself. So the shipped launch
 still behaves as above: an installed package this build was not compiled from
 stops the launch and is named, and an installed package whose bytes do not match
 its manifest stops it too. You can build a conforming mod, test it thoroughly as

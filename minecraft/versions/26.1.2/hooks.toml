@@ -13,6 +13,14 @@
 # this jar, and each was re-checked against the class file's own member table for
 # name, descriptor, kind and static flag before it was written here.
 #
+# A capability sentence says what an observer may do, and an observer may do two
+# things: read the values it is shown, and return `HookOutcome::Veto` to refuse
+# the call. It cannot change an argument, substitute a return value, or call back
+# into the JVM — a handle offers a declared class and a null check and nothing
+# else. So a sentence here never says rewrite, adjust, modify, or add. These
+# sentences ship as doc comments on the generated exports, which is why an
+# aspirational one is a documented API promise Ravel does not keep.
+#
 # One constraint is not obvious from this file. A field's member name must not
 # appear in any method entry's capability sentence, because those sentences are
 # rendered as doc comments into the generated exports and `ravel-bootstrap`
@@ -28,7 +36,7 @@ class = "net.minecraft.util.StringUtil"
 member = "isAllowedChatCharacter"
 descriptor = "(I)Z"
 kind = "static-method"
-capability = "Filter or veto a character the game would accept in chat."
+capability = "Observe or veto a character the game would accept in chat."
 
 [[hook]]
 id = "chat.filter-text"
@@ -36,7 +44,7 @@ class = "net.minecraft.util.StringUtil"
 member = "filterText"
 descriptor = "(Ljava/lang/String;Z)Ljava/lang/String;"
 kind = "static-method"
-capability = "Rewrite chat text, in the overload that keeps newlines."
+capability = "Observe or veto chat text, in the overload that keeps newlines."
 
 [[hook]]
 id = "chat.filter-text-simple"
@@ -44,7 +52,7 @@ class = "net.minecraft.util.StringUtil"
 member = "filterText"
 descriptor = "(Ljava/lang/String;)Ljava/lang/String;"
 kind = "static-method"
-capability = "Rewrite chat text, in the overload that strips newlines. Shares a name with the entry above and is distinguished only by descriptor."
+capability = "Observe or veto chat text, in the overload that strips newlines. Shares a name with the entry above and is distinguished only by descriptor."
 
 [[hook]]
 id = "player.name-valid"
@@ -60,7 +68,7 @@ class = "net.minecraft.util.SmoothDouble"
 member = "getNewDeltaValue"
 descriptor = "(DD)D"
 kind = "instance-method"
-capability = "Observe or adjust smoothed input deltas."
+capability = "Observe or veto smoothed input deltas."
 
 [[hook]]
 id = "input.smooth-last-amount"
@@ -188,7 +196,7 @@ class = "net.minecraft.commands.Commands"
 member = "dispatcher"
 descriptor = "Lcom/mojang/brigadier/CommandDispatcher;"
 kind = "instance-field"
-capability = "Reach the built command tree, which is where a mod's own commands are added."
+capability = "Observe the built command tree arriving, as a handle whose declared class is all an observer can read of it."
 
 [[hook]]
 id = "command.perform-prefixed"

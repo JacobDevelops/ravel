@@ -25,14 +25,19 @@ decides the obligations that come with it.
 | [ADG-6](adg-6-configuration-ui.md) | Configuration schema and Ravel-owned UI | accepted before M3-W3: declared in data, drawn in Java |
 | [ADG-7](adg-7-world-persistence.md) | World persistence adapter | accepted before M3-W4: one bounded Rust aggregate through vanilla saved data |
 
-Two records are not gates and are not in the table, because they decide no gate.
+Three records are not gates and are not in the table, because they decide no gate.
 [Claims without a second reading](claims-without-a-second-reading.md), accepted
 before M5-W8, governs how a claim that no second measurement can falsify is
 recorded and disclosed, wherever one appears.
 [Machinery is not material](machinery-is-not-material.md), accepted before M6-W2,
 decides what a closed milestone's bound digests freeze: the material its figures
 describe, permanently, and the machinery that produced them, as a record of the
-tree at closure that a later milestone amends in the open. Neither takes an ADG
+tree at closure that a later milestone amends in the open.
+[Carrying an action outward](carrying-an-action-outward.md), accepted during
+M6-W2, decides how an action a mod asks for reaches the running game: as an
+instruction the Java adapter performs, never as a call Rust makes. It is the
+measurement [ADG-6](adg-6-configuration-ui.md) deferred rather than a revision of
+it. None of the three takes an ADG
 number, because `SPEC.md` §15 owns those and reserves its unused ones for other
 subjects.
 
@@ -51,7 +56,13 @@ devenv tasks run ravel:spike-adg-3
 devenv tasks run ravel:spike-adg-4
 devenv tasks run ravel:spike-adg-5
 ./jvm/harness/run-datafix-byte-preservation.sh # ADG-7 pinned fixer measurement
+devenv tasks run ravel:measure-outward-crossing # not a gate; see below
 ```
+
+The last task belongs to [Carrying an action outward](carrying-an-action-outward.md),
+which is not a gate and so is not in the table above. It is listed here anyway
+because it is the one measurement in this directory that ADG-6 asked a later
+milestone to take, and a reader looking for it would look here.
 
 The last one is a script rather than a task because no task runs it: it additionally
 needs a real Minecraft library root for the fixer's own dependencies, so it stays a

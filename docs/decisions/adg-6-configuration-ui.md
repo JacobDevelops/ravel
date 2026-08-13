@@ -11,6 +11,10 @@ the shipped hook inventory actually has; the decision is unchanged there too and
 the amendment is at "Amendment: the extraction hook is the screen seam".
 [ADG-7](adg-7-world-persistence.md) reuses this decision's Ravel-owned screen
 mechanism for persistence refusal, but persistence itself is not an ADG-6 concern.
+The condition this record set for reopening its central rejection was met during
+M6-W2 and answered there, in
+[Carrying an action outward](carrying-an-action-outward.md); "Amendment: the
+deferred question was asked" below says what that changes here, which is nothing.
 
 ## Decision
 
@@ -409,6 +413,32 @@ ceremony, which is a further reason a prose error is not a licence to edit it.
 `verify_decision_hook_claims` in `tools/ravel-xtask/src/lib.rs` now fails
 `ravel-verify-scaffold` if a decision record denies a hook the inventory declares,
 so this particular pair cannot drift apart again in silence.
+
+## Amendment: the deferred question was asked
+
+Amended during M6-W2. "Rejected" above says of a Rust-drawn screen that "if Ravel
+ever needs to call into the game for another reason, that is a new gate with its
+own measurement, and this decision should be revisited then rather than assumed."
+Playing a sound a mod declared turned out to be that other reason, the gate was
+taken, and it is [Carrying an action outward](carrying-an-action-outward.md).
+
+**This decision is revisited and unchanged.** The new gate decided that an action
+crosses outward as an instruction the Java adapter performs, so Rust still calls
+no game method and the capability a Rust-drawn screen needs still does not exist.
+The three grounds this record rejected it on all survive: the missing capability
+is still missing, the per-widget-per-frame traffic argument is untouched by a
+mechanism that batches instructions, and the version-agnostic-declaration
+argument was never about direction at all.
+
+What the new gate does supply is the number this record could not take. "Limits
+of this evidence" says below that the argument against a Rust-drawn screen "is a
+missing capability and a moving API, not a number", and that "if the capability
+is ever built for another reason the arithmetic should be redone rather than
+inherited from here". The capability was not built — the rejected candidates were
+measured and rejected — so there is no arithmetic to redo. Anyone who wants to
+reopen the screen question now has a priced boundary to argue from and should
+argue from it rather than from this record's ten-nanosecond figures, which are
+still ADG-1's and ADG-4's and still measured for other flows.
 
 ## Limits of this evidence
 

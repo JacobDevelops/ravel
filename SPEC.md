@@ -767,6 +767,13 @@ Recording these candidates does not select one, does not add a signature field
 to the package manifest, and does not change M0 through M10. Selection is M13
 work behind its own decision gate.
 
+The preferred shape above is elaborated in
+[`docs/architecture/official-registry-design.md`](docs/architecture/official-registry-design.md),
+which describes the index/mod/pack layout, the modpack-composition unit, and the
+migration boundary between the public registry and the private rewrite
+workspace. That document is subordinate to this section: it elaborates the shape
+and does not select the M13 mechanism.
+
 ## 13. Testing contract
 
 ### 13.1 Loader tests

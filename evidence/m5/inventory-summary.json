@@ -64,7 +64,7 @@
       "class": "machinery",
       "holds": "the private gate whose exit status and summary lines every figure above was read from",
       "name": "checks/verify.sh",
-      "sha256": "86b1ff6ec8eb4320a322cf757cba651b475e2432e8d24c6073d104621e92d3aa"
+      "sha256": "3b57da7bef27fccca6708ccc7e07ddb6754f9e1122ade84403ad27a78b1bea95"
     },
     {
       "class": "machinery",
@@ -82,7 +82,7 @@
       "class": "machinery",
       "holds": "the second reading of the read observation premise: what the gate reaches, swept for read primitives",
       "name": "checks/verify-primitives.sh",
-      "sha256": "b3e5ce2a25c94160f41ebf412b7bce4687b6c5b424007ef1511dc8ce3d21e5b4"
+      "sha256": "9691a0873043ea3f27830851526695a3b260173f62cb44a66b4bd5796a8a34f5"
     },
     {
       "class": "machinery",
@@ -275,6 +275,21 @@
       "milestone": "M6",
       "reason": "M6-W4 found that the private gate never compiled a counterpart. It read counterpart names and counterpart bytes and never built or ran one, so a package that does not compile carried the same names and the same digests as one that does \u2014 and one had in fact stopped compiling, when M6-W2 added a method to a public SDK trait a counterpart's test probe implements, with every gate run since staying green. checks/verify-counterpart-build.sh formats, lints and runs the workspace and is called from the gate, which is the same shape as the digest check M6-W3 added one level down. Adopting it changes checks/verify.sh and the count of files under checks/, and it invokes cargo, which is a read channel the vocabulary did not name: cargo reads every source file in that workspace and then runs what it built, which is the widest read there, so it is declared as an accounted primitive with its reason rather than left invisible. Adding it also exposed a defect in checks/verify-primitives.sh itself. Its command-position fragment carries an ampersand so that a tool run after `&&` is seen as a command, and bash 5.2 made a bare ampersand in a substitution's replacement stand for the matched text, so the fragment expanded with its own marker in place of that ampersand and every pattern built on it lost the alternative. Nothing failed, because every invocation in the tree at the time sat at the start of a line; a refused primitive placed after `&&` would have passed unseen. The substitution is fixed, and an assertion now refuses a pattern the marker survived. Proved by mutation: a refused archive tool placed after `&&` is invisible to the scan as it stood and fails by name with the fix. docs/decisions/machinery-is-not-material.md decides that these figures record the tree M5 certified rather than an invariant of every later tree, so they are amended here. No figure about the material moved, and no material digest is touched by this entry.",
       "workPackage": "M6-W4"
+    },
+    {
+      "entries": [
+        "checks/verify-counterparts.sh",
+        "checks/verify-spec-identifiers.sh"
+      ],
+      "figures": [
+        {
+          "field": "primitiveScan.filesScanned",
+          "from": 38,
+          "to": 36,
+          "why": "The two rewrite-integrity checks were removed at the repository owner's direction: this private compatibility workspace uses upstream mod names for readability and maintenance and is never published, so the IP-hygiene name-scan the checks enforced no longer applies. Removing them takes two files out of the directory the primitive scan reads (38 to 36) and removes their invocations from checks/verify.sh, which this record binds and whose digest is rebound above. docs/decisions/machinery-is-not-material.md decides these record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry."
+        }
+      ],
+      "reason": "Owner decision to drop the rewrite-integrity gate (checks/verify-counterparts.sh and checks/verify-spec-identifiers.sh, plus their lexicon/normalization/fixture data) for the private workspace, which keeps upstream identifiers deliberately. verify.sh no longer calls either check; verify-primitives.sh was edited in the same work to fix a SIGPIPE-under-pipefail bug in its tracked-file membership test that a large tracked set had begun triggering. Both digests are rebound above."
     }
   ],
   "milestone": "M5",
@@ -291,7 +306,7 @@
     "accounted": 15,
     "accountedUses": 85,
     "class": "machinery",
-    "filesScanned": 38,
+    "filesScanned": 36,
     "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions.",
     "occurrenceRows": 36,
     "primitivesDeclared": 27,

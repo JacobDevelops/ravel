@@ -19,7 +19,7 @@
 //!
 //! # What is still not checked, and cannot be here
 //!
-//! Whether the layout under `data/` and `assets/` is the layout Minecraft 26.1.2
+//! Whether the layout under `data/` and `assets/` is the layout Minecraft 1.21.1
 //! reads. Nothing in this repository holds the pinned jar, so the tag directory, the
 //! `replace` field and the language-file path are this repository's belief about the
 //! pack format and are asserted against themselves. `ravel_pack::RESERVED_PREFIX`
@@ -80,7 +80,7 @@ fn manifest(owner: &ModId, version: &str, requires: Option<(&str, &str)>) -> Pac
           "schemaVersion": 1,
           "id": "{owner}",
           "version": "{version}",
-          "compatibility": {{ "ravel": ">=0.1, <0.2", "minecraft": ["26.1.2"] }},
+          "compatibility": {{ "ravel": ">=0.1, <0.2", "minecraft": ["1.21.1"] }},
           "sides": ["client", "integrated-server", "dedicated-server"],
           "dependencies": {dependencies},
           "source": {{
@@ -707,7 +707,7 @@ fn no_written_byte_names_the_machine_the_pack_was_written_on() {
 #[test]
 fn every_written_path_is_either_the_games_layout_or_ravels_own() {
     // The separation `ravel_pack::RESERVED_PREFIX` exists for. What lands under
-    // `data/` and `assets/` is this repository's belief about the 26.1.2 pack format
+    // `data/` and `assets/` is this repository's belief about the 1.21.1 pack format
     // and is not checked against the pinned jar anywhere; what lands under the
     // reserved prefix is Ravel's own format. A written pack holding a third kind of
     // path would be a layout nobody decided.
@@ -770,7 +770,7 @@ fn the_reproducible_manifest_holds_every_pin_and_nothing_else_about_the_build() 
 fn a_tag_the_pack_writes_is_the_layout_and_the_field_this_repository_believes_in() {
     // Asserted against this repository's belief and nothing more. The tag directory,
     // the `replace` field and its value are what `ravel-data` derives; whether
-    // Minecraft 26.1.2 reads that file is not checked here or anywhere, because the
+    // Minecraft 1.21.1 reads that file is not checked here or anywhere, because the
     // pinned jar is not a tracked artifact. This test exists so a change to the
     // belief is a decision rather than a silent drift, and its name says which it is.
     let (pack, manifests, content) = one_member();

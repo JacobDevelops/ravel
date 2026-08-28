@@ -1,0 +1,44 @@
+{
+  "$schema": "../../../schemas/runtime-inputs.schema.json",
+  "schemaVersion": 1,
+  "retrievedAt": "2026-08-29",
+  "minecraft": {
+    "version": "1.21.1",
+    "type": "release",
+    "metadata": {
+      "url": "https://piston-meta.mojang.com/v1/packages/REPIN/1.21.1.json",
+      "sha1": "REPIN-from-mojang-version-manifest-v2",
+      "sha256": "REPIN-from-mojang-version-manifest-v2"
+    },
+    "minimumLauncherVersion": 21,
+    "assetIndex": "17",
+    "javaComponent": "java-runtime-delta",
+    "javaMajorVersion": 21
+  },
+  "prism": {
+    "version": "REPIN",
+    "releaseUrl": "https://github.com/PrismLauncher/PrismLauncher/releases",
+    "publishedAt": "REPIN"
+  },
+  "platforms": [
+    {
+      "id": "linux-x86_64",
+      "java": {
+        "version": "REPIN-java-21",
+        "releasedAt": "REPIN",
+        "manifest": {
+          "url": "https://piston-meta.mojang.com/v1/packages/REPIN/manifest.json",
+          "sha1": "REPIN",
+          "sha256": "REPIN"
+        }
+      },
+      "prism": {
+        "fileName": "PrismLauncher-Linux-x86_64.AppImage",
+        "url": "https://github.com/PrismLauncher/PrismLauncher/releases/latest/download/PrismLauncher-Linux-x86_64.AppImage",
+        "size": 0,
+        "sha256": "REPIN"
+      }
+    }
+  ],
+  "_repin_note": "Identity facts (MC 1.21.1 release, Java 21 via java-runtime-delta, NeoForge 21.1.221 per the pack manifest) are verified. All fields marked REPIN require fetching the actual Mojang version-manifest-v2 entry for 1.21.1 and the chosen PrismLauncher release, and must be filled from those real artifacts before M0 launch evidence. The prior 26.1.2 descriptor's digests were for a fictional version and are deliberately not carried over."
+}

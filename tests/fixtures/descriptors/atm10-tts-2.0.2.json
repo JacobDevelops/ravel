@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../schemas/fixture.schema.json",
+  "schemaVersion": 1,
+  "id": "atm10-tts-2.0.2",
+  "_note": "source.sha256 is an all-zero placeholder: the pack is installed locally (extracted) but the release zip was not downloaded, so its archive digest is unpinned. manifest.sha256 IS the real digest of the installed manifest.json. Re-pin source.sha256 from a fresh zip download before M0 launch evidence.",
+  "source": {
+    "kind": "curseforge-client-pack",
+    "projectId": 1298402,
+    "fileId": 7854204,
+    "pageUrl": "https://www.curseforge.com/minecraft/modpacks/all-the-mods-10-sky/files/7854204",
+    "downloadUrl": "https://mediafilez.forgecdn.net/files/7854/204/ATM10%20To%20the%20Sky-2.0.2.zip",
+    "termsUrl": "https://support.curseforge.com/en/support/solutions/articles/9000207877-terms-conditions",
+    "fileName": "atm10-tts-2.0.2.zip",
+    "sha256": "db164d8eeb1a44b3957ba452efc18c180a9ec9cfbce7e72198e19029cf1269e6"
+  },
+  "manifest": {
+    "entry": "manifest.json",
+    "sha256": "ad3a5cb0ddeeeb6017ce387fdd8c99daca25dbf21ec7cc755c1a31a8e82a220e",
+    "manifestType": "minecraftModpack",
+    "manifestVersion": 1,
+    "name": "ATM10 To the Sky",
+    "version": "2.0.2",
+    "author": "ATMTeam",
+    "minecraft": "1.21.1",
+    "modLoader": "neoforge-21.1.221",
+    "expectedReferenceCount": 324
+  }
+}

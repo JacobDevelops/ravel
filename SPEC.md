@@ -1,9 +1,9 @@
 # Ravel Specification
 
 Status: Draft product and capability contract  
-Initial target: Minecraft: Java Edition 26.1.2  
-Proof workload: an ATM11-equivalent Rust modpack pinned to ATM11 0.2.1  
-Last updated: 2026-07-30
+Initial target: Minecraft: Java Edition 1.21.1  
+Proof workload: an ATM10-To-the-Sky-equivalent Rust modpack pinned to All the Mods 10: To the Sky 2.0.2  
+Last updated: 2026-08-29
 
 ## 1. Capability
 
@@ -13,7 +13,7 @@ building safe, natively compiled mods in Rust.
 Ravel initially hosts Rust mods inside the official Minecraft runtime. It does
 not load NeoForge, Fabric, or other Java mods. The first large-scale proof is a
 separate Rust modpack containing a Rust counterpart for every mod referenced by
-the pinned ATM11 manifest.
+the pinned ATM10 To the Sky manifest.
 
 The immediate user outcome is a complete Linux Ravel loader, SDK, Rust
 counterpart library, and playable single-player pack that finishes the pinned
@@ -49,7 +49,7 @@ the two are not the same thing.
    of the committed scope. Failure to meet the performance target triggers a
    new architecture decision, not an automatic native-client project.
 5. **Build the loader before the pack.** Original test mods prove loader
-   semantics before any ATM11 counterpart is admitted.
+   semantics before any ATM10 To the Sky counterpart is admitted.
 6. **Prefer idiomatic Rust.** NeoForge's lifecycle, registries, networking, and
    sided-execution concerns inform Ravel, but do not dictate its authoring
    model.
@@ -204,22 +204,33 @@ Ravel supports two pack-authoring layers:
    declaratively.
 
 There is no embedded JavaScript runtime or general scripting-language
-requirement. ATM11's KubeJS behaviour is manually reimplemented as declarative
+requirement. ATM10 To the Sky's KubeJS behaviour is manually reimplemented as declarative
 data or Rust modules.
 
 Vanilla datapacks and resource packs must continue to work unchanged.
 
 ### 3.7 Version support
 
-- The first implementation supports Minecraft 26.1.2 only.
-- Minecraft-specific hooks, mappings, and bindings must live behind explicit
-  version adapters.
-- Core loader, package, and SDK code must not hardcode 26.1.2 assumptions where
+- The first implementation targets Minecraft 1.21.1. Minecraft-specific hooks,
+  mappings, and bindings must live behind explicit version adapters.
+- Core loader, package, and SDK code must not hardcode 1.21.1 assumptions where
   a version boundary can reasonably isolate them.
-- Supporting a second Minecraft version is not in the initial delivery scope,
-  but the design must make adding one an adapter task rather than a rewrite.
+- A package declares the Minecraft versions it supports in
+  `compatibility.minecraft`, and each entry is either an exact version string or
+  an explicit version range (for example `>=26.1, <26.2`). Multi-version support
+  is first-class: a mod that runs across a span of releases declares that span
+  once rather than enumerating every patch, which is what an author of a widely
+  supported mod expects. A range is the author's tested claim; the loader
+  honours a declared range and never infers support for a release the author did
+  not declare. A range is evaluated only against a semver-shaped running
+  version, so a non-semver release (a snapshot) is matched by exact string and
+  never ordered.
+- Shipping the adapters and mappings for a second Minecraft version is staged
+  work rather than initial delivery scope, but the design makes adding one an
+  adapter task rather than a rewrite, and the package format already expresses
+  multi-version support.
 - The public mod API remains experimental and may break until the complete
-  ATM11-equivalent proof workload passes.
+  ATM10-To-the-Sky-equivalent proof workload passes.
 
 ### 3.8 Intrusiveness
 
@@ -261,7 +272,7 @@ The player:
 - edits supported configuration through the in-game UI;
 - opens and saves Ravel single-player worlds;
 - can join a vanilla server when only protocol-safe client mods are installed;
-- eventually joins an official ATM11 server through a later interoperability
+- eventually joins an official ATM10 To the Sky server through a later interoperability
   layer.
 
 ### 4.2 Mod author
@@ -380,7 +391,7 @@ about that, and who owes it.
 
 ### 6.1 Target workload
 
-Linux M9 must run the complete Ravel ATM11-equivalent pack:
+Linux M9 must run the complete Ravel ATM10-To-the-Sky-equivalent pack:
 
 - in single-player with its integrated server;
 - at 3440 × 1440 output resolution;
@@ -476,19 +487,19 @@ section exists to name:
 
 That is why M9 owes a number and not only a pair of runs.
 
-## 7. ATM11-equivalent proof workload
+## 7. ATM10-To-the-Sky-equivalent proof workload
 
 ### 7.1 Pinned reference
 
 The initial compatibility oracle is:
 
-- All the Mods 11 version 0.2.1;
-- Minecraft 26.1.2;
-- NeoForge 26.1.2.78;
-- 235 CurseForge project/file references in the client manifest.
+- All the Mods 10: To the Sky version 2.0.2;
+- Minecraft 1.21.1;
+- NeoForge 21.1.221;
+- 324 CurseForge project/file references in the client manifest.
 
-This target is pinned. Upstream ATM11 updates do not automatically change the
-scope.
+This target is pinned. Upstream ATM10-To-the-Sky updates do not automatically
+change the scope.
 
 ### 7.2 Fixture handling
 
@@ -517,7 +528,7 @@ scope.
 ### 7.4 Behavioural target
 
 The Ravel pack must reproduce the complete intended content, integrations, and
-progression of the pinned ATM11 release closely enough to complete its endgame
+progression of the pinned ATM10 To the Sky release closely enough to complete its endgame
 path.
 
 It may intentionally fix upstream bugs when:
@@ -531,7 +542,7 @@ permitted. Visual parity remains subject to per-mod asset rights.
 
 ### 7.5 Save compatibility
 
-- Importing worlds created by official Java/NeoForge ATM11 is explicitly out of
+- Importing worlds created by official Java/NeoForge ATM10 To the Sky is explicitly out of
   initial scope.
 - Ravel owns its world and mod-data compatibility contract.
 - Ravel worlds must survive supported Ravel upgrades through versioned schemas
@@ -572,9 +583,9 @@ the official client and integrated-server sides required by Rust mods.
 A Ravel client with only protocol-safe client mods must be able to join ordinary
 vanilla servers.
 
-### 8.3 Official ATM11 multiplayer
+### 8.3 Official ATM10 To the Sky multiplayer
 
-Official ATM11 server interoperability is a later milestone. It requires
+Official ATM10 To the Sky server interoperability is a later milestone. It requires
 behavioural emulation of:
 
 - the NeoForge client/server handshake;
@@ -696,7 +707,7 @@ Before publishing a counterpart:
 - credit the original author regardless of whether attribution is legally
   required.
 
-The initial ATM11 compatibility workspace remains private. Publication of its
+The initial ATM10 To the Sky compatibility workspace remains private. Publication of its
 counterparts, modpack, or registry is post-initial scope.
 
 ### 11.3 Project licence
@@ -724,9 +735,9 @@ The `ravel` repository contains:
 
 A separate private workspace contains:
 
-- the ATM11-equivalent Rust counterparts;
+- the ATM10-To-the-Sky-equivalent Rust counterparts;
 - private pack manifests and integrations;
-- ignored official ATM11 fixtures;
+- ignored official ATM10 To the Sky fixtures;
 - rights-sensitive behavioural research;
 - permission and publication status;
 - private end-to-end worlds and reports.
@@ -926,17 +937,17 @@ Milestones are dependency ordered. They have no promised calendar duration.
 
 Deliver:
 
-- Prism-based vanilla 26.1.2 instance;
-- ignored, pinned official ATM11 0.2.1 fixture on Linux;
+- Prism-based vanilla 1.21.1 instance;
+- ignored, pinned official ATM10 To the Sky 2.0.2 fixture on Linux;
 - fixture reconstruction and hash verification tool;
 - documented Linux reference hardware;
-- sanitized Linux launch proof for vanilla and official ATM11 through Prism;
+- sanitized Linux launch proof for vanilla and official ATM10 To the Sky through Prism;
 - later performance protocol shape and dry-run schema wiring, without native
   repeated benchmark capture.
 
 Exit:
 
-- vanilla and official ATM11 each reach a playable Linux world through Prism;
+- vanilla and official ATM10 To the Sky each reach a playable Linux world through Prism;
 - the Linux launch evidence records sanitized startup, world-open, runtime, and
   clean-exit results for both workloads;
 - fixture files and secrets are absent from source control.
@@ -967,7 +978,7 @@ Deliver:
 
 Exit:
 
-- official Minecraft 26.1.2 launches without another mod loader;
+- official Minecraft 1.21.1 launches without another mod loader;
 - the Rust mod runs on Linux;
 - invalid packages fail before world access;
 - loader overhead is measured.
@@ -1021,8 +1032,8 @@ Exit:
 
 In the private workspace:
 
-- reconstruct the exact pinned ATM11 fixture;
-- inventory all 235 manifest entries;
+- reconstruct the exact pinned ATM10 To the Sky fixture;
+- inventory all 324 manifest entries;
 - build the dependency and integration graph;
 - catalogue configs, resources, KubeJS behaviour, packets, saves, licences, and
   sides;
@@ -1060,7 +1071,7 @@ entry.
 
 Exit:
 
-- 235/235 manifest entries have resolved counterparts or a documented manifest
+- 324/324 manifest entries have resolved counterparts or a documented manifest
   correction if the source manifest count changes during exact fixture
   verification;
 - all per-mod and cluster suites pass;
@@ -1100,7 +1111,7 @@ Failure invokes ADG-9 rather than silently changing requirements.
 ### M10 — Progression acceptance
 
 Perform the manual fresh-world playthrough of the complete intended pinned
-ATM11 progression and endgame.
+ATM10 To the Sky progression and endgame.
 
 Exit:
 
@@ -1120,10 +1131,10 @@ save matrices, and evaluate the M1 Pro constrained performance contract at
 3456 × 2234. This phase reuses accepted behaviour contracts; it does not block
 or reopen Linux M0 through M10.
 
-### M11 — Official ATM11 server interoperability
+### M11 — Official ATM10 To the Sky server interoperability
 
 Implement handshake, identity aliases, registry sync, custom channels, and
-per-mod packets needed to join an unmodified pinned ATM11 server.
+per-mod packets needed to join an unmodified pinned ATM10 To the Sky server.
 
 Exit:
 
@@ -1159,13 +1170,13 @@ The initial scope does not include:
 - loading or translating Java mod binaries at runtime;
 - Fabric, NeoForge, Forge, or Quilt coexistence;
 - runtime hot-loading/unloading;
-- importing official ATM11 worlds;
+- importing official ATM10 To the Sky worlds;
 - shaders as part of the performance target;
 - Windows, Intel macOS, or Linux ARM support;
 - a public mod registry;
 - public distribution of uncleared counterparts or ATM assets;
 - automatic KubeJS translation or JavaScript execution;
-- official ATM11 multiplayer before single-player completion;
+- official ATM10 To the Sky multiplayer before single-player completion;
 - a wholly Rust dedicated server;
 - safe-mode world loading with required mods disabled;
 - pixel-identical visuals when asset rights do not permit them.
@@ -1181,12 +1192,12 @@ These are intentionally unresolved:
 3. How much Minecraft state can remain authoritative in Java without expensive
    boundary traffic?
 4. Can stock Prism launch Ravel without modification?
-5. What are the single-pair official ATM11 comparisons on Linux, and later on
+5. What are the single-pair official ATM10 To the Sky comparisons on Linux, and later on
    the target Mac after Linux M10?
-6. Which ATM11 counterparts permit source-informed reimplementation and asset
+6. Which ATM10 To the Sky counterparts permit source-informed reimplementation and asset
    reuse?
 7. Can official Minecraft plus Ravel meet the constrained Mac target?
-8. What protocol surface is required for pinned ATM11 server interoperability?
+8. What protocol surface is required for pinned ATM10 To the Sky server interoperability?
 9. What rights, identity, signing, and moderation model should a future registry
    use?
 
@@ -1200,8 +1211,8 @@ resolve a question.
 
 Primary and project sources used to establish this scope:
 
-- [ATM11 CurseForge project](https://www.curseforge.com/minecraft/modpacks/all-the-mods-11)
-- [ATM11 official repository](https://github.com/AllTheMods/ATM-11)
+- [ATM10 To the Sky CurseForge project](https://www.curseforge.com/minecraft/modpacks/all-the-mods-10-sky)
+- [ATM10 To the Sky official repository](https://github.com/AllTheMods/All-the-mods-10-Sky)
 - [NeoForge mod-file and entrypoint documentation](https://docs.neoforged.net/docs/gettingstarted/modfiles)
 - [NeoForge event documentation](https://docs.neoforged.net/docs/concepts/events)
 - [NeoForge registry documentation](https://docs.neoforged.net/docs/concepts/registries/)
@@ -1227,9 +1238,9 @@ The immediate execution lane is:
 1. initialize the public-ready Ravel repository structure;
 2. write the pinned fixture manifest and reconstruction design without
    downloading restricted files into source control;
-3. establish Prism-based vanilla and official ATM11 launch proof on Linux;
+3. establish Prism-based vanilla and official ATM10 To the Sky launch proof on Linux;
 4. turn ADG-1 through ADG-5 into isolated benchmark plans;
 5. review M1 evidence before selecting the loader architecture.
 
-No work on ATM11 counterparts begins before the credible loader prototype exits
+No work on ATM10 To the Sky counterparts begins before the credible loader prototype exits
 M3.

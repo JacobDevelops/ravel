@@ -7,16 +7,16 @@ use ravel_cli::{
 };
 
 #[test]
-fn pinned_atm11_descriptor_records_the_exact_reference_contract() {
+fn pinned_atm10_tts_descriptor_records_the_exact_reference_contract() {
     let descriptor =
         load_fixture_descriptor(&descriptor()).expect("the public descriptor should be valid");
 
-    assert_eq!(descriptor.source.project_id, 1_148_445);
-    assert_eq!(descriptor.source.file_id, 8_431_787);
-    assert_eq!(descriptor.manifest.minecraft, "26.1.2");
-    assert_eq!(descriptor.manifest.mod_loader, "neoforge-26.1.2.78");
-    assert_eq!(descriptor.manifest.version, "0.2.1");
-    assert_eq!(descriptor.manifest.expected_reference_count, 235);
+    assert_eq!(descriptor.source.project_id, 1_298_402);
+    assert_eq!(descriptor.source.file_id, 7_854_204);
+    assert_eq!(descriptor.manifest.minecraft, "1.21.1");
+    assert_eq!(descriptor.manifest.mod_loader, "neoforge-21.1.221");
+    assert_eq!(descriptor.manifest.version, "2.0.2");
+    assert_eq!(descriptor.manifest.expected_reference_count, 324);
 }
 
 #[test]
@@ -40,13 +40,13 @@ fn manifest_reference_drift_is_rejected() {
         &manifest,
         r#"{
           "minecraft": {
-            "version": "26.1.2",
-            "modLoaders": [{"id": "neoforge-26.1.2.78", "primary": true}]
+            "version": "1.21.1",
+            "modLoaders": [{"id": "neoforge-21.1.221", "primary": true}]
           },
           "manifestType": "minecraftModpack",
           "manifestVersion": 1,
-          "name": "All the Mods 11",
-          "version": "0.2.1",
+          "name": "ATM10 To the Sky",
+          "version": "2.0.2",
           "author": "ATMTeam",
           "files": [{"projectID": 1, "fileID": 2, "required": true}],
           "overrides": "overrides"
@@ -81,7 +81,7 @@ fn manifest_reference_drift_is_rejected() {
     assert!(matches!(
         error,
         FixtureError::ReferenceCountMismatch {
-            expected: 235,
+            expected: 324,
             actual: 1
         }
     ));
@@ -104,13 +104,13 @@ fn reconstruction_reuses_a_verified_archive_inside_the_ignored_boundary() {
         &manifest,
         r#"{
           "minecraft": {
-            "version": "26.1.2",
-            "modLoaders": [{"id": "neoforge-26.1.2.78", "primary": true}]
+            "version": "1.21.1",
+            "modLoaders": [{"id": "neoforge-21.1.221", "primary": true}]
           },
           "manifestType": "minecraftModpack",
           "manifestVersion": 1,
-          "name": "All the Mods 11",
-          "version": "0.2.1",
+          "name": "ATM10 To the Sky",
+          "version": "2.0.2",
           "author": "ATMTeam",
           "files": [{"projectID": 1, "fileID": 2, "required": true}],
           "overrides": "overrides"
@@ -166,7 +166,7 @@ fn reconstruction_reuses_a_verified_archive_inside_the_ignored_boundary() {
 }
 
 fn exercise_fixture_cli_paths(root: &Path, synthetic_descriptor: &Path, archive: &Path) {
-    let default_descriptor = root.join("tests/fixtures/descriptors/atm11-0.2.1.json");
+    let default_descriptor = root.join("tests/fixtures/descriptors/atm10-tts-2.0.2.json");
     fs::create_dir_all(
         default_descriptor
             .parent()
@@ -175,7 +175,8 @@ fn exercise_fixture_cli_paths(root: &Path, synthetic_descriptor: &Path, archive:
     .expect("default descriptor root should be creatable");
     fs::copy(synthetic_descriptor, &default_descriptor)
         .expect("default descriptor should be copyable");
-    let default_archive = root.join("tests/fixtures/local/atm11-0.2.1/source/atm11-0.2.1.zip");
+    let default_archive =
+        root.join("tests/fixtures/local/atm10-tts-2.0.2/source/atm10-tts-2.0.2.zip");
     fs::create_dir_all(
         default_archive
             .parent()
@@ -305,7 +306,7 @@ fn ravel_cli_command() -> Command {
 }
 
 fn descriptor() -> PathBuf {
-    workspace_root().join("tests/fixtures/descriptors/atm11-0.2.1.json")
+    workspace_root().join("tests/fixtures/descriptors/atm10-tts-2.0.2.json")
 }
 
 fn workspace_root() -> PathBuf {

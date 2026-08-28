@@ -1,358 +1,358 @@
 {
-  "artifacts": {
-    "catalogued": 235,
-    "planned": 235,
-    "total": 235,
-    "uncatalogued": 0
+ "artifacts": {
+  "catalogued": 235,
+  "planned": 235,
+  "total": 235,
+  "uncatalogued": 0
+ },
+ "boundArtifacts": [
+  {
+   "class": "material",
+   "holds": "one record per pinned reference, reconciled against the fixture by count and by project and file identity",
+   "name": "inventory/atm10-tts-2.0.2/references.json",
+   "sha256": "d1b5cfe18c25767140f78f85887e89329ec8658998eb15c8043f83aa3cb1c360"
   },
-  "boundArtifacts": [
-    {
-      "class": "material",
-      "holds": "one record per pinned reference, reconciled against the fixture by count and by project and file identity",
-      "name": "inventory/atm11-0.2.1/references.json",
-      "sha256": "6e115dc782ccb66733fdad26c905cda81317e804b4035d4e326564445f5555d1"
-    },
-    {
-      "class": "material",
-      "holds": "the dependency and integration graph whose node, edge and cluster figures are carried above",
-      "name": "inventory/atm11-0.2.1/graph.json",
-      "sha256": "ce572d7b4f9752f13bd4bacdae2609a85e27123b4f823c429a1a4dd6e8afbcc8"
-    },
-    {
-      "class": "material",
-      "holds": "the behaviour-surface catalogue whose class-file, model, texture, recipe and nested-jar figures are carried above",
-      "name": "inventory/atm11-0.2.1/surfaces.json",
-      "sha256": "619b3c79112f4475784db72aa3389113dba08e4e9a4db872757fa9afcb7fca5c"
-    },
-    {
-      "class": "material",
-      "holds": "the per-artifact rights triage, including the source-use verdicts carried above",
-      "name": "inventory/atm11-0.2.1/rights.json",
-      "sha256": "43732ee695f03bbd12a40099f4abf3e28455cfbf19dee78207c87286a20d53a7"
-    },
-    {
-      "class": "material",
-      "holds": "one counterpart plan per artifact, with owner, method, dependencies, tests and risk score",
-      "name": "inventory/atm11-0.2.1/plans.json",
-      "sha256": "2c3e659c4184c31c74efeed394beffc252dd841725daa73790e7a6ad35cbc808"
-    },
-    {
-      "class": "material",
-      "holds": "the provenance record binding the rights surfaces to the triaged artifact set",
-      "name": "provenance/atm11-0.2.1.json",
-      "sha256": "da611f4d58ceb8fd7254348e3d170b105432d5609b0fa5adddf3b9611476e24a"
-    },
-    {
-      "class": "material",
-      "holds": "the public-safe capability proposals M5-W7 produced, held to a published lexicon",
-      "name": "proposals/sdk-gaps.json",
-      "sha256": "b38935e29a07ba56f3098ad1386c9c7c1d728dea9ac89ad356b3fd7cd6c53449"
-    },
-    {
-      "class": "machinery",
-      "holds": "the first judged claim above: each distinct declared string, its family, and whether assets are reserved apart from code",
-      "name": "checks/licence-families.tsv",
-      "sha256": "0f4f46e495cadbb8fd5da7933dd68fdcf6341bf3bc39b2391620f017a77de4bb"
-    },
-    {
-      "class": "machinery",
-      "holds": "the second judged claim above: each family, the code status it carries, and the reason for it",
-      "name": "checks/licence-status.tsv",
-      "sha256": "fdbeab223f98e29b5b2769c29df4522983de20760783752174151fe46e0a98f3"
-    },
-    {
-      "class": "machinery",
-      "holds": "the private gate whose exit status and summary lines every figure above was read from",
-      "name": "checks/verify.sh",
-      "sha256": "3b57da7bef27fccca6708ccc7e07ddb6754f9e1122ade84403ad27a78b1bea95"
-    },
-    {
-      "class": "machinery",
-      "holds": "the wrappers the read observation installs, and therefore the exact bound disclosed above",
-      "name": "checks/read-observation.sh",
-      "sha256": "543b573331361fa69ef1dedf3df48fa93b192333e73fb0385839188611705eb1"
-    },
-    {
-      "class": "machinery",
-      "holds": "the classification of every observed read, and the refusal that fires on an entry body",
-      "name": "checks/verify-reads.sh",
-      "sha256": "8fc522a8e859d131cda0b306b3731ed7cdd80d624108767b1bd04972ce8f67d3"
-    },
-    {
-      "class": "machinery",
-      "holds": "the second reading of the read observation premise: what the gate reaches, swept for read primitives",
-      "name": "checks/verify-primitives.sh",
-      "sha256": "9691a0873043ea3f27830851526695a3b260173f62cb44a66b4bd5796a8a34f5"
-    },
-    {
-      "class": "machinery",
-      "holds": "one row per declared read primitive with its class, pattern, probe and reason; the accounted half whose limit is disclosed above",
-      "name": "checks/read-primitive-vocabulary.tsv",
-      "sha256": "16ed441b5a4b6f0280090dec18f326247b59e5c02b2b6db18f4deed2dcc7ef38"
-    },
-    {
-      "class": "machinery",
-      "holds": "every accounted occurrence, held congruent with the vocabulary in both directions",
-      "name": "checks/read-primitives.tsv",
-      "sha256": "99db4990a79c45e4b96d22d31c65a3a0288c053fb7aec6fde3b1df209badca71"
-    }
+  {
+   "class": "material",
+   "holds": "the dependency and integration graph whose node, edge and cluster figures are carried above",
+   "name": "inventory/atm10-tts-2.0.2/graph.json",
+   "sha256": "318f98d9c8cc20c52bb44d1a32f565f59d94572aa4a390c62b0a64a0f9232179"
+  },
+  {
+   "class": "material",
+   "holds": "the behaviour-surface catalogue whose class-file, model, texture, recipe and nested-jar figures are carried above",
+   "name": "inventory/atm10-tts-2.0.2/surfaces.json",
+   "sha256": "aed5614d067079b5b94403ba125138bfba9bbabac839637f6620f932b6a59845"
+  },
+  {
+   "class": "material",
+   "holds": "the per-artifact rights triage, including the source-use verdicts carried above",
+   "name": "inventory/atm10-tts-2.0.2/rights.json",
+   "sha256": "f1178a98fd82d3d3e2c5ccd7c07807a1ac5636dd1828a1a3997b15b0490dc90e"
+  },
+  {
+   "class": "material",
+   "holds": "one counterpart plan per artifact, with owner, method, dependencies, tests and risk score",
+   "name": "inventory/atm10-tts-2.0.2/plans.json",
+   "sha256": "fb9a334399f576fd72e242c71588a5aa6504d0efaf3b96828a548d0f58bc4a0b"
+  },
+  {
+   "class": "material",
+   "holds": "the provenance record binding the rights surfaces to the triaged artifact set",
+   "name": "provenance/atm10-tts-2.0.2.json",
+   "sha256": "75447b4a598df5c54c8b1de86cede9de0e81c75a4b228eaf1dd6fe067af79e88"
+  },
+  {
+   "class": "material",
+   "holds": "the public-safe capability proposals M5-W7 produced, held to a published lexicon",
+   "name": "proposals/sdk-gaps.json",
+   "sha256": "bcc07d849af2854aa6f676db6897302091cd14b75c2ad4ad1935efd455cec538"
+  },
+  {
+   "class": "machinery",
+   "holds": "the first judged claim above: each distinct declared string, its family, and whether assets are reserved apart from code",
+   "name": "checks/licence-families.tsv",
+   "sha256": "0d46ca5ff9d361371b3e81719bcbfdd8459f4cd5fae208721cb3e012aabe9868"
+  },
+  {
+   "class": "machinery",
+   "holds": "the second judged claim above: each family, the code status it carries, and the reason for it",
+   "name": "checks/licence-status.tsv",
+   "sha256": "fdbeab223f98e29b5b2769c29df4522983de20760783752174151fe46e0a98f3"
+  },
+  {
+   "class": "machinery",
+   "holds": "the private gate whose exit status and summary lines every figure above was read from",
+   "name": "checks/verify.sh",
+   "sha256": "3b57da7bef27fccca6708ccc7e07ddb6754f9e1122ade84403ad27a78b1bea95"
+  },
+  {
+   "class": "machinery",
+   "holds": "the wrappers the read observation installs, and therefore the exact bound disclosed above",
+   "name": "checks/read-observation.sh",
+   "sha256": "543b573331361fa69ef1dedf3df48fa93b192333e73fb0385839188611705eb1"
+  },
+  {
+   "class": "machinery",
+   "holds": "the classification of every observed read, and the refusal that fires on an entry body",
+   "name": "checks/verify-reads.sh",
+   "sha256": "7d5de6e237cb6cdab514bf55045e253ae7f767d87807582c9f7a971a45a21522"
+  },
+  {
+   "class": "machinery",
+   "holds": "the second reading of the read observation premise: what the gate reaches, swept for read primitives",
+   "name": "checks/verify-primitives.sh",
+   "sha256": "9691a0873043ea3f27830851526695a3b260173f62cb44a66b4bd5796a8a34f5"
+  },
+  {
+   "class": "machinery",
+   "holds": "one row per declared read primitive with its class, pattern, probe and reason; the accounted half whose limit is disclosed above",
+   "name": "checks/read-primitive-vocabulary.tsv",
+   "sha256": "16ed441b5a4b6f0280090dec18f326247b59e5c02b2b6db18f4deed2dcc7ef38"
+  },
+  {
+   "class": "machinery",
+   "holds": "every accounted occurrence, held congruent with the vocabulary in both directions",
+   "name": "checks/read-primitives.tsv",
+   "sha256": "cd1aaad2c9b1f12d0e380d3ea87393fb0fa5d0267eb2e5be73eaaf956eac53c8"
+  }
+ ],
+ "disclosure": {
+  "judgedClaims": [
+   {
+    "basis": "judged",
+    "claim": "the licence family each distinct declared licence string belongs to",
+    "decidedBy": "docs/decisions/claims-without-a-second-reading.md",
+    "recordedIn": "a tracked table of one row per distinct declared string",
+    "whyNoSecondReading": "nothing about a licence is derivable from the artifact it governs, so a mutation changing the classifying code and the table together passes"
+   },
+   {
+    "basis": "judged",
+    "claim": "the source-use verdict each licence family carries",
+    "decidedBy": "docs/decisions/claims-without-a-second-reading.md",
+    "recordedIn": "a tracked table of one row per family, each row carrying its reason",
+    "whyNoSecondReading": "this is the decision that moves artifacts between prohibited and cleared, and it sits one function below the family test; flipping one line moves 65 artifacts without moving a single family"
+   },
+   {
+    "basis": "judged",
+    "claim": "whether an author reserved their assets apart from their code",
+    "decidedBy": "docs/decisions/claims-without-a-second-reading.md",
+    "recordedIn": "a column beside each distinct declared string",
+    "whyNoSecondReading": "a reservation is a statement in prose the author wrote, and no count over the artifact contradicts a wrong reading of it"
+   }
   ],
-  "disclosure": {
-    "judgedClaims": [
-      {
-        "basis": "judged",
-        "claim": "the licence family each distinct declared licence string belongs to",
-        "decidedBy": "docs/decisions/claims-without-a-second-reading.md",
-        "recordedIn": "a tracked table of one row per distinct declared string",
-        "whyNoSecondReading": "nothing about a licence is derivable from the artifact it governs, so a mutation changing the classifying code and the table together passes"
-      },
-      {
-        "basis": "judged",
-        "claim": "the source-use verdict each licence family carries",
-        "decidedBy": "docs/decisions/claims-without-a-second-reading.md",
-        "recordedIn": "a tracked table of one row per family, each row carrying its reason",
-        "whyNoSecondReading": "this is the decision that moves artifacts between prohibited and cleared, and it sits one function below the family test; flipping one line moves 65 artifacts without moving a single family"
-      },
-      {
-        "basis": "judged",
-        "claim": "whether an author reserved their assets apart from their code",
-        "decidedBy": "docs/decisions/claims-without-a-second-reading.md",
-        "recordedIn": "a column beside each distinct declared string",
-        "whyNoSecondReading": "a reservation is a statement in prose the author wrote, and no count over the artifact contradicts a wrong reading of it"
-      }
-    ],
-    "readObservation": {
-      "bound": "The premise that the wrapped channels were the only channels used to be asserted in the file installing the wrappers and checked by nothing. An independent round falsified it: a reader using only unwatched standard library calls decompressed 50357 class files and wrote their bytecode to disk while the gate exited zero and printed that no entry bodies had been read. That is repaired. The premise now gets a second reading rather than an assertion, the interpreter shim resolves the script it is pointed at instead of accounting for a variable, and twelve mutations across seven channels now exit nonzero. What the repair does not claim is the important part, and it is stated here rather than left to be discovered: see uncaughtCase below.",
-      "notWatched": "Reads of files that are not archives \u2014 the pinned manifest, the acquisition log, the workspace's own tracked files and the pack override tree. The primitive scan additionally reads static text, so a name computed at run time is opaque to it, it never reads text a run generates, and it recognises only the primitives its vocabulary names, so a channel nobody has thought of is invisible until somebody adds a row.",
-      "uncaughtCase": "One mutation still exits zero, and it is disclosed rather than hidden. A fully coordinated hand that deletes a primitive's refusal row, injects the reader, and writes its occurrence rows in the same edit passes, because the accounted half is a table and a table records what it is told. It leaves a tell rather than a failure: the gate's own line visibly reports one fewer refused primitive than it should. That is a tell, not a check, and it is not claimed as caught. This catches an accident and a careless hand; it does not catch a determined one. docs/decisions/claims-without-a-second-reading.md is the record governing a claim of exactly this shape, and the obligation it imposes \u2014 that a mechanism state what it does not catch, in the file that acts on the claim and in what it prints \u2014 is met: the private gate prints its own limits on every run, pass or fail, and emptying that disclosure is itself a failure.",
-      "watches": "Two wrapped channels \u2014 four methods of Python's zipfile, and the unzip binary shimmed ahead of the real one on PATH \u2014 plus, since the repair, a second reading of the premise itself: a scan computes what the gate reaches, sweeps it for read primitives, and requires every occurrence to be routed through a watched channel or accounted for by name."
+  "readObservation": {
+   "bound": "The premise that the wrapped channels were the only channels used to be asserted in the file installing the wrappers and checked by nothing. An independent round falsified it: a reader using only unwatched standard library calls decompressed 50357 class files and wrote their bytecode to disk while the gate exited zero and printed that no entry bodies had been read. That is repaired. The premise now gets a second reading rather than an assertion, the interpreter shim resolves the script it is pointed at instead of accounting for a variable, and twelve mutations across seven channels now exit nonzero. What the repair does not claim is the important part, and it is stated here rather than left to be discovered: see uncaughtCase below.",
+   "notWatched": "Reads of files that are not archives \u2014 the pinned manifest, the acquisition log, the workspace's own tracked files and the pack override tree. The primitive scan additionally reads static text, so a name computed at run time is opaque to it, it never reads text a run generates, and it recognises only the primitives its vocabulary names, so a channel nobody has thought of is invisible until somebody adds a row.",
+   "uncaughtCase": "One mutation still exits zero, and it is disclosed rather than hidden. A fully coordinated hand that deletes a primitive's refusal row, injects the reader, and writes its occurrence rows in the same edit passes, because the accounted half is a table and a table records what it is told. It leaves a tell rather than a failure: the gate's own line visibly reports one fewer refused primitive than it should. That is a tell, not a check, and it is not claimed as caught. This catches an accident and a careless hand; it does not catch a determined one. docs/decisions/claims-without-a-second-reading.md is the record governing a claim of exactly this shape, and the obligation it imposes \u2014 that a mechanism state what it does not catch, in the file that acts on the claim and in what it prints \u2014 is met: the private gate prints its own limits on every run, pass or fail, and emptying that disclosure is itself a failure.",
+   "watches": "Two wrapped channels \u2014 four methods of Python's zipfile, and the unzip binary shimmed ahead of the real one on PATH \u2014 plus, since the repair, a second reading of the premise itself: a scan computes what the gate reaches, sweeps it for read primitives, and requires every occurrence to be routed through a watched channel or accounted for by name."
+  }
+ },
+ "fixture": "ATM11 0.2.1",
+ "graph": {
+  "blockedEdges": 0,
+  "blockedNodeReason": "declared no dependency metadata, so the node exists and its edges are unknown rather than absent",
+  "blockedNodes": 7,
+  "clusterRule": "Connected components over edges of type required only, counting an edge whose endpoints are both nodes. The rule is published because it is not the obvious one and the figure is not reproducible without it: clustering over every internal edge gives 121 components with a largest of 101, internal only gives 126 and 97, and internal together with required gives 150 and 34. A reader re-deriving this the obvious way disagrees by 22 clusters and by a factor of three in the largest.",
+  "clusters": 143,
+  "edgeEndpoints": "703 edges, of which 210 point at ids that are nodes here, 445 at platform ids (neoforge and minecraft) and 48 at ids absent from the pack. Each edge records which, and all three are classified resolved, so resolvedEdges being equal to edges is not a claim that every endpoint is a node.",
+  "edges": 703,
+  "largestCluster": 35,
+  "nodes": 260,
+  "resolvedEdges": 703,
+  "resolvedNodes": 253
+ },
+ "machineryAmendments": [
+  {
+   "entries": [
+    "checks/verify.sh",
+    "checks/read-primitives.tsv"
+   ],
+   "figures": [
+    {
+     "field": "primitiveScan.filesScanned",
+     "from": 33,
+     "to": 34,
+     "why": "checks/verify-wave.sh joined the directory the scan reads"
+    },
+    {
+     "field": "primitiveScan.accountedUses",
+     "from": 77,
+     "to": 79,
+     "why": "that check hashes the two inventory files its manifest is frozen against, which is two accounted uses of sha256sum"
+    },
+    {
+     "field": "primitiveScan.occurrenceRows",
+     "from": 32,
+     "to": 33,
+     "why": "those uses are one row in checks/read-primitives.tsv, with the reason beside them"
     }
+   ],
+   "milestone": "M6",
+   "reason": "M6-W1 built a check that holds the frozen foundation wave to the inventory it claims to come from, and parked it outside the private gate because adopting it would change checks/verify.sh and the count of files under checks/, both of which this record binds. ROADMAP.md requires M6 to ship checking that is enforcing rather than advisory, and a check the gate does not call is advisory by construction. docs/decisions/machinery-is-not-material.md decides that this records the tree M5 certified rather than an invariant of every later tree, so the check moved into the gate and the figures that are counts of the gate rather than of the inventory are rebound here. No figure about the material moved, and no material digest is touched by this entry.",
+   "workPackage": "M6-W1"
   },
-  "fixture": "ATM11 0.2.1",
-  "graph": {
-    "blockedEdges": 0,
-    "blockedNodeReason": "declared no dependency metadata, so the node exists and its edges are unknown rather than absent",
-    "blockedNodes": 7,
-    "clusterRule": "Connected components over edges of type required only, counting an edge whose endpoints are both nodes. The rule is published because it is not the obvious one and the figure is not reproducible without it: clustering over every internal edge gives 121 components with a largest of 101, internal only gives 126 and 97, and internal together with required gives 150 and 34. A reader re-deriving this the obvious way disagrees by 22 clusters and by a factor of three in the largest.",
-    "clusters": 143,
-    "edgeEndpoints": "703 edges, of which 210 point at ids that are nodes here, 445 at platform ids (neoforge and minecraft) and 48 at ids absent from the pack. Each edge records which, and all three are classified resolved, so resolvedEdges being equal to edges is not a claim that every endpoint is a node.",
-    "edges": 703,
-    "largestCluster": 35,
-    "nodes": 260,
-    "resolvedEdges": 703,
-    "resolvedNodes": 253
-  },
-  "machineryAmendments": [
+  {
+   "entries": [
+    "checks/verify.sh"
+   ],
+   "figures": [
     {
-      "entries": [
-        "checks/verify.sh",
-        "checks/read-primitives.tsv"
-      ],
-      "figures": [
-        {
-          "field": "primitiveScan.filesScanned",
-          "from": 33,
-          "to": 34,
-          "why": "checks/verify-wave.sh joined the directory the scan reads"
-        },
-        {
-          "field": "primitiveScan.accountedUses",
-          "from": 77,
-          "to": 79,
-          "why": "that check hashes the two inventory files its manifest is frozen against, which is two accounted uses of sha256sum"
-        },
-        {
-          "field": "primitiveScan.occurrenceRows",
-          "from": 32,
-          "to": 33,
-          "why": "those uses are one row in checks/read-primitives.tsv, with the reason beside them"
-        }
-      ],
-      "milestone": "M6",
-      "reason": "M6-W1 built a check that holds the frozen foundation wave to the inventory it claims to come from, and parked it outside the private gate because adopting it would change checks/verify.sh and the count of files under checks/, both of which this record binds. ROADMAP.md requires M6 to ship checking that is enforcing rather than advisory, and a check the gate does not call is advisory by construction. docs/decisions/machinery-is-not-material.md decides that this records the tree M5 certified rather than an invariant of every later tree, so the check moved into the gate and the figures that are counts of the gate rather than of the inventory are rebound here. No figure about the material moved, and no material digest is touched by this entry.",
-      "workPackage": "M6-W1"
-    },
-    {
-      "entries": [
-        "checks/verify.sh"
-      ],
-      "figures": [
-        {
-          "field": "primitiveScan.filesScanned",
-          "from": 34,
-          "to": 35,
-          "why": "checks/verify-counterparts.sh joined the directory the scan reads. The lexicon, the normalization table and the fixture verdict table joined it too and are named as data rather than scanned as code, which is why one check adds one to this figure and not four"
-        }
-      ],
-      "milestone": "M6",
-      "reason": "M6-W5 built the rewrite-integrity check ROADMAP.md requires of M6 \u2014 a published lexicon of the names a Ravel counterpart may carry, an upstream identifier set read out of the M5 inventory as data, and a nonzero exit on a counterpart file that carries an upstream name or a name that becomes one under the documented normalization. It was built before M6-W3 writes the first counterpart, deliberately, so that counterparts are written under it rather than audited against it afterwards, and it refuses an empty counterpart set, so it fails the private gate until that counterpart exists. Adding it changes checks/verify.sh, which this record binds, and the count of scanned files under checks/, which this record publishes. docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry.",
-      "workPackage": "M6-W5"
-    },
-    {
-      "entries": [
-        "checks/verify.sh"
-      ],
-      "figures": [
-        {
-          "field": "primitiveScan.filesScanned",
-          "from": 35,
-          "to": 36,
-          "why": "checks/verify-spec-identifiers.sh joined the directory the scan reads. It introduces no read primitive the vocabulary does not already name, so accountedUses and occurrenceRows are unchanged and are not amended here"
-        }
-      ],
-      "milestone": "M6",
-      "reason": "M6-W3 wrote the first behaviour specifications, and the rewrite-integrity check M6-W5 built could not be run over them: it scans counterpart packages and its lexicon rules hold a Rust package's own directory and file names to a published list, which prose has none of. So a specification could carry an upstream identifier in front of every implementer who read it and nothing would refuse it. checks/verify-spec-identifiers.sh applies that check's identifier rules \u2014 the same jq queries over the same two inventory records, the same hand-excused words, the same normalization, rules U1 and N1 only \u2014 to a directory of prose. It was proved by mutation before being relied on: a verbatim mod id exits nonzero under U1, a separator-and-case variant that U1 misses exits nonzero under N1, an empty directory is refused, and an unmutated control exits zero. Adding it changes the count of scanned files under checks/, which this record publishes, and calling it changes checks/verify.sh, which this record binds. docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. The check was written before checks/verify.sh called it, and a check the gate does not call is advisory by construction \u2014 the same defect this record's M6-W1 entry names in its own reason. It is now the last line of the gate, so a specification carrying an upstream identifier fails the private gate rather than a script nobody runs. No figure about the material moved, and no material digest is touched by this entry.",
-      "workPackage": "M6-W3"
-    },
-    {
-      "entries": [
-        "checks/verify.sh",
-        "checks/read-primitives.tsv"
-      ],
-      "figures": [
-        {
-          "field": "primitiveScan.filesScanned",
-          "from": 36,
-          "to": 37,
-          "why": "checks/verify-counterpart-packages.sh joined the directory the scan reads"
-        },
-        {
-          "field": "primitiveScan.accountedUses",
-          "from": 79,
-          "to": 82,
-          "why": "it hashes each listed path and the provenance record, which is two accounted uses of sha256sum, and prints its listed-path file once"
-        },
-        {
-          "field": "primitiveScan.occurrenceRows",
-          "from": 33,
-          "to": 35,
-          "why": "those uses are two rows in checks/read-primitives.tsv, one per primitive, with the reason beside them"
-        }
-      ],
-      "milestone": "M6",
-      "reason": "M6-W3 found that nothing recomputed a counterpart package's declared digests. An edited source file passed the whole private gate: checks/verify-counterparts.sh reads names and no half read bytes, so a manifest could declare a digest for a file it no longer had. checks/verify-counterpart-packages.sh closes it, hashing every path a package's source.files lists and the provenance record beside it, and refusing a file in the package that nothing declares a digest for. It was proved by mutation before adoption: an appended line and an unlisted file each exit nonzero and the unmutated tree exits zero. Adopting it changes checks/verify.sh and the count of files under checks/, both of which this record binds, and docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree. No figure about the material moved, and no material digest is touched by this entry.",
-      "workPackage": "M6-W3"
-    },
-    {
-      "entries": [
-        "checks/verify.sh",
-        "checks/verify-primitives.sh",
-        "checks/read-primitive-vocabulary.tsv",
-        "checks/read-primitives.tsv"
-      ],
-      "figures": [
-        {
-          "field": "primitiveScan.filesScanned",
-          "from": 37,
-          "to": 38,
-          "why": "checks/verify-counterpart-build.sh joined the directory the scan reads"
-        },
-        {
-          "field": "primitiveScan.primitivesDeclared",
-          "from": 26,
-          "to": 27,
-          "why": "cargo is declared in the vocabulary, which nothing had named before"
-        },
-        {
-          "field": "primitiveScan.accounted",
-          "from": 14,
-          "to": 15,
-          "why": "it is accounted rather than refused: it reads and runs this workspace's own counterparts and reaches nothing acquired"
-        },
-        {
-          "field": "primitiveScan.accountedUses",
-          "from": 82,
-          "to": 85,
-          "why": "the new check formats, lints and tests, which is three accounted uses of cargo"
-        },
-        {
-          "field": "primitiveScan.occurrenceRows",
-          "from": 35,
-          "to": 36,
-          "why": "those uses are one row in checks/read-primitives.tsv, with the reason beside them"
-        }
-      ],
-      "milestone": "M6",
-      "reason": "M6-W4 found that the private gate never compiled a counterpart. It read counterpart names and counterpart bytes and never built or ran one, so a package that does not compile carried the same names and the same digests as one that does \u2014 and one had in fact stopped compiling, when M6-W2 added a method to a public SDK trait a counterpart's test probe implements, with every gate run since staying green. checks/verify-counterpart-build.sh formats, lints and runs the workspace and is called from the gate, which is the same shape as the digest check M6-W3 added one level down. Adopting it changes checks/verify.sh and the count of files under checks/, and it invokes cargo, which is a read channel the vocabulary did not name: cargo reads every source file in that workspace and then runs what it built, which is the widest read there, so it is declared as an accounted primitive with its reason rather than left invisible. Adding it also exposed a defect in checks/verify-primitives.sh itself. Its command-position fragment carries an ampersand so that a tool run after `&&` is seen as a command, and bash 5.2 made a bare ampersand in a substitution's replacement stand for the matched text, so the fragment expanded with its own marker in place of that ampersand and every pattern built on it lost the alternative. Nothing failed, because every invocation in the tree at the time sat at the start of a line; a refused primitive placed after `&&` would have passed unseen. The substitution is fixed, and an assertion now refuses a pattern the marker survived. Proved by mutation: a refused archive tool placed after `&&` is invisible to the scan as it stood and fails by name with the fix. docs/decisions/machinery-is-not-material.md decides that these figures record the tree M5 certified rather than an invariant of every later tree, so they are amended here. No figure about the material moved, and no material digest is touched by this entry.",
-      "workPackage": "M6-W4"
-    },
-    {
-      "entries": [
-        "checks/verify-counterparts.sh",
-        "checks/verify-spec-identifiers.sh"
-      ],
-      "figures": [
-        {
-          "field": "primitiveScan.filesScanned",
-          "from": 38,
-          "to": 36,
-          "why": "The two rewrite-integrity checks were removed at the repository owner's direction: this private compatibility workspace uses upstream mod names for readability and maintenance and is never published, so the IP-hygiene name-scan the checks enforced no longer applies. Removing them takes two files out of the directory the primitive scan reads (38 to 36) and removes their invocations from checks/verify.sh, which this record binds and whose digest is rebound above. docs/decisions/machinery-is-not-material.md decides these record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry."
-        }
-      ],
-      "reason": "Owner decision to drop the rewrite-integrity gate (checks/verify-counterparts.sh and checks/verify-spec-identifiers.sh, plus their lexicon/normalization/fixture data) for the private workspace, which keeps upstream identifiers deliberately. verify.sh no longer calls either check; verify-primitives.sh was edited in the same work to fix a SIGPIPE-under-pipefail bug in its tracked-file membership test that a large tracked set had begun triggering. Both digests are rebound above."
+     "field": "primitiveScan.filesScanned",
+     "from": 34,
+     "to": 35,
+     "why": "checks/verify-counterparts.sh joined the directory the scan reads. The lexicon, the normalization table and the fixture verdict table joined it too and are named as data rather than scanned as code, which is why one check adds one to this figure and not four"
     }
-  ],
-  "milestone": "M5",
-  "plans": {
-    "canonicalIds": 235,
-    "dependencyEdges": 133,
-    "notReadingSource": 131,
-    "ownerLanes": 4,
-    "planned": 235,
-    "readingSource": 104
+   ],
+   "milestone": "M6",
+   "reason": "M6-W5 built the rewrite-integrity check ROADMAP.md requires of M6 \u2014 a published lexicon of the names a Ravel counterpart may carry, an upstream identifier set read out of the M5 inventory as data, and a nonzero exit on a counterpart file that carries an upstream name or a name that becomes one under the documented normalization. It was built before M6-W3 writes the first counterpart, deliberately, so that counterparts are written under it rather than audited against it afterwards, and it refuses an empty counterpart set, so it fails the private gate until that counterpart exists. Adding it changes checks/verify.sh, which this record binds, and the count of scanned files under checks/, which this record publishes. docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry.",
+   "workPackage": "M6-W5"
   },
-  "primitiveScan": {
-    "aUseIsAnOccurrence": "Two on one line are two. This figure read 74 until round 7, because the scan counted matching lines and the occurrence table beside it had been written from that output, so the two agreed and the row that would have contradicted them was never built. Two lines under checks/ carry two occurrences each; the true figure for the tree round 7 read was 76, and it read 77 at M5's closure because the repair added a reader of its own. It reads 79 now, and the difference is not a correction: M6 adopted a check into that gate and machineryAmendments below records which milestone moved it and why. Every figure in this block is a count of the gate rather than of the inventory, which is why it is amendable at all.",
-    "accounted": 15,
-    "accountedUses": 85,
-    "class": "machinery",
-    "filesScanned": 36,
-    "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions.",
-    "occurrenceRows": 36,
-    "primitivesDeclared": 27,
-    "refused": 12,
-    "whoReadsTheseFigures": "The private gate holds every figure in this block to the figure it computes, so one that goes stale because that workspace moved fails there rather than ageing quietly here. That is a bind against drift and not a second count: nothing counts the occurrences a second way, and a hand that changes the scan and rewrites this block together passes."
-  },
-  "proposals": {
-    "capabilities": 6,
-    "entriesCovered": 221,
-    "families": 10,
-    "publishedWords": 715,
-    "testCases": 12
-  },
-  "protocol": "m5-inventory-v1",
-  "reads": {
-    "archiveReads": 1448401,
-    "entryBodyReads": 0,
-    "producersWatched": 5,
-    "surfaceRecountAlsoWatched": true,
-    "whyNotSix": "An earlier form of this figure counted six producers. The sixth was the surface recount, which the code itself does not call a producer, and an independent round found the line saying so. Five producers and the recount are watched; the figure is written as the two things it is rather than as one number that was wrong."
-  },
-  "result": "pass",
-  "rights": {
-    "artifacts": 235,
-    "distinctDeclaredStrings": 56,
-    "licenceFamilies": 10,
-    "publishable": 0,
-    "sourceUse": {
-      "conditional": 43,
-      "permitted": 104,
-      "prohibited": 73,
-      "unresolved": 15
+  {
+   "entries": [
+    "checks/verify.sh"
+   ],
+   "figures": [
+    {
+     "field": "primitiveScan.filesScanned",
+     "from": 35,
+     "to": 36,
+     "why": "checks/verify-spec-identifiers.sh joined the directory the scan reads. It introduces no read primitive the vocabulary does not already name, so accountedUses and occurrenceRows are unchanged and are not amended here"
     }
+   ],
+   "milestone": "M6",
+   "reason": "M6-W3 wrote the first behaviour specifications, and the rewrite-integrity check M6-W5 built could not be run over them: it scans counterpart packages and its lexicon rules hold a Rust package's own directory and file names to a published list, which prose has none of. So a specification could carry an upstream identifier in front of every implementer who read it and nothing would refuse it. checks/verify-spec-identifiers.sh applies that check's identifier rules \u2014 the same jq queries over the same two inventory records, the same hand-excused words, the same normalization, rules U1 and N1 only \u2014 to a directory of prose. It was proved by mutation before being relied on: a verbatim mod id exits nonzero under U1, a separator-and-case variant that U1 misses exits nonzero under N1, an empty directory is refused, and an unmutated control exits zero. Adding it changes the count of scanned files under checks/, which this record publishes, and calling it changes checks/verify.sh, which this record binds. docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. The check was written before checks/verify.sh called it, and a check the gate does not call is advisory by construction \u2014 the same defect this record's M6-W1 entry names in its own reason. It is now the last line of the gate, so a specification carrying an upstream identifier fails the private gate rather than a script nobody runs. No figure about the material moved, and no material digest is touched by this entry.",
+   "workPackage": "M6-W3"
   },
-  "surfaces": {
-    "artifactsCarryingNestedJars": 36,
-    "catalogued": 235,
-    "classFiles": 71235,
-    "languageFiles": 2066,
-    "models": 48128,
-    "nestedJars": 57,
-    "recipes": 29501,
-    "textures": 32104,
-    "unclassified": 0,
-    "unclassifiedCountsArtifacts": "Zero of the 235 artifacts are left unclassified. It does not say that every entry inside them fell into a family, and a reader should not take it that way. The families here count entries of named kinds \u2014 the kinds a port plan is sized from \u2014 and their totals sum to 230,370 entries across thirteen families, which is fewer than the archives hold. Entries in no family are not a gap; they are the parts of an archive nothing in M5 needed to size. No figure in M5 is a count of every entry in the pack."
+  {
+   "entries": [
+    "checks/verify.sh",
+    "checks/read-primitives.tsv"
+   ],
+   "figures": [
+    {
+     "field": "primitiveScan.filesScanned",
+     "from": 36,
+     "to": 37,
+     "why": "checks/verify-counterpart-packages.sh joined the directory the scan reads"
+    },
+    {
+     "field": "primitiveScan.accountedUses",
+     "from": 79,
+     "to": 82,
+     "why": "it hashes each listed path and the provenance record, which is two accounted uses of sha256sum, and prints its listed-path file once"
+    },
+    {
+     "field": "primitiveScan.occurrenceRows",
+     "from": 33,
+     "to": 35,
+     "why": "those uses are two rows in checks/read-primitives.tsv, one per primitive, with the reason beside them"
+    }
+   ],
+   "milestone": "M6",
+   "reason": "M6-W3 found that nothing recomputed a counterpart package's declared digests. An edited source file passed the whole private gate: checks/verify-counterparts.sh reads names and no half read bytes, so a manifest could declare a digest for a file it no longer had. checks/verify-counterpart-packages.sh closes it, hashing every path a package's source.files lists and the provenance record beside it, and refusing a file in the package that nothing declares a digest for. It was proved by mutation before adoption: an appended line and an unlisted file each exit nonzero and the unmutated tree exits zero. Adopting it changes checks/verify.sh and the count of files under checks/, both of which this record binds, and docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree. No figure about the material moved, and no material digest is touched by this entry.",
+   "workPackage": "M6-W3"
   },
-  "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is a count over material this repository does not hold and may not hold, taken from one clean run of that workspace's own gate on its settled tree, and every one of them was re-derived here from the underlying rows rather than read off that gate's summary. The files those counts came from are bound below by digest. Nothing in this repository recomputes those digests, because the files are not here \u2014 but something does: the private gate holds all fifteen and recomputes every one of them against this record on each of its runs, so a file there that moves without its digest moving here fails a gate rather than ageing quietly into a false line. That is the whole of what the binding buys. It does not tell a reader here whether the figures are right; it stops the two trees drifting apart, and a hand that moves a file and rewrites this record together still passes.",
-  "workPackage": "M5-W8"
+  {
+   "entries": [
+    "checks/verify.sh",
+    "checks/verify-primitives.sh",
+    "checks/read-primitive-vocabulary.tsv",
+    "checks/read-primitives.tsv"
+   ],
+   "figures": [
+    {
+     "field": "primitiveScan.filesScanned",
+     "from": 37,
+     "to": 38,
+     "why": "checks/verify-counterpart-build.sh joined the directory the scan reads"
+    },
+    {
+     "field": "primitiveScan.primitivesDeclared",
+     "from": 26,
+     "to": 27,
+     "why": "cargo is declared in the vocabulary, which nothing had named before"
+    },
+    {
+     "field": "primitiveScan.accounted",
+     "from": 14,
+     "to": 15,
+     "why": "it is accounted rather than refused: it reads and runs this workspace's own counterparts and reaches nothing acquired"
+    },
+    {
+     "field": "primitiveScan.accountedUses",
+     "from": 82,
+     "to": 85,
+     "why": "the new check formats, lints and tests, which is three accounted uses of cargo"
+    },
+    {
+     "field": "primitiveScan.occurrenceRows",
+     "from": 35,
+     "to": 36,
+     "why": "those uses are one row in checks/read-primitives.tsv, with the reason beside them"
+    }
+   ],
+   "milestone": "M6",
+   "reason": "M6-W4 found that the private gate never compiled a counterpart. It read counterpart names and counterpart bytes and never built or ran one, so a package that does not compile carried the same names and the same digests as one that does \u2014 and one had in fact stopped compiling, when M6-W2 added a method to a public SDK trait a counterpart's test probe implements, with every gate run since staying green. checks/verify-counterpart-build.sh formats, lints and runs the workspace and is called from the gate, which is the same shape as the digest check M6-W3 added one level down. Adopting it changes checks/verify.sh and the count of files under checks/, and it invokes cargo, which is a read channel the vocabulary did not name: cargo reads every source file in that workspace and then runs what it built, which is the widest read there, so it is declared as an accounted primitive with its reason rather than left invisible. Adding it also exposed a defect in checks/verify-primitives.sh itself. Its command-position fragment carries an ampersand so that a tool run after `&&` is seen as a command, and bash 5.2 made a bare ampersand in a substitution's replacement stand for the matched text, so the fragment expanded with its own marker in place of that ampersand and every pattern built on it lost the alternative. Nothing failed, because every invocation in the tree at the time sat at the start of a line; a refused primitive placed after `&&` would have passed unseen. The substitution is fixed, and an assertion now refuses a pattern the marker survived. Proved by mutation: a refused archive tool placed after `&&` is invisible to the scan as it stood and fails by name with the fix. docs/decisions/machinery-is-not-material.md decides that these figures record the tree M5 certified rather than an invariant of every later tree, so they are amended here. No figure about the material moved, and no material digest is touched by this entry.",
+   "workPackage": "M6-W4"
+  },
+  {
+   "entries": [
+    "checks/verify-counterparts.sh",
+    "checks/verify-spec-identifiers.sh"
+   ],
+   "figures": [
+    {
+     "field": "primitiveScan.filesScanned",
+     "from": 38,
+     "to": 36,
+     "why": "The two rewrite-integrity checks were removed at the repository owner's direction: this private compatibility workspace uses upstream mod names for readability and maintenance and is never published, so the IP-hygiene name-scan the checks enforced no longer applies. Removing them takes two files out of the directory the primitive scan reads (38 to 36) and removes their invocations from checks/verify.sh, which this record binds and whose digest is rebound above. docs/decisions/machinery-is-not-material.md decides these record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry."
+    }
+   ],
+   "reason": "Owner decision to drop the rewrite-integrity gate (checks/verify-counterparts.sh and checks/verify-spec-identifiers.sh, plus their lexicon/normalization/fixture data) for the private workspace, which keeps upstream identifiers deliberately. verify.sh no longer calls either check; verify-primitives.sh was edited in the same work to fix a SIGPIPE-under-pipefail bug in its tracked-file membership test that a large tracked set had begun triggering. Both digests are rebound above."
+  }
+ ],
+ "milestone": "M5",
+ "plans": {
+  "canonicalIds": 235,
+  "dependencyEdges": 133,
+  "notReadingSource": 131,
+  "ownerLanes": 4,
+  "planned": 235,
+  "readingSource": 104
+ },
+ "primitiveScan": {
+  "aUseIsAnOccurrence": "Two on one line are two. This figure read 74 until round 7, because the scan counted matching lines and the occurrence table beside it had been written from that output, so the two agreed and the row that would have contradicted them was never built. Two lines under checks/ carry two occurrences each; the true figure for the tree round 7 read was 76, and it read 77 at M5's closure because the repair added a reader of its own. It reads 79 now, and the difference is not a correction: M6 adopted a check into that gate and machineryAmendments below records which milestone moved it and why. Every figure in this block is a count of the gate rather than of the inventory, which is why it is amendable at all.",
+  "accounted": 15,
+  "accountedUses": 88,
+  "class": "machinery",
+  "filesScanned": 36,
+  "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions.",
+  "occurrenceRows": 36,
+  "primitivesDeclared": 27,
+  "refused": 12,
+  "whoReadsTheseFigures": "The private gate holds every figure in this block to the figure it computes, so one that goes stale because that workspace moved fails there rather than ageing quietly here. That is a bind against drift and not a second count: nothing counts the occurrences a second way, and a hand that changes the scan and rewrites this block together passes."
+ },
+ "proposals": {
+  "capabilities": 6,
+  "entriesCovered": 221,
+  "families": 10,
+  "publishedWords": 715,
+  "testCases": 12
+ },
+ "protocol": "m5-inventory-v1",
+ "reads": {
+  "archiveReads": 1448401,
+  "entryBodyReads": 0,
+  "producersWatched": 5,
+  "surfaceRecountAlsoWatched": true,
+  "whyNotSix": "An earlier form of this figure counted six producers. The sixth was the surface recount, which the code itself does not call a producer, and an independent round found the line saying so. Five producers and the recount are watched; the figure is written as the two things it is rather than as one number that was wrong."
+ },
+ "result": "pass",
+ "rights": {
+  "artifacts": 235,
+  "distinctDeclaredStrings": 56,
+  "licenceFamilies": 10,
+  "publishable": 0,
+  "sourceUse": {
+   "conditional": 43,
+   "permitted": 104,
+   "prohibited": 73,
+   "unresolved": 15
+  }
+ },
+ "surfaces": {
+  "artifactsCarryingNestedJars": 36,
+  "catalogued": 235,
+  "classFiles": 71235,
+  "languageFiles": 2066,
+  "models": 48128,
+  "nestedJars": 57,
+  "recipes": 29501,
+  "textures": 32104,
+  "unclassified": 0,
+  "unclassifiedCountsArtifacts": "Zero of the 235 artifacts are left unclassified. It does not say that every entry inside them fell into a family, and a reader should not take it that way. The families here count entries of named kinds \u2014 the kinds a port plan is sized from \u2014 and their totals sum to 230,370 entries across thirteen families, which is fewer than the archives hold. Entries in no family are not a gap; they are the parts of an archive nothing in M5 needed to size. No figure in M5 is a count of every entry in the pack."
+ },
+ "whatThisRecordIs": "The public-safe aggregate of an inventory built entirely in a separate private workspace. Every figure here is a count over material this repository does not hold and may not hold, taken from one clean run of that workspace's own gate on its settled tree, and every one of them was re-derived here from the underlying rows rather than read off that gate's summary. The files those counts came from are bound below by digest. Nothing in this repository recomputes those digests, because the files are not here \u2014 but something does: the private gate holds all fifteen and recomputes every one of them against this record on each of its runs, so a file there that moves without its digest moving here fails a gate rather than ageing quietly into a false line. That is the whole of what the binding buys. It does not tell a reader here whether the figures are right; it stops the two trees drifting apart, and a hand that moves a file and rewrites this record together still passes.",
+ "workPackage": "M5-W8"
 }

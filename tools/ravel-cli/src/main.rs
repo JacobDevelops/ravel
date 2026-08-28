@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::process::{ExitCode, ExitStatus};
 use std::time::Duration;
 
-const DEFAULT_DESCRIPTOR: &str = "tests/fixtures/descriptors/atm11-0.2.1.json";
-const DEFAULT_ARCHIVE: &str = "tests/fixtures/local/atm11-0.2.1/source/atm11-0.2.1.zip";
+const DEFAULT_DESCRIPTOR: &str = "tests/fixtures/descriptors/atm10-tts-2.0.2.json";
+const DEFAULT_ARCHIVE: &str = "tests/fixtures/local/atm10-tts-2.0.2/source/atm10-tts-2.0.2.zip";
 
 fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();

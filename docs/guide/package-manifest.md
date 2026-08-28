@@ -98,9 +98,15 @@ in [What "conforming" is checked to mean](conforming.md).
 **`version`** is strict three-part semver, optionally with a pre-release and a
 build suffix. `1.4` is refused.
 
-**`compatibility.minecraft`** is a list of exact game versions. Today the only
-supported one is `26.1.2`. **`compatibility.ravel`** is a range; a mod outside it
-is refused at admission with both versions named.
+**`compatibility.minecraft`** is a non-empty list of the game versions the mod
+supports. Each entry is either an exact version (`26.1.2`) or an explicit range
+(`>=26.1, <26.2`); mix them freely, e.g. a range for the current line plus an
+exact pin for an older release. A range is your tested claim about a span of
+releases — the loader honours it and never infers support for a version you did
+not declare, and a range is only evaluated against a semver-shaped running
+version (a snapshot must be pinned exactly). Today the reference target is
+`26.1.2`. **`compatibility.ravel`** is a range; a mod outside it is refused at
+admission with both versions named.
 
 **`sides`** is a non-empty subset of `client`, `integrated-server`,
 `dedicated-server`. A side is a role within a process, not a process kind:

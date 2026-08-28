@@ -26,23 +26,46 @@ impl Compatibility {
 
     /// Checks the declared Minecraft versions against the running one.
     ///
-    /// This is exact string membership and never a range. `SPEC.md` §3.7 and
-    /// `schemas/package.schema.json` both treat a Minecraft version as an
-    /// opaque string, a Minecraft release is not required to be semver-shaped,
-    /// and a loader that ordered two of them would be claiming to know that a
-    /// mod built against one release works against a later one. It does not.
+    /// Each declared entry is matched in one of two ways, and the author
+    /// chooses which by how they write it:
+    ///
+    /// - **Exact string.** An entry that is not a version range matches the
+    ///   running version by exact string equality. A Minecraft release is not
+    ///   required to be semver-shaped (snapshots such as `24w45a` are not), and
+    ///   for those the loader still refuses to order two strings — it only
+    ///   accepts the ones the author wrote.
+    /// - **Explicit range.** An entry that parses as a [`VersionRange`] (for
+    ///   example `>=26.1, <26.2`) matches when the running version parses as a
+    ///   semver [`Version`] and falls inside it. This is first-class multi-
+    ///   version support: a mod that genuinely runs across a span of releases
+    ///   declares that span once rather than enumerating every patch. The range
+    ///   is the *author's* tested claim, so the loader is not inferring that an
+    ///   undeclared release works — it is honouring a declared one. A range is
+    ///   only ever evaluated against a semver-shaped running version; against a
+    ///   non-semver running string a range entry simply does not match, and an
+    ///   exact entry is still required.
     ///
     /// # Errors
     ///
     /// Returns [`CompatibilityError::Minecraft`] when the running version is
-    /// not one of the declared strings.
+    /// neither one of the declared exact strings nor inside any declared range.
     pub fn check_minecraft(&self, running: &str) -> Result<(), CompatibilityError> {
-        if self
-            .minecraft
-            .iter()
-            .any(|declared| declared.as_str() == running)
-        {
-            return Ok(());
+        let running_version: Option<Version> = running.parse().ok();
+        for declared in &self.minecraft {
+            let text = declared.as_str();
+            // Exact-string membership always applies.
+            if text == running {
+                return Ok(());
+            }
+            // A range entry applies only when both it and the running version
+            // are semver-shaped, so no non-semver string is ever ordered.
+            if let (Some(running_version), Ok(range)) =
+                (running_version.as_ref(), text.parse::<VersionRange>())
+                && is_range(text)
+                && range.matches(running_version)
+            {
+                return Ok(());
+            }
         }
         Err(CompatibilityError::Minecraft {
             declared: self
@@ -53,6 +76,18 @@ impl Compatibility {
             running: running.to_owned(),
         })
     }
+}
+
+/// Whether a declared Minecraft entry is a version range rather than an exact
+/// version. A range carries a comparator (`>=`, `<`, `<=`, `>`, `=`, `^`, `~`,
+/// `*`) or a comma; an exact version like `26.1.2` carries none of these, so it
+/// is never treated as a range even though [`VersionRange`] would parse it.
+fn is_range(text: &str) -> bool {
+    text.contains(',')
+        || text.contains('*')
+        || text
+            .chars()
+            .any(|c| matches!(c, '>' | '<' | '=' | '^' | '~'))
 }
 
 /// A package does not support the host it was asked to load on.
@@ -181,7 +216,9 @@ mod tests {
     }
 
     #[test]
-    fn an_undeclared_minecraft_version_is_refused_even_when_a_range_would_accept_it() {
+    fn an_undeclared_minecraft_version_is_refused_when_only_exact_versions_are_declared() {
+        // Exact entries are still matched exactly: a range would accept 26.0.1
+        // but the author declared only the exact string 26.0.0.
         let manifest = manifest("*", r#"["26.0.0"]"#);
         for running in ["26.0.1", "26.0", "26.0.0-pre1", "26.0.0 "] {
             let error = manifest
@@ -197,6 +234,43 @@ mod tests {
             );
             assert_eq!(error.failure_kind(), Some(FailureKind::IncompatibleVersion));
         }
+    }
+
+    #[test]
+    fn a_declared_minecraft_range_accepts_every_semver_version_inside_it() {
+        // First-class multi-version support: one declared span, many releases.
+        let manifest = manifest("*", r#"[">=26.1, <26.2"]"#);
+        for running in ["26.1.0", "26.1.2", "26.1.9"] {
+            assert_eq!(
+                manifest.compatibility.check_minecraft(running),
+                Ok(()),
+                "{running}"
+            );
+        }
+        // Outside the range is refused.
+        for running in ["26.0.9", "26.2.0"] {
+            assert!(
+                manifest.compatibility.check_minecraft(running).is_err(),
+                "{running}"
+            );
+        }
+    }
+
+    #[test]
+    fn exact_and_range_entries_mix_in_one_declaration() {
+        // A range for the current line plus an exact pin for an older release.
+        let manifest = manifest("*", r#"[">=26.1, <26.2", "25.4.7"]"#);
+        assert_eq!(manifest.compatibility.check_minecraft("26.1.5"), Ok(()));
+        assert_eq!(manifest.compatibility.check_minecraft("25.4.7"), Ok(()));
+        assert!(manifest.compatibility.check_minecraft("25.4.6").is_err());
+    }
+
+    #[test]
+    fn a_range_never_matches_a_non_semver_running_version() {
+        // A snapshot string is not orderable, so a range entry does not apply
+        // to it; only an exact entry could accept it.
+        let manifest = manifest("*", r#"[">=26.1, <26.2"]"#);
+        assert!(manifest.compatibility.check_minecraft("24w45a").is_err());
     }
 
     #[test]

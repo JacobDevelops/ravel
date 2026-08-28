@@ -144,11 +144,13 @@ impl PackageManifest {
 pub struct Compatibility {
     /// The Ravel versions this package supports, as a range.
     pub ravel: VersionRange,
-    /// The exact Minecraft versions this package supports.
+    /// The Minecraft versions this package supports.
     ///
-    /// This is a list of opaque exact strings and deliberately not a range. A
-    /// Minecraft release is not required to be semver-shaped, so ordering two
-    /// of them is not a question this crate is allowed to answer.
+    /// Each entry is either an exact version string or an explicit version
+    /// range (for example `>=26.1, <26.2`). A range is the author's declared,
+    /// tested span and is only ever evaluated against a semver-shaped running
+    /// version; a non-semver release (a snapshot) is matched by exact string and
+    /// never ordered. See [`Compatibility::check_minecraft`].
     #[serde(deserialize_with = "deserialize_unique_non_empty")]
     pub minecraft: Vec<NonEmptyText>,
 }

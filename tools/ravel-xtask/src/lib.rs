@@ -36,6 +36,7 @@ const CRATE_NAMES: &[&str] = &[
     "ravel-network",
     "ravel-observability",
     "ravel-pack",
+    "ravel-acceptance",
     "ravel-testkit",
 ];
 

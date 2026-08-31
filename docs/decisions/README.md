@@ -25,7 +25,7 @@ decides the obligations that come with it.
 | [ADG-6](adg-6-configuration-ui.md) | Configuration schema and Ravel-owned UI | accepted before M3-W3: declared in data, drawn in Java |
 | [ADG-7](adg-7-world-persistence.md) | World persistence adapter | accepted before M3-W4: one bounded Rust aggregate through vanilla saved data |
 
-Three records are not gates and are not in the table, because they decide no gate.
+Four records are not gates and are not in the table, because they decide no gate.
 [Claims without a second reading](claims-without-a-second-reading.md), accepted
 before M5-W8, governs how a claim that no second measurement can falsify is
 recorded and disclosed, wherever one appears.
@@ -37,7 +37,15 @@ tree at closure that a later milestone amends in the open.
 M6-W2, decides how an action a mod asks for reaches the running game: as an
 instruction the Java adapter performs, never as a call Rust makes. It is the
 measurement [ADG-6](adg-6-configuration-ui.md) deferred rather than a revision of
-it. None of the three takes an ADG
+it.
+[Driving acceptance through the loader's own crossings](driving-acceptance-through-loader-crossings.md),
+accepted while scoping the agentic acceptance harness ahead of M8-W4 and M10,
+decides that an acceptance run perceives the game through the loader's existing
+events and acts through the instruction the adapter already performs, adding no
+new crossing — it is [Carrying an action outward](carrying-an-action-outward.md)'s
+mechanism put to a test's use, and the model it decides lives in
+`crates/ravel-acceptance` with its live driver owned by M8-W0. None of the four
+takes an ADG
 number, because `SPEC.md` §15 owns those and reserves its unused ones for other
 subjects.
 

@@ -1,0 +1,15 @@
+[package]
+name = "ravel-acceptance"
+description = "Version-neutral model for agentic acceptance scenarios, driven against the loader's own event and outward-action crossings"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ravel-core.workspace = true
+ravel-host-api.workspace = true
+
+[lints]
+workspace = true

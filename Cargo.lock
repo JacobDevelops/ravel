@@ -759,6 +759,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravel-acceptance"
+version = "0.0.0"
+dependencies = [
+ "ravel-core",
+ "ravel-host-api",
+]
+
+[[package]]
 name = "ravel-bootstrap"
 version = "0.0.0"
 dependencies = [

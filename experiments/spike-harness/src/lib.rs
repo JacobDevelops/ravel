@@ -193,7 +193,7 @@ fn jj(arguments: &[&str]) -> Result<String, HarnessError> {
 }
 
 /// Path to the descriptor that pins every runtime input M1 measures against.
-pub const RUNTIME_INPUTS: &str = "tests/fixtures/descriptors/runtime-inputs-26.1.2.json";
+pub const RUNTIME_INPUTS: &str = "tests/fixtures/descriptors/runtime-inputs-1.21.1.json";
 
 /// Environment variable naming the pinned game Java runtime to measure with.
 ///
@@ -779,7 +779,7 @@ mod tests {
 
         let pinned = super::pinned_inputs(&root).expect("the descriptor should parse");
 
-        assert_eq!(pinned.minecraft, "26.1.2");
+        assert_eq!(pinned.minecraft, "1.21.1");
         assert!(!pinned.prism.is_empty());
         assert!(!pinned.java.is_empty());
     }

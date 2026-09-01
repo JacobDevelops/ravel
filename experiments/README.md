@@ -57,7 +57,7 @@ These crates are measurement instruments, not production code:
 ## Pinned inputs
 
 Trials read pinned versions from
-[`tests/fixtures/descriptors/runtime-inputs-26.1.2.json`](../tests/fixtures/descriptors/runtime-inputs-26.1.2.json).
+[`tests/fixtures/descriptors/runtime-inputs-1.21.1.json`](../tests/fixtures/descriptors/runtime-inputs-1.21.1.json).
 Set `RAVEL_SPIKE_JAVA` to the pinned Mojang runtime's `java` binary inside the
 ignored launcher root to measure on the exact game runtime; without it a trial
 falls back to the development JDK and records the difference as a deviation.

@@ -32,7 +32,7 @@ use harness::result::{
 const APPIMAGE: &str =
     "tests/fixtures/local/tooling/prism-11.0.3/PrismLauncher-Linux-x86_64.AppImage";
 /// Tracked descriptor that pins the launcher's hash.
-const DESCRIPTOR: &str = "tests/fixtures/descriptors/runtime-inputs-26.1.2.json";
+const DESCRIPTOR: &str = harness::RUNTIME_INPUTS;
 /// Path inside the unpacked launcher that holds the settings names.
 const LAUNCHER_BINARY: &str = "squashfs-root/shared/bin/prismlauncher";
 /// The one hardware profile M1 compares on.

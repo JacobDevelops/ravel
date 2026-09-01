@@ -3719,6 +3719,12 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
     if milestone == "M5" {
         verify_m5_manifest(root, manifest_path, &mut violations);
     }
+    if milestone == "M6" {
+        verify_m6_manifest(root, manifest_path, &mut violations);
+    }
+    if milestone == "M7" {
+        verify_m7_manifest(root, manifest_path, &mut violations);
+    }
 
     violations
 }
@@ -5016,10 +5022,25 @@ fn verify_m5_inventory_arithmetic(root: &Path, violations: &mut Vec<String>) {
         // Its absence is already a violation where the record set is checked.
         return;
     }
-    for (filter, requirement) in M5_ARITHMETIC {
-        if !jq_matches(&record, filter).unwrap_or(false) {
+    verify_record_arithmetic(
+        &record,
+        "evidence/m5/inventory-summary.json",
+        M5_ARITHMETIC,
+        violations,
+    );
+}
+
+/// Reports every decomposition a record does not close against itself.
+fn verify_record_arithmetic(
+    record: &Path,
+    record_label: &str,
+    rules: &[(&str, &str)],
+    violations: &mut Vec<String>,
+) {
+    for (filter, requirement) in rules {
+        if !jq_matches(record, filter).unwrap_or(false) {
             violations.push(format!(
-                "evidence/m5/inventory-summary.json does not satisfy `{filter}`, and {requirement}"
+                "{record_label} does not satisfy `{filter}`, and {requirement}"
             ));
         }
     }
@@ -5093,32 +5114,719 @@ fn verify_m5_carried_figures(root: &Path, manifest_path: &Path, violations: &mut
     if !record.is_file() {
         return;
     }
-    for (claimed_at, derived_from) in M5_CARRIED_FIGURES {
+    verify_carried_figures(
+        manifest_path,
+        "evidence/m5/manifest.json",
+        &record,
+        "evidence/m5/inventory-summary.json",
+        "inventory",
+        M5_CARRIED_FIGURES,
+        violations,
+    );
+}
+
+/// Recomputes each figure a manifest carries from the record it came out of.
+fn verify_carried_figures(
+    manifest_path: &Path,
+    manifest_label: &str,
+    record: &Path,
+    record_label: &str,
+    subject: &str,
+    figures: &[(&str, &str)],
+    violations: &mut Vec<String>,
+) {
+    for (claimed_at, derived_from) in figures {
         let (Ok(claimed), Ok(derived)) = (
             jq_value(manifest_path, claimed_at),
-            jq_value(&record, derived_from),
+            jq_value(record, derived_from),
         ) else {
             violations.push(format!(
-                "evidence/m5/manifest.json {claimed_at} and evidence/m5/inventory-summary.json \
+                "{manifest_label} {claimed_at} and {record_label} \
                  `{derived_from}` cannot both be read, so nothing reconciles them"
             ));
             continue;
         };
         if claimed == "null" || derived == "null" {
             violations.push(format!(
-                "evidence/m5/manifest.json {claimed_at} or the record's `{derived_from}` is \
+                "{manifest_label} {claimed_at} or the record's `{derived_from}` is \
                  absent; a figure the gate cannot resolve is a figure nothing binds"
             ));
             continue;
         }
         if claimed != derived {
             violations.push(format!(
-                "evidence/m5/manifest.json records {claimed_at} {claimed} while \
-                 evidence/m5/inventory-summary.json derives {derived} from `{derived_from}`; one \
-                 inventory produced both"
+                "{manifest_label} records {claimed_at} {claimed} while \
+                 {record_label} derives {derived} from `{derived_from}`; one \
+                 {subject} produced both"
             ));
         }
     }
+}
+
+/// The record M6 cannot close without, and what it has to say.
+///
+/// M6's counterparts are built in the private compatibility workspace, so the
+/// public record is again an aggregate: the wave that was frozen, one row per
+/// counterpart carrying its observable areas and how many of them nothing runs,
+/// and the rewrite-integrity check's own scan and mutation results. Every field
+/// is type-checked before it is compared, for the reason [`M5_RECORDS`] gives.
+const M6_RECORDS: &[(&str, &str, &str)] = &[(
+    "counterpart-summary.json",
+    r#".milestone == "M6"
+        and .workPackage == "M6-W6"
+        and .protocol == "m6-counterpart-v1"
+        and .result == "pass"
+        and (.wave | type == "object")
+        and (.wave.frozen == true)
+        and (.wave.entries | type == "array" and length > 0)
+        and (.wave.entries | all(
+            (.id | type == "string" and length > 0)
+            and (.reason | type == "string" and length > 0)
+            and (.dependencies | type == "array")))
+        and (.counterparts | type == "array" and length > 0)
+        and (.counterparts | all(
+            (.id | type == "string" and length > 0)
+            and (.entry | type == "string" and length > 0)
+            and (.specification | type == "object")
+            and (.specification.route == "source" or .specification.route == "observed")
+            and ([.specification.accepted, .specification.structureReviewed,
+                  .specification.carriesUpstreamIdentifier]
+                 | all(type == "boolean"))
+            and ([.observableAreas, .declarableOnly, .exercised] | all(type == "number"))
+            and (.provenance | type == "object")
+            and (.provenance.complete | type == "boolean")
+            and ([.suites.total, .suites.failed] | all(type == "number"))))
+        and ((.counterparts | map(.id) | unique | length) == (.counterparts | length))
+        and (.cluster | type == "object")
+        and (.cluster.scenario | type == "string" and length > 0)
+        and (.cluster.steps | type == "array" and length > 0)
+        and (.cluster.steps | all(
+            (.name | type == "string" and length > 0)
+            and (.result | type == "string" and length > 0)))
+        and (.processValidation | type == "object")
+        and ([.processValidation.template, .processValidation.checklist,
+              .processValidation.evidenceSchema, .processValidation.secondCounterpart]
+             | all(type == "string" and length > 0))
+        and (.rewriteIntegrity | type == "object")
+        and (.rewriteIntegrity.enforcing | type == "boolean")
+        and ([.rewriteIntegrity.lexicon, .rewriteIntegrity.identifierSet]
+             | all(type == "string" and length > 0))
+        and ([.rewriteIntegrity.filesScanned, .rewriteIntegrity.artifactsScanned,
+              .rewriteIntegrity.violations, .rewriteIntegrity.specificationViolations]
+             | all(type == "number"))
+        and (.rewriteIntegrity.mutationProof | type == "object")
+        and ([.rewriteIntegrity.mutationProof.sourceInjection.exitStatus,
+              .rewriteIntegrity.mutationProof.artifactInjection.exitStatus,
+              .rewriteIntegrity.mutationProof.cleanRun.exitStatus]
+             | all(type == "number"))
+        and (.totals | type == "object")
+        and ([.totals.counterparts, .totals.observableAreas, .totals.declarableOnly,
+              .totals.exercised]
+             | all(type == "number"))"#,
+    "a counterpart summary carrying the frozen wave with a reason per entry, one row per \
+     counterpart with its observable areas as numbers, the cluster scenario's steps, the \
+     process-validation artefacts, and the rewrite-integrity check's scan counts and both \
+     mutation exit statuses",
+)];
+
+/// Decision records M6 cannot close without.
+///
+/// Both were accepted inside M6 and both decide something a counterpart is
+/// written against rather than something it merely cites: where an upstream name
+/// may appear, and how an action a mod asks for reaches the game.
+const M6_DECISIONS: &[&str] = &[
+    "carrying-an-action-outward.md",
+    "counterpart-identity-and-aliases.md",
+];
+
+/// The sums and thresholds M6's counterpart summary has to close, inside itself.
+///
+/// The declarable-only figure is the one this table exists for. ROADMAP.md says
+/// it is the denominator M6's green sits over, and a denominator nothing binds is
+/// a number a hand can move: each counterpart's areas are held to its own parts,
+/// the totals are held to the rows, and a counterpart observing nothing at all is
+/// refused rather than counted as fully exercised.
+///
+/// The rewrite-integrity rules are here rather than in the record predicate above
+/// because they are not shapes. ROADMAP.md makes the check M6's obligation to
+/// *enforce*, proved by injecting an upstream identifier into a counterpart source
+/// file and into a generated artefact, so a clean run that never opened an
+/// artefact and a mutation that exited zero are both refused by name.
+const M6_ARITHMETIC: &[(&str, &str)] = &[
+    (
+        ".totals.counterparts == (.counterparts | length)",
+        "the total counts the rows the record itself lists",
+    ),
+    (
+        ".totals.observableAreas == ([.counterparts[].observableAreas] | add)",
+        "the observable-area total is the sum of the counterparts' own",
+    ),
+    (
+        ".totals.declarableOnly == ([.counterparts[].declarableOnly] | add)",
+        "the declarable-only total is the sum of the counterparts' own",
+    ),
+    (
+        ".totals.exercised == ([.counterparts[].exercised] | add)",
+        "the exercised total is the sum of the counterparts' own",
+    ),
+    (
+        ".counterparts | all(.declarableOnly + .exercised == .observableAreas)",
+        "an observable area is either exercised by a running process or declarable-only",
+    ),
+    (
+        ".totals.declarableOnly + .totals.exercised == .totals.observableAreas",
+        "the denominator M6's green sits over is the sum of its two halves",
+    ),
+    (
+        ".counterparts | all(.observableAreas > 0)",
+        "a counterpart with no observable area declared nothing to be green about",
+    ),
+    (
+        "([.counterparts[].entry] | unique) == ([.wave.entries[].id] | unique)",
+        "M6-W3 asks for one accepted behaviour specification per frozen wave entry, so a \
+         counterpart outside the wave and a wave entry with no counterpart are both refused",
+    ),
+    (
+        ".counterparts | all(.specification.accepted == true)",
+        "M6-W3 asks that every entry's behaviour specification be accepted",
+    ),
+    (
+        ".counterparts | all(.specification.carriesUpstreamIdentifier == false)",
+        "M6-W3 asks that no specification carry an upstream identifier",
+    ),
+    (
+        ".counterparts | all(.specification.structureReviewed == true)",
+        "M6-W5 reviews a specification for structure before an implementer sees it, which is \
+         what caught the defect the sampling did not",
+    ),
+    (
+        ".counterparts | all(.provenance.complete == true)",
+        "M6-W6's gate row asks for complete provenance",
+    ),
+    (
+        ".counterparts | all(.suites.total > 0 and .suites.failed == 0)",
+        "M6-W3 asks that each package's suites pass, and a package running none passed none",
+    ),
+    (
+        ".counterparts | length >= 2",
+        "M6-W5 validates the authoring process against a second independent counterpart, which \
+         needs two",
+    ),
+    (
+        ".processValidation.secondCounterpart as $second
+            | [.counterparts[].id] | index($second) != null",
+        "M6-W5's second counterpart has to be one the record carries a row for",
+    ),
+    (
+        r#"(["fresh-play", "save", "exit", "reload"] - [.cluster.steps[].name]) == []
+            and (.cluster.steps | all(.result == "pass"))"#,
+        "M6-W4's verification is a fresh play, save, exit and reload scenario that passes",
+    ),
+    (
+        ".rewriteIntegrity.enforcing == true",
+        "M6-W6's gate row asks that the rewrite-integrity check be enforcing rather than advisory",
+    ),
+    (
+        ".rewriteIntegrity.violations == 0",
+        "a counterpart carrying an upstream identifier fails the check, so closure cannot record \
+         one that it carried",
+    ),
+    (
+        ".rewriteIntegrity.specificationViolations == 0",
+        "M6-W3 asks that no specification carry an upstream identifier, and the check reads the \
+         specifications too",
+    ),
+    (
+        ".rewriteIntegrity.filesScanned > 0 and .rewriteIntegrity.artifactsScanned > 0",
+        "the check reads every counterpart source file and every generated artefact, and one \
+         enforcing the rule over source files only has not satisfied the obligation",
+    ),
+    (
+        ".rewriteIntegrity.mutationProof.sourceInjection.exitStatus != 0",
+        "the check is proved by mutation: an upstream identifier injected into a counterpart \
+         source file must produce a nonzero exit",
+    ),
+    (
+        ".rewriteIntegrity.mutationProof.artifactInjection.exitStatus != 0",
+        "the check is proved by mutation: an upstream identifier injected into a generated \
+         artefact must produce a nonzero exit",
+    ),
+    (
+        ".rewriteIntegrity.mutationProof.cleanRun.exitStatus == 0",
+        "a check that fails the unmutated tree proves nothing about the mutations it also failed",
+    ),
+];
+
+/// The figures M6's manifest carries, recomputed from the record's own parts.
+///
+/// Same rule as [`M5_CARRIED_FIGURES`]: nothing here is compared against a copy.
+/// The two mutation exit statuses are carried because ROADMAP.md asks the manifest
+/// to record them, and they are reconciled here so that recording them is not a
+/// second place for them to say something the record does not.
+const M6_CARRIED_FIGURES: &[(&str, &str)] = &[
+    (
+        ".environment.settings.counterparts.counterparts",
+        ".counterparts | length",
+    ),
+    (
+        ".environment.settings.counterparts.waveEntries",
+        ".wave.entries | length",
+    ),
+    (
+        ".environment.settings.counterparts.observableAreas",
+        "[.counterparts[].observableAreas] | add",
+    ),
+    (
+        ".environment.settings.counterparts.declarableOnly",
+        "[.counterparts[].declarableOnly] | add",
+    ),
+    (
+        ".environment.settings.counterparts.exercised",
+        "[.counterparts[].exercised] | add",
+    ),
+    (
+        ".environment.settings.rewriteIntegrity.filesScanned",
+        ".rewriteIntegrity.filesScanned",
+    ),
+    (
+        ".environment.settings.rewriteIntegrity.artifactsScanned",
+        ".rewriteIntegrity.artifactsScanned",
+    ),
+    (
+        ".environment.settings.rewriteIntegrity.violations",
+        ".rewriteIntegrity.violations",
+    ),
+    (
+        ".environment.settings.rewriteIntegrity.sourceInjectionExitStatus",
+        ".rewriteIntegrity.mutationProof.sourceInjection.exitStatus",
+    ),
+    (
+        ".environment.settings.rewriteIntegrity.artifactInjectionExitStatus",
+        ".rewriteIntegrity.mutationProof.artifactInjection.exitStatus",
+    ),
+];
+
+/// Checks what closing M6 requires beyond the rules every milestone shares.
+///
+/// M6 validates the counterpart-authoring process, so its closure is about the
+/// two things a green admitted set cannot say on its own: that the
+/// rewrite-integrity check refuses what it claims to refuse, proved by injection
+/// rather than asserted, and that every counterpart discloses how much of its
+/// behaviour no running process has ever exercised.
+fn verify_m6_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        manifest_path,
+        ".workPackages | sort == [\"M6-W1\", \"M6-W2\", \"M6-W3\", \"M6-W4\", \"M6-W5\", \"M6-W6\"]",
+        "M6 manifest must include every work package from M6-W1 through M6-W6 exactly once",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#".benchmarks.protocolVersion == "m6-counterpart-v1"
+            and ([.benchmarks.results[].name] == ["counterpart-summary.json"])"#,
+        "M6 manifest must record its counterpart summary under the m6-counterpart-v1 protocol, so \
+         that the record carrying every figure is covered by a recomputed digest",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#"(.environment.settings.gateStatus | type == "object")
+            and ((.workPackages - (.environment.settings.gateStatus | keys)) == [])
+            and ([.environment.settings.gateStatus | to_entries[]
+                    | select(.key != "M6-W6") | .value]
+                 | length == 5
+                 and all(.status == "closed"
+                         and (.evidence | type == "string" and length > 0)))"#,
+        "M6 closure requires a gateStatus row for every work package, each implementation row \
+         closed and naming its evidence",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#".environment.settings.rewriteIntegrity.enforcing == true
+            and ([.environment.settings.rewriteIntegrity.sourceInjectionExitStatus,
+                  .environment.settings.rewriteIntegrity.artifactInjectionExitStatus]
+                 | all(type == "number" and . != 0))"#,
+        "M6 closure requires the manifest itself to record the rewrite-integrity check as \
+         enforcing and to record a nonzero exit status for each of the two injections that \
+         prove it",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#".attestations | any(
+            .platform == "linux"
+            and .architecture == "x86_64"
+            and (.workloads | index("official-atm11") != null)
+        )"#,
+        "M6 closure requires a native Linux attestation for the recorded counterpart run",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        "(.deviations | length) > 0 and (.risks | length) > 0",
+        "M6 counts the observable areas nothing runs, and a milestone disclosing that and \
+         recording no deviation or risk deleted the finding rather than the defect",
+        violations,
+    );
+
+    for decision in M6_DECISIONS {
+        if !root.join("docs/decisions").join(decision).is_file() {
+            violations.push(format!(
+                "M6 closure requires the decision record {decision}"
+            ));
+        }
+    }
+
+    for (file, rule, requirement) in M6_RECORDS {
+        let path = root.join("evidence/m6").join(file);
+        if !path.is_file() {
+            violations.push(format!("M6 closure requires the record evidence/m6/{file}"));
+            continue;
+        }
+        if !jq_matches(&path, rule).unwrap_or(false) {
+            violations.push(format!("M6 closure requires {requirement}"));
+        }
+        verify_redaction(&path, &format!("evidence/m6/{file}"), violations);
+    }
+
+    verify_m6_counterpart_arithmetic(root, violations);
+    verify_m6_carried_figures(root, manifest_path, violations);
+}
+
+fn verify_m6_counterpart_arithmetic(root: &Path, violations: &mut Vec<String>) {
+    let record = root.join("evidence/m6/counterpart-summary.json");
+    if !record.is_file() {
+        // Its absence is already a violation where the record set is checked.
+        return;
+    }
+    verify_record_arithmetic(
+        &record,
+        "evidence/m6/counterpart-summary.json",
+        M6_ARITHMETIC,
+        violations,
+    );
+}
+
+fn verify_m6_carried_figures(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    let record = root.join("evidence/m6/counterpart-summary.json");
+    if !record.is_file() {
+        return;
+    }
+    verify_carried_figures(
+        manifest_path,
+        "evidence/m6/manifest.json",
+        &record,
+        "evidence/m6/counterpart-summary.json",
+        "counterpart set",
+        M6_CARRIED_FIGURES,
+        violations,
+    );
+}
+
+/// The record M7 cannot close without, and what it has to say.
+///
+/// M7's claim is a completed library, which is a claim about a total rather than
+/// about any one package: the burn-up ledger, the waves the work was ordered by,
+/// and the closure figures M7-W5 audits. The corrected-total branch is a field
+/// rather than a licence, because "324 or an evidence-corrected total" is only
+/// checkable if the correction says what it corrected and why.
+const M7_RECORDS: &[(&str, &str, &str)] = &[(
+    "library-summary.json",
+    r#".milestone == "M7"
+        and .workPackage == "M7-W5"
+        and .protocol == "m7-library-v1"
+        and .result == "pass"
+        and (.entries | type == "object")
+        and ([.entries.total, .entries.accepted, .entries.blocked, .entries.unstarted]
+             | all(type == "number"))
+        and (.correction == null or (
+            (.correction | type == "object")
+            and ([.correction.from, .correction.total] | all(type == "number"))
+            and (.correction.reason | type == "string" and length > 0)))
+        and (.waves | type == "array" and length > 0)
+        and (.waves | all(
+            ([.index, .entries] | all(type == "number"))
+            and (.dependsOn | type == "array")
+            and (.dependsOn | all(type == "number"))))
+        and ([.dependencies.resolved, .dependencies.unresolved,
+              .registries.resolved, .registries.unresolved,
+              .provenance.present, .provenance.missing,
+              .routing.absorbed, .routing.remaining,
+              .routing.runnableToday, .routing.blocked,
+              .suites.packages.total, .suites.packages.failed,
+              .suites.clusters.total, .suites.clusters.failed]
+             | all(type == "number"))"#,
+    "a library summary carrying the burn-up ledger as numbers, the waves with the waves each \
+     depends on, any evidence correction with the figure it replaced and its reason, and the \
+     dependency, registry, provenance, routing and suite figures M7-W5 audits",
+)];
+
+/// The sums and thresholds M7's library summary has to close, inside itself.
+///
+/// M7's verification columns are almost all totals, and a total is the figure a
+/// milestone is most easily closed on: `accepted + blocked + unstarted` is the
+/// ledger M7-W4 reconciles, and M7-W5 then asks that the blocked and unstarted
+/// halves be empty rather than merely counted. The wave rules are M7-W1's graph
+/// closure written as arithmetic: a wave may depend only on a wave that exists and
+/// runs before it.
+const M7_ARITHMETIC: &[(&str, &str)] = &[
+    (
+        ".entries.accepted + .entries.blocked + .entries.unstarted == .entries.total",
+        "M7-W4's burn-up ledger asks that the accepted, blocked and unstarted totals equal the \
+         verified fixture total",
+    ),
+    (
+        ".entries.blocked == 0 and .entries.unstarted == 0",
+        "a wave cannot close with failing or unclassified entries, so the library cannot close \
+         with any",
+    ),
+    (
+        ".entries.accepted == .entries.total",
+        "M7-W5's audit is the whole fixture, and a counterpart absent from it is not present",
+    ),
+    (
+        r#".entries.total == 324
+            or ((.correction | type == "object") and .correction.total == .entries.total)"#,
+        "M7-W5 audits 324 of 324 or an evidence-corrected total, and a different figure with no \
+         correction beside it is neither",
+    ),
+    (
+        ".dependencies.unresolved == 0",
+        "M7-W5's gate row asks for zero unresolved dependencies",
+    ),
+    (
+        ".registries.unresolved == 0",
+        "M7-W5's gate row asks for zero unresolved registries",
+    ),
+    (
+        ".provenance.present == .entries.total and .provenance.missing == 0",
+        "M7-W5's gate row asks that all provenance be present",
+    ),
+    (
+        "([.waves[].entries] | add) == .entries.total",
+        "the waves the work was ordered by carry the whole library between them",
+    ),
+    (
+        "([.waves[].index] | unique | length) == (.waves | length)",
+        "two waves sharing an index are one wave counted twice, and order is what a wave is for",
+    ),
+    (
+        ". as $record
+            | .waves | all(.dependsOn | all(. as $dependency
+                | ([$record.waves[].index] | index($dependency)) != null))",
+        "M7-W1's graph closure proves no wave depends on an unavailable wave",
+    ),
+    (
+        ".waves | all(. as $wave | .dependsOn | all(. < $wave.index))",
+        "M7-W1's graph closure proves no wave depends on a later wave",
+    ),
+    (
+        ".routing.absorbed + .routing.remaining == .entries.total",
+        "M7-W1's routing counts, per entry, how much Ravel already ships and how much remains",
+    ),
+    (
+        ".routing.runnableToday + .routing.blocked == .entries.total",
+        "an entry is runnable today or it is blocked, and the two account for the library",
+    ),
+    (
+        ".routing.blocked == 0",
+        "a library whose entries cannot be run today is not the complete library M7 delivers",
+    ),
+    (
+        ".suites.packages.total > 0 and .suites.packages.failed == 0",
+        "M7-W6's gate row asks that all package suites pass, and a library running none passed \
+         none",
+    ),
+    (
+        ".suites.clusters.total > 0 and .suites.clusters.failed == 0",
+        "M7-W6's gate row asks that all cluster suites pass, and a library running none passed \
+         none",
+    ),
+];
+
+/// The figures M7's manifest carries, recomputed from the record's own parts.
+const M7_CARRIED_FIGURES: &[(&str, &str)] = &[
+    (
+        ".environment.settings.library.entries",
+        ".entries.accepted + .entries.blocked + .entries.unstarted",
+    ),
+    (
+        ".environment.settings.library.accepted",
+        ".entries.accepted",
+    ),
+    (".environment.settings.library.blocked", ".entries.blocked"),
+    (
+        ".environment.settings.library.unstarted",
+        ".entries.unstarted",
+    ),
+    (".environment.settings.library.waves", ".waves | length"),
+    (
+        ".environment.settings.library.dependenciesUnresolved",
+        ".dependencies.unresolved",
+    ),
+    (
+        ".environment.settings.library.registriesUnresolved",
+        ".registries.unresolved",
+    ),
+    (
+        ".environment.settings.library.provenancePresent",
+        ".provenance.present",
+    ),
+    (
+        ".environment.settings.library.absorbed",
+        ".routing.absorbed",
+    ),
+    (
+        ".environment.settings.library.packageSuites",
+        ".suites.packages.total",
+    ),
+    (
+        ".environment.settings.library.clusterSuites",
+        ".suites.clusters.total",
+    ),
+];
+
+/// Checks what closing M7 requires beyond the rules every milestone shares.
+///
+/// M7 claims the library is complete, and completeness is a claim about a
+/// denominator someone else measured. So its closure holds the ledger to M5's
+/// inventory rather than to itself: the total M7 audits is the total M5 verified,
+/// or it is a correction that says which figure it replaced and why.
+fn verify_m7_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    require_manifest_rule(
+        manifest_path,
+        ".workPackages | sort == [\"M7-W0\", \"M7-W1\", \"M7-W2\", \"M7-W3\", \"M7-W4\", \"M7-W5\", \"M7-W6\"]",
+        "M7 manifest must include every work package from M7-W0 through M7-W6 exactly once",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#".benchmarks.protocolVersion == "m7-library-v1"
+            and ([.benchmarks.results[].name] == ["library-summary.json"])"#,
+        "M7 manifest must record its library summary under the m7-library-v1 protocol, so that \
+         the record carrying every figure is covered by a recomputed digest",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#"(.environment.settings.gateStatus | type == "object")
+            and ((.workPackages - (.environment.settings.gateStatus | keys)) == [])
+            and ([.environment.settings.gateStatus | to_entries[]
+                    | select(.key != "M7-W6") | .value]
+                 | length == 6
+                 and all(.status == "closed"
+                         and (.evidence | type == "string" and length > 0)))"#,
+        "M7 closure requires a gateStatus row for every work package, each implementation row \
+         closed and naming its evidence",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        r#".attestations | any(
+            .platform == "linux"
+            and .architecture == "x86_64"
+            and (.workloads | index("official-atm11") != null)
+        )"#,
+        "M7 closure requires a native Linux attestation for the recorded library run",
+        violations,
+    );
+    require_manifest_rule(
+        manifest_path,
+        "(.deviations | length) > 0 and (.risks | length) > 0",
+        "M7 closes a library of 324 counterparts, and an empty finding set satisfies every rule \
+         phrased as a refusal",
+        violations,
+    );
+
+    for (file, rule, requirement) in M7_RECORDS {
+        let path = root.join("evidence/m7").join(file);
+        if !path.is_file() {
+            violations.push(format!("M7 closure requires the record evidence/m7/{file}"));
+            continue;
+        }
+        if !jq_matches(&path, rule).unwrap_or(false) {
+            violations.push(format!("M7 closure requires {requirement}"));
+        }
+        verify_redaction(&path, &format!("evidence/m7/{file}"), violations);
+    }
+
+    verify_m7_library_arithmetic(root, violations);
+    verify_m7_verified_fixture_total(root, violations);
+    verify_m7_carried_figures(root, manifest_path, violations);
+}
+
+fn verify_m7_library_arithmetic(root: &Path, violations: &mut Vec<String>) {
+    let record = root.join("evidence/m7/library-summary.json");
+    if !record.is_file() {
+        return;
+    }
+    verify_record_arithmetic(
+        &record,
+        "evidence/m7/library-summary.json",
+        M7_ARITHMETIC,
+        violations,
+    );
+}
+
+/// Holds M7's denominator to the inventory that measured it.
+///
+/// "324/324 or an evidence-corrected total" is only a rule if something owns the
+/// 324. M5 does, in `artifacts.total`, so M7 either audits that number or records
+/// a correction naming it as the figure it replaced. A ledger that quietly shrinks
+/// its own denominator closes at 100% over a library it never counted.
+fn verify_m7_verified_fixture_total(root: &Path, violations: &mut Vec<String>) {
+    let record = root.join("evidence/m7/library-summary.json");
+    let inventory = root.join("evidence/m5/inventory-summary.json");
+    if !record.is_file() || !inventory.is_file() {
+        return;
+    }
+    let (Ok(audited), Ok(verified)) = (
+        jq_value(&record, ".entries.total"),
+        jq_value(&inventory, ".artifacts.total"),
+    ) else {
+        violations.push(
+            "evidence/m7/library-summary.json `.entries.total` and \
+             evidence/m5/inventory-summary.json `.artifacts.total` cannot both be read, so \
+             nothing holds M7's denominator to the inventory that measured it"
+                .to_owned(),
+        );
+        return;
+    };
+    if audited == verified {
+        return;
+    }
+    let corrects_the_inventory = jq_matches(
+        &record,
+        &format!(
+            "(.correction | type == \"object\") and (.correction.from == {verified}) \
+             and (.correction.total == .entries.total)"
+        ),
+    )
+    .unwrap_or(false);
+    if !corrects_the_inventory {
+        violations.push(format!(
+            "evidence/m7/library-summary.json audits {audited} entries while \
+             evidence/m5/inventory-summary.json verified {verified}; M7-W5 audits the verified \
+             fixture total or an evidence correction that names the figure it replaced"
+        ));
+    }
+}
+
+fn verify_m7_carried_figures(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+    let record = root.join("evidence/m7/library-summary.json");
+    if !record.is_file() {
+        return;
+    }
+    verify_carried_figures(
+        manifest_path,
+        "evidence/m7/manifest.json",
+        &record,
+        "evidence/m7/library-summary.json",
+        "library",
+        M7_CARRIED_FIGURES,
+        violations,
+    );
 }
 
 /// Decision records M1 cannot close without.
@@ -6387,6 +7095,12 @@ mod tests {
         verify_persistence_reflection, verify_review_round_counts, verify_scaffold, verify_spikes,
         verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
         verify_version_boundary, verify_void_limits, visible_commit,
+    };
+    use super::{
+        M6_ARITHMETIC, M6_CARRIED_FIGURES, M6_DECISIONS, M7_ARITHMETIC, M7_CARRIED_FIGURES,
+        verify_m6_carried_figures, verify_m6_counterpart_arithmetic, verify_m6_manifest,
+        verify_m7_carried_figures, verify_m7_library_arithmetic, verify_m7_manifest,
+        verify_m7_verified_fixture_total,
     };
     use super::{
         ROUND_COUNT_EXEMPT, defined_rust_symbols, distinguishable_symbol, named_rust_symbols,
@@ -8898,6 +9612,1013 @@ mod tests {
                 .any(|(record, _)| record == "evidence/m0/review.md"),
             "M0 is exempt: {subjects:?}"
         );
+    }
+
+    /// The head of a counterpart summary, up to the parts a mutation moves.
+    const M6_SUMMARY_HEAD: &str = r#"{"milestone":"M6","workPackage":"M6-W6",
+        "protocol":"m6-counterpart-v1","result":"pass","#;
+
+    /// The frozen wave, its counterparts, and the totals over them.
+    const M6_TWO_COUNTERPARTS: &str = r#""wave":{"frozen":true,"entries":[
+            {"id":"e1","reason":"foundation value","dependencies":[]},
+            {"id":"e2","reason":"cluster partner","dependencies":["e1"]}]},
+        "counterparts":[
+            {"id":"c1","entry":"e1","specification":{"accepted":true,
+                "structureReviewed":true,"carriesUpstreamIdentifier":false,"route":"source"},
+             "observableAreas":6,"declarableOnly":4,"exercised":2,
+             "provenance":{"complete":true},"suites":{"total":12,"failed":0}},
+            {"id":"c2","entry":"e2","specification":{"accepted":true,
+                "structureReviewed":true,"carriesUpstreamIdentifier":false,"route":"observed"},
+             "observableAreas":4,"declarableOnly":3,"exercised":1,
+             "provenance":{"complete":true},"suites":{"total":8,"failed":0}}],
+        "processValidation":{"template":"counterpart-template.md",
+            "checklist":"counterpart-checklist.md",
+            "evidenceSchema":"counterpart.schema.json","secondCounterpart":"c2"},
+        "totals":{"counterparts":2,"observableAreas":10,"declarableOnly":7,"exercised":3},"#;
+
+    /// The same wave with the second counterpart never written.
+    const M6_ONE_COUNTERPART: &str = r#""wave":{"frozen":true,"entries":[
+            {"id":"e1","reason":"foundation value","dependencies":[]}]},
+        "counterparts":[
+            {"id":"c1","entry":"e1","specification":{"accepted":true,
+                "structureReviewed":true,"carriesUpstreamIdentifier":false,"route":"source"},
+             "observableAreas":6,"declarableOnly":4,"exercised":2,
+             "provenance":{"complete":true},"suites":{"total":12,"failed":0}}],
+        "processValidation":{"template":"counterpart-template.md",
+            "checklist":"counterpart-checklist.md",
+            "evidenceSchema":"counterpart.schema.json","secondCounterpart":"c1"},
+        "totals":{"counterparts":1,"observableAreas":6,"declarableOnly":4,"exercised":2},"#;
+
+    /// The cluster scenario and the rewrite-integrity check's own results.
+    const M6_SUMMARY_TAIL: &str = r#""cluster":{"scenario":"smallest gameplay cluster","steps":[
+            {"name":"fresh-play","result":"pass"},{"name":"save","result":"pass"},
+            {"name":"exit","result":"pass"},{"name":"reload","result":"pass"}]},
+        "rewriteIntegrity":{"enforcing":true,"lexicon":"lexicon.json",
+            "identifierSet":"upstream-identifiers.json","filesScanned":214,
+            "artifactsScanned":18,"violations":0,"specificationViolations":0,
+            "mutationProof":{"sourceInjection":{"exitStatus":1},
+                "artifactInjection":{"exitStatus":1},"cleanRun":{"exitStatus":0}}}}"#;
+
+    fn balanced_counterpart_summary() -> String {
+        [M6_SUMMARY_HEAD, M6_TWO_COUNTERPARTS, M6_SUMMARY_TAIL].concat()
+    }
+
+    fn balanced_m6_manifest() -> String {
+        r#"{"workPackages":["M6-W1","M6-W2","M6-W3","M6-W4","M6-W5","M6-W6"],
+            "benchmarks":{"protocolVersion":"m6-counterpart-v1",
+                "results":[{"name":"counterpart-summary.json"}]},
+            "environment":{"settings":{
+                "gateStatus":{
+                    "M6-W1":{"status":"closed","evidence":"wave.json"},
+                    "M6-W2":{"status":"closed","evidence":"sdk-gaps.md"},
+                    "M6-W3":{"status":"closed","evidence":"specifications.md"},
+                    "M6-W4":{"status":"closed","evidence":"cluster.json"},
+                    "M6-W5":{"status":"closed","evidence":"process.md"},
+                    "M6-W6":{"status":"open","evidence":""}},
+                "rewriteIntegrity":{"enforcing":true,"filesScanned":214,
+                    "artifactsScanned":18,"violations":0,
+                    "sourceInjectionExitStatus":1,"artifactInjectionExitStatus":1},
+                "counterparts":{"counterparts":2,"waveEntries":2,"observableAreas":10,
+                    "declarableOnly":7,"exercised":3}}},
+            "attestations":[{"platform":"linux","architecture":"x86_64",
+                "workloads":["official-atm11","vanilla"]}],
+            "deviations":[{"classification":"minor"}],
+            "risks":[{"classification":"minor"}]}"#
+            .to_owned()
+    }
+
+    fn library_summary(total: u32, correction: &str) -> String {
+        format!(
+            r#"{{"milestone":"M7","workPackage":"M7-W5","protocol":"m7-library-v1",
+                "result":"pass",
+                "entries":{{"total":{total},"accepted":{total},"blocked":0,"unstarted":0}},
+                "correction":{correction},
+                "waves":[{{"index":0,"entries":{first},"dependsOn":[]}},
+                    {{"index":1,"entries":120,"dependsOn":[0]}},
+                    {{"index":2,"entries":104,"dependsOn":[0,1]}}],
+                "dependencies":{{"resolved":900,"unresolved":0}},
+                "registries":{{"resolved":400,"unresolved":0}},
+                "provenance":{{"present":{total},"missing":0}},
+                "routing":{{"absorbed":40,"remaining":{remaining},
+                    "runnableToday":{total},"blocked":0}},
+                "suites":{{"packages":{{"total":{total},"failed":0}},
+                    "clusters":{{"total":12,"failed":0}}}}}}"#,
+            first = total - 224,
+            remaining = total - 40,
+        )
+    }
+
+    fn balanced_m7_manifest() -> String {
+        r#"{"workPackages":["M7-W0","M7-W1","M7-W2","M7-W3","M7-W4","M7-W5","M7-W6"],
+            "benchmarks":{"protocolVersion":"m7-library-v1",
+                "results":[{"name":"library-summary.json"}]},
+            "environment":{"settings":{
+                "gateStatus":{
+                    "M7-W0":{"status":"closed","evidence":"sdk.md"},
+                    "M7-W1":{"status":"closed","evidence":"waves.json"},
+                    "M7-W2":{"status":"closed","evidence":"packages.json"},
+                    "M7-W3":{"status":"closed","evidence":"clusters.json"},
+                    "M7-W4":{"status":"closed","evidence":"ledger.json"},
+                    "M7-W5":{"status":"closed","evidence":"audit.md"},
+                    "M7-W6":{"status":"open","evidence":""}},
+                "library":{"entries":324,"accepted":324,"blocked":0,"unstarted":0,
+                    "waves":3,"dependenciesUnresolved":0,"registriesUnresolved":0,
+                    "provenancePresent":324,"absorbed":40,"packageSuites":324,
+                    "clusterSuites":12}}},
+            "attestations":[{"platform":"linux","architecture":"x86_64",
+                "workloads":["official-atm11","vanilla"]}],
+            "deviations":[{"classification":"minor"}],
+            "risks":[{"classification":"minor"}]}"#
+            .to_owned()
+    }
+
+    /// One closure-clause case: its label, the manifest rewrites it applies, and
+    /// the refusal the rewritten manifest has to draw.
+    type ClosureCase<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a str);
+
+    /// Applies each replacement in turn, refusing one the fixture does not carry.
+    fn mutate(document: &str, replacements: &[(&str, &str)]) -> String {
+        let mut mutated = document.to_owned();
+        for (from, to) in replacements {
+            assert!(
+                mutated.contains(from),
+                "the fixture does not carry `{from}`, so replacing it mutates nothing"
+            );
+            mutated = mutated.replace(from, to);
+        }
+        mutated
+    }
+
+    fn m6_root(label: &str, summary: &str, manifest: &str) -> PathBuf {
+        let root = temporary_root(label);
+        fs::create_dir_all(root.join("evidence/m6")).expect("evidence should be creatable");
+        fs::create_dir_all(root.join("docs/decisions")).expect("decisions should be creatable");
+        for decision in M6_DECISIONS {
+            fs::write(root.join("docs/decisions").join(decision), "# record\n")
+                .expect("decision should be writable");
+        }
+        fs::write(root.join("evidence/m6/counterpart-summary.json"), summary)
+            .expect("summary should be writable");
+        fs::write(root.join("evidence/m6/manifest.json"), manifest)
+            .expect("manifest should be writable");
+        root
+    }
+
+    fn m7_root(label: &str, summary: &str, manifest: &str) -> PathBuf {
+        let root = temporary_root(label);
+        fs::create_dir_all(root.join("evidence/m7")).expect("evidence should be creatable");
+        fs::create_dir_all(root.join("evidence/m5")).expect("evidence should be creatable");
+        fs::write(
+            root.join("evidence/m5/inventory-summary.json"),
+            r#"{"artifacts":{"total":324}}"#,
+        )
+        .expect("inventory should be writable");
+        fs::write(root.join("evidence/m7/library-summary.json"), summary)
+            .expect("summary should be writable");
+        fs::write(root.join("evidence/m7/manifest.json"), manifest)
+            .expect("manifest should be writable");
+        root
+    }
+
+    /// Rewrites one field of a manifest to a figure no record derives.
+    fn misstate_figure(manifest: &Path, path: &str) {
+        let output = Command::new("jq")
+            .arg(format!("{path} = 987654"))
+            .arg(manifest)
+            .output()
+            .expect("jq should run");
+        assert!(output.status.success(), "jq could not set {path}");
+        fs::write(manifest, output.stdout).expect("manifest should be writable");
+    }
+
+    #[test]
+    fn a_balanced_counterpart_summary_closes_its_own_arithmetic() {
+        let root = m6_root(
+            "m6-arithmetic-balanced",
+            &balanced_counterpart_summary(),
+            &balanced_m6_manifest(),
+        );
+        let mut violations = Vec::new();
+
+        verify_m6_counterpart_arithmetic(&root, &mut violations);
+
+        assert!(
+            violations.is_empty(),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    fn m6_area_arithmetic_mutations(balanced: &str) -> Vec<(usize, String)> {
+        vec![
+            (
+                0,
+                mutate(balanced, &[(r#""counterparts":2"#, r#""counterparts":3"#)]),
+            ),
+            (
+                1,
+                mutate(
+                    balanced,
+                    &[(r#""observableAreas":10"#, r#""observableAreas":11"#)],
+                ),
+            ),
+            (
+                2,
+                mutate(
+                    balanced,
+                    &[(r#""declarableOnly":7"#, r#""declarableOnly":6"#)],
+                ),
+            ),
+            (
+                3,
+                mutate(balanced, &[(r#""exercised":3"#, r#""exercised":4"#)]),
+            ),
+            (
+                4,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""observableAreas":6,"declarableOnly":4,"exercised":2"#,
+                        r#""observableAreas":6,"declarableOnly":4,"exercised":1"#,
+                    )],
+                ),
+            ),
+            (
+                5,
+                mutate(
+                    balanced,
+                    &[
+                        (
+                            r#""observableAreas":6,"declarableOnly":4"#,
+                            r#""observableAreas":7,"declarableOnly":4"#,
+                        ),
+                        (r#""observableAreas":10"#, r#""observableAreas":11"#),
+                    ],
+                ),
+            ),
+            (
+                6,
+                mutate(
+                    balanced,
+                    &[
+                        (
+                            r#""observableAreas":4,"declarableOnly":3,"exercised":1"#,
+                            r#""observableAreas":0,"declarableOnly":0,"exercised":0"#,
+                        ),
+                        (r#""observableAreas":10"#, r#""observableAreas":6"#),
+                        (r#""declarableOnly":7"#, r#""declarableOnly":4"#),
+                        (r#""exercised":3"#, r#""exercised":2"#),
+                    ],
+                ),
+            ),
+        ]
+    }
+
+    fn m6_specification_and_provenance_mutations(balanced: &str) -> Vec<(usize, String)> {
+        vec![
+            (7, mutate(balanced, &[(r#""id":"e2""#, r#""id":"e9""#)])),
+            (
+                8,
+                mutate(balanced, &[(r#""accepted":true"#, r#""accepted":false"#)]),
+            ),
+            (
+                9,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""carriesUpstreamIdentifier":false"#,
+                        r#""carriesUpstreamIdentifier":true"#,
+                    )],
+                ),
+            ),
+            (
+                10,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""structureReviewed":true"#,
+                        r#""structureReviewed":false"#,
+                    )],
+                ),
+            ),
+            (
+                11,
+                mutate(balanced, &[(r#""complete":true"#, r#""complete":false"#)]),
+            ),
+            (
+                12,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""suites":{"total":12,"failed":0}"#,
+                        r#""suites":{"total":12,"failed":1}"#,
+                    )],
+                ),
+            ),
+        ]
+    }
+
+    fn m6_process_and_integrity_mutations(balanced: &str) -> Vec<(usize, String)> {
+        vec![
+            (
+                13,
+                mutate(balanced, &[(M6_TWO_COUNTERPARTS, M6_ONE_COUNTERPART)]),
+            ),
+            (
+                14,
+                mutate(
+                    balanced,
+                    &[(r#""secondCounterpart":"c2""#, r#""secondCounterpart":"c9""#)],
+                ),
+            ),
+            (
+                15,
+                mutate(
+                    balanced,
+                    &[(
+                        r#"{"name":"reload","result":"pass"}"#,
+                        r#"{"name":"restart","result":"pass"}"#,
+                    )],
+                ),
+            ),
+            (
+                16,
+                mutate(balanced, &[(r#""enforcing":true"#, r#""enforcing":false"#)]),
+            ),
+            (
+                17,
+                mutate(balanced, &[(r#""violations":0,"#, r#""violations":2780,"#)]),
+            ),
+            (
+                18,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""specificationViolations":0"#,
+                        r#""specificationViolations":12"#,
+                    )],
+                ),
+            ),
+            (
+                19,
+                mutate(
+                    balanced,
+                    &[(r#""artifactsScanned":18"#, r#""artifactsScanned":0"#)],
+                ),
+            ),
+            (
+                20,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""sourceInjection":{"exitStatus":1}"#,
+                        r#""sourceInjection":{"exitStatus":0}"#,
+                    )],
+                ),
+            ),
+            (
+                21,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""artifactInjection":{"exitStatus":1}"#,
+                        r#""artifactInjection":{"exitStatus":0}"#,
+                    )],
+                ),
+            ),
+            (
+                22,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""cleanRun":{"exitStatus":0}"#,
+                        r#""cleanRun":{"exitStatus":1}"#,
+                    )],
+                ),
+            ),
+        ]
+    }
+
+    #[test]
+    fn every_m6_arithmetic_clause_refuses_a_record_that_breaks_it() {
+        let balanced = balanced_counterpart_summary();
+        let cases: Vec<(usize, String)> = [
+            m6_area_arithmetic_mutations(&balanced),
+            m6_specification_and_provenance_mutations(&balanced),
+            m6_process_and_integrity_mutations(&balanced),
+        ]
+        .concat();
+
+        let covered: Vec<usize> = cases.iter().map(|(clause, _)| *clause).collect();
+        assert_eq!(
+            covered,
+            (0..M6_ARITHMETIC.len()).collect::<Vec<usize>>(),
+            "a clause with no mutation behind it is a clause nothing has seen refuse"
+        );
+
+        for (clause, summary) in cases {
+            let root = m6_root(
+                &format!("m6-arithmetic-{clause}"),
+                &summary,
+                &balanced_m6_manifest(),
+            );
+            let mut violations = Vec::new();
+
+            verify_m6_counterpart_arithmetic(&root, &mut violations);
+
+            let requirement = M6_ARITHMETIC[clause].1;
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains(requirement)),
+                "clause {clause} was not refused; violations:\n{}",
+                violations.join("\n")
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
+    }
+
+    #[test]
+    fn a_complete_m6_record_set_leaves_m6_closure_with_nothing_to_report() {
+        let root = m6_root(
+            "m6-manifest-balanced",
+            &balanced_counterpart_summary(),
+            &balanced_m6_manifest(),
+        );
+        let manifest = root.join("evidence/m6/manifest.json");
+        let mut violations = Vec::new();
+
+        verify_m6_manifest(&root, &manifest, &mut violations);
+
+        assert!(
+            violations.is_empty(),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn every_m6_closure_clause_refuses_a_manifest_that_breaks_it() {
+        let manifest_cases: &[ClosureCase] = &[
+            (
+                "work-packages",
+                &[(r#","M6-W6"]"#, "]")],
+                "M6 manifest must include every work package from M6-W1 through M6-W6 exactly once",
+            ),
+            (
+                "protocol",
+                &[(
+                    r#""protocolVersion":"m6-counterpart-v1""#,
+                    r#""protocolVersion":"m6-counterpart-v0""#,
+                )],
+                "M6 manifest must record its counterpart summary under the m6-counterpart-v1",
+            ),
+            (
+                "gate-status",
+                &[(
+                    r#""M6-W3":{"status":"closed""#,
+                    r#""M6-W3":{"status":"open""#,
+                )],
+                "M6 closure requires a gateStatus row for every work package",
+            ),
+            (
+                "advisory-check",
+                &[(r#""enforcing":true"#, r#""enforcing":false"#)],
+                "M6 closure requires the manifest itself to record the rewrite-integrity check",
+            ),
+            (
+                "zero-exit-injection",
+                &[(
+                    r#""artifactInjectionExitStatus":1"#,
+                    r#""artifactInjectionExitStatus":0"#,
+                )],
+                "M6 closure requires the manifest itself to record the rewrite-integrity check",
+            ),
+            (
+                "attestation",
+                &[(r#""architecture":"x86_64""#, r#""architecture":"aarch64""#)],
+                "M6 closure requires a native Linux attestation",
+            ),
+            (
+                "findings",
+                &[(
+                    r#""deviations":[{"classification":"minor"}]"#,
+                    r#""deviations":[]"#,
+                )],
+                "recording no deviation or risk deleted the finding rather than the defect",
+            ),
+        ];
+
+        for (label, replacements, expected) in manifest_cases {
+            let root = m6_root(
+                &format!("m6-closure-{label}"),
+                &balanced_counterpart_summary(),
+                &mutate(&balanced_m6_manifest(), replacements),
+            );
+            let mut violations = Vec::new();
+
+            verify_m6_manifest(
+                &root,
+                &root.join("evidence/m6/manifest.json"),
+                &mut violations,
+            );
+
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains(expected)),
+                "{label} was not refused; violations:\n{}",
+                violations.join("\n")
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
+    }
+
+    #[test]
+    fn m6_closure_refuses_a_missing_decision_record() {
+        for decision in M6_DECISIONS {
+            let root = m6_root(
+                &format!("m6-decision-{decision}"),
+                &balanced_counterpart_summary(),
+                &balanced_m6_manifest(),
+            );
+            fs::remove_file(root.join("docs/decisions").join(decision))
+                .expect("decision should be removable");
+            let mut violations = Vec::new();
+
+            verify_m6_manifest(
+                &root,
+                &root.join("evidence/m6/manifest.json"),
+                &mut violations,
+            );
+
+            assert!(
+                violations.contains(&format!(
+                    "M6 closure requires the decision record {decision}"
+                )),
+                "violations:\n{}",
+                violations.join("\n")
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
+    }
+
+    #[test]
+    fn m6_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
+        let root = m6_root(
+            "m6-record-shape",
+            &mutate(
+                &balanced_counterpart_summary(),
+                &[(r#""workPackage":"M6-W6""#, r#""workPackage":"M6-W5""#)],
+            ),
+            &balanced_m6_manifest(),
+        );
+        let mut violations = Vec::new();
+
+        verify_m6_manifest(
+            &root,
+            &root.join("evidence/m6/manifest.json"),
+            &mut violations,
+        );
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("M6 closure requires a counterpart summary")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+
+        let root = m6_root(
+            "m6-record-absent",
+            &balanced_counterpart_summary(),
+            &balanced_m6_manifest(),
+        );
+        fs::remove_file(root.join("evidence/m6/counterpart-summary.json"))
+            .expect("summary should be removable");
+        let mut violations = Vec::new();
+
+        verify_m6_manifest(
+            &root,
+            &root.join("evidence/m6/manifest.json"),
+            &mut violations,
+        );
+
+        assert!(
+            violations.contains(
+                &"M6 closure requires the record evidence/m6/counterpart-summary.json".to_owned()
+            ),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn every_figure_m6_carries_is_recomputed_from_the_record() {
+        for (claimed_at, _) in M6_CARRIED_FIGURES {
+            let label = claimed_at.replace('.', "-");
+            let root = m6_root(
+                &format!("m6-carried{label}"),
+                &balanced_counterpart_summary(),
+                &balanced_m6_manifest(),
+            );
+            let manifest = root.join("evidence/m6/manifest.json");
+            misstate_figure(&manifest, claimed_at);
+            let mut violations = Vec::new();
+
+            verify_m6_carried_figures(&root, &manifest, &mut violations);
+
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains(&format!("records {claimed_at} 987654"))),
+                "{claimed_at} was not reconciled; violations:\n{}",
+                violations.join("\n")
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
+    }
+
+    #[test]
+    fn a_balanced_library_summary_closes_its_own_arithmetic() {
+        let root = m7_root(
+            "m7-arithmetic-balanced",
+            &library_summary(324, "null"),
+            &balanced_m7_manifest(),
+        );
+        let mut violations = Vec::new();
+
+        verify_m7_library_arithmetic(&root, &mut violations);
+
+        assert!(
+            violations.is_empty(),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    fn m7_ledger_mutations(balanced: &str) -> Vec<(usize, String)> {
+        vec![
+            (
+                0,
+                mutate(balanced, &[(r#""accepted":324"#, r#""accepted":323"#)]),
+            ),
+            (
+                1,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""accepted":324,"blocked":0"#,
+                        r#""accepted":319,"blocked":5"#,
+                    )],
+                ),
+            ),
+            (
+                2,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""accepted":324,"blocked":0"#,
+                        r#""accepted":319,"blocked":5"#,
+                    )],
+                ),
+            ),
+            (3, library_summary(300, "null")),
+            (
+                4,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""dependencies":{"resolved":900,"unresolved":0}"#,
+                        r#""dependencies":{"resolved":900,"unresolved":3}"#,
+                    )],
+                ),
+            ),
+            (
+                5,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""registries":{"resolved":400,"unresolved":0}"#,
+                        r#""registries":{"resolved":400,"unresolved":7}"#,
+                    )],
+                ),
+            ),
+            (6, mutate(balanced, &[(r#""missing":0"#, r#""missing":2"#)])),
+        ]
+    }
+
+    fn m7_wave_routing_and_suite_mutations(balanced: &str) -> Vec<(usize, String)> {
+        vec![
+            (
+                7,
+                mutate(
+                    balanced,
+                    &[(r#""index":1,"entries":120"#, r#""index":1,"entries":121"#)],
+                ),
+            ),
+            (8, mutate(balanced, &[(r#""index":2"#, r#""index":1"#)])),
+            (
+                9,
+                mutate(
+                    balanced,
+                    &[(r#""dependsOn":[0,1]"#, r#""dependsOn":[0,5]"#)],
+                ),
+            ),
+            (
+                10,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""index":0,"entries":100,"dependsOn":[]"#,
+                        r#""index":0,"entries":100,"dependsOn":[2]"#,
+                    )],
+                ),
+            ),
+            (
+                11,
+                mutate(balanced, &[(r#""absorbed":40"#, r#""absorbed":50"#)]),
+            ),
+            (
+                12,
+                mutate(
+                    balanced,
+                    &[(r#""runnableToday":324"#, r#""runnableToday":323"#)],
+                ),
+            ),
+            (
+                13,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""runnableToday":324,"blocked":0"#,
+                        r#""runnableToday":0,"blocked":324"#,
+                    )],
+                ),
+            ),
+            (
+                14,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""packages":{"total":324,"failed":0}"#,
+                        r#""packages":{"total":324,"failed":3}"#,
+                    )],
+                ),
+            ),
+            (
+                15,
+                mutate(
+                    balanced,
+                    &[(
+                        r#""clusters":{"total":12,"failed":0}"#,
+                        r#""clusters":{"total":12,"failed":1}"#,
+                    )],
+                ),
+            ),
+        ]
+    }
+
+    #[test]
+    fn every_m7_arithmetic_clause_refuses_a_record_that_breaks_it() {
+        let balanced = library_summary(324, "null");
+        let cases: Vec<(usize, String)> = [
+            m7_ledger_mutations(&balanced),
+            m7_wave_routing_and_suite_mutations(&balanced),
+        ]
+        .concat();
+
+        let covered: Vec<usize> = cases.iter().map(|(clause, _)| *clause).collect();
+        assert_eq!(
+            covered,
+            (0..M7_ARITHMETIC.len()).collect::<Vec<usize>>(),
+            "a clause with no mutation behind it is a clause nothing has seen refuse"
+        );
+
+        for (clause, summary) in cases {
+            let root = m7_root(
+                &format!("m7-arithmetic-{clause}"),
+                &summary,
+                &balanced_m7_manifest(),
+            );
+            let mut violations = Vec::new();
+
+            verify_m7_library_arithmetic(&root, &mut violations);
+
+            let requirement = M7_ARITHMETIC[clause].1;
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains(requirement)),
+                "clause {clause} was not refused; violations:\n{}",
+                violations.join("\n")
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
+    }
+
+    #[test]
+    fn m7_audits_the_total_the_inventory_verified_or_a_correction_that_names_it() {
+        let corrected = r#"{"from":324,"total":300,"reason":"two entries were one release"}"#;
+        let cases: &[(&str, String, bool)] = &[
+            ("matching", library_summary(324, "null"), true),
+            ("corrected", library_summary(300, corrected), true),
+            ("uncorrected", library_summary(300, "null"), false),
+            (
+                "corrected-from-elsewhere",
+                library_summary(
+                    300,
+                    r#"{"from":301,"total":300,"reason":"a figure nothing verified"}"#,
+                ),
+                false,
+            ),
+        ];
+
+        for (label, summary, reconciles) in cases {
+            let root = m7_root(
+                &format!("m7-fixture-total-{label}"),
+                summary,
+                &balanced_m7_manifest(),
+            );
+            let mut violations = Vec::new();
+
+            verify_m7_verified_fixture_total(&root, &mut violations);
+
+            assert_eq!(
+                violations.is_empty(),
+                *reconciles,
+                "{label}; violations:\n{}",
+                violations.join("\n")
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
+    }
+
+    #[test]
+    fn a_complete_m7_record_set_leaves_m7_closure_with_nothing_to_report() {
+        let root = m7_root(
+            "m7-manifest-balanced",
+            &library_summary(324, "null"),
+            &balanced_m7_manifest(),
+        );
+        let mut violations = Vec::new();
+
+        verify_m7_manifest(
+            &root,
+            &root.join("evidence/m7/manifest.json"),
+            &mut violations,
+        );
+
+        assert!(
+            violations.is_empty(),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn every_m7_closure_clause_refuses_a_manifest_that_breaks_it() {
+        let manifest_cases: &[ClosureCase] = &[
+            (
+                "work-packages",
+                &[(r#","M7-W6"]"#, "]")],
+                "M7 manifest must include every work package from M7-W0 through M7-W6 exactly once",
+            ),
+            (
+                "protocol",
+                &[(
+                    r#""protocolVersion":"m7-library-v1""#,
+                    r#""protocolVersion":"m7-library-v0""#,
+                )],
+                "M7 manifest must record its library summary under the m7-library-v1",
+            ),
+            (
+                "gate-status",
+                &[(
+                    r#""M7-W4":{"status":"closed""#,
+                    r#""M7-W4":{"status":"open""#,
+                )],
+                "M7 closure requires a gateStatus row for every work package",
+            ),
+            (
+                "attestation",
+                &[(r#""architecture":"x86_64""#, r#""architecture":"aarch64""#)],
+                "M7 closure requires a native Linux attestation",
+            ),
+            (
+                "findings",
+                &[(r#""risks":[{"classification":"minor"}]"#, r#""risks":[]"#)],
+                "an empty finding set satisfies every rule phrased as a refusal",
+            ),
+        ];
+
+        for (label, replacements, expected) in manifest_cases {
+            let root = m7_root(
+                &format!("m7-closure-{label}"),
+                &library_summary(324, "null"),
+                &mutate(&balanced_m7_manifest(), replacements),
+            );
+            let mut violations = Vec::new();
+
+            verify_m7_manifest(
+                &root,
+                &root.join("evidence/m7/manifest.json"),
+                &mut violations,
+            );
+
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains(expected)),
+                "{label} was not refused; violations:\n{}",
+                violations.join("\n")
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
+    }
+
+    #[test]
+    fn m7_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
+        let root = m7_root(
+            "m7-record-shape",
+            &mutate(
+                &library_summary(324, "null"),
+                &[(r#""result":"pass""#, r#""result":"provisional""#)],
+            ),
+            &balanced_m7_manifest(),
+        );
+        let mut violations = Vec::new();
+
+        verify_m7_manifest(
+            &root,
+            &root.join("evidence/m7/manifest.json"),
+            &mut violations,
+        );
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("M7 closure requires a library summary")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+
+        let root = m7_root(
+            "m7-record-absent",
+            &library_summary(324, "null"),
+            &balanced_m7_manifest(),
+        );
+        fs::remove_file(root.join("evidence/m7/library-summary.json"))
+            .expect("summary should be removable");
+        let mut violations = Vec::new();
+
+        verify_m7_manifest(
+            &root,
+            &root.join("evidence/m7/manifest.json"),
+            &mut violations,
+        );
+
+        assert!(
+            violations.contains(
+                &"M7 closure requires the record evidence/m7/library-summary.json".to_owned()
+            ),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn every_figure_m7_carries_is_recomputed_from_the_record() {
+        for (claimed_at, _) in M7_CARRIED_FIGURES {
+            let label = claimed_at.replace('.', "-");
+            let root = m7_root(
+                &format!("m7-carried{label}"),
+                &library_summary(324, "null"),
+                &balanced_m7_manifest(),
+            );
+            let manifest = root.join("evidence/m7/manifest.json");
+            misstate_figure(&manifest, claimed_at);
+            let mut violations = Vec::new();
+
+            verify_m7_carried_figures(&root, &manifest, &mut violations);
+
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains(&format!("records {claimed_at} 987654"))),
+                "{claimed_at} was not reconciled; violations:\n{}",
+                violations.join("\n")
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
     }
 
     fn temporary_root(label: &str) -> PathBuf {

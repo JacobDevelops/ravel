@@ -39,8 +39,8 @@ fi
 rm -rf "$work"
 mkdir -p "$(dirname "$agent")"
 printf 'version:1\n' >"$work/options.txt"
-mkdir -p "$work/ravel-pack"
-cat >"$work/ravel-pack/configuration.json" <<'EOF'
+mkdir -p "$work/ravel/config"
+cat >"$work/ravel/config/configuration.json" <<'EOF'
 {
   "schemaVersion": 1,
   "owner": "configuration",

@@ -22,7 +22,7 @@ is deterministic for an identical package set.
 
 Minecraft-specific hooks, mappings, and bindings live behind an explicit
 version adapter. General loader, package, SDK, and pack contracts must not
-encode Minecraft 26.1.2 internals.
+encode any Minecraft version's internals.
 
 Official-server interoperability is a later protocol layer; it does not turn
 Ravel into a Java mod host.

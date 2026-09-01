@@ -1,6 +1,6 @@
 # Writing a Ravel mod
 
-Ravel is a mod loader and SDK for Minecraft: Java Edition 26.1.2. A Ravel mod is
+Ravel is a mod loader and SDK for Minecraft: Java Edition. A Ravel mod is
 a Rust crate. It is distributed as source and compiled on the machine that
 installs it, so there is no ABI to match, no binary to build per platform, and no
 Java to write.

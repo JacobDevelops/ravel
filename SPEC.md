@@ -1,7 +1,7 @@
 # Ravel Specification
 
 Status: Draft product and capability contract  
-Initial target: Minecraft: Java Edition 1.21.1  
+Current target: Minecraft: Java Edition 1.21.1; multiple versions are supported through declared ranges  
 Proof workload: an ATM10-To-the-Sky-equivalent Rust modpack pinned to All the Mods 10: To the Sky 2.0.2  
 Last updated: 2026-08-29
 
@@ -211,10 +211,12 @@ Vanilla datapacks and resource packs must continue to work unchanged.
 
 ### 3.7 Version support
 
-- The first implementation targets Minecraft 1.21.1. Minecraft-specific hooks,
-  mappings, and bindings must live behind explicit version adapters.
-- Core loader, package, and SDK code must not hardcode 1.21.1 assumptions where
-  a version boundary can reasonably isolate them.
+- Ravel supports more than one Minecraft version. The current target is
+  Minecraft 1.21.1, the version the pinned proof workload runs on.
+  Minecraft-specific hooks, mappings, and bindings must live behind explicit
+  version adapters.
+- Core loader, package, and SDK code must not hardcode the assumptions of any
+  one Minecraft version where a version boundary can reasonably isolate them.
 - A package declares the Minecraft versions it supports in
   `compatibility.minecraft`, and each entry is either an exact version string or
   an explicit version range (for example `>=26.1, <26.2`). Multi-version support
@@ -937,17 +939,17 @@ Milestones are dependency ordered. They have no promised calendar duration.
 
 Deliver:
 
-- Prism-based vanilla 1.21.1 instance;
-- ignored, pinned official ATM10 To the Sky 2.0.2 fixture on Linux;
+- Prism-based vanilla 26.1.2 instance;
+- ignored, pinned official ATM11 0.2.1 fixture on Linux;
 - fixture reconstruction and hash verification tool;
 - documented Linux reference hardware;
-- sanitized Linux launch proof for vanilla and official ATM10 To the Sky through Prism;
+- sanitized Linux launch proof for vanilla and official ATM11 through Prism;
 - later performance protocol shape and dry-run schema wiring, without native
   repeated benchmark capture.
 
 Exit:
 
-- vanilla and official ATM10 To the Sky each reach a playable Linux world through Prism;
+- vanilla and official ATM11 each reach a playable Linux world through Prism;
 - the Linux launch evidence records sanitized startup, world-open, runtime, and
   clean-exit results for both workloads;
 - fixture files and secrets are absent from source control.
@@ -978,7 +980,7 @@ Deliver:
 
 Exit:
 
-- official Minecraft 1.21.1 launches without another mod loader;
+- official Minecraft 26.1.2 launches without another mod loader;
 - the Rust mod runs on Linux;
 - invalid packages fail before world access;
 - loader overhead is measured.
@@ -1239,7 +1241,7 @@ The immediate execution lane is:
 1. initialize the public-ready Ravel repository structure;
 2. write the pinned fixture manifest and reconstruction design without
    downloading restricted files into source control;
-3. establish Prism-based vanilla and official ATM10 To the Sky launch proof on Linux;
+3. establish Prism-based vanilla and official ATM11 launch proof on Linux;
 4. turn ADG-1 through ADG-5 into isolated benchmark plans;
 5. review M1 evidence before selecting the loader architecture.
 

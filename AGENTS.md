@@ -1,7 +1,12 @@
 # Agent instructions
 
-Ravel is a Minecraft: Java Edition 26.1.2 mod loader and SDK for natively compiled Rust mods. It hosts itself
-inside the official game runtime and is not built on Fabric, NeoForge, Forge, or Quilt.
+Ravel is a Minecraft: Java Edition mod loader and SDK for natively compiled Rust mods. It hosts itself
+inside the official game runtime and is not built on Fabric, NeoForge, Forge, or Quilt. It supports more than
+one Minecraft version: a package declares the versions it runs on in `compatibility.minecraft` as an exact
+version or a semver range, and per-version hooks, mappings and stubs live under `minecraft/versions/<version>/`.
+The current target is `1.21.1`, the version the ATM10 To the Sky 2.0.2 proof workload runs on. The only version
+data pinned today is `26.1.2`, which is what every closed milestone measured; `ROADMAP.md`'s open-questions
+table records what a `1.21.1` target still needs.
 
 This file is the single source of agent instructions. Codex reads `AGENTS.md`; Claude Code reads it through
 the `CLAUDE.md` symlink. Edit this file only — never fork the two.

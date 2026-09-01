@@ -1,9 +1,11 @@
 # Ravel
 
 Ravel is an experimental Minecraft: Java Edition mod loader and SDK for safe,
-natively compiled Rust mods. The first target is Minecraft 26.1.2 hosted by the
-official game runtime. Ravel does not load Java mods and does not use NeoForge,
-Fabric, Forge, Quilt, or another mod loader as its bootstrap.
+natively compiled Rust mods. It supports more than one Minecraft version and
+currently targets Minecraft 1.21.1, hosted by the official game runtime; the only
+version data pinned today is 26.1.2, which is what every closed milestone
+measured. Ravel does not load Java mods and does not use NeoForge, Fabric,
+Forge, Quilt, or another mod loader as its bootstrap.
 
 Ravel exists to make a large modpack cost significantly less RAM and CPU than
 the same pack costs on the Java mod ecosystem. Safe Rust mods compiled to native

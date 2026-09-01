@@ -8,7 +8,7 @@ Last updated: 2026-07-30
 ## Capability
 
 Ravel enables a player to run a complete, natively compiled Rust modpack inside
-official Minecraft: Java Edition, initially for Minecraft 1.21.1, without
+official Minecraft: Java Edition, currently targeting Minecraft 1.21.1, without
 another Java mod loader. Initial completion means that the separate private
 ATM10-To-the-Sky-equivalent pack passes its automated compatibility suites, meets the
 Linux performance contract, and completes the pinned progression path in a
@@ -34,7 +34,7 @@ These rules apply to every work package and milestone:
   dependencies may encapsulate unavoidable native/JVM boundaries.
 - No mod code runs before package validation and dependency resolution.
 - The installed mod graph is fixed for the process lifetime.
-- Minecraft 1.21.1 details remain behind a version adapter.
+- Minecraft version details remain behind a version adapter.
 - The public SDK exposes safe Rust and does not expose generated JVM or
   Minecraft-version internals.
 - Required-mod, side, registry, integrity, and saved-data failures fail closed
@@ -178,10 +178,13 @@ Additional policies:
 
 ### Performance evidence
 
-M0 records enough Linux launch evidence to prove vanilla 1.21.1 and official
-ATM10 To the Sky 2.0.2 run from the pinned Prism setup without restricted material or
+M0 records enough Linux launch evidence to prove vanilla 26.1.2 and official
+ATM11 0.2.1 run from the pinned Prism setup without restricted material or
 credentials entering the repository. It does not require performance capture
-or repeated launches.
+or repeated launches. Those are the versions M0 measured, and `evidence/m0/manifest.json`
+pins them; the proof workload was later retargeted to ATM10 To the Sky 2.0.2 on
+Minecraft 1.21.1, and a closed milestone's record describes the material it
+measured rather than the target that replaced it.
 
 The single-pair performance protocol lives in
 `tests/performance/profiles/initial.toml` for later M9 acceptance. It contains
@@ -273,7 +276,7 @@ ravel/
 │   └── build/                      # reproducible JVM artifact build description
 ├── minecraft/
 │   └── versions/
-│       └── 1.21.1/
+│       └── <version>/
 │           ├── README.md            # M0 boundary; no guessed mapping data
 │           ├── adapter.toml         # [M1/ADG-3] inputs and exact upstream hashes
 │           ├── hooks.toml           # [M1/ADG-3] reviewed hook capability inventory
@@ -364,12 +367,12 @@ ravel/
 | `ravel-core` | Canonical IDs, versions, side/capability descriptors, lifecycle and diagnostic value types | small general-purpose safe crates | SDK, loader, concrete Minecraft adapter |
 | `ravel-package` | Manifest parsing, compatibility ranges, source declarations, source-file hashes, provenance fields | core, serialization, version/range libraries | loader, bootstrap, Minecraft adapter |
 | `ravel-resolve` | Required/optional/incompatible/discouraged edges, cycles, side checks, deterministic load plan | core, package, graph/solver dependencies | SDK, concrete adapter |
-| `ravel-loader` | Discovery-to-stop orchestration, registry barrier, failure policy, world-access gate | core, package, resolve, host API, Minecraft traits, feature crates | concrete 1.21.1 implementation details outside injection |
+| `ravel-loader` | Discovery-to-stop orchestration, registry barrier, failure policy, world-access gate | core, package, resolve, host API, Minecraft traits, feature crates | concrete version implementation details outside injection |
 | `ravel-sdk` | Safe public API and author-facing types | core plus public parts of config/data/save/network | loader internals, generated bindings, JNI/JVMTI |
 | `ravel-sdk-macros` | Compile-time declaration generation | parser/quote libraries and public contract types | loader, adapter, runtime state |
 | `ravel-host-api` | Selected stable package execution/ABI boundary | core and serialization/ABI support selected by ADG-2 | concrete Minecraft bindings |
 | `ravel-bootstrap` | Selected JVM entry, callback routing, launch bootstrap | loader, host API, Minecraft trait and selected audited boundary dependencies | public SDK implementation policy |
-| `ravel-minecraft` | Version-neutral handles, hooks and capability traits | core | 1.21.1 mappings or generated version symbols |
+| `ravel-minecraft` | Version-neutral handles, hooks and capability traits | core | version mappings or generated version symbols |
 | `ravel-minecraft-adapter` | Shared adapter runtime, code generation, hook dispatch and conversion machinery | Minecraft traits, core, selected audited JVM dependencies, version data | SDK authoring policy and hardcoded assumptions outside selected version data |
 | `ravel-config` | Schemas, validation, side/restart flags, layered overrides | core | generated UI widgets or version details |
 | `ravel-data` | Declarative resources, recipes, tags, loot and progression contracts | core, package | loader or concrete adapter |
@@ -410,12 +413,22 @@ that no audited dependency can hold the operation.
 
 ### Version boundary
 
-Only `minecraft/versions/1.21.1`, generated outputs derived from it, and
-adapter-specific process fixtures may encode 1.21.1 mappings or hook names.
-`ravel-minecraft-adapter` is shared across supported versions and selects
-version data explicitly. A workspace policy test rejects `1.21.1`, generated
-mapping packages, and concrete game symbols in core, package, resolver, loader,
-SDK, pack, and general feature crates.
+Ravel supports more than one Minecraft version, so the rule is stated over
+versions rather than over one of them. Only `minecraft/versions/<version>`,
+generated outputs derived from it, and adapter-specific process fixtures may
+encode that version's mappings or hook names. `ravel-minecraft-adapter` is
+shared across supported versions and selects version data explicitly.
+
+`verify_version_boundary` in [`tools/ravel-xtask/src/lib.rs`](tools/ravel-xtask/src/lib.rs)
+enforces that. It reads the directory names under `minecraft/versions/` and
+under `tests/fixtures/public/versions/` — the pinned version and M4-W6's
+synthetic second one — and fails on any file under `crates/` that spells one of
+them, so the rule follows the version data instead of naming a version. It fails
+the same way on a game class name taken from version data, unless that file and
+that class are listed in `VERSION_CLASS_EXCUSES` with a reason, and it rejects
+any `ravel-minecraft-*` crate other than `adapter`. The sweep reads `crates/`
+only; `tests/` and `test-mods/` are excluded by design, and the failure text says
+so.
 
 Adding a second version must normally require only a new version-data directory
 and generated outputs, not a new crate or changes to package identity,
@@ -448,7 +461,7 @@ ravel-compat-private/
 │   ├── behaviour-specs/
 │   └── provenance-ledger/
 ├── fixtures/
-│   └── official-atm11/              # ignored; reconstructed locally
+│   └── official-<pack>/             # ignored; one per pinned fixture, reconstructed locally
 ├── tests/
 │   ├── counterpart/
 │   ├── clusters/
@@ -570,7 +583,7 @@ only with the single M9 comparison pair.
 | M0-W4 | Implement fixture reconstruction and hashing | M0-W3 | CLI command and local-only fixture output | exact MC/NeoForge/ATM versions, expected reference count, and all recorded hashes verify |
 | M0-W5 | Specify later performance protocol shape | M0-W2 | versioned workload/profile and collector schemas | schema and dry-run collector tests pass on Linux; no native repeated capture is required |
 | M0-W6 | Record Linux hardware, Java, Prism, and launch inputs | M0-W3 | sanitized Linux hardware profile and exact runtime metadata | clean-machine runbook reproduces vanilla launch on Linux |
-| M0-W7 | Prove Linux vanilla and official ATM10 To the Sky launch | M0-W4..W6 | Linux launch result bundle and workload attestation | vanilla and official ATM10 To the Sky reach a playable world through Prism; credentials and restricted content are absent from evidence |
+| M0-W7 | Prove Linux vanilla and official ATM11 launch | M0-W4..W6 | Linux launch result bundle and workload attestation | vanilla and official ATM11 reach a playable world through Prism; credentials and restricted content are absent from evidence |
 | M0-W8 | Define M1 architecture measurement gate | M0-W7 | reviewed metric and failure-action plan | every M1 candidate reports comparable Linux memory, startup, call-cost, allocation, packaging, and failure evidence without requiring an M0 baseline |
 | M0-W9 | Independent milestone review | M0-W1..W8 | review record and M0 evidence manifest | `devenv tasks run ravel:verify-milestone:m0` passes; tracked-tree audit is clean |
 
@@ -587,7 +600,7 @@ locking the workspace to an assumed runtime.
 | M1-W1 | Build common spike harness | M0 | shared benchmark protocol and trivial callback workload | every candidate reports the same metric schema |
 | M1-W2 | ADG-1 JVM entry/hook comparison | M1-W1 | candidate code, Linux data, ADR | bootstrap RSS, retained classes, startup, callback, bytes and allocation metrics are measured on Linux; rejection is explicit |
 | M1-W3 | ADG-2 Rust execution/ABI comparison | M1-W1 | dylib/Wasm/process/static evidence as viable, ADR recording the measurements and the trade each makes | memory, p50/p95/p99 call cost, crash isolation, packaging, debug and evolution rubric complete. The ADR records measurements only: the selection is deferred to M3, because it turns on loader properties M1 cannot observe. |
-| M1-W4 | ADG-3 binding strategy comparison | M1-W2 | extraction/codegen/cache prototype and ADR | a generated 1.21.1 binding is reproducible from pinned inputs and fails on drift |
+| M1-W4 | ADG-3 binding strategy comparison | M1-W2 | extraction/codegen/cache prototype and ADR | a generated 26.1.2 binding is reproducible from pinned inputs and fails on drift |
 | M1-W5 | ADG-4 state-ownership experiment | M1-W2..W4 | representative object-flow benchmark and ADR | duplicated state and boundary traffic are measured under the canonical spike |
 | M1-W6 | ADG-5 Prism integration spike | M0-W6, M1-W2 | stock launch proof or patch estimates and ADR | official Minecraft launches without another mod loader; auth tokens are absent from captures |
 | M1-W7 | Architecture synthesis | M1-W2..W6 | overview and dependency/safety boundary docs | all selected and rejected options trace to Linux evidence |
@@ -609,7 +622,7 @@ distribution.
 | M2-W2 | Implement package schema and integrity | M2-W1 | `ravel-package` and JSON schema | valid packages round-trip; tamper and schema failures precede code execution. The original target model reflected M2 before ADG-2; schema v1 now requires integrity-protected portable source files and refuses the old target form. |
 | M2-W3 | Implement dependency resolution and load plans | M2-W2 | `ravel-resolve` | required/optional/incompatible/discouraged, cycles, duplicates, ranges and deterministic-order cases pass |
 | M2-W4 | Implement lifecycle state machine | M2-W1 | loader state machine | every legal and illegal transition plus every spec invariant is tested |
-| M2-W5 | Implement selected bootstrap and adapter shell | M1 ADRs, M2-W4 | bootstrap, host API, shared adapter plus 1.21.1 version data | official 1.21.1 process reaches Ravel without another loader |
+| M2-W5 | Implement selected bootstrap and adapter shell | M1 ADRs, M2-W4 | bootstrap, host API, shared adapter plus 26.1.2 version data | official 26.1.2 process reaches Ravel without another loader |
 | M2-W6 | Package and execute no-op test mod | M2-W2..W5 | source-only no-op package | recorded evidence shows validate/resolve/load/construct/register/run/stop in deterministic order |
 | M2-W7 | Add world-access and structured-failure gates | M2-W3..W6 | pre-world UI/log diagnostic path | invalid packages, sides, integrity and graphs cannot open a world; reports redact secrets/paths. The gate answered that question with no caller until 2026-08-09; ADG-7's world-open crossing now asks it, and the note below says which half of it a launch can reach |
 | M2-W8 | Measure loader overhead and set regression budget | M2-W6..W7 | Linux no-op loader benchmark and review | the measured loader cost establishes the numeric regression budget used from M3 onward; M2 gate passes. Three of its six limits have since expired — see below |
@@ -739,7 +752,7 @@ number meets a real pack.
 
 | ID | Work package | Depends on | Output | Verification |
 | --- | --- | --- | --- | --- |
-| M3-W0 | Grow the 1.21.1 hook inventory to M3's targets | M2, ADG-4 | resolved target record, `hooks.toml` entries, re-pinned `adapter.toml` hash and regenerated `mappings.lock` | targets are resolved against the pinned jar by two independent passes and recorded in [`m3-hook-targets.md`](docs/architecture/m3-hook-targets.md); the inventory edit that lands them is separate and is what the hash re-pin and lock regeneration gate |
+| M3-W0 | Grow the 26.1.2 hook inventory to M3's targets | M2, ADG-4 | resolved target record, `hooks.toml` entries, re-pinned `adapter.toml` hash and regenerated `mappings.lock` | targets are resolved against the pinned jar by two independent passes and recorded in [`m3-hook-targets.md`](docs/architecture/m3-hook-targets.md); the inventory edit that lands them is separate and is what the hash re-pin and lock regeneration gate |
 | M3-W1 | Implement registry barrier and content registration | M2 | block/item/recipe test mods | duplicate/conflicting claims fail; IDs are immutable after registration |
 | M3-W2 | Implement commands, events, resources and data | M3-W1 | command/event/resource test mods | process tests exercise success, ordering, side and failure cases |
 | M3-W3 | Implement ADG-6 configuration and generated UI | M2, ADG-6 | the three schema edits ADG-6 names, layered config, generated Java screen and a screen test mod | file/UI edits round-trip; validation, sides, restart and per-setting pack overrides pass. ADG-1 selected the agent appending the sibling screen jar through `Instrumentation.appendToSystemClassLoaderSearch`, so artifact loading no longer blocks this work |
@@ -1216,6 +1229,7 @@ distribution, rollback, and private-history isolation.
 | JVM hook mechanism | ADG-1 / M1 | discharged; amended before M3-W3 on what enters the game process |
 | Rust execution/package/ABI model | ADG-2 / M1 **and M3** | discharged at M3: source distribution, compiled on the player's machine. Reconciling `package.schema.json` and `SPEC.md` §3.4 is closed as a breaking schema-v1-in-place migration |
 | Binding extraction and generation | ADG-3 / M1 | discharged, with one surface partly outside it: the agent jar's persistence adapter resolves game classes and members by name, and the pinned files cover some of the classes and none of the rest. `net.minecraft.client.Minecraft`, `net.minecraft.server.MinecraftServer` and `net.minecraft.world.level.storage.SavedDataStorage` are hook targets in `hooks.toml` and in `mappings.lock`, so a rename of one of those classes shows up in a re-pin diff. **An earlier wording of this row said none of them was pinned, which was wrong and understated the coverage; this is the correction.** What no pinned file holds is `LevelResource`, `DataFixers`, every member name and arity, the two `LevelResource` field constants, and the three-argument `SavedDataStorage` constructor — which is what `Persistence.java`'s comment at the lookup has said all along. `verify_persistence_reflection` pins the class set and cannot see a rename. Bringing the rest of the surface under `stubs.toml` and `mappings.lock` needs the stub-seed and lock re-pin ceremony against the pinned jar. **No work package owns that yet.** M3's packages are closed and none named it; M4-W1 to M4-W8 do not either. It belongs with the version-adapter re-pin work. An earlier reading of this row ruled that **M4-W6 is the first gate that cannot honestly pass without it**, because proving version isolation against a second version is exactly what an unpinned reflective surface defeats. **That ruling is retracted here, and the reason is that it was too broad.** The reflective surface it names lives in the agent jar, which is neither a general crate nor the shared adapter, so what it leaves in doubt is a drift claim over the agent jar — M4-W8's territory — rather than W6's claim that the shared adapter and the general crates carry no version. W6 proves that claim against a synthetic second version's data in `tests/fixtures/public/versions/`, and that fixture cannot reach the reflective surface at all: it declares no jar, so there is no class for a name to resolve against and nothing for a rename to break. No version of W6 could have discharged this row, which is what makes refusing W6 for not discharging it the wrong ruling rather than an unmet one. The re-pin ceremony is what closes this row, and no package has performed one. Until a package owns it and runs it, no milestone may claim drift coverage for the agent jar's persistence adapter |
+| Whether Ravel can run the 1.21.1 target it names | M8 | Ravel supports more than one Minecraft version and the current target is Minecraft 1.21.1, the version All the Mods 10: To the Sky 2.0.2 runs on. **No version data for that version exists.** `minecraft/versions/` holds one directory, `26.1.2`, and its `adapter.toml`, `hooks.toml`, `mappings.lock`, `stubs.toml` and `stubs.lock` are all resolved against the pinned 26.1.2 jar. `HOOK_INVENTORY` and the scaffold contract in [`tools/ravel-xtask/src/lib.rs`](tools/ravel-xtask/src/lib.rs) name that directory by path, and `AGENT_REFLECTED_CLASSES` there pins the seventeen class names the agent jar resolves at that version, one of which is `net.minecraft.resources.Identifier` — a name the game has not always carried, which is the whole reason a version change cannot be assumed away. Every closed milestone measured 26.1.2: M0's launch, M1-W4's generated binding, M2-W5's process, M4-W8's drift claim and M5's fixture. So the target the documents name is declared and not implemented — the loader holds no hooks, no mappings and no stubs for 1.21.1, and nothing here has ever started a 1.21.1 process with Ravel attached. Closing this row means adding `minecraft/versions/1.21.1/`: resolving every hook target and member name in the current inventory against the pinned 1.21.1 jar by the two independent passes M3-W0's row requires, then running the stub-seed and lock re-pin ceremony that produces `adapter.toml`, `hooks.toml`, `mappings.lock`, `stubs.toml` and `stubs.lock` for it. It needs a pinned 1.21.1 jar, which no descriptor in this repository names and no work package acquires. It is the same ceremony the ADG-3 row above leaves unowned, against a different jar: that row's is a re-pin of the agent jar's reflective surface against the version already pinned, this one is a first pin of a version that is not. **No work package owns either.** Until `minecraft/versions/1.21.1/` exists and a launch has exercised it, no milestone may claim the 1.21.1 target runs, and no document may say Ravel runs on 1.21.1 today |
 | Java/Rust state ownership | ADG-4 / M1 | discharged; amended at M3-W0 to admit opaque handles |
 | Stock Prism versus minimal patch | ADG-5 / M1 | discharged; the library-path argument does not work and ADG-5's amendment chose the fix — `System.load` on a path given by a `-D` property. No work package owns building it, so the native half has no conformance claim until one does |
 | Configuration and UI schema | ADG-6 before M3-W3 | discharged; declared in data, drawn in Java |
@@ -1242,7 +1256,7 @@ be:
 3. M0-W3 through M0-W5: establish the ignored fixture contract and later
    performance protocol shape before admitting launch evidence.
 4. Review that foundation, then admit the already-proven Linux vanilla and
-   official ATM10 To the Sky launch evidence. Performance capture waits for M9, and macOS
+   official ATM11 launch evidence. Performance capture waits for M9, and macOS
    work waits until Linux M10 is complete.
 
 Do not begin a loader implementation until M1's selected architecture ADRs pass

@@ -1,14 +1,14 @@
 {
   "$schema": "../../../schemas/runtime-inputs.schema.json",
   "schemaVersion": 1,
-  "retrievedAt": "2026-08-29",
+  "retrievedAt": "2026-09-01",
   "minecraft": {
     "version": "1.21.1",
     "type": "release",
     "metadata": {
-      "url": "https://piston-meta.mojang.com/v1/packages/REPIN/1.21.1.json",
-      "sha1": "REPIN-from-mojang-version-manifest-v2",
-      "sha256": "REPIN-from-mojang-version-manifest-v2"
+      "url": "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa605a432494e736db3/1.21.1.json",
+      "sha1": "7d538f57bd7f3d0638755fa605a432494e736db3",
+      "sha256": "06ba60da1f8c6fe469bed1b348a064648bfdda57fc2fb56920e3f177f844fdfd"
     },
     "minimumLauncherVersion": 21,
     "assetIndex": "17",
@@ -16,29 +16,46 @@
     "javaMajorVersion": 21
   },
   "prism": {
-    "version": "REPIN",
-    "releaseUrl": "https://github.com/PrismLauncher/PrismLauncher/releases",
-    "publishedAt": "REPIN"
+    "version": "11.0.3",
+    "releaseUrl": "https://github.com/PrismLauncher/PrismLauncher/releases/tag/11.0.3",
+    "publishedAt": "2026-07-11T18:44:35Z"
   },
   "platforms": [
     {
       "id": "linux-x86_64",
       "java": {
-        "version": "REPIN-java-21",
-        "releasedAt": "REPIN",
+        "version": "21.0.7",
+        "releasedAt": "2025-05-19T08:30:12+00:00",
         "manifest": {
-          "url": "https://piston-meta.mojang.com/v1/packages/REPIN/manifest.json",
-          "sha1": "REPIN",
-          "sha256": "REPIN"
+          "url": "https://piston-meta.mojang.com/v1/packages/06a3884df3d9d4072b9b6df541495d81878ad2de/manifest.json",
+          "sha1": "06a3884df3d9d4072b9b6df541495d81878ad2de",
+          "sha256": "ae31d7572974ab73297c5f43abce9b60b8794ead7530953688174edf494142a0"
         }
       },
       "prism": {
         "fileName": "PrismLauncher-Linux-x86_64.AppImage",
-        "url": "https://github.com/PrismLauncher/PrismLauncher/releases/latest/download/PrismLauncher-Linux-x86_64.AppImage",
-        "size": 0,
-        "sha256": "REPIN"
+        "url": "https://github.com/PrismLauncher/PrismLauncher/releases/download/11.0.3/PrismLauncher-Linux-x86_64.AppImage",
+        "size": 107565368,
+        "sha256": "0823a0e5f53694f0ff65a9523b6f221e6f10565b904941fa9522d89e8e7c69d1"
+      }
+    },
+    {
+      "id": "macos-aarch64",
+      "java": {
+        "version": "21.0.7",
+        "releasedAt": "2025-05-19T08:31:14+00:00",
+        "manifest": {
+          "url": "https://piston-meta.mojang.com/v1/packages/78b4178415da0ae9c738e65dd66ac57e4c8a4bcc/manifest.json",
+          "sha1": "78b4178415da0ae9c738e65dd66ac57e4c8a4bcc",
+          "sha256": "ec4453a01d281c408b5e5a210a5783aea22adb54944f5d6335bba92dc25d9bf4"
+        }
+      },
+      "prism": {
+        "fileName": "PrismLauncher-macOS-11.0.3.zip",
+        "url": "https://github.com/PrismLauncher/PrismLauncher/releases/download/11.0.3/PrismLauncher-macOS-11.0.3.zip",
+        "size": 43608206,
+        "sha256": "b8e06ef55ec78fceddfa9f4270b3d4d93f2606b83f70ad6a2c6dde90f2b65408"
       }
     }
-  ],
-  "_repin_note": "Identity facts (MC 1.21.1 release, Java 21 via java-runtime-delta, NeoForge 21.1.221 per the pack manifest) are verified. All fields marked REPIN require fetching the actual Mojang version-manifest-v2 entry for 1.21.1 and the chosen PrismLauncher release, and must be filled from those real artifacts before M0 launch evidence. The prior 26.1.2 descriptor's digests were for a fictional version and are deliberately not carried over."
+  ]
 }

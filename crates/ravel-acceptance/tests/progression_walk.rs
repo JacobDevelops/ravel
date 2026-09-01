@@ -23,7 +23,7 @@ use std::str::FromStr;
 
 use ravel_acceptance::{
     Assertion, Directive, GameDriver, GameView, Observation, ProgressionCheckpoint, Scenario, Step,
-    StepOutcome, Transcript, Verdict,
+    Transcript, Verdict, run,
 };
 use ravel_core::{RegistryKey, Side};
 use ravel_host_api::GameEvent;
@@ -63,13 +63,13 @@ impl FakeWorld {
     }
 }
 
-impl GameView for &FakeWorld {
+impl GameView for FakeWorld {
     fn observe(&self) -> Result<Observation, String> {
         Ok(self.snapshot())
     }
 }
 
-impl GameDriver for &mut FakeWorld {
+impl GameDriver for FakeWorld {
     fn carry(&mut self, directive: &Directive) -> Result<(), String> {
         if self.refuse_kind == Some(directive.kind()) {
             return Err(format!("driver cannot carry {}", directive.kind()));
@@ -114,45 +114,6 @@ impl GameDriver for &mut FakeWorld {
         }
         Ok(())
     }
-}
-
-/// Runs a scenario against a world, returning the transcript. This is the loop a
-/// live runner performs: for each step, carry its directive (if any), observe,
-/// evaluate, record — with a driver error becoming `Errored` rather than
-/// `Failed`.
-fn run(scenario: &Scenario, world: &mut FakeWorld) -> Transcript {
-    let mut transcript = Transcript::new();
-    for step in scenario.steps() {
-        if let Some(directive) = step.directive()
-            && let Err(reason) = (&mut *world).carry(directive)
-        {
-            transcript.record(StepOutcome {
-                label: step.label().to_owned(),
-                verdict: Verdict::Errored(reason),
-            });
-            break;
-        }
-        let observation = match (&*world).observe() {
-            Ok(o) => o,
-            Err(reason) => {
-                transcript.record(StepOutcome {
-                    label: step.label().to_owned(),
-                    verdict: Verdict::Errored(reason),
-                });
-                break;
-            }
-        };
-        let verdict = if step.assertion().evaluate(&observation) {
-            Verdict::Passed
-        } else {
-            Verdict::Failed(step.label().to_owned())
-        };
-        transcript.record(StepOutcome {
-            label: step.label().to_owned(),
-            verdict,
-        });
-    }
-    transcript
 }
 
 /// The written walk: enter, craft a machine, let automation run, reach the key
@@ -279,13 +240,13 @@ fn the_effect_lands_after_the_answer_not_during_the_granting_step() {
         reached: vec![ProgressionCheckpoint::WorldEntered],
         ..FakeWorld::default()
     };
-    (&mut world)
+    world
         .carry(&Directive::GrantItem {
             key: key("item", "machine_core"),
             count: 1,
         })
         .expect("grant is carried");
-    let after_grant = (&world).observe().expect("observe");
+    let after_grant = world.observe().expect("observe");
     assert_eq!(after_grant.held_count(&key("item", "ingot")), 0);
     assert!(after_grant.block_present(&key("item", "machine_core")));
 }

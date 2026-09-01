@@ -34,7 +34,10 @@
 //! performs yet. This crate names both boundaries as traits a driver implements
 //! — [`GameView`] and [`GameDriver`] — so a run is written, ordered and asserted
 //! against them now, and the driver that makes them real is built against a
-//! launched game later without this model changing.
+//! launched game later without this model changing. [`run`] is the loop that
+//! drives a scenario against them, so what a live driver has to supply is the
+//! two traits and nothing else: the order of carry, observe, evaluate and
+//! record is decided here rather than re-derived by each caller.
 //!
 //! # What the run never does
 //!
@@ -629,6 +632,66 @@ pub trait GameDriver {
     /// Returns a message describing why the directive could not be carried,
     /// which a run turns into a [`Verdict::Errored`].
     fn carry(&mut self, directive: &Directive) -> Result<(), String>;
+}
+
+/// Runs `scenario` against `world`, returning the [`Transcript`] of what it did
+/// and decided.
+///
+/// For each step in order: carry its directive if it has one, capture an
+/// [`Observation`], evaluate the step's [`Assertion`] over it, and record the
+/// verdict. A driver or view fault becomes [`Verdict::Errored`] and stops the
+/// run there, because a run that could not decide one step cannot honestly
+/// claim the steps after it. An assertion that simply does not hold becomes
+/// [`Verdict::Failed`] and the run continues, so a transcript shows every step's
+/// verdict rather than only the first disappointment; [`Transcript::verdict`] is
+/// what reduces them to one.
+///
+/// One type supplies both halves rather than two, because the thing that can
+/// carry a directive outward is the thing that can read what came back: a live
+/// driver holds one connection to the running game, and splitting the arguments
+/// would only let a caller pair a view of one game with a driver of another.
+///
+/// This does not wait. A step names the [`GameEvent`] it waits for and this
+/// asserts immediately after the directive, so a scenario that needs an effect
+/// to have landed says so with a following [`Directive::AdvanceTicks`] step —
+/// the property `docs/decisions/carrying-an-action-outward.md` records, kept in
+/// the scenario where a reader sees it rather than hidden in a runner's sleep.
+pub fn run<W>(scenario: &Scenario, world: &mut W) -> Transcript
+where
+    W: GameView + GameDriver,
+{
+    let mut transcript = Transcript::new();
+    for step in scenario.steps() {
+        if let Some(directive) = step.directive()
+            && let Err(reason) = world.carry(directive)
+        {
+            transcript.record(StepOutcome {
+                label: step.label().to_owned(),
+                verdict: Verdict::Errored(reason),
+            });
+            break;
+        }
+        let observation = match world.observe() {
+            Ok(observation) => observation,
+            Err(reason) => {
+                transcript.record(StepOutcome {
+                    label: step.label().to_owned(),
+                    verdict: Verdict::Errored(reason),
+                });
+                break;
+            }
+        };
+        let verdict = if step.assertion().evaluate(&observation) {
+            Verdict::Passed
+        } else {
+            Verdict::Failed(step.label().to_owned())
+        };
+        transcript.record(StepOutcome {
+            label: step.label().to_owned(),
+            verdict,
+        });
+    }
+    transcript
 }
 
 #[cfg(test)]

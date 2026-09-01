@@ -9,44 +9,44 @@
   {
    "class": "material",
    "holds": "one record per pinned reference, reconciled against the fixture by count and by project and file identity",
-   "name": "inventory/atm10-tts-2.0.2/references.json",
-   "sha256": "d1b5cfe18c25767140f78f85887e89329ec8658998eb15c8043f83aa3cb1c360"
+   "name": "inventory/atm11-0.2.1/references.json",
+   "sha256": "6e115dc782ccb66733fdad26c905cda81317e804b4035d4e326564445f5555d1"
   },
   {
    "class": "material",
    "holds": "the dependency and integration graph whose node, edge and cluster figures are carried above",
-   "name": "inventory/atm10-tts-2.0.2/graph.json",
-   "sha256": "318f98d9c8cc20c52bb44d1a32f565f59d94572aa4a390c62b0a64a0f9232179"
+   "name": "inventory/atm11-0.2.1/graph.json",
+   "sha256": "ce572d7b4f9752f13bd4bacdae2609a85e27123b4f823c429a1a4dd6e8afbcc8"
   },
   {
    "class": "material",
    "holds": "the behaviour-surface catalogue whose class-file, model, texture, recipe and nested-jar figures are carried above",
-   "name": "inventory/atm10-tts-2.0.2/surfaces.json",
-   "sha256": "aed5614d067079b5b94403ba125138bfba9bbabac839637f6620f932b6a59845"
+   "name": "inventory/atm11-0.2.1/surfaces.json",
+   "sha256": "619b3c79112f4475784db72aa3389113dba08e4e9a4db872757fa9afcb7fca5c"
   },
   {
    "class": "material",
    "holds": "the per-artifact rights triage, including the source-use verdicts carried above",
-   "name": "inventory/atm10-tts-2.0.2/rights.json",
-   "sha256": "f1178a98fd82d3d3e2c5ccd7c07807a1ac5636dd1828a1a3997b15b0490dc90e"
+   "name": "inventory/atm11-0.2.1/rights.json",
+   "sha256": "43732ee695f03bbd12a40099f4abf3e28455cfbf19dee78207c87286a20d53a7"
   },
   {
    "class": "material",
    "holds": "one counterpart plan per artifact, with owner, method, dependencies, tests and risk score",
-   "name": "inventory/atm10-tts-2.0.2/plans.json",
-   "sha256": "fb9a334399f576fd72e242c71588a5aa6504d0efaf3b96828a548d0f58bc4a0b"
+   "name": "inventory/atm11-0.2.1/plans.json",
+   "sha256": "2c3e659c4184c31c74efeed394beffc252dd841725daa73790e7a6ad35cbc808"
   },
   {
    "class": "material",
    "holds": "the provenance record binding the rights surfaces to the triaged artifact set",
-   "name": "provenance/atm10-tts-2.0.2.json",
-   "sha256": "75447b4a598df5c54c8b1de86cede9de0e81c75a4b228eaf1dd6fe067af79e88"
+   "name": "provenance/atm11-0.2.1.json",
+   "sha256": "da611f4d58ceb8fd7254348e3d170b105432d5609b0fa5adddf3b9611476e24a"
   },
   {
    "class": "material",
    "holds": "the public-safe capability proposals M5-W7 produced, held to a published lexicon",
    "name": "proposals/sdk-gaps.json",
-   "sha256": "bcc07d849af2854aa6f676db6897302091cd14b75c2ad4ad1935efd455cec538"
+   "sha256": "b38935e29a07ba56f3098ad1386c9c7c1d728dea9ac89ad356b3fd7cd6c53449"
   },
   {
    "class": "machinery",

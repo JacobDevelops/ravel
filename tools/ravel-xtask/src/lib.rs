@@ -2018,7 +2018,7 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
         verify_recorded_digests(root, manifest, &tracked, &mut violations);
         verify_recorded_baselines(root, manifest, &tracked, &mut violations);
         verify_recorded_review(root, manifest, &tracked, &mut violations);
-        verify_recorded_inputs(root, manifest, &mut violations);
+        verify_recorded_inputs(root, manifest, &tracked, &mut violations);
         verify_recorded_run(root, manifest, &mut violations);
         verify_admitted_revisions(root, manifest, &mut violations);
         verify_admitted_inventory(root, manifest, &tracked, &mut violations);
@@ -2733,6 +2733,16 @@ fn disclosed_pins(manifest_path: &Path) -> Result<BTreeMap<String, String>, Stri
 /// `inputs[]` names files outside the evidence directory that go on changing after
 /// a milestone closes.
 ///
+/// Hashing at the pinned revision answers only half of it. A file deleted since
+/// the milestone closed still hashes there, so a closed record went on binding two
+/// fixture descriptors the ATM10 retarget removed and the gate said nothing. That
+/// is the first of the two questions
+/// [`machinery-is-not-material.md`](../../../docs/decisions/machinery-is-not-material.md)
+/// separates — does everything this record named still exist — and a deletion
+/// falsifies what the record claims to have measured. So every input name is held
+/// against the tracked set as well, which needs no revision and therefore reports
+/// in a plain git tree where the digest recompute cannot.
+///
 /// The revision is resolved through jj, and a checkout without a jj repository is
 /// skipped rather than failed, because there is nothing there to resolve a revision
 /// with. That is the one gap left: a clone of this repository does reach the pinned
@@ -2741,12 +2751,42 @@ fn disclosed_pins(manifest_path: &Path) -> Result<BTreeMap<String, String>, Stri
 /// cannot, and reporting every input unreadable there would turn a provenance check
 /// into noise. The skip says so on stdout, because a whole provenance check that
 /// evaporates in silence reads exactly like one that passed.
-fn verify_recorded_inputs(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
+fn verify_recorded_inputs(
+    root: &Path,
+    manifest_path: &Path,
+    tracked: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
     let label = manifest_path
         .strip_prefix(root)
         .unwrap_or(manifest_path)
         .display()
         .to_string();
+    let records = match jq_value(manifest_path, r#".inputs[]? | .name + " " + .sha256"#) {
+        Ok(records) => records,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+
+    let mut inputs = Vec::new();
+    for record in records.lines().filter(|record| !record.trim().is_empty()) {
+        match record.rsplit_once(' ') {
+            Some((name, recorded)) => inputs.push((name, recorded)),
+            None => violations.push(format!("{label} records an input with no digest: {record}")),
+        }
+    }
+
+    for (name, _) in &inputs {
+        if !tracked.contains(*name) {
+            violations.push(format!(
+                "{label} records input {name}, which the repository no longer holds, so the \
+                 digest binds a path no reader can resolve"
+            ));
+        }
+    }
+
     if !root.join(".jj").exists() {
         println!(
             "- {label}: input digests are not recomputed, because this checkout has no jj \
@@ -2767,19 +2807,8 @@ fn verify_recorded_inputs(root: &Path, manifest_path: &Path, violations: &mut Ve
             return;
         }
     };
-    let records = match jq_value(manifest_path, r#".inputs[]? | .name + " " + .sha256"#) {
-        Ok(records) => records,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
 
-    for record in records.lines().filter(|record| !record.trim().is_empty()) {
-        let Some((name, recorded)) = record.rsplit_once(' ') else {
-            violations.push(format!("{label} records an input with no digest: {record}"));
-            continue;
-        };
+    for (name, recorded) in inputs {
         match revision_digest(root, &revision, name) {
             Ok(actual) if actual == recorded => {}
             Ok(actual) => violations.push(format!(
@@ -7725,17 +7754,42 @@ mod tests {
 
     #[test]
     fn an_input_the_pinned_revision_does_not_hold_is_reported() {
+        // A file the repository holds now and the pinned revision does not, so the
+        // existence question passes and only the digest question can speak.
         let (root, revision) = pinned_input_root("inputs-absent");
-        write_input_manifest(&root, &revision, "absent.txt", HELLO_DIGEST);
+        fs::write(root.join("later.txt"), "hello\n").expect("input should be writable");
+        write_input_manifest(&root, &revision, "later.txt", HELLO_DIGEST);
 
         let violations = verify_evidence_records(&root);
 
         assert_eq!(
             violations,
             [format!(
-                "evidence/m9/manifest.json records input absent.txt: cannot read it at revision \
+                "evidence/m9/manifest.json records input later.txt: cannot read it at revision \
                  {revision}"
             )]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn an_input_the_repository_no_longer_holds_is_reported() {
+        // The other half, and the hole it exists for: M0 went on binding two fixture
+        // descriptors the ATM10 retarget deleted, and every digest still matched,
+        // because a deleted file hashes at the revision that predates the deletion
+        // exactly as it always did.
+        let (root, revision) = pinned_input_root("inputs-deleted");
+        fs::remove_file(root.join("input.txt")).expect("input should be removable");
+        write_input_manifest(&root, &revision, "input.txt", HELLO_DIGEST);
+
+        let violations = verify_evidence_records(&root);
+
+        assert_eq!(
+            violations,
+            [
+                "evidence/m9/manifest.json records input input.txt, which the repository no longer \
+              holds, so the digest binds a path no reader can resolve"
+            ]
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }

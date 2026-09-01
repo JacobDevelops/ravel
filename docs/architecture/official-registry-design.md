@@ -92,7 +92,7 @@ mistaken for the registry tree alone.
 The registry tree is content-addressed at the artifact layer and human-navigable
 at the index layer.
 
-```
+```text
 # === REGISTRY TREE — official, permanent, this is what ships ===
 registry/
   index/                      # the queryable catalogue (small, cacheable, signed)
@@ -133,7 +133,7 @@ registry/
   schemas/                    # copies of the schemas an index entry is validated to
 ```
 
-```
+```text
 # === WORKING TREE — gitignored, local only, NEVER shipped (see §7.1) ===
 # This is where the original sources we translate from live. Nothing here is
 # tracked by git, indexed, signed, or served. It is the *input* to the rewrite,
@@ -323,10 +323,11 @@ so the public bar is the same one the counterparts were built under:
 
 ## 7. The migration boundary — what is temporary
 
-The private compatibility workspace (`ravel-registry/`, described in its own
-README) is **migration scaffolding**, not a prototype of this registry. During
-the rewrite of the pinned pack it holds directories that must **not** appear in,
-or map one-to-one onto, the official registry:
+The private compatibility workspace — the separate repository beside this one
+that `docs/architecture/public-private-boundary.md` describes without naming it,
+for the reason given there — is **migration scaffolding**, not a prototype of
+this registry. During the rewrite of the pinned pack it holds directories that
+must **not** appear in, or map one-to-one onto, the official registry:
 
 | private (temporary) | role during migration | fate at publication |
 | --- | --- | --- |

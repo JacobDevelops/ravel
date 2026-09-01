@@ -80,7 +80,7 @@ impl Compatibility {
 
 /// Whether a declared Minecraft entry is a version range rather than an exact
 /// version. A range carries a comparator (`>=`, `<`, `<=`, `>`, `=`, `^`, `~`,
-/// `*`) or a comma; an exact version like `26.1.2` carries none of these, so it
+/// `*`) or a comma; an exact version like `26.0.0` carries none of these, so it
 /// is never treated as a range even though [`VersionRange`] would parse it.
 fn is_range(text: &str) -> bool {
     text.contains(',')
@@ -240,7 +240,7 @@ mod tests {
     fn a_declared_minecraft_range_accepts_every_semver_version_inside_it() {
         // First-class multi-version support: one declared span, many releases.
         let manifest = manifest("*", r#"[">=26.1, <26.2"]"#);
-        for running in ["26.1.0", "26.1.2", "26.1.9"] {
+        for running in ["26.1.0", "26.1.4", "26.1.9"] {
             assert_eq!(
                 manifest.compatibility.check_minecraft(running),
                 Ok(()),

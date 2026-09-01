@@ -1032,8 +1032,9 @@ Exit:
 
 In the private workspace:
 
-- reconstruct the exact pinned ATM10 To the Sky fixture;
-- inventory all 324 manifest entries;
+- reconstruct the exact pinned fixture;
+- inventory all 235 of its manifest entries, the count ATM11 0.2.1 carried as the
+  fixture pinned when M5 ran;
 - build the dependency and integration graph;
 - catalogue configs, resources, KubeJS behaviour, packets, saves, licences, and
   sides;

@@ -808,7 +808,16 @@ artifacts from M4.
 | M5-W5 | Complete rights and provenance triage | M5-W2 | per-code/asset/name/branding rights status | unresolved status blocks publication but not private black-box work; prohibited source use is flagged |
 | M5-W6 | Assign canonical IDs and counterpart plans | M5-W3..W5 | owner, method, dependencies, tests and risk score per entry | 100% inventory coverage; IDs are unique and Ravel-native |
 | M5-W7 | Produce general SDK gap proposals | M5-W4..W6 | public-safe capability proposals and original test cases | proposals contain no restricted code/assets/source-derived notes |
-| M5-W8 | Inventory review and gate | M5-W1..W7 | private evidence manifest | 324/324 or evidence-corrected total has a complete plan; M5 gate passes |
+| M5-W8 | Inventory review and gate | M5-W1..W7 | private evidence manifest | 235/235 or evidence-corrected total has a complete plan; M5 gate passes |
+
+M5's figure is 235 because that is what M5 measured: the pinned fixture when it
+ran was ATM11 0.2.1, and `evidence/m5/inventory-summary.json` binds the rows
+behind every count it publishes. The proof workload was later retargeted to
+ATM10 To the Sky 2.0.2 and its 324 references, which is what M7 audits. A closed
+milestone's material figure describes the material it measured, so the retarget
+does not reach back into this row; the way the two totals are reconciled is the
+`correction` M7's evidence records, and rewriting 235 to 324 here would delete
+the discrepancy that correction exists to state.
 
 The ranking rubric scores foundation value, dependency centrality,
 integration breadth, compatibility uncertainty, rights risk, expected memory

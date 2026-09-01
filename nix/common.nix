@@ -172,9 +172,9 @@ in
         cargo test --workspace --doc
         check-jsonschema --check-metaschema schemas/*.schema.json
         check-jsonschema --schemafile schemas/fixture.schema.json \
-          tests/fixtures/descriptors/atm11-0.2.1.json
+          tests/fixtures/descriptors/atm10-tts-2.0.2.json
         check-jsonschema --schemafile schemas/runtime-inputs.schema.json \
-          tests/fixtures/descriptors/runtime-inputs-26.1.2.json
+          tests/fixtures/descriptors/runtime-inputs-1.21.1.json
         check-jsonschema --schemafile schemas/performance-collector.schema.json \
           tests/performance/fixtures/collector-dry-run.json
         check-jsonschema --schemafile schemas/performance-result.schema.json \

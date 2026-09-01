@@ -757,7 +757,26 @@ fn written_declarations() -> &'static str {
          \x20    *\n\
          \x20    * @return the admitted content, empty before a set is installed\n\
          \x20    */\n\
-         \x20   public static native String ravelAdmittedContent();\n\
+         \x20   public static native String ravelAdmittedContent();\n\n\
+         \x20   /**\n\
+         \x20    * Every action a mod asked for since this was last called.\n\
+         \x20    *\n\
+         \x20    * <p>The other direction of the same rule\n\
+         \x20    * {@code ravelAdmittedContent} carries: ADG-4 admits a hook that\n\
+         \x20    * observes or vetoes, so an action a mod asks for crosses as an\n\
+         \x20    * instruction and the Java adapter performs it. Generic over the\n\
+         \x20    * verb rather than written per verb, because\n\
+         \x20    * {@code docs/decisions/carrying-an-action-outward.md} settles\n\
+         \x20    * every outbound action with one mechanism.\n\
+         \x20    *\n\
+         \x20    * <p>Draining is what this does: an action is answered once and\n\
+         \x20    * never again. Empty is a tick nobody asked for anything on.\n\
+         \x20    * Null is what the JVM receives when the native failed, and\n\
+         \x20    * nothing is performed on it.\n\
+         \x20    *\n\
+         \x20    * @return the queued actions, empty when there are none\n\
+         \x20    */\n\
+         \x20   public static native String ravelOutwardActions();\n\
          }"
 }
 

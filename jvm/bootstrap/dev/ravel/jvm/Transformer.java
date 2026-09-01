@@ -57,6 +57,7 @@ public final class Transformer implements ClassFileTransformer {
     private static final MethodTypeDesc WORLD_SAVE =
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
     private static final MethodTypeDesc REGISTER_CONTENT = MethodTypeDesc.ofDescriptor("()V");
+    private static final MethodTypeDesc PERFORM_OUTWARD = MethodTypeDesc.ofDescriptor("()V");
 
     private final Map<String, List<HookTarget>> byClass;
     private final AtomicInteger transformedClasses = new AtomicInteger();
@@ -111,6 +112,20 @@ public final class Transformer implements ClassFileTransformer {
      */
     public static void registerContent() {
         Content.register();
+    }
+
+    /**
+     * Gives the rewritten client tick a public path to the outward adapter.
+     *
+     * <p>The same shape as the three above, and the same reason: performing an
+     * action is not something ADG-4's hooks do, so it is a second call at a seam
+     * the reviewed inventory already pins rather than a widened hook contract.
+     * The tick is where it goes because an action is drained rather than pushed,
+     * and a tick is the coarsest thing that happens often enough for a player not
+     * to hear the delay.
+     */
+    public static void performOutward() {
+        Outward.perform();
     }
 
     /** Classes this transformer rewrote. */
@@ -329,6 +344,19 @@ public final class Transformer implements ClassFileTransformer {
                 && target.member().equals("freeze");
     }
 
+    /**
+     * The seam a queued action is performed at.
+     *
+     * <p>The descriptor is checked as well as the name because {@code Minecraft}
+     * declares more than one tick, and the client frame one is a separate hook
+     * that this must not also fire from.
+     */
+    private static boolean isClientTick(HookTarget target) {
+        return target.internalClass().equals("net/minecraft/client/Minecraft")
+                && target.member().equals("tick")
+                && target.descriptor().equals("()V");
+    }
+
     private static boolean isTitleMenu(HookTarget target) {
         return target.internalClass().equals("net/minecraft/client/gui/screens/TitleScreen")
                 && target.member().equals("createNormalMenuOptions")
@@ -406,6 +434,8 @@ public final class Transformer implements ClassFileTransformer {
                     builder.invokestatic(TRANSFORMER, "saveWorldPersistence", WORLD_SAVE);
                 } else if (isBuiltInFreeze(target)) {
                     builder.invokestatic(TRANSFORMER, "registerContent", REGISTER_CONTENT);
+                } else if (isClientTick(target)) {
+                    builder.invokestatic(TRANSFORMER, "performOutward", PERFORM_OUTWARD);
                 }
             }
             if (isTitleMenu(target)

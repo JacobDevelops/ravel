@@ -217,8 +217,8 @@ Two independent reasons, and neither is about what is convenient for M3-W3.
 **The jar builds without the game, and that is a property rather than an
 accident.** `jvm/build/build-agent.sh` says so where it compiles: "No source in
 this jar declares a game type: the transformer manipulates byte arrays and
-descriptor strings, and the persistence and content adapters resolve the game
-classes they need by name at runtime. So nothing here needs the client jar on the class path, and
+descriptor strings, and the persistence, content and outward adapters resolve the
+game classes they need by name at runtime. So nothing here needs the client jar on the class path, and
 the absent `-cp` is what enforces that rather than records it — which is also what
 lets this run on a machine without the restricted fixture." `jvm/README.md` says
 the same for both build steps, and
@@ -228,7 +228,7 @@ that generated `Hook.java` declares no game type and still compiles without the
 client jar. Neither artifact is free of game *names*: the transformer compares
 target classes against internal names it holds as string literals, `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-two adapters between them resolve thirteen classes by name — all of which the invariant
+three adapters between them resolve seventeen classes by name — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
 on the class path.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled

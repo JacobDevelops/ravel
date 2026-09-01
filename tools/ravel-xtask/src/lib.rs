@@ -1462,13 +1462,17 @@ const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
 /// aggregate, registering a mod's block — is performed by a hand-written adapter
 /// that reaches the game by name. Adding a name to either source without adding it
 /// here fails the scaffold, which is the whole point of the list.
-const AGENT_REFLECTED_CLASSES: [&str; 13] = [
+const AGENT_REFLECTED_CLASSES: [&str; 17] = [
     "net.minecraft.client.Minecraft",
+    "net.minecraft.client.resources.sounds.SimpleSoundInstance",
+    "net.minecraft.client.resources.sounds.SoundInstance",
+    "net.minecraft.client.sounds.SoundManager",
     "net.minecraft.core.Registry",
     "net.minecraft.core.registries.Registries",
     "net.minecraft.resources.Identifier",
     "net.minecraft.resources.ResourceKey",
     "net.minecraft.server.MinecraftServer",
+    "net.minecraft.sounds.SoundEvent",
     "net.minecraft.util.datafix.DataFixers",
     "net.minecraft.world.item.Item",
     "net.minecraft.world.item.Item$Properties",

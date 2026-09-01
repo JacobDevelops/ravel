@@ -74,6 +74,7 @@ javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Agent.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Content.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/HookTarget.java" \
+	"$root/jvm/bootstrap/dev/ravel/jvm/Outward.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Persistence.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Screens.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Transformer.java" \
@@ -461,6 +462,106 @@ if [ "$content_malformed_diagnostic" != "$content_malformed_expected" ]; then
 	echo >&2
 	echo "a malformed content payload did not refuse with the recorded diagnostic; expected:" >&2
 	printf '%s\n' "$content_malformed_expected" >&2
+	exit 1
+fi
+
+# The outward-action seam, against a stand-in game. The adapter is reflective
+# and reads the queued actions across its own crossing, so a stand-in carrying
+# the pinned names exercises the real control flow: what is stood in for is the
+# game, not Ravel. The payloads below are written out rather than built, and each
+# one also appears as a literal in `crates/ravel-bootstrap/src/outward.rs` — the
+# two ends of this crossing are two languages, and a shared builder would only
+# prove one side agrees with itself.
+outward="$work/outward"
+outward_agent="$outward/agent/ravel-agent.jar"
+mkdir -p "$outward/classes" "$(dirname "$outward_agent")"
+mapfile -d '' outward_sources < <(find "$root/jvm/harness/outward" -name '*.java' -print0 | sort -z)
+javac -Xlint:all -Werror -d "$outward/classes" "${outward_sources[@]}" \
+	"$root/jvm/harness/content/net/minecraft/resources/Identifier.java"
+# `OutwardMain` needs the agent classes only to read the stand-in hook's counter.
+# A real launch never compiles against them.
+javac -Xlint:all -Werror -cp "$outward/classes:$order/agent-classes" -d "$outward/classes" \
+	"$root/jvm/harness/OutwardMain.java"
+cp "$order_agent" "$outward_agent"
+
+outward_run() {
+	local label="$1" actions="$2" expected="$3"
+	local out="$outward/$label-stdout"
+	local err="$outward/$label-stderr"
+	(cd "$outward/classes" && java \
+		-javaagent:"$outward_agent" \
+		-Dravel.test.transform.outward=true \
+		-Dravel.test.outward.actions="$actions" \
+		-cp . OutwardMain >"$out" 2>"$err")
+	local observed
+	observed="$(<"$out")"
+	printf '%s\n' "$observed"
+	while IFS= read -r line; do
+		printf '%s\n' "$line" >&2
+	done <"$err"
+	if [ "$observed" != "$expected" ]; then
+		echo >&2
+		echo "outward action run '$label' did not produce the recorded output; expected:" >&2
+		printf '%s\n' "$expected" >&2
+		exit 1
+	fi
+}
+
+# The whole point of the surface: an action Rust encoded is performed against the
+# game, with the arguments it named, through the members the pinned jar declares.
+# Two crossings — the hook's, and the adapter's read.
+outward_run performed '1:11:110:audio.play1:35:audio10:door_opens1:1' \
+	'played=audio:door_opens@1.0
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+
+# Two actions in one payload, which is the case the decision measured: the array
+# crosses once whatever it holds.
+outward_run two '1:11:210:audio.play1:35:audio10:door_opens1:110:audio.play1:35:audio11:door_closes1:2' \
+	'played=audio:door_opens@1.0,audio:door_closes@2.0
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+
+# A verb this version does not know is stepped over rather than losing the
+# payload behind it, which is what the per-action arity is for. The known action
+# after it is still performed.
+outward_run unknown-verb '1:11:211:packet.send1:23:one3:two10:audio.play1:35:audio10:door_opens1:1' \
+	'played=audio:door_opens@1.0
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+outward_unknown_diagnostic="$(grep '^\[ravel\] an outward action was not performed' "$outward/unknown-verb-stderr")"
+outward_unknown_expected='[ravel] an outward action was not performed: packet.send/2'
+if [ "$outward_unknown_diagnostic" != "$outward_unknown_expected" ]; then
+	echo >&2
+	echo "an unknown verb did not report the recorded diagnostic; expected:" >&2
+	printf '%s\n' "$outward_unknown_expected" >&2
+	exit 1
+fi
+
+# Nothing queued is the common tick, and it performs nothing rather than failing.
+# The crossing still happens, which is what says the empty answer came from Rust
+# and not from a seam that never fired.
+outward_run empty empty 'played=
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+
+# Null is what the JVM receives when the native failed. Nothing is performed on
+# it, because performing a payload nothing checked is the worse half of the trade.
+outward_run null-answer null 'played=
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+
+# A payload built under a contract this adapter never agreed to is refused whole
+# rather than read half of.
+outward_run malformed '1:21:110:audio.play1:35:audio10:door_opens1:1' 'played=
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+outward_malformed_diagnostic="$(grep '^\[ravel\] an outward payload' "$outward/malformed-stderr")"
+outward_malformed_expected='[ravel] an outward payload was offered that cannot be read'
+if [ "$outward_malformed_diagnostic" != "$outward_malformed_expected" ]; then
+	echo >&2
+	echo "a malformed outward payload did not refuse with the recorded diagnostic; expected:" >&2
+	printf '%s\n' "$outward_malformed_expected" >&2
 	exit 1
 fi
 

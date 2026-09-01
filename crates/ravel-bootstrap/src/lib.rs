@@ -7,6 +7,7 @@ mod dispatch;
 mod game_directory;
 mod guard;
 mod mods;
+pub mod outward;
 mod persistence;
 mod profiling;
 mod report;

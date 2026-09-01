@@ -50,6 +50,22 @@ public final class Hook {
                                 "()V",
                                 false),
                     }
+            : Boolean.getBoolean("ravel.test.transform.outward")
+                    ? new HookTarget[] {
+                        // The seam a queued action is performed at, with the
+                        // internal name, member and descriptor the pinned
+                        // inventory carries for `client.tick`. Carrying an
+                        // action needs no new target, which is the whole reason
+                        // this one was chosen.
+                        new HookTarget(
+                                "net/minecraft/client/Minecraft",
+                                "tick",
+                                "()V",
+                                false,
+                                "clientTick",
+                                "()V",
+                                false),
+                    }
             : Boolean.getBoolean("ravel.test.transform.members")
                     ? new HookTarget[] {
                         // One method target in each of the four classes that
@@ -210,6 +226,8 @@ public final class Hook {
             className = "net.minecraft.client.Minecraft";
         } else if (Boolean.getBoolean("ravel.test.transform.content")) {
             className = "net.minecraft.core.registries.BuiltInRegistries";
+        } else if (Boolean.getBoolean("ravel.test.transform.outward")) {
+            className = "net.minecraft.client.Minecraft";
         } else if (Boolean.getBoolean("ravel.test.transform.members")) {
             className = "net.minecraft.util.SmoothDouble";
         } else {
@@ -293,6 +311,29 @@ public final class Hook {
             }
         }
         return payload.toString();
+    }
+
+    public static void clientTick() {
+        invocations++;
+    }
+
+    /**
+     * Answers the outward crossing the way the property asks.
+     *
+     * <p>{@code empty} is a tick nobody asked for anything on and {@code null}
+     * is what the JVM receives when the native failed. Anything else is handed
+     * through verbatim, which is how the harness drives this side with the exact
+     * payload {@code crates/ravel-bootstrap/src/outward.rs} pins — the two ends
+     * of this crossing are two languages, so a helper that built the payload
+     * here would only prove Java agrees with itself.
+     */
+    public static String ravelOutwardActions() {
+        invocations++;
+        String answer = System.getProperty("ravel.test.outward.actions", "empty");
+        if (answer.equals("null")) {
+            return null;
+        }
+        return answer.equals("empty") ? "" : answer;
     }
 
     /** One length-prefixed field, counted in the units a Java string counts in. */

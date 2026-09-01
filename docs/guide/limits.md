@@ -82,14 +82,24 @@ what your mod will send, tested today and carried later — with the loader-side
 half of the arrival already built. Design against it if you like; do not plan a
 feature whose value arrives when the packet does.
 
-**Two more surfaces are declared and not carried at all, for the same reason a
-packet is not, and a third is now partly carried.** A sound and a drawing stage
-are each a declaration you can write, test and refuse against today with nothing
-on the other end; interception has an end now, for one of its three points:
+**One more surface is declared and not carried at all, one has a far end and no
+near end, and a third is partly carried.** A drawing stage is a declaration you
+can write, test and refuse against today with nothing on the other end;
+interception has an end now, for one of its three points; audio has the end
+inside the game and not the one you write against:
 
 - `audio` — you declare the sounds your mod owns and the events that play them,
   and `AudioDeclaration::play` answers with a `PlayRequest` describing what would
-  be played. Nothing reaches audio hardware. The side rule is real and enforced:
+  be played. **The carrier that would play it exists and your mod cannot reach
+  it.** `docs/decisions/carrying-an-action-outward.md`'s crossing is built: Ravel
+  encodes the action, and a Java adapter decodes it at the client tick and asks
+  the game's own sound manager for it through the members the pinned version
+  declares, which the JVM harness drives end to end against a stand-in game.
+  What is missing is the near end. `HostMod::observe` answers
+  `Result<(), HostError>` and gives your mod nowhere to put a `PlayRequest`, so
+  nothing queues one, and no sound has been heard in a launched game — the
+  carrier is built and unobserved, which is a different claim from working. The
+  side rule is real and enforced:
   asking to play on a server is refused rather than skipped, so a mod that would
   have worked only in single-player finds out in its own tests. The bytes you
   hand `AudioDeclaration::entry` stay in the declaration: `ravel-pack` never

@@ -278,8 +278,8 @@
   },
   {
    "entries": [
-    "checks/verify-counterparts.sh",
-    "checks/verify-spec-identifiers.sh"
+    "checks/verify.sh",
+    "checks/verify-primitives.sh"
    ],
    "figures": [
     {
@@ -289,7 +289,9 @@
      "why": "The two rewrite-integrity checks were removed at the repository owner's direction: this private compatibility workspace uses upstream mod names for readability and maintenance and is never published, so the IP-hygiene name-scan the checks enforced no longer applies. Removing them takes two files out of the directory the primitive scan reads (38 to 36) and removes their invocations from checks/verify.sh, which this record binds and whose digest is rebound above. docs/decisions/machinery-is-not-material.md decides these record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry."
     }
    ],
-   "reason": "Owner decision to drop the rewrite-integrity gate (checks/verify-counterparts.sh and checks/verify-spec-identifiers.sh, plus their lexicon/normalization/fixture data) for the private workspace, which keeps upstream identifiers deliberately. verify.sh no longer calls either check; verify-primitives.sh was edited in the same work to fix a SIGPIPE-under-pipefail bug in its tracked-file membership test that a large tracked set had begun triggering. Both digests are rebound above."
+   "milestone": "M6",
+   "reason": "Owner decision to drop the rewrite-integrity gate (checks/verify-counterparts.sh and checks/verify-spec-identifiers.sh, plus their lexicon/normalization/fixture data) for the private workspace, which keeps upstream identifiers deliberately, taken in the M6-W3 work that renamed the counterpart packages to match upstream. Neither removed file was ever bound here, so neither can be an amended entry: the machinery digests this entry rebinds are checks/verify.sh, which no longer calls either check, and checks/verify-primitives.sh, which was edited in the same work to fix a SIGPIPE-under-pipefail bug in its tracked-file membership test that a large tracked set had begun triggering.",
+   "workPackage": "M6-W3"
   }
  ],
  "milestone": "M5",

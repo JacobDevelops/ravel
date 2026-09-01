@@ -64,7 +64,7 @@
    "class": "machinery",
    "holds": "the private gate whose exit status and summary lines every figure above was read from",
    "name": "checks/verify.sh",
-   "sha256": "3b57da7bef27fccca6708ccc7e07ddb6754f9e1122ade84403ad27a78b1bea95"
+   "sha256": "86b1ff6ec8eb4320a322cf757cba651b475e2432e8d24c6073d104621e92d3aa"
   },
   {
    "class": "machinery",
@@ -76,7 +76,7 @@
    "class": "machinery",
    "holds": "the classification of every observed read, and the refusal that fires on an entry body",
    "name": "checks/verify-reads.sh",
-   "sha256": "7d5de6e237cb6cdab514bf55045e253ae7f767d87807582c9f7a971a45a21522"
+   "sha256": "42d479ea40b825cba813ac276686049a682ed53c952a8986eaab9d616a2f1565"
   },
   {
    "class": "machinery",
@@ -94,7 +94,7 @@
    "class": "machinery",
    "holds": "every accounted occurrence, held congruent with the vocabulary in both directions",
    "name": "checks/read-primitives.tsv",
-   "sha256": "cd1aaad2c9b1f12d0e380d3ea87393fb0fa5d0267eb2e5be73eaaf956eac53c8"
+   "sha256": "af71d421a7d59670a8cb2282f99d927e9bbf00746c3320ccac10d7333e33ae47"
   }
  ],
  "disclosure": {
@@ -292,6 +292,30 @@
    "milestone": "M6",
    "reason": "Owner decision to drop the rewrite-integrity gate (checks/verify-counterparts.sh and checks/verify-spec-identifiers.sh, plus their lexicon/normalization/fixture data) for the private workspace, which keeps upstream identifiers deliberately, taken in the M6-W3 work that renamed the counterpart packages to match upstream. Neither removed file was ever bound here, so neither can be an amended entry: the machinery digests this entry rebinds are checks/verify.sh, which no longer calls either check, and checks/verify-primitives.sh, which was edited in the same work to fix a SIGPIPE-under-pipefail bug in its tracked-file membership test that a large tracked set had begun triggering.",
    "workPackage": "M6-W3"
+  },
+  {
+   "entries": [
+    "checks/verify.sh",
+    "checks/verify-reads.sh",
+    "checks/read-primitives.tsv"
+   ],
+   "figures": [
+    {
+     "field": "primitiveScan.filesScanned",
+     "from": 36,
+     "to": 38,
+     "why": "checks/verify-counterparts.sh and checks/verify-spec-identifiers.sh are back in the directory the scan reads, which is the entry above this one run backwards: it took the figure 38 to 36 when they were removed and it goes 36 to 38 now they are restored. Their lexicon, normalization and fixture tables came back with them and are named as data rather than scanned as code, which is why two checks add two and not six."
+    },
+    {
+     "field": "primitiveScan.accountedUses",
+     "from": 88,
+     "to": 89,
+     "why": "checks/verify-counterpart-build.sh now names this workspace's counterpart packages before it formats, lints and runs them, which is a fourth accounted use of cargo where the row in checks/read-primitives.tsv recorded three. It is the same row, so primitiveScan.occurrenceRows does not move. Restoring the two checks adds no accounted use, which is the arithmetic the removal entry above already showed: it lowered filesScanned and left accountedUses alone."
+    }
+   ],
+   "milestone": "M6",
+   "reason": "The entry above this one records the rewrite-integrity gate being dropped at the repository owner's direction, and dropping it left ROADMAP.md:829 unmeetable: M6-W6 closes on the rewrite-integrity check being enforcing rather than advisory, and a check that has been deleted is neither. It is restored here, scoped over mods/ so that it holds the counterpart packages without reaching the workspace's deliberate use of upstream identifiers elsewhere, which is what the removal was really about. Two further edits to bound machinery are rebound in the same entry because they landed in the same span and this record binds them too: checks/verify-reads.sh excludes the build-output and acquisition trees from the sandbox it copies, after the cargo target directory alone filled a root filesystem and killed that check mid-run, and checks/read-primitives.tsv carries the cargo row corrected above. docs/decisions/machinery-is-not-material.md decides that a digest over the gate's own scripts and a count over the gate's own files record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry. One thing this trail does not account for and this entry will not invent: primitiveScan.accountedUses reads 85 at the M6-W4 entry above and stood at 88 when this entry was written, and no amendment records the three between them \u2014 they were written into this record by the ATM10 retarget, change wulksnsyvkkwwxrsuroytzkwmmqtpnxs, whose own message attributes them to the private gate growing a resource-pack reader. That is stated here where a reader meets the figure rather than reconstructed as an entry nobody made.",
+   "workPackage": "M6-W6"
   }
  ],
  "milestone": "M5",
@@ -306,9 +330,9 @@
  "primitiveScan": {
   "aUseIsAnOccurrence": "Two on one line are two. This figure read 74 until round 7, because the scan counted matching lines and the occurrence table beside it had been written from that output, so the two agreed and the row that would have contradicted them was never built. Two lines under checks/ carry two occurrences each; the true figure for the tree round 7 read was 76, and it read 77 at M5's closure because the repair added a reader of its own. It reads 79 now, and the difference is not a correction: M6 adopted a check into that gate and machineryAmendments below records which milestone moved it and why. Every figure in this block is a count of the gate rather than of the inventory, which is why it is amendable at all.",
   "accounted": 15,
-  "accountedUses": 88,
+  "accountedUses": 89,
   "class": "machinery",
-  "filesScanned": 36,
+  "filesScanned": 38,
   "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions.",
   "occurrenceRows": 36,
   "primitivesDeclared": 27,

@@ -203,6 +203,18 @@ or a configuration document — Python's `jsonschema`, `ajv`, `check-jsonschema`
 whichever you already have. Ravel ships no wrapper around one. See
 [The package manifest](package-manifest.md).
 
+**Nothing tells you what is in the world.** The hooks the loader binds are
+lifecycle seams — the server and client ticks, the two resource reloads, and the
+command a player typed — and none of them carries world state you can read. A
+reference parameter reaches you as a handle, which offers the class it was
+declared as and whether it is null and nothing else, so a registry entry arriving
+is an opaque key and a block being present is not observable at all. You can
+count your own ticks and answer your own command; you cannot ask how many of an
+item a player holds or whether a block was placed. That needs a hook target
+carrying the answer as a number or a string, and
+[`minecraft/versions/26.1.2/hooks.toml`](../../minecraft/versions/26.1.2/hooks.toml)
+holds none — reviewing and pinning one is what `ROADMAP.md` leaves open.
+
 **Writing a packet field can panic; reading one cannot.** The reading half
 refuses everything the bytes do not say, including a length prefix that runs past
 the end of the buffer, and that refusal is explicitly not a panic. The writing

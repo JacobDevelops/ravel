@@ -26,12 +26,16 @@
 //!
 //! Those two are not this crate's to hold, and the reason is the same one
 //! `docs/architecture/dependency-rules.md` gives for every version boundary. A
-//! live observation is a projection from a hook's value, which
-//! `crates/ravel-host-api/src/lib.rs` records as unstarted work that lands with
-//! the wiring connecting a hook to the loader; and a directive becomes an effect
-//! through `docs/decisions/carrying-an-action-outward.md`'s mechanism, whose
-//! outbound leg `ROADMAP.md`'s M8-W0 owns and which no host in the workspace
-//! performs yet. This crate names both boundaries as traits a driver implements
+//! live observation is a projection from a hook's value, and the wiring that
+//! connects a hook to the loader has landed without making one possible: no hook
+//! `crates/ravel-bootstrap/src/runtime.rs` binds carries world state a
+//! projection could read, because every reference parameter crosses as a
+//! `HookValue::Handle` offering a declared class and a null check, which is what
+//! `ROADMAP.md` records as the open question a reviewed hook target has to
+//! close; and a directive becomes an effect through
+//! `docs/decisions/carrying-an-action-outward.md`'s mechanism, whose outbound leg
+//! `ROADMAP.md`'s M8-W0 owns and which no launched game has performed yet.
+//! This crate names both boundaries as traits a driver implements
 //! — [`GameView`] and [`GameDriver`] — so a run is written, ordered and asserted
 //! against them now, and the driver that makes them real is built against a
 //! launched game later without this model changing. [`run`] is the loop that

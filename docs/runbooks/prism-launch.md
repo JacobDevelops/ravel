@@ -3,11 +3,20 @@
 Status: M0-W6/M0-W7 Linux pinned-input and launch-proof procedure. Native Mac
 launch attestations are deferred until after Linux M10.
 
-The machine-readable pins are in
-`tests/fixtures/descriptors/runtime-inputs-26.1.2.json`. New upstream releases
-do not change these inputs without a reviewed profile revision.
+The pins below are M0's, and they are the ones this procedure was run against:
+Minecraft `26.1.2` under `java-runtime-epsilon`, machine-readable in
+[`runtime-inputs-26.1.2.json`](../../tests/fixtures/descriptors/runtime-inputs-26.1.2.json).
+They are not the proof workload Ravel targets now. Change
+`wulksnsyvkkwwxrsuroytzkwmmqtpnxs` retargeted that to ATM10 To the Sky 2.0.2 on
+Minecraft `1.21.1` under `java-runtime-delta` `21.0.7`, pinned in
+[`runtime-inputs-1.21.1.json`](../../tests/fixtures/descriptors/runtime-inputs-1.21.1.json),
+and a launch of the current workload takes its versions from that descriptor and
+the rest of its procedure from here. Rewriting these pins to the retargeted ones
+would say M0 launched a runtime it did not; `evidence/m0/manifest.json` records
+which one it launched and this document agrees with it. New upstream releases do
+not change either set of inputs without a reviewed profile revision.
 
-## Pinned inputs
+## Pinned inputs, as M0 ran them
 
 - Minecraft Java Edition `26.1.2`, release metadata SHA-1
   `a5ba42111e0de7712d677c458bd0dbfc9f36482e` and SHA-256

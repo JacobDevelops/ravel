@@ -58,6 +58,20 @@ public final class ProfilingScreenMain {
      */
     private static final int[][] SIZES = {{320, 240}, {480, 270}, {640, 360}, {960, 540}};
 
+    /**
+     * The sizes the driven run reports, which is {@link #SIZES} without 640x360.
+     *
+     * <p>A mod row carries a wall-clock nanosecond total, so its width is
+     * different on every run and how many rows it wraps to is not a fact about
+     * the layout. At 640x360 the table's budget is exactly one row, so that width
+     * decides whether the costliest mod is drawn or replaced by the line saying it
+     * was left out — the run states {@code entered=4} on an idle machine and
+     * {@code entered=none} on a busy one. The two smaller windows spend every row
+     * before the table and the largest draws the whole set, so both are decided by
+     * the budget rather than by a timing; only this one sits on the boundary.
+     */
+    private static final int[][] DRIVEN_SIZES = {{320, 240}, {480, 270}, {960, 540}};
+
     /** How many ticks the driven run shows the mod set. */
     private static final int TICKS = 4;
 
@@ -86,7 +100,7 @@ public final class ProfilingScreenMain {
         // One screen per size. The stand-in screen keeps every widget it is ever
         // given, so a second `init` on the same one would be read as a longer
         // report rather than as a second layout of the same one.
-        for (int[] size : SIZES) {
+        for (int[] size : driven ? DRIVEN_SIZES : SIZES) {
             Screen screen = RavelProfilingScreen.open();
             screen.width = size[0];
             screen.height = size[1];

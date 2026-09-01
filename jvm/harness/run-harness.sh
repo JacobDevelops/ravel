@@ -762,14 +762,14 @@ driven_stderr="$work/profiling-driven-stderr"
 	-cp ".:$screen" ProfilingScreenMain driven >"$driven_stdout" 2>"$driven_stderr")
 driven_observed="$(<"$driven_stdout")"
 # The two smallest windows spend every row on the summary and the statement, so
-# they draw no mod row to read a count off, and the third draws one mod row out of
-# the composition's three; that is the documented row budget rather than a lost
-# measurement, and only the largest window shows the whole set.
+# they draw no mod row to read a count off; that is the documented row budget
+# rather than a lost measurement, and only the largest window shows the whole set.
+# 640x360 is absent here and not from the off report beside it, for the reason
+# `ProfilingScreenMain.DRIVEN_SIZES` records.
 driven_expected='driven=320x240 fits=true within=true ticks=none entered=none
 driven=480x270 fits=true within=true ticks=none entered=none
-driven=640x360 fits=true within=true ticks=none entered=4
 driven=960x540 fits=true within=true ticks=none entered=0,4,4,4,4
-[ravel] rewrote 2 classes and 3 methods; 8 hook invocations reached native code'
+[ravel] rewrote 2 classes and 3 methods; 7 hook invocations reached native code'
 
 printf '%s\n' "$driven_observed"
 while IFS= read -r line; do

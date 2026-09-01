@@ -780,8 +780,28 @@ mod tests {
         let pinned = super::pinned_inputs(&root).expect("the descriptor should parse");
 
         assert_eq!(pinned.minecraft, "1.21.1");
-        assert!(!pinned.prism.is_empty());
-        assert!(!pinned.java.is_empty());
+        assert_eq!(pinned.prism, "11.0.3");
+        assert_eq!(pinned.java, "21.0.7");
+    }
+
+    #[test]
+    fn the_java_pin_is_the_one_this_platform_runs_rather_than_the_first_listed() {
+        let root = temporary_root("platform-order");
+        let descriptor = root.join(super::RUNTIME_INPUTS);
+        fs::create_dir_all(descriptor.parent().expect("descriptor has a parent"))
+            .expect("descriptor directory should be creatable");
+        fs::write(
+            &descriptor,
+            r#"{"minecraft":{"version":"1.21.1"},"prism":{"version":"11.0.3"},
+                "platforms":[{"id":"macos-aarch64","java":{"version":"mac"}},
+                             {"id":"linux-x86_64","java":{"version":"linux"}}]}"#,
+        )
+        .expect("descriptor should be writable");
+
+        let pinned = super::pinned_inputs(&root).expect("the descriptor should parse");
+
+        assert_eq!(pinned.java, "linux");
+        fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
     #[test]

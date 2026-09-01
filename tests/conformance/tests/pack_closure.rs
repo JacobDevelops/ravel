@@ -124,7 +124,7 @@ fn the_pack_this_suite_is_written_against_is_one_whose_four_closures_hold() {
     // The floor. Every refusal below is a departure from this pack, so if this one
     // did not validate, each of them could be failing for the wrong reason.
     let (pack, manifests, content) = one_member();
-    let validated = validate(&pack, &manifests, &content).expect("every closure holds");
+    let validated = validate(&pack, &manifests, &content, &[]).expect("every closure holds");
 
     // The example mod declares content, so the pack writes files, and the tag file
     // and the language file are the ones the mod itself derives.
@@ -157,7 +157,7 @@ fn a_declared_dependency_the_pack_does_not_hold_is_refused_with_the_offender_nam
         Some(("library_mod", "^1.0.0")),
     )];
 
-    let refused = validate(&pack, &manifests, &[ContentMod::new().declaration()])
+    let refused = validate(&pack, &manifests, &[ContentMod::new().declaration()], &[])
         .expect_err("the library is not in the pack");
 
     assert!(matches!(refused, ClosureError::Dependency { .. }));
@@ -186,7 +186,8 @@ fn a_dependency_present_at_a_version_the_dependant_refuses_is_refused_with_both(
         ContentDeclaration::new(id("library_mod")),
     ];
 
-    let refused = validate(&pack, &manifests, &content).expect_err("2.0.0 is outside `^1.0.0`");
+    let refused =
+        validate(&pack, &manifests, &content, &[]).expect_err("2.0.0 is outside `^1.0.0`");
 
     assert!(matches!(refused, ClosureError::Dependency { .. }));
     let text = refused.to_string();
@@ -210,6 +211,7 @@ fn a_member_pinned_at_one_version_and_supplied_at_another_is_refused() {
         &pack,
         &[manifest(ContentMod::declared_id(), "1.5.0", None)],
         &content,
+        &[],
     )
     .expect_err("a pin is exact");
 
@@ -233,7 +235,7 @@ fn a_pack_referring_to_a_resource_nothing_supplies_is_refused_naming_the_referre
         named(PACK, "smelting"),
     );
 
-    let refused = validate(&pack, &manifests, &content).expect_err("nothing supplies it");
+    let refused = validate(&pack, &manifests, &content, &[]).expect_err("nothing supplies it");
 
     assert_eq!(
         refused,
@@ -250,7 +252,7 @@ fn a_pack_referring_to_a_resource_nothing_supplies_is_refused_naming_the_referre
         path("assets/example_pack/textures/gui/progress.png"),
         b"\x89PNG".to_vec(),
     );
-    validate(&supplied, &manifests, &content).expect("the pack supplies what it refers to");
+    validate(&supplied, &manifests, &content, &[]).expect("the pack supplies what it refers to");
 }
 
 #[test]
@@ -261,7 +263,7 @@ fn a_pack_supplying_one_path_twice_is_refused() {
     pack.supply(recipe.clone(), b"{\"changed\": true}\n".to_vec());
 
     assert_eq!(
-        validate(&pack, &manifests, &content),
+        validate(&pack, &manifests, &content, &[]),
         Err(ClosureError::SuppliedTwice { path: recipe })
     );
 }
@@ -273,7 +275,7 @@ fn a_resource_the_member_itself_declares_answers_a_reference_to_it() {
     // most: the file exists because a mod ships it.
     let (mut pack, manifests, content) = one_member();
     pack.refer_to(ContentMod::model_path(), named(PACK, "smelting"));
-    validate(&pack, &manifests, &content).expect("a member's own resource answers it");
+    validate(&pack, &manifests, &content, &[]).expect("a member's own resource answers it");
 }
 
 // ---------------------------------------------------------- registry closure ---
@@ -311,7 +313,7 @@ fn a_tag_member_in_the_games_namespace_is_allowed_and_deliberately_unverified() 
         .expect("a tag is not a claim on its members");
 
     let validated =
-        validate(&pack, &manifests, &[declaration]).expect("a vanilla member is allowed");
+        validate(&pack, &manifests, &[declaration], &[]).expect("a vanilla member is allowed");
     let tag = ContentMod::lanterns(ContentKind::Item);
     let written = validated.file(&tag.generated_path()).expect("the tag file");
     let text = String::from_utf8(written.bytes().to_vec()).expect("generated JSON is UTF-8");
@@ -330,8 +332,8 @@ fn a_tag_member_in_a_namespace_the_pack_pins_nothing_for_is_refused() {
         .tag(&ContentMod::lanterns(ContentKind::Item), &absent)
         .expect("a tag is not a claim on its members");
 
-    let refused =
-        validate(&pack, &manifests, &[declaration]).expect_err("nothing in the pack provides it");
+    let refused = validate(&pack, &manifests, &[declaration], &[])
+        .expect_err("nothing in the pack provides it");
 
     assert_eq!(
         refused,
@@ -360,7 +362,7 @@ fn a_tag_member_the_owning_mod_never_declared_is_refused_even_though_the_mod_is_
         .tag(&ContentMod::lanterns(ContentKind::Item), &phantom)
         .expect("a tag is not a claim on its members");
 
-    let refused = validate(&pack, &manifests, &[declaration])
+    let refused = validate(&pack, &manifests, &[declaration], &[])
         .expect_err("the owning mod declares no such entry");
 
     assert_eq!(
@@ -385,7 +387,7 @@ fn a_tag_member_the_owning_mod_never_declared_is_refused_even_though_the_mod_is_
     legal
         .tag(&ContentMod::lanterns(ContentKind::Item), &real)
         .expect_err("the mod already put its own item in that tag");
-    validate(&pack, &manifests, &[ContentMod::new().declaration()])
+    validate(&pack, &manifests, &[ContentMod::new().declaration()], &[])
         .expect("the shipped declaration holds");
 }
 
@@ -412,6 +414,7 @@ fn two_members_contributing_to_one_tag_are_written_as_one_file_holding_both() {
         &pack,
         &manifests,
         &[ContentMod::new().declaration(), second],
+        &[],
     )
     .expect("contributions merge rather than contest");
 
@@ -432,7 +435,7 @@ fn two_members_claiming_one_registry_entry_are_both_named() {
     content.push(ContentMod::new().declaration());
 
     assert_eq!(
-        validate(&pack, &manifests, &content),
+        validate(&pack, &manifests, &content, &[]),
         Err(ClosureError::ContentTwice {
             owner: ContentMod::declared_id().clone(),
         })
@@ -442,7 +445,7 @@ fn two_members_claiming_one_registry_entry_are_both_named() {
 #[test]
 fn a_pinned_member_whose_content_the_pack_never_collected_is_refused() {
     let (pack, manifests, _) = one_member();
-    let refused = validate(&pack, &manifests, &[]).expect_err("the union has to be complete");
+    let refused = validate(&pack, &manifests, &[], &[]).expect_err("the union has to be complete");
     assert_eq!(
         refused,
         ClosureError::ContentMissing {
@@ -463,7 +466,7 @@ fn a_progression_step_nothing_could_ever_reach_is_refused_by_name() {
         .declare(named(PACK, "right"), [named(PACK, "left")], None)
         .expect("a legal step");
 
-    let refused = validate(&pack, &manifests, &content).expect_err("neither step has a root");
+    let refused = validate(&pack, &manifests, &content, &[]).expect_err("neither step has a root");
 
     assert_eq!(
         refused,
@@ -488,7 +491,7 @@ fn a_progression_step_requiring_a_step_the_pack_does_not_declare_is_refused() {
         .expect("a step may name a prerequisite not yet declared");
 
     assert_eq!(
-        validate(&pack, &manifests, &content),
+        validate(&pack, &manifests, &content, &[]),
         Err(ClosureError::PrerequisiteMissing {
             state: named(PACK, "illumination"),
             prerequisite: named(PACK, "absent"),
@@ -506,7 +509,7 @@ fn a_progression_gate_is_held_to_the_same_rule_a_tag_member_is() {
         .expect("a legal step");
 
     assert_eq!(
-        validate(&pack, &manifests, &content),
+        validate(&pack, &manifests, &content, &[]),
         Err(ClosureError::Gate {
             state: named(PACK, "smelting"),
             entry: phantom,
@@ -527,7 +530,7 @@ fn a_progression_gate_is_held_to_the_same_rule_a_tag_member_is() {
         .progression_mut()
         .declare(named(PACK, "smelting"), [], Some(real))
         .expect("a legal step");
-    validate(&legal, &manifests, &content).expect("the gate names an entry the pack holds");
+    validate(&legal, &manifests, &content, &[]).expect("the gate names an entry the pack holds");
 }
 
 // --------------------------------------------------- determinism, on disk ---
@@ -542,7 +545,7 @@ fn every_kind_of_file() -> (
     pack.configure(
         ContentMod::declared_id().clone(),
         ravel_sdk::config::ValueDocument::parse(&format!(
-            r#"{{ "schemaVersion": 1, "owner": "{}", "values": {{}} }}"#,
+            r#"{{ "schemaVersion": 1, "owner": "{}", "values": {{ "limit": 3 }} }}"#,
             ContentMod::declared_id()
         ))
         .expect("a legal document"),
@@ -553,6 +556,33 @@ fn every_kind_of_file() -> (
         b"{\n  \"result\": \"content:copper_lantern\"\n}\n".to_vec(),
     );
     (pack, manifests, content)
+}
+
+/// The declaration the settings layer above is checked against.
+///
+/// Written here rather than taken from `ravel-test-mod-content`, which declares no
+/// settings: what these tests need is a pack that writes every kind of file, and a
+/// settings file is one of them.
+fn settings_declaration() -> ravel_sdk::config::ConfigurationDeclaration {
+    ravel_sdk::config::ConfigurationDeclaration::parse(&format!(
+        r#"{{
+          "schemaVersion": 1,
+          "owner": "{}",
+          "version": 1,
+          "settings": [
+            {{
+              "key": "limit",
+              "valueSchema": {{ "type": "integer" }},
+              "default": 4,
+              "side": "common",
+              "restartRequired": false,
+              "packOverride": "allowed"
+            }}
+          ]
+        }}"#,
+        ContentMod::declared_id()
+    ))
+    .expect("a legal configuration declaration")
 }
 
 /// Reads every file under `directory`, keyed by its path relative to it.
@@ -598,7 +628,8 @@ fn scratch(label: &str) -> PathBuf {
 /// Validates and writes the determinism pack into `directory`.
 fn write_into(directory: &Path) -> ValidatedPack {
     let (pack, manifests, content) = every_kind_of_file();
-    let validated = validate(&pack, &manifests, &content).expect("every closure holds");
+    let validated = validate(&pack, &manifests, &content, &[settings_declaration()])
+        .expect("every closure holds");
     validated.write(directory).expect("the pack is writable");
     validated
 }
@@ -712,7 +743,8 @@ fn every_written_path_is_either_the_games_layout_or_ravels_own() {
     // reserved prefix is Ravel's own format. A written pack holding a third kind of
     // path would be a layout nobody decided.
     let (pack, manifests, content) = every_kind_of_file();
-    let validated = validate(&pack, &manifests, &content).expect("every closure holds");
+    let validated = validate(&pack, &manifests, &content, &[settings_declaration()])
+        .expect("every closure holds");
 
     for file in validated.files() {
         let written = file.path().as_str();
@@ -734,7 +766,8 @@ fn every_written_path_is_either_the_games_layout_or_ravels_own() {
 #[test]
 fn the_reproducible_manifest_holds_every_pin_and_nothing_else_about_the_build() {
     let (pack, manifests, content) = every_kind_of_file();
-    let validated = validate(&pack, &manifests, &content).expect("every closure holds");
+    let validated = validate(&pack, &manifests, &content, &[settings_declaration()])
+        .expect("every closure holds");
     let written = validated
         .file(&path(&format!("{RESERVED_PREFIX}pack.json")))
         .expect("the pack writes its manifest");
@@ -774,7 +807,7 @@ fn a_tag_the_pack_writes_is_the_layout_and_the_field_this_repository_believes_in
     // pinned jar is not a tracked artifact. This test exists so a change to the
     // belief is a decision rather than a silent drift, and its name says which it is.
     let (pack, manifests, content) = one_member();
-    let validated = validate(&pack, &manifests, &content).expect("every closure holds");
+    let validated = validate(&pack, &manifests, &content, &[]).expect("every closure holds");
     let tag: TagId = ContentMod::lanterns(ContentKind::Item);
     let written = validated
         .file(&tag.generated_path())

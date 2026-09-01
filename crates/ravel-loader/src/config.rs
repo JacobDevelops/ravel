@@ -83,6 +83,7 @@ pub fn open_configuration(
                 mod_id: mod_id.clone(),
                 source,
             })?;
+        configured.resolved.push(resolved);
         configured.order.push(mod_id);
     }
 
@@ -94,6 +95,7 @@ pub fn open_configuration(
 pub struct Configured {
     order: Vec<ModId>,
     dropped: Vec<(ModId, Rejection)>,
+    resolved: Vec<LayeredConfiguration>,
 }
 
 impl Configured {
@@ -101,6 +103,16 @@ impl Configured {
     #[must_use]
     pub fn order(&self) -> &[ModId] {
         &self.order
+    }
+
+    /// Returns the settings each configured mod was handed, in the same order.
+    ///
+    /// Kept rather than dropped after the mod took them, because a host installs the
+    /// resolved set for the screen ADG-6 draws. Resolving them a second time to get
+    /// them back would be a second answer to what is in force.
+    #[must_use]
+    pub fn resolved(&self) -> &[LayeredConfiguration] {
+        &self.resolved
     }
 
     /// Returns every player value that was dropped, with the mod that owns it.

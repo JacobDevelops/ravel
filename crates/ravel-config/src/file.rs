@@ -12,12 +12,19 @@
 //! about the running process, so it is a parameter and its resolution belongs to
 //! whoever knows the process.
 //!
+//! The pack's layer is the same shape one directory deeper, at
+//! `<pack root>/ravel/config/<owner>.json`, and it is here for a sharper version of
+//! the same reason: `ravel-pack` writes those files and a launch reads them back,
+//! and a constant either crate spelled itself is a round trip that breaks the first
+//! time one of them moves. See [`PACK_DIRECTORY`] and [`read_pack`].
+//!
 //! # A missing file is not an error
 //!
 //! It means the player has changed nothing, which
 //! [`crate::LayeredConfiguration::resolve`] already handles as an absent layer.
 //! Only a file that exists and cannot be used is a failure.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::{fmt, fs, io};
 
@@ -28,6 +35,15 @@ use crate::document::{DocumentError, ValueDocument};
 /// The directory under a game directory that holds player configuration.
 const DIRECTORY: &str = "config";
 
+/// The directory a written pack keeps its settings layer in, under the pack root.
+///
+/// One file per owner, named and shaped exactly as the player's layer one
+/// directory up is, because both are a [`ValueDocument`] stating one mod's values.
+/// The constant lives here rather than in the crate that writes a pack or the crate
+/// that reads one, so the writer and the reader cannot drift apart: `ravel-pack`
+/// writes under it and a launch enumerates it, and neither spells the path itself.
+pub const PACK_DIRECTORY: &str = "ravel/config";
+
 /// The suffix a file is written under before it is put in place.
 const STAGING_SUFFIX: &str = ".pending";
 
@@ -35,6 +51,61 @@ const STAGING_SUFFIX: &str = ".pending";
 #[must_use]
 pub fn path(game_directory: &Path, owner: &ModId) -> PathBuf {
     game_directory.join(DIRECTORY).join(format!("{owner}.json"))
+}
+
+/// The file one owner's pack values live in, under a written pack's root.
+#[must_use]
+pub fn pack_path(root: &Path, owner: &ModId) -> PathBuf {
+    root.join(PACK_DIRECTORY).join(format!("{owner}.json"))
+}
+
+/// Reads every pack settings document a written pack holds, keyed by owner.
+///
+/// The pack layer is one document per mod, so the launch that resolves it needs
+/// them all before it walks the set rather than one path it opens per member. A
+/// pack that states no overrides has no directory, which is not an error for the
+/// reason a missing player file is not one.
+///
+/// # Errors
+///
+/// Returns the same errors as [`read`], plus [`FileError::Name`] for a JSON file
+/// whose name is not a mod id and so names no owner at all.
+pub fn read_pack(root: &Path) -> Result<BTreeMap<ModId, ValueDocument>, FileError> {
+    let directory = root.join(PACK_DIRECTORY);
+    let listing = match fs::read_dir(&directory) {
+        Ok(listing) => listing,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
+        Err(error) => {
+            return Err(FileError::Io(format!(
+                "cannot read `{}`: {error}",
+                directory.display()
+            )));
+        }
+    };
+
+    let mut documents = BTreeMap::new();
+    for entry in listing {
+        let file = entry
+            .map_err(|error| {
+                FileError::Io(format!("cannot read `{}`: {error}", directory.display()))
+            })?
+            .path();
+        if file.extension().is_none_or(|extension| extension != "json") {
+            continue;
+        }
+        let name = file
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        let owner = file
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .and_then(|stem| stem.parse::<ModId>().ok())
+            .ok_or(FileError::Name { file: name })?;
+        if let Some(document) = read_path(&file, &owner)? {
+            documents.insert(owner, document);
+        }
+    }
+    Ok(documents)
 }
 
 /// Reads one owner's player document.
@@ -135,6 +206,11 @@ pub enum FileError {
     Io(String),
     /// The file is not a document this crate accepts.
     Document(DocumentError),
+    /// The file's own name is not a mod id, so it states nobody's values.
+    Name {
+        /// The file name, which is the whole of what is wrong with it.
+        file: String,
+    },
     /// The file is a valid document that belongs to another owner.
     Owner {
         /// The owner the file name claims.
@@ -149,6 +225,10 @@ impl fmt::Display for FileError {
         match self {
             Self::Io(detail) => formatter.write_str(detail),
             Self::Document(error) => write!(formatter, "{error}"),
+            Self::Name { file } => write!(
+                formatter,
+                "`{file}` is named for no mod, and a values file is named for its owner"
+            ),
             Self::Owner { named, found } => write!(
                 formatter,
                 "`{named}.json` states values for `{found}` rather than `{named}`"
@@ -264,12 +344,100 @@ mod tests {
     }
 
     #[test]
+    fn every_pack_document_is_read_back_under_the_owner_its_file_is_named_for() {
+        let root = directory("pack-layer");
+        let other: ravel_core::ModId = "other_mod".parse().expect("a valid mod id");
+        std::fs::create_dir_all(root.join(super::PACK_DIRECTORY))
+            .expect("a writable pack directory");
+        for owner in [owner(), other.clone()] {
+            std::fs::write(
+                super::pack_path(&root, &owner),
+                ValueDocument::empty(owner).to_json(),
+            )
+            .expect("the file should be writable");
+        }
+        // Not a document, and not read as one: a pack directory holds Ravel's own
+        // files and this is what says the reader takes only the ones it named.
+        std::fs::write(
+            root.join(super::PACK_DIRECTORY).join("notes.txt"),
+            "ignored",
+        )
+        .expect("the file should be writable");
+
+        let documents = super::read_pack(&root).expect("the pack layer should be readable");
+
+        assert_eq!(
+            documents.keys().cloned().collect::<Vec<_>>(),
+            [owner(), other],
+            "every document, keyed by its owner, and nothing the reader was not named for"
+        );
+    }
+
+    #[test]
+    fn a_pack_that_states_no_overrides_has_no_directory_and_that_is_not_an_error() {
+        let root = directory("pack-absent");
+
+        assert_eq!(super::read_pack(&root), Ok(BTreeMap::new()));
+    }
+
+    #[test]
+    fn a_pack_document_naming_one_owner_and_stating_another_refuses_the_whole_layer() {
+        let root = directory("pack-mismatched");
+        let other: ravel_core::ModId = "other_mod".parse().expect("a valid mod id");
+        std::fs::create_dir_all(root.join(super::PACK_DIRECTORY))
+            .expect("a writable pack directory");
+        std::fs::write(
+            super::pack_path(&root, &owner()),
+            ValueDocument::empty(other.clone()).to_json(),
+        )
+        .expect("the file should be writable");
+
+        assert_eq!(
+            super::read_pack(&root),
+            Err(FileError::Owner {
+                named: owner().to_string(),
+                found: other.to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_pack_document_whose_name_is_not_a_mod_id_states_nobodys_values() {
+        let root = directory("pack-unnamed");
+        std::fs::create_dir_all(root.join(super::PACK_DIRECTORY))
+            .expect("a writable pack directory");
+        std::fs::write(
+            root.join(super::PACK_DIRECTORY).join("Not A Mod.json"),
+            ValueDocument::empty(owner()).to_json(),
+        )
+        .expect("the file should be writable");
+
+        assert_eq!(
+            super::read_pack(&root),
+            Err(FileError::Name {
+                file: "Not A Mod.json".to_owned(),
+            })
+        );
+    }
+
+    #[test]
     fn a_file_lands_where_the_java_ecosystem_puts_player_configuration() {
         let game = std::path::Path::new("/game");
 
         assert_eq!(
             path(game, &owner()),
             std::path::Path::new("/game/config/example_mod.json")
+        );
+        assert_eq!(
+            super::pack_path(game, &owner()),
+            std::path::Path::new("/game/ravel/config/example_mod.json")
+        );
+        assert!(
+            FileError::Name {
+                file: "Not A Mod.json".to_owned(),
+            }
+            .to_string()
+            .contains("Not A Mod.json")
         );
     }
 }

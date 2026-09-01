@@ -20,6 +20,7 @@ ravel-example-content-mod.workspace = true
 ravel-example-minimal-mod.workspace = true
 ravel-example-stateful-mod.workspace = true
 ravel-host-api.workspace = true
+ravel-host-runtime.workspace = true
 ravel-loader.workspace = true
 ravel-observability.workspace = true
 ravel-pack.workspace = true

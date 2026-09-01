@@ -140,8 +140,10 @@ one from the packages it composed — nothing today turns your `provides` into a
 fact about a running game, for the same reason nothing carries your packet.
 
 **Configuration composition is fixed too.** The same launch path hardcodes which
-mods' settings are resolved, against a constant pack configuration path. A
-settings document from a package it does not know about is not read.
+mods' settings are resolved. The pack layer itself is no longer fixed — a launch
+enumerates every document a written pack left under `ravel/config/`, one per mod,
+so a pack may configure as many of its members as it likes — but a settings
+document for a package the host was not built from is still not read.
 
 **Only `source.files` and the provenance record are integrity-checked.** Package
 verification hashes exactly those and nothing else, so a `configurationSchemas`

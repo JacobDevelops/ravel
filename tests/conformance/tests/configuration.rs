@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use ravel_bootstrap::{PACK_CONFIGURATION_PATH, compose};
+use ravel_bootstrap::compose;
 use ravel_config::{EditOutcome, LayeredConfiguration, ValueDocument, ValueSource, file};
 use ravel_core::{LifecycleState, Side};
 use ravel_test_mod_configuration::ConfigurationMod;
@@ -148,19 +148,15 @@ fn file_edits_take_effect_now_or_after_relaunch_as_declared() {
 #[test]
 fn production_composition_reads_pack_and_player_files_and_drives_the_real_mod() {
     let game = directory("production-compose");
-    let pack_path = game.join(PACK_CONFIGURATION_PATH);
+    let pack = document(&json!({
+        "client.enabled": true,
+        "integrated.mob_limit": 40,
+        "dedicated.motd": "Pack",
+    }));
+    let pack_path = file::pack_path(&game, &pack.owner);
     std::fs::create_dir_all(pack_path.parent().expect("the pack path has a parent"))
         .expect("the pack directory is writable");
-    std::fs::write(
-        &pack_path,
-        document(&json!({
-            "client.enabled": true,
-            "integrated.mob_limit": 40,
-            "dedicated.motd": "Pack",
-        }))
-        .to_json(),
-    )
-    .expect("the launch pack file is writable");
+    std::fs::write(&pack_path, pack.to_json()).expect("the launch pack file is writable");
     file::write(
         &game,
         &document(&json!({

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use ravel_config::{ConfigurationDeclaration, LayerError, LayeredConfiguration, file};
 use ravel_core::{ContentId, ModId, RegistryKey, RelativePath, Side, Version};
 use ravel_data::{ContentDeclaration, Override, TagSet};
 use ravel_package::PackageManifest;
@@ -146,6 +147,19 @@ impl ValidatedPack {
 /// and every gate names an entry the pack provides under the same rule tag members
 /// are held to.
 ///
+/// # The settings layer
+///
+/// Not one of the four, and checked anyway, because the alternative is worse than an
+/// untidy list: the pack's settings layer is written to a file a launch reads, so a
+/// key the pack misspells is a refusal that reaches the *player* on a machine the
+/// pack author never sees. Each member's overrides are resolved against that
+/// member's own [`ConfigurationDeclaration`] through
+/// [`LayeredConfiguration::resolve`] — the same call the launch makes, so the two
+/// cannot disagree about an unknown key, an illegal value, or a `required` setting
+/// the pack left out.
+///
+/// [`LayeredConfiguration::resolve`]: ravel_config::LayeredConfiguration::resolve
+///
 /// # Errors
 ///
 /// Returns the [`ClosureError`] naming the offender. The order the checks run in is
@@ -155,6 +169,7 @@ pub fn validate(
     pack: &PackDeclaration,
     manifests: &[PackageManifest],
     content: &[ContentDeclaration],
+    configurations: &[ConfigurationDeclaration],
 ) -> Result<ValidatedPack, ClosureError> {
     let installed = pinned_set(pack, manifests)?;
     for side in Side::ALL {
@@ -167,6 +182,7 @@ pub fn validate(
     let declarations = declared_content(pack, content)?;
     registry_closure(pack, &declarations)?;
     progression_closure(pack, &declarations)?;
+    settings_closure(pack, configurations)?;
     let (files, overrides) = written_files(pack, &installed, &declarations)?;
 
     Ok(ValidatedPack { files, overrides })
@@ -290,6 +306,34 @@ fn progression_closure(
                 kind,
             })?;
         }
+    }
+    Ok(())
+}
+
+/// Refuses a settings layer the members' own declarations would not accept.
+///
+/// The pack layer only, with no player layer under it, because a pack author has
+/// none: what is being decided is whether the document the pack ships is one this
+/// mod can be handed at all.
+fn settings_closure(
+    pack: &PackDeclaration,
+    configurations: &[ConfigurationDeclaration],
+) -> Result<(), ClosureError> {
+    for (owner, document) in pack.settings() {
+        let Some(declaration) = configurations
+            .iter()
+            .find(|declaration| &declaration.owner == owner)
+        else {
+            return Err(ClosureError::SettingsUndeclared {
+                owner: owner.clone(),
+            });
+        };
+        LayeredConfiguration::resolve(declaration.clone(), Some(document), None).map_err(
+            |source| ClosureError::Settings {
+                owner: owner.clone(),
+                source,
+            },
+        )?;
     }
     Ok(())
 }
@@ -418,23 +462,11 @@ fn written_files(
         }
     }
 
-    // Written unchecked, and this is the one asymmetry in what `validate` decides.
-    // A tag member is checked because registry closure is one of the four properties
-    // the gate names and its input — every member's `ContentDeclaration` — is already
-    // an argument here. A settings key is not, because the pack's settings layer is
-    // none of the four and the input a check would need, every member's
-    // `ConfigurationDeclaration`, is not an argument here. The check itself is not
-    // missing from the repository: `LayeredConfiguration::resolve` refuses an unknown
-    // key, an illegal value, and a `required` setting the pack left out. It runs when
-    // the game starts rather than when the pack is built, so a typo'd tag member is
-    // refused to the pack author and a typo'd settings key is refused to the player.
-    // Closing it means handing `validate` the members' configuration declarations and
-    // calling that same `resolve` per member rather than writing a second answer.
-    // Nothing decides against that; no work package owns it yet, and `ROADMAP.md`'s
-    // open-questions table is where it is recorded.
     for (owner, document) in pack.settings() {
-        let path = ravel_path(&format!("config/{owner}.json"));
-        files.insert(path, document_bytes(&document.to_json()));
+        files.insert(
+            pack_settings_path(owner),
+            document_bytes(&document.to_json()),
+        );
     }
     files.insert(ravel_path("pack.json"), pack_manifest(pack));
 
@@ -478,6 +510,22 @@ fn reserved(path: &RelativePath) -> Result<(), ClosureError> {
 /// prefix is this crate's literal and the rest is a [`ModId`] and a literal.
 fn ravel_path(rest: &str) -> RelativePath {
     RelativePath::try_from(format!("{RESERVED_PREFIX}{rest}"))
+        .expect("a mod id cannot spell an illegal path")
+}
+
+/// Returns where one member's pack settings document is written.
+///
+/// The directory is `ravel-config`'s, because the launch that reads these files
+/// enumerates that same constant. A path spelled here would be a second answer to
+/// where the pack layer lives, and the first time either moved the pack would be
+/// written somewhere nothing reads.
+///
+/// # Panics
+///
+/// Panics if the result is not a legal [`RelativePath`], which cannot happen for
+/// the reason [`ravel_path`] gives.
+fn pack_settings_path(owner: &ModId) -> RelativePath {
+    RelativePath::try_from(format!("{}/{owner}.json", file::PACK_DIRECTORY))
         .expect("a mod id cannot spell an illegal path")
 }
 
@@ -664,6 +712,18 @@ pub enum ClosureError {
         /// The stranded step.
         state: ContentId,
     },
+    /// The pack states settings for a member that declares none.
+    SettingsUndeclared {
+        /// The member with no configuration declaration.
+        owner: ModId,
+    },
+    /// A member's own declaration refuses the settings the pack states for it.
+    Settings {
+        /// The member whose settings they are.
+        owner: ModId,
+        /// What `ravel-config` refused, which is what a launch would have refused.
+        source: LayerError,
+    },
 }
 
 impl fmt::Display for ClosureError {
@@ -748,6 +808,15 @@ impl fmt::Display for ClosureError {
                 formatter,
                 "`{state}` can never be reached: every route to it needs a step that needs it"
             ),
+            Self::SettingsUndeclared { owner } => write!(
+                formatter,
+                "this pack states settings for `{owner}` and `{owner}` declares none, so nothing \
+                 could say what they mean"
+            ),
+            Self::Settings { owner, source } => write!(
+                formatter,
+                "this pack's settings for `{owner}` are ones `{owner}` refuses: {source}"
+            ),
         }
     }
 }
@@ -756,6 +825,7 @@ impl std::error::Error for ClosureError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Dependency { source, .. } => Some(source.as_ref()),
+            Self::Settings { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -763,12 +833,14 @@ impl std::error::Error for ClosureError {
 
 #[cfg(test)]
 mod tests {
-    use ravel_config::ValueDocument;
+    use ravel_config::{ConfigurationDeclaration, LayerError, ValueDocument};
     use ravel_core::{ContentId, ContentKind, ModId, RegistryKey, RelativePath, Side, Version};
     use ravel_data::{ContentDeclaration, TagId};
     use ravel_package::PackageManifest;
 
-    use super::{ClosureError, RESERVED_PREFIX, UnprovidedEntry, VANILLA_NAMESPACE, validate};
+    use super::{
+        ClosureError, RESERVED_PREFIX, UnprovidedEntry, VANILLA_NAMESPACE, file, validate,
+    };
     use crate::declare::PackDeclaration;
 
     /// A digest shaped like one, for a manifest nothing verifies here.
@@ -833,7 +905,7 @@ mod tests {
     #[test]
     fn a_pack_whose_four_closures_hold_writes_its_manifest_and_nothing_else() {
         let (pack, manifests, content) = one_member();
-        let validated = validate(&pack, &manifests, &content).expect("every closure holds");
+        let validated = validate(&pack, &manifests, &content, &[]).expect("every closure holds");
 
         assert_eq!(
             validated
@@ -865,7 +937,7 @@ mod tests {
             .expect("a legal pin");
         content.push(ContentDeclaration::new(id("absent_mod")));
 
-        let refused = validate(&pack, &manifests, &content).expect_err("a member is missing");
+        let refused = validate(&pack, &manifests, &content, &[]).expect_err("a member is missing");
         assert_eq!(
             refused,
             ClosureError::MemberMissing {
@@ -878,7 +950,7 @@ mod tests {
     #[test]
     fn a_manifest_at_a_version_the_pack_did_not_pin_is_refused_with_both_versions() {
         let (pack, _, content) = one_member();
-        let refused = validate(&pack, &[manifest("base_mod", "1.1.0", None)], &content)
+        let refused = validate(&pack, &[manifest("base_mod", "1.1.0", None)], &content, &[])
             .expect_err("the pin is exact");
         assert_eq!(
             refused,
@@ -898,7 +970,7 @@ mod tests {
         manifests.push(manifest("stowaway_mod", "1.0.0", None));
 
         assert_eq!(
-            validate(&pack, &manifests, &content),
+            validate(&pack, &manifests, &content, &[]),
             Err(ClosureError::UnpinnedPackage {
                 package: id("stowaway_mod")
             })
@@ -917,7 +989,8 @@ mod tests {
         )];
         let content = vec![ContentDeclaration::new(id("consumer_mod"))];
 
-        let refused = validate(&pack, &manifests, &content).expect_err("the library is absent");
+        let refused =
+            validate(&pack, &manifests, &content, &[]).expect_err("the library is absent");
         assert!(matches!(refused, ClosureError::Dependency { .. }));
         let text = refused.to_string();
         assert!(text.contains("library_mod"), "{text}");
@@ -944,7 +1017,8 @@ mod tests {
             ContentDeclaration::new(id("library_mod")),
         ];
 
-        let refused = validate(&pack, &manifests, &content).expect_err("2.0.0 is outside `^1.0.0`");
+        let refused =
+            validate(&pack, &manifests, &content, &[]).expect_err("2.0.0 is outside `^1.0.0`");
         assert!(matches!(refused, ClosureError::Dependency { .. }));
         let text = refused.to_string();
         assert!(
@@ -963,7 +1037,7 @@ mod tests {
             content_referrer(),
         );
 
-        let refused = validate(&pack, &manifests, &content).expect_err("nothing supplies it");
+        let refused = validate(&pack, &manifests, &content, &[]).expect_err("nothing supplies it");
         assert_eq!(
             refused,
             ClosureError::ResourceMissing {
@@ -994,7 +1068,7 @@ mod tests {
             path("assets/example_pack/textures/lantern.png"),
             content_referrer(),
         );
-        validate(&pack, &manifests, &content).expect("the pack supplies what it refers to");
+        validate(&pack, &manifests, &content, &[]).expect("the pack supplies what it refers to");
 
         // And so does a path a member's manifest declares, which the pack does not
         // write but the installation does hold.
@@ -1009,7 +1083,7 @@ mod tests {
             "resources/lang/en.json",
         ))
         .expect("a legal manifest");
-        validate(&second, &[with_resource], &content)
+        validate(&second, &[with_resource], &content, &[])
             .expect("a member's declared resource answers a reference");
     }
 
@@ -1045,7 +1119,8 @@ mod tests {
             b"{\"changed\": true}".to_vec(),
         );
 
-        let refused = validate(&pack, &manifests, &content).expect_err("one path holds one file");
+        let refused =
+            validate(&pack, &manifests, &content, &[]).expect_err("one path holds one file");
         assert_eq!(
             refused,
             ClosureError::SuppliedTwice {
@@ -1089,7 +1164,8 @@ mod tests {
             .expect("a legal entry");
         second.tag(&tag, &other).expect("an item joins an item tag");
 
-        let validated = validate(&pack, &manifests, &[first, second]).expect("contributions merge");
+        let validated =
+            validate(&pack, &manifests, &[first, second], &[]).expect("contributions merge");
         let written = validated
             .file(&tag.generated_path())
             .expect("one file for the tag");
@@ -1118,7 +1194,7 @@ mod tests {
             .expect("a legal supply");
 
         let refused =
-            validate(&pack, &manifests, &[first, second]).expect_err("nothing could merge it");
+            validate(&pack, &manifests, &[first, second], &[]).expect_err("nothing could merge it");
         assert_eq!(
             refused,
             ClosureError::PathContested {
@@ -1149,7 +1225,7 @@ mod tests {
         second.tag(&tag, &other).expect("an item joins an item tag");
         pack.supply(tag.generated_path(), b"{}\n".to_vec());
 
-        let validated = validate(&pack, &manifests, &[first, second])
+        let validated = validate(&pack, &manifests, &[first, second], &[])
             .expect("a pack may write the tag file itself");
         assert_eq!(validated.overrides().len(), 1);
         assert_eq!(validated.overrides()[0].winner, id("example_pack"));
@@ -1180,7 +1256,7 @@ mod tests {
         pack.supply(tag.generated_path(), b"{}\n".to_vec());
 
         let validated =
-            validate(&pack, &manifests, &[declaration]).expect("a pack may replace a file");
+            validate(&pack, &manifests, &[declaration], &[]).expect("a pack may replace a file");
         assert_eq!(validated.overrides().len(), 1);
         assert_eq!(validated.overrides()[0].winner, id("example_pack"));
         assert_eq!(validated.overrides()[0].shadowed, [id("base_mod")]);
@@ -1199,7 +1275,7 @@ mod tests {
         pack.supply(path(&format!("{RESERVED_PREFIX}pack.json")), b"{}".to_vec());
 
         assert_eq!(
-            validate(&pack, &manifests, &content),
+            validate(&pack, &manifests, &content, &[]),
             Err(ClosureError::ReservedPath {
                 path: path(&format!("{RESERVED_PREFIX}pack.json")),
             })
@@ -1211,7 +1287,8 @@ mod tests {
     #[test]
     fn a_pinned_member_that_declared_no_content_at_all_is_refused() {
         let (pack, manifests, _) = one_member();
-        let refused = validate(&pack, &manifests, &[]).expect_err("the union must be complete");
+        let refused =
+            validate(&pack, &manifests, &[], &[]).expect_err("the union must be complete");
         assert_eq!(
             refused,
             ClosureError::ContentMissing {
@@ -1229,7 +1306,7 @@ mod tests {
         let (pack, manifests, mut content) = one_member();
         content.push(ContentDeclaration::new(id("stranger_mod")));
         assert_eq!(
-            validate(&pack, &manifests, &content),
+            validate(&pack, &manifests, &content, &[]),
             Err(ClosureError::ContentUnpinned {
                 owner: id("stranger_mod")
             })
@@ -1241,7 +1318,7 @@ mod tests {
         let (pack, manifests, mut content) = one_member();
         content.push(ContentDeclaration::new(id("base_mod")));
         assert_eq!(
-            validate(&pack, &manifests, &content),
+            validate(&pack, &manifests, &content, &[]),
             Err(ClosureError::ContentTwice {
                 owner: id("base_mod")
             })
@@ -1259,7 +1336,7 @@ mod tests {
         allowed
             .tag(&tag, &vanilla)
             .expect("a tag is not a claim on its members");
-        validate(&pack, &manifests, &[allowed])
+        validate(&pack, &manifests, &[allowed], &[])
             .expect("adding a vanilla item to a tag is ordinary");
 
         // A namespace the pack pins nothing for: refused, and the reason says so.
@@ -1268,8 +1345,8 @@ mod tests {
         stranger
             .tag(&tag, &absent)
             .expect("a tag is not a claim on its members");
-        let refused =
-            validate(&pack, &manifests, &[stranger]).expect_err("nothing in the pack provides it");
+        let refused = validate(&pack, &manifests, &[stranger], &[])
+            .expect_err("nothing in the pack provides it");
         assert_eq!(
             refused,
             ClosureError::TagMember {
@@ -1296,7 +1373,7 @@ mod tests {
             .tag(&tag, &never)
             .expect("a tag is not a claim on its members");
 
-        let refused = validate(&pack, &manifests, &[declaration])
+        let refused = validate(&pack, &manifests, &[declaration], &[])
             .expect_err("the owner declares no such entry");
         assert_eq!(
             refused,
@@ -1338,7 +1415,7 @@ mod tests {
         // Two different entries, because each is namespaced by its owner. The
         // contested case needs one declaration to hold the other's key, which is
         // what a pack-level check is for.
-        validate(&pack, &manifests, &[first, second]).expect("two namespaces, two entries");
+        validate(&pack, &manifests, &[first, second], &[]).expect("two namespaces, two entries");
     }
 
     // ------------------------------------------------ progression closure ---
@@ -1358,7 +1435,7 @@ mod tests {
             .expect("a step may name a prerequisite not yet declared");
 
         assert_eq!(
-            validate(&pack, &manifests, &content),
+            validate(&pack, &manifests, &content, &[]),
             Err(ClosureError::PrerequisiteMissing {
                 state: named("example_pack", "locked"),
                 prerequisite: named("example_pack", "absent"),
@@ -1384,7 +1461,8 @@ mod tests {
             )
             .expect("a legal step");
 
-        let refused = validate(&pack, &manifests, &content).expect_err("neither step has a root");
+        let refused =
+            validate(&pack, &manifests, &content, &[]).expect_err("neither step has a root");
         assert_eq!(
             refused,
             ClosureError::StateUnreachable {
@@ -1406,7 +1484,7 @@ mod tests {
             .expect("a legal step");
 
         assert_eq!(
-            validate(&pack, &manifests, &content),
+            validate(&pack, &manifests, &content, &[]),
             Err(ClosureError::Gate {
                 state: named("example_pack", "start"),
                 entry: gate,
@@ -1433,30 +1511,131 @@ mod tests {
             )
             .expect("a legal step");
 
-        validate(&pack, &manifests, &[declaration]).expect("the gate is an entry the pack holds");
+        validate(&pack, &manifests, &[declaration], &[])
+            .expect("the gate is an entry the pack holds");
     }
 
     // ------------------------------------------------------------ output ---
 
-    #[test]
-    fn a_packs_settings_document_is_written_under_ravels_own_directory() {
+    // ---------------------------------------------------- settings layer ---
+
+    /// A declaration for `owner` with one optional integer and one `required` one.
+    fn configuration(owner: &str) -> ConfigurationDeclaration {
+        ConfigurationDeclaration::parse(&format!(
+            r#"{{
+              "schemaVersion": 1,
+              "owner": "{owner}",
+              "version": 1,
+              "settings": [
+                {{
+                  "key": "limit",
+                  "valueSchema": {{ "type": "integer" }},
+                  "default": 4,
+                  "side": "common",
+                  "restartRequired": false,
+                  "packOverride": "allowed"
+                }}
+              ]
+            }}"#
+        ))
+        .expect("a legal declaration")
+    }
+
+    /// One pack stating `values` for `base_mod`, and that mod's declaration.
+    fn configured(
+        values: &str,
+    ) -> (
+        PackDeclaration,
+        Vec<PackageManifest>,
+        Vec<ContentDeclaration>,
+    ) {
         let (mut pack, manifests, content) = one_member();
-        let document = ValueDocument::parse(
-            r#"{ "schemaVersion": 1, "owner": "base_mod", "values": { "limit": 3 } }"#,
-        )
+        let document = ValueDocument::parse(&format!(
+            r#"{{ "schemaVersion": 1, "owner": "base_mod", "values": {values} }}"#
+        ))
         .expect("a legal document");
         pack.configure(id("base_mod"), document)
             .expect("a document that names its own mod");
+        (pack, manifests, content)
+    }
 
-        let validated = validate(&pack, &manifests, &content).expect("every closure holds");
+    #[test]
+    fn a_settings_key_the_owner_does_not_declare_is_refused_to_the_pack_author() {
+        // The whole point of checking here: this document is well-formed, so nothing
+        // before the layering can tell it apart from the one below, and a launch is
+        // where a player would otherwise have met it.
+        let (pack, manifests, content) = configured(r#"{ "limt": 3 }"#);
+
+        let refused = validate(&pack, &manifests, &content, &[configuration("base_mod")])
+            .expect_err("`limt` is not a setting `base_mod` declares");
+
+        assert_eq!(
+            refused,
+            ClosureError::Settings {
+                owner: id("base_mod"),
+                source: LayerError::PackUnknown {
+                    key: "limt".parse().expect("a legal setting key"),
+                },
+            }
+        );
+        let text = refused.to_string();
+        assert!(text.contains("base_mod") && text.contains("limt"), "{text}");
+        assert!(std::error::Error::source(&refused).is_some());
+    }
+
+    #[test]
+    fn a_settings_value_the_owner_would_refuse_is_refused_to_the_pack_author() {
+        let (pack, manifests, content) = configured(r#"{ "limit": "three" }"#);
+
+        let refused = validate(&pack, &manifests, &content, &[configuration("base_mod")])
+            .expect_err("`limit` is an integer");
+
+        assert!(matches!(
+            refused,
+            ClosureError::Settings {
+                source: LayerError::PackValue { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn a_pack_stating_settings_for_a_member_that_declares_none_is_refused() {
+        let (pack, manifests, content) = configured(r#"{ "limit": 3 }"#);
+
+        assert_eq!(
+            validate(&pack, &manifests, &content, &[]),
+            Err(ClosureError::SettingsUndeclared {
+                owner: id("base_mod"),
+            })
+        );
+        assert!(
+            ClosureError::SettingsUndeclared {
+                owner: id("base_mod"),
+            }
+            .to_string()
+            .contains("declares none")
+        );
+    }
+
+    #[test]
+    fn a_packs_settings_document_is_written_where_a_launch_reads_the_pack_layer() {
+        let (pack, manifests, content) = configured(r#"{ "limit": 3 }"#);
+
+        let validated = validate(&pack, &manifests, &content, &[configuration("base_mod")])
+            .expect("every closure holds");
         let written = validated
-            .file(&path(&format!("{RESERVED_PREFIX}config/base_mod.json")))
+            .file(&path(&format!("{}/base_mod.json", file::PACK_DIRECTORY)))
             .expect("the pack writes its own layer");
         let text = String::from_utf8(written.bytes().to_vec()).expect("the document is UTF-8");
         assert!(text.contains("\"limit\""), "{text}");
         assert!(
             text.ends_with('\n'),
             "every written document ends in a newline"
+        );
+        assert!(
+            file::PACK_DIRECTORY.starts_with(RESERVED_PREFIX),
+            "the pack layer is under the prefix `reserved` keeps everything else out of"
         );
     }
 
@@ -1482,9 +1661,9 @@ mod tests {
             .declare(named("example_pack", "start"), [], Some(lantern))
             .expect("a legal step");
 
-        let first = validate(&pack, &manifests, std::slice::from_ref(&declaration))
+        let first = validate(&pack, &manifests, std::slice::from_ref(&declaration), &[])
             .expect("every closure holds");
-        let second = validate(&pack, &manifests, std::slice::from_ref(&declaration))
+        let second = validate(&pack, &manifests, std::slice::from_ref(&declaration), &[])
             .expect("every closure holds");
         assert_eq!(first, second);
         assert!(

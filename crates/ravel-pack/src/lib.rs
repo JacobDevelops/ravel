@@ -34,21 +34,14 @@
 //! the other half: a tag member in the game's namespace is allowed and is not
 //! verified to exist, because what the game provides is inside the pinned artifact.
 //!
-//! Whether anything reads what this crate writes. Nothing in Ravel does. The
-//! `data/` and `assets/` half is written against this repository's belief about the
-//! game's pack format, and the [`RESERVED_PREFIX`] half is written against a reader
-//! that does not exist yet: no code outside this crate and its own suite reads
-//! `ravel/`, and `ravel-loader`'s `open_configuration` takes its pack documents from
-//! a caller-supplied map that no production caller fills. So a written pack is
-//! validated only against itself, and the write→read round trip is unprovable by
-//! construction. That is the same construction that hid three blocking defects across
-//! eleven M3 review rounds, so "the pack writes correct bytes" is not established
-//! until something in Ravel reads them back. `ROADMAP.md`'s open-questions table
-//! records the owed work.
-//!
-//! Which keys a pack's settings layer may state. See the comment at the settings
-//! write in `validate`; the check exists in `ravel-config` and runs at launch rather
-//! than here.
+//! Whether the `data/` and `assets/` half is read by anything. Nothing in Ravel
+//! reads it; it is written against this repository's belief about the game's pack
+//! format, and only the game could settle that. The [`RESERVED_PREFIX`] half is no
+//! longer in that state: the settings layer this crate writes under
+//! `ravel_config::file::PACK_DIRECTORY` is the layer a launch enumerates and hands
+//! to `ravel-loader`'s `open_configuration`, and
+//! `tests/conformance/tests/pack_round_trip.rs` writes a pack with this crate and
+//! reads the values back out of the mods a composition drove.
 //!
 //! All of these are stated where the code is rather than only in a report, because the
 //! next reader of this crate is the person who would otherwise assume they were checked.

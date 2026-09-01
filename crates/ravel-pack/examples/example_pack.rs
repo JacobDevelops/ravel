@@ -22,7 +22,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use ravel_config::ValueDocument;
+use ravel_config::{ConfigurationDeclaration, ValueDocument};
 use ravel_core::{ContentId, ContentKind, ModId, RelativePath, Version};
 use ravel_data::{ContentDeclaration, TagId};
 use ravel_pack::{PackDeclaration, ValidatedPack, validate};
@@ -44,8 +44,9 @@ fn main() -> ExitCode {
         .map(|(member, version)| manifest(member, version))
         .collect();
     let content = vec![copper(), lanterns()];
+    let configurations = vec![brightness()];
 
-    let validated = match validate(&pack, &manifests, &content) {
+    let validated = match validate(&pack, &manifests, &content, &configurations) {
         Ok(validated) => validated,
         Err(refused) => {
             // A pack author's build stops here, and the sentence names what to fix.
@@ -75,8 +76,9 @@ fn declare() -> PackDeclaration {
             .expect("each member is pinned once");
     }
 
-    // The pack layer of ADG-6's three. Which settings a pack may state at all is the
-    // setting's own `packOverride`, decided when the layers are resolved.
+    // The pack layer of ADG-6's three, checked against `lantern_mod`'s own
+    // declaration: misspell the key or state a value the schema refuses and this
+    // pack stops building, rather than a player's launch stopping instead.
     pack.configure(
         id("lantern_mod"),
         ValueDocument::parse(
@@ -125,6 +127,28 @@ fn declare() -> PackDeclaration {
         .expect("a step gated on an entry a member declares");
 
     pack
+}
+
+/// What `lantern_mod` declares a pack may state, which is what checks the layer.
+fn brightness() -> ConfigurationDeclaration {
+    ConfigurationDeclaration::parse(
+        r#"{
+          "schemaVersion": 1,
+          "owner": "lantern_mod",
+          "version": 1,
+          "settings": [
+            {
+              "key": "lantern.brightness",
+              "valueSchema": { "type": "integer", "minimum": 0, "maximum": 15 },
+              "default": 8,
+              "side": "common",
+              "restartRequired": false,
+              "packOverride": "locked"
+            }
+          ]
+        }"#,
+    )
+    .expect("a legal configuration declaration")
 }
 
 /// What `copper_mod` contributes: one ingot, in the shared ingot tag.

@@ -29,17 +29,19 @@
 //! [`initialize`] is the body behind that entry, and every host's entry is a
 //! wrapper around it.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
 use ravel_bootstrap_runtime::{
     HookError, SideError, install, install_settings, pre_world_report, side as running_side,
 };
-use ravel_config::{LayerError, LayeredConfiguration, file};
+use ravel_config::{LayeredConfiguration, ValueDocument, file};
 use ravel_core::{ModId, Side};
 use ravel_host_api::HostMod;
 use ravel_loader::{
-    DiscoveryRefused, DriveError, LifecycleEntry, LifecycleMachine, admitted, discover, drive,
+    ConfigRefused, DiscoveryRefused, DriveError, LifecycleEntry, LifecycleError, LifecycleMachine,
+    admitted, discover, drive, open_configuration,
 };
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
@@ -49,9 +51,6 @@ use ravel_resolve::{ResolutionError, resolve};
 /// Re-exported so a host names the running versions through the crate it already
 /// depends on rather than reaching past it into `ravel-bootstrap`.
 pub use ravel_bootstrap_runtime::environment;
-
-/// The override path a selected pack's configuration is read from.
-pub const PACK_CONFIGURATION_PATH: &str = "ravel-pack/configuration.json";
 
 /// Asks the JVM this process is inside which distribution it was started from.
 ///
@@ -89,45 +88,79 @@ pub type Composition = (
 ///
 /// The order is the order a launch has to take: what the instance holds is
 /// established first, so a package the host cannot run refuses before any mod
-/// code is entered; then each member that declares settings resolves them; then
-/// the set is admitted and driven.
+/// code is entered; then the two document layers are read; then the admitted set
+/// is configured, and only then driven.
+///
+/// # The settings layers
+///
+/// Both are read through `ravel-config`'s own file module and both are one
+/// document per owner: the pack's under [`file::PACK_DIRECTORY`], which is where
+/// `ravel-pack` writes it, and the player's under the game directory, which is
+/// where an edited setting is saved. Reading one file for every member — which is
+/// what this did — gave the second configuring mod a document written for the
+/// first and refused the launch.
+///
+/// The walk itself is [`open_configuration`]'s rather than one written here, so
+/// the loader's rules about load order, a parked side and a mod declaring another
+/// mod's settings hold for a real launch and not only for its own tests. It wants
+/// the admitted plan as a machine, and [`drive`] builds an equal one from the same
+/// entries a moment later.
 ///
 /// # Errors
 ///
 /// Returns an error when the instance's packages cannot be established or name
-/// no member, when a selected-pack or player document cannot be read, when
-/// configuration cannot be resolved or consumed, or when the lifecycle cannot
-/// reach running.
+/// no member, when a pack or player document cannot be read, when configuration
+/// cannot be resolved or consumed, or when the lifecycle cannot reach running.
 pub fn compose(
     game_directory: &Path,
     side: Side,
-    mut members: Vec<Member>,
+    members: Vec<Member>,
 ) -> Result<Composition, LaunchError> {
     account_for_installed(game_directory, &members)?;
 
-    let mut configurations = Vec::new();
-    for member in &mut members {
-        let Some(declaration) = member.host.configuration_declaration() else {
-            continue;
-        };
-        let pack_path = game_directory.join(PACK_CONFIGURATION_PATH);
-        let pack =
-            file::read_path(&pack_path, &declaration.owner).map_err(LaunchError::PackFile)?;
-        let player =
-            file::read(game_directory, &declaration.owner).map_err(LaunchError::PlayerFile)?;
-        let resolved = LayeredConfiguration::resolve(declaration, pack.as_ref(), player.as_ref())
-            .map_err(LaunchError::Layer)?;
-        member
-            .host
-            .configure(&resolved)
-            .map_err(|refused| LaunchError::Configuration(refused.to_string()))?;
-        configurations.push(resolved);
-    }
+    let packs = file::read_pack(game_directory).map_err(LaunchError::PackFile)?;
+    let players = player_documents(game_directory, &members)?;
 
-    let composed = admit(side, members)?;
+    let mut composed = admit(side, members)?;
+    let plan = composed.iter().map(|(entry, _)| entry.clone()).collect();
+    let machine = LifecycleMachine::new(side, plan).map_err(LaunchError::Lifecycle)?;
+    let configurations = {
+        let mut hosts: Vec<&mut dyn HostMod> = Vec::with_capacity(composed.len());
+        for (_, host) in &mut composed {
+            hosts.push(&mut **host);
+        }
+        open_configuration(&machine, &mut hosts, &packs, &players)
+            .map_err(LaunchError::Config)?
+            .resolved()
+            .to_vec()
+    };
+
     let (machine, mods) = drive(side, composed).map_err(LaunchError::Drive)?;
 
     Ok((machine, mods, configurations))
+}
+
+/// Reads the player's own document for every member that declares settings.
+///
+/// Only those members, rather than everything the player's config directory
+/// holds: a file for a mod this host was not built from is not this launch's to
+/// refuse.
+fn player_documents(
+    game_directory: &Path,
+    members: &[Member],
+) -> Result<BTreeMap<ModId, ValueDocument>, LaunchError> {
+    let mut players = BTreeMap::new();
+    for member in members {
+        let Some(declaration) = member.host.configuration_declaration() else {
+            continue;
+        };
+        if let Some(document) =
+            file::read(game_directory, &declaration.owner).map_err(LaunchError::PlayerFile)?
+        {
+            players.insert(declaration.owner, document);
+        }
+    }
+    Ok(players)
 }
 
 /// Discovers what the instance has installed and refuses anything the host has
@@ -247,7 +280,7 @@ pub enum LaunchError {
     CurrentDirectory(std::io::Error),
     /// The JVM could not say which side this process is.
     Side(SideError),
-    /// The selected pack's override document could not be read.
+    /// The pack's settings layer could not be read.
     PackFile(file::FileError),
     /// The player's existing value document could not be read.
     PlayerFile(file::FileError),
@@ -263,10 +296,10 @@ pub enum LaunchError {
     Resolution(ResolutionError),
     /// An admitted entry and the composed values do not account for each other.
     Composition(ModId),
-    /// The declaration and its layers could not be resolved.
-    Layer(LayerError),
-    /// A mod could not consume its declared settings.
-    Configuration(String),
+    /// The admitted plan could not be established as a lifecycle.
+    Lifecycle(LifecycleError),
+    /// The set's settings could not be resolved or consumed.
+    Config(ConfigRefused),
     /// The lifecycle could not drive a composed value.
     Drive(DriveError),
     /// The driven runtime could not be installed.
@@ -310,9 +343,11 @@ impl fmt::Display for LaunchError {
                 formatter,
                 "`{mod_id}` was admitted without a composed value, or holds one nothing admitted"
             ),
-            Self::Layer(error) => write!(formatter, "configuration cannot be resolved: {error}"),
-            Self::Configuration(error) => {
-                write!(formatter, "a mod refused its declaration: {error}")
+            Self::Lifecycle(error) => {
+                write!(formatter, "the admitted set has no lifecycle: {error}")
+            }
+            Self::Config(error) => {
+                write!(formatter, "the set's settings were not applied: {error}")
             }
             Self::Drive(error) => write!(formatter, "the composed mod set cannot start: {error}"),
             Self::Install(error) => write!(
@@ -340,8 +375,9 @@ impl std::error::Error for LaunchError {
             Self::Manifest(error) => Some(error),
             Self::Compatibility(error) => Some(error),
             Self::Resolution(error) => Some(error),
-            Self::Layer(error) => Some(error),
-            Self::Composition(_) | Self::NotComposed(_) | Self::Configuration(_) => None,
+            Self::Lifecycle(error) => Some(error),
+            Self::Config(error) => Some(error),
+            Self::Composition(_) | Self::NotComposed(_) => None,
             Self::Drive(error) => Some(error),
             Self::Install(error) => Some(error),
         }

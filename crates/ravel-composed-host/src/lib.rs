@@ -49,7 +49,7 @@ use ravel_test_mod_registries::RegistriesMod;
 use ravel_test_mod_saved_data::SavedDataMod;
 use ravel_test_mod_server_only::{ServerOnlyMod, work_log as server_work_log};
 
-pub use ravel_host_runtime::{Composition, LaunchError, PACK_CONFIGURATION_PATH};
+pub use ravel_host_runtime::{Composition, LaunchError};
 
 /// The manifest each composed member is packaged under.
 ///
@@ -132,7 +132,6 @@ pub fn ravel_initialize<'local>(mut env: EnvUnowned<'local>, _class: JClass<'loc
 mod tests {
     use ravel_config::{ValueDocument, file};
     use ravel_core::{LifecycleState, ModId, Side};
-    use ravel_host_runtime::PACK_CONFIGURATION_PATH;
     use ravel_loader::DiscoveryRefused;
     use serde_json::json;
 
@@ -453,7 +452,7 @@ mod tests {
             .to_string(),
         )
         .expect("a valid player document");
-        let pack_path = game.join(PACK_CONFIGURATION_PATH);
+        let pack_path = file::pack_path(&game, &pack.owner);
         std::fs::create_dir_all(pack_path.parent().expect("the path has a parent"))
             .expect("the pack directory should be writable");
         std::fs::write(&pack_path, pack.to_json()).expect("the pack file should be writable");

@@ -773,12 +773,14 @@ dependencies = [
  "jni",
  "ravel-config",
  "ravel-core",
+ "ravel-data",
  "ravel-host-api",
  "ravel-loader",
  "ravel-minecraft",
  "ravel-minecraft-adapter",
  "ravel-observability",
  "ravel-save",
+ "ravel-test-mod-audio",
  "semver",
  "serde_json",
 ]
@@ -931,6 +933,7 @@ version = "0.0.0"
 dependencies = [
  "ravel-config",
  "ravel-core",
+ "ravel-data",
  "ravel-network",
  "ravel-save",
  "serde_json",

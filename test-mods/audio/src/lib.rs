@@ -7,8 +7,14 @@
 //! mod rather than only by the crate that implements it. The refusal on a server
 //! is the property `ROADMAP.md`'s M6-W2 row wants shown: skipping is what would
 //! make a mod work in single player and be silent everywhere else.
+//!
+//! It also asks on the client tick and hands what it asked for to the host
+//! through [`ravel_sdk::Mod::take_play_requests`], which is the near end of
+//! `docs/decisions/carrying-an-action-outward.md`'s crossing. That makes this
+//! mod the producer a host drains rather than a mod that only declares.
 
 use ravel_sdk::audio::{AudioDeclaration, AudioError, PlayRequest};
+use ravel_sdk::events::GameEvent;
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, Side, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
@@ -45,6 +51,7 @@ const BYTES: &[u8] = b"the supplied bytes";
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AudioMod {
     entered: Vec<LifecycleState>,
+    asked: Vec<PlayRequest>,
 }
 
 impl AudioMod {
@@ -58,6 +65,12 @@ impl AudioMod {
     #[must_use]
     pub fn entered(&self) -> &[LifecycleState] {
         &self.entered
+    }
+
+    /// Returns what this mod has asked for and not yet handed over.
+    #[must_use]
+    pub fn asked(&self) -> &[PlayRequest] {
+        &self.asked
     }
 
     /// Builds this mod's audio declaration.
@@ -89,12 +102,30 @@ impl Mod for AudioMod {
         self.entered.push(state);
         Ok(())
     }
+
+    fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
+        if event == GameEvent::ClientTick {
+            self.asked.push(
+                Self::play(Side::Client).map_err(|refusal| ModError::Refused {
+                    mod_id: Self::declared_id().clone(),
+                    state: LifecycleState::Running,
+                    detail: refusal.to_string(),
+                })?,
+            );
+        }
+        Ok(())
+    }
+
+    fn take_play_requests(&mut self) -> Vec<PlayRequest> {
+        std::mem::take(&mut self.asked)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use ravel_sdk::audio::{AudioError, AudioEvent};
-    use ravel_sdk::{Declared, Side};
+    use ravel_sdk::events::GameEvent;
+    use ravel_sdk::{Declared, Mod, Side};
 
     use super::{AudioMod, ENTRY, MOD_ID};
 
@@ -120,6 +151,38 @@ mod tests {
             .expect_err("an event with nothing to play is refused");
 
         assert_eq!(refusal.unknown_entry(), "door_closes");
+    }
+
+    /// What the host pulls is what the mod asked for, and only once.
+    ///
+    /// The second pull is the half worth asserting: a mod that answered its
+    /// stored requests without emptying them would replay every sound it has
+    /// ever asked for on every tick, and the host cannot tell the difference.
+    #[test]
+    fn a_tick_asks_once_and_the_host_takes_it_once() {
+        let mut audio = AudioMod::new();
+        audio
+            .observe(GameEvent::ClientTick)
+            .expect("a client asks for what it declared");
+        assert_eq!(audio.asked().len(), 1);
+
+        let taken = audio.take_play_requests();
+        assert_eq!(taken.len(), 1);
+        assert_eq!(taken[0].entry(), ENTRY);
+        assert_eq!(taken[0].owner(), AudioMod::declared_id());
+        assert_eq!(taken[0].side(), Side::Client);
+        assert!(audio.take_play_requests().is_empty());
+    }
+
+    /// Every event but the client tick asks for nothing.
+    #[test]
+    fn a_mod_asks_on_the_tick_it_chose_and_no_other_event() {
+        let mut audio = AudioMod::new();
+        for event in [GameEvent::ServerTick, GameEvent::ResourcesReloaded] {
+            audio.observe(event).expect("the mod accepts every event");
+        }
+
+        assert!(audio.take_play_requests().is_empty());
     }
 
     /// Every side, checked from one list rather than one side at a time, so a

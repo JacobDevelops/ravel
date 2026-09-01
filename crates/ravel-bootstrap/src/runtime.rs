@@ -61,6 +61,7 @@ use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
 use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
 
 use crate::guard::HookError;
+use crate::outward;
 
 /// Which reviewed hook stands for which event.
 ///
@@ -409,6 +410,32 @@ impl Inner {
         if let Ok(delivery) = delivered {
             self.record(&delivery);
         }
+        self.carry_outward();
+    }
+
+    /// Carries whatever the mods asked the game for while that delivery ran.
+    ///
+    /// Drained here rather than inside `ravel-loader`'s broadcast because the
+    /// queue is this crate's: the loader decides the order the mods are asked
+    /// in, and `outward.rs` is the crossing an action leaves by. Every mod is
+    /// asked, not only the delivery's audience, because a mod that failed one
+    /// event may still have asked for something before it did.
+    ///
+    /// A server takes the requests and drops them, and that is a drop this
+    /// comment is the whole disclosure of. `AudioDeclaration::play` refuses a
+    /// server *argument*, not a server *process*, so a mod running on a
+    /// dedicated server can hold a client request that no client tick will ever
+    /// drain. Leaving it in the mod grows the mod's own buffer and queueing it
+    /// grows ours; taking it is the one of the three that is bounded.
+    fn carry_outward(&mut self) {
+        let plays = !self.machine.side().is_server();
+        for host in &mut self.mods {
+            for request in host.take_play_requests() {
+                if plays {
+                    outward::play(request.owner().as_str(), request.entry());
+                }
+            }
+        }
     }
 
     /// Fails the mod that ended a delivery, so it stops receiving.
@@ -472,6 +499,9 @@ mod tests {
     use ravel_minecraft::{HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue};
 
     use super::{COMMAND, EVENTS, LoaderRuntime, environment};
+    use crate::outward;
+
+    use ravel_data::PlayRequest;
 
     const MOD: &str = "example_mod";
 
@@ -628,6 +658,161 @@ mod tests {
         }
 
         (machine, vec![Box::new(host)], log)
+    }
+
+    /// A runtime holding the real audio test mod, on the side that can play.
+    ///
+    /// The mod is `test-mods/audio` rather than a stand-in written here, because
+    /// the thing under test is whether *a mod* reaches the queue. A stand-in
+    /// would prove this file agrees with itself.
+    fn playing(side: Side) -> LoaderRuntime {
+        held(side, Box::new(ravel_test_mod_audio::AudioMod::new()))
+    }
+
+    /// A running runtime holding one mod under the identity `audio`.
+    fn held(side: Side, host: Box<dyn HostMod>) -> LoaderRuntime {
+        let entry = LifecycleEntry {
+            mod_id: id("audio"),
+            sides: SideSet::new([side]).expect("a non-empty side set"),
+            requirement: Requirement::Required,
+            saved_data_versions: BTreeSet::new(),
+        };
+        let mut machine = LifecycleMachine::new(side, vec![entry]).expect("a legal plan");
+        for state in [
+            LifecycleState::Validated,
+            LifecycleState::Resolved,
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
+        ] {
+            machine.advance_all(state).expect("a legal step");
+        }
+        LoaderRuntime::new(machine, vec![host])
+    }
+
+    /// The whole near end, from `AudioDeclaration::play` to the encoded payload.
+    ///
+    /// The assertion is the payload rather than the queue's contents, because
+    /// the payload is what the Java adapter reads: a test that only counted
+    /// queued actions would pass on a verb the adapter cannot dispatch.
+    #[test]
+    fn a_mod_asking_to_play_reaches_the_outward_queue_as_the_adapter_reads_it() {
+        let _serial = outward::SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        outward::drain();
+
+        let runtime = playing(Side::Client);
+        runtime.observe(&target("client.tick"), &[]);
+
+        assert_eq!(
+            outward::drain(),
+            "1:11:110:audio.play1:35:audio10:door_opens1:1"
+        );
+    }
+
+    /// An event a mod is shown and does not ask on queues nothing.
+    ///
+    /// A client pack reload rather than a server tick, because the mod has to be
+    /// *in the audience* for this to test anything: a server tick on a client
+    /// reaches nobody, so it would pass whatever the mod does. Without this,
+    /// a drain that answered the same payload for every delivery would pass the
+    /// test above.
+    #[test]
+    fn a_delivery_a_mod_asked_nothing_on_queues_nothing() {
+        let _serial = outward::SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        outward::drain();
+
+        let runtime = playing(Side::Client);
+        runtime.observe(&target("resource.reload-client-packs"), &[]);
+
+        assert_eq!(outward::drain(), "");
+    }
+
+    /// A mod that asks on an event a dedicated server actually delivers.
+    ///
+    /// `test-mods/audio` asks on the client tick alone, and a dedicated server
+    /// has no audience for one — so driving *it* on a server proves the server
+    /// rule by never reaching it. This mod asks where a server can hear it. The
+    /// request is the real mod's, so the value under test is one
+    /// `AudioDeclaration::play` produced rather than one this file invented.
+    struct AsksOnEveryEvent {
+        id: ModId,
+        asked: Vec<PlayRequest>,
+    }
+
+    impl HostMod for AsksOnEveryEvent {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            Ok(())
+        }
+
+        fn observe(&mut self, _event: GameEvent) -> Result<(), HostError> {
+            self.asked.push(
+                ravel_test_mod_audio::AudioMod::play(Side::Client)
+                    .expect("a client request is legal to build anywhere"),
+            );
+            Ok(())
+        }
+
+        fn take_play_requests(&mut self) -> Vec<PlayRequest> {
+            std::mem::take(&mut self.asked)
+        }
+    }
+
+    /// A dedicated server never fills a queue nothing there drains.
+    ///
+    /// `ravelOutwardActions` is reached from the client tick alone, so an action
+    /// queued in a server process is one nothing will ever take.
+    /// `AudioDeclaration::play` refuses a server *argument* and not a server
+    /// *process*, so this is reachable rather than hypothetical.
+    #[test]
+    fn a_server_process_queues_nothing_outward() {
+        let _serial = outward::SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        outward::drain();
+
+        let runtime = held(
+            Side::DedicatedServer,
+            Box::new(AsksOnEveryEvent {
+                id: id("audio"),
+                asked: Vec::new(),
+            }),
+        );
+        runtime.observe(&target("server.tick"), &[]);
+
+        assert_eq!(outward::drain(), "");
+    }
+
+    /// The same mod on a client, which is what says the test above is not
+    /// passing because nothing asked.
+    #[test]
+    fn the_same_mod_on_a_client_does_fill_it() {
+        let _serial = outward::SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        outward::drain();
+
+        let runtime = held(
+            Side::Client,
+            Box::new(AsksOnEveryEvent {
+                id: id("audio"),
+                asked: Vec::new(),
+            }),
+        );
+        runtime.observe(&target("client.tick"), &[]);
+
+        assert_eq!(
+            outward::drain(),
+            "1:11:110:audio.play1:35:audio10:door_opens1:1"
+        );
     }
 
     #[test]

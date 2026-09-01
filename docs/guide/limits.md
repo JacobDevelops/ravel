@@ -82,23 +82,30 @@ what your mod will send, tested today and carried later — with the loader-side
 half of the arrival already built. Design against it if you like; do not plan a
 feature whose value arrives when the packet does.
 
-**One more surface is declared and not carried at all, one has a far end and no
-near end, and a third is partly carried.** A drawing stage is a declaration you
-can write, test and refuse against today with nothing on the other end;
-interception has an end now, for one of its three points; audio has the end
-inside the game and not the one you write against:
+**One more surface is declared and will not be carried, one is carried end to end
+and unheard, and a third is partly carried.** A drawing stage is a declaration you
+can write, test and refuse against today with nothing on the other end, and that
+is where it stays; interception has an end now, for one of its three points;
+audio has both ends and no launched game has run them:
 
 - `audio` — you declare the sounds your mod owns and the events that play them,
   and `AudioDeclaration::play` answers with a `PlayRequest` describing what would
-  be played. **The carrier that would play it exists and your mod cannot reach
-  it.** `docs/decisions/carrying-an-action-outward.md`'s crossing is built: Ravel
-  encodes the action, and a Java adapter decodes it at the client tick and asks
-  the game's own sound manager for it through the members the pinned version
-  declares, which the JVM harness drives end to end against a stand-in game.
-  What is missing is the near end. `HostMod::observe` answers
-  `Result<(), HostError>` and gives your mod nowhere to put a `PlayRequest`, so
-  nothing queues one, and no sound has been heard in a launched game — the
-  carrier is built and unobserved, which is a different claim from working. The
+  be played. **Both ends of the crossing now exist and nobody has heard the
+  sound.** `docs/decisions/carrying-an-action-outward.md`'s crossing is built:
+  you hold what `play` answered and hand it over from `Mod::take_play_requests`,
+  which the host asks after each delivery; Ravel encodes the action, and a Java
+  adapter decodes it at the client tick and asks the game's own sound manager for
+  it through the members the pinned version declares, which the JVM harness
+  drives end to end against a stand-in game. What is missing is a launch. No
+  Minecraft process has performed one of these instructions, so the claim this
+  guide makes is that the path is built and tested, not that audio works — those
+  are different claims and the second is M8-W0's to make. Two smaller things are
+  worth planning around. The sound happens *after* the call that asked for it, so
+  `play` cannot tell you whether the game played it, and nothing reports back if
+  the adapter drops it. And a mod running in a dedicated server process may still
+  build a `Side::Client` request — `play` refuses a server *argument*, not a
+  server *process* — in which case the host takes it and drops it, because no
+  client tick exists there to drain it. The
   side rule is real and enforced:
   asking to play on a server is refused rather than skipped, so a mod that would
   have worked only in single-player finds out in its own tests. The bytes you
@@ -109,11 +116,18 @@ inside the game and not the one you write against:
   that the two agree.
 - `render_stages` — you declare which published stages your mod contributes to
   and which mods it follows at them, and Ravel decides the order, refusing a cycle
-  and a stage nothing publishes. **This is not a way to draw.** No drawing path
-  exists for a mod, `docs/decisions/adg-6-configuration-and-screens.md` settled
-  that Ravel's own screens are declared in data and drawn in Java, and a
-  contribution today says where your drawing would go rather than putting anything
-  on the display.
+  and a stage nothing publishes. **This is not a way to draw, and it is not going
+  to become one.** No drawing path exists for a mod,
+  [ADG-6](../decisions/adg-6-configuration-ui.md) settled that Ravel's own screens
+  are declared in data and drawn in Java, and a contribution today says where your
+  drawing would go rather than putting anything on the display. M8-W0 carried the
+  other outward surfaces and deliberately did not carry this one: the outward
+  crossing performs an instruction the Java adapter can name, and a mod's drawing
+  is not one instruction but a frame's worth of them, which is the second
+  generated boundary `docs/decisions/carrying-an-action-outward.md` rejected. So
+  this stays a declaration — the stage name, the order among contributors, and the
+  two refusals — and reopening it means reopening ADG-6 with its own measurement,
+  not adding a verb.
 - `interception` — **partly carried, and the first of these four to be.** You
   declare the points you answer at with `interception_declaration` and answer
   with `intercept`; the host orders the set, refuses one it cannot ask, and asks
@@ -129,8 +143,9 @@ inside the game and not the one you write against:
   at all — `Points` took a closure, and a host holds its mods as trait objects
   and cannot get a closure out of one. The declaration is what replaced it.
 
-Declaring against any of the three is designing against a specification that is
-tested now and connected later. `world_shaping` and `server_data` are different:
+Declaring against `render_stages`, and against the two interception points no
+hook resolves, is designing against a specification that is tested now and — for
+drawing — is not connected later. `world_shaping` and `server_data` are different:
 what they produce — a record a world stores, files a pack holds — is real output
 today, and only the game's reading of it waits on the same wiring every pack
 waits on.

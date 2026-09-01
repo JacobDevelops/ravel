@@ -21,6 +21,7 @@ use ravel_config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_core::{
     ContentBehaviour, FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure,
 };
+use ravel_data::PlayRequest;
 use ravel_network::PacketDelivery;
 use ravel_save::{MigrationChain, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
 
@@ -408,6 +409,26 @@ pub trait HostMod: Send {
     /// save.
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, HostError> {
         Ok(None)
+    }
+
+    /// Hands over the sounds this mod has asked to play since it was last asked.
+    ///
+    /// A pull rather than a call the mod makes, for the reason
+    /// [`HostMod::save_saved_data`] is one: the host decides when an answer is
+    /// collected and from which mod, so a request is attributable to the mod
+    /// that made it and a mod holds no channel it could use off a thread the
+    /// host never entered.
+    ///
+    /// `docs/decisions/carrying-an-action-outward.md` decided that the action
+    /// itself crosses to the game as data a Java adapter performs, so what a
+    /// host does with these is queue them outward rather than play them. An
+    /// action therefore happens after this call rather than during it, and a
+    /// mod cannot learn here whether the game did it.
+    ///
+    /// The default hands over nothing, which is what a mod that asks for nothing
+    /// does — so a mod written before this existed needs no edit.
+    fn take_play_requests(&mut self) -> Vec<PlayRequest> {
+        Vec::new()
     }
 
     /// Declares the settings this mod owns, when it owns any.

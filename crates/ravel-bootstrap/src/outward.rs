@@ -14,15 +14,16 @@
 //! that has to be re-derived per verb is the shape `ROADMAP.md`'s M8-W0 prose
 //! refuses: "the mechanism is built once and reused".
 //!
-//! # What is not carried here
+//! # What reaches this queue
 //!
-//! Nothing queues an action in a launch yet. A mod reaches Ravel through
-//! [`HostMod`], whose `observe` answers `Result<(), HostError>` and hands a mod
-//! nowhere to put a request, so the producer end is missing exactly as
-//! `docs/guide/limits.md` records for packets. This module is the carrier and
-//! the adapter, and `docs/guide/limits.md` says so where an author reads it.
+//! [`HostMod::take_play_requests`] is the near end. `runtime.rs` asks every mod
+//! for what it asked the game for after each delivery and queues the answers
+//! here, so a request is attributable to the mod that made it and no mod holds
+//! a channel into this module. What is still unobserved is the far end in a
+//! real game: no launched Minecraft has performed one of these, and
+//! `docs/guide/limits.md` says so where an author reads it.
 //!
-//! [`HostMod`]: ravel_host_api::HostMod
+//! [`HostMod::take_play_requests`]: ravel_host_api::HostMod::take_play_requests
 
 use std::sync::{Mutex, PoisonError};
 
@@ -39,6 +40,15 @@ use crate::wire::{VERSION, count, field};
 /// The ceiling is therefore one client tick of requests; if a verb ever arrives
 /// that a mod can ask for in an unbounded loop, this is where the bound goes.
 static PENDING: Mutex<Vec<Action>> = Mutex::new(Vec::new());
+
+/// Held by every test that reads or writes [`PENDING`].
+///
+/// The queue is process-wide and the test harness runs threads, so two tests
+/// that both drain would otherwise take each other's actions. Not a lock the
+/// running loader needs: one drain per client tick is already serialised by the
+/// tick.
+#[cfg(test)]
+pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 
 /// The verb that plays a sound a mod declared.
 ///
@@ -130,6 +140,8 @@ pub fn ravel_outward_actions<'local>(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::PoisonError;
+
     use super::{Action, PLAY, drain, encode, play};
 
     fn action(verb: &'static str, arguments: &[&str]) -> Action {
@@ -170,6 +182,7 @@ mod tests {
 
     #[test]
     fn draining_answers_what_was_queued_and_empties_it() {
+        let _serial = super::SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
         play("audio", "door_opens");
 
         assert_eq!(drain(), "1:11:110:audio.play1:35:audio10:door_opens1:1");

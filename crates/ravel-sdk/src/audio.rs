@@ -15,14 +15,18 @@
 //! Declaring an entry is not playing one, so a dedicated server may own the
 //! sounds it will never play. A mod is one mod on both sides.
 //!
-//! # What this does not carry
+//! # How a request reaches the game
 //!
-//! **Nothing plays anything yet.** [`AudioDeclaration::play`] answers with a
-//! [`PlayRequest`] describing what would be played and on which side; no host in
-//! this workspace reaches audio hardware, exactly as none carries a packet.
-//! What ships is the entry kind, the event, and the side rule, all decidable
-//! without a game — and a mod written against them today is written against what
-//! exists.
+//! [`AudioDeclaration::play`] answers with a [`PlayRequest`] and plays nothing
+//! itself. Hold what it answered and hand it over from
+//! [`crate::Mod::take_play_requests`], which the host asks after each delivery;
+//! the host encodes it and the Java adapter asks the game's sound manager for
+//! it. So the sound happens after the call that asked for it, and your mod
+//! cannot learn from `play` whether the game did it.
+//!
+//! **No launched game has played one.** The crossing is built and tested on both
+//! sides against a stand-in game; nobody has heard the sound. `docs/guide/limits.md`
+//! is where that stays recorded until somebody has.
 //!
 //! # Examples
 //!

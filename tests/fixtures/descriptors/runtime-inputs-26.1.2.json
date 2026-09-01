@@ -1,0 +1,61 @@
+{
+  "$schema": "../../../schemas/runtime-inputs.schema.json",
+  "schemaVersion": 1,
+  "retrievedAt": "2026-07-30",
+  "minecraft": {
+    "version": "26.1.2",
+    "type": "release",
+    "metadata": {
+      "url": "https://piston-meta.mojang.com/v1/packages/a5ba42111e0de7712d677c458bd0dbfc9f36482e/26.1.2.json",
+      "sha1": "a5ba42111e0de7712d677c458bd0dbfc9f36482e",
+      "sha256": "c0befcb001356cf53de2ee7cfa8fa796afcd3e2fe4530274c66d473cc576c98b"
+    },
+    "minimumLauncherVersion": 21,
+    "assetIndex": "30",
+    "javaComponent": "java-runtime-epsilon",
+    "javaMajorVersion": 25
+  },
+  "prism": {
+    "version": "11.0.3",
+    "releaseUrl": "https://github.com/PrismLauncher/PrismLauncher/releases/tag/11.0.3",
+    "publishedAt": "2026-07-11T18:44:35Z"
+  },
+  "platforms": [
+    {
+      "id": "linux-x86_64",
+      "java": {
+        "version": "25.0.1",
+        "releasedAt": "2025-12-10T14:20:17Z",
+        "manifest": {
+          "url": "https://piston-meta.mojang.com/v1/packages/ccf325ef8f5be596cf8229fd349298d8a74d2388/manifest.json",
+          "sha1": "ccf325ef8f5be596cf8229fd349298d8a74d2388",
+          "sha256": "ef272d8210507e7937db52b202a13cd9bf50347801db7d14bbee9c334d08d93a"
+        }
+      },
+      "prism": {
+        "fileName": "PrismLauncher-Linux-x86_64.AppImage",
+        "url": "https://github.com/PrismLauncher/PrismLauncher/releases/download/11.0.3/PrismLauncher-Linux-x86_64.AppImage",
+        "size": 107565368,
+        "sha256": "0823a0e5f53694f0ff65a9523b6f221e6f10565b904941fa9522d89e8e7c69d1"
+      }
+    },
+    {
+      "id": "macos-aarch64",
+      "java": {
+        "version": "25.0.1",
+        "releasedAt": "2025-12-10T14:24:00Z",
+        "manifest": {
+          "url": "https://piston-meta.mojang.com/v1/packages/5643d63e75d54da43c9501cdb1988530a9bc5d7f/manifest.json",
+          "sha1": "5643d63e75d54da43c9501cdb1988530a9bc5d7f",
+          "sha256": "7e9e427c4ad61580fbad8671c17cb846188669820ddc71c90949c03da6b6b6e7"
+        }
+      },
+      "prism": {
+        "fileName": "PrismLauncher-macOS-11.0.3.dmg",
+        "url": "https://github.com/PrismLauncher/PrismLauncher/releases/download/11.0.3/PrismLauncher-macOS-11.0.3.dmg",
+        "size": 44821798,
+        "sha256": "7b9687e4af6a0e970e9a8a723761af6bde80d3118637fd617f0e2d7f3dc3b8b0"
+      }
+    }
+  ]
+}

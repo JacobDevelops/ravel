@@ -8575,6 +8575,46 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
+    /// `ravel-test` skips a version whose client mapping is absent, and the
+    /// generator is what decides that a mapping is needed at all.
+    ///
+    /// Two files state one rule, so this holds them together. The script greps
+    /// `adapter.toml` for a `client.txt` path; the adapter decides a mapping is
+    /// required by declaring `official-proguard-mappings`. If a version ever
+    /// declares that source without such a path, or declares the path under a
+    /// source that reads none, the script would skip a version it should test or
+    /// test one it cannot build, and it would do it silently.
+    #[test]
+    fn ravel_test_versions_agree_with_the_generator() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let versions = root.join(VERSION_DATA);
+        let mut checked = 0;
+        for entry in fs::read_dir(&versions).expect("the version data should be readable") {
+            let directory = entry
+                .expect("a version directory should be readable")
+                .path();
+            if !directory.is_dir() {
+                continue;
+            }
+            let adapter = fs::read_to_string(directory.join("adapter.toml"))
+                .expect("every version declares adapter inputs");
+            let translating = adapter.contains("mappingSource = \"official-proguard-mappings\"");
+            // The same shape the script's `sed` matches.
+            let declares_mapping = adapter
+                .lines()
+                .any(|line| line.starts_with("path = \"") && line.ends_with("client.txt\""));
+            assert_eq!(
+                translating,
+                declares_mapping,
+                "{} reads a published mapping ({translating}) but declares a client.txt path \
+                 ({declares_mapping}); ravel-test decides what to skip from that path",
+                directory.display()
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "the repository tracks a version");
+    }
+
     #[test]
     fn a_claimed_stock_launch_without_the_redacted_log_hash_is_refused() {
         let root = temporary_root("spikes-launch-log");

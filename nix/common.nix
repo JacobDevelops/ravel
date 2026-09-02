@@ -28,6 +28,16 @@ in
   env = {
     CARGO_TERM_COLOR = "always";
     RUST_BACKTRACE = "1";
+    # docs/decisions/version-selection-is-a-build-time-choice.md makes a build
+    # that selects nothing an error rather than a default, and owes every entry
+    # point an explicit selection before a second version directory is tracked.
+    # This is that selection, written once so `cargo build`, `cargo test` and
+    # every devenv task read the same answer. Another version is built by setting
+    # it *inside* this environment — `devenv shell -- bash -c
+    # 'RAVEL_MINECRAFT_VERSION=... cargo build'` — and never by prefixing
+    # `devenv shell` itself, which devenv overrides with the value below without
+    # saying so. `ravel-test` sets it per version for exactly that reason.
+    RAVEL_MINECRAFT_VERSION = "26.1.2";
   };
 
   languages.rust = {
@@ -154,7 +164,53 @@ in
       exec = ''
         set -euo pipefail
         cd "$DEVENV_ROOT"
-        cargo nextest run --workspace --all-features
+
+        # The suite runs once per tracked version, not once against whichever one
+        # this shell selects. A green run against the selected version says
+        # nothing about the others, and that is not hypothetical: every crate
+        # that names a hook id, asserts on a linked class name, or ships a
+        # `compatibility.minecraft` was written against the selected one and
+        # twelve tests failed the first time another version was named.
+        #
+        # A version is skipped when its declared client mapping is absent,
+        # because `generate::run` reads that file on every build under a
+        # translating source, jars or no jars — see the comment above the
+        # `mapping` call in `crates/ravel-minecraft-adapter/src/generate/mod.rs`.
+        # `ravel_test_versions_agree_with_the_generator` holds this rule to that
+        # one so the two cannot drift apart. A skip says so loudly, because a
+        # skip that reads like a pass is how a half stays unexercised.
+        # The verdict is written to a file as well as printed, because
+        # `devenv tasks run` shows neither stdout nor stderr of a task that
+        # succeeds — so a skip announced only by printing is invisible in the
+        # gate, which is the one place it has to be read. The file is the fact;
+        # the print is for whoever runs the script directly.
+        tested="$DEVENV_ROOT/target/ravel-jvm/tested-versions.txt"
+        mkdir -p "$(dirname "$tested")"
+        : >"$tested"
+        for version_directory in minecraft/versions/*/; do
+          version="$(basename "$version_directory")"
+          mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
+            "$version_directory/adapter.toml" | head -n 1)"
+          if [ -n "$mapping" ] && [ ! -f "$mapping" ]; then
+            verdict="SKIPPED: Minecraft $version was NOT tested; $mapping is absent"
+            echo "$verdict" >&2
+            echo "$verdict" >>"$tested"
+            continue
+          fi
+          echo "testing Minecraft $version"
+          RAVEL_MINECRAFT_VERSION="$version" \
+            cargo nextest run --workspace --all-features
+          # Recorded after the suite passes, never before. A line written on the
+          # way in says "started", and this file is read as "covered": a run
+          # still on its first version, or one that died on it, would leave a
+          # record that looks complete and names a version nothing proved.
+          echo "tested: Minecraft $version" >>"$tested"
+        done
+        if ! grep -q '^tested: ' "$tested"; then
+          echo "no tracked version was testable, so this task proved nothing" >&2
+          exit 1
+        fi
+
         # nextest gives every test its own process, so state that leaks between
         # tests through a process global is invisible to it by construction. The
         # plain runner shares one process across threads, and ravel-bootstrap is
@@ -317,6 +373,15 @@ in
       exec = ''
         set -euo pipefail
         cd "$DEVENV_ROOT"
+        # Everything below is packaged, so it has to come from one version. The
+        # generator never sweeps this tree — two builds share it and one that
+        # emptied it would delete what another is reading — so the sweep belongs
+        # here, in the task that packages it. Touching the build script is what
+        # makes the generation happen again after the sweep: cargo caches on
+        # inputs, and deleting an output is not one.
+        rm -rf target/ravel-jvm/generated target/ravel-jvm/generated-stubs \
+          target/ravel-jvm/generated-screen
+        touch crates/ravel-minecraft-adapter/build.rs
         cargo build --locked -p ravel-minecraft-adapter
         cargo build --locked -p ravel-composed-host --release
         ./jvm/build/build-agent.sh
@@ -605,7 +670,15 @@ in
     "ravel:verify-example-pack".exec = "ravel-verify-example-pack";
     "ravel:verify-example-package".exec = "ravel-verify-example-package";
     "ravel:verify-spikes".exec = "ravel-verify-spikes";
-    "ravel:verify-jvm".exec = "ravel-verify-jvm";
+    "ravel:verify-jvm" = {
+      exec = "ravel-verify-jvm";
+      # `ravel:test` generates once per tracked version and the generated Java
+      # lands in one shared tree, so these two cannot run at the same time: this
+      # one packages what that one is still rewriting. It also sweeps before it
+      # builds, because the screens change package between versions and a source
+      # left behind by another version compiles into this version's jar.
+      after = [ "ravel:test" ];
+    };
     "ravel:spike-adg-1".exec = "ravel-spike-adg-1";
     "ravel:spike-adg-2".exec = "ravel-spike-adg-2";
     "ravel:spike-adg-3".exec = "ravel-spike-adg-3";

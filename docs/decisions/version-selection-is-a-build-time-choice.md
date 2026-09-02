@@ -234,9 +234,21 @@ behaviour that already existed.
   review are the work package this record unblocks, not the one it is part of.
 - **Runtime selection.** Deferred, with the reversal condition named above. It
   would need its own record.
-- **Exporting a selection from every build entry point.** Nothing in the
-  repository sets `RAVEL_MINECRAFT_VERSION` today, and nothing has to while one
-  directory is tracked. From the moment a second one is, a plain `cargo build`,
+- **Exporting a selection from every build entry point. Done.** `nix/common.nix`
+  declares `RAVEL_MINECRAFT_VERSION` in the devenv environment, so `cargo build`,
+  `cargo test` and every devenv task read one selection written in one place.
+  Another version is built by setting it *inside* that environment —
+  `devenv shell -- bash -c 'RAVEL_MINECRAFT_VERSION=1.21.1 cargo build'` — and
+  not by prefixing `devenv shell` itself, because devenv exports its own `env`
+  over whatever it inherited and a prefix there is silently ignored.
+  That is the operator answering, which is what this record asks for; the default
+  it refuses is the *generator* picking, and the generator still refuses. Proved
+  by mutation: naming a directory the version data does not hold takes a build
+  from exit 0 to exit 101 saying `RAVEL_MINECRAFT_VERSION names 26.1.3, but the
+  version data holds 26.1.2`. The paragraph below is what was owed before it was
+  done, kept because it is why the export is where it is. Nothing in the
+  repository set `RAVEL_MINECRAFT_VERSION`, and nothing had to while one
+  directory was tracked. From the moment a second one is, a plain `cargo build`,
   `cargo test` and `devenv tasks run ravel:verify` each reach the refusal this
   record decided, so each entry point has to export a selection first. The sweep
   above being done did not do this and was not the place for it: it is a

@@ -217,9 +217,11 @@ gives a world a pack repository calls; launch 14 showed that on creation this la
 enabled list on paper only. The Create World screen builds its `ReloadableServerResources` when it
 opens, over a repository with no directory, and `createLevelFromExistingSettings` hands those loaded
 resources through untouched, so the first session runs with no recipe reload, the loot table absent,
-and the selection not written to `level.dat`. The fix in flight feeds the pack into the screen's own
+and the selection not written to `level.dat`. The fix, landed and gated but not yet seen in a client, feeds the pack into the screen's own
 add-a-datapack flow at `CreateWorldScreen.init`: force its staging directory, write the pack there,
 and run `tryApplyNewDataPacks`, which is the reload vanilla pays when a player adds a pack by hand.
+The reload is skipped when no mod supplies data. The five reflected members resolve against both
+pinned jars at generation time; the harness drives the whole creation sequence and fails by mutation.
 The open-time write stays for a world admitted by another path and leaves an identical tree untouched.
 
 **Launch 14: enabled on paper, vanilla in fact; the unchanged-tree skip and regression hold.** New
@@ -274,6 +276,14 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
 
 ## Next
 
+- The JVM harness is a 26.1.2 artefact by construction: `devenv tasks run` drops an exported
+  `RAVEL_MINECRAFT_VERSION`, so `ravel:verify-jvm` has always run at 26.1.2, and run directly at
+  1.21.1 the harness fails to compile because the generated screens live in the obfuscated package
+  while the harness sources name them by Mojang name. No reflective adapter has ever met an
+  obfuscated name inside the gate, and obfuscated names are the reason the reflection mechanism
+  exists. Make the harness run per tracked version and make the gate run it for every one.
+- A headless real-client proof under Xvfb with an offline account is being built beside the nested
+  probe in the evidence skill, so a launch never again needs the display or the account.
 - The settings screen draws no rows for `stateful-mod`'s declared `journal.capacity` setting
   (launch 14). Settings flow from the declaration through the host into the screen's sibling; find
   where the row list goes empty. Provable in the harness; the on-screen check waits on a client.

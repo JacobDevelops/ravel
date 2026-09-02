@@ -70,11 +70,13 @@ javac -cp "$work:$jar:$screen" -d "$work" \
 order="$work/initialization-order"
 order_agent="$order/agent/ravel-agent.jar"
 mkdir -p "$order/classes" "$(dirname "$order_agent")" "$order/agent-classes"
-# The generated game names come from the same tree the agent jar is built from.
+# The generated game and screen names come from the same tree the agent jar is
+# built from.
 # Only `Hook` is stood in for here, because it is the one class that would load
 # the native library; the names the adapters resolve are the real ones.
 javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/target/ravel-jvm/generated/dev/ravel/jvm/GameNames.java" \
+	"$root/target/ravel-jvm/generated/dev/ravel/jvm/ScreenNames.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Agent.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/Content.java" \
 	"$root/jvm/bootstrap/dev/ravel/jvm/HookTarget.java" \

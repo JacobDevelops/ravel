@@ -9,6 +9,11 @@ import java.util.jar.JarFile;
 /**
  * Puts the generated settings screen where the game's own loader can find it.
  *
+ * <p>Every screen class is named through {@link ScreenNames} rather than by a
+ * literal here. The screens are generated per version, and a version that
+ * obfuscates the game into the unnamed package generates them there too, because
+ * a Java source in a package cannot name a supertype that has none.
+ *
  * <p>ADG-1's amendment named two ways to get a screen class into the game
  * process and chose this one: the agent appends a second jar to the class path
  * the game already loads from, rather than a launcher putting it there. That
@@ -101,7 +106,7 @@ final class Screens {
      *     used
      */
     static Object open(String owner) {
-        return build("dev.ravel.jvm.screen.RavelSettingsScreen", owner);
+        return build(ScreenNames.RAVEL_SETTINGS_SCREEN, owner);
     }
 
     /**
@@ -115,7 +120,7 @@ final class Screens {
      *     game, or {@code null} if there is no screen jar or it could not be used
      */
     static Object openMods() {
-        return build("dev.ravel.jvm.screen.RavelModsScreen", null);
+        return build(ScreenNames.RAVEL_MODS_SCREEN, null);
     }
 
     /**
@@ -129,7 +134,7 @@ final class Screens {
      *     game, or {@code null} if there is no screen jar or it could not be used
      */
     static Object openProfiling() {
-        return build("dev.ravel.jvm.screen.RavelProfilingScreen", null);
+        return build(ScreenNames.RAVEL_PROFILING_SCREEN, null);
     }
 
     /**
@@ -146,7 +151,7 @@ final class Screens {
      *     game, or {@code null} if there is no screen jar or it could not be used
      */
     static Object openWorldRefused(String diagnostic) {
-        return build("dev.ravel.jvm.screen.RavelWorldRefusedScreen", diagnostic);
+        return build(ScreenNames.RAVEL_WORLD_REFUSED_SCREEN, diagnostic);
     }
 
     /** Adds Ravel's entry to the title screen through the optional screen jar. */
@@ -154,7 +159,7 @@ final class Screens {
         if (!appended) {
             return bottom;
         }
-        String name = "dev.ravel.jvm.screen.RavelMenu";
+        String name = ScreenNames.RAVEL_MENU;
         try {
             Class<?> bridge = Class.forName(name, true, ClassLoader.getSystemClassLoader());
             bridge.getMethod("add", Object.class, int.class, int.class)

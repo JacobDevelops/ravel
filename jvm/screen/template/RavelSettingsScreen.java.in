@@ -1,19 +1,19 @@
-package dev.ravel.jvm.screen;
+{{package}}
 
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.client.gui.components.AbstractSliderButton;
-import net.minecraft.client.gui.components.Button;
+{{import net.minecraft.client.gui.components.AbstractSliderButton}}
+{{import net.minecraft.client.gui.components.Button}}
 // The binary name is the type's name here. The pinned version reaches every
 // interactive widget through a nested type, and the stubs declare each one as a
 // top-level class carrying the binary name the JVM links on, so this is the same
 // class the game loads at runtime.
-import net.minecraft.client.gui.components.Button$OnPress;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.events.GuiEventListener;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.Component;
+{{import net.minecraft.client.gui.components.Button$OnPress}}
+{{import net.minecraft.client.gui.components.EditBox}}
+{{import net.minecraft.client.gui.components.events.GuiEventListener}}
+{{import net.minecraft.client.gui.screens.Screen}}
+{{import net.minecraft.network.chat.Component}}
 
 /**
  * Ravel's generated settings screen.
@@ -55,7 +55,7 @@ import net.minecraft.network.chat.Component;
  * on it are {@code updateMessage} and {@code applyValue}, neither of which is an
  * extraction.
  */
-public final class RavelSettingsScreen extends Screen {
+public final class RavelSettingsScreen extends {{Screen}} {
 
     /** Where the first row sits, below the title. */
     private static final int TOP = 40;
@@ -82,7 +82,7 @@ public final class RavelSettingsScreen extends Screen {
     private String refused = "";
 
     private RavelSettingsScreen(String owner) {
-        super(Component.translatable("ravel.config.title"));
+        super({{Component}}.{{Component#translatable}}("ravel.config.title"));
         this.owner = owner;
         rows.addAll(read(Hook.ravelSettingsDocument(owner)));
     }
@@ -97,7 +97,7 @@ public final class RavelSettingsScreen extends Screen {
      * @param owner the canonical mod id whose settings to show
      * @return a screen the caller hands to the game
      */
-    public static Screen open(String owner) {
+    public static {{Screen}} open(String owner) {
         return new RavelSettingsScreen(owner);
     }
 
@@ -121,26 +121,26 @@ public final class RavelSettingsScreen extends Screen {
      * Ravel bug and drawing half of one would hide it.
      */
     @Override
-    protected void init() {
-        super.init();
+    protected void {{Screen#init}}() {
+        super.{{Screen#init}}();
         for (Row row : rows) {
             row.capture();
         }
 
         int y = TOP;
         for (Row row : rows) {
-            addRenderableWidget(row.build(this, y));
+            {{Screen#addRenderableWidget}}(row.build(this, y));
             y += ROW;
         }
-        addRenderableWidget(
-                Button.builder(Component.translatable("gui.done"), new Button$OnPress() {
+        {{Screen#addRenderableWidget}}(
+                {{Button}}.{{Button#builder}}({{Component}}.{{Component#translatable}}("gui.done"), new {{Button$OnPress}}() {
                             @Override
-                            public void onPress(Button pressed) {
-                                onClose();
+                            public void {{Button$OnPress#onPress}}({{Button}} pressed) {
+                                {{Screen#onClose}}();
                             }
                         })
-                        .bounds(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .build());
+                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
     }
 
     /** Reads a settings document into rows, or into nothing if it does not read. */
@@ -176,7 +176,7 @@ public final class RavelSettingsScreen extends Screen {
      * next time they open the screen.
      */
     @Override
-    public void onClose() {
+    public void {{Screen#onClose}}() {
         List<Row> changed = new ArrayList<>();
         for (Row row : rows) {
             if (row.changed()) {
@@ -192,7 +192,7 @@ public final class RavelSettingsScreen extends Screen {
             Wire.write(edits, row.value);
         }
         refused = describe(Hook.ravelSaveSettings(edits.toString()));
-        super.onClose();
+        super.{{Screen#onClose}}();
     }
 
     /** Turns a save answer into one line a player can be shown. */
@@ -221,7 +221,7 @@ public final class RavelSettingsScreen extends Screen {
     }
 
     private int centre() {
-        return (width - WIDGET_WIDTH) / 2;
+        return ({{Screen#width}} - WIDGET_WIDTH) / 2;
     }
 
     private static double number(String text, double fallback) {
@@ -247,7 +247,7 @@ public final class RavelSettingsScreen extends Screen {
         private final boolean whole;
 
         private String value;
-        private EditBox box;
+        private {{EditBox}} box;
 
         private Row(
                 String key,
@@ -334,11 +334,11 @@ public final class RavelSettingsScreen extends Screen {
          * fix a client-side setting is an open question, and a screen that drew
          * that combination differently would answer it by implementation.
          */
-        private GuiEventListener build(RavelSettingsScreen screen, int y) {
+        private {{GuiEventListener}} build(RavelSettingsScreen screen, int y) {
             int x = screen.centre();
             if (!editable) {
-                EditBox drawn = text(screen, x, y);
-                drawn.setEditable(false);
+                {{EditBox}} drawn = text(screen, x, y);
+                drawn.{{EditBox#setEditable}}(false);
                 return drawn;
             }
             switch (widget) {
@@ -353,11 +353,11 @@ public final class RavelSettingsScreen extends Screen {
             }
         }
 
-        private EditBox text(RavelSettingsScreen screen, int x, int y) {
-            box = new EditBox(
-                    screen.font, x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.literal(caption()));
-            box.setMaxLength(1024);
-            box.setValue(value);
+        private {{EditBox}} text(RavelSettingsScreen screen, int x, int y) {
+            box = new {{EditBox}}(
+                    screen.{{Screen#font}}, x, y, WIDGET_WIDTH, WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(caption()));
+            box.{{EditBox#setMaxLength}}(1024);
+            box.{{EditBox#setValue}}(value);
             return box;
         }
 
@@ -370,19 +370,19 @@ public final class RavelSettingsScreen extends Screen {
          * own nested builders, and a second builder buys no behaviour this does
          * not have.
          */
-        private Button cycle(int x, int y, List<String> values) {
-            return Button.builder(Component.literal(caption()), new Button$OnPress() {
+        private {{Button}} cycle(int x, int y, List<String> values) {
+            return {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}(caption()), new {{Button$OnPress}}() {
                         @Override
-                        public void onPress(Button pressed) {
+                        public void {{Button$OnPress#onPress}}({{Button}} pressed) {
                             if (!values.isEmpty()) {
                                 int at = values.indexOf(value);
                                 value = values.get((at + 1) % values.size());
                             }
-                            pressed.setMessage(Component.literal(caption()));
+                            pressed.{{net.minecraft.client.gui.components.AbstractWidget#setMessage}}({{Component}}.{{Component#literal}}(caption()));
                         }
                     })
-                    .bounds(x, y, WIDGET_WIDTH, WIDGET_HEIGHT)
-                    .build();
+                    .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(x, y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                    .{{net.minecraft.client.gui.components.Button$Builder#build}}();
         }
 
         /** The label a widget carries, with the value and any warning on it. */
@@ -402,7 +402,7 @@ public final class RavelSettingsScreen extends Screen {
          */
         private void capture() {
             if (box != null) {
-                value = box.getValue();
+                value = box.{{EditBox#getValue}}();
                 box = null;
             }
         }
@@ -419,7 +419,7 @@ public final class RavelSettingsScreen extends Screen {
      * <p>This is the only widget the screen subclasses, and the class doc says
      * why it is this one and not {@code AbstractButton}.
      */
-    private static final class Slider extends AbstractSliderButton {
+    private static final class Slider extends {{AbstractSliderButton}} {
 
         private final Row row;
 
@@ -429,7 +429,7 @@ public final class RavelSettingsScreen extends Screen {
                     y,
                     WIDGET_WIDTH,
                     WIDGET_HEIGHT,
-                    Component.literal(row.caption()),
+                    {{Component}}.{{Component#literal}}(row.caption()),
                     fraction(row));
             this.row = row;
         }
@@ -445,13 +445,13 @@ public final class RavelSettingsScreen extends Screen {
         }
 
         @Override
-        protected void updateMessage() {
-            setMessage(Component.literal(row.caption()));
+        protected void {{AbstractSliderButton#updateMessage}}() {
+            {{net.minecraft.client.gui.components.AbstractWidget#setMessage}}({{Component}}.{{Component#literal}}(row.caption()));
         }
 
         @Override
-        protected void applyValue() {
-            double at = row.minimum + value * (row.maximum - row.minimum);
+        protected void {{AbstractSliderButton#applyValue}}() {
+            double at = row.minimum + {{AbstractSliderButton#value}} * (row.maximum - row.minimum);
             row.value = row.whole ? Long.toString(Math.round(at)) : Double.toString(at);
         }
     }

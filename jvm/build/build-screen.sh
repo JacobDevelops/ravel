@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Builds Ravel's settings screen jar from the tracked sources and the generated
+# Builds Ravel's settings screen jar from the generated sources and the generated
 # compile-time stubs.
 #
 # The jar is a build product and is never tracked. It sits beside
 # `ravel-agent.jar`, because that is where `dev.ravel.jvm.Screens` looks for it.
+#
+# The sources are generated too, and for a different reason: a screen extends the
+# game's `Screen` and overrides its methods, so every game name it uses is a
+# constant pool entry the JVM links directly. Under an obfuscated version the
+# reviewed name is not that name, so the sources are rendered from the templates
+# in `jvm/screen/template` into whatever the selected version links.
 #
 # This compiles against generated stubs rather than the client jar, so it runs
 # on a machine without the restricted fixture — the same property
@@ -15,15 +21,18 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 work="$root/target/ravel-jvm"
 generated="$work/generated-stubs"
+screens="$work/generated-screen"
 stubs="$work/screen-stubs"
 classes="$work/screen-classes"
 jar="$work/ravel-screen.jar"
 
-if [ ! -d "$generated" ]; then
-	echo "the generated compile-time stubs are missing; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
-	exit 1
-fi
+for tree in "$generated" "$screens"; do
+	if [ ! -d "$tree" ]; then
+		echo "$tree is missing; run:" >&2
+		echo "  cargo build -p ravel-minecraft-adapter" >&2
+		exit 1
+	fi
+done
 
 rm -rf "$stubs" "$classes"
 mkdir -p "$stubs" "$classes"
@@ -47,17 +56,24 @@ fi
 javac -Xlint:all -Werror -cp "$stubs" -d "$stubs" \
 	"$hook/dev/ravel/jvm/Hook.java" "$root/jvm/bootstrap/dev/ravel/jvm/HookTarget.java"
 
-mapfile -d '' sources < <(find "$root/jvm/screen/src" -name '*.java' -print0 | sort -z)
+mapfile -d '' sources < <(find "$screens" -name '*.java' -print0 | sort -z)
 javac -Xlint:all -Werror -cp "$stubs" -d "$classes" "${sources[@]}"
 
-# Only `dev/ravel/` goes in. A stub class inside this jar would shadow the game's
-# own class on the loader they share, and the game would then draw against a
-# method that throws. Compiling against the stubs and shipping none of them is
-# what keeps that impossible rather than merely avoided.
-if find "$classes" -path '*/net/minecraft/*' -name '*.class' | grep -q .; then
-	echo "a stub class reached the screen output tree; refusing to build a jar that would shadow the game" >&2
-	exit 1
-fi
+# No stub goes in. A stub class inside this jar would shadow the game's own class
+# on the loader they share, and the game would then draw against a method that
+# throws. Compiling against the stubs and shipping none of them is what keeps
+# that impossible rather than merely avoided.
+#
+# The stub tree is what says which names those are, rather than a package
+# pattern: an obfuscated version puts the game in the unnamed package, and so a
+# rule about `net/minecraft/` would pass every jar it was supposed to refuse.
+while IFS= read -r -d '' stub; do
+	class="${stub#"$generated/"}"
+	if [ -f "$classes/${class%.java}.class" ]; then
+		echo "the stub ${class%.java} reached the screen output tree; refusing to build a jar that would shadow the game" >&2
+		exit 1
+	fi
+done < <(find "$generated" -name '*.java' -print0 | sort -z)
 
 stamp="${RAVEL_JAR_DATE:-1980-01-01T00:00:02Z}"
 mapfile -d '' compiled < <(cd "$classes" && find . -name '*.class' -print0 | sort -z)

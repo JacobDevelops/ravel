@@ -8,6 +8,7 @@ use std::fmt::Write as _;
 
 use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
 use super::inputs::{Adapter, Inventory, Reflection};
+use super::mapping::Mapping;
 use super::resolve::Resolved;
 use super::stubs::Stub;
 use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY};
@@ -680,6 +681,50 @@ pub(super) fn game_names(adapter: &Adapter, surface: &Reflection) -> String {
     text
 }
 
+/// Renders the screen class names the agent jar loads reflectively.
+///
+/// The screens are generated, and where they are generated to is version data:
+/// a version that keeps the game in packages leaves them where ADG-6 put them,
+/// and one that obfuscates it into the unnamed package takes them with it,
+/// because Java cannot name an unnamed-package supertype from a package. The
+/// agent jar loads each one by name through `Class.forName`, so the name it
+/// passes comes from here for the same reason `GameNames` exists: one shared
+/// source tree cannot spell one version's names and be right about another.
+pub(super) fn screen_names(adapter: &Adapter, names: &[(String, String)]) -> String {
+    let mut text = String::with_capacity(names.len() * 120 + 768);
+    let _ = writeln!(
+        text,
+        "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
+         package dev.ravel.jvm;\n\n\
+         /**\n\
+         \x20* Ravel's own screen classes, as the version they were generated for\n\
+         \x20* names them.\n\
+         \x20*\n\
+         \x20* <p>A screen extends a game class, so it is generated rather than\n\
+         \x20* written and it is emitted beside the names that version links. Under a\n\
+         \x20* version whose game is in the unnamed package the screens are there too,\n\
+         \x20* which is why no source spells one of these by hand.\n\
+         \x20*/\n\
+         final class ScreenNames {{\n",
+        adapter.minecraft
+    );
+    for (constant, binary) in names {
+        let simple = binary.rsplit('.').next().unwrap_or(binary);
+        let _ = writeln!(
+            text,
+            "    /** Ravel's {simple}, where this version's names put it. */\n\
+             \x20   static final String {constant} = \"{binary}\";\n"
+        );
+    }
+    let _ = writeln!(
+        text,
+        "    private ScreenNames() {{\n\
+         \x20   }}\n\
+         }}"
+    );
+    text
+}
+
 /// The declarations that belong to the bootstrap rather than to a hook surface.
 ///
 /// They are written rather than generated, and they live here because ADG-1
@@ -937,10 +982,20 @@ pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
 }
 
 /// Renders one stub as a Java source file, with the path it belongs at.
-pub(super) fn stub_java(adapter: &Adapter, stub: &Stub) -> Result<(String, String), GenerateError> {
+///
+/// Every name a stub declares is the one the JVM links, because a stub's whole
+/// job is to put that name in the screen jar's constant pool. The reviewed names
+/// stay in `stubs.lock`, where a person reads them; the mapping is what stands
+/// between the two, and under an unobfuscated version it stands for nothing.
+pub(super) fn stub_java(
+    adapter: &Adapter,
+    stub: &Stub,
+    mapping: &Mapping,
+) -> Result<(String, String), GenerateError> {
     let unsupported =
         |detail: String| GenerateError::Unsupported(format!("{}: {detail}", stub.class));
-    let (package, simple) = split(&stub.class).map_err(&unsupported)?;
+    let linked = mapping.runtime_class(&stub.class);
+    let (package, simple) = split(linked);
 
     let mut text = String::with_capacity(stub.members.len() * 192 + 1024);
     let _ = writeln!(
@@ -950,10 +1005,18 @@ pub(super) fn stub_java(adapter: &Adapter, stub: &Stub) -> Result<(String, Strin
          // A compile-time stub, not Minecraft. It is compiled against and then\n\
          // discarded: `build-screen.sh` refuses to package one, because a stub in\n\
          // the screen jar would shadow the game's own class on the loader they\n\
-         // share. See minecraft/versions/{}/stubs.lock.\n\
-         package {package};\n",
+         // share. See minecraft/versions/{}/stubs.lock.",
         adapter.minecraft, adapter.minecraft
     );
+    // A class the mapping puts in the unnamed package declares no package at all,
+    // which is the shape an obfuscated version links: `package ;` is not Java and
+    // the name the JVM resolves has nothing before its last dot.
+    match &package {
+        Some(package) => {
+            let _ = writeln!(text, "package {package};\n");
+        }
+        None => text.push('\n'),
+    }
 
     let mut declaration = String::new();
     if stub.flags & ACC_PUBLIC != 0 {
@@ -972,7 +1035,11 @@ pub(super) fn stub_java(adapter: &Adapter, stub: &Stub) -> Result<(String, Strin
     }
     declaration.push_str(simple);
     if let Some(parent) = &stub.extends {
-        let _ = write!(declaration, " extends {}", source_name(parent));
+        let _ = write!(
+            declaration,
+            " extends {}",
+            source_name(mapping.runtime_class(parent))
+        );
     }
     if !stub.implements.is_empty() {
         // An interface writes every supertype after `extends`; a class separates
@@ -988,7 +1055,7 @@ pub(super) fn stub_java(adapter: &Adapter, stub: &Stub) -> Result<(String, Strin
             &stub
                 .implements
                 .iter()
-                .map(|name| source_name(name))
+                .map(|name| source_name(mapping.runtime_class(name)))
                 .collect::<Vec<_>>()
                 .join(", "),
         );
@@ -997,8 +1064,10 @@ pub(super) fn stub_java(adapter: &Adapter, stub: &Stub) -> Result<(String, Strin
 
     for member in &stub.members {
         let modifiers = modifiers(member.flags, stub.is_interface(), member.method);
+        let (name, descriptor) =
+            mapping.linked_member(&stub.class, &member.name, &member.descriptor);
         if member.method {
-            let (parameters, returns) = signature(&member.descriptor).map_err(&unsupported)?;
+            let (parameters, returns) = signature(&descriptor).map_err(&unsupported)?;
             let declared = parameters
                 .iter()
                 .enumerate()
@@ -1008,20 +1077,15 @@ pub(super) fn stub_java(adapter: &Adapter, stub: &Stub) -> Result<(String, Strin
             if member.name == "<init>" {
                 let _ = writeln!(text, "\n    {modifiers}{simple}({declared}) {{\n    }}");
             } else if returns == "void" {
-                let _ = writeln!(
-                    text,
-                    "\n    {modifiers}void {}({declared}) {{\n    }}",
-                    member.name
-                );
+                let _ = writeln!(text, "\n    {modifiers}void {name}({declared}) {{\n    }}");
             } else {
                 // A stub body is never reached: the real class is what the game
                 // loads. Throwing rather than returning a default is what makes
                 // that visible if one ever is.
                 let _ = writeln!(
                     text,
-                    "\n    {modifiers}{returns} {}({declared}) {{\n        \
-                     throw new UnsupportedOperationException(\"stub\");\n    }}",
-                    member.name
+                    "\n    {modifiers}{returns} {name}({declared}) {{\n        \
+                     throw new UnsupportedOperationException(\"stub\");\n    }}"
                 );
             }
         } else if stub.is_interface() {
@@ -1031,19 +1095,19 @@ pub(super) fn stub_java(adapter: &Adapter, stub: &Stub) -> Result<(String, Strin
                 member.name
             )));
         } else {
-            let (kind, rest) = java_type(&member.descriptor).map_err(&unsupported)?;
+            let (kind, rest) = java_type(&descriptor).map_err(&unsupported)?;
             if !rest.is_empty() {
                 return Err(unsupported(format!(
                     "{} declares {} which is not one type",
                     member.name, member.descriptor
                 )));
             }
-            let _ = writeln!(text, "\n    {modifiers}{kind} {};", member.name);
+            let _ = writeln!(text, "\n    {modifiers}{kind} {name};");
         }
     }
 
     let _ = writeln!(text, "}}");
-    Ok((format!("{}.java", stub.class), text))
+    Ok((format!("{linked}.java"), text))
 }
 
 /// The modifiers a stub reproduces, as Java source writes them.
@@ -1070,16 +1134,18 @@ fn modifiers(flags: u16, interface: bool, method: bool) -> String {
     text
 }
 
-/// Splits an internal class name into its package and its simple name.
 /// Splits an internal class name into its package and the name Java declares.
 ///
 /// A nested class keeps its `$`: the declared name is the binary one, which is
-/// what the JVM links against and what javac writes into the class file.
-fn split(class: &str) -> Result<(String, &str), String> {
-    let (package, simple) = class
+/// what the JVM links against and what javac writes into the class file. A class
+/// with no package at all is the unnamed one, which an obfuscated version puts
+/// most of the game in.
+fn split(class: &str) -> (Option<String>, &str) {
+    class
         .rsplit_once('/')
-        .ok_or_else(|| format!("{class} is in the default package"))?;
-    Ok((package.replace('/', "."), simple))
+        .map_or((None, class), |(package, simple)| {
+            (Some(package.replace('/', ".")), simple)
+        })
 }
 
 /// An internal class name as Java source writes it.
@@ -1088,7 +1154,7 @@ fn source_name(class: &str) -> String {
 }
 
 /// Reads a method descriptor as the Java source types it declares.
-fn signature(descriptor: &str) -> Result<(Vec<String>, String), String> {
+pub(super) fn signature(descriptor: &str) -> Result<(Vec<String>, String), String> {
     let mut rest = descriptor
         .strip_prefix('(')
         .ok_or_else(|| format!("{descriptor} is not a method descriptor"))?;
@@ -1106,7 +1172,7 @@ fn signature(descriptor: &str) -> Result<(Vec<String>, String), String> {
 }
 
 /// Reads one type descriptor as Java source, returning it and whatever follows.
-fn java_type(descriptor: &str) -> Result<(String, &str), String> {
+pub(super) fn java_type(descriptor: &str) -> Result<(String, &str), String> {
     let first = descriptor
         .chars()
         .next()
@@ -1154,7 +1220,7 @@ mod tests {
         JavaType, bindings, constant_name, exports, hook_java, java_name, parameters, rust_name,
         shapes,
     };
-    use super::{java_type, signature, stub_java, stub_lock};
+    use super::{Mapping, java_type, signature, stub_java, stub_lock};
 
     /// Adapter inputs standing in for the tracked ones.
     ///
@@ -1602,7 +1668,8 @@ mod tests {
             ],
         );
 
-        let (path, java) = stub_java(&adapter(), &screen).expect("a stub should render");
+        let (path, java) =
+            stub_java(&adapter(), &screen, &Mapping::Identity).expect("a stub should render");
 
         assert_eq!(path, "com/example/client/gui/screens/Screen.java");
         assert!(
@@ -1644,8 +1711,9 @@ mod tests {
         let mut mutable = stub("com/example/network/chat/MutableComponent", 0x0031, &[]);
         mutable.implements = vec!["com/example/network/chat/Component".to_owned()];
 
-        let (_, interface) = stub_java(&adapter(), &component).expect("renders");
-        let (_, class) = stub_java(&adapter(), &mutable).expect("renders");
+        let (_, interface) =
+            stub_java(&adapter(), &component, &Mapping::Identity).expect("renders");
+        let (_, class) = stub_java(&adapter(), &mutable, &Mapping::Identity).expect("renders");
 
         assert!(
             interface.contains(
@@ -1677,7 +1745,7 @@ mod tests {
             &[("getString", "()Ljava/lang/String;", 0x0401, true)],
         );
 
-        let (_, java) = stub_java(&adapter(), &component).expect("renders");
+        let (_, java) = stub_java(&adapter(), &component, &Mapping::Identity).expect("renders");
 
         assert!(
             java.contains("default java.lang.String getString() {"),
@@ -1688,7 +1756,6 @@ mod tests {
     #[test]
     fn a_stub_that_cannot_be_written_down_is_refused_rather_than_written_wrongly() {
         for (broken, expected) in [
-            (stub("Toplevel", 1, &[]), "is in the default package"),
             (
                 stub("a/B", 0x0201, &[("VALUE", "I", 0x0019, false)]),
                 "field on an interface",
@@ -1698,7 +1765,8 @@ mod tests {
                 "not a type descriptor",
             ),
         ] {
-            let error = stub_java(&adapter(), &broken).expect_err("this must not render");
+            let error = stub_java(&adapter(), &broken, &Mapping::Identity)
+                .expect_err("this must not render");
             assert!(error.to_string().contains(expected), "{error}");
         }
     }
@@ -1721,7 +1789,7 @@ mod tests {
             )],
         );
 
-        let (path, java) = stub_java(&adapter(), &builder).expect("renders");
+        let (path, java) = stub_java(&adapter(), &builder, &Mapping::Identity).expect("renders");
 
         assert!(
             path.ends_with("com/example/client/gui/components/Button$Builder.java"),
@@ -1744,7 +1812,7 @@ mod tests {
             &[("lineHeight", "I", 1, false), ("glyphs", "[[J", 4, false)],
         );
 
-        let (_, java) = stub_java(&adapter(), &font).expect("renders");
+        let (_, java) = stub_java(&adapter(), &font, &Mapping::Identity).expect("renders");
 
         assert!(java.contains("public int lineHeight;"), "{java}");
         assert!(java.contains("protected long[][] glyphs;"), "{java}");

@@ -73,8 +73,10 @@ mkdir -p "$work"
 
 # The production saved-data class is compiled here rather than copied, because
 # the shape being measured has to be production's own and not a restatement of
-# it. It is the only production source on this command line: everything around it
-# in `jvm/screen/src` is screens.
+# it. It is the generated source rather than the template, because the template
+# names the game through placeholders and the generator is what renders them into
+# the names this version links. It is the only production source on this command
+# line: everything around it in the generated tree is screens.
 #
 # Three lints are off and the rest stay fatal. The screen jar compiles this class
 # against the generated stubs, which carry erased descriptors, so `BASE64_STRING`
@@ -83,6 +85,6 @@ mkdir -p "$work"
 # suppressed warning below is that difference — not something the screen build's
 # own `-Xlint:all -Werror` would let through.
 javac -Xlint:all,-rawtypes,-unchecked,-cast -Werror -cp "$classpath" -d "$work" \
-    "$root/jvm/screen/src/dev/ravel/jvm/screen/RavelWorldData.java" \
+    "$root/target/ravel-jvm/generated-screen/dev/ravel/jvm/screen/RavelWorldData.java" \
     "$root/jvm/harness/DataFixBytePreservationMain.java"
 java -cp "$work:$classpath" DataFixBytePreservationMain

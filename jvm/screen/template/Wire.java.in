@@ -1,4 +1,4 @@
-package dev.ravel.jvm.screen;
+{{package}}
 
 /**
  * The screen's half of the settings payload format.

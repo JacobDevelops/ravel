@@ -72,5 +72,6 @@ fn main() {
     println!("cargo::metadata=exports={}", generated.exports.display());
     println!("cargo::metadata=java={}", generated.java.display());
     println!("cargo::metadata=stubs={}", generated.stubs.display());
+    println!("cargo::metadata=screens={}", generated.screens.display());
     println!("cargo::metadata=sha256={}", generated.sha256);
 }

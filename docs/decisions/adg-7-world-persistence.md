@@ -231,6 +231,12 @@ files that produced them. At that change:
 | `jvm/harness/run-datafix-byte-preservation.sh` | `8d9c4d4ab171cceade6649a87b3e795c05a225d885fc81e1f06f8bf2a461742e` |
 | `jvm/screen/src/dev/ravel/jvm/screen/RavelWorldData.java` | `3923d3a40b26a2627045f5dc92380185b258c49d4ca56f8d5030cae56753bec8` |
 
+That third path is where the source was when the run happened. The screen sources
+are generated per version now, so the file the harness compiles is
+`target/ravel-jvm/generated-screen/dev/ravel/jvm/screen/RavelWorldData.java`; at
+the pinned version it is `jvm/screen/template/RavelWorldData.java.in` with its
+placeholders filled in, and the digest above is over neither.
+
 `sha256sum` over those three paths recomputes them. Editing any of the three makes
 the reported line a record of a different instrument, and nothing in the repository
 notices: the provenance of this measurement is prose, which is what not being a gate

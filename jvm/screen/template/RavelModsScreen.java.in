@@ -1,17 +1,17 @@
-package dev.ravel.jvm.screen;
+{{package}}
 
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.Button;
+{{import net.minecraft.client.Minecraft}}
+{{import net.minecraft.client.gui.components.Button}}
 // The binary name is the type's name here, for the reason RavelSettingsScreen
 // records: the pinned version reaches every interactive widget through a nested
 // type and the stubs carry the binary name the JVM links on.
-import net.minecraft.client.gui.components.Button$OnPress;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.Component;
+{{import net.minecraft.client.gui.components.Button$OnPress}}
+{{import net.minecraft.client.gui.components.EditBox}}
+{{import net.minecraft.client.gui.screens.Screen}}
+{{import net.minecraft.network.chat.Component}}
 
 /**
  * Ravel's mod list and dependency diagnostics screen.
@@ -71,7 +71,7 @@ import net.minecraft.network.chat.Component;
  * text fields, which is the same choice a pack-fixed settings row makes and
  * needs no seed this repository does not already have.
  */
-public final class RavelModsScreen extends Screen {
+public final class RavelModsScreen extends {{Screen}} {
 
     /** Where the first row sits, below the title. */
     private static final int TOP = 32;
@@ -98,7 +98,7 @@ public final class RavelModsScreen extends Screen {
     private boolean read;
 
     private RavelModsScreen() {
-        super(Component.translatable("ravel.mods.title"));
+        super({{Component}}.{{Component#translatable}}("ravel.mods.title"));
     }
 
     /**
@@ -110,7 +110,7 @@ public final class RavelModsScreen extends Screen {
      *
      * @return a screen the caller hands to the game
      */
-    public static Screen open() {
+    public static {{Screen}} open() {
         return new RavelModsScreen();
     }
 
@@ -132,59 +132,59 @@ public final class RavelModsScreen extends Screen {
      * like the set is smaller than it is, which is the opposite of a diagnostic.
      */
     @Override
-    protected void init() {
-        super.init();
+    protected void {{Screen#init}}() {
+        super.{{Screen#init}}();
         entries.clear();
         read = parse(Hook.ravelModSurface());
 
         int y = TOP;
-        addRenderableWidget(label(summary(), y));
+        {{Screen#addRenderableWidget}}(label(summary(), y));
         y += ROW;
 
         List<Entry> drawn = ordered();
         for (int index = 0; index < drawn.size() && index < MAX_ROWS; index++) {
             for (String line : drawn.get(index).lines()) {
-                addRenderableWidget(label(line, y));
+                {{Screen#addRenderableWidget}}(label(line, y));
                 y += ROW;
             }
         }
         int undrawn = drawn.size() - Math.min(drawn.size(), MAX_ROWS);
         if (undrawn > 0) {
-            addRenderableWidget(
+            {{Screen#addRenderableWidget}}(
                     label(plural(undrawn, "more mod", "more mods") + " not shown", y));
             y += ROW;
         }
 
-        addRenderableWidget(
-                Button.builder(Component.literal("Configuration Settings"), new Button$OnPress() {
+        {{Screen#addRenderableWidget}}(
+                {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Configuration Settings"), new {{Button$OnPress}}() {
                             @Override
-                            public void onPress(Button pressed) {
-                                Minecraft.getInstance()
-                                        .setScreen(RavelMenu.openSettings("configuration"));
+                            public void {{Button$OnPress#onPress}}({{Button}} pressed) {
+                                {{Minecraft}}.{{Minecraft#getInstance}}()
+                                        .{{Minecraft#setScreen}}(RavelMenu.openSettings("configuration"));
                             }
                         })
-                        .bounds(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .build());
+                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
         y += ROW;
-        addRenderableWidget(
-                Button.builder(Component.literal("Profiling"), new Button$OnPress() {
+        {{Screen#addRenderableWidget}}(
+                {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Profiling"), new {{Button$OnPress}}() {
                             @Override
-                            public void onPress(Button pressed) {
-                                Minecraft.getInstance().setScreen(RavelMenu.openProfiling());
+                            public void {{Button$OnPress#onPress}}({{Button}} pressed) {
+                                {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(RavelMenu.openProfiling());
                             }
                         })
-                        .bounds(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .build());
+                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
         y += ROW;
-        addRenderableWidget(
-                Button.builder(Component.translatable("gui.done"), new Button$OnPress() {
+        {{Screen#addRenderableWidget}}(
+                {{Button}}.{{Button#builder}}({{Component}}.{{Component#translatable}}("gui.done"), new {{Button$OnPress}}() {
                             @Override
-                            public void onPress(Button pressed) {
-                                onClose();
+                            public void {{Button$OnPress#onPress}}({{Button}} pressed) {
+                                {{Screen#onClose}}();
                             }
                         })
-                        .bounds(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .build());
+                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
     }
 
     /**
@@ -226,17 +226,17 @@ public final class RavelModsScreen extends Screen {
     }
 
     /** One uneditable text field, which is how this screen shows a line. */
-    private EditBox label(String text, int y) {
-        EditBox box =
-                new EditBox(font, centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.literal(text));
-        box.setMaxLength(1024);
-        box.setValue(text);
-        box.setEditable(false);
+    private {{EditBox}} label(String text, int y) {
+        {{EditBox}} box =
+                new {{EditBox}}({{Screen#font}}, centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text));
+        box.{{EditBox#setMaxLength}}(1024);
+        box.{{EditBox#setValue}}(text);
+        box.{{EditBox#setEditable}}(false);
         return box;
     }
 
     private int centre() {
-        return (width - WIDGET_WIDTH) / 2;
+        return ({{Screen#width}} - WIDGET_WIDTH) / 2;
     }
 
     /** A count and the word that agrees with it. */

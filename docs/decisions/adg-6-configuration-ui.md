@@ -382,8 +382,8 @@ intact.
 
 **Ravel never draws, and it is checkable rather than asserted.** No crate names a
 drawing call — `drawString`, `GuiGraphics`, `renderBackground` and `blit(` appear
-nowhere under `crates/`. Every widget is built and drawn in Java under
-`jvm/screen/src/dev/ravel/jvm/screen/`, the game's font does the wrapping, and
+nowhere under `crates/`. Every widget is built and drawn in Java from the
+templates under `jvm/screen/template/`, the game's font does the wrapping, and
 `RavelSettingsScreen` deliberately declares no `extractRenderState` of its own —
 its class comment records that this is why `AbstractSliderButton` is subclassed
 and `AbstractButton`, which forces an extraction override, is not. So Ravel's own

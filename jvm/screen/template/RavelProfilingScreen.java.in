@@ -1,17 +1,17 @@
-package dev.ravel.jvm.screen;
+{{package}}
 
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.client.gui.components.Button;
+{{import net.minecraft.client.gui.components.Button}}
 // The binary name is the type's name here, for the reason RavelSettingsScreen
 // records: the pinned version reaches every interactive widget through a nested
 // type and the stubs carry the binary name the JVM links on.
-import net.minecraft.client.gui.components.Button$OnPress;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.FormattedText;
+{{import net.minecraft.client.gui.components.Button$OnPress}}
+{{import net.minecraft.client.gui.components.EditBox}}
+{{import net.minecraft.client.gui.screens.Screen}}
+{{import net.minecraft.network.chat.Component}}
+{{import net.minecraft.network.chat.FormattedText}}
 
 /**
  * Ravel's opt-in profiling report.
@@ -75,7 +75,7 @@ import net.minecraft.network.chat.FormattedText;
  * <p>Every widget here is one the game builds without this class drawing
  * anything, for the reason {@link RavelSettingsScreen} records at length.
  */
-public final class RavelProfilingScreen extends Screen {
+public final class RavelProfilingScreen extends {{Screen}} {
 
     /** Where the first row sits, below the title. */
     private static final int TOP = 32;
@@ -123,7 +123,7 @@ public final class RavelProfilingScreen extends Screen {
     private boolean read;
 
     private RavelProfilingScreen() {
-        super(Component.translatable("ravel.profiling.title"));
+        super({{Component}}.{{Component#translatable}}("ravel.profiling.title"));
     }
 
     /**
@@ -135,7 +135,7 @@ public final class RavelProfilingScreen extends Screen {
      *
      * @return a screen the caller hands to the game
      */
-    public static Screen open() {
+    public static {{Screen}} open() {
         return new RavelProfilingScreen();
     }
 
@@ -173,8 +173,8 @@ public final class RavelProfilingScreen extends Screen {
      * that cost nothing, which is the same silence in both cases.
      */
     @Override
-    protected void init() {
-        super.init();
+    protected void {{Screen#init}}() {
+        super.{{Screen#init}}();
         entries.clear();
         metrics.clear();
         read = parse(Hook.ravelProfilingReport());
@@ -193,35 +193,35 @@ public final class RavelProfilingScreen extends Screen {
 
         int y = TOP;
         for (String line : above) {
-            addRenderableWidget(label(line, y));
+            {{Screen#addRenderableWidget}}(label(line, y));
             y += ROW;
         }
         for (String line : table(budget)) {
-            addRenderableWidget(label(line, y));
+            {{Screen#addRenderableWidget}}(label(line, y));
             y += ROW;
         }
         for (String line : unmeasurable) {
-            addRenderableWidget(label(line, y));
+            {{Screen#addRenderableWidget}}(label(line, y));
             y += ROW;
         }
         for (String line : heading) {
-            addRenderableWidget(label(line, y));
+            {{Screen#addRenderableWidget}}(label(line, y));
             y += ROW;
         }
         for (String line : caveat) {
-            addRenderableWidget(label(line, y));
+            {{Screen#addRenderableWidget}}(label(line, y));
             y += ROW;
         }
 
-        addRenderableWidget(
-                Button.builder(Component.translatable("gui.done"), new Button$OnPress() {
+        {{Screen#addRenderableWidget}}(
+                {{Button}}.{{Button#builder}}({{Component}}.{{Component#translatable}}("gui.done"), new {{Button$OnPress}}() {
                             @Override
-                            public void onPress(Button pressed) {
-                                onClose();
+                            public void {{Button$OnPress#onPress}}({{Button}} pressed) {
+                                {{Screen#onClose}}();
                             }
                         })
-                        .bounds(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .build());
+                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
     }
 
     /**
@@ -267,7 +267,7 @@ public final class RavelProfilingScreen extends Screen {
      * @return at least one row, however small the window claims to be
      */
     private int rows() {
-        return Math.max(1, (height - TOP - ROW - WIDGET_HEIGHT) / ROW);
+        return Math.max(1, ({{Screen#height}} - TOP - ROW - WIDGET_HEIGHT) / ROW);
     }
 
     /**
@@ -284,8 +284,8 @@ public final class RavelProfilingScreen extends Screen {
         List<String> lines = new ArrayList<>();
         for (String text : texts) {
             for (Object piece :
-                    font.splitIgnoringLanguage(FormattedText.of(text), WIDGET_WIDTH - TEXT_INSET)) {
-                lines.add(((FormattedText) piece).getString());
+                    {{Screen#font}}.{{net.minecraft.client.gui.Font#splitIgnoringLanguage}}({{FormattedText}}.{{FormattedText#of}}(text), WIDGET_WIDTH - TEXT_INSET)) {
+                lines.add((({{FormattedText}}) piece).{{FormattedText#getString}}());
             }
         }
         return lines;
@@ -404,17 +404,17 @@ public final class RavelProfilingScreen extends Screen {
     }
 
     /** One uneditable text field, which is how this screen shows a line. */
-    private EditBox label(String text, int y) {
-        EditBox box =
-                new EditBox(font, centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.literal(text));
-        box.setMaxLength(1024);
-        box.setValue(text);
-        box.setEditable(false);
+    private {{EditBox}} label(String text, int y) {
+        {{EditBox}} box =
+                new {{EditBox}}({{Screen#font}}, centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text));
+        box.{{EditBox#setMaxLength}}(1024);
+        box.{{EditBox#setValue}}(text);
+        box.{{EditBox#setEditable}}(false);
         return box;
     }
 
     private int centre() {
-        return (width - WIDGET_WIDTH) / 2;
+        return ({{Screen#width}} - WIDGET_WIDTH) / 2;
     }
 
     /**

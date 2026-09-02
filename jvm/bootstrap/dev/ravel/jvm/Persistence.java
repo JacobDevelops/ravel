@@ -56,7 +56,15 @@ final class Persistence {
 
     private static final String LEVEL_RESOURCE = GameNames.LEVEL_RESOURCE;
     private static final String DATA_FIXERS = GameNames.DATA_FIXERS;
-    private static final String WORLD_DATA = "dev.ravel.jvm.screen.RavelWorldData";
+    /**
+     * The generated saved-data class, wherever this version's names put it.
+     *
+     * <p>It is generated for the same reason it is reached by name: it extends
+     * {@code SavedData}, so what it compiles against is what the JVM links, and a
+     * version that obfuscates the game into the unnamed package takes this class
+     * there with it.
+     */
+    private static final String WORLD_DATA = ScreenNames.RAVEL_WORLD_DATA;
 
     /** Tag byte at element zero of a save answer, payload in the remainder. */
     private static final byte UNCHANGED = 0x00;

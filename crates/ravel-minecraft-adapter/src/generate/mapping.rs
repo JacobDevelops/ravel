@@ -114,6 +114,27 @@ impl Mapping {
         }
     }
 
+    /// The linked pair one reviewed member is emitted as.
+    ///
+    /// This is the inverse of [`Self::mojang_member`] and shares its
+    /// pass-through: a member the mapping never named is emitted under the name
+    /// it already carries, which is what a constructor and a library class's
+    /// members need. [`Self::runtime_member`] refuses that case instead, because
+    /// a hook target the mapping does not name is a hook nobody reviewed; a stub
+    /// declares whatever the class file declares, and `<init>` is in every one of
+    /// them.
+    pub(super) fn linked_member(
+        &self,
+        mojang_class: &str,
+        member: &str,
+        descriptor: &str,
+    ) -> (String, String) {
+        match self {
+            Self::Identity => (member.to_owned(), descriptor.to_owned()),
+            Self::Proguard(proguard) => proguard.linked_member(mojang_class, member, descriptor),
+        }
+    }
+
     /// The member name and descriptor the JVM links for a reviewed member.
     ///
     /// A class the mapping does not name keeps its members, which is what a
@@ -331,6 +352,19 @@ impl Proguard {
             .get(mojang_class)
             .and_then(|declared| declared.get(&(member.to_owned(), descriptor.to_owned())))
             .map_or(member, String::as_str)
+    }
+
+    fn linked_member(
+        &self,
+        mojang_class: &str,
+        member: &str,
+        descriptor: &str,
+    ) -> (String, String) {
+        self.members
+            .get(mojang_class)
+            .and_then(|declared| declared.get(&(member.to_owned(), descriptor.to_owned())))
+            .cloned()
+            .unwrap_or_else(|| (member.to_owned(), map_descriptor(&self.classes, descriptor)))
     }
 
     fn runtime_member(

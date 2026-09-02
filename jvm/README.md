@@ -17,20 +17,31 @@ game, which ADG-1's second amendment measured rather than assumed.
   transformer, and the record the generator fills. Package `dev.ravel.jvm`.
 - `build/build-agent.sh` — builds `target/ravel-jvm/ravel-agent.jar` from those
   sources plus the generated `Hook` class.
-- `screen/` — the screen artefact's tracked sources, package
-  `dev.ravel.jvm.screen`. These name game types and so need the restricted client
-  jar to compile, which is exactly why they are not in `bootstrap/`.
-- `build/build-screen.sh` — builds the screen jar from those sources.
+- `screen/template/` — the screen artefact's tracked sources, one template per
+  Java class. They name game classes and members inside `{{…}}` rather than
+  spelling them, because a screen extends the game's `Screen` and overrides its
+  methods: every game name it uses is a constant-pool entry the JVM links
+  directly, so unlike the agent jar's adapters it cannot reach one through a
+  runtime string. `ravel-minecraft-adapter`'s build script renders each template
+  into `target/ravel-jvm/generated-screen/`, in the name space the selected
+  version links, in the same pass that emits the stubs they compile against.
+  Under an unobfuscated version that is the reviewed name space and the generated
+  source is the template with its placeholders filled in; under an obfuscated one
+  the game is in the unnamed package, so the screens are generated there too and
+  `ScreenNames` tells the agent jar where they went.
+- `build/build-screen.sh` — builds the screen jar from those generated sources.
 - `harness/` — a stub class and a `main` that run the whole path against a real
   JVM without the game. See [Proving it without the game](#proving-it-without-the-game).
 
-The generated `Hook` class is not tracked. `ravel-minecraft-adapter`'s build
-script writes it to `target/ravel-jvm/generated/dev/ravel/jvm/Hook.java`, so a
-build of that crate has to have happened before the jar can be built:
+The generated `Hook` class is not tracked, and neither are the generated screen
+sources or the stubs they compile against. `ravel-minecraft-adapter`'s build
+script writes them under `target/ravel-jvm/`, so a build of that crate has to
+have happened before either jar can be built:
 
 ```console
 cargo build -p ravel-minecraft-adapter
 ./jvm/build/build-agent.sh
+./jvm/build/build-screen.sh
 ```
 
 Neither step needs the restricted client jar. The generator falls back to the

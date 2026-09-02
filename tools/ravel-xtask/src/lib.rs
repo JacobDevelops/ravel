@@ -153,9 +153,9 @@ const ROOT_FILES: &[&str] = &[
     "jvm/harness/Main.java",
     "jvm/harness/net/minecraft/util/StringUtil.java",
     "jvm/harness/run-harness.sh",
-    "jvm/screen/src/dev/ravel/jvm/screen/RavelModsScreen.java",
-    "jvm/screen/src/dev/ravel/jvm/screen/RavelSettingsScreen.java",
-    "jvm/screen/src/dev/ravel/jvm/screen/Wire.java",
+    "jvm/screen/template/RavelModsScreen.java.in",
+    "jvm/screen/template/RavelSettingsScreen.java.in",
+    "jvm/screen/template/Wire.java.in",
     "minecraft/README.md",
     "nix/ci.nix",
     "nix/common.nix",
@@ -405,7 +405,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_harness_lifecycles(root, &mut violations);
     verify_persistence_reflection(root, &mut violations);
     verify_hook_name_literals(root, &inventories, &mut violations);
-    verify_screen_jar_names(root, &mut violations);
+    verify_screen_templates(root, &mut violations);
     verify_guide_enumerations(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
@@ -2032,41 +2032,41 @@ fn verify_hook_name_literals(
     }
 }
 
-/// The sources compiled into the Ravel-owned screen jar.
-const SCREEN_JAR_SOURCES: &str = "jvm/screen/src";
+/// The templates the Ravel-owned screen jar's sources are generated from.
+const SCREEN_JAR_SOURCES: &str = "jvm/screen/template";
 
 /// Refuses an obfuscated version while the screen jar still imports game types.
 ///
-/// The screen sources `extend` the game's own classes and import them by their
-/// Mojang names, and `stubs.rs` emits the stub tree they compile against in that
-/// same name space. So those imports become `net/minecraft/…` constant-pool
-/// entries: under an unobfuscated version they are the names the JVM links, and
-/// under an obfuscated one they are the names of nothing and the screen jar links
-/// against a game that is not there. `GameNames` does not reach them — a
-/// compile-time reference cannot be replaced by a runtime string the way a
-/// `Class.forName` can — so closing it means deciding where Ravel-owned screens
-/// live, which is an ADG-6 question rather than an edit.
+/// Refuses a screen template that spells a game name itself.
 ///
-/// This does not close it. It refuses to let it be inherited silently: the first
-/// tracked version declaring `official-proguard-mappings` fails here, naming the
-/// decision, instead of producing a green gate and a screen jar that links
-/// nothing.
+/// A screen extends the game's own `Screen` and overrides its methods, so every
+/// game name it uses is a constant-pool entry the JVM links directly: unlike the
+/// agent jar's adapters, it cannot reach one through a runtime string. That is
+/// why the sources are generated — `jvm/screen/template` is one tree for every
+/// tracked version, and the generator renders each `{{…}}` into the name that
+/// version links, in the same pass that emits the stubs they compile against.
 ///
-/// **What it cannot do.** It reads `import` lines, so a game type named by its
-/// fully qualified name inside a declaration escapes it, as does one reached
-/// through a stub that imports it on the screen's behalf. And it sees only the
-/// prefixes [`GAME_PACKAGES`] lists.
-fn verify_screen_jar_names(root: &Path, violations: &mut Vec<String>) {
-    let versions = match tracked_versions(root) {
-        Ok(versions) => versions,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
+/// A Mojang name written into a template escapes that pass. It is one version's
+/// spelling asserted over all of them and it is the obfuscated name of none, so
+/// it is refused whatever the tracked versions declare, exactly as a game literal
+/// under [`AGENT_JAR_SOURCES`] is.
+///
+/// **What it cannot do.** It sees only the prefixes [`GAME_PACKAGES`] lists, and
+/// a template that reaches a game class through a simple name it never spells in
+/// full — one the generator resolves to nothing and the build then fails on — is
+/// caught by the generator rather than here.
+fn verify_screen_templates(root: &Path, violations: &mut Vec<String>) {
+    let directory = root.join(SCREEN_JAR_SOURCES);
+    let templates = screen_templates(&directory);
+    if templates.is_empty() {
+        violations.push(format!(
+            "{SCREEN_JAR_SOURCES} holds no screen template, so the screen jar is generated from \
+             nothing"
+        ));
+        return;
+    }
 
-    let mut imported = Vec::new();
-    for path in java_sources(&root.join(SCREEN_JAR_SOURCES)) {
+    for path in templates {
         let relative = path
             .strip_prefix(root)
             .unwrap_or(&path)
@@ -2076,52 +2076,65 @@ fn verify_screen_jar_names(root: &Path, violations: &mut Vec<String>) {
             violations.push(format!("cannot read {relative}"));
             continue;
         };
-        for line in source.lines() {
-            let Some(name) = line
-                .trim()
-                .strip_prefix("import ")
-                .and_then(|rest| rest.trim_end_matches(';').split_whitespace().next_back())
-            else {
-                continue;
-            };
-            if GAME_PACKAGES
-                .iter()
-                .any(|package| name.starts_with(package))
-            {
-                imported.push((relative.clone(), name.to_owned()));
+        for (index, line) in source.lines().enumerate() {
+            for spelled in game_names_outside_placeholders(line) {
+                violations.push(format!(
+                    "{relative}:{} spells the game name {spelled} itself. A screen template is one \
+                     source for every tracked version and a game name written here is one \
+                     version's spelling asserted over all of them — the obfuscated name of none. \
+                     Name it inside a placeholder, which the generator renders into the name that \
+                     version links",
+                    index + 1
+                ));
             }
         }
     }
-    if imported.is_empty() {
-        return;
-    }
-
-    for version in versions {
-        let relative = format!("{VERSION_DATA}/{version}/adapter.toml");
-        let Ok(text) = fs::read_to_string(root.join(&relative)) else {
-            continue;
-        };
-        if !text
-            .lines()
-            .filter_map(|line| quoted_value(line, "mappingSource"))
-            .any(|source| source == OBFUSCATED_SOURCE)
-        {
-            continue;
-        }
-        let (source, name) = &imported[0];
-        violations.push(format!(
-            "{relative} declares {OBFUSCATED_SOURCE} while {SCREEN_JAR_SOURCES} still imports game \
-             types by their Mojang names ({source} imports {name}, and {} such imports are \
-             tracked). The stub tree those sources compile against is emitted in the Mojang name \
-             space, so the screen jar would carry names that version links nothing under. Decide \
-             where Ravel-owned screens live before a version that obfuscates them lands",
-            imported.len()
-        ));
-    }
 }
 
-/// The mapping source under which the game declares none of its reviewed names.
-const OBFUSCATED_SOURCE: &str = "official-proguard-mappings";
+/// Every screen template under one directory, in a stable order.
+fn screen_templates(directory: &Path) -> Vec<PathBuf> {
+    let mut templates = Vec::new();
+    collect_files(directory, &mut templates);
+    templates.retain(|path| {
+        path.to_str()
+            .is_some_and(|name| name.ends_with(SCREEN_TEMPLATE_SUFFIX))
+    });
+    templates.sort();
+    templates
+}
+
+/// The suffix a screen template carries over the Java source it renders.
+const SCREEN_TEMPLATE_SUFFIX: &str = ".java.in";
+
+/// Every game name one template line carries outside a `{{…}}`.
+fn game_names_outside_placeholders(line: &str) -> Vec<String> {
+    let mut spelled = Vec::new();
+    let mut rest = line;
+    while !rest.is_empty() {
+        let (outside, remainder) = match rest.split_once("{{") {
+            Some((outside, inside)) => (
+                outside,
+                inside.split_once("}}").map_or("", |(_, after)| after),
+            ),
+            None => (rest, ""),
+        };
+        for package in GAME_PACKAGES {
+            let mut search = outside;
+            while let Some(index) = search.find(package) {
+                let after = &search[index..];
+                let end = after
+                    .find(|character: char| {
+                        !(character.is_alphanumeric() || character == '.' || character == '_')
+                    })
+                    .unwrap_or(after.len());
+                spelled.push(after[..end].trim_end_matches('.').to_owned());
+                search = &after[end..];
+            }
+        }
+        rest = remainder;
+    }
+    spelled
+}
 
 /// The generated Java class the shared adapters read their game names out of.
 const GAME_NAMES: &str = "GameNames";
@@ -7726,7 +7739,7 @@ mod tests {
         verify_ignored_boundaries, verify_m4_gate_figures, verify_m4_process_matrix,
         verify_m4_surface, verify_manifest_percentages, verify_milestone,
         verify_persistence_reflection, verify_resolved_class_figure, verify_review_round_counts,
-        verify_scaffold, verify_screen_jar_names, verify_spikes, verify_testkit_fence,
+        verify_scaffold, verify_screen_templates, verify_spikes, verify_testkit_fence,
         verify_tracked_contents, verify_tracked_paths, verify_version_boundary,
         verify_version_directories, verify_void_limits, version_class_names, visible_commit,
     };
@@ -9881,8 +9894,8 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
-    /// Writes one screen source and one version declaring a mapping source.
-    fn screen_root(label: &str, source: &str, mapping_source: &str) -> PathBuf {
+    /// Writes one screen template, and a version to hold it against.
+    fn screen_root(label: &str, template: &str, mapping_source: &str) -> PathBuf {
         let root = temporary_root(label);
         version_directory(&root, "26.1.2", &[]);
         fs::write(
@@ -9893,49 +9906,67 @@ mod tests {
             ),
         )
         .expect("version data should be writable");
-        let sources = root.join(SCREEN_JAR_SOURCES).join("dev/ravel/jvm/screen");
-        fs::create_dir_all(&sources).expect("screen sources should be creatable");
-        fs::write(sources.join("Content.java"), source).expect("screen source should be writable");
+        let templates = root.join(SCREEN_JAR_SOURCES);
+        fs::create_dir_all(&templates).expect("screen templates should be creatable");
+        fs::write(templates.join("Content.java.in"), template)
+            .expect("screen template should be writable");
         root
     }
 
-    /// The screen sources import game types by their Mojang names and compile
-    /// against a stub tree emitted in that same name space, so under a version
-    /// that obfuscates them the screen jar would link nothing. Closing that is an
-    /// ADG-6 decision; refusing to let it be inherited silently is this.
+    /// A template is one source for every tracked version, so a game name written
+    /// into one is refused whatever the versions declare — the same rule the
+    /// agent jar's sources are held to, for the same reason.
     #[test]
-    fn an_obfuscated_version_beside_a_screen_jar_that_imports_game_types_is_refused() {
+    fn a_template_that_spells_a_game_name_is_refused() {
         let root = screen_root(
-            "screen-obfuscated",
-            "import net.minecraft.client.One;\n",
-            "official-proguard-mappings",
-        );
-        let mut violations = Vec::new();
-
-        verify_screen_jar_names(&root, &mut violations);
-
-        assert_eq!(violations.len(), 1, "{violations:?}");
-        assert!(
-            violations[0].contains("imports net.minecraft.client.One"),
-            "{violations:?}"
-        );
-        fs::remove_dir_all(root).expect("temporary root should be removable");
-    }
-
-    /// Under an unobfuscated version those imports are the names the JVM links,
-    /// which is why this is a conditional rather than a prohibition.
-    #[test]
-    fn an_unobfuscated_version_beside_the_same_screen_jar_is_accepted() {
-        let root = screen_root(
-            "screen-unobfuscated",
+            "screen-spelled",
             "import net.minecraft.client.One;\n",
             "unobfuscated-class-files",
         );
         let mut violations = Vec::new();
 
-        verify_screen_jar_names(&root, &mut violations);
+        verify_screen_templates(&root, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("spells the game name net.minecraft.client.One"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The same name inside a placeholder is what the generator renders, so it is
+    /// the shape the rule asks for rather than a second violation.
+    #[test]
+    fn a_template_that_names_a_game_class_in_a_placeholder_is_accepted() {
+        let root = screen_root(
+            "screen-placeholder",
+            "{{import net.minecraft.client.One}}\nOne one = ({{net.minecraft.client.One}}) held;\n",
+            "official-proguard-mappings",
+        );
+        let mut violations = Vec::new();
+
+        verify_screen_templates(&root, &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A directory with no template at all would pass every line rule while
+    /// generating no screen, so the absence is the violation.
+    #[test]
+    fn a_screen_template_directory_with_nothing_in_it_is_refused() {
+        let root = temporary_root("screen-empty");
+        fs::create_dir_all(root.join(SCREEN_JAR_SOURCES)).expect("creatable");
+        let mut violations = Vec::new();
+
+        verify_screen_templates(&root, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("holds no screen template"),
+            "{violations:?}"
+        );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 

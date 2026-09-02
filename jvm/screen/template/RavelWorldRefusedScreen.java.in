@@ -1,13 +1,13 @@
-package dev.ravel.jvm.screen;
+{{package}}
 
-import net.minecraft.client.gui.components.Button;
+{{import net.minecraft.client.gui.components.Button}}
 // The binary name is the type's name here, for the reason RavelSettingsScreen
 // records: the pinned version reaches every interactive widget through a nested
 // type and the stubs carry the binary name the JVM links on.
-import net.minecraft.client.gui.components.Button$OnPress;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.Component;
+{{import net.minecraft.client.gui.components.Button$OnPress}}
+{{import net.minecraft.client.gui.components.EditBox}}
+{{import net.minecraft.client.gui.screens.Screen}}
+{{import net.minecraft.network.chat.Component}}
 
 /**
  * What a player sees when Ravel refuses to open a world.
@@ -26,7 +26,7 @@ import net.minecraft.network.chat.Component;
  * untouched. It is named rather than performed, because deleting a player's data
  * is not a thing a refusal path should do on its own.
  */
-public final class RavelWorldRefusedScreen extends Screen {
+public final class RavelWorldRefusedScreen extends {{Screen}} {
 
     private static final int TOP = 40;
     private static final int ROW = 22;
@@ -42,7 +42,7 @@ public final class RavelWorldRefusedScreen extends Screen {
     private final String diagnostic;
 
     private RavelWorldRefusedScreen(String diagnostic) {
-        super(Component.translatable("ravel.world.refused.title"));
+        super({{Component}}.{{Component#translatable}}("ravel.world.refused.title"));
         this.diagnostic = diagnostic == null ? "" : diagnostic;
     }
 
@@ -56,7 +56,7 @@ public final class RavelWorldRefusedScreen extends Screen {
      * @param diagnostic the refusal text the open crossing answered with
      * @return a screen the caller hands to the game
      */
-    public static Screen open(String diagnostic) {
+    public static {{Screen}} open(String diagnostic) {
         return new RavelWorldRefusedScreen(diagnostic);
     }
 
@@ -66,43 +66,43 @@ public final class RavelWorldRefusedScreen extends Screen {
     }
 
     @Override
-    protected void init() {
-        super.init();
+    protected void {{Screen#init}}() {
+        super.{{Screen#init}}();
         int y = TOP;
-        addRenderableWidget(label("This world was not opened.", y));
+        {{Screen#addRenderableWidget}}(label("This world was not opened.", y));
         y += ROW;
         for (int start = 0, rows = 0;
                 start < diagnostic.length() && rows < MAX_ROWS;
                 start += PER_ROW, rows++) {
-            addRenderableWidget(
+            {{Screen#addRenderableWidget}}(
                     label(diagnostic.substring(start, Math.min(diagnostic.length(), start + PER_ROW)), y));
             y += ROW;
         }
-        addRenderableWidget(label("Deleting Ravel's saved data resets Ravel for this world.", y));
+        {{Screen#addRenderableWidget}}(label("Deleting Ravel's saved data resets Ravel for this world.", y));
         y += ROW;
 
-        addRenderableWidget(
-                Button.builder(Component.translatable("gui.done"), new Button$OnPress() {
+        {{Screen#addRenderableWidget}}(
+                {{Button}}.{{Button#builder}}({{Component}}.{{Component#translatable}}("gui.done"), new {{Button$OnPress}}() {
                             @Override
-                            public void onPress(Button pressed) {
-                                onClose();
+                            public void {{Button$OnPress#onPress}}({{Button}} pressed) {
+                                {{Screen#onClose}}();
                             }
                         })
-                        .bounds(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .build());
+                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
     }
 
     /** One uneditable text field, which is how this screen shows a line. */
-    private EditBox label(String text, int y) {
-        EditBox box =
-                new EditBox(font, centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.literal(text));
-        box.setMaxLength(1024);
-        box.setValue(text);
-        box.setEditable(false);
+    private {{EditBox}} label(String text, int y) {
+        {{EditBox}} box =
+                new {{EditBox}}({{Screen#font}}, centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text));
+        box.{{EditBox#setMaxLength}}(1024);
+        box.{{EditBox#setValue}}(text);
+        box.{{EditBox#setEditable}}(false);
         return box;
     }
 
     private int centre() {
-        return (width - WIDGET_WIDTH) / 2;
+        return ({{Screen#width}} - WIDGET_WIDTH) / 2;
     }
 }

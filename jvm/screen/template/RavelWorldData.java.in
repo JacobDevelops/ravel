@@ -1,11 +1,11 @@
-package dev.ravel.jvm.screen;
+{{package}}
 
-import com.mojang.serialization.Codec;
-import net.minecraft.resources.Identifier;
-import net.minecraft.util.ExtraCodecs;
-import net.minecraft.util.datafix.DataFixTypes;
-import net.minecraft.world.level.saveddata.SavedData;
-import net.minecraft.world.level.saveddata.SavedDataType;
+{{import com.mojang.serialization.Codec}}
+{{import net.minecraft.resources.Identifier}}
+{{import net.minecraft.util.ExtraCodecs}}
+{{import net.minecraft.util.datafix.DataFixTypes}}
+{{import net.minecraft.world.level.saveddata.SavedData}}
+{{import net.minecraft.world.level.saveddata.SavedDataType}}
 
 /**
  * The one object Minecraft stores on Ravel's behalf, and the only game type
@@ -28,7 +28,7 @@ import net.minecraft.world.level.saveddata.SavedDataType;
  * reaches them by name from the agent jar, which is the same route every screen
  * here is opened through and the only one ADG-1 leaves open.
  */
-public final class RavelWorldData extends SavedData {
+public final class RavelWorldData extends {{SavedData}} {
 
     /** What the stored object is called inside the world's data folder. */
     private static final String NAMESPACE = "ravel";
@@ -50,25 +50,25 @@ public final class RavelWorldData extends SavedData {
      * codec and a supplier and nothing here is hot: it is touched twice per world
      * lifecycle, once at open and once per save.
      */
-    public static SavedDataType type() {
+    public static {{SavedDataType}} type() {
         // `BASE64_STRING` is already a codec over `byte[]`, so nothing here
         // hand-rolls one. `fieldOf` puts it under a key so the encoded form is
         // the compound tag the storage writes; a bare leaf codec would encode to
         // a string tag and the storage would have nothing to write.
-        Codec codec = ExtraCodecs.BASE64_STRING
-                .xmap(stored -> new RavelWorldData((byte[]) stored),
+        {{Codec}} codec = {{ExtraCodecs}}.{{ExtraCodecs#BASE64_STRING}}
+                .{{Codec#xmap}}(stored -> new RavelWorldData((byte[]) stored),
                         data -> ((RavelWorldData) data).aggregate)
-                .fieldOf(FIELD)
-                .codec();
-        return new SavedDataType(
-                Identifier.fromNamespaceAndPath(NAMESPACE, PATH),
+                .{{Codec#fieldOf}}(FIELD)
+                .{{com.mojang.serialization.MapCodec#codec}}();
+        return new {{SavedDataType}}(
+                {{Identifier}}.{{Identifier#fromNamespaceAndPath}}(NAMESPACE, PATH),
                 () -> new RavelWorldData(new byte[0]),
                 codec,
-                DataFixTypes.SAVED_DATA_COMMAND_STORAGE);
+                {{DataFixTypes}}.{{DataFixTypes#SAVED_DATA_COMMAND_STORAGE}});
     }
 
     /** Wraps replacement bytes as the object the storage will write. */
-    public static SavedData of(byte[] aggregate) {
+    public static {{SavedData}} of(byte[] aggregate) {
         RavelWorldData held = new RavelWorldData(aggregate);
         // The pinned `SavedDataStorage.set` marks the replacement dirty exactly
         // once, so this must not do it again.

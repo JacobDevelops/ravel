@@ -4,9 +4,11 @@ Status: accepted at M1-W2; amended by [ADG-6](adg-6-configuration-ui.md) before
 M3-W3 to say what else Ravel puts into the game process, amended again at M3-W3
 on a measurement that found one class loader where this record described a
 delegating pair, and amended by [ADG-7](adg-7-world-persistence.md) before M3-W4
-to admit one receiver-aware Java-adapter mode, and amended again while scoping
+to admit one receiver-aware Java-adapter mode, amended again while scoping
 the second version directory to record that a second Minecraft version reaches
-none of this. The amendments are recorded below
+none of this, and amended once more when the game names those adapters resolve
+stopped being literals in a shared source and started being generated. The
+amendments are recorded below
 and each consequence they correct is marked where it appears. Nothing about the
 entry mechanism changed. It needs no `SPEC.md` §3.3 amendment and no unsafe
 exception: the premise that an exported symbol cannot be encapsulated turned out
@@ -227,12 +229,12 @@ the same for both build steps, and
 [`m3-hook-targets.md`](../architecture/m3-hook-targets.md) records that the
 generator declares every reference parameter as `java.lang.Object` precisely so
 that generated `Hook.java` declares no game type and still compiles without the
-client jar. Neither artifact is free of game *names*: the transformer compares
-target classes against internal names it holds as string literals, `Hook.java`'s
+client jar. Neither artifact is free of game *names*: `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-three adapters between them resolve seventeen classes by name — all of which the invariant
+three adapters between them resolve eighteen classes by name — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
-on the class path.
+on the class path. Those eighteen names are generated rather than written; the
+amendment below records why and what carries them.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled
 without it. Putting the screen in this jar would make the licensed client jar a
 build input for the agent, for every contributor on every build, in a public
@@ -469,6 +471,73 @@ mangled symbol name or a second `Hook` class in the same namespace. Either one i
 a change to the mechanism, and neither is made here. If that option is ever
 reopened — the condition is named in that record — this record is amended then,
 with a measurement, rather than assumed to permit it now.
+
+## Amendment: the adapters' game names are generated, not written
+
+Amended when a second Minecraft version made the shared adapters' string
+literals wrong twice over. This amendment changes no mechanism and adds no
+entry point. It records where one set of names comes from, which is a question
+the record had never had to ask because there had only ever been one version to
+be right about.
+
+`jvm/bootstrap` is one source tree and every tracked version compiles from it.
+The adapters used to spell their game classes as string literals — `MINECRAFT =
+"net.minecraft.client.Minecraft"` and seventeen more like it — and that is wrong
+in two independent ways the moment a second version exists. A class one version
+calls `net.minecraft.resources.Identifier` another calls `ResourceLocation`, so
+one spelling in one shared file asserts one version's names over both. And a
+version whose class files are obfuscated links none of those names at all, while
+a check comparing Mojang names against a declaration of Mojang names passes and
+says nothing: the runtime failure it was supposed to catch is invisible to it by
+construction.
+
+So the names are generated, by the mechanism that already generates the other
+name the agent jar carries. Each version's `reflection.toml` declares, for each
+class an adapter reaches, a **role** — the word the shared source spells, the
+same under every version because it names what the class is to Ravel — beside the
+**Mojang name** a reviewer reads and the **runtime name** the JVM links. The
+binding generator renders the roles into `dev.ravel.jvm.GameNames`, a
+package-private class in the same generated tree as `Hook.java`, with the runtime
+names as values and the Mojang names as comments. The adapters resolve
+`GameNames.<role>`. That is the same two-audience split `HookTarget` has always
+made, applied to the one name surface that had been left out of it.
+
+Nothing about the entry mechanism moves. `GameNames` declares no native method
+and no game type, so ADG-1's one exported symbol surface is still
+`dev.ravel.jvm.Hook` and the jar still compiles with no `-cp`. What the jar
+carries is unchanged in kind — string names, resolved at runtime — and changed
+only in where the strings come from.
+
+Two checks hold it, in two places, because they need two different things.
+`verify_persistence_reflection` in `tools/ravel-xtask/src/lib.rs` refuses a
+game-class literal anywhere under `jvm/bootstrap` outright, and holds the roles
+the sources spell and the roles every tracked version declares to each other in
+both directions. It does not re-derive a runtime name, and that is deliberate:
+what a Mojang name links to is decided by the version's mapping source, which
+only a build that selected that version holds, so the same rule written here
+would be the weaker of two copies. The generator owns it instead —
+`mapping::verify_reflection` in `ravel-minecraft-adapter` refuses a declared
+runtime name the mapping does not resolve its Mojang name to, on every build that
+can read that mapping, which under an unobfuscated source is every build at all
+because the identity needs no file.
+
+The transformer stopped naming a game class at the same time and for the same
+reason. It identified five seams by the class and member it was about to rewrite,
+which is a Mojang name in a shared source twice over, and it already held the one
+name that survives a game update: `HookTarget.hookMethod`, rendered from the hook
+id ADG-3 calls the only durable name. Each of those five now names its hook
+instead. Two of them dropped a descriptor comparison with it, because a hook id
+renders one hook name and the overload it was there to tell apart carries a
+different one. This is the same idiom `Persistence.java` already used for its
+save-seam marker, generalised rather than invented.
+
+The figure above moves from seventeen to eighteen for a reason worth stating: the
+declared set is now the adapters' whole reflective surface rather than the part of
+it `hooks.toml` did not already pin. A class covered by a hook target used to be
+left out of the declaration, which was correct when the declaration existed only
+to catch an undeclared literal. It is wrong now, because the declaration is what
+the constants are generated from, and a class with no role has nothing to be
+reached by.
 
 ## Limits of this evidence
 

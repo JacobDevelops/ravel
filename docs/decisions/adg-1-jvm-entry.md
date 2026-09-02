@@ -4,7 +4,9 @@ Status: accepted at M1-W2; amended by [ADG-6](adg-6-configuration-ui.md) before
 M3-W3 to say what else Ravel puts into the game process, amended again at M3-W3
 on a measurement that found one class loader where this record described a
 delegating pair, and amended by [ADG-7](adg-7-world-persistence.md) before M3-W4
-to admit one receiver-aware Java-adapter mode. The amendments are recorded below
+to admit one receiver-aware Java-adapter mode, and amended again while scoping
+the second version directory to record that a second Minecraft version reaches
+none of this. The amendments are recorded below
 and each consequence they correct is marked where it appears. Nothing about the
 entry mechanism changed. It needs no `SPEC.md` §3.3 amendment and no unsafe
 exception: the premise that an exported symbol cannot be encapsulated turned out
@@ -442,6 +444,31 @@ It grants nothing else. A prologue may not alter arguments, substitute a return
 value, resume a method it declined, or observe the receiver it was never given. Rust
 owns the decision; Java owns cleanup and presentation. Nothing here reverses the
 direction ADG-1 accepted: Java calls Rust and asks, and Rust answers.
+
+## Amendment: a second Minecraft version changes nothing here
+
+Amended while scoping the second version directory, on
+[Version selection is a build-time choice](version-selection-is-a-build-time-choice.md)'s
+account. This amendment adds no mechanism and removes none. It exists because a
+reader arriving at a repository that tracks two Minecraft versions would
+reasonably expect this record to have moved, and it has not.
+
+The entry mechanism stays one `-javaagent`, one `System.loadLibrary`, one
+`dev.ravel.jvm.Hook`, and one exported JNI symbol per hook, mangled against that
+class with no version component anywhere in the name. That survives a second
+version *because* selection is a build-time choice: one build generates against
+one version directory and emits that version's exports, so two inventories that
+both review the same capability never render into one library and the mangled
+names cannot collide. The hand-written exports on `dev.ravel.jvm.Hook` are
+untouched for the same reason, and so is the single `links` entry
+`ravel-bootstrap` reads its generated exports through.
+
+What would reach this record is the option that decision rejected: a single
+library carrying several versions, which needs either a version inside the
+mangled symbol name or a second `Hook` class in the same namespace. Either one is
+a change to the mechanism, and neither is made here. If that option is ever
+reopened — the condition is named in that record — this record is amended then,
+with a measurement, rather than assumed to permit it now.
 
 ## Limits of this evidence
 

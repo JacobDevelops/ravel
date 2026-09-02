@@ -1793,9 +1793,22 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
             )),
         }
     };
+    // A role's own keys and its members' keys are both spelled `name`, so the
+    // table a key belongs to is what tells them apart. Reading a member's name
+    // as a role's would hold this check to a member and then refuse the role it
+    // replaced for declaring no class.
+    let mut member = false;
     for line in text.lines().map(str::trim) {
         if line == "[[reflected]]" {
             finish(&mut name, &mut class, &mut runtime, &mut roles)?;
+            member = false;
+            continue;
+        }
+        if line.starts_with('[') {
+            member = true;
+            continue;
+        }
+        if member {
             continue;
         }
         if let Some(value) = quoted_value(line, "name") {
@@ -1823,8 +1836,10 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
 /// So the mechanism is generated rather than written, exactly as `HookTarget` is.
 /// Each version's `reflection.toml` declares a role, the Mojang name a reviewer
 /// reads, and the runtime name the JVM links; the generator renders the roles
-/// into `dev.ravel.jvm.GameNames` with the runtime names as values; and the
-/// shared sources spell `GameNames.<role>`. This holds that mechanism in three
+/// into `dev.ravel.jvm.GameNames` with the runtime names as values, and each
+/// declared member into `dev.ravel.jvm.GameMembers` as the linked name and the
+/// linked descriptor; and the shared sources spell `GameNames.<role>` and
+/// `GameMembers.<role>_<member>`. This holds that mechanism in three
 /// ways, and fails in both directions on the third:
 ///
 /// - A game-class literal anywhere under [`AGENT_JAR_SOURCES`] is a violation
@@ -1848,11 +1863,13 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
 /// material may not be on the machine.
 ///
 /// It still cannot detect a game-side rename, for the reason it never could: both
-/// sides of what it compares are Ravel's own. Nor does it reach anything below a
-/// class — the member names [`method`] resolves by name and arity, the two
-/// `LevelResource` field constants, and the three-argument storage constructor are
-/// checked only by `jvm/harness/persistence/net/minecraft/**`, which are stand-ins
-/// Ravel wrote, so that harness asserts Ravel's stubs against Ravel's reflection.
+/// sides of what it compares are Ravel's own. What it does now reach below a class
+/// is the members: a source resolving `GameMembers.<role>_<member>` counts as
+/// reaching that role, and a constant belonging to no declared role is a
+/// violation. What decides whether the member itself exists is the generator's
+/// `mapping::verify_reflected_members`, which resolves each declared member
+/// through the version's mapping and then requires the linked class file to
+/// declare it — the same division as the class half, and for the same reason.
 ///
 /// Three further limits, stated because a gate that promises more than it
 /// enforces is the defect this one was written to close. It sees only the
@@ -1885,6 +1902,7 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
     }
 
     let mut spelled: Vec<(String, String)> = Vec::new();
+    let mut reached: Vec<(String, String)> = Vec::new();
     for path in &sources {
         let relative = path
             .strip_prefix(root)
@@ -1906,6 +1924,11 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
                     generated_roles(&source)
                         .into_iter()
                         .map(|role| (relative.clone(), role)),
+                );
+                reached.extend(
+                    generated_members(&source)
+                        .into_iter()
+                        .map(|member| (relative.clone(), member)),
                 );
             }
             Err(error) => violations.push(format!("cannot read {relative}: {error}")),
@@ -1930,8 +1953,22 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
             }
         }
 
+        let mut used: Vec<&str> = Vec::new();
+        for (relative, constant) in &reached {
+            match declaring_role(constant, &declared) {
+                Some(role) => used.push(role),
+                None => violations.push(format!(
+                    "{relative} resolves the game member {GAME_MEMBERS}.{constant} and {declaring} \
+                     declares no role it could belong to; a member one version answers and another \
+                     does not is a shared source that compiles against one game and not the other"
+                )),
+            }
+        }
+
         for role in &surface.roles {
-            if !spelled.iter().any(|(_, spelled)| spelled == &role.name) {
+            if !spelled.iter().any(|(_, spelled)| spelled == &role.name)
+                && !used.contains(&role.name.as_str())
+            {
                 violations.push(format!(
                     "{declaring} declares the role {} for {} and no source under \
                      {AGENT_JAR_SOURCES} resolves it; a declared name nothing uses says the \
@@ -2548,6 +2585,9 @@ fn game_names_outside_placeholders(line: &str) -> Vec<String> {
 /// The generated Java class the shared adapters read their game names out of.
 const GAME_NAMES: &str = "GameNames";
 
+/// The generated class a source reaches one game *member* through.
+const GAME_MEMBERS: &str = "GameMembers";
+
 /// Every role a source reaches through the generated class.
 fn generated_roles(source: &str) -> Vec<String> {
     let mut roles = Vec::new();
@@ -2566,6 +2606,48 @@ fn generated_roles(source: &str) -> Vec<String> {
     roles.sort();
     roles.dedup();
     roles
+}
+
+/// Every generated member constant one source reaches.
+///
+/// A member constant is a role and a member run together, and only the surface
+/// knows where the seam between them is, so this returns the whole constant and
+/// [`declaring_role`] decides which role it belongs to.
+fn generated_members(source: &str) -> Vec<String> {
+    let mut members = Vec::new();
+    let mut rest = source;
+    let anchor = format!("{GAME_MEMBERS}.");
+    while let Some(index) = rest.find(&anchor) {
+        let after = &rest[index + anchor.len()..];
+        let end = after
+            .find(|character: char| !character.is_ascii_uppercase() && character != '_')
+            .unwrap_or(after.len());
+        if end > 0 {
+            members.push(after[..end].to_owned());
+        }
+        rest = &after[end..];
+    }
+    members.sort();
+    members.dedup();
+    members
+}
+
+/// Which declared role one member constant belongs to.
+///
+/// The longest declared role the constant begins a segment with, because two
+/// roles can prefix one another: `SERVER_LEVEL_GET_DATA_STORAGE` starts with
+/// `SERVER_` and belongs to `SERVER_LEVEL`, and taking the shorter would call the
+/// wrong role used and leave the right one looking unreached.
+fn declaring_role<'a>(constant: &str, declared: &[&'a str]) -> Option<&'a str> {
+    declared
+        .iter()
+        .filter(|role| {
+            constant
+                .strip_prefix(**role)
+                .is_some_and(|rest| rest.starts_with('_'))
+        })
+        .max_by_key(|role| role.len())
+        .copied()
 }
 
 /// The record that states in prose how large the reflective surface is.

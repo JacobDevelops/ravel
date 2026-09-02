@@ -7,9 +7,10 @@
 //! name the generator hands to an archive goes through here first.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
-use super::GenerateError;
-use super::inputs::{MappingSource, Reflection};
+use super::inputs::{Lookup, MappingSource, Reflected, ReflectedMember, Reflection};
+use super::{GenerateError, classfile, jar, render};
 
 /// How a Mojang name becomes the name the JVM links.
 #[derive(Clone, Debug)]
@@ -158,6 +159,35 @@ impl Mapping {
             Self::Proguard(proguard) => proguard.runtime_member(mojang_class, member, descriptor),
         }
     }
+
+    /// The pair the JVM links for a reviewed member named by its width.
+    ///
+    /// The forward direction is keyed on the descriptor, which a lookup by
+    /// argument count does not have. What it does have is enough for a
+    /// translating mapping to supply one: the mapping declares every member of
+    /// the class, so the reviewed name and the width select exactly one line,
+    /// and a name and width that select several is a declaration that says
+    /// nothing about which member is meant. Under the identity there is no line
+    /// to read and the width is what the class file is asked for directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a translating mapping declares no member of that
+    /// name and width, or more than one.
+    fn linked_by_arity(
+        &self,
+        mojang_class: &str,
+        member: &str,
+        parameters: usize,
+    ) -> Result<Linked, GenerateError> {
+        match self {
+            Self::Identity => Ok(Linked::Counted {
+                name: member.to_owned(),
+                parameters,
+            }),
+            Self::Proguard(proguard) => proguard.linked_by_arity(mojang_class, member, parameters),
+        }
+    }
 }
 
 /// Refuses a declared runtime name the mapping does not agree with.
@@ -196,6 +226,158 @@ pub(super) fn verify_reflection(
         }
     }
     Ok(())
+}
+
+/// Refuses a declared member the class the JVM links does not declare.
+///
+/// [`verify_reflection`] proves the surface names the classes the mapping does,
+/// and stops there: nothing has ever checked that the members those classes are
+/// reached for exist. They are reached reflectively, so nothing compiles against
+/// them, and a member the version renamed or dropped is a refusal on the seam
+/// that needed it rather than a build that failed. The class file is what
+/// settles it, which is why this takes an archive and [`verify_reflection`] does
+/// not: a published mapping says what a name becomes and never that the jar
+/// still declares it.
+///
+/// A member declared by descriptor is resolved through the mapping like any
+/// other reviewed pair and then required byte for byte. A member declared by
+/// argument count is what the persistence adapter's own lookup does, and under a
+/// translating mapping it resolves to an exact pair anyway, because the mapping
+/// knows the one member of that name and width.
+///
+/// # Errors
+///
+/// Returns an error when a declaration names both ways or neither, when a
+/// translating mapping does not name the member, or when the linked class file
+/// declares nothing matching it.
+pub(super) fn verify_reflected_members(
+    surface: &Reflection,
+    mapping: &Mapping,
+    archive: &jar::Archive,
+) -> Result<(), GenerateError> {
+    for reflected in &surface.classes {
+        if reflected.members.is_empty() {
+            continue;
+        }
+        let mojang = internal(&reflected.class);
+        let bytes = archive.entry(&mapping.entry(&mojang))?;
+        let declared = classfile::members(&bytes)
+            .map_err(|error| GenerateError::Extraction(format!("{}: {error}", reflected.class)))?;
+        for member in &reflected.members {
+            verify_member(reflected, member, mapping, &mojang, &declared)?;
+        }
+    }
+    Ok(())
+}
+
+/// The pair a class file has to declare for one reviewed member.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Linked {
+    /// The exact pair the mapping resolves the declaration to.
+    Exact { name: String, descriptor: String },
+    /// The linked name, with the argument count that picks the overload.
+    ///
+    /// Only an identity mapping answers this way. A translating one has the
+    /// declaring line in front of it and so knows the descriptor too.
+    Counted { name: String, parameters: usize },
+}
+
+impl Linked {
+    /// The name the class file has to declare.
+    fn name(&self) -> &str {
+        match self {
+            Self::Exact { name, .. } | Self::Counted { name, .. } => name,
+        }
+    }
+
+    /// Whether one declared member is the member this wanted.
+    fn matches(&self, held: &classfile::Member) -> bool {
+        held.name == self.name()
+            && held.method == self.is_method()
+            && match self {
+                Self::Exact { descriptor, .. } => held.descriptor == *descriptor,
+                Self::Counted { parameters, .. } => takes(&held.descriptor, *parameters),
+            }
+    }
+
+    /// Whether this names a method rather than a field.
+    ///
+    /// An argument count is one only a method has, so a declaration that carries
+    /// one has said which kind it means as surely as a descriptor does.
+    fn is_method(&self) -> bool {
+        match self {
+            Self::Exact { descriptor, .. } => descriptor.starts_with('('),
+            Self::Counted { .. } => true,
+        }
+    }
+}
+
+impl fmt::Display for Linked {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Exact { name, descriptor } => write!(formatter, "{name}{descriptor}"),
+            Self::Counted { name, parameters } => write!(formatter, "{name} taking {parameters}"),
+        }
+    }
+}
+
+/// Proves one declared member against the class file that has to declare it.
+fn verify_member(
+    reflected: &Reflected,
+    member: &ReflectedMember,
+    mapping: &Mapping,
+    mojang_class: &str,
+    declared: &[classfile::Member],
+) -> Result<(), GenerateError> {
+    let lookup = member.lookup().map_err(|detail| {
+        GenerateError::Drift(format!(
+            "the reflective surface declares a member of {}: {detail}",
+            reflected.class
+        ))
+    })?;
+    let linked = match lookup {
+        Lookup::Descriptor(descriptor) => {
+            let (name, descriptor) =
+                mapping.runtime_member(mojang_class, &member.name, descriptor)?;
+            Linked::Exact { name, descriptor }
+        }
+        Lookup::Parameters(parameters) => {
+            mapping.linked_by_arity(mojang_class, &member.name, parameters)?
+        }
+    };
+    if declared.iter().any(|held| linked.matches(held)) {
+        return Ok(());
+    }
+    Err(GenerateError::Drift(format!(
+        "the reflective surface says {} declares {}, which links as {linked}, and {} declares {}",
+        reflected.class,
+        member.name,
+        reflected.runtime,
+        holds(declared, linked.name())
+    )))
+}
+
+/// What one class file declares under a linked name, for a refusal to name.
+fn holds(declared: &[classfile::Member], name: &str) -> String {
+    let mut held = declared
+        .iter()
+        .filter(|member| member.name == name)
+        .map(|member| format!("{name}{}", member.descriptor))
+        .collect::<Vec<_>>();
+    held.sort();
+    held.dedup();
+    match held.len() {
+        0 => format!("no {name} at all"),
+        // A linked name an obfuscated class reuses can carry dozens of members,
+        // and a refusal nobody can read is a refusal that gets skimmed.
+        1..=6 => held.join(", "),
+        many => format!("{} and {} more", held[..6].join(", "), many - 6),
+    }
+}
+
+/// Whether a descriptor is a method descriptor of the given width.
+fn takes(descriptor: &str, parameters: usize) -> bool {
+    render::signature(descriptor).is_ok_and(|(taken, _)| taken.len() == parameters)
 }
 
 /// A member's name paired with its descriptor.
@@ -386,6 +568,39 @@ impl Proguard {
                 ))
             })
     }
+
+    fn linked_by_arity(
+        &self,
+        mojang_class: &str,
+        member: &str,
+        parameters: usize,
+    ) -> Result<Linked, GenerateError> {
+        let mut found = self
+            .members
+            .get(mojang_class)
+            .into_iter()
+            .flatten()
+            .filter(|((name, descriptor), _)| name == member && takes(descriptor, parameters))
+            .map(|(_, linked)| linked.clone())
+            .collect::<Vec<_>>();
+        found.sort();
+        found.dedup();
+        let readable = mojang_class.replace('/', ".");
+        match found.as_slice() {
+            [] => Err(GenerateError::Unresolved(format!(
+                "the client mapping names {readable} but no {member} of it taking {parameters}"
+            ))),
+            [(name, descriptor)] => Ok(Linked::Exact {
+                name: name.clone(),
+                descriptor: descriptor.clone(),
+            }),
+            several => Err(GenerateError::Unresolved(format!(
+                "the client mapping declares {} members of {readable} called {member} taking \
+                 {parameters}, and a count that separates nothing names none of them",
+                several.len()
+            ))),
+        }
+    }
 }
 
 /// One member line, before descriptors are rewritten.
@@ -507,8 +722,9 @@ fn map_descriptor(classes: &BTreeMap<String, String>, descriptor: &str) -> Strin
 
 #[cfg(test)]
 mod tests {
-    use super::super::inputs::{Reflected, Reflection};
-    use super::{Mapping, MappingSource, Proguard, verify_reflection};
+    use super::super::inputs::{Reflected, ReflectedMember, Reflection};
+    use super::super::jar::{self, fixture};
+    use super::{Mapping, MappingSource, Proguard, verify_reflected_members, verify_reflection};
 
     /// An invented mapping, in the shape the published files take.
     const MAPPING: &str = "\
@@ -799,6 +1015,7 @@ com.example.Plain -> com.example.Plain:
                 name: "ALPHA".to_owned(),
                 class: class.to_owned(),
                 runtime: runtime.to_owned(),
+                members: Vec::new(),
             }],
         }
     }
@@ -869,5 +1086,278 @@ com.example.Plain -> com.example.Plain:
             error.to_string().contains("maps nothing onto anything"),
             "{error}"
         );
+    }
+
+    /// One class file declaring exactly the members it is given.
+    ///
+    /// Written out rather than reached for, because the point of every test
+    /// below is a class file that declares something other than what the
+    /// surface says, and no real jar holds one of those.
+    fn class_file(members: &[(&str, &str, bool)]) -> Vec<u8> {
+        let mut pool = Vec::new();
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+        for (name, descriptor, method) in members {
+            pool.push((*name).to_owned());
+            pool.push((*descriptor).to_owned());
+            let index = u16::try_from(pool.len()).expect("a small pool");
+            let entry = (index - 1, index);
+            if *method {
+                methods.push(entry);
+            } else {
+                fields.push(entry);
+            }
+        }
+
+        let mut bytes = Vec::new();
+        bytes.extend(0xCAFE_BABE_u32.to_be_bytes());
+        bytes.extend(0_u16.to_be_bytes()); // minor
+        bytes.extend(69_u16.to_be_bytes()); // major
+        bytes.extend(
+            u16::try_from(pool.len() + 1)
+                .expect("a small pool")
+                .to_be_bytes(),
+        );
+        for text in &pool {
+            bytes.push(1); // modified UTF-8
+            bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
+            bytes.extend(text.as_bytes());
+        }
+        for value in [0_u16, 0, 0, 0] {
+            bytes.extend(value.to_be_bytes()); // access, this, super, interfaces
+        }
+        for table in [&fields, &methods] {
+            bytes.extend(u16::try_from(table.len()).expect("few").to_be_bytes());
+            for (name, descriptor) in table {
+                for value in [0_u16, *name, *descriptor, 0] {
+                    bytes.extend(value.to_be_bytes()); // flags, name, type, attributes
+                }
+            }
+        }
+        bytes.extend(0_u16.to_be_bytes()); // class attributes
+        bytes
+    }
+
+    /// A surface of one class carrying one declared member.
+    fn declaring(
+        class: &str,
+        name: &str,
+        descriptor: Option<&str>,
+        parameters: Option<usize>,
+    ) -> Reflection {
+        let mut surface = surface(class, class);
+        surface.classes[0].members = vec![ReflectedMember {
+            name: name.to_owned(),
+            descriptor: descriptor.map(str::to_owned),
+            parameters,
+        }];
+        surface
+    }
+
+    /// An archive holding one class file under the entry the mapping asks for.
+    fn holding(entry: &str, members: &[(&str, &str, bool)]) -> jar::Archive {
+        fixture::parse(fixture::stored(entry, &class_file(members))).expect("a synthetic archive")
+    }
+
+    /// The identity is where this check has teeth: nothing translates, so
+    /// nothing else in the generator ever asks whether the member is there.
+    #[test]
+    fn an_identity_source_proves_every_declared_member_against_the_class_file() {
+        let archive = holding(
+            "com/example/Alpha.class",
+            &[
+                ("allowed", "(C)Z", true),
+                ("PATTERN", "Ljava/util/regex/Pattern;", false),
+            ],
+        );
+
+        for (member, descriptor) in [
+            ("allowed", "(C)Z"),
+            ("PATTERN", "Ljava/util/regex/Pattern;"),
+        ] {
+            verify_reflected_members(
+                &declaring("com.example.Alpha", member, Some(descriptor), None),
+                &Mapping::Identity,
+                &archive,
+            )
+            .expect("the class file declares exactly that");
+        }
+
+        let error = verify_reflected_members(
+            &declaring("com.example.Alpha", "allowed", Some("(I)Z"), None),
+            &Mapping::Identity,
+            &archive,
+        )
+        .expect_err("a descriptor the class file does not declare must be refused");
+
+        assert!(error.to_string().contains("com.example.Alpha"), "{error}");
+        assert!(error.to_string().contains("allowed(C)Z"), "{error}");
+    }
+
+    #[test]
+    fn a_member_the_class_file_names_nowhere_is_refused_by_name() {
+        let error = verify_reflected_members(
+            &declaring("com.example.Alpha", "absent", Some("()V"), None),
+            &Mapping::Identity,
+            &holding("com/example/Alpha.class", &[("allowed", "(C)Z", true)]),
+        )
+        .expect_err("a member nothing declares must be refused");
+
+        assert!(error.to_string().contains("no absent at all"), "{error}");
+    }
+
+    /// The case a published mapping cannot answer on its own: it says what the
+    /// name becomes, and the class file is the only thing that says the class
+    /// still declares it.
+    #[test]
+    fn a_member_a_translating_mapping_names_and_the_jar_dropped_is_refused() {
+        let mapping = Mapping::Proguard(parsed());
+
+        verify_reflected_members(
+            &declaring("com.example.Alpha", "allowed", Some("(C)Z"), None),
+            &mapping,
+            &holding("a.class", &[("a", "(C)Z", true)]),
+        )
+        .expect("the linked class file declares the linked pair");
+
+        let error = verify_reflected_members(
+            &declaring("com.example.Alpha", "allowed", Some("(C)Z"), None),
+            &mapping,
+            &holding("a.class", &[("b", "(C)Z", true)]),
+        )
+        .expect_err("a linked pair the class file does not declare must be refused");
+
+        assert!(error.to_string().contains("links as a(C)Z"), "{error}");
+        assert!(error.to_string().contains("no a at all"), "{error}");
+    }
+
+    #[test]
+    fn a_declared_width_the_class_file_does_not_declare_is_refused() {
+        let archive = holding(
+            "com/example/Alpha.class",
+            &[("tick", "(II)V", true), ("tick", "()V", true)],
+        );
+
+        for width in [0, 2] {
+            verify_reflected_members(
+                &declaring("com.example.Alpha", "tick", None, Some(width)),
+                &Mapping::Identity,
+                &archive,
+            )
+            .expect("one of the two overloads is that wide");
+        }
+
+        let error = verify_reflected_members(
+            &declaring("com.example.Alpha", "tick", None, Some(1)),
+            &Mapping::Identity,
+            &archive,
+        )
+        .expect_err("a width neither overload has must be refused");
+
+        assert!(error.to_string().contains("tick taking 1"), "{error}");
+        assert!(error.to_string().contains("tick()V"), "{error}");
+    }
+
+    /// A width is a method's, so a field of that name is not the member meant.
+    /// The class file is built to declare one anyway, carrying a descriptor no
+    /// field could have, because a fixture that could not hold the defect proves
+    /// nothing about the check that refuses it.
+    #[test]
+    fn a_field_is_not_the_member_a_declared_width_asked_for() {
+        let error = verify_reflected_members(
+            &declaring("com.example.Alpha", "tick", None, Some(0)),
+            &Mapping::Identity,
+            &holding("com/example/Alpha.class", &[("tick", "()V", false)]),
+        )
+        .expect_err("a field is not a method however it is spelled");
+
+        assert!(error.to_string().contains("tick taking 0"), "{error}");
+    }
+
+    #[test]
+    fn a_width_a_translating_mapping_resolves_is_required_as_the_pair_it_resolves_to() {
+        let mapping = Mapping::Proguard(parsed());
+
+        verify_reflected_members(
+            &declaring("com.example.Alpha", "allowed", None, Some(1)),
+            &mapping,
+            &holding("a.class", &[("a", "(C)Z", true)]),
+        )
+        .expect("the mapping knows the one allowed of that width");
+
+        let error = verify_reflected_members(
+            &declaring("com.example.Alpha", "allowed", None, Some(1)),
+            &mapping,
+            &holding("a.class", &[("a", "(I)Z", true)]),
+        )
+        .expect_err("the width is not the whole answer where a mapping knows the descriptor");
+
+        assert!(error.to_string().contains("links as a(C)Z"), "{error}");
+    }
+
+    #[test]
+    fn a_width_a_translating_mapping_cannot_separate_names_no_member() {
+        let mapping = Mapping::Proguard(
+            Proguard::parse(
+                "com.example.Alpha -> a:\n    \
+                 5:5:void tick(int) -> a\n    \
+                 6:6:void tick(char) -> b\n",
+            )
+            .expect("two overloads of one name is one mapping"),
+        );
+
+        let error = verify_reflected_members(
+            &declaring("com.example.Alpha", "tick", None, Some(1)),
+            &mapping,
+            &holding("a.class", &[("a", "(I)V", true), ("b", "(C)V", true)]),
+        )
+        .expect_err("a width that separates nothing names neither of them");
+
+        assert!(error.to_string().contains("declares 2 members"), "{error}");
+        assert!(error.to_string().contains("tick taking 1"), "{error}");
+    }
+
+    #[test]
+    fn a_member_the_translating_mapping_never_names_is_refused_rather_than_passed_through() {
+        for (descriptor, parameters, expected) in [
+            (Some("()V"), None, "but not its absent()V"),
+            (None, Some(0), "no absent of it taking 0"),
+        ] {
+            let error = verify_reflected_members(
+                &declaring("com.example.Alpha", "absent", descriptor, parameters),
+                &Mapping::Proguard(parsed()),
+                &holding("a.class", &[("absent", "()V", true)]),
+            )
+            .expect_err("a member the mapping says nothing about is not one it agreed with");
+
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_member_declared_in_no_way_or_in_two_is_refused_before_the_jar_is_asked() {
+        for (descriptor, parameters) in [(Some("()V"), Some(0)), (None, None)] {
+            let error = verify_reflected_members(
+                &declaring("com.example.Alpha", "tick", descriptor, parameters),
+                &Mapping::Identity,
+                &holding("com/example/Alpha.class", &[("tick", "()V", true)]),
+            )
+            .expect_err("a member that says which member it is twice or never must be refused");
+
+            assert!(error.to_string().contains("com.example.Alpha"), "{error}");
+            assert!(error.to_string().contains("tick"), "{error}");
+        }
+    }
+
+    /// A class reached only as a parameter type declares nothing, and an archive
+    /// that does not even hold it is what proves nothing was asked of it.
+    #[test]
+    fn a_class_declaring_no_member_asks_the_archive_for_nothing() {
+        verify_reflected_members(
+            &surface("com.example.Alpha", "com.example.Alpha"),
+            &Mapping::Identity,
+            &holding("some/Other.class", &[("tick", "()V", true)]),
+        )
+        .expect("nothing was declared, so nothing had to be found");
     }
 }

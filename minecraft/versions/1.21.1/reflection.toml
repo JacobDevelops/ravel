@@ -4,8 +4,29 @@
 # rename, which is exactly what this file demonstrates. 1.21.1 is obfuscated, so
 # `runtime` is the linked name Mojang's published client mapping resolves `class`
 # to, and `mapping.verify_reflection` re-derives every one of them on any build
-# that can read the mapping. Two of the eighteen carry a different `class` than
+# that can read the mapping. Two of the twenty-two carry a different `class` than
 # 26.1.2 does, because the game renamed the type and not the role.
+#
+# The members are 1.21.1's own, and `mapping.verify_reflected_members` resolves
+# each one through the published mapping and then requires the linked class file
+# to declare it. Where 26.1.2 declares a member this version does not, the entry
+# is absent rather than aspirational: 1.21.1's properties builders carry no
+# `setId`, its `LevelResource` has no `DATA`, its storage takes a factory and a
+# string where 26.1.2 takes one typed key, and its `MinecraftServer` reaches
+# storage through a level rather than declaring `getDataStorage` itself.
+#
+# The persistence adapter reaches every member below through the generated
+# `GameMembers`, so what this file declares is what that adapter asks for. The
+# content and outward adapters still spell 26.1.2's member names as literals,
+# which is why the members they use are named here and asked for nowhere, and no
+# check in this generator reaches that: a literal is resolved at runtime, so only
+# a launch sees it.
+#
+# Every member the persistence adapter uses is declared by `descriptor` rather
+# than by `parameters`, and this version is why the distinction is not academic.
+# The generator emits a descriptor-declared member into `GameMembers` as the
+# linked name and the linked descriptor together, which identifies one member; a
+# name and an argument count does not, because obfuscation collapses names.
 
 schemaVersion = 1
 minecraft = "1.21.1"
@@ -14,10 +35,26 @@ name = "MINECRAFT"
 class = "net.minecraft.client.Minecraft"
 runtime = "fgo"
 
+[[reflected.member]]
+name = "getInstance"
+descriptor = "()Lnet/minecraft/client/Minecraft;"
+
+[[reflected.member]]
+name = "getSoundManager"
+descriptor = "()Lnet/minecraft/client/sounds/SoundManager;"
+
+[[reflected.member]]
+name = "setScreen"
+descriptor = "(Lnet/minecraft/client/gui/screens/Screen;)V"
+
 [[reflected]]
 name = "SIMPLE_SOUND_INSTANCE"
 class = "net.minecraft.client.resources.sounds.SimpleSoundInstance"
 runtime = "gtv"
+
+[[reflected.member]]
+name = "forUI"
+descriptor = "(Lnet/minecraft/sounds/SoundEvent;F)Lnet/minecraft/client/resources/sounds/SimpleSoundInstance;"
 
 [[reflected]]
 name = "SOUND_INSTANCE"
@@ -29,25 +66,53 @@ name = "SOUND_MANAGER"
 class = "net.minecraft.client.sounds.SoundManager"
 runtime = "gvf"
 
+[[reflected.member]]
+name = "play"
+descriptor = "(Lnet/minecraft/client/resources/sounds/SoundInstance;)V"
+
 [[reflected]]
 name = "SOUND_EVENT"
 class = "net.minecraft.sounds.SoundEvent"
 runtime = "avo"
+
+[[reflected.member]]
+name = "createVariableRangeEvent"
+descriptor = "(Lnet/minecraft/resources/ResourceLocation;)Lnet/minecraft/sounds/SoundEvent;"
 
 [[reflected]]
 name = "REGISTRY"
 class = "net.minecraft.core.Registry"
 runtime = "jz"
 
+[[reflected.member]]
+name = "register"
+descriptor = "(Lnet/minecraft/core/Registry;Lnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)Ljava/lang/Object;"
+
 [[reflected]]
 name = "BUILT_IN"
 class = "net.minecraft.core.registries.BuiltInRegistries"
 runtime = "lt"
 
+[[reflected.member]]
+name = "BLOCK"
+descriptor = "Lnet/minecraft/core/DefaultedRegistry;"
+
+[[reflected.member]]
+name = "ITEM"
+descriptor = "Lnet/minecraft/core/DefaultedRegistry;"
+
 [[reflected]]
 name = "REGISTRIES"
 class = "net.minecraft.core.registries.Registries"
 runtime = "lu"
+
+[[reflected.member]]
+name = "BLOCK"
+descriptor = "Lnet/minecraft/resources/ResourceKey;"
+
+[[reflected.member]]
+name = "ITEM"
+descriptor = "Lnet/minecraft/resources/ResourceKey;"
 
 [[reflected]]
 # 1.21.1 calls this ResourceLocation; 26.1.2 calls it Identifier.
@@ -55,48 +120,170 @@ name = "IDENTIFIER"
 class = "net.minecraft.resources.ResourceLocation"
 runtime = "akr"
 
+[[reflected.member]]
+name = "fromNamespaceAndPath"
+descriptor = "(Ljava/lang/String;Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"
+
 [[reflected]]
 name = "RESOURCE_KEY"
 class = "net.minecraft.resources.ResourceKey"
 runtime = "akq"
+
+[[reflected.member]]
+name = "create"
+descriptor = "(Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/resources/ResourceLocation;)Lnet/minecraft/resources/ResourceKey;"
 
 [[reflected]]
 name = "ITEM"
 class = "net.minecraft.world.item.Item"
 runtime = "cul"
 
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/world/item/Item$Properties;)V"
+
 [[reflected]]
 name = "ITEM_PROPERTIES"
 class = "net.minecraft.world.item.Item$Properties"
 runtime = "cul$a"
+
+[[reflected.member]]
+name = "<init>"
+descriptor = "()V"
+
+[[reflected.member]]
+name = "stacksTo"
+descriptor = "(I)Lnet/minecraft/world/item/Item$Properties;"
+
+[[reflected.member]]
+name = "fireResistant"
+descriptor = "()Lnet/minecraft/world/item/Item$Properties;"
 
 [[reflected]]
 name = "BLOCK"
 class = "net.minecraft.world.level.block.Block"
 runtime = "dfy"
 
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;)V"
+
 [[reflected]]
 name = "BLOCK_PROPERTIES"
 class = "net.minecraft.world.level.block.state.BlockBehaviour$Properties"
 runtime = "dtb$d"
+
+[[reflected.member]]
+name = "of"
+descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
+
+[[reflected.member]]
+name = "strength"
+descriptor = "(FF)Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
+
+[[reflected.member]]
+name = "requiresCorrectToolForDrops"
+descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
+
+[[reflected.member]]
+name = "randomTicks"
+descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
 
 [[reflected]]
 name = "SERVER"
 class = "net.minecraft.server.MinecraftServer"
 runtime = "net.minecraft.server.MinecraftServer"
 
+[[reflected.member]]
+name = "getWorldPath"
+descriptor = "(Lnet/minecraft/world/level/storage/LevelResource;)Ljava/nio/file/Path;"
+
+[[reflected.member]]
+name = "overworld"
+descriptor = "()Lnet/minecraft/server/level/ServerLevel;"
+
+[[reflected]]
+# The level the storage hangs off. 1.21.1 declares no storage getter on the
+# server at all, which is why the adapter reaches it through the overworld under
+# both tracked versions rather than through the shortcut only 26.1.2 offers.
+name = "SERVER_LEVEL"
+class = "net.minecraft.server.level.ServerLevel"
+runtime = "aqu"
+
+[[reflected.member]]
+name = "getDataStorage"
+descriptor = "()Lnet/minecraft/world/level/storage/DimensionDataStorage;"
+
+[[reflected]]
+# The world being opened, held over its own lock while the load is decided.
+name = "LEVEL_STORAGE_ACCESS"
+class = "net.minecraft.world.level.storage.LevelStorageSource$LevelStorageAccess"
+runtime = "erf$c"
+
+[[reflected.member]]
+name = "getLevelPath"
+descriptor = "(Lnet/minecraft/world/level/storage/LevelResource;)Ljava/nio/file/Path;"
+
+[[reflected]]
+# The loaded world, reached for the registries the storage decodes against.
+name = "WORLD_STEM"
+class = "net.minecraft.server.WorldStem"
+runtime = "alp"
+
+[[reflected.member]]
+name = "registries"
+descriptor = "()Lnet/minecraft/core/LayeredRegistryAccess;"
+
+[[reflected]]
+name = "REGISTRY_LAYERS"
+class = "net.minecraft.core.LayeredRegistryAccess"
+runtime = "jt"
+
+[[reflected.member]]
+name = "compositeAccess"
+descriptor = "()Lnet/minecraft/core/RegistryAccess$Frozen;"
+
 [[reflected]]
 name = "DATA_FIXERS"
 class = "net.minecraft.util.datafix.DataFixers"
 runtime = "azx"
 
+[[reflected.member]]
+name = "getDataFixer"
+descriptor = "()Lcom/mojang/datafixers/DataFixer;"
+
 [[reflected]]
+# Only the world root is named here. This version has no constant for the
+# saved-data directory below it, so the adapter resolves the game's own name for
+# that directory against the root, which is what 26.1.2's constant also spells.
 name = "LEVEL_RESOURCE"
 class = "net.minecraft.world.level.storage.LevelResource"
 runtime = "erd"
 
+[[reflected.member]]
+name = "ROOT"
+descriptor = "Lnet/minecraft/world/level/storage/LevelResource;"
+
 [[reflected]]
 # 1.21.1 calls this DimensionDataStorage; 26.1.2 calls it SavedDataStorage.
+#
+# Every member below is declared by descriptor rather than by an argument count,
+# and this class is why the distinction is not academic. The linked names here
+# collide: `computeIfAbsent` and `set` both link as a two-argument `a`, and `get`
+# shares `b` with a two-argument lambda. A lookup by name and width would take
+# whichever the class file happened to declare first.
 name = "STORAGE"
 class = "net.minecraft.world.level.storage.DimensionDataStorage"
 runtime = "eqz"
+
+[[reflected.member]]
+name = "<init>"
+descriptor = "(Ljava/io/File;Lcom/mojang/datafixers/DataFixer;Lnet/minecraft/core/HolderLookup$Provider;)V"
+
+[[reflected.member]]
+name = "get"
+descriptor = "(Lnet/minecraft/world/level/saveddata/SavedData$Factory;Ljava/lang/String;)Lnet/minecraft/world/level/saveddata/SavedData;"
+
+[[reflected.member]]
+name = "set"
+descriptor = "(Ljava/lang/String;Lnet/minecraft/world/level/saveddata/SavedData;)V"

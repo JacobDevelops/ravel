@@ -16,7 +16,11 @@ because a README that miscounts the file beside it is worse than one that says
 nothing.
 
 What is not proved here is any of it running. Nothing in this repository has
-started a 1.21.1 process with Ravel attached, and the agent jar's persistence
-adapter still spells 26.1.2's member names and arities, so this version's
-saved-data path is generated and compiled but not driven. `ROADMAP.md` carries
-both as owed work.
+started a 1.21.1 process with Ravel attached, so this version's saved-data path is
+generated and compiled but not driven. `ROADMAP.md` carries that as owed work.
+
+The persistence adapter no longer spells 26.1.2's member names: every member it
+reaches is declared in `reflection.toml`, checked against this version's jar, and
+generated into `GameMembers` as the name and descriptor the JVM links. The content
+and outward adapters still spell literals, which is 26.1.2's spelling and the
+obfuscated name of nothing here.

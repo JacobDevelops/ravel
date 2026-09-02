@@ -4,10 +4,11 @@
 //! makes generation reproducible: the same inputs render the same bytes, and the
 //! generator refuses to write if two runs disagree.
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
-use super::inputs::{Adapter, Inventory, Reflection};
+use super::inputs::{Adapter, Inventory, Lookup, Reflection};
 use super::mapping::Mapping;
 use super::resolve::Resolved;
 use super::stubs::Stub;
@@ -693,6 +694,118 @@ pub(super) fn game_names(adapter: &Adapter, surface: &Reflection) -> String {
          \x20   }}\n\
          }}"
     );
+    text
+}
+
+/// Renders the linked members the agent jar's hand-written adapters resolve.
+///
+/// `GameNames` says what a class role links to and this says what a member role
+/// links to, for the same reason and one level down: an obfuscated version
+/// renames `getWorldPath` as surely as it renames `MinecraftServer`, so a shared
+/// source spelling either by hand is one version's spelling asserted over the
+/// rest. Every constant here is re-derived from the mapping on every build that
+/// can read one, and `verify_reflected_members` additionally requires the linked
+/// class file to declare it, so a member a version renamed or dropped fails
+/// generation rather than a launch.
+///
+/// Each value is the linked name and the linked descriptor with a `:` between
+/// them, which is the pair that identifies one member and not an overload of it.
+/// A name and an argument count does not, once a mapping collapses names: an
+/// obfuscated storage links both its `computeIfAbsent` and its `set` under one
+/// two-argument name, so an adapter asking by width takes whichever the class
+/// file declared first.
+///
+/// Only a member the surface declares by descriptor is emitted. One declared by
+/// an argument count has not been given an identity to emit — that is what the
+/// count leaves open — so it has no constant here and stays with the adapter
+/// that asks by width.
+///
+/// # Errors
+///
+/// Returns an error when a member is declared neither way or both, when the
+/// mapping names a reviewed class but not the member, or when two members would
+/// be written down under one constant.
+pub(super) fn game_members(
+    adapter: &Adapter,
+    surface: &Reflection,
+    mapping: &Mapping,
+) -> Result<String, GenerateError> {
+    let mut text = String::with_capacity(surface.classes.len() * 200 + 1024);
+    let _ = writeln!(
+        text,
+        "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
+         package dev.ravel.jvm;\n\n\
+         /**\n\
+         \x20* Members of the game classes the hand-written adapters resolve by name.\n\
+         \x20*\n\
+         \x20* <p>Every value is the linked name and the linked descriptor the JVM\n\
+         \x20* declares, separated by a colon, and every comment is the reviewed\n\
+         \x20* member the surface declared it under. The descriptor is carried\n\
+         \x20* because a name alone does not pick an overload, and under an\n\
+         \x20* obfuscated version it does not even pick a method.\n\
+         \x20*/\n\
+         final class GameMembers {{\n",
+        adapter.minecraft
+    );
+    let mut written = BTreeSet::new();
+    for reflected in &surface.classes {
+        let owner = reflected.class.replace('.', "/");
+        for member in &reflected.members {
+            let lookup = member.lookup().map_err(|detail| {
+                GenerateError::Drift(format!(
+                    "the reflective surface declares a member of {}: {detail}",
+                    reflected.class
+                ))
+            })?;
+            let Lookup::Descriptor(descriptor) = lookup else {
+                continue;
+            };
+            let (name, linked) = mapping.runtime_member(&owner, &member.name, descriptor)?;
+            let constant = member_constant(&reflected.name, &member.name);
+            if !written.insert(constant.clone()) {
+                return Err(GenerateError::Drift(format!(
+                    "{constant} would be written down twice, so one of the two members it names \
+                     would be unreachable"
+                )));
+            }
+            let _ = writeln!(
+                text,
+                "    /** {}#{}. */\n\
+                 \x20   static final String {constant} = \"{name}:{linked}\";\n",
+                reflected.class, member.name
+            );
+        }
+    }
+    let _ = writeln!(
+        text,
+        "    private GameMembers() {{\n\
+         \x20   }}\n\
+         }}"
+    );
+    Ok(text)
+}
+
+/// The constant one reviewed member of one class role is written down under.
+///
+/// The class role is already the shouted word `GameNames` uses, and the member
+/// is appended in the same shape: a boundary is where a lowercase letter is
+/// followed by an uppercase one, which leaves a field constant that is already
+/// shouted exactly as it was. A constructor has no name to shout.
+fn member_constant(role: &str, member: &str) -> String {
+    if member == "<init>" {
+        return format!("{role}_NEW");
+    }
+    let mut text = String::with_capacity(role.len() + member.len() + 8);
+    text.push_str(role);
+    text.push('_');
+    let mut previous = '_';
+    for character in member.chars() {
+        if character.is_ascii_uppercase() && previous.is_ascii_lowercase() {
+            text.push('_');
+        }
+        text.push(character.to_ascii_uppercase());
+        previous = character;
+    }
     text
 }
 

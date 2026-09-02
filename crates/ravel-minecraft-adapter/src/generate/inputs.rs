@@ -240,6 +240,69 @@ pub(super) struct Reflected {
     pub(super) name: String,
     pub(super) class: String,
     pub(super) runtime: String,
+    /// Every member of this class the agent jar reaches by name.
+    ///
+    /// Empty where the jar names the class and nothing on it, which a class
+    /// reached only as a parameter type is.
+    #[serde(default, rename = "member")]
+    pub(super) members: Vec<ReflectedMember>,
+}
+
+/// One member of a reflected class the agent jar resolves by name.
+///
+/// Declared the way the jar asks for it, which is one of two ways and never
+/// both. `descriptor` is what a lookup naming its parameter types asks for, and
+/// it is written in the reviewed name space like every other descriptor in this
+/// crate's inputs. `parameters` is what a lookup by name and argument count
+/// asks for, which is how the persistence adapter reaches a member whose
+/// parameter types it cannot name without carrying every one of them as a game
+/// name too.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ReflectedMember {
+    pub(super) name: String,
+    #[serde(default)]
+    pub(super) descriptor: Option<String>,
+    #[serde(default)]
+    pub(super) parameters: Option<usize>,
+}
+
+/// How the agent jar asks a class for one of its members.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Lookup<'a> {
+    /// By the parameter types it names, which fix exactly one descriptor.
+    Descriptor(&'a str),
+    /// By name and argument count, which is what the persistence adapter does.
+    Parameters(usize),
+}
+
+impl ReflectedMember {
+    /// Which of the two ways this member is declared.
+    ///
+    /// A declaration carrying both would hold two answers that can disagree,
+    /// and one carrying neither says only that some member of that name exists,
+    /// which every overload of it satisfies. Both are refused here rather than
+    /// in each caller, so the rule is written once.
+    ///
+    /// # Errors
+    ///
+    /// Returns the detail of a declaration that names both ways or neither.
+    pub(super) fn lookup(&self) -> Result<Lookup<'_>, String> {
+        match (&self.descriptor, self.parameters) {
+            (Some(descriptor), None) => Ok(Lookup::Descriptor(descriptor)),
+            (None, Some(count)) => Ok(Lookup::Parameters(count)),
+            (Some(_), Some(_)) => Err(format!(
+                "{} is declared by both a descriptor and a parameter count, and a member is \
+                 looked up one way",
+                self.name
+            )),
+            (None, None) => Err(format!(
+                "{} is declared by neither a descriptor nor a parameter count, so nothing says \
+                 which member it is",
+                self.name
+            )),
+        }
+    }
 }
 
 /// The tracked set of classes the always-present agent jar resolves by name.
@@ -612,6 +675,21 @@ fn reflection(root: &Path, adapter: &Adapter) -> Result<Reflection, GenerateErro
             surface.minecraft, surface.schema_version, adapter.minecraft, adapter.schema_version
         )));
     }
+    verify_surface(&surface)?;
+    Ok(surface)
+}
+
+/// Refuses a surface that cannot be rendered or cannot be checked.
+///
+/// Separate from reading the file so the rules can be asked a question without
+/// one: every refusal here is about what the file says and none of it about
+/// where the file came from.
+///
+/// # Errors
+///
+/// Returns an error when a name is not one, when a role is declared twice, or
+/// when a member says which member it is in no way or in two ways at once.
+fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> {
     // Every one of the three is interpolated into Java: the role becomes a field
     // name, the runtime name becomes that field's string literal, and the
     // reviewed name becomes the comment beside it. A file is reviewed and pinned,
@@ -641,7 +719,48 @@ fn reflection(root: &Path, adapter: &Adapter) -> Result<Reflection, GenerateErro
             )));
         }
     }
-    Ok(surface)
+    for reflected in &surface.classes {
+        let mut declared = BTreeSet::new();
+        for member in &reflected.members {
+            if !member_name(&member.name) {
+                return Err(GenerateError::Drift(format!(
+                    "the reflective surface declares {} of {} as a member, which is not a member \
+                     name",
+                    member.name, reflected.class
+                )));
+            }
+            let shape = match member.lookup().map_err(|detail| {
+                GenerateError::Drift(format!(
+                    "the reflective surface declares a member of {}: {detail}",
+                    reflected.class
+                ))
+            })? {
+                Lookup::Descriptor(descriptor) => descriptor.to_owned(),
+                Lookup::Parameters(count) => format!("/{count}"),
+            };
+            if !declared.insert(format!("{}{shape}", member.name)) {
+                return Err(GenerateError::Drift(format!(
+                    "the reflective surface declares {}{shape} of {} twice",
+                    member.name, reflected.class
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether a value is a member name and nothing else.
+///
+/// Narrow for the reason [`class_name`] is, with the two names the JVM spells
+/// in angle brackets admitted because a constructor is a member the agent jar
+/// reaches like any other.
+fn member_name(value: &str) -> bool {
+    matches!(value, "<init>" | "<clinit>")
+        || (!value.is_empty()
+            && !value.starts_with(|first: char| first.is_ascii_digit())
+            && value
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_'))
 }
 
 /// Whether a role is spelled the way the generated constants are.
@@ -898,7 +1017,10 @@ pub(super) fn tracked_version_where(
 mod tests {
     use std::path::Path;
 
-    use super::{Adapter, Input, Kind, MappingSource, file_name, pinned, sha256, verify_input};
+    use super::{
+        Adapter, Input, Kind, MappingSource, Reflection, file_name, pinned, sha256, verify_input,
+        verify_surface,
+    };
 
     fn repository_root() -> &'static Path {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -941,6 +1063,22 @@ mod tests {
                 "every entry carries the sentence its human review needs"
             );
             assert_eq!(pinned.seeds.minecraft, pinned.adapter.minecraft);
+
+            // The member check proves what the surface declares, so a surface
+            // that declared nothing would pass it while saying nothing. Every
+            // adapter under `jvm/bootstrap` calls members on the classes it
+            // resolves, so a version whose surface names classes and no members
+            // has lost the declarations rather than needed none.
+            assert!(
+                pinned
+                    .surface
+                    .classes
+                    .iter()
+                    .map(|reflected| reflected.members.len())
+                    .sum::<usize>()
+                    >= 20,
+                "the reflective surface should declare the members the agent jar reaches"
+            );
 
             // A seed with no members earns its place by being named by something
             // else in the set. Nothing calls a member on it, so the only work it can
@@ -1263,5 +1401,51 @@ bytes = 2
                 source.needs_mappings()
             );
         }
+    }
+
+    /// One reflected class written out, with whatever members follow it.
+    fn reflected(members: &str) -> Reflection {
+        toml::from_str(&format!(
+            "schemaVersion = 1\nminecraft = \"0.0.0-test\"\n\
+             [[reflected]]\nname = \"ALPHA\"\n\
+             class = \"com.example.Alpha\"\nruntime = \"a\"\n{members}"
+        ))
+        .expect("a surface in the shape the version files take")
+    }
+
+    #[test]
+    fn a_member_name_that_is_not_one_is_refused_before_a_jar_is_opened() {
+        verify_surface(&reflected(
+            "[[reflected.member]]\nname = \"<init>\"\ndescriptor = \"()V\"\n",
+        ))
+        .expect("a constructor is a member the agent jar reaches like any other");
+
+        let error = verify_surface(&reflected(
+            "[[reflected.member]]\nname = \"tick()\"\ndescriptor = \"()V\"\n",
+        ))
+        .expect_err("a name carrying punctuation is not a member name");
+
+        assert!(error.to_string().contains("tick()"), "{error}");
+        assert!(error.to_string().contains("not a member name"), "{error}");
+    }
+
+    /// Two overloads are two members and one declared twice is one, so the shape
+    /// is what tells them apart rather than the name.
+    #[test]
+    fn one_member_declared_twice_is_refused_and_two_overloads_are_not() {
+        verify_surface(&reflected(
+            "[[reflected.member]]\nname = \"tick\"\ndescriptor = \"()V\"\n\
+             [[reflected.member]]\nname = \"tick\"\ndescriptor = \"(I)V\"\n",
+        ))
+        .expect("two descriptors are two members");
+
+        let error = verify_surface(&reflected(
+            "[[reflected.member]]\nname = \"tick\"\nparameters = 1\n\
+             [[reflected.member]]\nname = \"tick\"\nparameters = 1\n",
+        ))
+        .expect_err("one member declared twice says one thing twice");
+
+        assert!(error.to_string().contains("tick/1"), "{error}");
+        assert!(error.to_string().contains("twice"), "{error}");
     }
 }

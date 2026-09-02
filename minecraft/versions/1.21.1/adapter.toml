@@ -62,8 +62,8 @@ bytes = 7949
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/1.21.1/reflection.toml"
-sha256 = "114b20c7a6687f202d9209638bddfdb8b1362796b7ebff17e2841e2bb382099c"
-bytes = 2636
+sha256 = "b081d40719a72f1896e015222ad0636ea1681d2372ed12c285b6f991f3419df6"
+bytes = 9313
 
 # The two locks below are generated, not fetched, and they are pinned for the
 # machines that cannot check them any other way. Only RAVEL_REGENERATE_LOCKS

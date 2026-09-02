@@ -124,6 +124,7 @@ struct Rendered {
     exports: String,
     hook_java: String,
     game_names_java: String,
+    game_members_java: String,
     screen_names_java: String,
     lock: String,
     stub_lock: String,
@@ -194,6 +195,13 @@ pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), Gener
     // the game does not own.
     let archive = jar::Archive::open(&jar_path)?;
     let library = jar::Archive::open(&library_path)?;
+    // Both halves of the reviewed surface, on the path that holds the jar as
+    // much as on the path that generates. A lock rewritten while the surface
+    // names a member the jar dropped would pin a build nothing had checked, and
+    // a check that runs on one of two paths is the defect this repository keeps
+    // finding.
+    mapping::verify_reflection(&pinned.surface, &mapping)?;
+    mapping::verify_reflected_members(&pinned.surface, &mapping, &archive)?;
     let resolved = resolve::from_jar(&archive, &pinned.inventory, &mapping)?;
     let stubbed = stubs::from_jar(&[&archive, &library], &pinned.seeds, &mapping)?;
 
@@ -275,6 +283,12 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
         let archive = jar::Archive::open(&jar_path)?;
         let library = jar::Archive::open(&library_path)?;
+        // The members the agent jar reflects on are game members, so they are
+        // proved against the client jar for the same reason hook targets are.
+        // Nothing but the jar can prove them: they are reached by name at
+        // runtime, so no compiler ever sees them, and the mapping says what a
+        // name becomes and never that the class still declares it.
+        mapping::verify_reflected_members(&pinned.surface, &mapping, &archive)?;
         (
             // Hook targets are game members and are never looked for in the
             // library jar.
@@ -319,6 +333,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         exports: render::exports(&shapes),
         hook_java: render::hook_java(&pinned.adapter, &shapes),
         game_names_java: render::game_names(&pinned.adapter, &pinned.surface),
+        game_members_java: render::game_members(&pinned.adapter, &pinned.surface, &mapping)?,
         screen_names_java: render::screen_names(&pinned.adapter, &screens.names),
         lock,
         stub_lock,
@@ -358,6 +373,7 @@ fn write(
     let exports = out.join("exports.rs");
     let java = java_directory.join("Hook.java");
     let game_names = java_directory.join("GameNames.java");
+    let game_members = java_directory.join("GameMembers.java");
     let screen_names = java_directory.join("ScreenNames.java");
     let mut digest = String::new();
     for (path, content) in [
@@ -365,6 +381,7 @@ fn write(
         (&exports, &rendered.exports),
         (&java, &rendered.hook_java),
         (&game_names, &rendered.game_names_java),
+        (&game_members, &rendered.game_members_java),
         (&screen_names, &rendered.screen_names_java),
     ] {
         write_atomically(path, content)?;

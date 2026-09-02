@@ -1096,12 +1096,13 @@ fn written_declarations() -> &'static str {
          \x20   /**\n\
          \x20    * Writes the mods' data pack into a world before its packs are read.\n\
          \x20    *\n\
-         \x20    * <p>A world's pack list is built from its `datapacks` directory\n\
-         \x20    * before the open crossing above is reached, so a pack written there\n\
-         \x20    * is read on the world's next open and a new world's first session\n\
-         \x20    * has none of the mods' tags, recipes or loot tables. This crossing\n\
-         \x20    * is the earlier seam that closes it, and it carries the directory\n\
-         \x20    * rather than a handle because the native side writes files.\n\
+         \x20    * <p>A world's packs are chosen from a repository built over its\n\
+         \x20    * `datapacks` directory before the open crossing above is reached,\n\
+         \x20    * so a pack written there is read on the world's next open and the\n\
+         \x20    * session that wrote it has none of the mods' tags, recipes or loot\n\
+         \x20    * tables. This crossing is the earlier seam that closes it, and it\n\
+         \x20    * carries the directory rather than a handle because the native side\n\
+         \x20    * writes files.\n\
          \x20    *\n\
          \x20    * <p>Writing twice is the intended shape rather than a cost: the\n\
          \x20    * open crossing still writes, and both write the same tree from the\n\

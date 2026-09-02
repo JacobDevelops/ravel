@@ -298,12 +298,12 @@ kind = "instance-method"
 capability = "Synthetic second-version target standing in for the `save.save-everything` capability."
 
 [[hook]]
-id = "world.open-level-data"
-class = "org.exampleengine.client.WorldOpenSteps"
-member = "openWorldLoadLevelData"
-descriptor = "(Lorg/exampleengine/store/WorldStore;Ljava/lang/Runnable;)V"
-kind = "instance-method"
-capability = "Synthetic second-version target standing in for the `world.open-level-data` capability."
+id = "world.create-pack-repository"
+class = "org.exampleengine.resource.PackStoreSource"
+member = "createPackRepository"
+descriptor = "(Lorg/exampleengine/store/WorldStore;)Lorg/exampleengine/resource/PackStore;"
+kind = "static-method"
+capability = "Synthetic second-version target standing in for the `world.create-pack-repository` capability."
 
 [[hook]]
 id = "world.open-persistence"

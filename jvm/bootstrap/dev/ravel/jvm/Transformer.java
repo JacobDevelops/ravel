@@ -58,7 +58,7 @@ public final class Transformer implements ClassFileTransformer {
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;Ljava/lang/Object;Z)Z");
     private static final MethodTypeDesc WORLD_SAVE =
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
-    private static final MethodTypeDesc WORLD_LEVEL_DATA =
+    private static final MethodTypeDesc WORLD_PACK_REPOSITORY =
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
     private static final MethodTypeDesc REGISTER_CONTENT = MethodTypeDesc.ofDescriptor("()V");
     private static final MethodTypeDesc PERFORM_OUTWARD = MethodTypeDesc.ofDescriptor("()V");
@@ -113,7 +113,8 @@ public final class Transformer implements ClassFileTransformer {
     }
 
     /**
-     * Gives the rewritten world-open flow a public path to the data pack writer.
+     * Gives the rewritten pack-repository seam a public path to the data pack
+     * writer.
      *
      * <p>Its own bridge rather than a widened hook, for the reason every other
      * one here has: the world directory is on the storage access, ADG-4 keeps a
@@ -399,15 +400,14 @@ public final class Transformer implements ClassFileTransformer {
     /**
      * The seam a world's own data pack is written at.
      *
-     * <p>Earlier than the world-open seam and for a reason the open one cannot
-     * fix: the game builds the world's pack list from its {@code datapacks}
-     * directory before it reaches the open crossing, so a pack written there is
-     * read on the world's next open. This is the last seam that still runs
-     * before the pack repository is built, and it is handed the storage access,
-     * which is where the world directory comes from.
+     * <p>The game reaches it once per world with the storage access made and the
+     * pack repository not yet built, on every path that gives a world one:
+     * creating a fresh level, opening an existing one, and recreating a world's
+     * settings. A pack written after it is a pack that world's running session
+     * never enabled.
      */
-    private static boolean isWorldLevelData(HookTarget target) {
-        return target.hookMethod().equals("worldOpenLevelData");
+    private static boolean isWorldPackRepository(HookTarget target) {
+        return target.hookMethod().equals("worldCreatePackRepository");
     }
 
     private static boolean isTitleMenu(HookTarget target) {
@@ -440,13 +440,13 @@ public final class Transformer implements ClassFileTransformer {
             if (isWorldOpen(target)) {
                 requireWorldOpenShape();
             }
-            if (isWorldLevelData(target) && !hasReferenceAt(0)) {
+            if (isWorldPackRepository(target) && !hasReferenceAt(0)) {
                 // Refused rather than skipped, for the reason the world-open
                 // shape is: an `aload` of anything but a reference is a
                 // `VerifyError` when the game loads the rewritten class.
                 throw new IllegalArgumentException(
-                        "the world-level-data target's first parameter is not a reference, and"
-                                + " the storage access is loaded from there");
+                        "the pack-repository target's first parameter is not a reference, and the"
+                                + " storage access is loaded from there");
             }
         }
 
@@ -553,12 +553,12 @@ public final class Transformer implements ClassFileTransformer {
                     // identity can come from.
                     builder.aload(0);
                     builder.invokestatic(TRANSFORMER, "saveWorldPersistence", WORLD_SAVE);
-                } else if (isWorldLevelData(target)) {
+                } else if (isWorldPackRepository(target)) {
                     // The storage access, which is the only thing this seam needs
                     // to cross: the native side writes files into the directory
                     // it names.
                     builder.aload(slot(0));
-                    builder.invokestatic(TRANSFORMER, "openWorldDatapack", WORLD_LEVEL_DATA);
+                    builder.invokestatic(TRANSFORMER, "openWorldDatapack", WORLD_PACK_REPOSITORY);
                 } else if (isBuiltInFreeze(target)) {
                     builder.invokestatic(TRANSFORMER, "registerContent", REGISTER_CONTENT);
                 } else if (isClientTick(target)) {

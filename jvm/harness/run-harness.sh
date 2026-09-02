@@ -326,20 +326,20 @@ persistence_run() {
 # replacement answer reaches the storage exactly once. The stored bytes reaching
 # the crossing are what says the open path read them rather than reporting
 # absence for a world that holds data.
-persistence_run admitted empty replacement 'old-aggregate' 'datapack=world/. loadsAtWrite=0
+persistence_run admitted empty replacement 'old-aggregate' 'datapack=world/. loadsAtWrite=0 available=[ravel]
 loads=1 accessClosed=false stemClosed=false crossed=1 read=old-aggregate
 saves=1 writes=1 written=replaced
 [ravel] rewrote 3 classes and 3 methods; 6 hook invocations reached native code'
 
 # Null is what the JVM receives when the native failed, and it refuses. This is
 # the polarity the whole design turns on: empty admits, so a panic cannot.
-persistence_run null-verdict null unchanged '' 'datapack=world/. loadsAtWrite=0
+persistence_run null-verdict null unchanged '' 'datapack=world/. loadsAtWrite=0 available=[ravel]
 loads=0 accessClosed=true stemClosed=true crossed=1 read=absent
 saves=1 writes=0 written=
 [ravel] rewrote 3 classes and 3 methods; 6 hook invocations reached native code'
 
 # A non-empty verdict is a refusal carrying the diagnostic Rust owns.
-persistence_run refused 'this world holds data Ravel cannot read' unchanged '' 'datapack=world/. loadsAtWrite=0
+persistence_run refused 'this world holds data Ravel cannot read' unchanged '' 'datapack=world/. loadsAtWrite=0 available=[ravel]
 loads=0 accessClosed=true stemClosed=true crossed=1 read=absent
 saves=1 writes=0 written=
 [ravel] rewrote 3 classes and 3 methods; 6 hook invocations reached native code'
@@ -348,7 +348,7 @@ saves=1 writes=0 written=
 # runs in each of them. Null is one of the four, because a failed native must
 # cost one Ravel checkpoint and nothing else.
 for answer in unchanged failed mismatch null; do
-	persistence_run "save-$answer" empty "$answer" '' 'datapack=world/. loadsAtWrite=0
+	persistence_run "save-$answer" empty "$answer" '' 'datapack=world/. loadsAtWrite=0 available=[ravel]
 loads=1 accessClosed=false stemClosed=false crossed=1 read=absent
 saves=1 writes=0 written=
 [ravel] rewrote 3 classes and 3 methods; 6 hook invocations reached native code'
@@ -416,7 +416,7 @@ mv "$persist/sibling.jar" "$persist_screen"
 # purpose — but its transformation matched no method, so the installed-prologue set
 # is empty and the world is refused before Rust is ever asked. Without this case
 # the false branch of that method never executes anywhere in the gate.
-persistence_missing_save_stdout='datapack=world/. loadsAtWrite=0
+persistence_missing_save_stdout='datapack=world/. loadsAtWrite=0 available=[ravel]
 loads=0 accessClosed=true stemClosed=true crossed=0 read=absent
 saves=1 writes=0 written=
 [ravel] rewrote 2 classes and 2 methods; 3 hook invocations reached native code'

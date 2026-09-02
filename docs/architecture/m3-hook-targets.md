@@ -29,7 +29,7 @@ only a descriptor that is not one: an unterminated class name, an array of
 nothing, or a character that is not a descriptor at all.
 
 `hooks.toml` therefore grew from 6 entries to 38 — 34 methods and 4 fields,
-carrying 29 handle parameters between them — covering all six capabilities
+carrying 28 handle parameters between them — covering all six capabilities
 below. Every entry was re-resolved against the class file's own member table for
 name, descriptor, kind and static flag before it was written. The last two of
 those entries are ADG-7's world persistence seams, tabled under

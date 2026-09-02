@@ -660,11 +660,11 @@ fn admissible_world(world: &Path) -> Result<(), String> {
 
 /// Writes the mods' data pack into a world before the game reads its pack list.
 ///
-/// The seam this crosses from runs while the world's storage access exists and
-/// before the pack repository over its `datapacks` directory is built, which is
-/// the window `packs.rs` records as the ceiling on the open crossing: a pack
-/// written there is on disk for the world's next open, so a new world's first
-/// session has none of the mods' recipes, tags or loot tables.
+/// The seam this crosses from is the call that builds the pack repository over
+/// the world's `datapacks` directory, which is the window `packs.rs` records as
+/// the ceiling on the open crossing: a pack written there is on disk for the
+/// world's next open, so the session that wrote it has none of the mods'
+/// recipes, tags or loot tables.
 ///
 /// Writing here does not replace the later write. Both put the same tree from the
 /// same installed set, so the second is a whole-tree replace over identical
@@ -672,9 +672,9 @@ fn admissible_world(world: &Path) -> Result<(), String> {
 /// still gets its pack.
 ///
 /// A failure is noticed rather than raised, exactly as the later write's is: this
-/// runs inside the game's own world-open call, and refusing a world over a data
-/// file would cost a player their session for something the game would have
-/// started without.
+/// runs inside a call the game makes on its way into a world, and refusing a
+/// world over a data file would cost a player their session for something the
+/// game would have started without.
 ///
 /// # Panics
 ///

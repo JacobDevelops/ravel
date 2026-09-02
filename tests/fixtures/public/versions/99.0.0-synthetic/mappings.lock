@@ -220,11 +220,11 @@ member = "saveSaveEverything"
 descriptor = "(ZZZ)Z"
 static = false
 
-[target."world.open-level-data"]
-class = "org/exampleengine/client/WorldOpenSteps"
-member = "openWorldLoadLevelData"
-descriptor = "(Lorg/exampleengine/store/WorldStore;Ljava/lang/Runnable;)V"
-static = false
+[target."world.create-pack-repository"]
+class = "org/exampleengine/resource/PackStoreSource"
+member = "createPackRepository"
+descriptor = "(Lorg/exampleengine/store/WorldStore;)Lorg/exampleengine/resource/PackStore;"
+static = true
 
 [target."world.open-persistence"]
 class = "org/exampleengine/client/GameClient"

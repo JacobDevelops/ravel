@@ -7,15 +7,25 @@
 //! so the set is installed here rather than passed down a call chain that does not
 //! exist.
 //!
-//! # Written twice, and the earlier one is what a first session reads
+//! # Written twice, and the earlier one is what this session reads
 //!
 //! `world.open-persistence` is handed the world stem, and the game builds that
-//! stem by scanning the world's `datapacks` directory. So a pack written from
-//! that crossing is on disk in time for the *next* open of that world, and a
-//! world opened for the first time used to run its whole first session without
-//! Ravel's data. `world.open-level-data` is the earlier seam that closes it: the
-//! game reaches it with the storage access made and two calls before it builds
-//! the pack repository, which is the whole window a pack can be written in.
+//! stem from a pack repository it has already configured. So a pack written from
+//! that crossing is on disk in time for the *next* open of that world, and the
+//! session that wrote it runs without Ravel's data.
+//!
+//! `world.create-pack-repository` is the earlier seam that closes it. It is the
+//! one call every path that gives a world a repository makes, it is handed the
+//! world's storage access, and it returns the repository the game then reloads
+//! and configures — and configuring adds every available pack whose source asks
+//! to be added automatically, which a world's own pack does. A pack on disk
+//! before it returns is enabled for the session that is starting.
+//!
+//! Which path matters, because the world-open flow's own steps are not on all of
+//! them: creating a fresh level makes the access, builds the repository and
+//! loads, reaching no open step at all. A seam chosen from that flow covers every
+//! session except a new world's first one, which is the session a player is most
+//! likely to judge the mods by.
 //!
 //! Both crossings still ask, and that is deliberate rather than tolerated. Both
 //! write the same tree from the one installed set, and `write_pack` compares the

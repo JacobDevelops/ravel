@@ -2231,10 +2231,11 @@ const TRANSFORMER_SEAMS: [Seam; 4] = [
         // The pack seam, and the one whose whole point is where it sits. It is
         // handed the storage access first and the transformer loads it from
         // there; a version that moved it would be an `aload` of something else.
-        id: "world.open-level-data",
-        receiver: true,
+        // Its own return is the repository, which the sequence never reads.
+        id: "world.create-pack-repository",
+        receiver: false,
         loads: &[(Parameter::At(0), Shape::Reference)],
-        returns: &[Shape::Void],
+        returns: &[],
     },
     Seam {
         id: "world.save-persistence",

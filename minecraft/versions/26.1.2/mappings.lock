@@ -220,17 +220,17 @@ member = "saveEverything"
 descriptor = "(ZZZ)Z"
 static = false
 
-[target."world.open-level-data"]
-class = "net/minecraft/client/gui/screens/worldselection/WorldOpenFlows"
-member = "openWorldLoadLevelData"
-descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Ljava/lang/Runnable;)V"
-static = false
-
 [target."world.open-persistence"]
 class = "net/minecraft/client/Minecraft"
 member = "doWorldLoad"
 descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Lnet/minecraft/server/packs/repository/PackRepository;Lnet/minecraft/server/WorldStem;Ljava/util/Optional;Z)V"
 static = false
+
+[target."world.create-pack-repository"]
+class = "net/minecraft/server/packs/repository/ServerPacksSource"
+member = "createPackRepository"
+descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;)Lnet/minecraft/server/packs/repository/PackRepository;"
+static = true
 
 [target."world.save-persistence"]
 class = "net/minecraft/server/MinecraftServer"

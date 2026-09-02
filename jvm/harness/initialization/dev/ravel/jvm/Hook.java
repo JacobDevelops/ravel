@@ -194,26 +194,26 @@ public final class Hook {
                 "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;"
                         + "Ljava/lang/Object;Z)Z",
                 true);
-        // The seam a world's own data pack is written at, which runs before the
-        // game builds that world's pack list. It is in both sets below, because
-        // the case the save seam is missing from is about the save marker and
-        // says nothing about the pack: dropping this one there would make that
-        // case silently stop covering it.
-        HookTarget levelData = new HookTarget(
-                "net/minecraft/client/gui/screens/worldselection/WorldOpenFlows",
-                "openWorldLoadLevelData",
-                "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;"
-                        + "Ljava/lang/Runnable;)V",
-                false,
-                "worldOpenLevelData",
-                "(Ljava/lang/Object;Ljava/lang/Object;)V",
+        // The seam a world's own data pack is written at, which the game reaches
+        // before it has a repository to read that world's packs with. It is in
+        // both sets below, because the case the save seam is missing from is
+        // about the save marker and says nothing about the pack: dropping this
+        // one there would make that case silently stop covering it.
+        HookTarget packRepository = new HookTarget(
+                "net/minecraft/server/packs/repository/ServerPacksSource",
+                "createPackRepository",
+                "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;)"
+                        + "Lnet/minecraft/server/packs/repository/PackRepository;",
+                true,
+                "worldCreatePackRepository",
+                "(Ljava/lang/Object;)V",
                 false);
         if (Boolean.getBoolean("ravel.test.persistence.saveSeamMissing")) {
-            return new HookTarget[] {open, levelData};
+            return new HookTarget[] {open, packRepository};
         }
         return new HookTarget[] {
             open,
-            levelData,
+            packRepository,
             new HookTarget(
                     "net/minecraft/server/MinecraftServer",
                     "saveAllChunks",
@@ -387,7 +387,7 @@ public final class Hook {
         invocations++;
     }
 
-    public static void worldOpenLevelData(Object access, Object onFail) {
+    public static void worldCreatePackRepository(Object access) {
         invocations++;
     }
 
@@ -400,16 +400,25 @@ public final class Hook {
     }
 
     /**
-     * Answers the pack crossing and records the world it named.
+     * Answers the pack crossing, records the world it named, and writes the pack.
      *
-     * <p>When it happened is what the harness reads back, and it reads it from
-     * the caller rather than from here: this class is compiled without the
-     * stand-in game on its class path, so it cannot ask how many world loads had
-     * run. The caller can, and the seam's whole claim is that the answer is none.
+     * <p>It writes a real directory because that is what the native side does,
+     * and because the filesystem is the only thing this class and the stand-in
+     * game share: this class is compiled without the game on its class path and
+     * the game is compiled without this one, exactly as the two sides are in a
+     * launch. The seam's whole claim is that the pack is on disk before the
+     * world's repository is built over that directory, and a listing taken there
+     * is what settles it.
      */
     public static void ravelWriteWorldDatapack(String world) {
         invocations++;
         datapackWorld = world;
+        try {
+            java.nio.file.Files.createDirectories(
+                    java.nio.file.Path.of(world, "datapacks", "ravel"));
+        } catch (java.io.IOException unwritten) {
+            datapackWorld = "unwritable";
+        }
     }
 
     /** How many times the open crossing was reached, which a refusal before it never does. */

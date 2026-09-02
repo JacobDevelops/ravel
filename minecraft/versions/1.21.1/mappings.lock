@@ -226,15 +226,6 @@ descriptor = "(ZZZ)Z"
 static = false
 runtimeMember = "a"
 
-[target."world.open-level-data"]
-class = "net/minecraft/client/gui/screens/worldselection/WorldOpenFlows"
-member = "openWorldLoadLevelData"
-descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Ljava/lang/Runnable;)V"
-static = false
-runtimeClass = "ftm"
-runtimeMember = "a"
-runtimeDescriptor = "(Lerf$c;Ljava/lang/Runnable;)V"
-
 [target."world.open-persistence"]
 class = "net/minecraft/client/Minecraft"
 member = "doWorldLoad"
@@ -243,6 +234,15 @@ static = false
 runtimeClass = "fgo"
 runtimeMember = "a"
 runtimeDescriptor = "(Lerf$c;Latp;Lalp;Z)V"
+
+[target."world.create-pack-repository"]
+class = "net/minecraft/server/packs/repository/ServerPacksSource"
+member = "createPackRepository"
+descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;)Lnet/minecraft/server/packs/repository/PackRepository;"
+static = true
+runtimeClass = "ats"
+runtimeMember = "a"
+runtimeDescriptor = "(Lerf$c;)Latp;"
 
 [target."screen.title-menu-options"]
 class = "net/minecraft/client/gui/screens/TitleScreen"

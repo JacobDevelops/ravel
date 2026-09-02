@@ -332,25 +332,6 @@ capability = "Observe a full world save, told whether it is silent, flushing, an
 # static flag, and ADG-7 records why each is the single common seam for its half.
 
 [[hook]]
-# The world's data pack has to be on disk before the game builds the pack list,
-# and this is the last seam that runs before it does. `openWorld` makes the level
-# storage access and hands it here; two calls later `openWorldLoadLevelStem`
-# builds the folder source over the world's `datapacks` directory and scans it to
-# make the world stem. `world.open-persistence` is handed that stem, so a pack
-# written there is on disk in time for the world's *next* open and the first
-# session of a new world runs without the mod's tags, recipes and loot tables.
-#
-# The access is the first argument, so the prologue has the world directory
-# without the pack repository existing yet, which is exactly the window the pack
-# has to be written in.
-id = "world.open-level-data"
-class = "net.minecraft.client.gui.screens.worldselection.WorldOpenFlows"
-member = "openWorldLoadLevelData"
-descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Ljava/lang/Runnable;)V"
-kind = "instance-method"
-capability = "Observe a world being opened before its data pack list is built, which is where a world's own pack has to be written."
-
-[[hook]]
 id = "world.open-persistence"
 class = "net.minecraft.client.Minecraft"
 member = "doWorldLoad"
@@ -362,6 +343,30 @@ kind = "instance-method"
 # else would have to invent a value, which the generator refuses outright.
 refuses = true
 capability = "Admit or refuse a world's Ravel data before the load body's first persistent mutation, carrying the storage access that names the world, the pack repository, the world stem, the selected data pack list, and the game's advisory new-world marker."
+
+# The one seam every path that gives a world a pack repository goes through, and
+# the only place a world's own pack can be written in time to be read. The
+# repository this builds is a folder source over the world's `datapacks`
+# directory, and `MinecraftServer.configurePackRepository` reloads it and adds
+# every available pack whose source asks to be added automatically, which a
+# world pack does. So a pack on disk before this returns is enabled for the
+# session that is starting, and one written after it is not.
+#
+# Creating a world is why that matters and why the world-open flow is the wrong
+# place to look. `createFreshLevel` never reaches `openWorldLoadLevelData`: it
+# makes the storage access, calls this, builds the stem and loads. Only
+# `openWorld` walks the level-data step, so a pack written there was written for
+# every session except a new world's first one.
+#
+# The access is the only argument, so the prologue has the world directory and
+# the repository does not exist yet, which is the whole window.
+[[hook]]
+id = "world.create-pack-repository"
+class = "net.minecraft.server.packs.repository.ServerPacksSource"
+member = "createPackRepository"
+descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;)Lnet/minecraft/server/packs/repository/PackRepository;"
+kind = "static-method"
+capability = "Observe a world's data pack repository being built over its own `datapacks` directory, which is where a world's own pack has to be written."
 
 [[hook]]
 id = "world.save-persistence"

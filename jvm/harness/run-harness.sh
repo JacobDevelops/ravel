@@ -272,9 +272,11 @@ javac -Xlint:all -Werror -cp "$persist/classes:$order/agent-classes" -d "$persis
 # Against the stand-in game, because the sibling is the compiled half of the
 # seam and its argument vectors are the game's own types.
 javac -Xlint:all -Werror -cp "$persist/classes" -d "$persist/sibling" \
-	"$root/jvm/harness/sibling/dev/ravel/jvm/screen/RavelWorldData.java"
+	"$root/jvm/harness/sibling/dev/ravel/jvm/screen/RavelWorldData.java" \
+	"$root/jvm/harness/sibling/dev/ravel/jvm/screen/RavelWorldRefusedScreen.java"
 jar --create --file "$persist_screen" --date 1980-01-01T00:00:02Z \
-	-C "$persist/sibling" dev/ravel/jvm/screen/RavelWorldData.class
+	-C "$persist/sibling" dev/ravel/jvm/screen/RavelWorldData.class \
+	-C "$persist/sibling" dev/ravel/jvm/screen/RavelWorldRefusedScreen.class
 cp "$order_agent" "$persist_agent"
 
 # How many world lifecycles this section runs, declared in one place so
@@ -345,21 +347,56 @@ done
 
 # The sibling artifact is absent, which is deliberately the opposite of the
 # screen jar next door: an absent screen loses the settings UI and leaves a
-# working game, and an absent persistence component refuses the world load. The
-# crossing count says the refusal landed before the world was ever offered to
-# Rust.
+# working game, and an absent persistence component refuses the world load.
+#
+# It is also the one refusal with nothing to draw, so it is the one that throws.
+# Every other refusal above puts the player on the refusal screen and returns,
+# and the body never running is what says the world was refused. Here there is no
+# screen jar and so no screen, and returning would leave the client on the
+# loading screen it was already on, holding the session lock, with nothing
+# coming — which is what the first real launch against an installation missing
+# this jar sat on until it was killed. So the refusal leaves through the game's
+# own call and the game's own crash path reports it. The access is closed before
+# the throw, so the world's lock is already released.
 mv "$persist_screen" "$persist/sibling.jar"
-persistence_absent_stdout='loads=0 accessClosed=true stemClosed=true crossed=0 read=absent
-saves=1 writes=0 written=
-[ravel] rewrote 2 classes and 2 methods; 3 hook invocations reached native code'
-persistence_run absent-sibling empty unchanged '' "$persistence_absent_stdout"
-absent_diagnostic="$(grep '^\[ravel\]' "$persist/absent-sibling-stderr")"
+persistence_lifecycles=$((persistence_lifecycles + 1))
+absent_out="$persist/absent-sibling-stdout"
+absent_err="$persist/absent-sibling-stderr"
+absent_status=0
+(cd "$persist/classes" && java \
+	-javaagent:"$persist_agent" \
+	-Dravel.test.transform.persistence=true \
+	-Dravel.test.persistence.saveSeamMissing=false \
+	-Dravel.test.persistence.open=empty \
+	-Dravel.test.persistence.save=unchanged \
+	-Dravel.test.persistence.stored= \
+	-cp . PersistenceMain >"$absent_out" 2>"$absent_err") || absent_status=$?
+if [ "$absent_status" -eq 0 ]; then
+	echo >&2
+	echo "a refusal with no screen to show returned instead of throwing, which is the launch that hangs on the loading screen holding the world lock" >&2
+	exit 1
+fi
+# The agent's own shutdown line lands on stdout, so what says the body never ran
+# is the absence of the counters `PersistenceMain` prints after it.
+if grep -q '^loads=' "$absent_out"; then
+	echo >&2
+	echo "a refused world load ran the body it precedes; it printed:" >&2
+	cat "$absent_out" >&2
+	exit 1
+fi
+absent_diagnostic="$(grep '^\[ravel\]' "$absent_err")"
 absent_expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar
 [ravel] refused a world load: Ravel'"'"'s world persistence component is missing from this installation.'
 if [ "$absent_diagnostic" != "$absent_expected_diagnostic" ]; then
 	echo >&2
 	echo "an absent sibling artifact did not refuse with the recorded diagnostic; expected:" >&2
 	printf '%s\n' "$absent_expected_diagnostic" >&2
+	exit 1
+fi
+absent_thrown="$(grep -c 'IllegalStateException: Ravel refused this world load and could not show the reason on screen' "$absent_err")"
+if [ "$absent_thrown" -ne 1 ]; then
+	echo >&2
+	echo "a refusal with no screen did not name itself in what it threw" >&2
 	exit 1
 fi
 mv "$persist/sibling.jar" "$persist_screen"

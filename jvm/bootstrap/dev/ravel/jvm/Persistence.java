@@ -115,9 +115,22 @@ final class Persistence {
      *
      * @param access the selected {@code LevelStorageAccess}, held opaquely
      * @param stem the selected {@code WorldStem}, held opaquely
+     * <p>A refusal the player cannot be shown is thrown rather than returned.
+     * Returning leaves the game on the loading screen it was already on with
+     * nothing coming, which the first real 1.21.1 launch sat on: the world was
+     * correctly refused, the screen jar was absent so there was nothing to draw,
+     * and the client held the session lock at "Preparing for world creation"
+     * until it was killed. A throw reaches the game's own crash path, which
+     * reports the reason and shuts the client down, and the world's lock is
+     * already released by then because the access is closed first.
+     *
+     * @param access the selected {@code LevelStorageAccess}, held opaquely
+     * @param stem the selected {@code WorldStem}, held opaquely
      * @param freshWorld the game's advisory new-world marker; ADG-7 says absence
      *     rather than this marker is what initializes fresh state
      * @return whether to return from the host method without running its body
+     * @throws IllegalStateException when the world is refused and no screen can
+     *     say so, which is a refusal the player would otherwise never see
      */
     static boolean open(Object access, Object stem, boolean freshWorld) {
         String refusal;
@@ -137,7 +150,10 @@ final class Persistence {
         if (refusal == null) {
             return false;
         }
-        refuse(access, stem, refusal);
+        if (!refuse(access, stem, refusal)) {
+            throw new IllegalStateException("Ravel refused this world load and could not show "
+                    + "the reason on screen: " + refusal);
+        }
         return true;
     }
 
@@ -247,26 +263,32 @@ final class Persistence {
      * <p>The order matters: the access holds the world's lock, so it is closed
      * whatever the stem does, and neither close is allowed to take the refusal
      * screen away from the player.
+     *
+     * @return whether the player was actually shown the reason, which is what
+     *     decides between a refused load the player can act on and one the caller
+     *     has to turn into a crash
      */
-    private static void refuse(Object access, Object stem, String diagnostic) {
+    private static boolean refuse(Object access, Object stem, String diagnostic) {
         close(stem);
         close(access);
         Agent.diagnose("refused a world load: " + diagnostic);
         Object screen = Screens.openWorldRefused(diagnostic);
         if (screen == null) {
-            // No sibling artifact is itself a reason this path runs, and it is
-            // also what leaves nothing to draw with. The world is still refused;
-            // the player is left on the screen they came from.
-            return;
+            // An absent sibling is itself a reason this path runs, and it is also
+            // what leaves nothing to draw with. The caller throws rather than
+            // returning the player to a loading screen with nothing coming.
+            return false;
         }
         try {
             Class<?> client = game(GameNames.MINECRAFT);
             Object instance = Members.method(client, GameMembers.MINECRAFT_GET_INSTANCE)
                     .invoke(null);
             Members.method(client, GameMembers.MINECRAFT_SET_SCREEN).invoke(instance, screen);
+            return true;
         } catch (ReflectiveOperationException | LinkageError | RuntimeException undrawable) {
             Agent.diagnose("the world refusal screen could not be shown ("
                     + undrawable.getClass().getName() + ")");
+            return false;
         }
     }
 

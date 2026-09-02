@@ -14,8 +14,9 @@ import net.minecraft.client.resources.sounds.SoundInstance;
 public final class SoundManager {
     private final List<String> played = new ArrayList<>();
 
-    public void play(SoundInstance sound) {
+    public SoundEngine.PlayResult play(SoundInstance sound) {
         played.add(sound.toString());
+        return SoundEngine.PlayResult.STARTED;
     }
 
     public String contents() {

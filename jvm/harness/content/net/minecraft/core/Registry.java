@@ -8,7 +8,7 @@ import net.minecraft.resources.Identifier;
  * A stand-in registry with the behaviour that decides whether registration
  * worked: it refuses a duplicate and refuses everything once frozen.
  */
-public final class Registry {
+public class Registry {
     private final String name;
     private final Map<String, Object> entries = new LinkedHashMap<>();
     private boolean frozen;

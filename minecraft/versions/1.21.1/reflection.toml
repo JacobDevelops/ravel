@@ -4,7 +4,7 @@
 # rename, which is exactly what this file demonstrates. 1.21.1 is obfuscated, so
 # `runtime` is the linked name Mojang's published client mapping resolves `class`
 # to, and `mapping.verify_reflection` re-derives every one of them on any build
-# that can read the mapping. Two of the twenty-two carry a different `class` than
+# that can read the mapping. Two of the twenty-one carry a different `class` than
 # 26.1.2 does, because the game renamed the type and not the role.
 #
 # The members are 1.21.1's own, and `mapping.verify_reflected_members` resolves
@@ -55,11 +55,6 @@ runtime = "gtv"
 [[reflected.member]]
 name = "forUI"
 descriptor = "(Lnet/minecraft/sounds/SoundEvent;F)Lnet/minecraft/client/resources/sounds/SimpleSoundInstance;"
-
-[[reflected]]
-name = "SOUND_INSTANCE"
-class = "net.minecraft.client.resources.sounds.SoundInstance"
-runtime = "gua"
 
 [[reflected]]
 name = "SOUND_MANAGER"

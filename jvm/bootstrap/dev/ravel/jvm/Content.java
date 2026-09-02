@@ -20,13 +20,20 @@ import java.util.List;
  * <p>Everything here is reflective for the reason {@link Persistence} gives: this
  * class ships in the always-present agent jar, which is compiled with no client
  * jar on the class path, so a source declaring a game type would not compile.
- * The class and member names below are strings resolved at runtime, and that is
- * a version coupling no lock covers — a rename in the next pinned version lands
- * as a diagnostic at registration time rather than as a generation failure. They
- * were read out of the pinned 26.1.2 client jar rather than guessed: the
- * identifier type is {@code Identifier} and not {@code ResourceLocation}, and
- * both properties objects require {@code setId} before their value is
- * constructed.
+ * Every name it resolves — the classes through {@link GameNames}, the members
+ * through {@link GameMembers} — is generated from the version's reviewed
+ * reflective surface, so one source is right about every tracked version and a
+ * member a version renamed or dropped fails generation rather than a launch.
+ * That is what carries the identifier type across being called
+ * {@code Identifier} under one version and {@code ResourceLocation} under
+ * another.
+ *
+ * <p><b>The one exception is {@link #withId}</b>, and it is a shape difference
+ * rather than a rename: 26.1.2's properties builders require the registry key
+ * stamped on them before a value is constructed, and 1.21.1 declares no such
+ * setter at all. A member one version does not have cannot be declared for it,
+ * so that lookup still spells a name and still fails as a per-row diagnostic
+ * under a version without it.
  *
  * <p><b>Rust decides, Java performs.</b> Which claims are registrable is an
  * admission question and is answered on the other side: the payload carries only
@@ -135,25 +142,26 @@ final class Content {
     private static boolean one(
             String kind, String namespace, String path, List<String> behaviour) {
         try {
-            Object identifier = Class.forName(IDENTIFIER, true, loader())
-                    .getMethod("fromNamespaceAndPath", String.class, String.class)
+            boolean isBlock = kind.equals("block");
+            Object identifier = Members.method(
+                    game(IDENTIFIER), GameMembers.IDENTIFIER_FROM_NAMESPACE_AND_PATH)
                     .invoke(null, namespace, path);
-            Class<?> resourceKey = Class.forName(RESOURCE_KEY, true, loader());
-            Class<?> identifierType = Class.forName(IDENTIFIER, true, loader());
+            Object registry = constant(
+                    BUILT_IN, isBlock ? GameMembers.BUILT_IN_BLOCK : GameMembers.BUILT_IN_ITEM);
+            Object registryKey = Members.method(
+                    game(RESOURCE_KEY), GameMembers.RESOURCE_KEY_CREATE)
+                    .invoke(
+                            null,
+                            constant(
+                                    REGISTRIES,
+                                    isBlock
+                                            ? GameMembers.REGISTRIES_BLOCK
+                                            : GameMembers.REGISTRIES_ITEM),
+                            identifier);
 
-            String registryField = kind.equals("block") ? "BLOCK" : "ITEM";
-            Object registry = constant(BUILT_IN, registryField);
-            Object registryKey = resourceKey
-                    .getMethod("create", resourceKey, identifierType)
-                    .invoke(null, constant(REGISTRIES, registryField), identifier);
+            Object value = isBlock ? block(registryKey, behaviour) : item(registryKey, behaviour);
 
-            Object value = kind.equals("block")
-                    ? block(registryKey, behaviour)
-                    : item(registryKey, behaviour);
-
-            Class<?> registryClass = Class.forName(REGISTRY, true, loader());
-            registryClass
-                    .getMethod("register", registryClass, identifierType, Object.class)
+            Members.method(game(REGISTRY), GameMembers.REGISTRY_REGISTER)
                     .invoke(null, registry, identifier, value);
             return true;
         } catch (Throwable unregistered) {
@@ -175,41 +183,40 @@ final class Content {
      */
     private static Object block(Object registryKey, List<String> behaviour)
             throws ReflectiveOperationException {
-        Class<?> properties = Class.forName(BLOCK_PROPERTIES, true, loader());
-        Object built = properties.getMethod("of").invoke(null);
+        Class<?> properties = game(BLOCK_PROPERTIES);
+        Object built = Members.method(properties, GameMembers.BLOCK_PROPERTIES_OF).invoke(null);
         built = withId(properties, built, registryKey);
-        built = properties
-                .getMethod("strength", float.class, float.class)
+        built = Members.method(properties, GameMembers.BLOCK_PROPERTIES_STRENGTH)
                 .invoke(
                         built,
                         Float.parseFloat(behaviour.get(0)),
                         Float.parseFloat(behaviour.get(1)));
         if (Boolean.parseBoolean(behaviour.get(2))) {
-            built = properties.getMethod("requiresCorrectToolForDrops").invoke(built);
+            built = Members.method(
+                    properties, GameMembers.BLOCK_PROPERTIES_REQUIRES_CORRECT_TOOL_FOR_DROPS)
+                    .invoke(built);
         }
         if (Boolean.parseBoolean(behaviour.get(3))) {
-            built = properties.getMethod("randomTicks").invoke(built);
+            built = Members.method(properties, GameMembers.BLOCK_PROPERTIES_RANDOM_TICKS)
+                    .invoke(built);
         }
-        return Class.forName(BLOCK, true, loader())
-                .getConstructor(properties)
-                .newInstance(built);
+        return Members.constructor(game(BLOCK), GameMembers.BLOCK_NEW).newInstance(built);
     }
 
     /** One item, described the same way and for the same reason. */
     private static Object item(Object registryKey, List<String> behaviour)
             throws ReflectiveOperationException {
-        Class<?> properties = Class.forName(ITEM_PROPERTIES, true, loader());
-        Object built = properties.getConstructor().newInstance();
+        Class<?> properties = game(ITEM_PROPERTIES);
+        Object built = Members.constructor(properties, GameMembers.ITEM_PROPERTIES_NEW)
+                .newInstance();
         built = withId(properties, built, registryKey);
-        built = properties
-                .getMethod("stacksTo", int.class)
+        built = Members.method(properties, GameMembers.ITEM_PROPERTIES_STACKS_TO)
                 .invoke(built, Integer.parseInt(behaviour.get(0)));
         if (Boolean.parseBoolean(behaviour.get(1))) {
-            built = properties.getMethod("fireResistant").invoke(built);
+            built = Members.method(properties, GameMembers.ITEM_PROPERTIES_FIRE_RESISTANT)
+                    .invoke(built);
         }
-        return Class.forName(ITEM, true, loader())
-                .getConstructor(properties)
-                .newInstance(built);
+        return Members.constructor(game(ITEM), GameMembers.ITEM_NEW).newInstance(built);
     }
 
     /**
@@ -219,21 +226,30 @@ final class Content {
      * properties object without one fails at construction rather than at
      * registration. The returned object is used rather than the argument because
      * the setter answers a builder.
+     *
+     * <p><b>The one member name still written here.</b> Every other lookup in
+     * this class goes through {@link GameMembers}, and this one cannot: 1.21.1
+     * declares no such setter, so its surface has nothing to declare and there is
+     * no constant for a shared source to spell. Under a version without it this
+     * throws, {@link #one} catches it, and the row is reported as unregistered —
+     * which is the honest answer, because that version wants a differently shaped
+     * registration rather than the same one under another name.
      */
     private static Object withId(Class<?> properties, Object built, Object registryKey)
             throws ReflectiveOperationException {
-        Method setId = properties.getMethod(
-                "setId", Class.forName(RESOURCE_KEY, true, loader()));
+        Method setId = properties.getMethod("setId", game(RESOURCE_KEY));
         return setId.invoke(built, registryKey);
     }
 
-    /** Reads one static constant by name. */
-    private static Object constant(String owner, String name) throws ReflectiveOperationException {
-        return Class.forName(owner, true, loader()).getField(name).get(null);
+    /** Reads one static constant the reviewed surface names. */
+    private static Object constant(String owner, String member)
+            throws ReflectiveOperationException {
+        return Members.field(game(owner), member).get(null);
     }
 
-    private static ClassLoader loader() {
-        return ClassLoader.getSystemClassLoader();
+    /** One game class, resolved through the loader the game itself is on. */
+    private static Class<?> game(String name) throws ReflectiveOperationException {
+        return Class.forName(name, true, ClassLoader.getSystemClassLoader());
     }
 
     /** The type that stopped a registration, unwrapped past the reflection layer. */

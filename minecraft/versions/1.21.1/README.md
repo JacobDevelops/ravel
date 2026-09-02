@@ -19,8 +19,15 @@ What is not proved here is any of it running. Nothing in this repository has
 started a 1.21.1 process with Ravel attached, so this version's saved-data path is
 generated and compiled but not driven. `ROADMAP.md` carries that as owed work.
 
-The persistence adapter no longer spells 26.1.2's member names: every member it
-reaches is declared in `reflection.toml`, checked against this version's jar, and
-generated into `GameMembers` as the name and descriptor the JVM links. The content
-and outward adapters still spell literals, which is 26.1.2's spelling and the
-obfuscated name of nothing here.
+No adapter spells 26.1.2's member names any more. Every member the persistence,
+content and outward adapters reach is declared in `reflection.toml`, checked
+against this version's jar, and generated into `GameMembers` as the name and
+descriptor the JVM links.
+
+One member is still written by hand, and it is a shape difference rather than a
+rename: `Content.withId` stamps a registry key onto a properties builder, which
+26.1.2 requires and this version has no setter for at all. A member a version does
+not declare cannot be declared for it, so under 1.21.1 that lookup throws and each
+block and item is reported as unregistered. Registering content here wants a
+differently shaped call, not the same one under another name, and no work package
+owns that yet.

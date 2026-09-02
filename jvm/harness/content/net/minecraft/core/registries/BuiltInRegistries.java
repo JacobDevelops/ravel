@@ -1,14 +1,14 @@
 package net.minecraft.core.registries;
 
-import net.minecraft.core.Registry;
+import net.minecraft.core.DefaultedRegistry;
 
 /**
  * The built-in registries, with the internal name, member and descriptor the
  * pinned inventory carries for {@code registry.built-in-freeze}.
  */
 public final class BuiltInRegistries {
-    public static final Registry BLOCK = new Registry("block");
-    public static final Registry ITEM = new Registry("item");
+    public static final DefaultedRegistry BLOCK = new DefaultedRegistry("block");
+    public static final DefaultedRegistry ITEM = new DefaultedRegistry("item");
 
     private BuiltInRegistries() {
     }

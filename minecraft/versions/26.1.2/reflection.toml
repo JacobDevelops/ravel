@@ -29,9 +29,9 @@
 # once: `descriptor` where the lookup names its parameter types, written in the
 # reviewed name space like every other descriptor this generator reads, and
 # `parameters` where the lookup gives a name and an argument count, which is what
-# `Persistence` does for a member whose parameter types it cannot name without
-# carrying every one of them as a game name too. A class reached only as a
-# parameter type declares none.
+# a lookup by width does. No class is listed here only to be named as a parameter
+# type: a descriptor-declared member carries its parameter types itself, and the
+# mapping translates them whether or not this file mentions them.
 #
 # Every class an adapter resolves is here, including the ones `hooks.toml` also
 # pins as hook targets: the generated constants are this file's whole set, so a
@@ -95,10 +95,6 @@ runtime = "net.minecraft.client.resources.sounds.SimpleSoundInstance"
 name = "forUI"
 descriptor = "(Lnet/minecraft/sounds/SoundEvent;F)Lnet/minecraft/client/resources/sounds/SimpleSoundInstance;"
 
-[[reflected]]
-name = "SOUND_INSTANCE"
-class = "net.minecraft.client.resources.sounds.SoundInstance"
-runtime = "net.minecraft.client.resources.sounds.SoundInstance"
 [[reflected]]
 name = "SOUND_MANAGER"
 class = "net.minecraft.client.sounds.SoundManager"

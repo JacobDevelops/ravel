@@ -21,12 +21,14 @@ import java.util.List;
  *
  * <p>Everything is reflective for the reason {@link Content} gives: this class
  * ships in the always-present agent jar, which is compiled with no client jar on
- * the class path, so a source declaring a game type would not compile. The class
- * and member names were read out of the pinned 26.1.2 client jar rather than
- * guessed — {@code SoundEvent} is a record with
- * {@code createVariableRangeEvent}, {@code SimpleSoundInstance.forUI} takes the
- * event and a pitch, and {@code SoundManager.play} answers a
- * {@code SoundEngine$PlayResult} this side discards.
+ * the class path, so a source declaring a game type would not compile. Every
+ * name it resolves — the classes through {@link GameNames}, the members through
+ * {@link GameMembers} — is generated from the version's reviewed reflective
+ * surface, so this one source is right about every tracked version. What the
+ * surface says about the sound path differs between them and this source does
+ * not have to know: {@code SoundManager.play} answers a
+ * {@code SoundEngine$PlayResult} under one version and nothing under another,
+ * and either way this side discards it.
  *
  * <p><b>Rust decides, Java performs.</b> Nothing here defaults a value, filters
  * an action or judges whether a mod may ask for one. A pitch the mod did not
@@ -43,7 +45,6 @@ final class Outward {
     private static final String MINECRAFT = GameNames.MINECRAFT;
     private static final String IDENTIFIER = GameNames.IDENTIFIER;
     private static final String SOUND_EVENT = GameNames.SOUND_EVENT;
-    private static final String SOUND_INSTANCE = GameNames.SOUND_INSTANCE;
     private static final String SIMPLE_SOUND_INSTANCE = GameNames.SIMPLE_SOUND_INSTANCE;
     private static final String SOUND_MANAGER = GameNames.SOUND_MANAGER;
 
@@ -156,29 +157,30 @@ final class Outward {
     /** Plays one declared sound through the running client's sound manager. */
     private static void play(String owner, String entry, float pitch)
             throws ReflectiveOperationException {
-        Class<?> minecraft = Class.forName(MINECRAFT, true, loader());
-        Object client = minecraft.getMethod("getInstance").invoke(null);
+        Class<?> minecraft = game(MINECRAFT);
+        Object client = Members.method(minecraft, GameMembers.MINECRAFT_GET_INSTANCE)
+                .invoke(null);
         if (client == null) {
             throw new IllegalStateException("no client is running");
         }
-        Object identifier = Class.forName(IDENTIFIER, true, loader())
-                .getMethod("fromNamespaceAndPath", String.class, String.class)
+        Object identifier = Members.method(
+                game(IDENTIFIER), GameMembers.IDENTIFIER_FROM_NAMESPACE_AND_PATH)
                 .invoke(null, owner, entry);
-        Class<?> soundEvent = Class.forName(SOUND_EVENT, true, loader());
-        Object event = soundEvent
-                .getMethod("createVariableRangeEvent", Class.forName(IDENTIFIER, true, loader()))
+        Object event = Members.method(
+                game(SOUND_EVENT), GameMembers.SOUND_EVENT_CREATE_VARIABLE_RANGE_EVENT)
                 .invoke(null, identifier);
-        Object sound = Class.forName(SIMPLE_SOUND_INSTANCE, true, loader())
-                .getMethod("forUI", soundEvent, float.class)
+        Object sound = Members.method(
+                game(SIMPLE_SOUND_INSTANCE), GameMembers.SIMPLE_SOUND_INSTANCE_FOR_UI)
                 .invoke(null, event, pitch);
-        Object manager = minecraft.getMethod("getSoundManager").invoke(client);
-        Class.forName(SOUND_MANAGER, true, loader())
-                .getMethod("play", Class.forName(SOUND_INSTANCE, true, loader()))
+        Object manager = Members.method(minecraft, GameMembers.MINECRAFT_GET_SOUND_MANAGER)
+                .invoke(client);
+        Members.method(game(SOUND_MANAGER), GameMembers.SOUND_MANAGER_PLAY)
                 .invoke(manager, sound);
     }
 
-    private static ClassLoader loader() {
-        return ClassLoader.getSystemClassLoader();
+    /** One game class, resolved through the loader the game itself is on. */
+    private static Class<?> game(String name) throws ReflectiveOperationException {
+        return Class.forName(name, true, ClassLoader.getSystemClassLoader());
     }
 
     /** The type that stopped an action, unwrapped past the reflection layer. */

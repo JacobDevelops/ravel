@@ -218,6 +218,17 @@ game's crash handler naming Ravel and the reason, with the session lock released
 data was rewritten across sessions but never changed. The example cannot change state from inside a
 game; the saved-data test mod, which counts visits, is what launch 5 proved with.
 
+## Reviews
+
+Two independent reviews ran overnight. The first, over the launch fixes, found twelve non-blocking
+items; eleven are fixed and the twelfth (a save failure reaching the player only as a log line) is a
+documented decision left standing. The second, over the resource path, found eleven and called four
+blocking: a state-mapping failure reported as an unregistered block, silent `Seeded` outcomes when
+`options.txt` cannot be seeded, the raw world path from JNI driving a recursive delete unvalidated, and
+a partial refusal of a payload with an unknown kind that the comment calls whole. All eleven except the
+Windows-only path rule are being fixed as this is written; the `C:/x` case is out of scope until Windows
+is.
+
 ## Questions only Jacob can answer
 
 - **How does a player's machine obtain the pinned version inputs?** Both tracked versions pin the client

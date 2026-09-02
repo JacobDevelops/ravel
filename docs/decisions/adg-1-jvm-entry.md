@@ -231,9 +231,9 @@ generator declares every reference parameter as `java.lang.Object` precisely so
 that generated `Hook.java` declares no game type and still compiles without the
 client jar. Neither artifact is free of game *names*: `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-three adapters between them resolve thirteen classes by name — all of which the invariant
+three adapters between them resolve seventeen classes by name — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
-on the class path. Those thirteen names are generated rather than written, and so is
+on the class path. Those seventeen names are generated rather than written, and so is
 every member the adapters reach on them; the amendment below records why and what
 carries them.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled
@@ -568,6 +568,18 @@ reflected, because 26.1.2's builders demand a registry key stamped before a valu
 is constructed and 1.21.1 declares no setter for one. That is a different call
 rather than a different name, which is the line this record already draws between
 a role binding and a per-version source.
+
+Four came back, to seventeen, and the reason is the one case where reflection is
+the better tool rather than the tolerated one. Registering a block puts it in a
+registry and nothing else; what makes it usable is a walk over its states into
+the id mapper the network protocol encodes a block update through, which vanilla
+runs once over its own blocks and never again. A block registered afterwards
+places and then disconnects the session, which is what the seventh launch did.
+The walk cannot be compiled beside the registration: the state list is a Guava
+type, neither tracked jar carries Guava, and a stub declaring that return type
+would not compile. Reflection names no type, so the block, its state definition,
+the id mapper and the class that carries a state's cache step are declared here
+and reached by name.
 
 ## Limits of this evidence
 

@@ -45,8 +45,9 @@ public final class RavelContent {
      * @param resistance how well it survives an explosion
      * @param tool whether it drops only for the right tool
      * @param ticks whether it receives random ticks
+     * @return the registered block, which the caller adds the states of
      */
-    public static void registerBlock(
+    public static {{Block}} registerBlock(
             String namespace,
             String path,
             float hardness,
@@ -66,8 +67,10 @@ public final class RavelContent {
         if (ticks) {
             properties = properties.{{BlockBehaviour$Properties#randomTicks}}();
         }
+        {{Block}} block = new {{Block}}(properties);
         {{Registry}}.{{Registry#register}}(
-                {{BuiltInRegistries}}.{{BuiltInRegistries#BLOCK}}, id, new {{Block}}(properties));
+                {{BuiltInRegistries}}.{{BuiltInRegistries#BLOCK}}, id, block);
+        return block;
     }
 
     /**

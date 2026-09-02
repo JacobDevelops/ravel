@@ -28,8 +28,12 @@ public final class RavelContent {
     private RavelContent() {
     }
 
-    /** Registers one block with the behaviour the mod that claimed it described. */
-    public static void registerBlock(
+    /**
+     * Registers one block with the behaviour the mod that claimed it described.
+     *
+     * @return the registered block, which the caller adds the states of
+     */
+    public static Block registerBlock(
             String namespace,
             String path,
             float hardness,
@@ -46,7 +50,9 @@ public final class RavelContent {
         if (ticks) {
             properties = properties.randomTicks();
         }
-        Registry.register(BuiltInRegistries.BLOCK, id, new Block(properties));
+        Block block = new Block(properties);
+        Registry.register(BuiltInRegistries.BLOCK, id, block);
+        return block;
     }
 
     /** Registers one item, described the same way and for the same reason. */

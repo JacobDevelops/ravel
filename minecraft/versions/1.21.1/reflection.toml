@@ -181,3 +181,54 @@ descriptor = "(Lnet/minecraft/world/level/saveddata/SavedData$Factory;Ljava/lang
 [[reflected.member]]
 name = "set"
 descriptor = "(Ljava/lang/String;Lnet/minecraft/world/level/saveddata/SavedData;)V"
+
+[[reflected]]
+# Back in the surface for one thing only. Registering a block puts it in the
+# registry and nothing else; vanilla's own bootstrap then walks every registered
+# block and adds each of its states to the id mapper the network protocol writes
+# block updates through. A block registered after that loop has run is in the
+# registry and in no mapper, and the first block update naming it disconnects the
+# session. Ravel does the same walk for the blocks it registers.
+name = "BLOCK"
+class = "net.minecraft.world.level.block.Block"
+runtime = "dfy"
+
+[[reflected.member]]
+name = "getStateDefinition"
+descriptor = "()Lnet/minecraft/world/level/block/state/StateDefinition;"
+
+[[reflected.member]]
+name = "BLOCK_STATE_REGISTRY"
+descriptor = "Lnet/minecraft/core/IdMapper;"
+
+[[reflected]]
+name = "STATE_DEFINITION"
+class = "net.minecraft.world.level.block.state.StateDefinition"
+runtime = "dtd"
+
+[[reflected.member]]
+# The list is a Guava type, which is why this walk is reflective rather than
+# compiled beside the registration: neither tracked jar carries Guava, so a stub
+# declaring this return type could not compile. Reflection names no type.
+name = "getPossibleStates"
+descriptor = "()Lcom/google/common/collect/ImmutableList;"
+
+[[reflected]]
+name = "ID_MAPPER"
+class = "net.minecraft.core.IdMapper"
+runtime = "js"
+
+[[reflected.member]]
+name = "add"
+descriptor = "(Ljava/lang/Object;)V"
+
+[[reflected]]
+# Where a state's cache is initialised. Declared as the class that carries the
+# member rather than as `BlockState`, which inherits it and declares nothing.
+name = "BLOCK_STATE_BASE"
+class = "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase"
+runtime = "dtb$a"
+
+[[reflected.member]]
+name = "initCache"
+descriptor = "()V"

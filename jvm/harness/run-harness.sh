@@ -486,19 +486,50 @@ content_run() {
 
 # The whole point of the surface: a block and an item a mod declared are in the
 # game's registries, under the mod's own namespace, as values of the game's own
-# types. Two crossings — the hook's, and the adapter's read.
+# types, and the block's states are in the mapper the protocol encodes a block
+# update through. Two crossings — the hook's, and the adapter's read.
+#
+# `states` is the count that was missing. A block reaches the registry on
+# registration and reaches the mapper only if something walks its states
+# afterwards, which vanilla does once for its own blocks and never again. The
+# stand-in block declares two states, so a walk that adds one and stops reads
+# differently from one that adds them all.
 content_run admitted \
 	'block:example_mod:copper:50.0:1200.0:true:false,item:example_mod:ingot:16:true' \
 	'block=example_mod:copper->Block(50.0/1200.0/true/false)
 item=example_mod:ingot->Item(16/true)
+states=2
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+
+# A kind this version has no width for. The row before it registers, the rows
+# after it are not read at all, and the diagnostic names the kind. Reading on
+# would be the silent defect: a width guessed for one row reads the next row's
+# fields as this row's behaviour and every row after it, so a payload with one
+# unknown kind in the middle would register plausible nonsense rather than
+# nothing.
+content_run unknown-kind \
+	'block:example_mod:copper:50.0:1200.0:true:false,gadget:example_mod:widget:1:false,item:example_mod:ingot:16:true' \
+	'block=example_mod:copper->Block(50.0/1200.0/true/false)
+item=
+states=2
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+content_unknown_diagnostic="$(grep '^\[ravel\] content registration was offered the kind' "$content/unknown-kind-stderr")"
+content_unknown_expected='[ravel] content registration was offered the kind gadget, whose width it does not know, so it read no row after it'
+if [ "$content_unknown_diagnostic" != "$content_unknown_expected" ]; then
+	echo >&2
+	echo "an unreadable kind did not name itself; expected:" >&2
+	printf '%s\n' "$content_unknown_expected" >&2
+	exit 1
+fi
 
 # Nothing admitted is a launch with no set installed, and it registers nothing
 # rather than failing. The crossing still happens, which is what says the empty
 # answer came from Rust and not from a seam that never fired.
 content_run empty empty 'block=
 item=
+states=0
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 
@@ -506,6 +537,7 @@ hooks=2
 # it, because registering a set nothing checked is the worse half of the trade.
 content_run null-answer null 'block=
 item=
+states=0
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 
@@ -513,6 +545,7 @@ hooks=2
 # rather than read half of.
 content_run malformed malformed 'block=
 item=
+states=0
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 content_malformed_diagnostic="$(grep '^\[ravel\] content' "$content/malformed-stderr")"

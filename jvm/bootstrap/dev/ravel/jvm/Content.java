@@ -49,8 +49,14 @@ final class Content {
     private static final int BLOCK_FIELDS = 4;
     private static final int ITEM_FIELDS = 2;
 
+    /** The width of a kind this version has none for, which is not a width. */
+    private static final int UNKNOWN_KIND = -1;
+
     /** The generated registration class, wherever this version's names put it. */
     static final String CONTENT = ScreenNames.RAVEL_CONTENT;
+
+    /** The class carrying the state mapper the network protocol writes through. */
+    private static final String BLOCK = GameNames.BLOCK;
 
     private static final String REGISTER_BLOCK = "registerBlock/6";
     private static final String REGISTER_ITEM = "registerItem/4";
@@ -110,7 +116,21 @@ final class Content {
                     break;
                 }
                 String kind = fields.get(at);
-                int width = kind.equals("block") ? BLOCK_FIELDS : ITEM_FIELDS;
+                // A kind this version does not know cannot be stepped over: a
+                // row's width is what its kind says it is, so guessing one reads
+                // the next row's fields as this row's behaviour and every row
+                // after it silently. Reading on is refused, the way a payload
+                // written under another contract is refused whole.
+                int width = switch (kind) {
+                    case "block" -> BLOCK_FIELDS;
+                    case "item" -> ITEM_FIELDS;
+                    default -> UNKNOWN_KIND;
+                };
+                if (width == UNKNOWN_KIND) {
+                    Agent.diagnose("content registration was offered the kind " + kind
+                            + ", whose width it does not know, so it read no row after it");
+                    break;
+                }
                 if (at + 4 + width > fields.size()) {
                     Agent.diagnose("content registration was offered a row missing its behaviour");
                     break;
@@ -151,15 +171,16 @@ final class Content {
                 return false;
             }
             if (kind.equals("block")) {
-                Members.sibling(content, REGISTER_BLOCK)
-                        .invoke(
-                                null,
-                                namespace,
-                                path,
-                                Float.parseFloat(behaviour.get(0)),
-                                Float.parseFloat(behaviour.get(1)),
-                                Boolean.parseBoolean(behaviour.get(2)),
-                                Boolean.parseBoolean(behaviour.get(3)));
+                mapStates(
+                        Members.sibling(content, REGISTER_BLOCK)
+                                .invoke(
+                                        null,
+                                        namespace,
+                                        path,
+                                        Float.parseFloat(behaviour.get(0)),
+                                        Float.parseFloat(behaviour.get(1)),
+                                        Boolean.parseBoolean(behaviour.get(2)),
+                                        Boolean.parseBoolean(behaviour.get(3))));
             } else {
                 Members.sibling(content, REGISTER_ITEM)
                         .invoke(
@@ -175,6 +196,48 @@ final class Content {
                     + " (" + unusableName(unregistered) + ")");
             return false;
         }
+    }
+
+    /**
+     * Adds one block's states where the game writes block updates through.
+     *
+     * <p>Registering a block puts it in the registry and does nothing else. What
+     * makes it usable is a second walk vanilla runs once, after its own blocks
+     * are registered: every state of every registered block is added to the id
+     * mapper the network protocol writes a block update as an index into, and
+     * each state's cache is initialised. Content registered after that walk has
+     * run is in the registry and in no mapper, so the game resolves the block by
+     * name, places it, and then disconnects the session encoding the update —
+     * which is what the seventh real launch did on the first {@code setblock}.
+     *
+     * <p>So Ravel runs the same walk for the blocks it registers, in the order
+     * vanilla runs it. It is reflective rather than compiled beside the
+     * registration because the state list is a Guava type and neither tracked
+     * jar carries Guava, so a stub declaring it could not compile. Reflection
+     * names no type, which is the one thing it is better at.
+     *
+     * <p>Vanilla also asks each block for its loot table here and drops the
+     * answer, which only warms a lazy field. 26.1.2 stopped doing it and nothing
+     * else changed, so Ravel does not do it either.
+     */
+    private static void mapStates(Object block) throws ReflectiveOperationException {
+        Class<?> blocks = game(BLOCK);
+        Object definition = Members.method(blocks, GameMembers.BLOCK_GET_STATE_DEFINITION)
+                .invoke(block);
+        Object mapper = Members.field(blocks, GameMembers.BLOCK_BLOCK_STATE_REGISTRY).get(null);
+        Object states = Members.method(
+                        definition.getClass(), GameMembers.STATE_DEFINITION_GET_POSSIBLE_STATES)
+                .invoke(definition);
+        for (Object state : (Iterable<?>) states) {
+            Members.method(mapper.getClass(), GameMembers.ID_MAPPER_ADD).invoke(mapper, state);
+            Members.method(state.getClass(), GameMembers.BLOCK_STATE_BASE_INIT_CACHE)
+                    .invoke(state);
+        }
+    }
+
+    /** One game class, resolved through the loader the game itself is on. */
+    private static Class<?> game(String name) throws ReflectiveOperationException {
+        return Class.forName(name, true, ClassLoader.getSystemClassLoader());
     }
 
     /**

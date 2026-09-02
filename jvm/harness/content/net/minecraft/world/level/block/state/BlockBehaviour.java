@@ -6,6 +6,27 @@ import net.minecraft.resources.ResourceKey;
 public class BlockBehaviour {
 
     /**
+     * What carries a state's cache step.
+     *
+     * <p>Declared here rather than on {@code BlockState} because that is where
+     * the pinned jars declare it, and the reviewed surface names the class that
+     * carries a member rather than one that inherits it.
+     */
+    public static class BlockStateBase {
+
+        private boolean cached;
+
+        public void initCache() {
+            cached = true;
+        }
+
+        /** Whether the walk initialised this state, as the harness reads it back. */
+        public boolean isCached() {
+            return cached;
+        }
+    }
+
+    /**
      * A block's properties, which refuse to describe a block that has no id.
      *
      * <p>Deliberately hostile: the pinned 26.1.2 constructor reads the id back

@@ -211,14 +211,25 @@ Unlocked!" toast. Installed as a source package, compiled into the instance's ho
 
 One ceiling stated where it lives: a fresh instance is seeded on its second launch, because writing an
 `options.txt` without the game's own `version` line would change which migrations it runs. The other
-is closed in code and waits on launch 14: the datapack is now written from the static
-`ServerPacksSource.createPackRepository`, the one factory every path that gives a world a pack
-repository calls, world creation included. `configurePackRepository` reloads that repository and
-auto-adds every world pack it finds, so a pack on disk before the factory returns is enabled for the
-session that is starting. The earlier hook at `WorldOpenFlows.openWorldLoadLevelData` sat only on the
-open path, which is why launch 13's new world listed the pack as available and not enabled. The
-harness now drives the creation sequence and asserts the pack is available, proven by mutation. The
-open-time write stays for a world admitted by another path and leaves an identical tree untouched. Launch 8 also proved the screen-less refusal now reaches the game's crash handler
+is closed for every open of an existing world and still open for a new world's first session. The
+datapack is written from the static `ServerPacksSource.createPackRepository`, which every path that
+gives a world a pack repository calls; launch 14 showed that on creation this lands the pack in the
+enabled list on paper only. The Create World screen builds its `ReloadableServerResources` when it
+opens, over a repository with no directory, and `createLevelFromExistingSettings` hands those loaded
+resources through untouched, so the first session runs with no recipe reload, the loot table absent,
+and the selection not written to `level.dat`. The fix in flight feeds the pack into the screen's own
+add-a-datapack flow at `CreateWorldScreen.init`: force its staging directory, write the pack there,
+and run `tryApplyNewDataPacks`, which is the reload vanilla pays when a player adds a pack by hand.
+The open-time write stays for a world admitted by another path and leaves an identical tree untouched.
+
+**Launch 14: enabled on paper, vanilla in fact; the unchanged-tree skip and regression hold.** New
+world, first session: `file/ravel (world)` under enabled, `Loaded 1290 recipes`, no server-side
+recipe load, loot table absent on query, the placed lantern broke with no drop. Reopened: 1291 recipes,
+the drop, the recipe unlock. Every pack file kept its mtime across both sessions and the exit. Title
+row, three packages running, clean quit; the rewrite line grew to 13 classes and 26 methods with the
+new seam. Two first observations: the settings screen draws only a Done button although the stateful
+example declares `journal.capacity`, and the pre-world pack notice reaches no surface on either the
+already-offered or the unreadable branch (the mods screen reads "none needing attention"). Launch 8 also proved the screen-less refusal now reaches the game's crash handler
 naming Ravel and the reason, with the session lock released, where launch 2 hung.
 
 **Launch 13 (interrupted): the early datapack write lands, the new world does not enable it.** A new
@@ -260,6 +271,13 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   it, or declare the requirement to players.
 
 ## Next
+
+- The settings screen draws no rows for `stateful-mod`'s declared `journal.capacity` setting
+  (launch 14). Settings flow from the declaration through the host into the screen's sibling; find
+  where the row list goes empty. Provable in the harness; the on-screen check waits on a client.
+- The pre-world pack notice never reaches a surface (launch 14, both `AlreadyOffered` by design and
+  `Unreadable`). Decide where it belongs (the mods screen's attention list is the existing surface)
+  and wire it.
 
 - `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
   being true this session for all three adapters. Amending closed evidence is its own ceremony.

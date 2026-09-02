@@ -21,7 +21,7 @@ use ravel_config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_core::{
     ContentBehaviour, FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure,
 };
-use ravel_data::PlayRequest;
+use ravel_data::{ContentDeclaration, PlayRequest};
 use ravel_network::PacketDelivery;
 use ravel_save::{MigrationChain, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan};
 
@@ -340,6 +340,26 @@ pub trait HostMod: Send {
             mod_id: self.id().clone(),
             state: LifecycleState::Running,
         })
+    }
+
+    /// Declares the content this mod adds, when it adds any.
+    ///
+    /// The counterpart of [`HostMod::register`], and the two are halves of one
+    /// statement rather than two statements about the same content. Registration
+    /// claims the names; this hands over the declaration those names came from,
+    /// which is the only route by which the bytes a mod supplies through
+    /// `ContentDeclaration::resource` — a model, a recipe body, anything whose
+    /// shape a Minecraft version decides — leave the mod's own crate. Without it
+    /// a registered item is a name the game has and a model the game never sees.
+    ///
+    /// A host asks every admitted mod and layers the answers in resolved load
+    /// order, because a resource path has one supplier and which mod that is
+    /// depends on the whole set rather than on any mod in it.
+    ///
+    /// The default declares nothing, which is what a mod that adds no content
+    /// does.
+    fn content_declaration(&self) -> Option<ContentDeclaration> {
+        None
     }
 
     /// Declares the versioned world data this mod owns, when it owns any.

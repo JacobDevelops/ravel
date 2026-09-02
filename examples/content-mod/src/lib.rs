@@ -39,7 +39,10 @@ const CONVENTION: &str = "c";
 /// A model's shape is a Minecraft version's to decide, so the SDK generates none
 /// and this mod supplies it. It travels in the same generated pack as the derived
 /// files, which is what stops a supplied path and a generated path disagreeing.
-const MODEL: &[u8] = b"{\n  \"parent\": \"minecraft:block/lantern\"\n}\n";
+///
+/// Public so a test can require these exact bytes at the other end of a launch
+/// rather than comparing the pack with itself.
+pub const MODEL: &[u8] = b"{\n  \"parent\": \"minecraft:block/lantern\"\n}\n";
 
 /// A mod that adds a copper lantern.
 ///
@@ -188,9 +191,16 @@ impl ContentMod {
     ///
     /// Calling this twice produces the same bytes, because the declaration is
     /// the same and generation reads nothing else.
+    ///
+    /// It reads the declaration back through [`Mod::content_declaration`] rather
+    /// than calling [`ContentMod::declaration`] a second time, so the pack a test
+    /// here compares is generated from the same value the host is handed. A mod
+    /// whose files a caller could see and a host could not is the shape this
+    /// method existing beside the trait would allow.
     #[must_use]
     pub fn generated(&self) -> GeneratedData {
-        self.declaration().generate()
+        self.content_declaration()
+            .map_or_else(GeneratedData::default, |declaration| declaration.generate())
     }
 }
 
@@ -217,6 +227,14 @@ impl Mod for ContentMod {
     /// Returns [`ModError::Refused`] naming the contested entry and its owner.
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         ravel_sdk::content::claim_all(&self.declaration(), registrar)
+    }
+
+    /// Hands the host the declaration the claims above came from.
+    ///
+    /// The model this mod supplies is bytes no version of Ravel generates, so
+    /// this is the only way they reach the game at all.
+    fn content_declaration(&self) -> Option<ContentDeclaration> {
+        Some(self.declaration())
     }
 
     /// Counts resource reloads and ignores everything else.

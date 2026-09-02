@@ -523,6 +523,11 @@ impl Mod for WaystoneLedger {
         claim_all(&Self::declaration(), registrar)
     }
 
+    /// Hands the host the declaration the claims above came from, model included.
+    fn content_declaration(&self) -> Option<ContentDeclaration> {
+        Some(Self::declaration())
+    }
+
     fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
         ConfigurationDeclaration::parse(SETTINGS).ok()
     }

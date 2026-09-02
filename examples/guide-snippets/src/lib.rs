@@ -114,6 +114,10 @@ pub mod content {
         fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
             claim_all(&Self::declaration(), registrar)
         }
+
+        fn content_declaration(&self) -> Option<ContentDeclaration> {
+            Some(Self::declaration())
+        }
     }
 }
 

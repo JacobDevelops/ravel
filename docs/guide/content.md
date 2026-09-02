@@ -32,6 +32,10 @@ impl Mod for CopperLanterns {
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         claim_all(&Self::declaration(), registrar)
     }
+
+    fn content_declaration(&self) -> Option<ContentDeclaration> {
+        Some(Self::declaration())
+    }
 }
 ```
 
@@ -51,6 +55,11 @@ out.
   `assets/…/lang/en_us.json` is an override, not a conflict — the mod later in the
   resolved load order supplies it, and the mods it shadowed are recorded, because
   a player whose translation vanished is owed the name of the mod that took it.
+  `content_declaration` above is how Ravel gets them: it asks every mod for its
+  declaration once the set is admitted and layers the files in load order, so the
+  bytes you supply reach the game without your mod naming a path on disk or a
+  loader type. A mod that claims its names and never hands the declaration back
+  registers content the game has no files for.
 
 ## The registration window is a window
 

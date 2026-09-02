@@ -24,8 +24,9 @@ use std::collections::BTreeSet;
 
 use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet};
 use ravel_data::{ContentDeclaration, DeclarationError, TagId, TagSet};
-use ravel_example_content_mod::ContentMod;
+use ravel_example_content_mod::{ContentMod, MODEL};
 use ravel_host_api::{HostError, HostMod, Registrar};
+use ravel_host_runtime::{Member, compose};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_sdk::Declared;
 use ravel_sdk::generate::{GeneratedData, GeneratedFile};
@@ -659,4 +660,78 @@ fn every_generated_document_is_legal_json_and_ends_in_one_newline() {
         assert!(text.ends_with('\n'), "{}", file.path());
         assert!(!text.ends_with("\n\n"), "{}", file.path());
     }
+}
+
+/// The launch path, end to end: a composed host is handed the mod's own files.
+///
+/// This is the property the rest of the file could not reach. Everything above
+/// asks the mod what it generates, and a mod whose bytes never left its crate
+/// answers all of it correctly while a player sees the missing-model placeholder.
+/// So the mod goes through `ravel_host_runtime::compose` — the same function every
+/// host's JNI entry calls — under the package document it actually ships, and what
+/// is read back is the composition's own supplied set.
+///
+/// The expected paths are the mod's `generated()` rather than a list written here.
+/// A literal list would pass while the trait method handed over a different
+/// declaration from the one the pack is built from, which is the drift this whole
+/// surface exists to make impossible.
+#[test]
+fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
+    let game = std::env::temp_dir().join(format!("ravel-supplied-content-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&game);
+    std::fs::create_dir_all(&game).expect("a writable temporary directory");
+
+    let (machine, _, _, supplied) = compose(
+        &game,
+        Side::DedicatedServer,
+        vec![Member {
+            package: include_str!("../../../examples/content-mod/package.json").to_owned(),
+            host: Box::new(ContentMod::new()) as Box<dyn HostMod>,
+        }],
+    )
+    .expect("the shipped example should compose");
+    assert_eq!(
+        machine.state(ContentMod::declared_id()),
+        Ok(LifecycleState::Running)
+    );
+
+    // The model by name, before anything derived. It is the file that made this
+    // test necessary: a version decides its shape so Ravel generates none, the mod
+    // supplies the bytes, and until the host asked for them a player saw the
+    // missing-model placeholder for an item the game had registered. A comparison
+    // against `generated()` alone would hold for a declaration that had dropped it.
+    let model = ContentMod::model_path();
+    assert_eq!(
+        supplied.set().supplier(&model),
+        Some(ContentMod::declared_id())
+    );
+    assert_eq!(supplied.bytes(&model), Some(MODEL));
+
+    let generated = ContentMod::new().generated();
+    assert!(!generated.is_empty(), "the example generates files");
+    assert_eq!(
+        supplied
+            .set()
+            .declared()
+            .iter()
+            .map(|resource| resource.path.as_str())
+            .collect::<Vec<_>>(),
+        generated.paths().collect::<Vec<_>>()
+    );
+    for file in generated.files() {
+        assert_eq!(
+            supplied.set().supplier(file.path()),
+            Some(ContentMod::declared_id()),
+            "{}",
+            file.path()
+        );
+        assert_eq!(
+            supplied.bytes(file.path()),
+            Some(file.bytes()),
+            "{}",
+            file.path()
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&game);
 }

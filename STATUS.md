@@ -290,8 +290,16 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   of the three version records, with a reflective or screen section absent only where the version's
   `adapter.toml` declares why. The reflective and screen sections stay at 26.1.2 until the stand-in
   game is generated per version from templates, sixty-one files, which is its own work package.
-- A headless real-client proof under Xvfb with an offline account is being built beside the nested
-  probe in the evidence skill, so a launch never again needs the display or the account.
+- The harness per-version unit above is in the working copy, unsealed and unvalidated: `inputs.rs`,
+  `run-harness.sh`, `nix/common.nix`, `adapter.toml` for `1.21.1`, and the xtask verb. No gate has
+  run over it. Finish it or drop it before anything else lands on top; do not run `ravel:verify`
+  expecting green.
+- The headless real-client proof under Xvfb stalled at the launcher, not the game. Prism 11 refuses
+  to launch any instance unless a Microsoft account that owns the game is signed in, even with an
+  Offline account present and an isolated approot, so the offline route needs either that account
+  (not authorized) or a direct JVM launch from the recorded wrapper command that skips Prism. The
+  script, its test and the recovery notes are sealed in the evidence skill; the run wrote no game
+  log.
 - The settings screen draws no rows for `stateful-mod`'s declared `journal.capacity` setting
   (launch 14). Settings flow from the declaration through the host into the screen's sibling; find
   where the row list goes empty. Provable in the harness; the on-screen check waits on a client.

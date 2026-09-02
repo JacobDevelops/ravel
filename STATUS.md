@@ -176,10 +176,12 @@ is the successor once a launch measures whether the written pack falls short.
 Launch 10 proved the mechanism: `resourcePacks:["file/ravel"]` seeded before the client read it,
 `Reloading ResourceManager: vanilla, file/ravel`, the pack selected in the game's own Resource Packs
 screen, the world datapack written on first open and auto-loaded on the second. And found both packs
-holding only `pack.mcmeta`: nothing the example declares reached the layered set through the generated
-host, though the same composition through `compose` in a conformance test carried all five files. The
-real launch path differs somewhere between the generated driver and `open_resources`; being found as
-this is written.
+holding only `pack.mcmeta`. The cause was the instance, not the path: it held the copy of
+`content-mod` launch 7 installed, from before the trait method existed, and a source-distributed
+package's digests bind it to itself, so it verified and compiled and declared nothing. The generated
+host's Cargo-running test now installs the shipped example whole and requires the model bytes it holds
+independently to reach the written pack; against the stale shape it fails in twelve seconds. An
+installed copy that drifts from the tree is the operator's to refresh, and no general check can see it.
 
 Two ceilings, stated where they live: a fresh instance is seeded on its second launch, because writing
 an `options.txt` without the game's own `version` line would change which migrations it runs; and a

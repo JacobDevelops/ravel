@@ -7,7 +7,7 @@
 use std::fmt::Write as _;
 
 use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
-use super::inputs::{Adapter, Inventory};
+use super::inputs::{Adapter, Inventory, Reflection};
 use super::resolve::Resolved;
 use super::stubs::Stub;
 use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY};
@@ -633,6 +633,53 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
     text
 }
 
+/// Renders the game names the agent jar's hand-written adapters resolve.
+///
+/// ADG-4 admits a hook that observes or vetoes, so anything the host has to
+/// *perform* is performed by an adapter under `jvm/bootstrap` that reaches the
+/// game by name. Those sources are shared across every tracked version and the
+/// names are not, so they spell a role and this class says what the role links
+/// to. Each constant carries the runtime name in its value and the Mojang name
+/// in its comment, which is the same two-audience split `HookTarget` already
+/// makes: the JVM reads one, a reviewer reads the other.
+///
+/// It is package-private because nothing outside the agent jar's own package
+/// resolves a game class, and because a public one would be a second name
+/// surface for a shipped jar that ADG-1 gives exactly one.
+pub(super) fn game_names(adapter: &Adapter, surface: &Reflection) -> String {
+    let mut text = String::with_capacity(surface.classes.len() * 160 + 1024);
+    let _ = writeln!(
+        text,
+        "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
+         package dev.ravel.jvm;\n\n\
+         /**\n\
+         \x20* Game classes the hand-written adapters resolve by name.\n\
+         \x20*\n\
+         \x20* <p>Every value is the name the JVM links, and every comment is the\n\
+         \x20* Mojang name the reviewed surface declared it under. The two are the\n\
+         \x20* same under an unobfuscated version and differ under an obfuscated one,\n\
+         \x20* which is why no source spells either of them by hand.\n\
+         \x20*/\n\
+         final class GameNames {{\n",
+        adapter.minecraft
+    );
+    for reflected in &surface.classes {
+        let _ = writeln!(
+            text,
+            "    /** {}. */\n\
+             \x20   static final String {} = \"{}\";\n",
+            reflected.class, reflected.name, reflected.runtime
+        );
+    }
+    let _ = writeln!(
+        text,
+        "    private GameNames() {{\n\
+         \x20   }}\n\
+         }}"
+    );
+    text
+}
+
 /// The declarations that belong to the bootstrap rather than to a hook surface.
 ///
 /// They are written rather than generated, and they live here because ADG-1
@@ -1133,6 +1180,7 @@ mod tests {
                 version_manifest: unpinned(),
                 hook_inventory: unpinned(),
                 stub_seeds: unpinned(),
+                reflective_surface: unpinned(),
                 mappings_lock: unpinned(),
                 stubs_lock: unpinned(),
             },

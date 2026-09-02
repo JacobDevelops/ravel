@@ -5,6 +5,7 @@
 //! else is read, and an input whose bytes no longer match what is tracked is
 //! refused before a single class is looked at.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -130,6 +131,37 @@ pub(super) struct Seeds {
     pub(super) stubs: Vec<Seed>,
 }
 
+/// One game class an adapter under `jvm/bootstrap` resolves by name.
+///
+/// Three names rather than one, because three audiences read them. `name` is the
+/// role the adapter reaches the class for and is the same word under every
+/// version; `class` is the Mojang name a reviewer reads; `runtime` is what the
+/// JVM links, which is the Mojang name under an unobfuscated source and an
+/// obfuscated one otherwise.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Reflected {
+    pub(super) name: String,
+    pub(super) class: String,
+    pub(super) runtime: String,
+}
+
+/// The tracked set of classes the always-present agent jar resolves by name.
+///
+/// It is a generator input rather than only a declaration the scaffold sweeps,
+/// because the runtime names in it are rendered into the agent jar's own
+/// `GameNames` class. A shared source tree cannot spell one version's names and
+/// be right about another, so the sources spell the role and this file decides
+/// what the role resolves to.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct Reflection {
+    pub(super) schema_version: u8,
+    pub(super) minecraft: String,
+    #[serde(rename = "reflected")]
+    pub(super) classes: Vec<Reflected>,
+}
+
 /// One pinned input file.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -164,6 +196,8 @@ pub(super) struct Inputs {
     pub(super) version_manifest: Input,
     pub(super) hook_inventory: Input,
     pub(super) stub_seeds: Input,
+    /// The reviewed set of classes the agent jar's adapters resolve by name.
+    pub(super) reflective_surface: Input,
     /// The generated mapping lock, pinned to the jars that produced it.
     pub(super) mappings_lock: Input,
     /// The generated stub lock, pinned to the jars that produced it.
@@ -187,6 +221,7 @@ pub(super) struct PinnedVersion {
     pub(super) adapter: Adapter,
     pub(super) inventory: Inventory,
     pub(super) seeds: Seeds,
+    pub(super) surface: Reflection,
 }
 
 /// Reads the tracked data of the version this build generates against.
@@ -255,6 +290,8 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
         )));
     }
 
+    let surface = reflection(root, &adapter)?;
+
     // The source decides whether a mapping file exists, so a pair that
     // disagrees is refused rather than resolved one way: a mapping file nothing
     // reads is a pin nobody maintains, and a source with none to read cannot
@@ -284,6 +321,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
         &adapter.inputs.version_manifest,
         &adapter.inputs.hook_inventory,
         &adapter.inputs.stub_seeds,
+        &adapter.inputs.reflective_surface,
     ]
     .into_iter()
     .chain(adapter.inputs.client_mappings.as_ref())
@@ -306,7 +344,85 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
         adapter,
         inventory,
         seeds,
+        surface,
     })
+}
+
+/// Reads the reviewed set of classes the agent jar's adapters resolve by name.
+///
+/// Tracked and read on every build for the same reason the inventory and the
+/// seeds are: it decides the names compiled into the agent jar, so a build that
+/// never opens a jar still has to know it is the reviewed set.
+///
+/// # Errors
+///
+/// Returns an error when the file is missing, has drifted from its pinned hash,
+/// pins another version or schema, or declares one role twice.
+fn reflection(root: &Path, adapter: &Adapter) -> Result<Reflection, GenerateError> {
+    verify_input(root, &adapter.inputs.reflective_surface)?;
+    let surface: Reflection = parse(&root.join(&adapter.inputs.reflective_surface.path))?;
+    if surface.minecraft != adapter.minecraft || surface.schema_version != adapter.schema_version {
+        return Err(GenerateError::Drift(format!(
+            "the reflective surface pins {} at schema {} but the adapter inputs pin {} at schema \
+             {}",
+            surface.minecraft, surface.schema_version, adapter.minecraft, adapter.schema_version
+        )));
+    }
+    // Every one of the three is interpolated into Java: the role becomes a field
+    // name, the runtime name becomes that field's string literal, and the
+    // reviewed name becomes the comment beside it. A file is reviewed and pinned,
+    // so this is not the door anything walks in through; it is the reason a
+    // typo cannot become a second declaration in a class ADG-1 gives one.
+    for reflected in &surface.classes {
+        for (what, value, legal) in [
+            ("role", &reflected.name, role_name as fn(&str) -> bool),
+            ("runtime name", &reflected.runtime, class_name),
+            ("reviewed name", &reflected.class, class_name),
+        ] {
+            if !legal(value) {
+                return Err(GenerateError::Drift(format!(
+                    "the reflective surface declares {value} as a {what}, which is not one"
+                )));
+            }
+        }
+    }
+    // One role names one class, so a file that declares a role twice has said
+    // two things about one generated constant and only one can be rendered.
+    let mut seen = BTreeSet::new();
+    for reflected in &surface.classes {
+        if !seen.insert(reflected.name.as_str()) {
+            return Err(GenerateError::Drift(format!(
+                "the reflective surface declares the role {} twice, and one role names one class",
+                reflected.name
+            )));
+        }
+    }
+    Ok(surface)
+}
+
+/// Whether a role is spelled the way the generated constants are.
+fn role_name(value: &str) -> bool {
+    value.starts_with(|first: char| first.is_ascii_uppercase())
+        && value.chars().all(|character| {
+            character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_'
+        })
+}
+
+/// Whether a value is a binary class name and nothing else.
+///
+/// Deliberately narrower than the JVM's own rule, which admits almost any
+/// character in an identifier. What has to pass is the names Mojang and a
+/// proguard mapping write, and what has to fail is anything carrying the
+/// punctuation that would end a Java string literal or a declaration.
+fn class_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.split('.').all(|segment| {
+            !segment.is_empty()
+                && !segment.starts_with(|first: char| first.is_ascii_digit())
+                && segment.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '_' | '$')
+                })
+        })
 }
 
 /// Picks the one version directory this build reads.
@@ -808,6 +924,7 @@ bytes = 2
              [inputs.versionManifest]\npath = \"c\"\nsha256 = \"0\"\n\
              [inputs.hookInventory]\npath = \"d\"\nsha256 = \"0\"\n\
              [inputs.stubSeeds]\npath = \"e\"\nsha256 = \"0\"\n\
+             [inputs.reflectiveSurface]\npath = \"h\"\nsha256 = \"0\"\n\
              [inputs.mappingsLock]\npath = \"f\"\nsha256 = \"0\"\n\
              [inputs.stubsLock]\npath = \"g\"\nsha256 = \"0\"\n"
         )

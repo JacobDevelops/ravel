@@ -42,6 +42,17 @@ path = "minecraft/versions/26.1.2/stubs.toml"
 sha256 = "d11859180fbdd7d39d40a63e7635969f373340aa0f9dddbbeb31ed17cd0d4b3e"
 bytes = 7746
 
+# The reflective surface is a generator input because the names in it are
+# compiled into the agent jar: `GameNames` is rendered from this file, so an
+# unpinned edit would change what the shipped jar resolves without changing a
+# hash. Editing reflection.toml therefore means updating the hash below, exactly
+# as editing the inventory does.
+
+[inputs.reflectiveSurface]
+path = "minecraft/versions/26.1.2/reflection.toml"
+sha256 = "12f02f91dbb677f3daf5153ecea4126c841cdd52026af126319c2aa8ad07aa62"
+bytes = 5932
+
 # The two locks below are generated, not fetched, and they are pinned for the
 # machines that cannot check them any other way. Without the jars there is
 # nothing to resolve against, so generating from a lock and comparing the result

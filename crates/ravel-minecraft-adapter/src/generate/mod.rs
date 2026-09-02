@@ -112,6 +112,7 @@ struct Rendered {
     bindings: String,
     exports: String,
     hook_java: String,
+    game_names_java: String,
     lock: String,
     stub_lock: String,
     /// Each stub's path below the stub tree, with its Java source.
@@ -235,13 +236,29 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
     // Both jars or neither: a stub set read from half its sources would resolve
     // some seeds and not others, which is a different answer rather than a
     // fallback, and the lock is the one answer a machine without them trusts.
-    let (resolved, stubbed) = if jar_path.is_file() && library_path.is_file() {
+    let jars = jar_path.is_file() && library_path.is_file();
+
+    // The declared runtime names are re-derived from the mapping that decides
+    // them on every build, not only on one that opens a jar. An identity source
+    // needs no file for that, so this holds on a machine with no pinned material
+    // at all; a translating source needs its published mapping, which is a
+    // pinned input of its own rather than something the jars bring with them, so
+    // reading it is what this branch requires. A machine that cannot read it is
+    // refused by `mapping` naming the missing file, because a lock-only build
+    // under an obfuscated version is the one case where a stale runtime name is
+    // both possible and invisible.
+    if !jars {
+        mapping::verify_reflection(&pinned.surface, &mapping(root, &pinned.adapter)?)?;
+    }
+
+    let (resolved, stubbed) = if jars {
         inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
         inputs::verify_input(root, &pinned.adapter.inputs.data_fixer_jar)?;
         inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
         // The mapping decides which entry every name below asks an archive for,
         // so it is read and verified before an archive is opened at all.
         let mapping = mapping(root, &pinned.adapter)?;
+        mapping::verify_reflection(&pinned.surface, &mapping)?;
         let archive = jar::Archive::open(&jar_path)?;
         let library = jar::Archive::open(&library_path)?;
         (
@@ -280,6 +297,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         bindings: render::bindings(&pinned.adapter, &pinned.inventory, &resolved),
         exports: render::exports(&shapes),
         hook_java: render::hook_java(&pinned.adapter, &shapes),
+        game_names_java: render::game_names(&pinned.adapter, &pinned.surface),
         lock,
         stub_lock,
         stub_java,
@@ -302,11 +320,13 @@ fn write(
     let bindings = out.join("bindings.rs");
     let exports = out.join("exports.rs");
     let java = java_directory.join("Hook.java");
+    let game_names = java_directory.join("GameNames.java");
     let mut digest = String::new();
     for (path, content) in [
         (&bindings, &rendered.bindings),
         (&exports, &rendered.exports),
         (&java, &rendered.hook_java),
+        (&game_names, &rendered.game_names_java),
     ] {
         write_atomically(path, content)?;
         digest.push_str(&inputs::sha256(content.as_bytes()));
@@ -329,6 +349,7 @@ fn write(
         pinned.directory.join("stubs.lock"),
         root.join(&pins.hook_inventory.path),
         root.join(&pins.stub_seeds.path),
+        root.join(&pins.reflective_surface.path),
         root.join(&pins.client_jar.path),
         root.join(&pins.data_fixer_jar.path),
         root.join(&pins.version_manifest.path),
@@ -387,6 +408,7 @@ fn write_atomically(path: &Path, content: &str) -> Result<(), GenerateError> {
 #[cfg(test)]
 mod tests {
     use std::ffi::OsString;
+    use std::fmt::Write as _;
     use std::path::{Path, PathBuf};
 
     use super::{GenerateError, SELECTION, inputs, run, selection};
@@ -492,7 +514,7 @@ mod tests {
         assert!(generated.exports.is_file());
         assert!(generated.java.is_file());
         assert_eq!(generated.sha256.len(), 64);
-        assert_eq!(generated.watched.len(), 8);
+        assert_eq!(generated.watched.len(), 9);
 
         let screen = generated
             .stubs
@@ -1005,6 +1027,314 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// Rewrites the staged reflective surface and re-pins it, as an edit would.
+    ///
+    /// The hash is updated in the same breath because a hand edit that leaves it
+    /// stale is refused by the pin and asks a different question. What these
+    /// tests ask is whether a *consistently pinned* name that the mapping does
+    /// not agree with is caught, which is the defect a presence check misses.
+    fn restate_surface(directory: &Path, from: &str, to: &str) {
+        let path = directory.join("reflection.toml");
+        let document = std::fs::read_to_string(&path).expect("readable");
+        assert!(
+            document.contains(from),
+            "{from} is not in the staged surface"
+        );
+        let rewritten = document.replacen(from, to, 1);
+        std::fs::write(&path, &rewritten).expect("writable");
+        let adapter = directory.join("adapter.toml");
+        let inputs = std::fs::read_to_string(&adapter).expect("readable");
+        let pinned = inputs
+            .lines()
+            .find(|line| line.contains(&inputs::sha256(document.as_bytes())))
+            .expect("the staged inputs pin the surface");
+        let repinned = inputs
+            .replace(
+                pinned,
+                &format!("sha256 = \"{}\"", inputs::sha256(rewritten.as_bytes())),
+            )
+            .replace(
+                &format!("bytes = {}", document.len()),
+                &format!("bytes = {}", rewritten.len()),
+            );
+        std::fs::write(&adapter, repinned).expect("writable");
+    }
+
+    /// The line of the staged surface that declares a value under one key.
+    ///
+    /// The value is read out of the tracked data rather than written here, so no
+    /// source in this crate spells a game class name — the property
+    /// `ravel-verify-scaffold` enforces over `crates/`.
+    fn declared_line(directory: &Path, key: &str) -> String {
+        let document =
+            std::fs::read_to_string(directory.join("reflection.toml")).expect("readable");
+        document
+            .lines()
+            .find(|line| line.starts_with(&format!("{key} = ")))
+            .expect("the staged surface declares the key")
+            .to_owned()
+    }
+
+    /// The defect a presence check over reviewed names cannot see: the reviewed
+    /// name is right and the name the JVM will link is stale, so the check passes
+    /// and every reflective reach fails at runtime.
+    #[test]
+    fn a_runtime_name_the_mapping_does_not_resolve_to_is_refused() {
+        let (root, directory) = staged("surface-runtime");
+        let out = output("surface-runtime-out");
+        let declared = declared_line(&directory, "runtime");
+
+        restate_surface(&directory, &declared, "runtime = \"nowhere.Absent\"");
+
+        let error = run(&root, &out, None).expect_err("a stale runtime name must be refused");
+
+        assert!(matches!(error, GenerateError::Drift(_)), "{error}");
+        assert!(
+            error.to_string().contains("links as nowhere.Absent"),
+            "{error}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// Every `key = "value"` a document declares, in the order it declares them.
+    fn declared_values(document: &str, key: &str) -> Vec<String> {
+        let prefix = format!("{key} = \"");
+        document
+            .lines()
+            .filter_map(|line| line.strip_prefix(&prefix)?.strip_suffix('"'))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Restages the copied version as an obfuscated one that publishes a mapping.
+    ///
+    /// This is the shape no tracked version has yet and the one the surface check
+    /// exists for: the class files declare nothing a reviewer can read, so a
+    /// published file is the only thing that decides the linked names. The
+    /// mapping is built from the surface the staged version already declares,
+    /// rather than written here, so no source in this crate spells a game class
+    /// name and the staged version stays internally consistent — what changes is
+    /// that a file now has to *say* what was previously true by identity.
+    fn stage_proguard(root: &Path, directory: &Path) {
+        let identity = "mappingSource = \"unobfuscated-class-files\"";
+        let obfuscated = "mappingSource = \"official-proguard-mappings\"";
+
+        let surface = std::fs::read_to_string(directory.join("reflection.toml")).expect("readable");
+        let mut mapping = String::new();
+        for (class, runtime) in declared_values(&surface, "class")
+            .iter()
+            .zip(declared_values(&surface, "runtime"))
+        {
+            let _ = writeln!(mapping, "{class} -> {runtime}:");
+        }
+        assert!(!mapping.is_empty(), "the staged surface declares nothing");
+        let mapping_path = directory.join("client.txt");
+        std::fs::write(&mapping_path, &mapping).expect("writable");
+
+        // The lock carries the source that decided its names and the digest of
+        // the file that did, so restating the source without it is a lock that
+        // disagrees with what regenerating it would produce.
+        let lock_path = directory.join("mappings.lock");
+        let lock = std::fs::read_to_string(&lock_path).expect("readable");
+        let jar_pin = lock
+            .lines()
+            .find(|line| line.starts_with("clientJarSha256 = "))
+            .expect("the lock pins the jar it read");
+        let relocked = lock.replace(identity, obfuscated).replace(
+            jar_pin,
+            &format!(
+                "{jar_pin}\nclientMappingsSha256 = \"{}\"",
+                inputs::sha256(mapping.as_bytes())
+            ),
+        );
+        std::fs::write(&lock_path, &relocked).expect("writable");
+
+        let relative = directory
+            .strip_prefix(root)
+            .expect("the version is staged under the root")
+            .join("client.txt");
+        let adapter_path = directory.join("adapter.toml");
+        let adapter = std::fs::read_to_string(&adapter_path).expect("readable");
+        let restated = adapter
+            .replace(identity, obfuscated)
+            .replace(
+                &inputs::sha256(lock.as_bytes()),
+                &inputs::sha256(relocked.as_bytes()),
+            )
+            .replace(
+                &format!("bytes = {}", lock.len()),
+                &format!("bytes = {}", relocked.len()),
+            )
+            + &format!(
+                "\n[inputs.clientMappings]\npath = \"{}\"\nsha256 = \"{}\"\nbytes = {}\n",
+                relative.display(),
+                inputs::sha256(mapping.as_bytes()),
+                mapping.len()
+            );
+        std::fs::write(&adapter_path, restated).expect("writable");
+    }
+
+    /// The case the guard used to skip: no jars, and a source whose names only a
+    /// published mapping decides. That is the only case where the game is
+    /// actually obfuscated, so a surface trusted here is a surface nothing checks.
+    #[test]
+    fn a_machine_without_the_jars_re_derives_an_obfuscated_surface_from_the_mapping() {
+        let (root, directory) = staged("surface-proguard");
+        let out = output("surface-proguard-out");
+        stage_proguard(&root, &directory);
+
+        let generated = run(&root, &out, None).expect("the mapping says what the surface declares");
+
+        assert!(generated.java.is_file());
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// The same staging with one runtime name restated: a lock-only build under
+    /// an obfuscated source used to render this into the shipped jar untouched.
+    #[test]
+    fn a_stale_runtime_name_is_refused_without_the_jars_under_an_obfuscated_source() {
+        let (root, directory) = staged("surface-proguard-stale");
+        let out = output("surface-proguard-stale-out");
+        stage_proguard(&root, &directory);
+        let declared = declared_line(&directory, "runtime");
+
+        restate_surface(&directory, &declared, "runtime = \"nowhere.Absent\"");
+
+        let error = run(&root, &out, None).expect_err("a stale runtime name must be refused");
+
+        assert!(matches!(error, GenerateError::Drift(_)), "{error}");
+        assert!(
+            error.to_string().contains("links as nowhere.Absent"),
+            "{error}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// A surface copied from another version keeps a Mojang name the target
+    /// renamed away, and the natural way to restate it keeps both names in step.
+    /// The mapping then names neither, so a pass-through would compare the stale
+    /// name with itself and agree — which is the rename this whole record is for.
+    #[test]
+    fn a_reviewed_class_the_mapping_never_names_is_refused_rather_than_read_as_itself() {
+        let (root, directory) = staged("surface-proguard-absent");
+        let out = output("surface-proguard-absent-out");
+        stage_proguard(&root, &directory);
+        let restated = format!(
+            "{}\n{}",
+            declared_line(&directory, "class"),
+            declared_line(&directory, "runtime")
+        );
+
+        restate_surface(
+            &directory,
+            &restated,
+            "class = \"nowhere.Absent\"\nruntime = \"nowhere.Absent\"",
+        );
+
+        let error = run(&root, &out, None).expect_err("a class the mapping omits must be refused");
+
+        assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
+        assert!(
+            error.to_string().contains("names no class nowhere.Absent"),
+            "{error}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// All three declared values are interpolated into `GameNames`: the role as a
+    /// field name, the runtime name as its string literal, and the reviewed name
+    /// as the comment beside it. A value that is not the thing it is declared as
+    /// is refused where the file is read rather than rendered and compiled.
+    #[test]
+    fn a_declared_value_that_is_not_a_java_name_is_refused_before_it_is_rendered() {
+        for (label, key, restated) in [
+            (
+                "role",
+                "name",
+                "name = \"MINECRAFT; static native void y()\"",
+            ),
+            ("runtime", "runtime", "runtime = \"not a class name\""),
+            ("reviewed", "class", "class = \"not a class name\""),
+        ] {
+            let (root, directory) = staged(&format!("surface-illegal-{label}"));
+            let out = output(&format!("surface-illegal-{label}-out"));
+
+            restate_surface(&directory, &declared_line(&directory, key), restated);
+
+            let error = run(&root, &out, None).expect_err("a value that is not one is refused");
+
+            assert!(matches!(error, GenerateError::Drift(_)), "{error}");
+            assert!(error.to_string().contains("which is not one"), "{error}");
+            let _ = std::fs::remove_dir_all(&root);
+            let _ = std::fs::remove_dir_all(&out);
+        }
+    }
+
+    /// One role names one class, so a file declaring a role twice has said two
+    /// things about one generated constant and only one of them can be rendered.
+    #[test]
+    fn a_reflective_surface_declaring_a_role_twice_is_refused() {
+        let (root, directory) = staged("surface-duplicate");
+        let repeated = format!(
+            "[[reflected]]\n{}\n{}\n{}\n\n[[reflected]]",
+            declared_line(&directory, "name"),
+            declared_line(&directory, "class"),
+            declared_line(&directory, "runtime")
+        );
+
+        restate_surface(&directory, "[[reflected]]", &repeated);
+
+        let error = inputs::pinned(&root, None).expect_err("one role names one class");
+
+        assert!(matches!(error, GenerateError::Drift(_)), "{error}");
+        assert!(error.to_string().contains("twice"), "{error}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The generated class carries both names the surface declares, because two
+    /// audiences read it: the JVM links the value and a reviewer reads the name
+    /// beside it.
+    #[test]
+    fn the_generated_game_names_carry_the_linked_name_and_the_reviewed_one() {
+        let out = output("game-names");
+        let root = repository_root();
+        let pinned = inputs::pinned(root, None).expect("the tracked version data should parse");
+
+        let generated = run(root, &out, None).expect("the tracked inputs should generate");
+
+        let names = generated
+            .java
+            .parent()
+            .expect("the generated Java has a directory")
+            .join("GameNames.java");
+        let source = std::fs::read_to_string(&names).expect("the class should be generated");
+        assert!(source.contains("final class GameNames {"), "{source}");
+        assert!(
+            !source.contains("native"),
+            "GameNames declares no native method, so ADG-1 keeps one symbol surface: {source}"
+        );
+        // Both names of every declared role, in one place a reviewer reads and
+        // the JVM links out of. Read from the surface rather than written here,
+        // so no source in this crate spells a game class name.
+        for reflected in &pinned.surface.classes {
+            assert!(
+                source.contains(&format!(
+                    "    /** {}. */\n    static final String {} = \"{}\";",
+                    reflected.class, reflected.name, reflected.runtime
+                )),
+                "{} is not carried as a pair: {source}",
+                reflected.name
+            );
+        }
+
         let _ = std::fs::remove_dir_all(&out);
     }
 

@@ -35,6 +35,11 @@ path = "minecraft/versions/99.0.0-synthetic/stubs.toml"
 sha256 = "e256b32d46fe32c7bd5d75002cc02a34f3e6aba3b1c0c4905d332d690ca3ce1c"
 bytes = 615
 
+[inputs.reflectiveSurface]
+path = "minecraft/versions/99.0.0-synthetic/reflection.toml"
+sha256 = "e3a73765f23dfebdde7783a1a2267422a09870fc459889b35f419598b326af12"
+bytes = 2742
+
 [inputs.mappingsLock]
 path = "minecraft/versions/99.0.0-synthetic/mappings.lock"
 sha256 = "9fb7c4f7d239855e9fba6cfea4ef1772fb13bf85d19f0ffdebf5a1066c6588a8"

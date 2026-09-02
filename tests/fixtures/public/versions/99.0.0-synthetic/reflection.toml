@@ -1,0 +1,100 @@
+# Reflective surface for the synthetic second version.
+#
+# Nothing here is a real game, exactly as `hooks.toml` beside it is not. What is
+# real is the shape: the same eighteen roles the pinned version declares, mapped
+# onto this version's own invented classes. That is the isolation being proved.
+# The shared adapters under `jvm/bootstrap` spell the role and never the class,
+# so a second version renaming every class renames nothing in a Java source.
+
+schemaVersion = 1
+minecraft = "99.0.0-synthetic"
+
+[[reflected]]
+name = "MINECRAFT"
+class = "org.exampleengine.client.Client"
+runtime = "org.exampleengine.client.Client"
+
+[[reflected]]
+name = "SIMPLE_SOUND_INSTANCE"
+class = "org.exampleengine.audio.SimpleCue"
+runtime = "org.exampleengine.audio.SimpleCue"
+
+[[reflected]]
+name = "SOUND_INSTANCE"
+class = "org.exampleengine.audio.Cue"
+runtime = "org.exampleengine.audio.Cue"
+
+[[reflected]]
+name = "SOUND_MANAGER"
+class = "org.exampleengine.audio.CueManager"
+runtime = "org.exampleengine.audio.CueManager"
+
+[[reflected]]
+name = "SOUND_EVENT"
+class = "org.exampleengine.audio.CueEvent"
+runtime = "org.exampleengine.audio.CueEvent"
+
+[[reflected]]
+name = "REGISTRY"
+class = "org.exampleengine.registry.Registry"
+runtime = "org.exampleengine.registry.Registry"
+
+[[reflected]]
+name = "BUILT_IN"
+class = "org.exampleengine.registry.BuiltIn"
+runtime = "org.exampleengine.registry.BuiltIn"
+
+[[reflected]]
+name = "REGISTRIES"
+class = "org.exampleengine.registry.Keys"
+runtime = "org.exampleengine.registry.Keys"
+
+[[reflected]]
+name = "IDENTIFIER"
+class = "org.exampleengine.registry.Name"
+runtime = "org.exampleengine.registry.Name"
+
+[[reflected]]
+name = "RESOURCE_KEY"
+class = "org.exampleengine.registry.Key"
+runtime = "org.exampleengine.registry.Key"
+
+[[reflected]]
+name = "ITEM"
+class = "org.exampleengine.content.Thing"
+runtime = "org.exampleengine.content.Thing"
+
+[[reflected]]
+name = "ITEM_PROPERTIES"
+class = "org.exampleengine.content.Thing$Traits"
+runtime = "org.exampleengine.content.Thing$Traits"
+
+[[reflected]]
+name = "BLOCK"
+class = "org.exampleengine.content.Tile"
+runtime = "org.exampleengine.content.Tile"
+
+[[reflected]]
+name = "BLOCK_PROPERTIES"
+class = "org.exampleengine.content.Tile$Traits"
+runtime = "org.exampleengine.content.Tile$Traits"
+
+[[reflected]]
+name = "SERVER"
+class = "org.exampleengine.server.Host"
+runtime = "org.exampleengine.server.Host"
+
+[[reflected]]
+name = "DATA_FIXERS"
+class = "org.exampleengine.storage.Fixers"
+runtime = "org.exampleengine.storage.Fixers"
+
+[[reflected]]
+name = "LEVEL_RESOURCE"
+class = "org.exampleengine.storage.Resource"
+runtime = "org.exampleengine.storage.Resource"
+
+[[reflected]]
+name = "STORAGE"
+class = "org.exampleengine.storage.Store"
+runtime = "org.exampleengine.storage.Store"

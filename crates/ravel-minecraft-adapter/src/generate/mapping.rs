@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::GenerateError;
-use super::inputs::MappingSource;
+use super::inputs::{MappingSource, Reflection};
 
 /// How a Mojang name becomes the name the JVM links.
 #[derive(Clone, Debug)]
@@ -39,6 +39,26 @@ impl Mapping {
         match self {
             Self::Identity => mojang,
             Self::Proguard(proguard) => proguard.runtime_class(mojang),
+        }
+    }
+
+    /// The internal name the JVM links for a reviewed *game* class.
+    ///
+    /// [`Self::runtime_class`] answers for any name at all, because a stub seed
+    /// may name a library class the published mapping never describes and
+    /// passing that name through is the right answer. Every name in the
+    /// reflective surface is a game class instead, so a mapping that does not
+    /// name one has not agreed with it — it has said nothing about it, and
+    /// resolving it to itself would accept a Mojang name the target version
+    /// renamed away.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a translating mapping does not name the class.
+    pub(super) fn linked_class<'a>(&'a self, mojang: &'a str) -> Result<&'a str, GenerateError> {
+        match self {
+            Self::Identity => Ok(mojang),
+            Self::Proguard(proguard) => proguard.linked_class(mojang),
         }
     }
 
@@ -90,6 +110,44 @@ impl Mapping {
             Self::Proguard(proguard) => proguard.runtime_member(mojang_class, member, descriptor),
         }
     }
+}
+
+/// Refuses a declared runtime name the mapping does not agree with.
+///
+/// The reflective surface records both names because a machine without the
+/// pinned material cannot derive the second one, exactly as `mappings.lock`
+/// records what a jar resolved for the machines that cannot open it. Wherever
+/// the mapping *can* be read the record is re-derived rather than trusted, which
+/// is what makes a stale runtime name a generation failure instead of a game
+/// that refuses to load a world. Under an identity source the mapping needs no
+/// file at all, so that re-derivation happens on every build.
+///
+/// A translating mapping is required to *name* every reviewed class, through
+/// [`Mapping::linked_class`]. Accepting the pass-through would accept the one
+/// defect this is here for: a surface copied from another version keeps a Mojang
+/// name the target version renamed away, the mapping has no entry for it, and a
+/// declared runtime name equal to that Mojang name would match itself.
+///
+/// # Errors
+///
+/// Returns an error when a translating mapping does not name a reviewed class,
+/// or when a declared runtime name is not what the mapping resolves the reviewed
+/// name to.
+pub(super) fn verify_reflection(
+    surface: &Reflection,
+    mapping: &Mapping,
+) -> Result<(), GenerateError> {
+    for reflected in &surface.classes {
+        let resolved = binary(mapping.linked_class(&internal(&reflected.class))?);
+        if resolved != reflected.runtime {
+            return Err(GenerateError::Drift(format!(
+                "the reflective surface says {} links as {} but the mapping resolves it to \
+                 {resolved}",
+                reflected.class, reflected.runtime
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// A member's name paired with its descriptor.
@@ -210,6 +268,15 @@ impl Proguard {
         self.mojang.get(runtime).map_or(runtime, String::as_str)
     }
 
+    fn linked_class(&self, mojang: &str) -> Result<&str, GenerateError> {
+        self.classes.get(mojang).map(String::as_str).ok_or_else(|| {
+            GenerateError::Unresolved(format!(
+                "the client mapping names no class {}",
+                mojang.replace('/', ".")
+            ))
+        })
+    }
+
     fn runtime_member(
         &self,
         mojang_class: &str,
@@ -298,6 +365,11 @@ fn internal(name: &str) -> String {
     name.replace('.', "/")
 }
 
+/// The binary form of an internal name, which is what `Class.forName` takes.
+fn binary(name: &str) -> String {
+    name.replace('/', ".")
+}
+
 /// The JVM descriptor of one source-form type.
 fn descriptor_of(source: &str) -> Result<String, String> {
     let mut dimensions = 0_usize;
@@ -345,7 +417,8 @@ fn map_descriptor(classes: &BTreeMap<String, String>, descriptor: &str) -> Strin
 
 #[cfg(test)]
 mod tests {
-    use super::{Mapping, MappingSource, Proguard};
+    use super::super::inputs::{Reflected, Reflection};
+    use super::{Mapping, MappingSource, Proguard, verify_reflection};
 
     /// An invented mapping, in the shape the published files take.
     const MAPPING: &str = "\
@@ -555,6 +628,75 @@ com.example.Plain -> com.example.Plain:
 
         assert_eq!(mapping.entry("com/example/Alpha"), "a.class");
         assert_eq!(mapping.entry("com/example/Beta"), "b$c.class");
+    }
+
+    /// One reviewed role, in the shape a version's reflective surface declares.
+    fn surface(class: &str, runtime: &str) -> Reflection {
+        Reflection {
+            schema_version: 1,
+            // Empty because nothing here reads it, and because no source in this
+            // crate may spell a Minecraft version.
+            minecraft: String::new(),
+            classes: vec![Reflected {
+                name: "ALPHA".to_owned(),
+                class: class.to_owned(),
+                runtime: runtime.to_owned(),
+            }],
+        }
+    }
+
+    /// The obfuscated case the whole record exists for: the reviewed name is one
+    /// thing, the name the JVM links is another, and only the mapping knows.
+    #[test]
+    fn a_proguard_surface_is_re_derived_from_the_mapping_rather_than_trusted() {
+        let mapping =
+            Mapping::read(MappingSource::OfficialProguardMappings, MAPPING).expect("parses");
+
+        verify_reflection(&surface("com.example.Alpha", "a"), &mapping)
+            .expect("the mapping resolves it to exactly that");
+
+        let error = verify_reflection(&surface("com.example.Alpha", "b"), &mapping)
+            .expect_err("a runtime name the mapping disagrees with must be refused");
+
+        assert!(error.to_string().contains("links as b"), "{error}");
+    }
+
+    /// A surface copied from another version keeps a Mojang name the target
+    /// renamed away. The mapping has no entry for it, so a pass-through would
+    /// compare that name with itself and agree.
+    #[test]
+    fn a_class_a_proguard_mapping_never_names_is_refused_rather_than_matching_itself() {
+        let mapping =
+            Mapping::read(MappingSource::OfficialProguardMappings, MAPPING).expect("parses");
+
+        let error = verify_reflection(
+            &surface("com.example.Absent", "com.example.Absent"),
+            &mapping,
+        )
+        .expect_err("a class the mapping does not name is not a class it agreed with");
+
+        assert!(
+            error
+                .to_string()
+                .contains("names no class com.example.Absent"),
+            "{error}"
+        );
+    }
+
+    /// Under the identity there is nothing to look up, so the reviewed name is
+    /// the linked one and a declared runtime name that is not it is the defect.
+    #[test]
+    fn an_identity_surface_is_the_reviewed_name_compared_with_itself() {
+        verify_reflection(
+            &surface("com.example.Absent", "com.example.Absent"),
+            &Mapping::Identity,
+        )
+        .expect("nothing translates it, so it links as itself");
+
+        let error = verify_reflection(&surface("com.example.Absent", "a"), &Mapping::Identity)
+            .expect_err("an unobfuscated version links the reviewed name");
+
+        assert!(error.to_string().contains("links as a"), "{error}");
     }
 
     #[test]

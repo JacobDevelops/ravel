@@ -5,24 +5,36 @@
 # observes or vetoes, so anything the host has to *perform* — storing a world's
 # aggregate, registering a mod's block, starting a sound — is performed by a
 # hand-written adapter under `jvm/bootstrap` that reaches the game by name instead.
-# This file is that set, declared rather than inferred: a name a source resolves
-# without appearing here fails the scaffold contract, and a name here that no
-# source resolves fails it too.
+# This file is that set, declared rather than inferred.
+#
+# Each entry carries three things. `name` is the role the adapter reaches the class
+# for, and it is the same word under every version because it names what the class
+# is *to Ravel*. `class` is the Mojang name a reviewer reads. `runtime` is the name
+# the JVM actually links, which is the Mojang name under an unobfuscated source and
+# an obfuscated one otherwise. The generator emits `runtime` into
+# `dev.ravel.jvm.GameNames` as the constant `name`, and the adapters under
+# `jvm/bootstrap` resolve `GameNames.<name>` rather than a literal of their own:
+# one shared source tree cannot spell one version's names and still be right about
+# another, and a literal reintroduced there fails the scaffold contract.
 #
 # It is version data and not a constant in `ravel-xtask` because these names are
 # 26.1.2's. `net.minecraft.resources.Identifier` is called `ResourceLocation` at
 # 1.21.1 and `net.minecraft.world.level.storage.SavedDataStorage` is called
 # `DimensionDataStorage` there, so a single global list would assert one version's
-# names against another and pass while doing it.
+# names against another and pass while doing it. The `name` column is what survives
+# both renames, which is why the adapters spell that and not the class.
 #
-# A class the inventory in `hooks.toml` already pins as a hook target is not
-# repeated here. Those names are re-pinned against the jar by `mappings.lock`;
-# these are not, which is the deviation `evidence/m3/manifest.json` records and
-# `ROADMAP.md` carries as owed work.
+# Every class an adapter resolves is here, including the ones `hooks.toml` also
+# pins as hook targets: the generated constants are this file's whole set, so a
+# class covered elsewhere but absent here would have no constant to reach it by.
+# Those names are re-pinned against the jar by `mappings.lock` as well; these are
+# not, which is the deviation `evidence/m3/manifest.json` records and `ROADMAP.md`
+# carries as owed work. What `runtime` does close is the half of that gap the
+# mapping decides: it is re-derived from the mapping source on every build that can
+# read one, so a `runtime` that no longer follows from `class` fails generation.
 #
-# This file is not a generator input, so `adapter.toml` does not pin its hash: the
-# binding generator never reads it, and the only reader is the scaffold contract,
-# which reads the tracked bytes on every run.
+# This file is a generator input and `adapter.toml` pins its hash, because the
+# names in it are compiled into the agent jar.
 
 schemaVersion = 1
 minecraft = "26.1.2"
@@ -30,62 +42,101 @@ minecraft = "26.1.2"
 # The client, reached for its sound manager and for the running-client check the
 # persistence adapter makes before it touches a world.
 [[reflected]]
+name = "MINECRAFT"
 class = "net.minecraft.client.Minecraft"
+runtime = "net.minecraft.client.Minecraft"
 
 # The outward sound path: an instance is built from an event and handed to the
 # manager, and the two instance types are separate because one is the interface
 # the manager takes and the other is the implementation that is constructed.
 [[reflected]]
+name = "SIMPLE_SOUND_INSTANCE"
 class = "net.minecraft.client.resources.sounds.SimpleSoundInstance"
+runtime = "net.minecraft.client.resources.sounds.SimpleSoundInstance"
 
 [[reflected]]
+name = "SOUND_INSTANCE"
 class = "net.minecraft.client.resources.sounds.SoundInstance"
+runtime = "net.minecraft.client.resources.sounds.SoundInstance"
 
 [[reflected]]
+name = "SOUND_MANAGER"
 class = "net.minecraft.client.sounds.SoundManager"
+runtime = "net.minecraft.client.sounds.SoundManager"
 
 [[reflected]]
+name = "SOUND_EVENT"
 class = "net.minecraft.sounds.SoundEvent"
+runtime = "net.minecraft.sounds.SoundEvent"
 
-# Content registration: a registry, the keys that name one, and the namespaced
-# identifier every registered thing carries.
+# Content registration: a registry, the built-in set every registered thing lands
+# in, the keys that name one, and the namespaced identifier it carries.
 [[reflected]]
+name = "REGISTRY"
 class = "net.minecraft.core.Registry"
+runtime = "net.minecraft.core.Registry"
 
 [[reflected]]
+name = "BUILT_IN"
+class = "net.minecraft.core.registries.BuiltInRegistries"
+runtime = "net.minecraft.core.registries.BuiltInRegistries"
+
+[[reflected]]
+name = "REGISTRIES"
 class = "net.minecraft.core.registries.Registries"
+runtime = "net.minecraft.core.registries.Registries"
 
 [[reflected]]
+name = "IDENTIFIER"
 class = "net.minecraft.resources.Identifier"
+runtime = "net.minecraft.resources.Identifier"
 
 [[reflected]]
+name = "RESOURCE_KEY"
 class = "net.minecraft.resources.ResourceKey"
+runtime = "net.minecraft.resources.ResourceKey"
 
 # The two content types a mod registers, each with the nested properties builder
 # its constructor takes.
 [[reflected]]
+name = "ITEM"
 class = "net.minecraft.world.item.Item"
+runtime = "net.minecraft.world.item.Item"
 
 [[reflected]]
+name = "ITEM_PROPERTIES"
 class = "net.minecraft.world.item.Item$Properties"
+runtime = "net.minecraft.world.item.Item$Properties"
 
 [[reflected]]
+name = "BLOCK"
 class = "net.minecraft.world.level.block.Block"
+runtime = "net.minecraft.world.level.block.Block"
 
 [[reflected]]
+name = "BLOCK_PROPERTIES"
 class = "net.minecraft.world.level.block.state.BlockBehaviour$Properties"
+runtime = "net.minecraft.world.level.block.state.BlockBehaviour$Properties"
 
 # Persistence: the server that owns the storage, the storage itself, the resource
 # constants that name a directory inside a save, and the fixer set the storage's
 # three-argument constructor takes.
 [[reflected]]
+name = "SERVER"
 class = "net.minecraft.server.MinecraftServer"
+runtime = "net.minecraft.server.MinecraftServer"
 
 [[reflected]]
+name = "DATA_FIXERS"
 class = "net.minecraft.util.datafix.DataFixers"
+runtime = "net.minecraft.util.datafix.DataFixers"
 
 [[reflected]]
+name = "LEVEL_RESOURCE"
 class = "net.minecraft.world.level.storage.LevelResource"
+runtime = "net.minecraft.world.level.storage.LevelResource"
 
 [[reflected]]
+name = "STORAGE"
 class = "net.minecraft.world.level.storage.SavedDataStorage"
+runtime = "net.minecraft.world.level.storage.SavedDataStorage"

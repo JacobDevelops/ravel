@@ -10,6 +10,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
+use std::path::Path;
 use std::sync::{Arc, OnceLock, PoisonError};
 
 use jni::objects::{JByteArray, JClass, JString};
@@ -254,6 +255,17 @@ impl LoaderRuntime {
     /// what the observation channel is for.
     fn write_world_pack(&self, world: &str) {
         let path = std::path::Path::new(world);
+        if let Err(refusal) = admissible_world(path) {
+            self.inner
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .persistence
+                .notice(format!(
+                    "no data pack was written for `{world}`, so this world reads none of the \
+                     mods' recipes or tags: {refusal}"
+                ));
+            return;
+        }
         match crate::packs::write_world_pack(path) {
             Ok(_) => {}
             Err(error) => {
@@ -597,6 +609,55 @@ pub fn ravel_save_world_persistence<'local>(
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
+/// Whether one world path is a directory Ravel may replace a pack inside.
+///
+/// The path arrives as a string the game produced and Java passed through
+/// unexamined: `Persistence` builds it with `String.valueOf`, which answers
+/// `"null"` for a getter that returned null rather than failing. Writing a pack
+/// means removing a directory tree and creating another, and a relative path
+/// does that against the working directory, which is the game directory itself.
+/// So `"null"` would have made `./null` a Ravel-managed tree, and a path naming
+/// an ancestor of the game directory would have put one over the instance.
+///
+/// Both write seams go through the caller, so this is the one place the rule
+/// lives. It refuses rather than repairing: a world path Ravel cannot make sense
+/// of is one it has no business guessing the intent of.
+///
+/// The game directory is only consulted when this process can name one. A launch
+/// that cannot is a launch where the first two rules still hold, and refusing
+/// every world over it would cost a player their packs for a check that is the
+/// weaker of the three.
+///
+/// # Errors
+///
+/// Returns why the path is not one a pack may be written into.
+fn admissible_world(world: &Path) -> Result<(), String> {
+    if !world.is_absolute() {
+        return Err(format!(
+            "`{}` is not an absolute path, so it names a directory relative to the game's own",
+            world.display()
+        ));
+    }
+    if !world.is_dir() {
+        return Err(format!(
+            "`{}` is not an existing directory",
+            world.display()
+        ));
+    }
+    let Ok(game) = crate::game_directory::resolve() else {
+        return Ok(());
+    };
+    if game.starts_with(world) {
+        return Err(format!(
+            "`{}` holds the game directory `{}`, and a pack is written by replacing a tree \
+             inside the path it is given",
+            world.display(),
+            game.display()
+        ));
+    }
+    Ok(())
+}
+
 /// Writes the mods' data pack into a world before the game reads its pack list.
 ///
 /// The seam this crosses from runs while the world's storage access exists and
@@ -642,6 +703,59 @@ impl From<SavedDataError> for OpenOutcome {
 
 #[cfg(test)]
 mod tests {
+
+    /// A world path the game did not really give is not a directory to write in.
+    ///
+    /// `"null"` is the one this is written for: `String.valueOf` answers it for a
+    /// getter that returned null, so it arrives looking like an ordinary name and
+    /// would have made `./null` a tree Ravel removes and recreates, inside the
+    /// game directory.
+    #[test]
+    fn a_world_path_that_names_no_absolute_directory_is_refused() {
+        for named in ["null", "", "world", "./world", "../world"] {
+            let refusal = super::admissible_world(std::path::Path::new(named))
+                .expect_err("a relative path is not a world directory");
+            assert!(
+                refusal.contains("not an absolute path"),
+                "{named} was refused for the wrong reason: {refusal}"
+            );
+        }
+    }
+
+    /// A writable directory of this test's own, made the way `packs.rs` makes one.
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let at =
+            std::env::temp_dir().join(format!("ravel-world-guard-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&at);
+        std::fs::create_dir_all(&at).expect("a writable temporary directory");
+        at
+    }
+
+    /// An absolute path is not enough; it has to be there and be a directory.
+    #[test]
+    fn a_world_path_that_is_absent_or_is_a_file_is_refused() {
+        let directory = scratch("absent");
+        let absent = directory.join("no-such-world");
+        let refusal = super::admissible_world(&absent)
+            .expect_err("a path that is not there is not a world directory");
+        assert!(refusal.contains("not an existing directory"), "{refusal}");
+
+        let file = directory.join("world");
+        std::fs::write(&file, b"not a directory").expect("the file should be written");
+        let refusal = super::admissible_world(&file).expect_err("a file is not a world directory");
+        assert!(refusal.contains("not an existing directory"), "{refusal}");
+    }
+
+    /// An ordinary world directory is admitted, so the rule refuses a shape and
+    /// not every world.
+    #[test]
+    fn an_existing_absolute_world_directory_is_admitted() {
+        let world = scratch("admitted").join("Driven");
+        std::fs::create_dir_all(&world).expect("the world should be created");
+
+        super::admissible_world(&world).expect("an ordinary world directory is writable");
+    }
+
     use std::collections::BTreeSet;
     use std::num::NonZero;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};

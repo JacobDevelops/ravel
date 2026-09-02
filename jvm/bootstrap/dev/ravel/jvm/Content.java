@@ -133,8 +133,15 @@ final class Content {
                     default -> UNKNOWN_KIND;
                 };
                 if (width == UNKNOWN_KIND) {
+                    // Whole rather than partial. A row's width is what its kind
+                    // says it is, so a kind with no width leaves every field
+                    // after it unread: what the rows already collected mean
+                    // depends on a payload this adapter has turned out not to
+                    // understand, and registering them would be acting on the
+                    // half it happened to reach first.
                     Agent.diagnose("content registration was offered the kind " + kind
-                            + ", whose width it does not know, so it read no row after it");
+                            + ", whose width it does not know, so it registered none of the set");
+                    rows.clear();
                     break;
                 }
                 if (at + 4 + width > fields.size()) {
@@ -189,13 +196,14 @@ final class Content {
      * @return whether the entry reached its registry
      */
     private static boolean registerBlock(Row row, Map<String, Object> blocks) {
+        Object block;
         try {
             Class<?> content = sibling();
             if (content == null) {
                 return false;
             }
             List<String> behaviour = row.behaviour();
-            Object block = Members.sibling(content, REGISTER_BLOCK)
+            block = Members.sibling(content, REGISTER_BLOCK)
                     .invoke(
                             null,
                             row.namespace(),
@@ -204,12 +212,28 @@ final class Content {
                             Float.parseFloat(behaviour.get(1)),
                             Boolean.parseBoolean(behaviour.get(2)),
                             Boolean.parseBoolean(behaviour.get(3)));
-            mapStates(block);
-            blocks.put(row.identifier(), block);
-            return true;
         } catch (Throwable unregistered) {
             return refuse(row, unregistered);
         }
+
+        // Recorded before the states are walked, and the walk is its own step
+        // with its own failure. Registration has already happened by the time
+        // the walk runs, so a failure there is not a block that did not
+        // register: it is a block that did, in no id mapper, which places and
+        // then disconnects the session. Reporting that as "could not register"
+        // named the wrong thing and left the block out of the map, which
+        // degraded its item to one that places nothing.
+        blocks.put(row.identifier(), block);
+        try {
+            mapStates(block);
+        } catch (Throwable unmapped) {
+            // Nothing unregisters it. 1.21.1's registry has no removal at all,
+            // so the honest answer is to say precisely what the player will hit.
+            Agent.diagnose("registered " + row.identifier()
+                    + " but its states are not mapped, so placing it will disconnect the session ("
+                    + unusableName(unmapped) + ")");
+        }
+        return true;
     }
 
     /**

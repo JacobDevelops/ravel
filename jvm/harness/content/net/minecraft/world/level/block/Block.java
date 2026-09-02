@@ -32,7 +32,20 @@ public class Block {
                 ImmutableList.of(new BlockState("default"), new BlockState("alternate")));
     }
 
+    /**
+     * This block's states, or a refusal for the one name that stands for a walk
+     * that cannot run.
+     *
+     * <p>Deliberately hostile. Registration and the state walk are two steps and
+     * the second can fail on its own, which used to be reported as a block that
+     * did not register — a block that had, in no id mapper, whose item then
+     * degraded to one that places nothing. A stand-in that could not fail here
+     * would pass either behaviour.
+     */
     public StateDefinition getStateDefinition() {
+        if (String.valueOf(id).endsWith("unmappable")) {
+            throw new IllegalStateException("this block's states cannot be listed");
+        }
         return stateDefinition;
     }
 

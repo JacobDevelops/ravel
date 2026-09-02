@@ -503,7 +503,7 @@ content_run admitted \
 	'block:example_mod:copper:50.0:1200.0:true:false,item:example_mod:ingot:16:true' \
 	'block=example_mod:copper->Block(50.0/1200.0/true/false)
 item=example_mod:ingot->Item(16/true)
-states=2
+states=2 cached=2
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 
@@ -520,25 +520,50 @@ content_run placing-item \
 	'item:example_mod:lantern:64:false,block:example_mod:lantern:3.0:3.0:false:false' \
 	'block=example_mod:lantern->Block(3.0/3.0/false/false)
 item=example_mod:lantern->BlockItem(block/example_mod:lantern/64/false)
-states=2
+states=2 cached=2
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 
-# A kind this version has no width for. The row before it registers, the rows
-# after it are not read at all, and the diagnostic names the kind. Reading on
-# would be the silent defect: a width guessed for one row reads the next row's
-# fields as this row's behaviour and every row after it, so a payload with one
-# unknown kind in the middle would register plausible nonsense rather than
-# nothing.
+# A block whose state walk fails after it is registered. The two are separate
+# steps and only the second went wrong, so the block is in the registry and in no
+# id mapper: what a player hits is a placement that disconnects the session, and
+# the diagnostic has to say that rather than say the block did not register.
+#
+# The item is the proof that the block was recorded before the walk ran. It shares
+# the block's identifier, so it is that block's placing item — which it could only
+# be if the walk's failure left the block in the map.
+content_run unmapped-states \
+	'block:example_mod:unmappable:1.0:1.0:false:false,item:example_mod:unmappable:1:false' \
+	'block=example_mod:unmappable->Block(1.0/1.0/false/false)
+item=example_mod:unmappable->BlockItem(block/example_mod:unmappable/1/false)
+states=0 cached=0
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+content_unmapped_diagnostic="$(grep '^\[ravel\] registered example_mod' "$content/unmapped-states-stderr")"
+content_unmapped_expected='[ravel] registered example_mod:unmappable but its states are not mapped, so placing it will disconnect the session (java.lang.IllegalStateException)'
+if [ "$content_unmapped_diagnostic" != "$content_unmapped_expected" ]; then
+	echo >&2
+	echo "a block whose states could not be mapped did not say so; expected:" >&2
+	printf '%s\n' "$content_unmapped_expected" >&2
+	exit 1
+fi
+
+# A kind this version has no width for, which refuses the whole payload. The
+# rows before it are read and then dropped: a row's width is what its kind says
+# it is, so a kind with no width leaves every field after it unread, and what the
+# rows already collected mean depends on a payload this adapter has turned out
+# not to understand. Registering them would be acting on the half it happened to
+# reach first, and guessing a width instead would read the next row's fields as
+# this row's behaviour and register plausible nonsense.
 content_run unknown-kind \
 	'block:example_mod:copper:50.0:1200.0:true:false,gadget:example_mod:widget:1:false,item:example_mod:ingot:16:true' \
-	'block=example_mod:copper->Block(50.0/1200.0/true/false)
+	'block=
 item=
-states=2
+states=0 cached=0
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 content_unknown_diagnostic="$(grep '^\[ravel\] content registration was offered the kind' "$content/unknown-kind-stderr")"
-content_unknown_expected='[ravel] content registration was offered the kind gadget, whose width it does not know, so it read no row after it'
+content_unknown_expected='[ravel] content registration was offered the kind gadget, whose width it does not know, so it registered none of the set'
 if [ "$content_unknown_diagnostic" != "$content_unknown_expected" ]; then
 	echo >&2
 	echo "an unreadable kind did not name itself; expected:" >&2
@@ -551,7 +576,7 @@ fi
 # answer came from Rust and not from a seam that never fired.
 content_run empty empty 'block=
 item=
-states=0
+states=0 cached=0
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 
@@ -559,7 +584,7 @@ hooks=2
 # it, because registering a set nothing checked is the worse half of the trade.
 content_run null-answer null 'block=
 item=
-states=0
+states=0 cached=0
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 
@@ -567,7 +592,7 @@ hooks=2
 # rather than read half of.
 content_run malformed malformed 'block=
 item=
-states=0
+states=0 cached=0
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 content_malformed_diagnostic="$(grep '^\[ravel\] content' "$content/malformed-stderr")"

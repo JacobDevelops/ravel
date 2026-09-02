@@ -2,6 +2,7 @@ package net.minecraft.core;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.world.level.block.state.BlockBehaviour.BlockStateBase;
 
 /**
  * Stands in for the mapper the network protocol writes a block update through.
@@ -21,5 +22,22 @@ public final class IdMapper {
     /** How many states this holds, as the harness reads it back. */
     public int size() {
         return entries.size();
+    }
+
+    /**
+     * How many of them had their cache initialised, as the harness reads it back.
+     *
+     * <p>Counted apart from membership because the walk does two things and a
+     * count of one of them would pass with the other missing. Vanilla's own
+     * bootstrap runs both on every state it registers.
+     */
+    public int cached() {
+        int cached = 0;
+        for (Object entry : entries) {
+            if (entry instanceof BlockStateBase state && state.isCached()) {
+                cached++;
+            }
+        }
+        return cached;
     }
 }

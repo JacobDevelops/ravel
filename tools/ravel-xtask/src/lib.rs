@@ -322,27 +322,61 @@ fn verify_version_directories(root: &Path, violations: &mut Vec<String>) {
 /// Read by scanning for the same reason [`declared_version`] scans: this file
 /// holds no TOML parser and the keys wanted are two integers under one table.
 fn missing_pack_format(text: &str) -> Option<String> {
-    let Some(table) = text.find("\n[packFormat]\n") else {
+    let Some(scope) = table_scope(text, "packFormat") else {
         return Some(
             "declares no `[packFormat]`, so nothing says which pack formats this version reads \
              and a pack written for it would carry a number from another version"
                 .to_owned(),
         );
     };
-    let rest = &text[table + "\n[packFormat]\n".len()..];
-    let scope = rest.find("\n[").map_or(rest, |next| &rest[..next]);
-    let absent: Vec<&str> = ["resource", "data"]
+    // All five, because all five are what a pack's own metadata carries. Asking
+    // for two let an unselected version omit both minors and the spelling, which
+    // is the same hole this whole function exists to close one level up: a check
+    // that covers part of a record leaves the rest uncovered until something
+    // builds it.
+    let mut absent: Vec<&str> = ["resource", "resourceMinor", "data", "dataMinor"]
         .into_iter()
-        .filter(|key| scoped_number(scope, key).is_none())
+        .filter(|key| scoped_number(&scope, key).is_none())
         .collect();
+    if scoped_text(&scope, "spelling").is_none() {
+        absent.push("spelling");
+    }
     if absent.is_empty() {
         return None;
     }
     Some(format!(
-        "declares `[packFormat]` without {}, and a pack format is two numbers because a version \
-         states them separately",
+        "declares `[packFormat]` without {}, and a pack format is every one of them because a \
+         version states them separately",
         absent.join(" or ")
     ))
+}
+
+/// The lines one TOML table owns, wherever the table sits in the file.
+///
+/// Anchored on a line start rather than on a preceding newline. Searching for
+/// `"\n[packFormat]\n"` reads a file whose very first line is that header as
+/// declaring no table at all, which is a check that passes on the one shape it
+/// should refuse hardest.
+fn table_scope(text: &str, name: &str) -> Option<String> {
+    let header = format!("[{name}]");
+    let mut lines = text.lines();
+    lines.find(|line| line.trim_end() == header)?;
+    Some(
+        lines
+            .take_while(|line| !line.trim_start().starts_with('['))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
+/// The string one key is assigned inside a TOML table's own lines.
+fn scoped_text(scope: &str, key: &str) -> Option<String> {
+    scope
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .find(|(name, _)| name.trim() == key)
+        .map(|(_, value)| value.trim().trim_matches('"').to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 /// The integer one key is assigned inside a TOML table's own lines.
@@ -10218,7 +10252,9 @@ mod tests {
                      \"net.minecraft.client.One\"\n"
                 ),
                 "adapter.toml" => format!(
-                    "schemaVersion = 1\nminecraft = \"{version}\"\n\n[packFormat]\nresource =                      1\ndata = 2\n"
+                    "schemaVersion = 1\nminecraft = \"{version}\"\n\n[packFormat]\n\
+                     resource = 1\nresourceMinor = 0\ndata = 2\ndataMinor = 0\n\
+                     spelling = \"pack-format\"\n"
                 ),
                 _ => format!("schemaVersion = 1\nminecraft = \"{version}\"\n"),
             };
@@ -10339,31 +10375,72 @@ mod tests {
         version_directory(&root, "26.1.2", &[]);
         let adapter = root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml"));
 
-        for (written, expected) in [
-            (
-                "schemaVersion = 1\nminecraft = \"26.1.2\"\n",
-                "declares no `[packFormat]`",
-            ),
-            (
-                "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[packFormat]\nresource = 34\n",
-                "without data",
-            ),
-            (
-                "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[packFormat]\ndata = 48\n",
-                "without resource",
-            ),
+        // Every key, one at a time, plus the two shapes the scan itself can be
+        // wrong about: a table that is not there, and a table on the file's very
+        // first line, which a search for a preceding newline reads as absent.
+        let full = "resource = 34\nresourceMinor = 0\ndata = 48\ndataMinor = 0\n\
+                    spelling = \"pack-format\"\n";
+        let without = |key: &str| -> String {
+            let mut kept = full
+                .lines()
+                .filter(|line| !line.starts_with(key))
+                .collect::<Vec<_>>()
+                .join("\n");
+            kept.push('\n');
+            kept
+        };
+        let mut cases: Vec<(String, String)> = vec![(
+            "schemaVersion = 1\nminecraft = \"26.1.2\"\n".to_owned(),
+            "declares no `[packFormat]`".to_owned(),
+        )];
+        for key in [
+            "resource = ",
+            "resourceMinor",
+            "data = ",
+            "dataMinor",
+            "spelling",
         ] {
+            let named = key.trim_end_matches(" = ");
+            cases.push((
+                format!(
+                    "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[packFormat]\n{}",
+                    without(key)
+                ),
+                format!("without {named}"),
+            ));
+        }
+        for (written, expected) in &cases {
             fs::write(&adapter, written).expect("version data should be writable");
             let mut violations = Vec::new();
 
             verify_version_directories(&root, &mut violations);
 
-            assert_eq!(violations.len(), 1, "{violations:?}");
-            assert!(violations[0].contains(expected), "{violations:?}");
+            assert_eq!(violations.len(), 1, "{written}: {violations:?}");
+            assert!(
+                violations[0].contains(expected),
+                "{written}: {violations:?}"
+            );
         }
 
-        // The positive control: the fixture as written declares both and is clean,
-        // so the three failures above are the omission rather than the sweep.
+        // The table on the file's very first line, with nothing before it. This
+        // is a complete declaration and has to read as one; a scan anchored on a
+        // preceding newline finds no table here and reports a version that
+        // declares none, which is the refusal that matters most reported on the
+        // one file that deserves it least.
+        fs::write(
+            &adapter,
+            format!("[packFormat]\n{full}\nschemaVersion = 1\nminecraft = \"26.1.2\"\n"),
+        )
+        .expect("version data should be writable");
+        let mut violations = Vec::new();
+        verify_version_directories(&root, &mut violations);
+        assert!(
+            violations.is_empty(),
+            "a table on the first line: {violations:?}"
+        );
+
+        // The positive control: the fixture as written declares every key and is
+        // clean, so the failures above are the omission rather than the sweep.
         version_directory(&root, "26.1.2", &[]);
         let mut violations = Vec::new();
         verify_version_directories(&root, &mut violations);

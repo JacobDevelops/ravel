@@ -81,6 +81,7 @@ Newest last. All local, nothing pushed.
 | `polrksos` | write the layered resources as a pack under the instance and the world, seeding the pack id once |
 | `vmyployz` | compile the shipped content example into the generated host and require its files in the written packs |
 | `kltkmyxs` | generate the blockstates, item model and self-drop loot table a declaration does not supply |
+| `zvrqrqwm` | write a world's datapack before the game scans it, from the seam that first holds the storage access |
 
 ## The queue is drained
 
@@ -206,11 +207,12 @@ self-drop loot table and the example's recipe; breaking it in survival drops a C
 picked up; eight copper ingots around a torch craft one, and the game raises its own "New Recipes
 Unlocked!" toast. Installed as a source package, compiled into the instance's host in 11.5 s cold.
 
-Two ceilings, stated where they live: a fresh instance is seeded on its second launch, because writing
-an `options.txt` without the game's own `version` line would change which migrations it runs; and a
-world reads its datapack on its next open, not the one that wrote it, because the game builds the world's
-pack list before the hook that names the world runs. Closing the second needs a hook at level-storage
-creation that no version's reviewed inventory declares yet. Launch 8 also proved the
+One ceiling stated where it lives: a fresh instance is seeded on its second launch, because writing an
+`options.txt` without the game's own `version` line would change which migrations it runs. The other
+is closed: a hook at `WorldOpenFlows.openWorldLoadLevelData`, which holds the world's storage access
+before the game scans the world's `datapacks/`, writes the datapack so a world's first session already
+has its tags, recipes and loot tables; the open-time write stays for a world admitted by another path
+and leaves an identical tree untouched. Launch 8 also proved the
 screen-less refusal now reaches the
 game's crash handler naming Ravel and the reason, with the session lock released, where launch 2 hung.
 

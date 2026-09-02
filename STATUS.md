@@ -1,6 +1,6 @@
 # Status
 
-Where the project actually is, as of 2026-09-02. `ROADMAP.md` is the dependency-ordered plan and
+Where the project actually is, as of 2026-09-03. `ROADMAP.md` is the dependency-ordered plan and
 `evidence/` records what each closed milestone measured; this file is the current state of play and the
 honest distance to the goal. It goes stale — trust `devenv tasks run ravel:verify-milestone:<id>` over
 anything written here.
@@ -16,7 +16,15 @@ Ravel targets Minecraft 1.21.1. `minecraft/versions/1.21.1/` exists, carries all
 and both its locks are resolved against the real obfuscated client jar. The suite runs once per tracked
 version and passes at both 1.21.1 and 26.1.2 — 1640 tests each.
 
-Nothing has been launched. No game process has ever started with the 1.21.1 data attached.
+**Ravel has run inside a real Minecraft 1.21.1 client.** Four launches on the night of 2026-09-02, all
+muted, all recorded privately under `evidence/private/launch-1.21.1/`. The last one proves, on screen
+and on disk: the agent loads and rewrites 12 classes and 25 methods with no verification, linkage or
+reflection error; content registers 2 of 2 entries; the Ravel Mods entry sits at the top of the title
+column and holds at 1920x1080; the mods list and the settings screen render; a creative superflat world
+opens, plays, saves and re-opens; and `ravel_mods.dat` is written into the world, left alone by an idle
+save, and rewritten after a reopen. The nestmate question is settled by that world opening.
+
+Every one of those was broken at launch 1 and fixed the same night. See "Landed this session".
 
 ## What is not true yet
 
@@ -53,6 +61,12 @@ Newest last. All local, nothing pushed.
 | `nnsklvqw` | verify the reflective surface's members against each version's jar and generate their linked names |
 | `woukurwn` | resolve persistence members by generated name and descriptor, with a per-version storage shape |
 | `nyookuop` | resolve the content and outward adapters' game members by generated name and descriptor |
+| `kkozwpno` | define Ravel's screens under a child loader so the signed 1.21.1 client jar cannot refuse them |
+| `krvxxpnv` | register content through a per-version sibling and require each version's sibling to declare the entry points the agent reaches |
+| `rtzsptvx` | generate for each version's declared Java release into emptied output trees |
+| `sropoloq` | end a refused world load by throwing when no screen jar can show the refusal |
+| `mkummmlt` | promote a reopened world's stage before its live checkpoint, and mark every replacement dirty |
+| `rwpuxqxn` | place the title-menu entry from per-version row data where the column returns no row |
 
 ## The queue is drained
 
@@ -73,8 +87,27 @@ The four items that were paused here all landed, each proven by mutation against
   two-argument `a`. The per-version storage shape lives in `RavelWorldData`'s template override, three
   entry points, and 1.21.1's storage having no `close` is an `AutoCloseable` cast.
 
-## Next, before a launch means much
+## What the launches taught
 
+- Mojang signs the 1.21.1 client jar and its classes live in the unnamed package, so any unsigned Ravel
+  class defined there by the same loader dies in `checkCerts`. Screens now load under a child loader.
+- Ravel needs a Java 24 or newer runtime whatever the game declares, because the transformer is written
+  on `java.lang.classfile`. 1.21.1 declares 21, so the instance runs the pinned 25 runtime with
+  `IgnoreJavaCompatibility=true`. Porting the transformer off that API, or declaring the runtime
+  requirement to players, is owned by no work package.
+- 1.21.1's `DimensionDataStorage.set` does not mark the replacement dirty and the world write skips a
+  clean `SavedData`, so the first launch's saves were silent no-ops. Ravel marks its own replacement now.
+- The 1.21.1 title screen has no free row below the column at the minimum GUI height; the only slot
+  that fits at every size is above it, which is where the entry now sits.
+- Working saves log nothing. The evidence of a save is the file and its mtime, not a `[ravel]` line.
+
+## Next
+
+- The stored payload was byte-identical after the first session and after a reopen-and-save, while the
+  saved-data test mod counts visits. Either the reopen does not hand the stored bytes back to the mods,
+  or the visit never increments. Under investigation as this is written.
+- No launch discovers packages from disk: the composed host's five mods are the test set built in. A
+  player-facing launch needs the mods directory read (M4's disclosed limit).
 - `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
   being true this session for all three adapters. Amending closed evidence is its own ceremony.
 

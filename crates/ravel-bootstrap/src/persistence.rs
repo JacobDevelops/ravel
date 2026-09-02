@@ -365,6 +365,37 @@ impl LoaderRuntime {
             }
             Err(error) => return SaveOutcome::Failed(error),
         }
+        // The staged checkpoint is asked first, and that order is the whole
+        // answer to a world reopened in one session. A stage is the world the
+        // game has just delivered to the mods; a live checkpoint of the same
+        // name is the one the previous visit left behind. Asking the live one
+        // first stranded the stage: the save read a dirty flag nothing had set
+        // since the reopen, answered `Unchanged` for the rest of the run, and
+        // left the world's file holding whatever the first visit wrote. That is
+        // what the first real launch saw on its second and third saves.
+        if inner
+            .persistence
+            .staged
+            .as_ref()
+            .is_some_and(|staged| &staged.identity == identity)
+        {
+            let mut promoted = inner.persistence.staged.take().expect("matched above");
+            match Self::produce(&inner) {
+                Ok(produced) => promoted.aggregate = produced,
+                Err(error) => {
+                    inner.persistence.staged = Some(promoted);
+                    return SaveOutcome::Failed(error);
+                }
+            }
+            promoted.dirty = false;
+            let answer = match promoted.aggregate.to_bytes() {
+                Ok(bytes) => SaveOutcome::Replacement(bytes),
+                Err(error) => SaveOutcome::Failed(error.to_string()),
+            };
+            inner.persistence.live = Some(promoted);
+            return answer;
+        }
+
         if inner
             .persistence
             .live
@@ -397,29 +428,6 @@ impl LoaderRuntime {
                 };
             }
             return SaveOutcome::Unchanged;
-        }
-
-        if inner
-            .persistence
-            .staged
-            .as_ref()
-            .is_some_and(|staged| &staged.identity == identity)
-        {
-            let mut promoted = inner.persistence.staged.take().expect("matched above");
-            match Self::produce(&inner) {
-                Ok(produced) => promoted.aggregate = produced,
-                Err(error) => {
-                    inner.persistence.staged = Some(promoted);
-                    return SaveOutcome::Failed(error);
-                }
-            }
-            promoted.dirty = false;
-            let answer = match promoted.aggregate.to_bytes() {
-                Ok(bytes) => SaveOutcome::Replacement(bytes),
-                Err(error) => SaveOutcome::Failed(error.to_string()),
-            };
-            inner.persistence.live = Some(promoted);
-            return answer;
         }
 
         SaveOutcome::IdentityMismatch(format!(
@@ -1198,6 +1206,54 @@ mod tests {
         assert_eq!(
             visits(&replacement(second.save_world(&WorldIdentity::of(FIRST)))),
             11
+        );
+    }
+
+    /// The same world opened twice in one session still writes what it holds.
+    ///
+    /// The reopen test above starts a second runtime, which is a second launch:
+    /// nothing is live when its stage lands, so the promotion path is reached
+    /// whatever order the two checkpoints are asked in. A player who quits to
+    /// the title screen and plays the same world again does not restart the
+    /// process, and that is the sequence the first real launch ran. With the
+    /// live checkpoint asked first, the reopened world's stage was never
+    /// promoted, every save after the reopen answered `Unchanged`, and the state
+    /// the second visit accumulated reached no file.
+    #[test]
+    fn a_world_reopened_in_one_session_writes_what_the_second_visit_held() {
+        let (runtime, held) = running();
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("a new world stages");
+        held.visits.store(11, Ordering::SeqCst);
+        let first_visit = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+        assert_eq!(visits(&first_visit), 11);
+
+        // Quit to the title screen and open the same world again, in the process
+        // that is still running, from the bytes the save above emitted.
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), Some(&first_visit), false)
+            .expect("the world its own save wrote reopens");
+        assert_eq!(held.visits.load(Ordering::SeqCst), 11);
+        held.visits.store(12, Ordering::SeqCst);
+
+        let second_visit = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+        assert_eq!(
+            visits(&second_visit),
+            12,
+            "the second visit's state never reached the world's file"
+        );
+
+        // And the session keeps answering for the world after the promotion,
+        // rather than the reopen having been a one-off.
+        assert_eq!(
+            runtime.save_world(&WorldIdentity::of(FIRST)),
+            SaveOutcome::Unchanged
+        );
+        held.visits.store(13, Ordering::SeqCst);
+        assert_eq!(
+            visits(&replacement(runtime.save_world(&WorldIdentity::of(FIRST)))),
+            13
         );
     }
 

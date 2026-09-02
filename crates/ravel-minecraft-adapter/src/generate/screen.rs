@@ -855,6 +855,55 @@ com.example.util.Held -> com.example.util.Held:
         }
     }
 
+    /// Every tracked version's replacement is dirty before the storage sees it.
+    ///
+    /// Whether the game's own `set` marks it is a per-version fact and not a
+    /// safe one to build on: one tracked version's does, another's only caches the object, and
+    /// a `SavedData` that is not dirty is skipped when the world writes. That
+    /// asymmetry is invisible in a launch — the replacement crosses, nothing
+    /// fails, and the world's data folder simply never holds `ravel_mods.dat`,
+    /// which is what the first obfuscated-version launch found. So the mark is Ravel's to
+    /// make, in the one method that wraps replacement bytes, at every version.
+    #[test]
+    fn every_versions_replacement_is_marked_dirty_before_the_storage_is_handed_it() {
+        let root = repository_root();
+        for version in inputs::tracked_versions(&root) {
+            let pinned = inputs::pinned(&root, Some(&version))
+                .expect("the tracked version data should parse");
+            let lock = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
+                .expect("the tracked stub lock should be readable");
+            let stubs = super::super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
+                .expect("the tracked lock should resolve");
+            let mapping = obfuscating(&stubs);
+            let screens = render(
+                &root.join(super::super::SCREEN_TEMPLATES),
+                &pinned.adapter,
+                &pinned.seeds,
+                &stubs,
+                &mapping,
+            )
+            .expect("the tracked templates should render");
+
+            let dirty = member_name("SavedData", "setDirty", &pinned.seeds, &stubs, &mapping)
+                .expect("every tracked version binds the saved datum's dirty mark");
+            let (_, source) = screens
+                .java
+                .iter()
+                .find(|(relative, _)| relative.ends_with("RavelWorldData.java"))
+                .unwrap_or_else(|| panic!("{version} renders no world data source"));
+            let wrapping = source.split_once("of(byte[] aggregate)").map_or_else(
+                || panic!("{version}'s world data wraps no replacement bytes"),
+                |(_, rest)| rest.split_once("\n    }").unwrap_or((rest, "")).0,
+            );
+
+            assert!(
+                wrapping.contains(&format!(".{dirty}()")),
+                "{version} hands the storage a replacement it never marked dirty, which this \
+                 version's storage may not mark either: {wrapping}"
+            );
+        }
+    }
+
     /// One rendered source's lines, with its comments and strings taken out.
     ///
     /// A class name in a comment is the prose it is, and one in a string literal

@@ -90,11 +90,18 @@ public final class RavelWorldData extends {{SavedData}} {
                 {{DataFixTypes}}.{{DataFixTypes#SAVED_DATA_COMMAND_STORAGE}});
     }
 
-    /** Wraps replacement bytes as the object the storage will write. */
+    /**
+     * Wraps replacement bytes as the object the storage will write.
+     *
+     * <p>Marked dirty here even though this version's {@code set} marks it too.
+     * Whether the storage does it is a per-version fact — 1.21.1's does not, and
+     * a replacement that is not dirty is silently never written — so the
+     * invariant belongs to Ravel rather than to whichever storage it is handed
+     * to. Setting a boolean that is already set costs nothing.
+     */
     private static {{SavedData}} of(byte[] aggregate) {
         RavelWorldData held = new RavelWorldData(aggregate);
-        // The pinned `SavedDataStorage.set` marks the replacement dirty exactly
-        // once, so this must not do it again.
+        held.{{SavedData#setDirty}}();
         return held;
     }
 

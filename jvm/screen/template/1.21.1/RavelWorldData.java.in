@@ -97,9 +97,20 @@ public final class RavelWorldData extends {{SavedData}} {
         return tag;
     }
 
-    /** Wraps replacement bytes as the object the storage will write. */
+    /**
+     * Wraps replacement bytes as the object the storage will write.
+     *
+     * <p>Marked dirty here, by Ravel, rather than left to the storage. This
+     * version's {@code set} only caches the object, and a {@code SavedData} that
+     * is not dirty writes nothing when the world saves — so the first 1.21.1
+     * launch handed a replacement over on every save and the world's data folder
+     * never held {@code ravel_mods.dat}. 26.1.2's {@code set} does mark it, and
+     * marking it again there is a boolean written twice.
+     */
     private static {{SavedData}} of(byte[] aggregate) {
-        return new RavelWorldData(aggregate);
+        RavelWorldData held = new RavelWorldData(aggregate);
+        held.{{SavedData#setDirty}}();
+        return held;
     }
 
     /** The stored aggregate, or {@code null} when there is no Ravel object. */

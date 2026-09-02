@@ -74,6 +74,9 @@ Newest last. All local, nothing pushed.
 | `ppyqqtmn` | refuse a world-open shape the transformer cannot load, anchor the Java release scan, floor members per class, and leave no jar on refusal |
 | `vunwnrmk` | add every registered block's states to the id mapper and initialise their caches |
 | `tqltolny` | refuse a second screen install, mark a truncated refusal, and drop duplicated javadoc params |
+| `omlupokp` | register an item that shares a block's identifier as that block's placing item |
+| `ylkqyoun` | let the host ask a mod for its content declaration |
+| `zvqpomru` | layer every admitted mod's generated resources into one set per launch |
 
 ## The queue is drained
 
@@ -151,8 +154,17 @@ version and is owned by no work package.
 Launch 8 confirmed the mapper fix (`/setblock`, render, break, save, reopen, no packet failure) and
 found the next layer: right-clicking the registered item places nothing, because Ravel registers the
 block and its item as two independent entries and a plain `Item` has no use-on. Vanilla's placing item
-is a `BlockItem` holding the block. Being fixed: an item whose identifier equals a block's in the same
-mod registers as that block's `BlockItem`. Launch 8 also proved the screen-less refusal now reaches the
+is a `BlockItem` holding the block. Fixed: an item whose identifier equals a block's in the same mod
+registers as that block's `BlockItem`, blocks register before items, and the stub tree learned to chain
+a stubbed superclass constructor explicitly, which nothing had needed before `BlockItem extends Item`.
+
+The missing model is being closed along the plan the resources work recorded: the `Mod` trait gained a
+defaulted `content_declaration`, the loader layers every admitted mod's generated files into one set per
+launch with overrides recorded, and the next units write that set as a real resource pack under the
+instance's `resourcepacks/`, seed it into `options.txt` only when never present so a player who disables
+it wins, and write the `data/` half into `<world>/datapacks/`. An injected `RepositorySource` is the
+successor once a launch measures whether the written pack falls short. Launch 8 also proved the
+screen-less refusal now reaches the
 game's crash handler naming Ravel and the reason, with the session lock released, where launch 2 hung.
 
 `stateful-mod` writes its journal only through a record call nothing in a launch makes, so its saved

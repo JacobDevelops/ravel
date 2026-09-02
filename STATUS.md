@@ -49,32 +49,40 @@ Newest last. All local, nothing pushed.
 | `qtuntyxt` | bind screen templates to roles each version's stub seeds resolve |
 | `ssslwxmn` | target 1.21.1, with per-version screen sources where the API differs |
 | `mlkuzwxu` | compile every tracked version's Java and load its screens by name |
+| `sqnnpusy` | derive the transformer's slots and return kinds from each version's hook descriptors |
+| `nnsklvqw` | verify the reflective surface's members against each version's jar and generate their linked names |
+| `woukurwn` | resolve persistence members by generated name and descriptor, with a per-version storage shape |
+| `nyookuop` | resolve the content and outward adapters' game members by generated name and descriptor |
 
-## Paused mid-queue
+## The queue is drained
 
-These were authorised. The first two landed in `mlkuzwxu`; the rest are untouched and ordered as they
-should resume.
+The four items that were paused here all landed, each proven by mutation against the 1.21.1 jar:
 
-Done — 1.21.1's Java compiles clean under `-Xlint:all -Werror`, which settled three things that had
-been reasoned but never met a compiler: `eql$a` as a top-level class whose name carries `$`, the
-`@Override` on a linked descriptor matching the generated stub's erased signature, and raw
-`Supplier`/`BiFunction` lambdas that `-Werror` could have rejected. Every screen also loads by the name
-its version's `ScreenNames` records — bare for 1.21.1, package-qualified for 26.1.2.
+- **Reflective members are verified against the jar.** Every member the surface declares, by descriptor
+  or by arity, must exist on the linked class in the version's client jar with a consistent descriptor.
+  The check runs on `compose` and on `regenerate_locks`, under both versions. Both surfaces now carry
+  members (39 at 1.21.1, 45 at 26.1.2), and the adapter generates `GameMembers` beside `GameNames` so
+  Java reaches a member as a linked name plus linked descriptor rather than a literal.
+- **The transformer reads its shape from the descriptor.** The world-open boolean is the last declared
+  parameter, not slot 5, and the title-menu bridge injects on int or void per the hook's return. A
+  throwaway class-load proof showed the old transformer's `VerifyError` and the new one loading. The
+  scaffold now holds three transformer seams against every tracked version's `hooks.toml` and writes
+  `target/ravel-jvm/transformer-shape.txt` from the versions that held.
+- **Persistence, content and outward resolve members by name and descriptor.** Name-and-arity could
+  never have worked at 1.21.1: `DimensionDataStorage` links `computeIfAbsent` and `set` both as a
+  two-argument `a`. The per-version storage shape lives in `RavelWorldData`'s template override, three
+  entry points, and 1.21.1's storage having no `close` is an `AutoCloseable` cast.
 
-1. **Reflective member verification against the jar.** `verify_reflection` compares classes only, and
-   against Mojang's mapping rather than the jar. Every member name and arity the agent jar reflects on
-   is checked by nothing, under either version.
-2. **Two `Transformer.java` defects.** `slot(4)` computes local 5 against 1.21.1's four-parameter
-   `doWorldLoad` and emits `iload 5` where no int lives — a `VerifyError` at class load, so the launch
-   aborts. And the title-menu bridge guards on an INT return that is void at 1.21.1, so the mods button
-   silently never appears.
-3. **Transformer-shape check.** The scaffold verifies a hook the transformer names is declared, not
-   that the transformer's assumptions about its shape still hold. Parameter positions and return kinds
-   are the two that bit.
-4. **Persistence seam.** `Persistence.java` resolves storage by 26.1.2's member names and arities.
-   1.21.1 uses `computeIfAbsent(SavedData$Factory, String)` and has no `tryWrite`. It compiles because
-   it is reflective, so only a launch would notice. Agreed shape: extract `read()`/`write()` into a
-   shared class with a per-version override, about thirty lines, rather than copying all 379.
+## Next, before a launch means much
+
+- **Content registration is wrong-shaped at 1.21.1.** `Content.withId` spells `setId`, which 26.1.2's
+  properties builders require and 1.21.1 does not declare. A member one version lacks cannot be declared
+  for it, so under 1.21.1 that lookup throws, `one` catches it, and every block and item is reported as
+  unregistered. 1.21.1 needs no `ResourceKey` on the properties at all, so the fix is a per-version
+  registration shape, the way `RavelWorldData` answered the same problem for persistence. No work
+  package owns it yet. A launch still reaches the title screen and the mods button without it.
+- `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
+  being true this session for all three adapters. Amending closed evidence is its own ceremony.
 
 ## Launch-only remainders
 
@@ -82,7 +90,10 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
 `evidence/m4/linux-process-matrix.json`, beside the check that does not cover them.
 
 - The stub tree models no nestmate access, so a flat `eql$a` standing in for nested `SavedData$Factory`
-  can compile and fail at link.
+  can compile and fail at link. The agent jar no longer touches the factory directly; the sibling's
+  compiled reference is the one place left. The JVM checks nest membership only for private access
+  and the factory is a public record, so the reading is that it links, but that is reasoning, not
+  evidence.
 - The classloader check proves an ordinary classpath, while the launch appends the screen jar through
   `Instrumentation.appendToSystemClassLoaderSearch` with the game already loaded. Same name, different
   loader.

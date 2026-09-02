@@ -4,7 +4,7 @@
 # rename, which is exactly what this file demonstrates. 1.21.1 is obfuscated, so
 # `runtime` is the linked name Mojang's published client mapping resolves `class`
 # to, and `mapping.verify_reflection` re-derives every one of them on any build
-# that can read the mapping. Two of the twenty-one carry a different `class` than
+# that can read the mapping. Two of the thirteen carry a different `class` than
 # 26.1.2 does, because the game renamed the type and not the role.
 #
 # The members are 1.21.1's own, and `mapping.verify_reflected_members` resolves
@@ -15,12 +15,11 @@
 # string where 26.1.2 takes one typed key, and its `MinecraftServer` reaches
 # storage through a level rather than declaring `getDataStorage` itself.
 #
-# The persistence adapter reaches every member below through the generated
-# `GameMembers`, so what this file declares is what that adapter asks for. The
-# content and outward adapters still spell 26.1.2's member names as literals,
-# which is why the members they use are named here and asked for nowhere, and no
-# check in this generator reaches that: a literal is resolved at runtime, so only
-# a launch sees it.
+# Every member below is reached through the generated `GameMembers`, so what this
+# file declares is what an adapter asks for. Content registration is absent
+# because it is no longer reflected at all: it is compiled against `stubs.toml`'s
+# seeds in the sibling artifact, since this version's properties builders take no
+# registry key and 26.1.2's demand one.
 #
 # Every member the persistence adapter uses is declared by `descriptor` rather
 # than by `parameters`, and this version is why the distinction is not academic.
@@ -75,41 +74,6 @@ name = "createVariableRangeEvent"
 descriptor = "(Lnet/minecraft/resources/ResourceLocation;)Lnet/minecraft/sounds/SoundEvent;"
 
 [[reflected]]
-name = "REGISTRY"
-class = "net.minecraft.core.Registry"
-runtime = "jz"
-
-[[reflected.member]]
-name = "register"
-descriptor = "(Lnet/minecraft/core/Registry;Lnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)Ljava/lang/Object;"
-
-[[reflected]]
-name = "BUILT_IN"
-class = "net.minecraft.core.registries.BuiltInRegistries"
-runtime = "lt"
-
-[[reflected.member]]
-name = "BLOCK"
-descriptor = "Lnet/minecraft/core/DefaultedRegistry;"
-
-[[reflected.member]]
-name = "ITEM"
-descriptor = "Lnet/minecraft/core/DefaultedRegistry;"
-
-[[reflected]]
-name = "REGISTRIES"
-class = "net.minecraft.core.registries.Registries"
-runtime = "lu"
-
-[[reflected.member]]
-name = "BLOCK"
-descriptor = "Lnet/minecraft/resources/ResourceKey;"
-
-[[reflected.member]]
-name = "ITEM"
-descriptor = "Lnet/minecraft/resources/ResourceKey;"
-
-[[reflected]]
 # 1.21.1 calls this ResourceLocation; 26.1.2 calls it Identifier.
 name = "IDENTIFIER"
 class = "net.minecraft.resources.ResourceLocation"
@@ -118,71 +82,6 @@ runtime = "akr"
 [[reflected.member]]
 name = "fromNamespaceAndPath"
 descriptor = "(Ljava/lang/String;Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"
-
-[[reflected]]
-name = "RESOURCE_KEY"
-class = "net.minecraft.resources.ResourceKey"
-runtime = "akq"
-
-[[reflected.member]]
-name = "create"
-descriptor = "(Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/resources/ResourceLocation;)Lnet/minecraft/resources/ResourceKey;"
-
-[[reflected]]
-name = "ITEM"
-class = "net.minecraft.world.item.Item"
-runtime = "cul"
-
-[[reflected.member]]
-name = "<init>"
-descriptor = "(Lnet/minecraft/world/item/Item$Properties;)V"
-
-[[reflected]]
-name = "ITEM_PROPERTIES"
-class = "net.minecraft.world.item.Item$Properties"
-runtime = "cul$a"
-
-[[reflected.member]]
-name = "<init>"
-descriptor = "()V"
-
-[[reflected.member]]
-name = "stacksTo"
-descriptor = "(I)Lnet/minecraft/world/item/Item$Properties;"
-
-[[reflected.member]]
-name = "fireResistant"
-descriptor = "()Lnet/minecraft/world/item/Item$Properties;"
-
-[[reflected]]
-name = "BLOCK"
-class = "net.minecraft.world.level.block.Block"
-runtime = "dfy"
-
-[[reflected.member]]
-name = "<init>"
-descriptor = "(Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;)V"
-
-[[reflected]]
-name = "BLOCK_PROPERTIES"
-class = "net.minecraft.world.level.block.state.BlockBehaviour$Properties"
-runtime = "dtb$d"
-
-[[reflected.member]]
-name = "of"
-descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
-
-[[reflected.member]]
-name = "strength"
-descriptor = "(FF)Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
-
-[[reflected.member]]
-name = "requiresCorrectToolForDrops"
-descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
-
-[[reflected.member]]
-name = "randomTicks"
-descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
 
 [[reflected]]
 name = "SERVER"

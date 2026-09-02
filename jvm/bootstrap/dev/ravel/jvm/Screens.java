@@ -218,7 +218,10 @@ final class Screens {
             return bottom + spacing;
         } catch (InvocationTargetException failed) {
             diagnoseFailure(name, failed.getCause() == null ? failed : failed.getCause());
-        } catch (ReflectiveOperationException | LinkageError unusable) {
+        } catch (ReflectiveOperationException | LinkageError | SecurityException unusable) {
+            // SecurityException is what a refused define looks like. A screen
+            // class the JVM will not admit costs the player a button; letting it
+            // out of here costs them the click handler it was thrown inside.
             diagnoseFailure(name, unusable);
         }
         return bottom;
@@ -248,7 +251,7 @@ final class Screens {
         } catch (InvocationTargetException failed) {
             diagnoseFailure(name, failed.getCause() == null ? failed : failed.getCause());
             return null;
-        } catch (ReflectiveOperationException | LinkageError unusable) {
+        } catch (ReflectiveOperationException | LinkageError | SecurityException unusable) {
             diagnoseFailure(name, unusable);
             return null;
         }

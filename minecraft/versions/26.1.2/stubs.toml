@@ -191,3 +191,64 @@ members = ["fromNamespaceAndPath"]
 role = "DataFixTypes"
 class = "net.minecraft.util.datafix.DataFixTypes"
 members = ["SAVED_DATA_COMMAND_STORAGE"]
+
+[[stub]]
+# Content registration, from here down. The identifier a claim is registered
+# under; 1.21.1 calls this class ResourceLocation and binds the same role to it.
+role = "Registry"
+class = "net.minecraft.core.Registry"
+members = ["register"]
+
+[[stub]]
+# What the built-in holders below are declared as. Seeded for its name rather
+# than for a member: the register call takes the supertype, and a field cannot be
+# declared as a class the stub tree does not carry.
+role = "DefaultedRegistry"
+class = "net.minecraft.core.DefaultedRegistry"
+members = []
+
+[[stub]]
+role = "BuiltInRegistries"
+class = "net.minecraft.core.registries.BuiltInRegistries"
+members = ["BLOCK", "ITEM"]
+
+[[stub]]
+# The root keys a registry is named by. Only this version needs them: they exist
+# to build the key its properties builders demand, and 1.21.1 demands none.
+role = "Registries"
+class = "net.minecraft.core.registries.Registries"
+members = ["BLOCK", "ITEM"]
+
+[[stub]]
+role = "ResourceKey"
+class = "net.minecraft.resources.ResourceKey"
+members = ["create"]
+
+[[stub]]
+role = "Block"
+class = "net.minecraft.world.level.block.Block"
+members = ["<init>"]
+
+[[stub]]
+# `setId` is this version's alone. Its constructors read the id back out, so a
+# properties object without one fails at construction rather than at
+# registration.
+role = "BlockBehaviour$Properties"
+class = "net.minecraft.world.level.block.state.BlockBehaviour$Properties"
+members = [
+  "of",
+  "setId",
+  "strength",
+  "requiresCorrectToolForDrops",
+  "randomTicks",
+]
+
+[[stub]]
+role = "Item"
+class = "net.minecraft.world.item.Item"
+members = ["<init>"]
+
+[[stub]]
+role = "Item$Properties"
+class = "net.minecraft.world.item.Item$Properties"
+members = ["<init>", "setId", "stacksTo", "fireResistant"]

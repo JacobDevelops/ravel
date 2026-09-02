@@ -231,9 +231,9 @@ generator declares every reference parameter as `java.lang.Object` precisely so
 that generated `Hook.java` declares no game type and still compiles without the
 client jar. Neither artifact is free of game *names*: `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-three adapters between them resolve twenty-one classes by name — all of which the invariant
+three adapters between them resolve thirteen classes by name — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
-on the class path. Those twenty-one names are generated rather than written, and so is
+on the class path. Those thirteen names are generated rather than written, and so is
 every member the adapters reach on them; the amendment below records why and what
 carries them.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled
@@ -540,8 +540,9 @@ to catch an undeclared literal. It is wrong now, because the declaration is what
 the constants are generated from, and a class with no role has nothing to be
 reached by.
 
-It moves again, from eighteen to twenty-one, because the surface now declares the
-members as well. The persistence adapter used to spell every member name it asked
+It moves again, from eighteen to twenty-one, because the surface declares the
+members as well, and then down to thirteen when content registration left the
+agent jar entirely. The persistence adapter used to spell every member name it asked
 for as a literal, which was 26.1.2's spelling asserted over every version and the
 obfuscated name of none: 1.21.1 links `getWorldPath` as `a` and `LevelResource.ROOT`
 as `l`. Declaring the members brought their owners in with them — the level a
@@ -559,6 +560,14 @@ The declared members also cost the set one class. `SoundInstance` was listed onl
 so the outward adapter could name it as a parameter type, and a descriptor-declared
 member carries its parameter types itself, so nothing resolves that name any more
 and the mapping translates it either way.
+
+The eight the fall to thirteen removed are content registration's — the registry,
+the built-in holders, the root keys, both value types and both properties
+builders. They are seeded in `stubs.toml` now and compiled against rather than
+reflected, because 26.1.2's builders demand a registry key stamped before a value
+is constructed and 1.21.1 declares no setter for one. That is a different call
+rather than a different name, which is the line this record already draws between
+a role binding and a per-version source.
 
 ## Limits of this evidence
 

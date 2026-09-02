@@ -1,6 +1,5 @@
 package dev.ravel.jvm;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,20 +19,21 @@ import java.util.List;
  * <p>Everything here is reflective for the reason {@link Persistence} gives: this
  * class ships in the always-present agent jar, which is compiled with no client
  * jar on the class path, so a source declaring a game type would not compile.
- * Every name it resolves — the classes through {@link GameNames}, the members
- * through {@link GameMembers} — is generated from the version's reviewed
- * reflective surface, so one source is right about every tracked version and a
- * member a version renamed or dropped fails generation rather than a launch.
- * That is what carries the identifier type across being called
- * {@code Identifier} under one version and {@code ResourceLocation} under
- * another.
  *
- * <p><b>The one exception is {@link #withId}</b>, and it is a shape difference
- * rather than a rename: 26.1.2's properties builders require the registry key
- * stamped on them before a value is constructed, and 1.21.1 declares no such
- * setter at all. A member one version does not have cannot be declared for it,
- * so that lookup still spells a name and still fails as a per-row diagnostic
- * under a version without it.
+ * <p><b>What this class no longer does.</b> It built the block and the item
+ * itself, member by member, and that could only ever be one version's shape.
+ * 26.1.2's properties builders read a registry key back out at construction and
+ * refuse a value that was never given one; 1.21.1 declares no such setter and
+ * has no key to stamp. A member one version does not have cannot be declared for
+ * it, so the first real 1.21.1 launch registered nothing and said so twice.
+ * Construction and registration moved to {@code RavelContent} in the sibling
+ * artifact, which is generated per version and compiled against that version's
+ * stubs — the same answer {@code RavelWorldData} already was for persistence.
+ *
+ * <p>What is left here is the half that is the same under every version: read
+ * the payload Rust admitted, and fail one row without failing the rest. The
+ * sibling is reached by name and argument count, which is exact because those
+ * are Ravel's own names on Ravel's own class.
  *
  * <p><b>Rust decides, Java performs.</b> Which claims are registrable is an
  * admission question and is answered on the other side: the payload carries only
@@ -49,17 +49,21 @@ final class Content {
     private static final int BLOCK_FIELDS = 4;
     private static final int ITEM_FIELDS = 2;
 
-    // Generated from the version's reviewed reflective surface, because this
-    // source is shared across versions and the names in it are not.
-    private static final String REGISTRY = GameNames.REGISTRY;
-    private static final String BUILT_IN = GameNames.BUILT_IN;
-    private static final String REGISTRIES = GameNames.REGISTRIES;
-    private static final String IDENTIFIER = GameNames.IDENTIFIER;
-    private static final String RESOURCE_KEY = GameNames.RESOURCE_KEY;
-    private static final String BLOCK = GameNames.BLOCK;
-    private static final String BLOCK_PROPERTIES = GameNames.BLOCK_PROPERTIES;
-    private static final String ITEM = GameNames.ITEM;
-    private static final String ITEM_PROPERTIES = GameNames.ITEM_PROPERTIES;
+    /** The generated registration class, wherever this version's names put it. */
+    static final String CONTENT = ScreenNames.RAVEL_CONTENT;
+
+    private static final String REGISTER_BLOCK = "registerBlock/6";
+    private static final String REGISTER_ITEM = "registerItem/4";
+
+    /**
+     * Everything this adapter asks the sibling for, so a check can ask too.
+     *
+     * <p>Declared rather than only called, because the sibling is generated per
+     * version and a build makes one version at a time. A version whose override
+     * dropped an entry point compiles and ships; this is what lets the
+     * per-version Java compile refuse it instead.
+     */
+    static final String[] SIBLING_ENTRY_POINTS = {REGISTER_BLOCK, REGISTER_ITEM};
 
     private Content() {
     }
@@ -142,27 +146,29 @@ final class Content {
     private static boolean one(
             String kind, String namespace, String path, List<String> behaviour) {
         try {
-            boolean isBlock = kind.equals("block");
-            Object identifier = Members.method(
-                    game(IDENTIFIER), GameMembers.IDENTIFIER_FROM_NAMESPACE_AND_PATH)
-                    .invoke(null, namespace, path);
-            Object registry = constant(
-                    BUILT_IN, isBlock ? GameMembers.BUILT_IN_BLOCK : GameMembers.BUILT_IN_ITEM);
-            Object registryKey = Members.method(
-                    game(RESOURCE_KEY), GameMembers.RESOURCE_KEY_CREATE)
-                    .invoke(
-                            null,
-                            constant(
-                                    REGISTRIES,
-                                    isBlock
-                                            ? GameMembers.REGISTRIES_BLOCK
-                                            : GameMembers.REGISTRIES_ITEM),
-                            identifier);
-
-            Object value = isBlock ? block(registryKey, behaviour) : item(registryKey, behaviour);
-
-            Members.method(game(REGISTRY), GameMembers.REGISTRY_REGISTER)
-                    .invoke(null, registry, identifier, value);
+            Class<?> content = sibling();
+            if (content == null) {
+                return false;
+            }
+            if (kind.equals("block")) {
+                Members.sibling(content, REGISTER_BLOCK)
+                        .invoke(
+                                null,
+                                namespace,
+                                path,
+                                Float.parseFloat(behaviour.get(0)),
+                                Float.parseFloat(behaviour.get(1)),
+                                Boolean.parseBoolean(behaviour.get(2)),
+                                Boolean.parseBoolean(behaviour.get(3)));
+            } else {
+                Members.sibling(content, REGISTER_ITEM)
+                        .invoke(
+                                null,
+                                namespace,
+                                path,
+                                Integer.parseInt(behaviour.get(0)),
+                                Boolean.parseBoolean(behaviour.get(1)));
+            }
             return true;
         } catch (Throwable unregistered) {
             Agent.diagnose("could not register " + kind + " " + namespace + ":" + path
@@ -172,84 +178,26 @@ final class Content {
     }
 
     /**
-     * One block, behaving the way the mod that claimed it described.
+     * Ravel's registration class from the sibling artifact, or {@code null}.
      *
-     * <p>Every value crossed as a primitive and is applied through the setter the
-     * pinned 26.1.2 properties declare for it. Nothing is invented here and
-     * nothing is defaulted here either: a mod that described nothing was given
-     * its kind's defaults on the other side, where admission lives, so this
-     * applies four values in every case and has no second path to disagree with
-     * the first.
+     * <p>Absent means no content, and that is a diagnostic rather than a refused
+     * launch: a missing block is visible to the player in a way a game that
+     * refused to start is not. The world persistence adapter next door makes the
+     * opposite call, deliberately, because what it loses is a player's saved
+     * work rather than a block.
      */
-    private static Object block(Object registryKey, List<String> behaviour)
-            throws ReflectiveOperationException {
-        Class<?> properties = game(BLOCK_PROPERTIES);
-        Object built = Members.method(properties, GameMembers.BLOCK_PROPERTIES_OF).invoke(null);
-        built = withId(properties, built, registryKey);
-        built = Members.method(properties, GameMembers.BLOCK_PROPERTIES_STRENGTH)
-                .invoke(
-                        built,
-                        Float.parseFloat(behaviour.get(0)),
-                        Float.parseFloat(behaviour.get(1)));
-        if (Boolean.parseBoolean(behaviour.get(2))) {
-            built = Members.method(
-                    properties, GameMembers.BLOCK_PROPERTIES_REQUIRES_CORRECT_TOOL_FOR_DROPS)
-                    .invoke(built);
+    private static Class<?> sibling() {
+        if (!Screens.isInstalled()) {
+            Agent.diagnose("content registration has no component to register through");
+            return null;
         }
-        if (Boolean.parseBoolean(behaviour.get(3))) {
-            built = Members.method(properties, GameMembers.BLOCK_PROPERTIES_RANDOM_TICKS)
-                    .invoke(built);
+        try {
+            return Screens.load(CONTENT);
+        } catch (ClassNotFoundException | LinkageError | SecurityException absent) {
+            Agent.diagnose("the content registration component could not be loaded ("
+                    + absent.getClass().getName() + ")");
+            return null;
         }
-        return Members.constructor(game(BLOCK), GameMembers.BLOCK_NEW).newInstance(built);
-    }
-
-    /** One item, described the same way and for the same reason. */
-    private static Object item(Object registryKey, List<String> behaviour)
-            throws ReflectiveOperationException {
-        Class<?> properties = game(ITEM_PROPERTIES);
-        Object built = Members.constructor(properties, GameMembers.ITEM_PROPERTIES_NEW)
-                .newInstance();
-        built = withId(properties, built, registryKey);
-        built = Members.method(properties, GameMembers.ITEM_PROPERTIES_STACKS_TO)
-                .invoke(built, Integer.parseInt(behaviour.get(0)));
-        if (Boolean.parseBoolean(behaviour.get(1))) {
-            built = Members.method(properties, GameMembers.ITEM_PROPERTIES_FIRE_RESISTANT)
-                    .invoke(built);
-        }
-        return Members.constructor(game(ITEM), GameMembers.ITEM_NEW).newInstance(built);
-    }
-
-    /**
-     * Stamps a properties object with the key its value will be registered under.
-     *
-     * <p>Not optional in 26.1.2: both constructors read the id back out, and a
-     * properties object without one fails at construction rather than at
-     * registration. The returned object is used rather than the argument because
-     * the setter answers a builder.
-     *
-     * <p><b>The one member name still written here.</b> Every other lookup in
-     * this class goes through {@link GameMembers}, and this one cannot: 1.21.1
-     * declares no such setter, so its surface has nothing to declare and there is
-     * no constant for a shared source to spell. Under a version without it this
-     * throws, {@link #one} catches it, and the row is reported as unregistered —
-     * which is the honest answer, because that version wants a differently shaped
-     * registration rather than the same one under another name.
-     */
-    private static Object withId(Class<?> properties, Object built, Object registryKey)
-            throws ReflectiveOperationException {
-        Method setId = properties.getMethod("setId", game(RESOURCE_KEY));
-        return setId.invoke(built, registryKey);
-    }
-
-    /** Reads one static constant the reviewed surface names. */
-    private static Object constant(String owner, String member)
-            throws ReflectiveOperationException {
-        return Members.field(game(owner), member).get(null);
-    }
-
-    /** One game class, resolved through the loader the game itself is on. */
-    private static Class<?> game(String name) throws ReflectiveOperationException {
-        return Class.forName(name, true, ClassLoader.getSystemClassLoader());
     }
 
     /** The type that stopped a registration, unwrapped past the reflection layer. */

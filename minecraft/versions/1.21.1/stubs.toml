@@ -181,3 +181,59 @@ members = []
 role = "DataFixTypes"
 class = "net.minecraft.util.datafix.DataFixTypes"
 members = ["SAVED_DATA_COMMAND_STORAGE"]
+
+[[stub]]
+# Content registration, from here down. This version calls the identifier
+# ResourceLocation; the role is the word the templates write either way, and it
+# is seeded here because the content source this version renders names it.
+role = "Identifier"
+class = "net.minecraft.resources.ResourceLocation"
+members = ["fromNamespaceAndPath"]
+
+[[stub]]
+role = "Registry"
+class = "net.minecraft.core.Registry"
+members = ["register"]
+
+[[stub]]
+# What the built-in holders below are declared as. Seeded for its name rather
+# than for a member, because a field cannot be declared as a class the stub tree
+# does not carry.
+role = "DefaultedRegistry"
+class = "net.minecraft.core.DefaultedRegistry"
+members = []
+
+[[stub]]
+role = "BuiltInRegistries"
+class = "net.minecraft.core.registries.BuiltInRegistries"
+members = ["BLOCK", "ITEM"]
+
+[[stub]]
+role = "Block"
+class = "net.minecraft.world.level.block.Block"
+members = ["<init>"]
+
+[[stub]]
+# No `setId` and no root registry key, which is the whole reason this version
+# renders its own content source: a block here is named by what it is registered
+# under and by nothing it carries.
+role = "BlockBehaviour$Properties"
+class = "net.minecraft.world.level.block.state.BlockBehaviour$Properties"
+# `strength` is overloaded here and the two overloads link under different
+# names, so the width picks the one the template calls.
+members = [
+  "of",
+  { role = "strength", member = "strength", parameters = 2 },
+  "requiresCorrectToolForDrops",
+  "randomTicks",
+]
+
+[[stub]]
+role = "Item"
+class = "net.minecraft.world.item.Item"
+members = ["<init>"]
+
+[[stub]]
+role = "Item$Properties"
+class = "net.minecraft.world.item.Item$Properties"
+members = ["<init>", "stacksTo", "fireResistant"]

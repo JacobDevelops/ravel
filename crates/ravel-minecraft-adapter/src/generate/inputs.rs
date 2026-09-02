@@ -1068,7 +1068,11 @@ mod tests {
             // that declared nothing would pass it while saying nothing. Every
             // adapter under `jvm/bootstrap` calls members on the classes it
             // resolves, so a version whose surface names classes and no members
-            // has lost the declarations rather than needed none.
+            // has lost the declarations rather than needed none. The floor is a
+            // member per class rather than a fixed count: the set shrinks when a
+            // seam moves out of the agent jar and into the sibling, which content
+            // registration did, and a fixed count would then have to be edited
+            // down every time — which is the same as not having one.
             assert!(
                 pinned
                     .surface
@@ -1076,7 +1080,7 @@ mod tests {
                     .iter()
                     .map(|reflected| reflected.members.len())
                     .sum::<usize>()
-                    >= 20,
+                    >= pinned.surface.classes.len(),
                 "the reflective surface should declare the members the agent jar reaches"
             );
 

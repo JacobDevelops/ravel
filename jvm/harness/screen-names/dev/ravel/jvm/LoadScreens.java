@@ -84,8 +84,37 @@ public final class LoadScreens {
             }
             loaded.add(name);
         }
+        entryPoints(loader, Content.CONTENT, Content.SIBLING_ENTRY_POINTS);
+        entryPoints(loader, Persistence.WORLD_DATA, Persistence.SIBLING_ENTRY_POINTS);
         System.out.println("loaded " + loaded.size() + " screens by name: "
                 + String.join(", ", loaded));
+    }
+
+    /**
+     * Requires this version's sibling to declare what the agent jar asks it for.
+     *
+     * <p>The sibling is generated per version and a build makes one version at a
+     * time, so a version whose override renamed or dropped an entry point
+     * compiles and ships and fails at the first mod or the first world. The
+     * agent jar names those entry points once, beside the calls that use them,
+     * and this reads that declaration rather than restating it.
+     *
+     * @param loader the loader the screen jar was opened under
+     * @param owner the sibling class, as this version's names spell it
+     * @param entries each entry point, as its name, a slash, and its arity
+     */
+    private static void entryPoints(ClassLoader loader, String owner, String[] entries)
+            throws Exception {
+        Class<?> sibling = Class.forName(owner, false, loader);
+        for (String entry : entries) {
+            try {
+                Members.sibling(sibling, entry);
+            } catch (ReflectiveOperationException absent) {
+                throw new IllegalStateException(owner
+                        + " declares no " + entry + ", so the agent jar would reach for it at "
+                        + "runtime and find nothing", absent);
+            }
+        }
     }
 
     /**

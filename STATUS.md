@@ -75,12 +75,6 @@ The four items that were paused here all landed, each proven by mutation against
 
 ## Next, before a launch means much
 
-- **Content registration is wrong-shaped at 1.21.1.** `Content.withId` spells `setId`, which 26.1.2's
-  properties builders require and 1.21.1 does not declare. A member one version lacks cannot be declared
-  for it, so under 1.21.1 that lookup throws, `one` catches it, and every block and item is reported as
-  unregistered. 1.21.1 needs no `ResourceKey` on the properties at all, so the fix is a per-version
-  registration shape, the way `RavelWorldData` answered the same problem for persistence. No work
-  package owns it yet. A launch still reaches the title screen and the mods button without it.
 - `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
   being true this session for all three adapters. Amending closed evidence is its own ceremony.
 

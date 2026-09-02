@@ -141,6 +141,37 @@ final class Members {
         };
     }
 
+    /**
+     * One static entry point of the sibling artifact, named as {@code name/arity}.
+     *
+     * <p>Name and arity is enough here and nowhere else, because these are
+     * Ravel's own names on Ravel's own generated class: nothing renames them and
+     * nothing overloads them. Every game member goes through the descriptor its
+     * version links instead.
+     *
+     * <p>The entry points are declared as constants beside the calls that use
+     * them so the per-version Java compile can require each version's sibling to
+     * carry them. The sibling is generated per version and only one version is
+     * built at a time, so a version whose override dropped an entry point would
+     * otherwise compile, ship, and fail at the first mod that needed it.
+     *
+     * @param owner the sibling class
+     * @param entry the entry point, as its name, a slash, and its argument count
+     * @throws NoSuchMethodException when the sibling declares no such entry point
+     */
+    static Method sibling(Class<?> owner, String entry) throws ReflectiveOperationException {
+        int slash = entry.lastIndexOf('/');
+        String name = entry.substring(0, slash);
+        int arity = Integer.parseInt(entry.substring(slash + 1));
+        for (Method candidate : owner.getDeclaredMethods()) {
+            if (candidate.getName().equals(name) && candidate.getParameterCount() == arity) {
+                candidate.setAccessible(true);
+                return candidate;
+            }
+        }
+        throw absent(owner, entry);
+    }
+
     /** The refusal a missing member lands on, naming what was looked for. */
     private static NoSuchMethodException absent(Class<?> owner, String member) {
         return new NoSuchMethodException(owner.getName() + "." + member);

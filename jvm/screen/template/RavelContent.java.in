@@ -1,0 +1,95 @@
+{{package}}
+
+{{import Identifier}}
+{{import Registry}}
+{{import BuiltInRegistries}}
+{{import Registries}}
+{{import ResourceKey}}
+{{import Block}}
+{{import BlockBehaviour$Properties}}
+{{import Item}}
+{{import Item$Properties}}
+
+/**
+ * Registers one block or one item, in the shape this version's registries want.
+ *
+ * <p>This is the compiled half of the content crossing, and it exists for the
+ * reason {@code RavelWorldData} exists next door: the two tracked versions do
+ * not disagree about a name here, they disagree about the work. 26.1.2's
+ * properties builders read an id back out at construction and refuse a value
+ * that was never given one, so a registry key has to be built and stamped
+ * before the block exists. 1.21.1 has no such setter on either builder and no
+ * key to stamp. A role binding answers a rename; it does not answer a call that
+ * one version makes and the other does not have.
+ *
+ * <p>The agent jar reaches both entry points by name and argument count, which
+ * is exact because these are Ravel's own names on Ravel's own class. Everything
+ * below them is typed against the generated stubs, so a member this version
+ * renamed or dropped fails the build rather than a launch.
+ *
+ * <p><b>Rust decides, Java performs.</b> Nothing here filters a claim, defaults
+ * a value or judges whether a mod may register one. Admission happened on the
+ * other side, and every value below arrived on the payload.
+ */
+public final class RavelContent {
+
+    private RavelContent() {
+    }
+
+    /**
+     * Registers one block with the behaviour the mod that claimed it described.
+     *
+     * @param namespace the owning mod's id
+     * @param path the block's own name
+     * @param hardness how long it takes to break
+     * @param resistance how well it survives an explosion
+     * @param tool whether it drops only for the right tool
+     * @param ticks whether it receives random ticks
+     */
+    public static void registerBlock(
+            String namespace,
+            String path,
+            float hardness,
+            float resistance,
+            boolean tool,
+            boolean ticks) {
+        {{Identifier}} id = {{Identifier}}.{{Identifier#fromNamespaceAndPath}}(namespace, path);
+        {{BlockBehaviour$Properties}} properties = {{BlockBehaviour$Properties}}
+                .{{BlockBehaviour$Properties#of}}()
+                .{{BlockBehaviour$Properties#setId}}(
+                        {{ResourceKey}}.{{ResourceKey#create}}(
+                                {{Registries}}.{{Registries#BLOCK}}, id))
+                .{{BlockBehaviour$Properties#strength}}(hardness, resistance);
+        if (tool) {
+            properties = properties.{{BlockBehaviour$Properties#requiresCorrectToolForDrops}}();
+        }
+        if (ticks) {
+            properties = properties.{{BlockBehaviour$Properties#randomTicks}}();
+        }
+        {{Registry}}.{{Registry#register}}(
+                {{BuiltInRegistries}}.{{BuiltInRegistries#BLOCK}}, id, new {{Block}}(properties));
+    }
+
+    /**
+     * Registers one item, described the same way and for the same reason.
+     *
+     * @param namespace the owning mod's id
+     * @param path the item's own name
+     * @param stackSize how many of it sit in one slot
+     * @param fireResistant whether it survives fire
+     */
+    public static void registerItem(
+            String namespace, String path, int stackSize, boolean fireResistant) {
+        {{Identifier}} id = {{Identifier}}.{{Identifier#fromNamespaceAndPath}}(namespace, path);
+        {{Item$Properties}} properties = new {{Item$Properties}}()
+                .{{Item$Properties#setId}}(
+                        {{ResourceKey}}.{{ResourceKey#create}}(
+                                {{Registries}}.{{Registries#ITEM}}, id))
+                .{{Item$Properties#stacksTo}}(stackSize);
+        if (fireResistant) {
+            properties = properties.{{Item$Properties#fireResistant}}();
+        }
+        {{Registry}}.{{Registry#register}}(
+                {{BuiltInRegistries}}.{{BuiltInRegistries#ITEM}}, id, new {{Item}}(properties));
+    }
+}

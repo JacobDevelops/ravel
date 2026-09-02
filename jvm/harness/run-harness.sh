@@ -400,13 +400,21 @@ fi
 # that only looked like one fails here.
 content="$work/content"
 content_agent="$content/agent/ravel-agent.jar"
-mkdir -p "$content/classes" "$(dirname "$content_agent")"
+content_screen="$content/agent/ravel-screen.jar"
+mkdir -p "$content/classes" "$content/sibling" "$(dirname "$content_agent")"
 mapfile -d '' content_sources < <(find "$root/jvm/harness/content" -name '*.java' -print0 | sort -z)
 javac -Xlint:all -Werror -d "$content/classes" "${content_sources[@]}"
 # `ContentMain` needs the agent classes only to read the stand-in hook's counter.
 # A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$content/classes:$order/agent-classes" -d "$content/classes" \
 	"$root/jvm/harness/ContentMain.java"
+# The registration itself lives in the sibling artifact now, because the two
+# tracked versions build a block differently rather than name it differently, so
+# this section needs the sibling jar the persistence section already needed.
+javac -Xlint:all -Werror -cp "$content/classes" -d "$content/sibling" \
+	"$root/jvm/harness/sibling/dev/ravel/jvm/screen/RavelContent.java"
+jar --create --file "$content_screen" --date 1980-01-01T00:00:02Z \
+	-C "$content/sibling" dev/ravel/jvm/screen/RavelContent.class
 cp "$order_agent" "$content_agent"
 
 # Each run is one initialization: the registries freeze once, and what they hold

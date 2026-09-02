@@ -24,6 +24,12 @@
 # names against another and pass while doing it. The `name` column is what survives
 # both renames, which is why the adapters spell that and not the class.
 #
+# Content registration is not here. It is compiled against `stubs.toml`'s seeds in
+# the sibling artifact rather than reflected from the agent jar, because the two
+# versions disagree about the work and not only about the names: 26.1.2's
+# properties builders demand a registry key stamped on them and 1.21.1 declares no
+# setter for one.
+#
 # Each entry also carries the members of that class the adapters reach by name.
 # A member is declared the way the adapter asks for it and never both ways at
 # once: `descriptor` where the lookup names its parameter types, written in the
@@ -53,10 +59,8 @@
 # member: a name and an argument count does not once obfuscation collapses names,
 # and the adapter would then call whichever method the class file declared first.
 #
-# What no check here reaches is the content and outward adapters. They still
-# spell member names as literals, so for the members they use this file records
-# what a version declares and not what the shared Java asks it for; the two agree
-# at 26.1.2 and do not at 1.21.1.
+# Every member below is asked for through `GameMembers`, so what this file
+# declares is what the adapters ask for, in both directions.
 #
 # This file is a generator input and `adapter.toml` pins its hash, because the
 # names in it are compiled into the agent jar.
@@ -116,41 +120,6 @@ descriptor = "(Lnet/minecraft/resources/Identifier;)Lnet/minecraft/sounds/SoundE
 # Content registration: a registry, the built-in set every registered thing lands
 # in, the keys that name one, and the namespaced identifier it carries.
 [[reflected]]
-name = "REGISTRY"
-class = "net.minecraft.core.Registry"
-runtime = "net.minecraft.core.Registry"
-
-[[reflected.member]]
-name = "register"
-descriptor = "(Lnet/minecraft/core/Registry;Lnet/minecraft/resources/Identifier;Ljava/lang/Object;)Ljava/lang/Object;"
-
-[[reflected]]
-name = "BUILT_IN"
-class = "net.minecraft.core.registries.BuiltInRegistries"
-runtime = "net.minecraft.core.registries.BuiltInRegistries"
-
-[[reflected.member]]
-name = "BLOCK"
-descriptor = "Lnet/minecraft/core/DefaultedRegistry;"
-
-[[reflected.member]]
-name = "ITEM"
-descriptor = "Lnet/minecraft/core/DefaultedRegistry;"
-
-[[reflected]]
-name = "REGISTRIES"
-class = "net.minecraft.core.registries.Registries"
-runtime = "net.minecraft.core.registries.Registries"
-
-[[reflected.member]]
-name = "BLOCK"
-descriptor = "Lnet/minecraft/resources/ResourceKey;"
-
-[[reflected.member]]
-name = "ITEM"
-descriptor = "Lnet/minecraft/resources/ResourceKey;"
-
-[[reflected]]
 name = "IDENTIFIER"
 class = "net.minecraft.resources.Identifier"
 runtime = "net.minecraft.resources.Identifier"
@@ -159,81 +128,8 @@ runtime = "net.minecraft.resources.Identifier"
 name = "fromNamespaceAndPath"
 descriptor = "(Ljava/lang/String;Ljava/lang/String;)Lnet/minecraft/resources/Identifier;"
 
-[[reflected]]
-name = "RESOURCE_KEY"
-class = "net.minecraft.resources.ResourceKey"
-runtime = "net.minecraft.resources.ResourceKey"
-
-[[reflected.member]]
-name = "create"
-descriptor = "(Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/resources/Identifier;)Lnet/minecraft/resources/ResourceKey;"
-
 # The two content types a mod registers, each with the nested properties builder
 # its constructor takes.
-[[reflected]]
-name = "ITEM"
-class = "net.minecraft.world.item.Item"
-runtime = "net.minecraft.world.item.Item"
-
-[[reflected.member]]
-name = "<init>"
-descriptor = "(Lnet/minecraft/world/item/Item$Properties;)V"
-
-[[reflected]]
-name = "ITEM_PROPERTIES"
-class = "net.minecraft.world.item.Item$Properties"
-runtime = "net.minecraft.world.item.Item$Properties"
-
-[[reflected.member]]
-name = "<init>"
-descriptor = "()V"
-
-[[reflected.member]]
-name = "stacksTo"
-descriptor = "(I)Lnet/minecraft/world/item/Item$Properties;"
-
-[[reflected.member]]
-name = "fireResistant"
-descriptor = "()Lnet/minecraft/world/item/Item$Properties;"
-
-[[reflected.member]]
-name = "setId"
-descriptor = "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/world/item/Item$Properties;"
-
-[[reflected]]
-name = "BLOCK"
-class = "net.minecraft.world.level.block.Block"
-runtime = "net.minecraft.world.level.block.Block"
-
-[[reflected.member]]
-name = "<init>"
-descriptor = "(Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;)V"
-
-[[reflected]]
-name = "BLOCK_PROPERTIES"
-class = "net.minecraft.world.level.block.state.BlockBehaviour$Properties"
-runtime = "net.minecraft.world.level.block.state.BlockBehaviour$Properties"
-
-[[reflected.member]]
-name = "of"
-descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
-
-[[reflected.member]]
-name = "strength"
-descriptor = "(FF)Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
-
-[[reflected.member]]
-name = "requiresCorrectToolForDrops"
-descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
-
-[[reflected.member]]
-name = "randomTicks"
-descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
-
-[[reflected.member]]
-name = "setId"
-descriptor = "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
-
 # Persistence: the server that owns the world's directory and the level that
 # holds its storage, the storage itself, the resource constant that names a
 # world's root, and the fixer set the storage's three-argument constructor takes.

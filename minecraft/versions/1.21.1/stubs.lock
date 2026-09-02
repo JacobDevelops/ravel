@@ -240,8 +240,51 @@ flags = 1
 method = false
 
 [[stub]]
+class = "net/minecraft/core/DefaultedRegistry"
+flags = 1537
+implements = ["net/minecraft/core/Registry"]
+
+[[stub]]
 class = "net/minecraft/core/HolderLookup$Provider"
 flags = 1537
+
+[[stub]]
+class = "net/minecraft/core/Registry"
+flags = 1537
+
+[[stub.member]]
+name = "register"
+descriptor = "(Lnet/minecraft/core/Registry;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "register"
+descriptor = "(Lnet/minecraft/core/Registry;Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;)Ljava/lang/Object;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "register"
+descriptor = "(Lnet/minecraft/core/Registry;Lnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)Ljava/lang/Object;"
+flags = 9
+method = true
+
+[[stub]]
+class = "net/minecraft/core/registries/BuiltInRegistries"
+flags = 33
+
+[[stub.member]]
+name = "BLOCK"
+descriptor = "Lnet/minecraft/core/DefaultedRegistry;"
+flags = 25
+method = false
+
+[[stub.member]]
+name = "ITEM"
+descriptor = "Lnet/minecraft/core/DefaultedRegistry;"
+flags = 25
+method = false
 
 [[stub]]
 class = "net/minecraft/nbt/CompoundTag"
@@ -320,6 +363,20 @@ class = "net/minecraft/network/chat/Style"
 flags = 33
 
 [[stub]]
+class = "net/minecraft/resources/ResourceKey"
+flags = 33
+
+[[stub]]
+class = "net/minecraft/resources/ResourceLocation"
+flags = 49
+
+[[stub.member]]
+name = "fromNamespaceAndPath"
+descriptor = "(Ljava/lang/String;Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"
+flags = 9
+method = true
+
+[[stub]]
 class = "net/minecraft/util/datafix/DataFixTypes"
 flags = 16433
 
@@ -328,6 +385,82 @@ name = "SAVED_DATA_COMMAND_STORAGE"
 descriptor = "Lnet/minecraft/util/datafix/DataFixTypes;"
 flags = 16409
 method = false
+
+[[stub]]
+class = "net/minecraft/world/item/Item"
+flags = 33
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/world/item/Item$Properties;)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/world/item/Item$Properties"
+flags = 33
+
+[[stub.member]]
+name = "<init>"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "fireResistant"
+descriptor = "()Lnet/minecraft/world/item/Item$Properties;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "stacksTo"
+descriptor = "(I)Lnet/minecraft/world/item/Item$Properties;"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/world/level/block/Block"
+flags = 33
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/world/level/block/state/BlockBehaviour$Properties"
+flags = 33
+
+[[stub.member]]
+name = "of"
+descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "randomTicks"
+descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "requiresCorrectToolForDrops"
+descriptor = "()Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "strength"
+descriptor = "(F)Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "strength"
+descriptor = "(FF)Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;"
+flags = 1
+method = true
 
 [[stub]]
 class = "net/minecraft/world/level/saveddata/SavedData"

@@ -57,13 +57,13 @@ bytes = 15196
 
 [inputs.stubSeeds]
 path = "minecraft/versions/1.21.1/stubs.toml"
-sha256 = "56488cd9747e805572d3e22ef6d70cb5409169c2ea3b17aa127fc8ecf3c22c7f"
-bytes = 7949
+sha256 = "5ec44f44b175b0fa8c96e7fa1bc95ed6b0bfac94d706b829e0f30f5747e1bbb9"
+bytes = 9673
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/1.21.1/reflection.toml"
-sha256 = "5d6482657e8cb13aa3297e7265d73aedbf9909450091afef7b07c986e8933feb"
-bytes = 9196
+sha256 = "d1b0167c03ca222274529ebbe541edb3f6149377e4d88ce66bee3b96dcd114f3"
+bytes = 6637
 
 # The two locks below are generated, not fetched, and they are pinned for the
 # machines that cannot check them any other way. Only RAVEL_REGENERATE_LOCKS
@@ -76,5 +76,5 @@ bytes = 6506
 
 [inputs.stubsLock]
 path = "minecraft/versions/1.21.1/stubs.lock"
-sha256 = "77e4afc75e363c70b7f5f76d12170e59b25c6bcacb6bdd00e835d69284cf6c24"
-bytes = 8878
+sha256 = "a01ab3c77b425fa1b1ee22823315121197632eb662b306ec7570e8eb7b92925d"
+bytes = 11790

@@ -1,7 +1,6 @@
 package dev.ravel.jvm;
 
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
@@ -80,7 +79,22 @@ final class Persistence {
      * version that obfuscates the game into the unnamed package takes this class
      * there with it.
      */
-    private static final String WORLD_DATA = ScreenNames.RAVEL_WORLD_DATA;
+    static final String WORLD_DATA = ScreenNames.RAVEL_WORLD_DATA;
+
+    private static final String FOLDER = "folder/1";
+    private static final String LOOKUP = "lookup/0";
+    private static final String REPLACEMENT_ENTRY = "replacement/1";
+    private static final String BYTES = "bytes/1";
+
+    /**
+     * Everything this adapter asks the sibling for, so a check can ask too.
+     *
+     * <p>Declared rather than only called, for the reason {@link Content} gives:
+     * the sibling is generated per version and a build makes one version at a
+     * time, so a version whose override dropped an entry point would compile and
+     * ship and fail at the first world.
+     */
+    static final String[] SIBLING_ENTRY_POINTS = {FOLDER, LOOKUP, REPLACEMENT_ENTRY, BYTES};
 
     /** Tag byte at element zero of a save answer, payload in the remainder. */
     private static final byte UNCHANGED = 0x00;
@@ -208,11 +222,11 @@ final class Persistence {
         Object stored;
         try {
             stored = Members.method(opened.getClass(), GameMembers.STORAGE_GET)
-                    .invoke(opened, (Object[]) method(data, "lookup", 0).invoke(null));
+                    .invoke(opened, (Object[]) Members.sibling(data, LOOKUP).invoke(null));
         } finally {
             close(opened);
         }
-        return (byte[]) method(data, "bytes", 1).invoke(null, stored);
+        return (byte[]) Members.sibling(data, BYTES).invoke(null, stored);
     }
 
     /**
@@ -223,7 +237,7 @@ final class Persistence {
      * other a {@code File}, and a shared source cannot hold both.
      */
     private static Object folder(Class<?> data, Object root) throws ReflectiveOperationException {
-        return method(data, "folder", 1)
+        return Members.sibling(data, FOLDER)
                 .invoke(null, ((java.nio.file.Path) root).resolve(DATA_DIRECTORY));
     }
 
@@ -316,7 +330,8 @@ final class Persistence {
                 level.getClass(), GameMembers.SERVER_LEVEL_GET_DATA_STORAGE).invoke(level);
         Members.method(storage.getClass(), GameMembers.STORAGE_SET)
                 .invoke(storage,
-                        (Object[]) method(data, "replacement", 1).invoke(null, (Object) aggregate));
+                        (Object[]) Members.sibling(data, REPLACEMENT_ENTRY)
+                                .invoke(null, (Object) aggregate));
     }
 
     /** The remainder of a tagged answer, as the diagnostic it carries. */
@@ -353,29 +368,6 @@ final class Persistence {
     /** One game class, resolved through the loader the game itself is on. */
     private static Class<?> game(String name) throws ReflectiveOperationException {
         return Class.forName(name, true, ClassLoader.getSystemClassLoader());
-    }
-
-    /**
-     * Finds one static member of the sibling artifact by name and argument count.
-     *
-     * <p>Name and arity is enough here and nowhere else in this class, because
-     * these are Ravel's own names on Ravel's own class: nothing renames them and
-     * nothing overloads them. Every game member goes through {@link Members}
-     * against the descriptor its version links, which is what a name shared by
-     * several methods needs.
-     */
-    private static Method method(Class<?> owner, String name, int arity)
-            throws ReflectiveOperationException {
-        for (Class<?> current = owner; current != null; current = current.getSuperclass()) {
-            for (Method candidate : current.getDeclaredMethods()) {
-                if (candidate.getName().equals(name)
-                        && candidate.getParameterCount() == arity) {
-                    candidate.setAccessible(true);
-                    return candidate;
-                }
-            }
-        }
-        throw new NoSuchMethodException(owner.getName() + "." + name + "/" + arity);
     }
 
     /**

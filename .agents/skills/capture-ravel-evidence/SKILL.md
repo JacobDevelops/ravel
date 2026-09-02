@@ -45,6 +45,32 @@ Read [references/recovery.md](references/recovery.md) before repairing Prism
 authentication, URI callbacks, blocked CurseForge downloads, or display
 failures.
 
+## Prove a client change without the operator's screen
+
+`scripts/prism-headless-launch.sh` runs the pinned client through a full Ravel
+proof on a virtual display it creates itself:
+
+```console
+.agents/skills/capture-ravel-evidence/scripts/prism-headless-launch.sh \
+  --phase-mtime --phase-reopen \
+  :99 PRISM_APPIMAGE HEADLESS_DATA_DIR INSTANCE_ID \
+  evidence/private/headless-1.21.1/RUN_ID
+```
+
+It refuses to start against a display that already exists, against a launcher
+root holding any account that is not `Offline`, and against an instance whose
+`options.txt` leaves a sound category above `0.0`. Those three refusals are what
+keep a run off the operator's screen, off their Microsoft account, and silent;
+none of them is a procedure anyone has to remember. It backs up `instance.cfg`
+and `options.txt` and restores both on every exit path, writes screenshots, the
+game's own stdout and a verdict list into the private run directory, and writes
+`target/headless-launch-verdict.txt` only when every assertion held.
+
+The display renders through llvmpipe, so no number the run produces is timing
+evidence. `--stop-after` halts at `title`, `world`, `commands` or `close` while
+the click coordinates for a screen are being measured, and `--keep-display`
+leaves the display up so a capture can be taken against it.
+
 ## Capture exact Minecraft timing
 
 1. Launch the pinned Minecraft instance with its built-in `--tracy` argument.

@@ -44,16 +44,19 @@ GLX/OpenGL is absent.
    quiet window when unavoidable UI setup remains.
 4. Never admit virtual-display performance numbers as native baseline evidence.
 
-Xvfb is the wrong server for this, and the symptom is specific enough to
-recognise without re-diagnosing it. `glxinfo -B` against an Xvfb display reports
-`Error: couldn't find RGB GLX visual or fbconfig`, with or without
+Which server serves GLX is a measurement, not a property to assume. The failing
+shape is specific enough to recognise without re-diagnosing it: `glxinfo -B`
+reports `Error: couldn't find RGB GLX visual or fbconfig`, with or without
 `LIBGL_ALWAYS_SOFTWARE=1`, and the client then dies in
 `com.mojang.blaze3d.platform.Window.<init>` with `Failed to create backend
-OpenGL`. That is the X server, not the game: Xvfb and Xnest support software
-rendering only, and this build advertises no usable GLX visual. Xephyr on the
-same host exposes OpenGL 4.5 core through llvmpipe, because it is built from the
-same X server as the session's Xorg. Choose Xephyr and check the renderer rather
-than tuning llvmpipe against Xvfb.
+OpenGL`. That is the X server, not the game.
+
+Xephyr exposes OpenGL 4.5 core through llvmpipe because it is built from the
+same X server as the session's Xorg, so it is the safe default. Xvfb has served
+the same 4.5 core profile through llvmpipe here since Mesa 25.2.8, which is what
+makes a proof that never touches the real display possible at all. Check the
+renderer on the display in hand before either one is used, and take the answer
+from `glxinfo -B` rather than from this paragraph.
 
 For focus-free world creation or other setup-only UI, Xephyr may be used when
 it exposes working GLX:
@@ -253,6 +256,42 @@ that path works.
 
 Do not confirm launcher capabilities with `strings` on the AppImage. It is a
 compressed squashfs image, so a missing string proves nothing.
+
+## Prism will not add an offline account
+
+Prism 11.0.3 refuses `Add Offline` outright when no Microsoft account is present:
+`You must add a Microsoft account that owns Minecraft before you can add an
+offline account.` The button is drawn enabled and the refusal arrives as a modal
+after the click, so the gate cannot be read off the screen.
+
+The offline account therefore has to be created in a launcher root that holds a
+Microsoft account at the moment of creation, which means copying `accounts.json`
+into the copy and deleting the Microsoft entry immediately afterwards. Do it with
+no network reachable, because a launcher that refreshes a Microsoft token rotates
+it and leaves the original root's stored token stale. Prism has no offline switch
+for this; a dead SOCKS proxy in the copy's `prismlauncher.cfg` is the setting that
+stops every request it makes:
+
+```ini
+ProxyType=SOCKS5
+ProxyAddr=127.0.0.1
+ProxyPort=1
+```
+
+With that in place the copy's account list shows the Microsoft entry as `Offline`
+and never contacts anything, `Add Offline` is accepted, and removing the Microsoft
+entry through `Remove` rewrites `accounts.json` with the offline entry alone. Keep
+the proxy: a launch on an offline account needs no network, and the metadata
+refresh a startup would otherwise attempt does not block one. Verify by reading
+the file back rather than by remembering:
+
+```console
+jq -e '[.accounts[] | select(.type != "Offline")] | length == 0' \
+  HEADLESS_DATA_DIR/accounts.json
+```
+
+`prism-headless-launch.sh` makes that same check its second refusal, so a root
+that still holds a Microsoft account cannot be launched by accident.
 
 ## Focus-free rule
 

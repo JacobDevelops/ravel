@@ -38,3 +38,26 @@ package manifest declares rather than on this mod's build.
 
 `Cargo.toml` beside this file lists one dependency, `ravel-sdk`, which is what a
 mod author's manifest lists.
+
+## Installing it
+
+[`package.json`](package.json) and [`provenance.json`](provenance.json) are what
+make this crate a package rather than only a crate — the metadata the loader
+validates before any of the code above runs. Copy the directory whole into an
+instance's `ravel/mods` and `ravel-cli host build` compiles it into that
+instance's host.
+
+Its `savedDataVersions` is the one field the table above forces: a mod that owns
+world data states the same version list in its manifest that
+`Mod::saved_data_declaration` states in its code, and
+`tests/conformance/tests/example_package.rs` compares the two. That file also
+recomputes the digests, the file list, and whether `"id"` still agrees with
+`#[declare_mod]`. Any edit to a declared file invalidates the manifest; refresh
+it with
+
+```console
+cargo xtask package digests examples/stateful-mod
+```
+
+which rewrites the digests and nothing else, and says so when there was nothing
+to do.

@@ -122,8 +122,12 @@ needing attention`, with the five compiled-in test mods gone. A world opened and
 the mod's 89-byte data file. With the property pointed at a missing file the JVM refused to start and
 named the property and the path. The instance has no natives directory and needs none.
 
-Only `minimal-mod` ships package metadata. `content-mod` and `stateful-mod` carry a crate and a README
-and no manifest or provenance record, so they cannot be installed until the tree gives them one.
+All three examples now ship package metadata. `content-mod` and `stateful-mod` have a `package.json`
+and a `provenance.json` of the same shape as `minimal-mod`'s, so any of the three can be copied whole
+into `<instance>/ravel/mods`. `ravel-build`'s compiling test installs every example that carries a
+manifest and requires the host build to succeed, and the scaffold gate checks every example's digests
+rather than only the one. No launch has run `content-mod` or `stateful-mod` yet; what is proven is that
+they install, verify and compile.
 
 ## Questions only Jacob can answer
 

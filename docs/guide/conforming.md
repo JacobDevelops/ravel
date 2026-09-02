@@ -81,6 +81,6 @@ put a path in a refusal detail expecting a player to see it.
   versions from the manifest; your content namespace, service names and packet
   ids come from the attribute. A mismatch produces a mod whose content is
   namespaced under a name the loader never heard of, and no check reports it.
-  Keep the two strings identical. The repository recomputes the agreement for its
-  own `examples/minimal-mod`, so the model you copy is at least correct; nothing
-  extends that to your crate.
+  Keep the two strings identical. The repository recomputes the agreement for
+  every example that ships a manifest, so whichever one you copy is at least
+  correct; nothing extends that to your crate.

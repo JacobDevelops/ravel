@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "content",
+  "version": "0.0.0",
+  "displayName": "Content",
+  "description": "A Ravel mod that adds content: a block, its item, its recipe, its tags and its names.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      ">=1.21.0, <27.0.0"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "authors": [
+    {
+      "name": "Ravel"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://tangled.org/jacobdevelops.tngl.sh/ravel",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "45cb88162f5e516f337056ebc2811b92496084901545bff37b075a2099ccc48f"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "9da0335c937bfcd7abb37844ac54263df07bb7dd43da76abb0709ca402bbe7de"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "c9ed665607a38db99d82744fee4e317d892a9b29b5a5ce33a58a03f4e6ec47aa"
+  }
+}

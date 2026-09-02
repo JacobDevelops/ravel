@@ -337,16 +337,31 @@ in
       '';
     };
 
-    # `examples/minimal-mod` is the package an author is told to copy, and a
-    # digest in it that no longer matches the file beside it teaches every author
-    # that a stale manifest is normal. `--check` writes nothing, so the gate
-    # reports the drift rather than papering over it.
+    # The examples are the packages an author is told to copy, and a digest in
+    # one that no longer matches the file beside it teaches every author that a
+    # stale manifest is normal. `--check` writes nothing, so the gate reports the
+    # drift rather than papering over it.
+    #
+    # The sweep is over what is on disk rather than a list written here: an
+    # example that grows a `package.json` is an installable package the moment it
+    # has one, and a named list would leave the next one unchecked.
     ravel-verify-example-package = {
-      description = "Check the example package's manifest digests.";
+      description = "Check every example package's manifest digests.";
       exec = ''
         set -euo pipefail
         cd "$DEVENV_ROOT"
-        cargo run --locked -q -p ravel-xtask -- package digests --check examples/minimal-mod
+        checked=0
+        for manifest in examples/*/package.json; do
+          [ -e "$manifest" ] || continue
+          cargo run --locked -q -p ravel-xtask -- package digests --check "$(dirname "$manifest")"
+          checked=$((checked + 1))
+        done
+        # An empty glob would leave this gate green while checking nothing, which
+        # is the failure mode a sweep has and a named list does not.
+        if [ "$checked" -eq 0 ]; then
+          echo "no example carries a package manifest, so this gate checked nothing" >&2
+          exit 1
+        fi
       '';
     };
 

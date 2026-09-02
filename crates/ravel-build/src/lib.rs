@@ -605,7 +605,7 @@ mod tests {
 
     use super::{
         BuildRefused, HOST_LIBRARY, MINECRAFT_VERSION_SELECTION, Sha256Digest, WORKSPACE_DIRECTORY,
-        build, plan,
+        build, crate_ident, plan,
     };
 
     /// The name the JVM resolves when it loads the built host.
@@ -1117,9 +1117,78 @@ ravel_sdk::export_mod!(Installed::default());
         );
 
         a_second_instance_keeps_its_own_host(&library, cache);
+        the_examples_this_repository_ships_install_and_compile(cache);
         a_package_that_names_no_value_refuses(cache);
         a_version_naming_no_tracked_directory_refuses(&plan, &instance, cache);
         fs::remove_dir_all(&instance).expect("cleanup");
+    }
+
+    /// Every example that ships package metadata is installable and builds.
+    ///
+    /// The fixtures above are written here, so they prove the build step and
+    /// nothing about the packages an author is actually told to copy. These are
+    /// those packages, installed the way launch 6 installed `minimal-mod`: the
+    /// directory copied whole into `ravel/mods`, with the digests it ships and
+    /// nothing rewritten on the way in. A manifest an example got wrong, a source
+    /// file it forgot to declare, or a crate that only compiles inside this
+    /// workspace all fail here rather than on the player's machine.
+    ///
+    /// The set is read off `examples/` rather than listed, so an example that
+    /// grows a `package.json` is compiled from that moment.
+    fn the_examples_this_repository_ships_install_and_compile(cache: &Path) {
+        let instance = instance("examples");
+        let examples = ravel_root().join("examples");
+        let mut installed = Vec::new();
+        let mut entries = fs::read_dir(&examples)
+            .expect("the repository has an examples directory")
+            .map(|entry| entry.expect("a readable directory entry").path())
+            .filter(|path| path.join(MANIFEST_FILE).is_file())
+            .collect::<Vec<_>>();
+        entries.sort();
+        for source in &entries {
+            let name = source
+                .file_name()
+                .and_then(std::ffi::OsStr::to_str)
+                .expect("an example with a portable name")
+                .to_owned();
+            copy_tree(source, &instance.join(PACKAGES_DIRECTORY).join(&name));
+            installed.push(name);
+        }
+        assert!(
+            installed.len() >= 3,
+            "the examples that ship a manifest are {installed:?}, which is fewer than the three \
+             the guide names"
+        );
+
+        let plan = planned(&instance);
+        let library = build(&plan, &instance, cache, &game())
+            .expect("every example this repository ships compiles as an installed package");
+
+        // Named rather than counted: a host that built while silently dropping a
+        // member would pass a length assertion on the plan alone.
+        let bytes = fs::read(&library).expect("the built library is readable");
+        for member in plan.members() {
+            assert!(
+                holds(&bytes, &crate_ident(&member.crate_name)),
+                "the built host does not name `{}`",
+                member.crate_name
+            );
+        }
+        fs::remove_dir_all(&instance).expect("cleanup");
+    }
+
+    /// Copies a package directory the way a player copies one in.
+    fn copy_tree(source: &Path, destination: &Path) {
+        fs::create_dir_all(destination).expect("a package directory is creatable");
+        for entry in fs::read_dir(source).expect("a readable package directory") {
+            let entry = entry.expect("a readable directory entry");
+            let target = destination.join(entry.file_name());
+            if entry.file_type().expect("a readable entry kind").is_dir() {
+                copy_tree(&entry.path(), &target);
+            } else {
+                fs::copy(entry.path(), &target).expect("a readable package file");
+            }
+        }
     }
 
     /// The version is this build's input, not whatever the shell was holding.

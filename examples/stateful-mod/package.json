@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "stateful",
+  "version": "0.0.0",
+  "displayName": "Stateful",
+  "description": "A Ravel mod with settings, migrated world data and a service other mods call.",
+  "compatibility": {
+    "ravel": ">=0.0.0, <1.0.0",
+    "minecraft": [
+      ">=1.21.0, <27.0.0"
+    ]
+  },
+  "sides": [
+    "client",
+    "integrated-server",
+    "dedicated-server"
+  ],
+  "savedDataVersions": [
+    1,
+    2
+  ],
+  "authors": [
+    {
+      "name": "Ravel"
+    }
+  ],
+  "license": "MIT OR Apache-2.0",
+  "source": {
+    "repository": "https://tangled.org/jacobdevelops.tngl.sh/ravel",
+    "files": [
+      {
+        "path": "Cargo.toml",
+        "sha256": "c471ce4ad362d134d33498bd71fef76d1e376bd5d89f9762cee74c5aed207c14"
+      },
+      {
+        "path": "src/lib.rs",
+        "sha256": "f0fb0473c6a6697ee3506997d8ea78c952e1da8d1da1273bf0cd6fedf80873de"
+      }
+    ]
+  },
+  "provenance": {
+    "record": "provenance.json",
+    "sha256": "9fea91d9bd6e21d18dc08d1dbe8a483502859d6d8f8edc78b37cd48b111ca896"
+  }
+}

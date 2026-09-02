@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "kind": "ravel-package",
+    "id": "content",
+    "version": "0.0.0"
+  },
+  "implementationMethod": "original",
+  "sources": [],
+  "rights": [
+    {
+      "surface": "code",
+      "status": "cleared",
+      "basis": "Original Ravel code written for this repository and licensed under MIT OR Apache-2.0."
+    },
+    {
+      "surface": "models",
+      "status": "cleared",
+      "basis": "The one model the mod supplies is written here; it names `minecraft:block/lantern` as its parent, which is an identifier the game resolves rather than an asset this package carries."
+    },
+    {
+      "surface": "behaviour",
+      "status": "not-applicable",
+      "basis": "The mod declares a block, an item, a recipe and two tags of its own; it reimplements nothing."
+    }
+  ],
+  "attribution": [],
+  "publication": {
+    "status": "cleared",
+    "reviewedBy": "ravel-maintainers",
+    "notes": "Original example carrying no third-party code, assets or branding."
+  }
+}

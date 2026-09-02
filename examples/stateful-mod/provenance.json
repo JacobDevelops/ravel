@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "kind": "ravel-package",
+    "id": "stateful",
+    "version": "0.0.0"
+  },
+  "implementationMethod": "original",
+  "sources": [],
+  "rights": [
+    {
+      "surface": "code",
+      "status": "cleared",
+      "basis": "Original Ravel code written for this repository and licensed under MIT OR Apache-2.0."
+    },
+    {
+      "surface": "behaviour",
+      "status": "not-applicable",
+      "basis": "The mod keeps its own journal, migrates its own saved data and answers its own service; it reimplements nothing."
+    }
+  ],
+  "attribution": [],
+  "publication": {
+    "status": "cleared",
+    "reviewedBy": "ravel-maintainers",
+    "notes": "Original example containing no third-party code, assets, branding, or paths."
+  }
+}

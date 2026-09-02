@@ -396,3 +396,36 @@ say where it came from.
   aggregate remains the fallback.
 - Supporting another Minecraft version requires new inventory pins and the same
   byte-preservation and control-flow measurements.
+
+## The registration API is per version, and so is the source
+
+This record is written against a codec-era registration: a `SavedDataType`
+carrying a name, a supplier, a codec and a fixer family. Minecraft 1.21.1 has no
+such type in any spelling. It registers saved data through
+`SavedData.Factory(Supplier, BiFunction, DataFixTypes)` and serializes through
+`CompoundTag` rather than through a codec, and `SavedData` declares
+`save(CompoundTag, HolderLookup.Provider)` abstract where the codec era declares
+none.
+
+That is not a rename, so the role bindings in each version's `stubs.toml` — which
+carry the screen templates across every rename, `Identifier` to
+`ResourceLocation` among them — cannot carry this one. The mechanism for it is a
+per-version screen source: `jvm/screen/template/<version>/` holds a template that
+replaces the shared one of its own name, and 1.21.1's `RavelWorldData` is written
+against the factory era while the shared one stays codec-era. The generator
+refuses an override that replaces nothing, so the screen set stays the same under
+every version and the agent jar can open the same constants.
+
+Keep the split. A binding answers a rename and costs a template no words; an
+override buys a second copy of a screen that has to be maintained twice. Nothing
+detects an override that only renames, so a reviewer has to.
+
+What this does not do is make 1.21.1's persistence work. `dev.ravel.jvm.Persistence`
+in the always-present agent jar resolves the storage by member name and arity —
+`get` with one argument, `set` with two, `type` with none — and those are 26.1.2's
+shapes. 1.21.1 reaches its storage through `computeIfAbsent(SavedData$Factory,
+String)` and has no `tryWrite` at all, which is why that version's inventory
+records `save.compute-if-absent`, `save.save-and-join` and `save.try-write` as
+non-goals. So 1.21.1's saved-data half is generated and compiled and is not
+driven, and the adapter that would drive it is the unowned re-pin `ROADMAP.md`
+records against ADG-3.

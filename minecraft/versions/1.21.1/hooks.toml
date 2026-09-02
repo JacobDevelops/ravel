@@ -1,0 +1,349 @@
+# Reviewed hook capability inventory for Minecraft 1.21.1.
+#
+# Authored from the 26.1.2 inventory by resolving every entry against the pinned
+# 1.21.1 client jar through Mojang's published client mapping, by two independent
+# passes: one over the mapping text alone, one over the jar's own class files and
+# access flags. The two agree on all thirty-seven of 26.1.2's entries. This file
+# carries the twenty-seven that resolve unchanged.
+#
+# Two more are carried at a drifted descriptor with a re-reviewed sentence, and
+# they are carried rather than dropped because `jvm/bootstrap`'s `Transformer`
+# names both seams: a version that declared neither would render no such method
+# and the transform would silently not apply, which the scaffold contract
+# refuses. `world.open-persistence` takes four parameters here and no `Optional`,
+# so its sentence no longer promises the selected data pack list; it still
+# returns void, which is what keeps `refuses = true` legal.
+# `screen.title-menu-options` returns void where 26.1.2 returns an int, which
+# costs its sentence nothing because that sentence only ever promised
+# observation.
+#
+# The other eight are recorded non-goals for this version rather than omissions,
+# and they are of three kinds. Four drift only in descriptor and need a
+# re-reviewed capability sentence before they can be carried, which is review
+# this file has not had: `chat.allowed-character` takes a `char`, `recipe.apply`
+# loses its `RecipeMap`, `resource.load-server-resources` takes seven parameters
+# with an `int` where 26.1.2 has a permission set, and `screen.init-sized` takes
+# the client. One consequence of that list is worth stating rather than leaving
+# to be discovered: `ravel-bootstrap` maps `resource.load-server-resources` onto
+# `ResourcesReloaded`, so under this version that event is raised only by
+# `resource.reload-client-packs` and a server-side reload does not raise it.
+# Three are the factory-era persistence API:
+# `SavedDataStorage` is `DimensionDataStorage` here and its registration is a
+# `SavedData$Factory` rather than a codec-era type, so `save.compute-if-absent`
+# and `save.save-and-join` need targets that decision has not been amended for,
+# and `save.try-write` has no 1.21.1 equivalent at all — `set(String,SavedData)`
+# registers where `tryWrite` writes, which is a different sentence.
+#
+# The tenth is `screen.extract-render-state`, and it is absent because 1.21.1
+# predates the architecture it belongs to. Both passes agree that `Screen`
+# declares no `extractRenderState` and that `GuiGraphicsExtractor` is in this
+# mapping under no name, so there is nothing here to rename it to. Retargeting it
+# at `Screen.render` was considered and refused: `render` is where drawing
+# happens and a refusable hook on it would suppress a frame, which is more than
+# the capability sentence promises. Per-frame screen observation is a 26.1.2-era
+# capability and this version does not offer it.
+#
+# Every rule the 26.1.2 header states holds here unchanged: exact JVM descriptors
+# in the reviewed Mojang name space, one resolution per entry, no capability
+# sentence that promises more than observe-or-veto, and no field member name
+# inside a method's sentence.
+
+schemaVersion = 1
+minecraft = "1.21.1"
+[[hook]]
+id = "chat.filter-text"
+class = "net.minecraft.util.StringUtil"
+member = "filterText"
+descriptor = "(Ljava/lang/String;Z)Ljava/lang/String;"
+kind = "static-method"
+capability = "Observe or veto chat text, in the overload that keeps newlines."
+
+[[hook]]
+id = "chat.filter-text-simple"
+class = "net.minecraft.util.StringUtil"
+member = "filterText"
+descriptor = "(Ljava/lang/String;)Ljava/lang/String;"
+kind = "static-method"
+capability = "Observe or veto chat text, in the overload that strips newlines. Shares a name with the entry above and is distinguished only by descriptor."
+
+[[hook]]
+id = "player.name-valid"
+class = "net.minecraft.util.StringUtil"
+member = "isValidPlayerName"
+descriptor = "(Ljava/lang/String;)Z"
+kind = "static-method"
+capability = "Accept or reject a player name."
+
+[[hook]]
+id = "input.smooth-delta"
+class = "net.minecraft.util.SmoothDouble"
+member = "getNewDeltaValue"
+descriptor = "(DD)D"
+kind = "instance-method"
+capability = "Observe or veto smoothed input deltas."
+
+[[hook]]
+id = "input.smooth-last-amount"
+class = "net.minecraft.util.SmoothDouble"
+member = "lastAmount"
+descriptor = "D"
+kind = "instance-field"
+capability = "Read the previous smoothed amount, proving field extraction as well as method extraction."
+
+# Registry and content registration. MappedRegistry is the only concrete writable
+# registry, so blocks, items and recipes all route through one register.
+
+[[hook]]
+id = "registry.register"
+class = "net.minecraft.core.MappedRegistry"
+member = "register"
+descriptor = "(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;"
+kind = "instance-method"
+capability = "Observe or veto one entry being added to a registry, naming the key and the value being registered."
+
+[[hook]]
+id = "registry.freeze"
+class = "net.minecraft.core.MappedRegistry"
+member = "freeze"
+descriptor = "()Lnet/minecraft/core/Registry;"
+kind = "instance-method"
+capability = "Close Ravel's registration barrier with the game's own, at the moment the registry stops accepting entries."
+
+[[hook]]
+id = "registry.closed"
+class = "net.minecraft.core.MappedRegistry"
+member = "frozen"
+descriptor = "Z"
+kind = "instance-field"
+capability = "Read whether a registry still accepts entries."
+
+[[hook]]
+id = "registry.built-in-freeze"
+class = "net.minecraft.core.registries.BuiltInRegistries"
+member = "freeze"
+descriptor = "()V"
+kind = "static-method"
+capability = "Observe the built-in registries closing, which is the last point new content can be added."
+
+[[hook]]
+id = "registry.built-in-bootstrap"
+class = "net.minecraft.core.registries.BuiltInRegistries"
+member = "bootStrap"
+descriptor = "()V"
+kind = "static-method"
+capability = "Observe the built-in registries being populated, which is the earliest point content registration is possible."
+
+[[hook]]
+id = "server.tick"
+class = "net.minecraft.server.MinecraftServer"
+member = "tickServer"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+kind = "instance-method"
+capability = "Run once per server tick, carrying the game's own has-time-left predicate."
+
+[[hook]]
+id = "server.tick-integrated"
+class = "net.minecraft.client.server.IntegratedServer"
+member = "tickServer"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+kind = "instance-method"
+capability = "Run once per integrated-server tick. Matches the entry above on name and descriptor and differs only in class, which is what proves the resolution key includes it."
+
+[[hook]]
+id = "server.tick-count"
+class = "net.minecraft.server.MinecraftServer"
+member = "tickCount"
+descriptor = "I"
+kind = "instance-field"
+capability = "Read how many ticks the server has run."
+
+[[hook]]
+id = "server.average-tick-time"
+class = "net.minecraft.server.MinecraftServer"
+member = "getAverageTickTimeNanos"
+descriptor = "()J"
+kind = "instance-method"
+capability = "Observe the server's own averaged tick time, which opt-in profiling reports rather than recomputes."
+
+[[hook]]
+id = "server.tick-times"
+class = "net.minecraft.server.MinecraftServer"
+member = "getTickTimesNanos"
+descriptor = "()[J"
+kind = "instance-method"
+capability = "Observe the server's per-tick timing buffer. Its array return type crosses untouched, because only parameters are carried."
+
+[[hook]]
+id = "client.tick"
+class = "net.minecraft.client.Minecraft"
+member = "tick"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Run once per client tick."
+
+[[hook]]
+id = "client.run-tick"
+class = "net.minecraft.client.Minecraft"
+member = "runTick"
+descriptor = "(Z)V"
+kind = "instance-method"
+capability = "Run once per client frame, told whether the game will render this pass."
+
+# Commands. Vanilla registers every command inside the Commands constructor, so
+# the seams here are the built command table and the execution path.
+
+[[hook]]
+id = "command.table"
+class = "net.minecraft.commands.Commands"
+member = "dispatcher"
+descriptor = "Lcom/mojang/brigadier/CommandDispatcher;"
+kind = "instance-field"
+capability = "Observe the built command tree arriving, as a handle whose declared class is all an observer can read of it."
+
+[[hook]]
+id = "command.perform-prefixed"
+class = "net.minecraft.commands.Commands"
+member = "performPrefixedCommand"
+descriptor = "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V"
+kind = "instance-method"
+capability = "Observe or veto one command being run, carrying its source and its text."
+
+# Resources and data reload.
+
+[[hook]]
+id = "resource.register-reload-listener"
+class = "net.minecraft.server.packs.resources.ReloadableResourceManager"
+member = "registerReloadListener"
+descriptor = "(Lnet/minecraft/server/packs/resources/PreparableReloadListener;)V"
+kind = "instance-method"
+capability = "Observe a reload listener being registered, which is how a mod joins the reload sequence."
+
+[[hook]]
+id = "resource.reload-client-packs"
+class = "net.minecraft.client.Minecraft"
+member = "reloadResourcePacks"
+descriptor = "()Ljava/util/concurrent/CompletableFuture;"
+kind = "instance-method"
+capability = "Observe a client resource pack reload starting."
+
+# Screens and GUI. 26.1.2 has no Screen.render; screens draw through render-state
+# extraction, so extractRenderState is the per-frame seam.
+
+[[hook]]
+id = "screen.init"
+class = "net.minecraft.client.gui.screens.Screen"
+member = "init"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe a screen building its widgets, in the overridable overload."
+
+[[hook]]
+id = "screen.tick"
+class = "net.minecraft.client.gui.screens.Screen"
+member = "tick"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Run once per tick while a screen is open."
+
+[[hook]]
+id = "screen.set"
+class = "net.minecraft.client.Minecraft"
+member = "setScreen"
+descriptor = "(Lnet/minecraft/client/gui/screens/Screen;)V"
+kind = "instance-method"
+capability = "Observe the open screen changing, carrying the screen being opened."
+
+[[hook]]
+id = "save.set-dirty"
+class = "net.minecraft.world.level.saveddata.SavedData"
+member = "setDirty"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe saved data being marked for writing."
+
+[[hook]]
+id = "save.save-everything"
+class = "net.minecraft.server.MinecraftServer"
+member = "saveEverything"
+descriptor = "(ZZZ)Z"
+kind = "instance-method"
+capability = "Observe a full world save, told whether it is silent, flushing, and forced."
+
+# The two ADG-7 world persistence seams. These are the adapter crossings rather
+# than observations: the entries above watch what the game does with saved data,
+# and these two carry Ravel's own aggregate into and out of it. Both were checked
+# against the pinned class file's member table for name, descriptor, kind and
+# static flag, and ADG-7 records why each is the single common seam for its half.
+
+[[hook]]
+id = "world.save-persistence"
+class = "net.minecraft.server.MinecraftServer"
+member = "saveAllChunks"
+descriptor = "(ZZZ)Z"
+kind = "instance-method"
+capability = "Offer Ravel's aggregate for the saving world, on the one seam both autosave and shutdown reach, told whether the save is silent, flushing, and forced."
+
+# Carried at a drifted descriptor. 1.21.1 drops the `Optional` of selected data
+# packs, so four parameters where 26.1.2 has five, and the sentence below drops
+# that promise with it. The return is still void, which is the only reason the
+# prologue may return from it at all: ADG-1's Phase C amendment bounds that power
+# to the entries named here, and an early return from anything but a void method
+# would have to invent a value, which the generator refuses outright.
+[[hook]]
+id = "world.open-persistence"
+class = "net.minecraft.client.Minecraft"
+member = "doWorldLoad"
+descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Lnet/minecraft/server/packs/repository/PackRepository;Lnet/minecraft/server/WorldStem;Z)V"
+kind = "instance-method"
+refuses = true
+capability = "Admit or refuse a world's Ravel data before the load body's first persistent mutation, carrying the storage access that names the world, the pack repository, the world stem, and the game's advisory new-world marker."
+
+# Carried at a drifted descriptor. 1.21.1 returns void where 26.1.2 returns an
+# int. The sentence is unchanged because it only ever promised observation, and
+# an observation hook reads its arguments rather than its return.
+[[hook]]
+id = "screen.title-menu-options"
+class = "net.minecraft.client.gui.screens.TitleScreen"
+member = "createNormalMenuOptions"
+descriptor = "(II)V"
+kind = "instance-method"
+capability = "Observe the main menu button column being built, which is where a mods button goes."
+
+# The eight capabilities this version reviewed and does not carry. The header
+# above explains the three kinds at length; these are the same eight as data, so
+# that a caller naming one of them is told it named a decision rather than a
+# typo. `ravel-bootstrap` is the caller that needs this: its event table names
+# `resource.load-server-resources`, and without a declaration here that lookup
+# cannot tell "this version chose not to" from "someone misspelled it".
+
+[[nonGoal]]
+id = "chat.allowed-character"
+reason = "Drifted to a `char` parameter and the capability sentence has not been re-reviewed at the new descriptor."
+
+[[nonGoal]]
+id = "recipe.apply"
+reason = "Drifted: no `RecipeMap` type exists here, and the capability sentence has not been re-reviewed at the new descriptor."
+
+[[nonGoal]]
+id = "resource.load-server-resources"
+reason = "Drifted to seven parameters with an `int` where 26.1.2 carries a permission set, and the capability sentence has not been re-reviewed. `ravel-bootstrap` maps this onto ResourcesReloaded, so under this version that event is raised only by `resource.reload-client-packs` and a server-side reload does not raise it."
+
+[[nonGoal]]
+id = "screen.init-sized"
+reason = "Drifted: the sizing overload takes the client here, and the capability sentence has not been re-reviewed at the new descriptor."
+
+[[nonGoal]]
+id = "save.compute-if-absent"
+reason = "Factory-era persistence: this version registers saved data through `SavedData$Factory` rather than a codec-era type, and ADG-7 has not been amended for a target of that shape."
+
+[[nonGoal]]
+id = "save.save-and-join"
+reason = "Factory-era persistence: `DimensionDataStorage` flushes through `save()` and performs no join, so the 26.1.2 sentence does not describe anything this version does."
+
+[[nonGoal]]
+id = "save.try-write"
+reason = "No equivalent at this version. `set(String, SavedData)` registers where `tryWrite` writes, which is a different capability sentence rather than a renamed one."
+
+[[nonGoal]]
+id = "screen.extract-render-state"
+reason = "This version predates the architecture. `Screen` declares no `extractRenderState` and the mapping names no `GuiGraphicsExtractor`, so there is nothing to retarget; retargeting at `Screen.render` was refused because a refusable hook there would suppress a frame."

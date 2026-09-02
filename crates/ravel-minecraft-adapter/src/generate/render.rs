@@ -426,6 +426,21 @@ pub(super) fn bindings(adapter: &Adapter, inventory: &Inventory, resolved: &[Res
         adapter.minecraft
     );
 
+    let _ = writeln!(
+        text,
+        "/// Capabilities this version reviewed and deliberately does not carry.\n\
+         ///\n\
+         /// A caller naming one of these is naming a decision rather than a typo.\n\
+         pub const NON_GOALS: [HookId; {}] = [{}];\n",
+        inventory.non_goals.len(),
+        inventory
+            .non_goals
+            .iter()
+            .map(|non_goal| format!("HookId::new(\"{}\")", non_goal.id))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
     for (hook, target) in inventory.hooks.iter().zip(resolved) {
         let _ = writeln!(
             text,
@@ -1286,6 +1301,7 @@ mod tests {
                 schema_version: 1,
                 minecraft: "0.0.0-test".to_owned(),
                 hooks,
+                non_goals: Vec::new(),
             },
             resolved,
         )

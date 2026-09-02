@@ -2,7 +2,7 @@
 
 //! Shared adapter runtime for version data and generated bindings.
 
-use ravel_minecraft::{HookTarget, VersionAdapter};
+use ravel_minecraft::{HookId, HookTarget, VersionAdapter};
 
 #[cfg(feature = "generate")]
 pub mod generate;
@@ -27,6 +27,10 @@ impl VersionAdapter for PinnedAdapter {
 
     fn targets(&self) -> &[HookTarget] {
         &pinned::TARGETS
+    }
+
+    fn non_goals(&self) -> &[HookId] {
+        &pinned::NON_GOALS
     }
 }
 
@@ -68,11 +72,16 @@ mod tests {
             adapter.targets().len() >= 6,
             "the reviewed inventory carries at least the six ADG-3 resolved"
         );
+        // The JVM writes an internal name with slashes and never with dots. A
+        // class in a package therefore carries a slash, and one the version
+        // links into the unnamed package carries neither — which is most of the
+        // game under an obfuscated version, so asserting a slash was asserting
+        // that this build selected an unobfuscated one.
         assert!(
             adapter
                 .targets()
                 .iter()
-                .all(|target| target.class().contains('/')),
+                .all(|target| !target.class().contains('.')),
             "a target names its class the way the JVM writes it"
         );
         assert_eq!(adapter.target(HookId::new("absent.hook")), None);

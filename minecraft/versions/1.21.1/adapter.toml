@@ -1,0 +1,80 @@
+# Adapter inputs and exact upstream hashes for Minecraft 1.21.1.
+#
+# The rules the 26.1.2 file states hold unchanged: these are the only
+# inputs the binding generator may read, every one of them pins a hash including
+# the tracked ones, and editing hooks.toml, stubs.toml or reflection.toml means
+# updating the hash below.
+#
+# What differs is the mapping source. 1.21.1 ships an obfuscated client jar —
+# 8269 class entries, 26 of which keep a `net/minecraft/...` path because they
+# carry `@DontObfuscate` — and Mojang publishes a client mapping for it from the
+# same version manifest that publishes the jar. So the class files are not the
+# mapping here, and `mappingSource` says so. `client.txt` is declared exactly as
+# the jar is and is never tracked: it is upstream material this repository does
+# not own, derived from the build that produced the jar, and at 9.6 MB larger
+# than every tracked file of a version put together. What is tracked is its hash.
+
+schemaVersion = 1
+minecraft = "1.21.1"
+
+mappingSource = "official-proguard-mappings"
+
+[inputs.clientJar]
+path = "tests/fixtures/local/tooling/minecraft-1.21.1/client.jar"
+sha256 = "499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99"
+bytes = 26836906
+
+# The published mapping the linked names are read from. Its sha1 is the one
+# 1.21.1's own version manifest pins for `client_mappings`, which is the trail
+# back from this hash to Mojang.
+[inputs.clientMappings]
+path = "tests/fixtures/local/tooling/minecraft-1.21.1/client.txt"
+sha256 = "140c47931cccc8fc9e4c22d7603e2d714d1a953a146f51ea7397d95c955536ec"
+bytes = 9598610
+upstream = "https://piston-data.mojang.com/v1/objects/2244b6f072256667bcd9a73df124d6c58de77992/client.txt"
+
+# 1.21.1 names DataFixerUpper 8.0.16, where 26.1.2 names 9.0.19. The hashes
+# below were measured on the artefact `libraries.minecraft.net` serves, and its
+# sha1 matches the `com.mojang:datafixerupper:8.0.16` artifact pin in 1.21.1's
+# version manifest.
+[inputs.dataFixerJar]
+path = "tests/fixtures/local/tooling/minecraft-1.21.1/datafixerupper-8.0.16.jar"
+sha256 = "ffc138bc2596c291781b0d5e211ccac51f0f2345f27fc2742f335cedf7e2870d"
+bytes = 724313
+upstream = "https://libraries.minecraft.net/com/mojang/datafixerupper/8.0.16/datafixerupper-8.0.16.jar"
+
+[inputs.versionManifest]
+path = "tests/fixtures/local/tooling/minecraft-1.21.1/version.json"
+sha256 = "06ba60da1f8c6fe469bed1b348a064648bfdda57fc2fb56920e3f177f844fdfd"
+upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa605a432494e736db3/1.21.1.json"
+
+# The three hashes below pin the reviewed files beside this one.
+
+[inputs.hookInventory]
+path = "minecraft/versions/1.21.1/hooks.toml"
+sha256 = "c3d0c5d8d873fb6e4097b3931c047bc4676d7d171eaf078be0e65e52fddcaaa1"
+bytes = 15196
+
+[inputs.stubSeeds]
+path = "minecraft/versions/1.21.1/stubs.toml"
+sha256 = "56488cd9747e805572d3e22ef6d70cb5409169c2ea3b17aa127fc8ecf3c22c7f"
+bytes = 7949
+
+[inputs.reflectiveSurface]
+path = "minecraft/versions/1.21.1/reflection.toml"
+sha256 = "114b20c7a6687f202d9209638bddfdb8b1362796b7ebff17e2841e2bb382099c"
+bytes = 2636
+
+# The two locks below are generated, not fetched, and they are pinned for the
+# machines that cannot check them any other way. Only RAVEL_REGENERATE_LOCKS
+# rewrites them, and it rewrites the locks in the same breath.
+
+[inputs.mappingsLock]
+path = "minecraft/versions/1.21.1/mappings.lock"
+sha256 = "381b9bf63f0dcbd4f5f7a36131b5455242cbbd0d1ce8f33e923cb8274fa14ced"
+bytes = 6506
+
+[inputs.stubsLock]
+path = "minecraft/versions/1.21.1/stubs.lock"
+sha256 = "77e4afc75e363c70b7f5f76d12170e59b25c6bcacb6bdd00e835d69284cf6c24"
+bytes = 8878

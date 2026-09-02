@@ -1,0 +1,183 @@
+# Game classes the Ravel settings screen compiles against, for Minecraft 1.21.1.
+#
+# Every rule the 26.1.2 header states holds. What differs is what a role binds
+# to, which is the point of a role: the screen templates are shared and name
+# roles, and this file says which class and which member each role means here.
+#
+# Two bindings differ from 26.1.2's and both are renames the templates never see.
+# `Identifier` is `ResourceLocation` at 1.21.1 — and it is absent from this file
+# entirely, because the only template that named it is the one this version
+# overrides. `Font` spells `splitIgnoringLanguage` as `split`, which is the
+# member binding below and the reason member roles exist at all.
+#
+# The persistence half is not a rename and is not bound here. 1.21.1 declares no
+# `SavedDataType` in any spelling and registers saved data through
+# `SavedData$Factory` over `CompoundTag`, so `jvm/screen/template/1.21.1/`
+# carries its own `RavelWorldData` and the roles below are that source's rather
+# than the shared one's. `Codec`, `MapCodec`, `ExtraCodecs` and `Identifier` are
+# absent for the same reason: nothing this version renders names them.
+
+schemaVersion = 1
+minecraft = "1.21.1"
+
+[[stub]]
+# The screen's superclass. `<init>` is the constructor it calls through, `init`
+# is the method it overrides to build its widgets, `addRenderableWidget` is how
+# each one is added, and `onClose` is what the done button calls. `font`, `width`
+# and `height` are the fields a widget is positioned and measured against.
+role = "Screen"
+class = "net.minecraft.client.gui.screens.Screen"
+# `init()` and the sizing `init(Minecraft, int, int)` link under different names
+# here, and the screens override the no-argument one.
+members = [
+  "<init>",
+  { role = "init", member = "init", parameters = 0 },
+  "addRenderableWidget",
+  "onClose",
+  "font",
+  "width",
+  "height",
+]
+
+[[stub]]
+# The title-menu bridge asks the running client to replace its current screen.
+role = "Minecraft"
+class = "net.minecraft.client.Minecraft"
+members = ["getInstance", "setScreen"]
+
+[[stub]]
+# The screen's title and every widget label cross as one of these.
+# 1.21.1 links `translatable(String)` and `translatable(String, Object[])` under
+# different names, so naming the member is not naming the overload. Every screen
+# passes one key and no arguments, which is the count below.
+role = "Component"
+class = "net.minecraft.network.chat.Component"
+members = [
+  { role = "translatable", member = "translatable", parameters = 1 },
+  "literal",
+]
+
+[[stub]]
+# What `addRenderableWidget` takes. It is seeded with no member because nothing
+# calls one: it is here so the widget classes below declare it as a supertype and
+# are assignable to that parameter, which is the erased type the jar declares.
+role = "GuiEventListener"
+class = "net.minecraft.client.gui.components.events.GuiEventListener"
+members = []
+
+[[stub]]
+# The base every widget below extends, and the class that carries the
+# `GuiEventListener` edge. `setMessage` is what a widget that changes its own
+# label calls.
+role = "AbstractWidget"
+class = "net.minecraft.client.gui.components.AbstractWidget"
+members = ["setMessage"]
+
+[[stub]]
+# Toggles and choices are both buttons that cycle a value and relabel themselves,
+# so one button covers both and no checkbox or cycle button is seeded. `Button`
+# is reached through `builder`, which is why the two nested types below are here.
+role = "Button"
+class = "net.minecraft.client.gui.components.Button"
+members = ["builder"]
+
+[[stub]]
+role = "Button$Builder"
+class = "net.minecraft.client.gui.components.Button$Builder"
+members = ["bounds", "build"]
+
+[[stub]]
+# Seeded for its method rather than only for its name: the screen implements this
+# interface for every button it builds.
+role = "Button$OnPress"
+class = "net.minecraft.client.gui.components.Button$OnPress"
+members = ["onPress"]
+
+[[stub]]
+# A bounded number is the only thing a slider can honestly draw, and this is the
+# only widget the screen subclasses. `value` is the position it reads, and
+# `updateMessage` and `applyValue` are what the jar declares abstract.
+role = "AbstractSliderButton"
+class = "net.minecraft.client.gui.components.AbstractSliderButton"
+members = ["<init>", "value", "updateMessage", "applyValue"]
+
+[[stub]]
+# Everything a slider or a choice cannot constrain is typed into one of these.
+role = "EditBox"
+class = "net.minecraft.client.gui.components.EditBox"
+members = ["<init>", "getValue", "setValue", "setEditable", "setMaxLength"]
+
+[[stub]]
+# The screen already reaches this class through `Screen.font`; this seeds the one
+# method it calls on it. A row wider than the widget drawing it renders only its
+# tail, because `EditBox.setValue` parks the cursor at the end and the box scrolls
+# its display window to the cursor. Splitting is therefore not decoration, it is
+# what makes a long row readable at all, and it is the font's job: the game
+# measures glyphs, and a screen that counted characters instead would break on
+# every script whose glyphs are not one width.
+#
+# 1.21.1 calls that job `split`. The member role below is the word the shared
+# template writes, and this line is what carries that template across the rename.
+role = "Font"
+class = "net.minecraft.client.gui.Font"
+members = [{ role = "splitIgnoringLanguage", member = "split" }]
+
+[[stub]]
+# What splitting takes and answers. `of` wraps one string, `getString` reads one
+# split line back out. Seeded rather than reusing `Component` because the split
+# answers this type, and a screen that had to name `Component` on the way back
+# would be asserting an edge between the two that only the jar can state.
+# `of(String)` and `of(String, Style)` link under different names here, and the
+# screens wrap a bare string.
+role = "FormattedText"
+class = "net.minecraft.network.chat.FormattedText"
+members = [{ role = "of", member = "of", parameters = 1 }, "getString"]
+
+[[stub]]
+# The superclass of Ravel's one stored object. It is abstract, which is the whole
+# reason this half cannot live in the agent jar: storing a Ravel-owned saved data
+# means defining a concrete subclass of a game type, and reflection defines none.
+# `save` is what this version declares abstract and the override implements.
+# `setDirty()` and `setDirty(boolean)` link under different names here, so the
+# no-argument one is named rather than left to be picked. Nothing writes this
+# placeholder today; the binding is here because a seeded member that resolves to
+# two names is a defect whether or not a template has reached it yet.
+role = "SavedData"
+class = "net.minecraft.world.level.saveddata.SavedData"
+members = [
+  "<init>",
+  { role = "setDirty", member = "setDirty", parameters = 0 },
+  "save",
+]
+
+[[stub]]
+# 1.21.1's registration, and the type that has no 26.1.2 counterpart. Its
+# constructor takes a supplier, a deserializer and a fixer family; there is no
+# codec anywhere in it, which is why this version overrides the shared template
+# rather than binding a role in it.
+role = "SavedDataFactory"
+class = "net.minecraft.world.level.saveddata.SavedData$Factory"
+members = ["<init>"]
+
+[[stub]]
+# What this version serializes through. The aggregate is one opaque byte array,
+# so one put and one get is the whole surface.
+role = "CompoundTag"
+class = "net.minecraft.nbt.CompoundTag"
+members = ["putByteArray", "getByteArray"]
+
+[[stub]]
+# The second parameter of the save this version declares abstract. Seeded with no
+# member because nothing calls one: the override has to write the type down, not
+# to use it.
+role = "HolderLookupProvider"
+class = "net.minecraft.core.HolderLookup$Provider"
+members = []
+
+[[stub]]
+# The fixer family the factory's constructor takes. Seeded for the one constant
+# Ravel names, whose byte preservation across the pinned version range is what
+# ADG-7's evidence measured.
+role = "DataFixTypes"
+class = "net.minecraft.util.datafix.DataFixTypes"
+members = ["SAVED_DATA_COMMAND_STORAGE"]

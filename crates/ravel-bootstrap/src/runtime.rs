@@ -1048,9 +1048,18 @@ mod tests {
         );
     }
 
+    /// Every hook this runtime names is one the selected version decided about.
+    ///
+    /// Carried or declared a non-goal, and nothing else. The distinction is the
+    /// point: a version that reviewed a capability and chose not to offer it
+    /// raises fewer events, which is a fact its inventory states, while a hook
+    /// no version has ever heard of is a typo in this file. Asserting the id is
+    /// carried would refuse the first along with the second, and did — it is
+    /// why this suite passed only against the version whose inventory happens to
+    /// be the fullest.
     #[test]
-    fn every_hook_the_runtime_projects_is_one_the_reviewed_inventory_carries() {
-        use ravel_minecraft::VersionAdapter;
+    fn every_hook_the_runtime_projects_is_one_the_reviewed_inventory_decided_about() {
+        use ravel_minecraft::{HookId, VersionAdapter};
         use ravel_minecraft_adapter::PinnedAdapter;
 
         let reviewed: Vec<&str> = PinnedAdapter
@@ -1059,12 +1068,32 @@ mod tests {
             .map(|target| target.id().as_str())
             .collect();
 
-        for (hook, _) in EVENTS {
-            assert!(reviewed.contains(&hook), "{hook} is not a reviewed hook");
+        for hook in EVENTS.iter().map(|(hook, _)| *hook).chain([COMMAND]) {
+            assert!(
+                reviewed.contains(&hook) || PinnedAdapter.is_non_goal(HookId::new(hook)),
+                "{hook} is neither a reviewed hook nor a declared non-goal of {}",
+                PinnedAdapter.minecraft_version()
+            );
         }
+    }
+
+    /// The command seam is the one hook no version may decline.
+    ///
+    /// Every other entry in this file projects a `GameEvent` that some other
+    /// seam can also raise, so a version declining one loses an occasion rather
+    /// than a capability. `COMMAND` has no second source: declining it would
+    /// leave `perform` unreachable and the loader silently commandless.
+    #[test]
+    fn the_command_seam_is_carried_by_every_version_that_could_decline_it() {
+        use ravel_minecraft::VersionAdapter;
+        use ravel_minecraft_adapter::PinnedAdapter;
+
         assert!(
-            reviewed.contains(&COMMAND),
-            "{COMMAND} is not a reviewed hook"
+            PinnedAdapter
+                .targets()
+                .iter()
+                .any(|target| target.id().as_str() == COMMAND),
+            "{COMMAND} is what makes a command reachable, so no version may decline it"
         );
     }
 

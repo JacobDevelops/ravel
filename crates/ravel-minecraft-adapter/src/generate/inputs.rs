@@ -98,6 +98,18 @@ pub(super) struct Hook {
     pub(super) refuses: bool,
 }
 
+/// One capability this version reviewed and deliberately does not carry.
+///
+/// Declared rather than left to the header's prose, because a caller that names
+/// a hook by id has to tell a decision from a typo and prose cannot be asked.
+/// The reason travels with the id for the reader who finds it missing.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct NonGoal {
+    pub(super) id: String,
+    pub(super) reason: String,
+}
+
 /// The tracked hook inventory.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -106,6 +118,9 @@ pub(super) struct Inventory {
     pub(super) minecraft: String,
     #[serde(rename = "hook")]
     pub(super) hooks: Vec<Hook>,
+    /// Absent means this version carries every capability it reviewed.
+    #[serde(default, rename = "nonGoal")]
+    pub(super) non_goals: Vec<NonGoal>,
 }
 
 /// One member a screen template names, and the member this version spells it.
@@ -129,6 +144,30 @@ pub(super) enum SeedMember {
 pub(super) struct BoundMember {
     pub(super) role: String,
     pub(super) member: String,
+    /// How many parameters the overload this role means takes.
+    ///
+    /// Absent for every member whose overloads link under one name, which is all
+    /// of them under an unobfuscated version and most under any other. It is
+    /// needed where they do not: an obfuscated version can link
+    /// `translatable(String)` and `translatable(String, Object[])` under
+    /// different names, so a reference to one is not a reference to the other
+    /// and the seed list is what says which the screen means.
+    ///
+    /// A count rather than a descriptor, and the distinction is the rule this
+    /// file already keeps: a descriptor is a transcription of the jar, which the
+    /// generated stubs exist to avoid, and it would have to be rewritten in the
+    /// linked name space besides.
+    ///
+    /// It counts the parameters the *descriptor* declares, which is usually what
+    /// a reader counts at the call site and is not always: the constructor of a
+    /// non-static nested class carries its enclosing instance as a first
+    /// parameter the source never writes, so a count taken from the call site
+    /// would be one short and select nothing. Nothing seeded today is such a
+    /// constructor. It is a filter and not an assertion, so an overload set this
+    /// does not separate is still refused rather than picked between, and a
+    /// count that separates nothing is refused rather than ignored.
+    #[serde(default)]
+    pub(super) parameters: Option<usize>,
 }
 
 impl SeedMember {
@@ -145,6 +184,14 @@ impl SeedMember {
         match self {
             Self::Same(name) => name,
             Self::Bound(bound) => &bound.member,
+        }
+    }
+
+    /// How many parameters the overload this role means takes, where it says.
+    pub(super) const fn parameters(&self) -> Option<usize> {
+        match self {
+            Self::Same(_) => None,
+            Self::Bound(bound) => bound.parameters,
         }
     }
 }
@@ -326,6 +373,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
             inventory.schema_version, adapter.schema_version
         )));
     }
+    check_non_goals(&inventory)?;
 
     // The seed list is tracked and therefore present everywhere too, for the
     // same reason: a build that generates stubs from the stub lock still has to
@@ -398,6 +446,44 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
     })
 }
 
+/// Checks that a version's declared non-goals say something the hooks do not.
+///
+/// One id is either carried or not carried, so an id on both lists is two
+/// answers to one question. A repeated non-goal is the same defect a repeated
+/// hook is, and an empty reason is a declaration that explains nothing to the
+/// reader who went looking for the capability.
+///
+/// # Errors
+///
+/// Returns an error when a non-goal is also a hook, when one is declared twice,
+/// or when one carries no reason.
+fn check_non_goals(inventory: &Inventory) -> Result<(), GenerateError> {
+    let mut seen = BTreeSet::new();
+    for non_goal in &inventory.non_goals {
+        if inventory.hooks.iter().any(|hook| hook.id == non_goal.id) {
+            return Err(GenerateError::Drift(format!(
+                "the inventory declares {} as a hook and as a non-goal, and one id is either \
+                 carried or not",
+                non_goal.id
+            )));
+        }
+        if non_goal.reason.trim().is_empty() {
+            return Err(GenerateError::Drift(format!(
+                "the inventory declares {} a non-goal with no reason, which tells a reader who \
+                 went looking for it nothing",
+                non_goal.id
+            )));
+        }
+        if !seen.insert(non_goal.id.as_str()) {
+            return Err(GenerateError::Drift(format!(
+                "the inventory declares the non-goal {} twice",
+                non_goal.id
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Checks that every role a screen template could name is declared exactly once.
 ///
 /// A role is what a template writes, so two seeds claiming one role is two
@@ -414,6 +500,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
 /// role twice.
 fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
     let mut seen = BTreeSet::new();
+    let mut classes = BTreeSet::new();
     for seed in &seeds.stubs {
         if !role_reference(&seed.role) {
             return Err(GenerateError::Drift(format!(
@@ -434,7 +521,20 @@ fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
                 seed.role
             )));
         }
+        // Two seeds naming one class is refused on the jar path by `from_jar`,
+        // and was refused nowhere else: `from_lock` looks a seed up by class and
+        // is content to find the same stub twice. So the refusal existed only on
+        // a machine holding the restricted jar, which is the opposite of where a
+        // seed-list check belongs. It lives here now, where neither the jar nor
+        // the lock decides whether it runs.
+        if !classes.insert(seed.class.as_str()) {
+            return Err(GenerateError::Drift(format!(
+                "the stub seeds bind two roles to {}, and one class is stubbed once",
+                seed.class
+            )));
+        }
         let mut members = BTreeSet::new();
+        let mut bound = BTreeSet::new();
         for member in &seed.members {
             if !member_reference(member.role()) || !member_reference(member.member()) {
                 return Err(GenerateError::Drift(format!(
@@ -451,6 +551,17 @@ fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
                      member",
                     seed.role,
                     member.role()
+                )));
+            }
+            // Two roles bound to one member stub that member's overloads twice,
+            // and `from_jar` pushes every match once per binding with no dedup,
+            // so the generated stub declares the same method twice and does not
+            // compile. Refused here rather than discovered by javac.
+            if !bound.insert(member.member()) {
+                return Err(GenerateError::Drift(format!(
+                    "the stub seeds bind two of {}'s member roles to {}, which stubs it twice",
+                    seed.role,
+                    member.member()
                 )));
             }
         }
@@ -737,6 +848,53 @@ pub(super) fn sha256(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
+/// Every version directory this repository tracks, in name order.
+///
+/// Read rather than spelled. A version literal inside a crate is one
+/// version's data asserted over every other and `ravel-verify-scaffold`
+/// refuses it, and a test that named a version would be a test of whichever
+/// version its author happened to have. Sweeping is also the stronger
+/// assertion: what these tests check is true of a tracked version because it
+/// is tracked, not because it is the one the build selects.
+pub(super) fn tracked_versions(root: &Path) -> Vec<String> {
+    let mut names = std::fs::read_dir(root.join(VERSIONS))
+        .expect("the version data should be readable")
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    names.sort();
+    assert!(!names.is_empty(), "the repository tracks a version");
+    names
+}
+
+/// The first tracked version whose adapter inputs have the shape a test needs.
+///
+/// Tests name a property rather than a version for the same reason
+/// [`tracked_versions`] exists: a test that asserts a runtime name equals its
+/// reviewed one is asserting something true of an unobfuscated version and false
+/// of an obfuscated one, and which of those it gets should not depend on how the
+/// directories happen to sort.
+///
+/// # Panics
+///
+/// Panics when no tracked version has that shape, because a test that needs one
+/// and finds none is asserting nothing.
+#[cfg(test)]
+pub(super) fn tracked_version_where(
+    root: &Path,
+    wanted: impl Fn(&Adapter) -> bool,
+) -> PinnedVersion {
+    for version in tracked_versions(root) {
+        let pinned = pinned(root, Some(&version)).expect("the tracked version data should parse");
+        if wanted(&pinned.adapter) {
+            return pinned;
+        }
+    }
+    panic!("no tracked version has the shape this test needs");
+}
+
+#[cfg(test)]
 mod tests {
     use std::path::Path;
 
@@ -751,50 +909,57 @@ mod tests {
 
     #[test]
     fn the_tracked_version_data_reads_back_as_a_reviewed_inventory() {
-        let pinned =
-            pinned(repository_root(), None).expect("the tracked version data should parse");
+        let root = repository_root();
+        for version in super::tracked_versions(root) {
+            let pinned =
+                pinned(root, Some(&version)).expect("the tracked version data should parse");
 
-        assert_eq!(pinned.adapter.schema_version, 1);
-        assert_eq!(
-            pinned.adapter.mapping_source,
-            MappingSource::UnobfuscatedClassFiles
-        );
-        assert_eq!(pinned.inventory.minecraft, pinned.adapter.minecraft);
-        assert!(
-            pinned.directory.ends_with(&pinned.adapter.minecraft),
-            "the directory names the version it pins"
-        );
-        assert!(
-            pinned.inventory.hooks.len() >= 6,
-            "the reviewed inventory should carry every entry ADG-3 resolved"
-        );
-        assert!(
-            pinned
-                .inventory
-                .hooks
-                .iter()
-                .all(|hook| !hook.capability.is_empty()),
-            "every entry carries the sentence its human review needs"
-        );
-        assert_eq!(pinned.seeds.minecraft, pinned.adapter.minecraft);
-
-        // A seed with no members earns its place by being named by something
-        // else in the set. Nothing calls a member on it, so the only work it can
-        // do is being a type another stub already writes down: a supertype that
-        // makes the classes under it assignable, or a descriptor that a member
-        // of another stub declares. A seed nothing names stubs a class that
-        // cannot be reached at all, which is a seed to delete.
-        let lock = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
-            .expect("the tracked stub lock should be readable");
-        for seed in &pinned.seeds.stubs {
-            if !seed.members.is_empty() {
-                continue;
-            }
-            assert!(
-                named_by_another_stub(&lock, &seed.class),
-                "{} is seeded with no members and nothing else in the set names it",
-                seed.class
+            assert_eq!(pinned.adapter.schema_version, 1);
+            // The source and the inputs have to agree about whether a published
+            // mapping exists, which is the invariant that holds under both of them
+            // rather than the one that happens to hold under the version the author
+            // had.
+            assert_eq!(
+                pinned.adapter.mapping_source.needs_mappings(),
+                pinned.adapter.inputs.client_mappings.is_some()
             );
+            assert_eq!(pinned.inventory.minecraft, pinned.adapter.minecraft);
+            assert!(
+                pinned.directory.ends_with(&pinned.adapter.minecraft),
+                "the directory names the version it pins"
+            );
+            assert!(
+                pinned.inventory.hooks.len() >= 6,
+                "the reviewed inventory should carry every entry ADG-3 resolved"
+            );
+            assert!(
+                pinned
+                    .inventory
+                    .hooks
+                    .iter()
+                    .all(|hook| !hook.capability.is_empty()),
+                "every entry carries the sentence its human review needs"
+            );
+            assert_eq!(pinned.seeds.minecraft, pinned.adapter.minecraft);
+
+            // A seed with no members earns its place by being named by something
+            // else in the set. Nothing calls a member on it, so the only work it can
+            // do is being a type another stub already writes down: a supertype that
+            // makes the classes under it assignable, or a descriptor that a member
+            // of another stub declares. A seed nothing names stubs a class that
+            // cannot be reached at all, which is a seed to delete.
+            let lock = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
+                .expect("the tracked stub lock should be readable");
+            for seed in &pinned.seeds.stubs {
+                if !seed.members.is_empty() {
+                    continue;
+                }
+                assert!(
+                    named_by_another_stub(&lock, &seed.class),
+                    "{} is seeded with no members and nothing else in the set names it",
+                    seed.class
+                );
+            }
         }
     }
 
@@ -866,7 +1031,7 @@ class = \"net/minecraft/Unreferenced\"
         let adapter: Adapter = super::parse(
             &root
                 .join("minecraft/versions")
-                .join(pinned(root, None).expect("pinned").adapter.minecraft)
+                .join(&super::tracked_versions(root)[0])
                 .join("adapter.toml"),
         )
         .expect("the tracked adapter inputs should parse");
@@ -937,42 +1102,45 @@ class = \"net/minecraft/Unreferenced\"
 
     #[test]
     fn the_tracked_adapter_inputs_pin_every_input_they_declare() {
-        let pinned =
-            pinned(repository_root(), None).expect("the tracked version data should parse");
-        let inputs = &pinned.adapter.inputs;
+        let root = repository_root();
+        for version in super::tracked_versions(root) {
+            let pinned =
+                pinned(root, Some(&version)).expect("the tracked version data should parse");
+            let inputs = &pinned.adapter.inputs;
 
-        for input in [
-            &inputs.client_jar,
-            &inputs.data_fixer_jar,
-            &inputs.version_manifest,
-            &inputs.hook_inventory,
-            &inputs.stub_seeds,
-            &inputs.mappings_lock,
-            &inputs.stubs_lock,
-        ]
-        .into_iter()
-        .chain(inputs.client_mappings.as_ref())
-        {
+            for input in [
+                &inputs.client_jar,
+                &inputs.data_fixer_jar,
+                &inputs.version_manifest,
+                &inputs.hook_inventory,
+                &inputs.stub_seeds,
+                &inputs.mappings_lock,
+                &inputs.stubs_lock,
+            ]
+            .into_iter()
+            .chain(inputs.client_mappings.as_ref())
+            {
+                assert!(
+                    input.sha256.is_some() || input.bytes.is_some(),
+                    "{} is declared with nothing to verify it against",
+                    file_name(&input.path)
+                );
+            }
             assert!(
-                input.sha256.is_some() || input.bytes.is_some(),
-                "{} is declared with nothing to verify it against",
-                file_name(&input.path)
+                inputs.hook_inventory.sha256.is_some(),
+                "the reviewed inventory decides what gets rewritten and must pin a hash"
             );
-        }
-        assert!(
-            inputs.hook_inventory.sha256.is_some(),
-            "the reviewed inventory decides what gets rewritten and must pin a hash"
-        );
-        assert!(
-            inputs.stub_seeds.sha256.is_some(),
-            "the seed list decides which game types the screen compiles against"
-        );
-        for lock in [&inputs.mappings_lock, &inputs.stubs_lock] {
             assert!(
-                lock.sha256.is_some(),
-                "{} is the only thing a jar-less machine can check the lock against",
-                file_name(&lock.path)
+                inputs.stub_seeds.sha256.is_some(),
+                "the seed list decides which game types the screen compiles against"
             );
+            for lock in [&inputs.mappings_lock, &inputs.stubs_lock] {
+                assert!(
+                    lock.sha256.is_some(),
+                    "{} is the only thing a jar-less machine can check the lock against",
+                    file_name(&lock.path)
+                );
+            }
         }
     }
 

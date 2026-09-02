@@ -493,9 +493,13 @@ mod tests {
         let root = output(name);
         // The version is read from the tracked data rather than written here, so
         // nothing outside the version data names a Minecraft version.
-        let source = inputs::pinned(repository_root(), None)
-            .expect("the tracked version data should parse")
-            .directory;
+        // The version whose class files are the mapping, because these fixtures
+        // declare a published mapping of their own to exercise the other path
+        // and a version that already declared one would carry two.
+        let source = inputs::tracked_version_where(repository_root(), |adapter| {
+            !adapter.mapping_source.needs_mappings()
+        })
+        .directory;
         let relative = source
             .strip_prefix(repository_root())
             .expect("the version data lives under the root");
@@ -581,8 +585,16 @@ mod tests {
     fn generating_from_the_tracked_inputs_writes_every_artefact() {
         let out = output("artefacts");
 
-        let generated =
-            run(repository_root(), &out, None).expect("the tracked inputs should generate");
+        // The version whose class files are the mapping: the assertions below are
+        // about screens that land where ADG-6 put them and a template set with no
+        // per-version override, both of which are that version's shape.
+        let version = inputs::tracked_version_where(repository_root(), |adapter| {
+            !adapter.mapping_source.needs_mappings()
+        })
+        .adapter
+        .minecraft;
+        let generated = run(repository_root(), &out, Some(&version))
+            .expect("the tracked inputs should generate");
 
         assert!(generated.bindings.is_file());
         assert!(generated.exports.is_file());
@@ -903,20 +915,24 @@ mod tests {
     /// comparison is the whole generated tree's digest rather than a spot check.
     #[test]
     fn selecting_the_only_version_generates_what_selecting_nothing_does() {
-        let root = repository_root();
-        let tracked = inputs::pinned(root, None)
-            .expect("the tracked version data should parse")
-            .adapter
-            .minecraft;
+        // Staged rather than the repository, which tracks more than one version
+        // now. What this proves is about a root holding exactly one, which is
+        // the case the claim is about.
+        let (root, directory) = staged("only-selection");
+        let tracked = directory
+            .file_name()
+            .expect("the version directory is named")
+            .to_string_lossy()
+            .into_owned();
         let default = output("default-selection");
         let named = output("named-selection");
 
-        let unselected = run(root, &default, None).expect("generates");
-        let selected = run(root, &named, Some(&tracked)).expect("generates");
+        let unselected = run(&root, &default, None).expect("generates");
+        let selected = run(&root, &named, Some(&tracked)).expect("generates");
 
         assert_eq!(unselected.sha256, selected.sha256);
 
-        for directory in [&default, &named] {
+        for directory in [&default, &named, &root] {
             let _ = std::fs::remove_dir_all(directory);
         }
     }
@@ -943,13 +959,10 @@ mod tests {
 
         let generated = run(&root, &out, None).expect("a second version's data should generate");
 
-        let pinned_version = inputs::pinned(repository_root(), None)
-            .expect("the tracked version data should parse")
-            .adapter
-            .minecraft;
-        assert_ne!(
-            version, pinned_version,
-            "a fixture that is the pinned version proves nothing"
+        let tracked = inputs::tracked_versions(repository_root());
+        assert!(
+            !tracked.contains(&version),
+            "a fixture that is a tracked version proves nothing"
         );
 
         // No generated artefact may name the pinned version, and the two that
@@ -959,11 +972,13 @@ mod tests {
         // name, so a version in one would make the ABI version-specific.
         for artefact in [&generated.bindings, &generated.exports, &generated.java] {
             let text = std::fs::read_to_string(artefact).expect("readable");
-            assert!(
-                !text.contains(&pinned_version),
-                "nothing generated from the second version may name the pinned one: {}",
-                artefact.display()
-            );
+            for other in &tracked {
+                assert!(
+                    !text.contains(other.as_str()),
+                    "nothing generated from the second version may name a tracked one: {}",
+                    artefact.display()
+                );
+            }
         }
         for artefact in [&generated.bindings, &generated.java] {
             let text = std::fs::read_to_string(artefact).expect("readable");
@@ -982,9 +997,10 @@ mod tests {
         // Every reviewed id, in both versions, mapped onto different members.
         let second = inputs::pinned(&root, None).expect("the staged data should parse");
         let bindings = std::fs::read_to_string(&generated.bindings).expect("readable");
-        let pinned_inventory = inputs::pinned(repository_root(), None)
-            .expect("the tracked version data should parse")
-            .inventory;
+        let pinned_inventory = inputs::tracked_version_where(repository_root(), |adapter| {
+            !adapter.mapping_source.needs_mappings()
+        })
+        .inventory;
         let mut ids = pinned_inventory
             .hooks
             .iter()
@@ -1034,11 +1050,21 @@ mod tests {
     #[test]
     fn generation_is_reproducible_byte_for_byte() {
         let root = repository_root();
+        // The version whose class files are the mapping. `run` reads a
+        // translating source's published mapping on every build, jars or no
+        // jars, and that file is restricted local material — so selecting any
+        // tracked version here would make this test pass on the one machine
+        // holding it and fail everywhere else. What it asserts holds of every
+        // version; what it needs is a version it can always build.
+        let version =
+            inputs::tracked_version_where(root, |adapter| !adapter.mapping_source.needs_mappings())
+                .adapter
+                .minecraft;
         let first = output("once");
         let second = output("twice");
 
-        let one = run(root, &first, None).expect("generates");
-        let two = run(root, &second, None).expect("generates");
+        let one = run(root, &first, Some(&version)).expect("generates");
+        let two = run(root, &second, Some(&version)).expect("generates");
 
         assert_eq!(one.sha256, two.sha256);
         for (left, right) in [(&one.bindings, &two.bindings), (&one.exports, &two.exports)] {
@@ -1413,9 +1439,17 @@ mod tests {
     fn the_generated_game_names_carry_the_linked_name_and_the_reviewed_one() {
         let out = output("game-names");
         let root = repository_root();
-        let pinned = inputs::pinned(root, None).expect("the tracked version data should parse");
+        // The version whose class files are the mapping. `run` reads a
+        // translating source's published mapping on every build, jars or no
+        // jars, and that file is restricted local material — so selecting any
+        // tracked version here would make this test pass on the one machine
+        // holding it and fail everywhere else. What it asserts holds of every
+        // version; what it needs is a version it can always build.
+        let pinned =
+            inputs::tracked_version_where(root, |adapter| !adapter.mapping_source.needs_mappings());
 
-        let generated = run(root, &out, None).expect("the tracked inputs should generate");
+        let generated = run(root, &out, Some(&pinned.adapter.minecraft))
+            .expect("the tracked inputs should generate");
 
         let names = generated
             .java
@@ -1448,7 +1482,10 @@ mod tests {
     #[test]
     fn a_client_mapping_that_no_longer_hashes_to_its_pin_is_refused_before_its_text_is_read() {
         let root = repository_root();
-        let pinned = inputs::pinned(root, None).expect("the tracked version data should parse");
+        // The version that declares no mapping, because this test gives it one
+        // whose hash is wrong and a version that already had one would carry two.
+        let pinned =
+            inputs::tracked_version_where(root, |adapter| !adapter.mapping_source.needs_mappings());
         let mut adapter = pinned.adapter;
         // A real file under a hash that is not its own. Nothing may be read out
         // of it, and nothing may be opened before it is refused.

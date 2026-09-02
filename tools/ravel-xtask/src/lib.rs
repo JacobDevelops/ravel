@@ -406,6 +406,8 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_persistence_reflection(root, &mut violations);
     verify_hook_name_literals(root, &inventories, &mut violations);
     verify_screen_templates(root, &mut violations);
+    verify_screen_overrides(root, &mut violations);
+    verify_version_readmes(root, &mut violations);
     verify_guide_enumerations(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
@@ -2035,8 +2037,6 @@ fn verify_hook_name_literals(
 /// The templates the Ravel-owned screen jar's sources are generated from.
 const SCREEN_JAR_SOURCES: &str = "jvm/screen/template";
 
-/// Refuses an obfuscated version while the screen jar still imports game types.
-///
 /// Refuses a screen template that spells a game name itself.
 ///
 /// A screen extends the game's own `Screen` and overrides its methods, so every
@@ -2089,6 +2089,145 @@ fn verify_screen_templates(root: &Path, violations: &mut Vec<String>) {
             }
         }
     }
+}
+
+/// Holds every version README to the inventory sitting beside it.
+///
+/// A README that miscounts the file next to it is worse than one that says
+/// nothing, because a reader believes it: 1.21.1's said twenty-seven hooks and
+/// ten non-goals while `hooks.toml` carried twenty-nine and eight. The sentence
+/// is required rather than optional, so a version cannot opt out of being
+/// counted by staying silent.
+fn verify_version_readmes(root: &Path, violations: &mut Vec<String>) {
+    let Ok(versions) = tracked_versions(root) else {
+        return;
+    };
+    for version in versions {
+        let directory = root.join(VERSION_DATA).join(&version);
+        let Ok(inventory) = fs::read_to_string(directory.join("hooks.toml")) else {
+            continue;
+        };
+        let Ok(counts) = hook_counts(&inventory) else {
+            continue;
+        };
+        let non_goals = inventory.matches("[[nonGoal]]").count();
+        let expected = format!(
+            "carries {} reviewed hooks and records {non_goals} non-goals",
+            counts.entries
+        );
+        let readme = format!("{VERSION_DATA}/{version}/README.md");
+        let Ok(prose) = fs::read_to_string(directory.join(VERSION_PROSE_FILE)) else {
+            violations.push(format!("cannot read {readme}"));
+            continue;
+        };
+        if !prose.contains(&expected) {
+            violations.push(format!(
+                "{readme} does not state \"{expected}\", which is what \
+                 {VERSION_DATA}/{version}/hooks.toml declares"
+            ));
+        }
+    }
+}
+
+/// Holds the per-version screen template overrides to their contract.
+///
+/// Three things, and each is a silent failure rather than a loud one if nobody
+/// checks it. A directory named for no tracked version contributes nothing and
+/// raises nothing, which is the inverse of the generator's refusal of an
+/// override that replaces nothing. An override whose name matches no shared
+/// template is a screen only one version draws, and the agent jar opens the same
+/// constants under every version. And an override that differs from the shared
+/// template only inside its placeholders is a rename, which a role binding in
+/// that version's `stubs.toml` already handles — reaching for a whole second
+/// source there buys a copy that has to be maintained twice, so it is refused
+/// here rather than left to a reviewer to notice.
+///
+/// This is repository-wide and runs whatever any build selected, which is the
+/// point: the generator reads one version's overrides and can say nothing about
+/// the rest.
+fn verify_screen_overrides(root: &Path, violations: &mut Vec<String>) {
+    let directory = root.join(SCREEN_JAR_SOURCES);
+    let Ok(versions) = tracked_versions(root) else {
+        violations.push(format!("cannot read {VERSION_DATA}"));
+        return;
+    };
+    let Ok(entries) = fs::read_dir(&directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !versions.contains(&name) {
+            violations.push(format!(
+                "{SCREEN_JAR_SOURCES}/{name} is named for no tracked version, so every template \
+                 in it is read by no build and refused by nothing"
+            ));
+            continue;
+        }
+        let Ok(overrides) = fs::read_dir(&path) else {
+            violations.push(format!("cannot read {SCREEN_JAR_SOURCES}/{name}"));
+            continue;
+        };
+        for over in overrides.flatten() {
+            let file = over.file_name().to_string_lossy().into_owned();
+            if over.path().is_dir() {
+                violations.push(format!(
+                    "{SCREEN_JAR_SOURCES}/{name}/{file} is a directory, and a version's templates \
+                     are read from one level only, so anything inside it is left out silently"
+                ));
+                continue;
+            }
+            if !file.ends_with(SCREEN_TEMPLATE_SUFFIX) {
+                continue;
+            }
+            let shared = directory.join(&file);
+            if !shared.is_file() {
+                violations.push(format!(
+                    "{SCREEN_JAR_SOURCES}/{name}/{file} overrides no shared template, and the \
+                     agent jar opens the same screens under every version"
+                ));
+                continue;
+            }
+            let (Ok(left), Ok(right)) =
+                (fs::read_to_string(&shared), fs::read_to_string(over.path()))
+            else {
+                violations.push(format!("cannot read {SCREEN_JAR_SOURCES}/{name}/{file}"));
+                continue;
+            };
+            if outside_placeholders(&left) == outside_placeholders(&right) {
+                violations.push(format!(
+                    "{SCREEN_JAR_SOURCES}/{name}/{file} differs from the shared template only \
+                     inside its placeholders, which is a rename. Bind the roles in \
+                     {VERSION_DATA}/{name}/stubs.toml instead; a per-version source is for an API \
+                     that genuinely differs, and this one buys a second copy to maintain"
+                ));
+            }
+        }
+    }
+}
+
+/// One template's text with every placeholder replaced by one sentinel.
+///
+/// What is left is the Java a template renders regardless of which names it asks
+/// for, so two templates that agree here differ only in the names — which is a
+/// rename, and a rename is a binding rather than a source.
+fn outside_placeholders(source: &str) -> String {
+    let mut text = String::with_capacity(source.len());
+    let mut rest = source;
+    while let Some(index) = rest.find("{{") {
+        text.push_str(&rest[..index]);
+        text.push('\u{0}');
+        let after = &rest[index + 2..];
+        match after.find("}}") {
+            Some(end) => rest = &after[end + 2..],
+            None => return text,
+        }
+    }
+    text.push_str(rest);
+    text
 }
 
 /// Every screen template under one directory, in a stable order.

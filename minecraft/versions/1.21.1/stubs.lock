@@ -1,0 +1,374 @@
+# Generated stub provenance for Minecraft 1.21.1. Do not edit.
+#
+# Every entry below is one compile-time stub the settings screen is built
+# against, read out of the pinned jars: the client jar first, then the
+# serialization library the game's own signatures name. Descriptors and
+# access flags are the jar's own, which is the point: a hand-written stub
+# transcribes a generic signature, and the JVM links on the erased one.
+#
+# What this file does not promise:
+#
+# - It is checked only where the pinned jars are. A machine without them
+#   generates from this file, so on that machine the lock is the source and
+#   cannot disagree with anything. Drift is caught where the jars exist.
+# - It pins against jar hashes, so it is only as current as those pins. A
+#   Minecraft build nobody has re-pinned against is unchecked.
+# - It carries no hierarchy the stub set does not already hold. A supertype
+#   outside the set is dropped, so a change to one is invisible here.
+# - It covers the members `stubs.toml` seeds and nothing else. A member the
+#   screen starts calling is unpinned until it is seeded.
+#
+# This is a different table from mappings.lock and stays one. That file
+# pins call sites the agent rewrites; this one pins declarations the screen
+# compiles against, and one table meaning both is how the next person
+# misreads it.
+
+schemaVersion = 1
+minecraft = "1.21.1"
+extractor = "classfile"
+clientJarSha256 = "499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99"
+dataFixerJarSha256 = "ffc138bc2596c291781b0d5e211ccac51f0f2345f27fc2742f335cedf7e2870d"
+
+[[stub]]
+class = "net/minecraft/client/Minecraft"
+flags = 33
+
+[[stub.member]]
+name = "getInstance"
+descriptor = "()Lnet/minecraft/client/Minecraft;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "setScreen"
+descriptor = "(Lnet/minecraft/client/gui/screens/Screen;)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/Font"
+flags = 33
+
+[[stub.member]]
+name = "split"
+descriptor = "(Lnet/minecraft/network/chat/FormattedText;I)Ljava/util/List;"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/AbstractSliderButton"
+flags = 1057
+extends = "net/minecraft/client/gui/components/AbstractWidget"
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(IIIILnet/minecraft/network/chat/Component;D)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "applyValue"
+descriptor = "()V"
+flags = 1028
+method = true
+
+[[stub.member]]
+name = "updateMessage"
+descriptor = "()V"
+flags = 1028
+method = true
+
+[[stub.member]]
+name = "value"
+descriptor = "D"
+flags = 4
+method = false
+
+[[stub]]
+class = "net/minecraft/client/gui/components/AbstractWidget"
+flags = 1057
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "setMessage"
+descriptor = "(Lnet/minecraft/network/chat/Component;)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/Button"
+flags = 33
+extends = "net/minecraft/client/gui/components/AbstractWidget"
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "builder"
+descriptor = "(Lnet/minecraft/network/chat/Component;Lnet/minecraft/client/gui/components/Button$OnPress;)Lnet/minecraft/client/gui/components/Button$Builder;"
+flags = 9
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/Button$Builder"
+flags = 33
+
+[[stub.member]]
+name = "bounds"
+descriptor = "(IIII)Lnet/minecraft/client/gui/components/Button$Builder;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "build"
+descriptor = "()Lnet/minecraft/client/gui/components/Button;"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/Button$OnPress"
+flags = 1537
+
+[[stub.member]]
+name = "onPress"
+descriptor = "(Lnet/minecraft/client/gui/components/Button;)V"
+flags = 1025
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/EditBox"
+flags = 33
+extends = "net/minecraft/client/gui/components/AbstractWidget"
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/client/gui/Font;IIIILnet/minecraft/client/gui/components/EditBox;Lnet/minecraft/network/chat/Component;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/client/gui/Font;IIIILnet/minecraft/network/chat/Component;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/client/gui/Font;IILnet/minecraft/network/chat/Component;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "getValue"
+descriptor = "()Ljava/lang/String;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setEditable"
+descriptor = "(Z)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setMaxLength"
+descriptor = "(I)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setValue"
+descriptor = "(Ljava/lang/String;)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/events/GuiEventListener"
+flags = 1537
+
+[[stub]]
+class = "net/minecraft/client/gui/screens/Screen"
+flags = 1057
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/network/chat/Component;)V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "addRenderableWidget"
+descriptor = "(Lnet/minecraft/client/gui/components/events/GuiEventListener;)Lnet/minecraft/client/gui/components/events/GuiEventListener;"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "font"
+descriptor = "Lnet/minecraft/client/gui/Font;"
+flags = 4
+method = false
+
+[[stub.member]]
+name = "height"
+descriptor = "I"
+flags = 1
+method = false
+
+[[stub.member]]
+name = "init"
+descriptor = "()V"
+flags = 4
+method = true
+
+[[stub.member]]
+name = "init"
+descriptor = "(Lnet/minecraft/client/Minecraft;II)V"
+flags = 17
+method = true
+
+[[stub.member]]
+name = "onClose"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "width"
+descriptor = "I"
+flags = 1
+method = false
+
+[[stub]]
+class = "net/minecraft/core/HolderLookup$Provider"
+flags = 1537
+
+[[stub]]
+class = "net/minecraft/nbt/CompoundTag"
+flags = 33
+
+[[stub.member]]
+name = "getByteArray"
+descriptor = "(Ljava/lang/String;)[B"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "putByteArray"
+descriptor = "(Ljava/lang/String;Ljava/util/List;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "putByteArray"
+descriptor = "(Ljava/lang/String;[B)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/network/chat/Component"
+flags = 1537
+implements = ["net/minecraft/network/chat/FormattedText"]
+
+[[stub.member]]
+name = "literal"
+descriptor = "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "translatable"
+descriptor = "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "translatable"
+descriptor = "(Ljava/lang/String;[Ljava/lang/Object;)Lnet/minecraft/network/chat/MutableComponent;"
+flags = 137
+method = true
+
+[[stub]]
+class = "net/minecraft/network/chat/FormattedText"
+flags = 1537
+
+[[stub.member]]
+name = "getString"
+descriptor = "()Ljava/lang/String;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "of"
+descriptor = "(Ljava/lang/String;)Lnet/minecraft/network/chat/FormattedText;"
+flags = 9
+method = true
+
+[[stub.member]]
+name = "of"
+descriptor = "(Ljava/lang/String;Lnet/minecraft/network/chat/Style;)Lnet/minecraft/network/chat/FormattedText;"
+flags = 9
+method = true
+
+[[stub]]
+class = "net/minecraft/network/chat/MutableComponent"
+flags = 33
+implements = ["net/minecraft/network/chat/Component", "net/minecraft/network/chat/FormattedText"]
+
+[[stub]]
+class = "net/minecraft/network/chat/Style"
+flags = 33
+
+[[stub]]
+class = "net/minecraft/util/datafix/DataFixTypes"
+flags = 16433
+
+[[stub.member]]
+name = "SAVED_DATA_COMMAND_STORAGE"
+descriptor = "Lnet/minecraft/util/datafix/DataFixTypes;"
+flags = 16409
+method = false
+
+[[stub]]
+class = "net/minecraft/world/level/saveddata/SavedData"
+flags = 1057
+
+[[stub.member]]
+name = "<init>"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "save"
+descriptor = "(Ljava/io/File;Lnet/minecraft/core/HolderLookup$Provider;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "save"
+descriptor = "(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/core/HolderLookup$Provider;)Lnet/minecraft/nbt/CompoundTag;"
+flags = 1025
+method = true
+
+[[stub.member]]
+name = "setDirty"
+descriptor = "()V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setDirty"
+descriptor = "(Z)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/world/level/saveddata/SavedData$Factory"
+flags = 49
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Ljava/util/function/Supplier;Ljava/util/function/BiFunction;Lnet/minecraft/util/datafix/DataFixTypes;)V"
+flags = 1
+method = true

@@ -433,7 +433,10 @@ mod tests {
             .ancestors()
             .nth(2)
             .expect("the crate lives under crates/<name>");
-        inputs::pinned(root, None).expect("the tracked version data should parse")
+        // The version whose class files are the mapping: these tests assert on a
+        // lock whose linked names are its reviewed ones, which is what an
+        // unobfuscated source gives and an obfuscated one does not.
+        inputs::tracked_version_where(root, |adapter| !adapter.mapping_source.needs_mappings())
     }
 
     fn tracked_lock(pinned: &PinnedVersion) -> String {

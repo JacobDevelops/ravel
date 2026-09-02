@@ -1,0 +1,244 @@
+# Generated mapping provenance for Minecraft 1.21.1. Do not edit.
+#
+# Every line pins one resolved member. A change to the jar, the
+# inventory, or the extractor changes this file, which is how drift is
+# noticed before a build trusts a binding.
+
+schemaVersion = 1
+minecraft = "1.21.1"
+mappingSource = "official-proguard-mappings"
+extractor = "classfile"
+clientJarSha256 = "499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99"
+clientMappingsSha256 = "140c47931cccc8fc9e4c22d7603e2d714d1a953a146f51ea7397d95c955536ec"
+
+[target."chat.filter-text"]
+class = "net/minecraft/util/StringUtil"
+member = "filterText"
+descriptor = "(Ljava/lang/String;Z)Ljava/lang/String;"
+static = true
+runtimeClass = "azl"
+runtimeMember = "a"
+
+[target."chat.filter-text-simple"]
+class = "net/minecraft/util/StringUtil"
+member = "filterText"
+descriptor = "(Ljava/lang/String;)Ljava/lang/String;"
+static = true
+runtimeClass = "azl"
+runtimeMember = "g"
+
+[target."player.name-valid"]
+class = "net/minecraft/util/StringUtil"
+member = "isValidPlayerName"
+descriptor = "(Ljava/lang/String;)Z"
+static = true
+runtimeClass = "azl"
+runtimeMember = "f"
+
+[target."input.smooth-delta"]
+class = "net/minecraft/util/SmoothDouble"
+member = "getNewDeltaValue"
+descriptor = "(DD)D"
+static = false
+runtimeClass = "azf"
+runtimeMember = "a"
+
+[target."input.smooth-last-amount"]
+class = "net/minecraft/util/SmoothDouble"
+member = "lastAmount"
+descriptor = "D"
+static = false
+runtimeClass = "azf"
+runtimeMember = "c"
+
+[target."registry.register"]
+class = "net/minecraft/core/MappedRegistry"
+member = "register"
+descriptor = "(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;"
+static = false
+runtimeClass = "ju"
+runtimeMember = "a"
+runtimeDescriptor = "(Lakq;Ljava/lang/Object;Ljy;)Ljm$c;"
+
+[target."registry.freeze"]
+class = "net/minecraft/core/MappedRegistry"
+member = "freeze"
+descriptor = "()Lnet/minecraft/core/Registry;"
+static = false
+runtimeClass = "ju"
+runtimeMember = "m"
+runtimeDescriptor = "()Ljz;"
+
+[target."registry.closed"]
+class = "net/minecraft/core/MappedRegistry"
+member = "frozen"
+descriptor = "Z"
+static = false
+runtimeClass = "ju"
+runtimeMember = "l"
+
+[target."registry.built-in-freeze"]
+class = "net/minecraft/core/registries/BuiltInRegistries"
+member = "freeze"
+descriptor = "()V"
+static = true
+runtimeClass = "lt"
+runtimeMember = "c"
+
+[target."registry.built-in-bootstrap"]
+class = "net/minecraft/core/registries/BuiltInRegistries"
+member = "bootStrap"
+descriptor = "()V"
+static = true
+runtimeClass = "lt"
+runtimeMember = "a"
+
+[target."server.tick"]
+class = "net/minecraft/server/MinecraftServer"
+member = "tickServer"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+static = false
+runtimeMember = "a"
+
+[target."server.tick-integrated"]
+class = "net/minecraft/client/server/IntegratedServer"
+member = "tickServer"
+descriptor = "(Ljava/util/function/BooleanSupplier;)V"
+static = false
+runtimeClass = "guo"
+runtimeMember = "a"
+
+[target."server.tick-count"]
+class = "net/minecraft/server/MinecraftServer"
+member = "tickCount"
+descriptor = "I"
+static = false
+runtimeMember = "T"
+
+[target."server.average-tick-time"]
+class = "net/minecraft/server/MinecraftServer"
+member = "getAverageTickTimeNanos"
+descriptor = "()J"
+static = false
+runtimeMember = "aR"
+
+[target."server.tick-times"]
+class = "net/minecraft/server/MinecraftServer"
+member = "getTickTimesNanos"
+descriptor = "()[J"
+static = false
+runtimeMember = "aS"
+
+[target."client.tick"]
+class = "net/minecraft/client/Minecraft"
+member = "tick"
+descriptor = "()V"
+static = false
+runtimeClass = "fgo"
+runtimeMember = "t"
+
+[target."client.run-tick"]
+class = "net/minecraft/client/Minecraft"
+member = "runTick"
+descriptor = "(Z)V"
+static = false
+runtimeClass = "fgo"
+runtimeMember = "c"
+
+[target."command.table"]
+class = "net/minecraft/commands/Commands"
+member = "dispatcher"
+descriptor = "Lcom/mojang/brigadier/CommandDispatcher;"
+static = false
+runtimeClass = "eu"
+runtimeMember = "h"
+
+[target."command.perform-prefixed"]
+class = "net/minecraft/commands/Commands"
+member = "performPrefixedCommand"
+descriptor = "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V"
+static = false
+runtimeClass = "eu"
+runtimeMember = "a"
+runtimeDescriptor = "(Let;Ljava/lang/String;)V"
+
+[target."resource.register-reload-listener"]
+class = "net/minecraft/server/packs/resources/ReloadableResourceManager"
+member = "registerReloadListener"
+descriptor = "(Lnet/minecraft/server/packs/resources/PreparableReloadListener;)V"
+static = false
+runtimeClass = "aub"
+runtimeMember = "a"
+runtimeDescriptor = "(Laty;)V"
+
+[target."resource.reload-client-packs"]
+class = "net/minecraft/client/Minecraft"
+member = "reloadResourcePacks"
+descriptor = "()Ljava/util/concurrent/CompletableFuture;"
+static = false
+runtimeClass = "fgo"
+runtimeMember = "l"
+
+[target."screen.init"]
+class = "net/minecraft/client/gui/screens/Screen"
+member = "init"
+descriptor = "()V"
+static = false
+runtimeClass = "fod"
+runtimeMember = "aT_"
+
+[target."screen.tick"]
+class = "net/minecraft/client/gui/screens/Screen"
+member = "tick"
+descriptor = "()V"
+static = false
+runtimeClass = "fod"
+runtimeMember = "e"
+
+[target."screen.set"]
+class = "net/minecraft/client/Minecraft"
+member = "setScreen"
+descriptor = "(Lnet/minecraft/client/gui/screens/Screen;)V"
+static = false
+runtimeClass = "fgo"
+runtimeMember = "a"
+runtimeDescriptor = "(Lfod;)V"
+
+[target."save.set-dirty"]
+class = "net/minecraft/world/level/saveddata/SavedData"
+member = "setDirty"
+descriptor = "()V"
+static = false
+runtimeClass = "eql"
+runtimeMember = "c"
+
+[target."save.save-everything"]
+class = "net/minecraft/server/MinecraftServer"
+member = "saveEverything"
+descriptor = "(ZZZ)Z"
+static = false
+runtimeMember = "b"
+
+[target."world.save-persistence"]
+class = "net/minecraft/server/MinecraftServer"
+member = "saveAllChunks"
+descriptor = "(ZZZ)Z"
+static = false
+runtimeMember = "a"
+
+[target."world.open-persistence"]
+class = "net/minecraft/client/Minecraft"
+member = "doWorldLoad"
+descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Lnet/minecraft/server/packs/repository/PackRepository;Lnet/minecraft/server/WorldStem;Z)V"
+static = false
+runtimeClass = "fgo"
+runtimeMember = "a"
+runtimeDescriptor = "(Lerf$c;Latp;Lalp;Z)V"
+
+[target."screen.title-menu-options"]
+class = "net/minecraft/client/gui/screens/TitleScreen"
+member = "createNormalMenuOptions"
+descriptor = "(II)V"
+static = false
+runtimeClass = "fof"
+runtimeMember = "a"

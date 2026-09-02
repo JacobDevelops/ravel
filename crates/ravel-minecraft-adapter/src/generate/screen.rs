@@ -15,8 +15,9 @@
 //! member role to the member, exactly as `reflection.toml` binds the roles the
 //! agent jar resolves, and this module rewrites each placeholder into the name
 //! that version links. That indirection is what carries a template across a
-//! rename: 1.21.1 calls `Identifier` `ResourceLocation` and spells
-//! `splitIgnoringLanguage` `split`, and neither costs the template a word.
+//! rename: one version's `Identifier` is another's `ResourceLocation`, and one
+//! version's `splitIgnoringLanguage` is another's `split`, and neither costs
+//! the template a word.
 //! Everything outside a placeholder is copied through byte for byte, which is
 //! what keeps a template reviewable as the Java it is and what makes an
 //! unobfuscated version's output the same source it was before it was
@@ -28,6 +29,7 @@ use std::path::{Path, PathBuf};
 
 use super::inputs::{Adapter, Seeds};
 use super::mapping::Mapping;
+use super::render;
 use super::stubs::Stub;
 use super::{GenerateError, SCREEN_PACKAGE};
 
@@ -58,7 +60,7 @@ pub(super) fn render(
     stubs: &[Stub],
     mapping: &Mapping,
 ) -> Result<Screens, GenerateError> {
-    let templates = templates(directory)?;
+    let templates = templates(directory, &adapter.minecraft)?;
     let mut read = Vec::with_capacity(templates.len());
     for path in &templates {
         read.push(template(path)?);
@@ -112,8 +114,83 @@ pub(super) fn render(
     })
 }
 
-/// Every template under the tracked directory, in a stable order.
-fn templates(directory: &Path) -> Result<Vec<PathBuf>, GenerateError> {
+/// Every template one version renders, in a stable order.
+///
+/// The shared directory holds the screens every version draws the same way, and
+/// `<directory>/<version>/` holds the ones that version cannot. An override
+/// replaces the shared template of its own name and nothing else.
+///
+/// The two are deliberately not the same tool. A role binding in `stubs.toml`
+/// answers a rename, which is what almost every drift between two versions is,
+/// and it costs a template no words. An override is for the case a rename cannot
+/// reach: a version that registers saved data through a factory over a tag,
+/// where another takes a codec-era type, needs a different source and not a
+/// differently-spelled one. Reaching for an
+/// override where a binding would do buys a second copy of a screen that then
+/// has to be maintained twice, so an override that only renames is a mistake
+/// this mechanism cannot detect and a reviewer has to.
+///
+/// An override has to replace something. A version-only screen would give one
+/// version a screen the agent jar cannot count on finding, and the constants the
+/// jar opens screens by are the same set under every version.
+fn templates(directory: &Path, version: &str) -> Result<Vec<PathBuf>, GenerateError> {
+    let shared = in_directory(directory)?;
+    if shared.is_empty() {
+        return Err(GenerateError::Input(format!(
+            "{} holds no screen template, so the screen jar would be built from nothing",
+            directory.display()
+        )));
+    }
+
+    let overrides = directory.join(version);
+    let mut found = shared;
+    if overrides.is_dir() {
+        // A version's override directory holds templates and nothing else. A
+        // directory inside it is refused rather than skipped, because
+        // `in_directory` reads one level and whatever sat below would render
+        // into nothing at all while saying nothing. The shared directory is
+        // where these directories legitimately live, which is why this is here
+        // rather than in the read.
+        for entry in fs::read_dir(&overrides).map_err(|error| {
+            GenerateError::Input(format!(
+                "cannot read the screen templates at {}: {error}",
+                overrides.display()
+            ))
+        })? {
+            let path = entry
+                .map_err(|error| {
+                    GenerateError::Input(format!("cannot read a screen template: {error}"))
+                })?
+                .path();
+            if path.is_dir() {
+                return Err(GenerateError::Input(format!(
+                    "{} is a directory, and a version's screen templates are read from one \
+                     level only, so anything inside it would be silently left out",
+                    path.display()
+                )));
+            }
+        }
+        for path in in_directory(&overrides)? {
+            let name = path.file_name().unwrap_or_default().to_owned();
+            let replaced = found
+                .iter()
+                .position(|shared| shared.file_name().unwrap_or_default() == name);
+            let Some(index) = replaced else {
+                return Err(GenerateError::Input(format!(
+                    "{} overrides no shared template, and a screen only one version draws is \
+                     one the agent jar cannot open under the others",
+                    path.display()
+                )));
+            };
+            found[index] = path;
+        }
+    }
+    found.sort();
+    Ok(found)
+}
+
+/// Every template directly inside one directory, in a stable order.
+fn in_directory(directory: &Path) -> Result<Vec<PathBuf>, GenerateError> {
     let mut found = Vec::new();
     let entries = fs::read_dir(directory).map_err(|error| {
         GenerateError::Input(format!(
@@ -133,12 +210,6 @@ fn templates(directory: &Path) -> Result<Vec<PathBuf>, GenerateError> {
         {
             found.push(path);
         }
-    }
-    if found.is_empty() {
-        return Err(GenerateError::Input(format!(
-            "{} holds no screen template, so the screen jar would be built from nothing",
-            directory.display()
-        )));
     }
     found.sort();
     Ok(found)
@@ -429,7 +500,7 @@ fn member_name(
             ))
         })?;
     let class = seed.class.replace('.', "/");
-    let member = seed
+    let seeded = seed
         .members
         .iter()
         .find(|seeded| seeded.role() == member_role)
@@ -439,8 +510,8 @@ fn member_name(
                  no member of {} to that role",
                 seed.class
             ))
-        })?
-        .member();
+        })?;
+    let member = seeded.member();
     let stub = stubs
         .iter()
         .find(|stub| stub.class == class)
@@ -450,10 +521,28 @@ fn member_name(
                 seed.class
             ))
         })?;
-    let mut names = stub
-        .members
+    // Every overload is stubbed, because the seed list names a member and never
+    // a descriptor. Where a version links them under one name that is the whole
+    // answer; where it does not, the binding's parameter count is what separates
+    // them, and a set it fails to separate is refused below rather than chosen
+    // between.
+    let mut candidates = Vec::new();
+    for declared in stub.members.iter().filter(|held| held.name == member) {
+        if let Some(wanted) = seeded.parameters() {
+            let (parameters, _) = render::signature(&declared.descriptor).map_err(|detail| {
+                GenerateError::Unsupported(format!(
+                    "{}#{member} carries a descriptor that does not read: {detail}",
+                    seed.class
+                ))
+            })?;
+            if parameters.len() != wanted {
+                continue;
+            }
+        }
+        candidates.push(declared);
+    }
+    let mut names = candidates
         .iter()
-        .filter(|declared| declared.name == member)
         .map(|declared| {
             mapping
                 .linked_member(&class, &declared.name, &declared.descriptor)
@@ -557,6 +646,7 @@ com.example.util.Held -> com.example.util.Held:
                         SeedMember::Bound(inputs::BoundMember {
                             role: "size".to_owned(),
                             member: "width".to_owned(),
+                            parameters: None,
                         }),
                     ],
                 },
@@ -705,60 +795,63 @@ com.example.util.Held -> com.example.util.Held:
     #[test]
     fn the_tracked_templates_render_into_a_name_space_that_shares_nothing_with_the_reviewed_one() {
         let root = repository_root();
-        let pinned = inputs::pinned(&root, None).expect("the tracked version data should parse");
-        let tracked = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
-            .expect("the tracked stub lock should be readable");
-        let stubs = super::super::stubs::from_lock(&tracked, &pinned.adapter, &pinned.seeds)
-            .expect("the tracked lock should resolve");
-        let mapping = obfuscating(&stubs);
+        for version in inputs::tracked_versions(&root) {
+            let pinned = inputs::pinned(&root, Some(&version))
+                .expect("the tracked version data should parse");
+            let tracked = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
+                .expect("the tracked stub lock should be readable");
+            let stubs = super::super::stubs::from_lock(&tracked, &pinned.adapter, &pinned.seeds)
+                .expect("the tracked lock should resolve");
+            let mapping = obfuscating(&stubs);
 
-        let screens = render(
-            &root.join(super::super::SCREEN_TEMPLATES),
-            &pinned.adapter,
-            &pinned.seeds,
-            &stubs,
-            &mapping,
-        )
-        .expect("the tracked templates should render against an obfuscated mapping");
+            let screens = render(
+                &root.join(super::super::SCREEN_TEMPLATES),
+                &pinned.adapter,
+                &pinned.seeds,
+                &stubs,
+                &mapping,
+            )
+            .expect("the tracked templates should render against an obfuscated mapping");
 
-        let reviewed = stubs
-            .iter()
-            .map(|stub| {
-                stub.class
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(&stub.class)
-                    .to_owned()
-            })
-            .collect::<BTreeSet<_>>();
+            let reviewed = stubs
+                .iter()
+                .map(|stub| {
+                    stub.class
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&stub.class)
+                        .to_owned()
+                })
+                .collect::<BTreeSet<_>>();
 
-        for (relative, source) in &screens.java {
-            assert!(
-                !relative.contains('/'),
-                "a mapping that puts the game in the unnamed package puts the screens there \
+            for (relative, source) in &screens.java {
+                assert!(
+                    !relative.contains('/'),
+                    "a mapping that puts the game in the unnamed package puts the screens there \
                  too, and {relative} is in a package"
-            );
-            assert!(
-                !source.contains("{{"),
-                "every placeholder is rendered: {relative}"
-            );
-            for (number, line) in code_lines(source) {
-                for name in &reviewed {
-                    assert!(
-                        !names(&line).contains(name),
-                        "{relative}:{number} names the reviewed class {name}, which this version \
+                );
+                assert!(
+                    !source.contains("{{"),
+                    "every placeholder is rendered: {relative}"
+                );
+                for (number, line) in code_lines(source) {
+                    for name in &reviewed {
+                        assert!(
+                            !names(&line).contains(name),
+                            "{relative}:{number} names the reviewed class {name}, which this version \
                          links nothing under: {line}"
-                    );
+                        );
+                    }
                 }
             }
-        }
 
-        for (_, binary) in &screens.names {
-            assert!(
-                !binary.contains('.'),
-                "the agent jar is told where the screens went, and they went to the unnamed \
+            for (_, binary) in &screens.names {
+                assert!(
+                    !binary.contains('.'),
+                    "the agent jar is told where the screens went, and they went to the unnamed \
                  package: {binary}"
-            );
+                );
+            }
         }
     }
 
@@ -923,6 +1016,77 @@ com.example.util.Held -> com.example.util.Held:
             .expect_err("width is a member name here, and the role bound to it is size");
 
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
+    }
+
+    /// A staged template directory: one shared template, and whatever the caller
+    /// wants beside it under a version.
+    fn staged_templates(name: &str, overrides: &[(&str, &str)]) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("ravel-templates-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("9.9.9")).expect("the staged directory should be made");
+        std::fs::write(root.join("Shared.java.in"), "{{package}}\nshared\n")
+            .expect("the shared template should be written");
+        for (file, text) in overrides {
+            std::fs::write(root.join("9.9.9").join(file), text)
+                .expect("the override should be written");
+        }
+        root
+    }
+
+    /// An override replaces the shared template of its own name, and the version
+    /// that has none reads the shared one. Both halves, because a mechanism that
+    /// applied nothing would pass a test that only checked the count.
+    #[test]
+    fn a_version_override_replaces_the_shared_template_of_its_name() {
+        let root = staged_templates("applied", &[("Shared.java.in", "{{package}}\noverride\n")]);
+
+        let overridden = templates(&root, "9.9.9").expect("the override applies");
+        assert_eq!(overridden.len(), 1);
+        assert_eq!(
+            std::fs::read_to_string(&overridden[0]).expect("readable"),
+            "{{package}}\noverride\n"
+        );
+
+        let shared = templates(&root, "0.0.0-none").expect("a version with no override");
+        assert_eq!(shared.len(), 1);
+        assert_eq!(
+            std::fs::read_to_string(&shared[0]).expect("readable"),
+            "{{package}}\nshared\n"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An override that replaces nothing is a screen only one version draws, and
+    /// the agent jar opens the same constants under every version.
+    #[test]
+    fn a_version_override_that_replaces_nothing_is_refused() {
+        let root = staged_templates("orphan", &[("Orphan.java.in", "{{package}}\n")]);
+
+        let error = templates(&root, "9.9.9").expect_err("an override must replace something");
+
+        assert!(matches!(error, GenerateError::Input(_)), "{error}");
+        assert!(
+            error.to_string().contains("overrides no shared template"),
+            "{error}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A directory inside a version's override directory is refused rather than
+    /// skipped: templates are read one level deep, so whatever sat below would
+    /// render into nothing while saying nothing.
+    #[test]
+    fn a_directory_inside_a_version_override_is_refused() {
+        let root = staged_templates("nested", &[]);
+        std::fs::create_dir_all(root.join("9.9.9/inner")).expect("creatable");
+        std::fs::write(root.join("9.9.9/inner/Shared.java.in"), "{{package}}\n").expect("writable");
+
+        let error = templates(&root, "9.9.9").expect_err("a nested directory is refused");
+
+        assert!(error.to_string().contains("one level only"), "{error}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

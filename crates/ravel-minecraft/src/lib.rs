@@ -388,6 +388,22 @@ pub trait VersionAdapter {
     fn target(&self, id: HookId) -> Option<&HookTarget> {
         self.targets().iter().find(|target| target.id() == id)
     }
+
+    /// Capabilities this version reviewed and deliberately does not carry.
+    ///
+    /// A hook absent from [`Self::targets`] is one of two very different things:
+    /// a capability this version cannot offer, which is a decision someone made
+    /// and wrote down, or a typo, which is not. Callers that name a hook by id
+    /// need to tell them apart, so the inventory declares its own non-goals and
+    /// this is where they surface. An adapter that has declared none has none.
+    fn non_goals(&self) -> &[HookId] {
+        &[]
+    }
+
+    /// Whether this version reviewed a hook and chose not to carry it.
+    fn is_non_goal(&self, id: HookId) -> bool {
+        self.non_goals().contains(&id)
+    }
 }
 
 #[cfg(test)]

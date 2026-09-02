@@ -1,0 +1,93 @@
+{{package}}
+
+{{import SavedData}}
+{{import SavedDataFactory}}
+{{import CompoundTag}}
+{{import HolderLookupProvider}}
+{{import DataFixTypes}}
+
+/**
+ * The one object Minecraft stores on Ravel's behalf, for 1.21.1.
+ *
+ * <p>This is a per-version source rather than a role binding, and the difference
+ * is the whole reason the mechanism has two halves. A binding answers a rename,
+ * and almost every drift between two Minecraft versions is one. This is not a
+ * rename: 1.21.1 has no {@code SavedDataType} in any spelling, and registers
+ * saved data through a {@code SavedData.Factory} of a supplier, a deserializer
+ * and a fixer family, over {@code CompoundTag} rather than over a codec. The
+ * shared template encodes through a codec and this one writes tags, so the two
+ * are different Java and no amount of renaming turns one into the other.
+ *
+ * <p>Everything the shared template says about why this half is compiled rather
+ * than reflective holds here unchanged: {@code SavedData} is abstract, storing a
+ * Ravel-owned one means defining a concrete subclass of a game type, and
+ * reflection defines none. The payload is one opaque byte array that nothing
+ * here parses, measures, or counts owners inside.
+ *
+ * <p>The entry points keep the names the shared template gives them, because
+ * {@code dev.ravel.jvm.Persistence} reaches them by name and arity from the
+ * agent jar and that file is shared by every version.
+ */
+public final class RavelWorldData extends {{SavedData}} {
+
+    /** What the stored object is called inside the world's data folder. */
+    private static final String NAME = "ravel_mods";
+
+    /** The key the aggregate sits under inside the encoded compound. */
+    private static final String FIELD = "aggregate";
+
+    private final byte[] aggregate;
+
+    private RavelWorldData(byte[] aggregate) {
+        this.aggregate = aggregate;
+    }
+
+    /**
+     * What this version's storage is keyed by.
+     *
+     * <p>1.21.1 names a saved datum with a plain string where 26.1.2 carries the
+     * name inside its type, so the name has to be reachable on its own here.
+     */
+    public static String name() {
+        return NAME;
+    }
+
+    /**
+     * The registration Minecraft reads and writes this object through.
+     *
+     * <p>Built fresh rather than cached in a static, for the reason the shared
+     * template gives: it is touched twice per world lifecycle.
+     *
+     * <p>The lambdas are cast rather than typed because the factory's own
+     * signature is erased, which is what the generated stub carries and what the
+     * JVM links.
+     */
+    public static {{SavedDataFactory}} type() {
+        return new {{SavedDataFactory}}(
+                () -> new RavelWorldData(new byte[0]),
+                (tag, registries) -> new RavelWorldData(
+                        (({{CompoundTag}}) tag).{{CompoundTag#getByteArray}}(FIELD)),
+                {{DataFixTypes}}.{{DataFixTypes#SAVED_DATA_COMMAND_STORAGE}});
+    }
+
+    /** Writes the aggregate into the compound the storage persists. */
+    @Override
+    public {{CompoundTag}} {{SavedData#save}}(
+            {{CompoundTag}} tag, {{HolderLookupProvider}} registries) {
+        tag.{{CompoundTag#putByteArray}}(FIELD, aggregate);
+        return tag;
+    }
+
+    /** Wraps replacement bytes as the object the storage will write. */
+    public static {{SavedData}} of(byte[] aggregate) {
+        return new RavelWorldData(aggregate);
+    }
+
+    /** The stored aggregate, or {@code null} when there is no Ravel object. */
+    public static byte[] bytes(Object stored) {
+        if (!(stored instanceof RavelWorldData held)) {
+            return null;
+        }
+        return held.aggregate;
+    }
+}

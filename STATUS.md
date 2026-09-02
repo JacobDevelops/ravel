@@ -199,6 +199,13 @@ What is per-version is how an item finds its model (`models/item/` at 1.21.1, an
 A recipe is the one file an author writes themself: its body shape differs between the versions and no
 generator can be right on both.
 
+**Launch 12: a Rust mod's block is indistinguishable from a vanilla one on screen.** Six asset files
+in the pack, zero model or blockstate warnings in the whole launch, the lantern drawn with its real model
+in the hotbar, in hand and standing lit on the grass; the world datapack carries both tags, the generated
+self-drop loot table and the example's recipe; breaking it in survival drops a Copper Lantern that is
+picked up; eight copper ingots around a torch craft one, and the game raises its own "New Recipes
+Unlocked!" toast. Installed as a source package, compiled into the instance's host in 11.5 s cold.
+
 Two ceilings, stated where they live: a fresh instance is seeded on its second launch, because writing
 an `options.txt` without the game's own `version` line would change which migrations it runs; and a
 world reads its datapack on its next open, not the one that wrote it, because the game builds the world's

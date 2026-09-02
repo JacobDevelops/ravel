@@ -229,7 +229,9 @@ the drop, the recipe unlock. Every pack file kept its mtime across both sessions
 row, three packages running, clean quit; the rewrite line grew to 13 classes and 26 methods with the
 new seam. Two first observations: the settings screen draws only a Done button although the stateful
 example declares `journal.capacity`, and the pre-world pack notice reaches no surface on either the
-already-offered or the unreadable branch (the mods screen reads "none needing attention"). Launch 8 also proved the screen-less refusal now reaches the game's crash handler
+already-offered or the unreadable branch (the mods screen reads "none needing attention").
+
+Launch 8 also proved the screen-less refusal now reaches the game's crash handler
 naming Ravel and the reason, with the session lock released, where launch 2 hung.
 
 **Launch 13 (interrupted): the early datapack write lands, the new world does not enable it.** A new

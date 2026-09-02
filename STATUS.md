@@ -67,6 +67,9 @@ Newest last. All local, nothing pushed.
 | `sropoloq` | end a refused world load by throwing when no screen jar can show the refusal |
 | `mkummmlt` | promote a reopened world's stage before its live checkpoint, and mark every replacement dirty |
 | `rwpuxqxn` | place the title-menu entry from per-version row data where the column returns no row |
+| `tttozorv` | count a world visit on the open the game delivers, not only in tests |
+| `qkzxprrk` | supply the mod-facing dependency set and take the Minecraft version as an argument of the player build |
+| `qtpomxvm` | load the host library from the path `-Dravel.host` names instead of the library path |
 
 ## The queue is drained
 
@@ -100,14 +103,42 @@ The four items that were paused here all landed, each proven by mutation against
 - The 1.21.1 title screen has no free row below the column at the minimum GUI height; the only slot
   that fits at every size is above it, which is where the entry now sits.
 - Working saves log nothing. The evidence of a save is the file and its mtime, not a `[ravel]` line.
+- The saved-data test mod never counted a visit outside its own tests, so two sessions stored identical
+  bytes and the read path was unprovable by construction. Launch 5 saw three sessions, three hashes.
+
+## The player path
+
+Discovery from `<instance>/ravel/mods` already ran in every launch and could only refuse; `ravel-cli host
+build` already compiled discovered packages into `<instance>/ravel/host/libravel_bootstrap.so`. What was
+missing were three wires, all landed: the generated workspace supplies the dependency set the test mods
+are written against, the player build takes the Minecraft version as an argument, and the generated
+`Hook` loads the library with `System.load` from the path `-Dravel.host` names, refusing to start when
+it is unset or not a file. No launch stages a native into the launcher's natives directory any more.
+
+Launch 6 is the proof: an example mod installed as a package, compiled by the host build, loaded through
+the property, listed as running. If this paragraph still says "is the proof" the launch has not been
+recorded; look for launch 6 in the private notes.
+
+## Questions only Jacob can answer
+
+- **How does a player's machine obtain the pinned version inputs?** Both tracked versions pin the client
+  jar and Mojang's `client.txt` under `tests/fixtures/local/` and the adapter's build script generates
+  the binding from them, so a host build on any other machine cannot run. Candidates: ship the generated
+  binding as source; derive it on the player's machine from the jar their launcher already holds plus
+  a `client.txt` fetched from the URL `adapter.toml` already pins at a hash; or stay checkout-only and
+  say so. This is the largest unknown on the way to anyone but this machine running Ravel.
+- **Is a Cargo compile inside the launch sequence acceptable?** About 32 s cold and 1.6 s warm for a
+  256-mod pack per `evidence/m3/pack-compile.json`, needing network for the registry and a toolchain on
+  `PATH`. And who runs it: ADG-5 lets Ravel add two arguments to one instance and own no launcher
+  setting, so a `PreLaunchCommand` needs an amendment or a different trigger.
+- **Does the composed host survive?** It is the only thing exercising five test mods in a real launch.
+  Relegating it to a test fixture trades that for installed examples unless the test mods become
+  installable, which the widened workspace now makes possible.
+- **Ravel needs a Java 24+ runtime** because the transformer is written on `java.lang.classfile`. Port
+  it, or declare the requirement to players.
 
 ## Next
 
-- The stored payload was byte-identical after the first session and after a reopen-and-save, while the
-  saved-data test mod counts visits. Either the reopen does not hand the stored bytes back to the mods,
-  or the visit never increments. Under investigation as this is written.
-- No launch discovers packages from disk: the composed host's five mods are the test set built in. A
-  player-facing launch needs the mods directory read (M4's disclosed limit).
 - `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
   being true this session for all three adapters. Amending closed evidence is its own ceremony.
 

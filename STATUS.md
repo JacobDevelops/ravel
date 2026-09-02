@@ -79,6 +79,8 @@ Newest last. All local, nothing pushed.
 | `zvqpomru` | layer every admitted mod's generated resources into one set per launch |
 | `vrxwnwoy` | declare each version's pack formats and pack.mcmeta shape, re-derived from the pinned jar |
 | `polrksos` | write the layered resources as a pack under the instance and the world, seeding the pack id once |
+| `vmyployz` | compile the shipped content example into the generated host and require its files in the written packs |
+| `kltkmyxs` | generate the blockstates, item model and self-drop loot table a declaration does not supply |
 
 ## The queue is drained
 
@@ -189,8 +191,13 @@ Ravel mod supplies that the game renders is its name. The model is still the pla
 block needs three files and the example declares one: a blockstates file and an item model. And it
 drops nothing because no loot table is declared, and the declared recipe was not written. Decision
 taken: Ravel generates the conventional defaults an author does not supply (blockstates, item model,
-self-drop loot table), an author-supplied file at the same path wins, and 1.21.1's singular data folder
-names are per-version data. Being built as this is written.
+self-drop loot table), and an author-supplied file at the same path wins. Built, with two corrections
+the jars forced: a block's loot table lives under `loot_table/blocks/`, the prefix `BlockBehaviour$Properties`
+adds, and both tracked versions already use the singular folder names, so nothing there is per-version.
+What is per-version is how an item finds its model (`models/item/` at 1.21.1, an `items/` definition at
+26.1.2), and rather than teach the version-neutral data crate which is running, both files are written.
+A recipe is the one file an author writes themself: its body shape differs between the versions and no
+generator can be right on both.
 
 Two ceilings, stated where they live: a fresh instance is seeded on its second launch, because writing
 an `options.txt` without the game's own `version` line would change which migrations it runs; and a

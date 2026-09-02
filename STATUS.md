@@ -157,6 +157,9 @@ block and its item as two independent entries and a plain `Item` has no use-on. 
 is a `BlockItem` holding the block. Fixed: an item whose identifier equals a block's in the same mod
 registers as that block's `BlockItem`, blocks register before items, and the stub tree learned to chain
 a stubbed superclass constructor explicitly, which nothing had needed before `BlockItem extends Item`.
+Launch 9 proved it by hand: right-click places the block, the give command names it under the block's
+key, the stack decrements in survival, the block breaks, survives save and reopen, and drops nothing
+because no loot table reaches the game yet, which is the `data/` half of the resource path below.
 
 The missing model is being closed along the plan the resources work recorded: the `Mod` trait gained a
 defaulted `content_declaration`, the loader layers every admitted mod's generated files into one set per

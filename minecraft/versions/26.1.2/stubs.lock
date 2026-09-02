@@ -425,6 +425,18 @@ flags = 16409
 method = false
 
 [[stub]]
+class = "net/minecraft/world/item/BlockItem"
+flags = 33
+extends = "net/minecraft/world/item/Item"
+superConstructor = "(Lnet/minecraft/world/item/Item$Properties;)V"
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/item/Item$Properties;)V"
+flags = 1
+method = true
+
+[[stub]]
 class = "net/minecraft/world/item/Item"
 flags = 33
 

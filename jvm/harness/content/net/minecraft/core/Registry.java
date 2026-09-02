@@ -36,6 +36,12 @@ public class Registry {
         if (value instanceof net.minecraft.world.level.block.Block block) {
             return "Block(" + block.applied() + ")";
         }
+        if (value instanceof net.minecraft.world.item.BlockItem placing) {
+            // Named apart from a plain item on purpose: an item registered under
+            // a block's identifier has to be the block's placing item, and a
+            // stand-in that printed both the same way would pass either.
+            return "BlockItem(" + placing.getBlock().id() + "/" + placing.applied() + ")";
+        }
         if (value instanceof net.minecraft.world.item.Item item) {
             return "Item(" + item.applied() + ")";
         }

@@ -60,6 +60,22 @@ pub(super) struct Stub {
     /// descriptor rather than named as a seed.
     #[serde(default, rename = "member")]
     pub(super) members: Vec<Member>,
+    /// The superclass constructor this class's own constructors have to chain to.
+    ///
+    /// A stub body is unreachable, but a constructor still runs its superclass's
+    /// first, and javac inserts a no-argument `super()` where a source writes
+    /// none. That is fine while a stubbed class's stubbed superclass declares no
+    /// constructor, which was every case until an item that places a block
+    /// needed one: `BlockItem` extends `Item`, `Item`'s stub declares only the
+    /// constructor the jar declares, and the implicit call named a constructor
+    /// that is not there.
+    ///
+    /// So the descriptor is recorded here, where the whole stub set is known,
+    /// and the renderer writes an explicit call. It is `None` where the
+    /// superclass is unstubbed or declares no constructor of its own, which is
+    /// the ordinary case.
+    #[serde(default, rename = "superConstructor")]
+    pub(super) super_constructor: Option<String>,
 }
 
 impl Stub {
@@ -176,9 +192,46 @@ pub(super) fn from_jar(
             extends,
             implements,
             members: members.get(class).cloned().unwrap_or_default(),
+            super_constructor: None,
         });
     }
+    chain_constructors(&mut stubs);
     Ok(stubs)
+}
+
+/// Records, for each stub, the superclass constructor its own has to call.
+///
+/// Done over the finished set because a stub is rendered on its own and cannot
+/// see its superclass's members. Only a class that declares a constructor needs
+/// one, and only where the stubbed superclass declares one too: everywhere else
+/// javac's implicit `super()` reaches the implicit no-argument constructor that
+/// a class declaring none has.
+fn chain_constructors(stubs: &mut [Stub]) {
+    let declared = stubs
+        .iter()
+        .map(|stub| {
+            let first = stub
+                .members
+                .iter()
+                .find(|member| member.method && member.name == "<init>")
+                .map(|member| member.descriptor.clone());
+            (stub.class.clone(), first)
+        })
+        .collect::<BTreeMap<_, _>>();
+    for stub in stubs.iter_mut() {
+        if !stub
+            .members
+            .iter()
+            .any(|member| member.method && member.name == "<init>")
+        {
+            continue;
+        }
+        stub.super_constructor = stub
+            .extends
+            .as_ref()
+            .and_then(|parent| declared.get(parent))
+            .and_then(Clone::clone);
+    }
 }
 
 /// Resolves every stub from the tracked lock.
@@ -763,6 +816,7 @@ mod tests {
             extends: None,
             implements: Vec::new(),
             members: Vec::new(),
+            super_constructor: None,
         };
         assert!(!plain.is_interface() && !plain.is_abstract() && !plain.is_final());
     }

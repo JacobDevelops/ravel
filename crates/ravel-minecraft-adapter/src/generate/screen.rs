@@ -683,6 +683,7 @@ com.example.util.Held -> com.example.util.Held:
                     method("resize", "()V"),
                     method("resize", "(I)V"),
                 ],
+                super_constructor: None,
             },
             Stub {
                 class: "com/example/text/Label".to_owned(),
@@ -690,6 +691,7 @@ com.example.util.Held -> com.example.util.Held:
                 extends: None,
                 implements: Vec::new(),
                 members: vec![method("of", "(Ljava/lang/String;)Lcom/example/text/Label;")],
+                super_constructor: None,
             },
             Stub {
                 class: "com/example/util/Held".to_owned(),
@@ -697,6 +699,7 @@ com.example.util.Held -> com.example.util.Held:
                 extends: None,
                 implements: Vec::new(),
                 members: vec![method("tick", "()V")],
+                super_constructor: None,
             },
         ]
     }

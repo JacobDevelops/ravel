@@ -252,3 +252,12 @@ members = ["<init>"]
 role = "Item$Properties"
 class = "net.minecraft.world.item.Item$Properties"
 members = ["<init>", "setId", "stacksTo", "fireResistant"]
+
+[[stub]]
+# The item that places a block. An item sharing a block's identifier is that
+# block's placing item and not a second thing that happens to be named the same,
+# so it is constructed from the block; a plain item has no use-on and right
+# clicking it does nothing, which is what the eighth launch saw.
+role = "BlockItem"
+class = "net.minecraft.world.item.BlockItem"
+members = ["<init>"]

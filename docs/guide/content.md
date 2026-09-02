@@ -86,6 +86,13 @@ the same content declared in a different order produces the same bytes too.
 needs an entity, a fluid, a block entity or a biome, the SDK has no name for it
 yet and no workaround will produce one.
 
+**An item that shares a block's name places that block.** Declaring
+`ContentKind::Block` and `ContentKind::Item` under one name, as the example
+above does, is how you get a block you can hold: Ravel registers the item as the
+block's placing item rather than as a second thing that happens to be named the
+same, so right clicking it puts the block down. An item under a name no block
+claims is a plain item and places nothing.
+
 **A command belongs in the declaration like anything else.**
 `ContentDeclaration::entry(ContentKind::Command, "lanterns")` is how you name one,
 `claim_all` claims it with the rest, and the mod that claimed the root literal is

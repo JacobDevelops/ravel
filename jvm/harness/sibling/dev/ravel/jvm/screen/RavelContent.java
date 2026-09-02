@@ -5,6 +5,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -67,4 +68,17 @@ public final class RavelContent {
         }
         Registry.register(BuiltInRegistries.ITEM, id, new Item(properties));
     }
+    /** Registers one item that places a block, rather than a plain one. */
+    public static void registerBlockItem(
+            String namespace, String path, int stackSize, boolean fireResistant, Block block) {
+        Identifier id = Identifier.fromNamespaceAndPath(namespace, path);
+        Item.Properties properties = new Item.Properties()
+                .setId(ResourceKey.create(Registries.ITEM, id))
+                .stacksTo(stackSize);
+        if (fireResistant) {
+            properties = properties.fireResistant();
+        }
+        Registry.register(BuiltInRegistries.ITEM, id, new BlockItem(block, properties));
+    }
+
 }

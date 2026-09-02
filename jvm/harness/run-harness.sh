@@ -502,6 +502,23 @@ states=2
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
 
+# A block and an item under one identifier, which is how a mod declares a block
+# you can hold. The item has to be the block's placing item and be built from the
+# block: a plain item has no use-on, so right clicking it does nothing at all,
+# which is what the eighth launch found. The stand-in prints a placing item
+# differently from a plain one, so registering the wrong kind reads differently.
+#
+# The payload declares the item first, on purpose. Nothing about the order a mod
+# writes its entries in says a block comes before the item that places it, so the
+# adapter reads the payload whole and registers every block before any item.
+content_run placing-item \
+	'item:example_mod:lantern:64:false,block:example_mod:lantern:3.0:3.0:false:false' \
+	'block=example_mod:lantern->Block(3.0/3.0/false/false)
+item=example_mod:lantern->BlockItem(block/example_mod:lantern/64/false)
+states=2
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+
 # A kind this version has no width for. The row before it registers, the rows
 # after it are not read at all, and the diagnostic names the kind. Reading on
 # would be the silent defect: a width guessed for one row reads the next row's

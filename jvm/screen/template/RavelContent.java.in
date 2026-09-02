@@ -9,6 +9,7 @@
 {{import BlockBehaviour$Properties}}
 {{import Item}}
 {{import Item$Properties}}
+{{import BlockItem}}
 
 /**
  * Registers one block or one item, in the shape this version's registries want.
@@ -95,4 +96,35 @@ public final class RavelContent {
         {{Registry}}.{{Registry#register}}(
                 {{BuiltInRegistries}}.{{BuiltInRegistries#ITEM}}, id, new {{Item}}(properties));
     }
+
+    /**
+     * Registers one item that places a block, rather than a plain one.
+     *
+     * <p>An item whose identifier is a block's identifier is that block's
+     * placing item. A plain item has no use-on, so right clicking it does
+     * nothing at all, which is what a mod declaring a block and an item under
+     * one name got before this existed.
+     *
+     * @param namespace the owning mod's id
+     * @param path the item's own name, which is the block's
+     * @param stackSize how many of it sit in one slot
+     * @param fireResistant whether it survives fire
+     * @param block the block this item places
+     */
+    public static void registerBlockItem(
+            String namespace, String path, int stackSize, boolean fireResistant, {{Block}} block) {
+        {{Identifier}} id = {{Identifier}}.{{Identifier#fromNamespaceAndPath}}(namespace, path);
+        {{Item$Properties}} properties = new {{Item$Properties}}()
+                .{{Item$Properties#setId}}(
+                        {{ResourceKey}}.{{ResourceKey#create}}(
+                                {{Registries}}.{{Registries#ITEM}}, id))
+                .{{Item$Properties#stacksTo}}(stackSize);
+        if (fireResistant) {
+            properties = properties.{{Item$Properties#fireResistant}}();
+        }
+        {{Registry}}.{{Registry#register}}(
+                {{BuiltInRegistries}}.{{BuiltInRegistries#ITEM}}, id,
+                new {{BlockItem}}(block, properties));
+    }
+
 }

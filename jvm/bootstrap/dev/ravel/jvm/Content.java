@@ -1,7 +1,9 @@
 package dev.ravel.jvm;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Registers the content Ravel's barrier admitted, on the Java side of the
@@ -60,6 +62,7 @@ final class Content {
 
     private static final String REGISTER_BLOCK = "registerBlock/6";
     private static final String REGISTER_ITEM = "registerItem/4";
+    private static final String REGISTER_BLOCK_ITEM = "registerBlockItem/5";
 
     /**
      * Everything this adapter asks the sibling for, so a check can ask too.
@@ -69,7 +72,9 @@ final class Content {
      * dropped an entry point compiles and ships; this is what lets the
      * per-version Java compile refuse it instead.
      */
-    static final String[] SIBLING_ENTRY_POINTS = {REGISTER_BLOCK, REGISTER_ITEM};
+    static final String[] SIBLING_ENTRY_POINTS = {
+        REGISTER_BLOCK, REGISTER_ITEM, REGISTER_BLOCK_ITEM
+    };
 
     private Content() {
     }
@@ -105,6 +110,7 @@ final class Content {
                 return;
             }
             admitted = Integer.parseInt(fields.get(1));
+            List<Row> rows = new ArrayList<>();
             int at = 2;
             for (int row = 0; row < admitted; row++) {
                 // A row is its three identity fields, its owner, and then as many
@@ -135,11 +141,30 @@ final class Content {
                     Agent.diagnose("content registration was offered a row missing its behaviour");
                     break;
                 }
-                List<String> behaviour = fields.subList(at + 4, at + 4 + width);
-                if (one(kind, fields.get(at + 1), fields.get(at + 2), behaviour)) {
+                rows.add(new Row(
+                        kind,
+                        fields.get(at + 1),
+                        fields.get(at + 2),
+                        fields.subList(at + 4, at + 4 + width)));
+                at += 4 + width;
+            }
+
+            // Blocks first, and this is the whole reason the payload is read into
+            // rows before any of it is registered. An item whose identifier is a
+            // block's identifier is that block's placing item, and it is built
+            // from the block, so the block has to exist by the time the item is
+            // reached. The payload's own order is the mod author's and says
+            // nothing about that.
+            Map<String, Object> blocks = new LinkedHashMap<>();
+            for (Row row : rows) {
+                if (row.kind().equals("block") && registerBlock(row, blocks)) {
                     registered++;
                 }
-                at += 4 + width;
+            }
+            for (Row row : rows) {
+                if (row.kind().equals("item") && registerItem(row, blocks)) {
+                    registered++;
+                }
             }
         } catch (Throwable unusable) {
             // Deliberately everything. This runs inside the game's own
@@ -163,38 +188,98 @@ final class Content {
      *
      * @return whether the entry reached its registry
      */
-    private static boolean one(
-            String kind, String namespace, String path, List<String> behaviour) {
+    private static boolean registerBlock(Row row, Map<String, Object> blocks) {
         try {
             Class<?> content = sibling();
             if (content == null) {
                 return false;
             }
-            if (kind.equals("block")) {
-                mapStates(
-                        Members.sibling(content, REGISTER_BLOCK)
-                                .invoke(
-                                        null,
-                                        namespace,
-                                        path,
-                                        Float.parseFloat(behaviour.get(0)),
-                                        Float.parseFloat(behaviour.get(1)),
-                                        Boolean.parseBoolean(behaviour.get(2)),
-                                        Boolean.parseBoolean(behaviour.get(3))));
-            } else {
+            List<String> behaviour = row.behaviour();
+            Object block = Members.sibling(content, REGISTER_BLOCK)
+                    .invoke(
+                            null,
+                            row.namespace(),
+                            row.path(),
+                            Float.parseFloat(behaviour.get(0)),
+                            Float.parseFloat(behaviour.get(1)),
+                            Boolean.parseBoolean(behaviour.get(2)),
+                            Boolean.parseBoolean(behaviour.get(3)));
+            mapStates(block);
+            blocks.put(row.identifier(), block);
+            return true;
+        } catch (Throwable unregistered) {
+            return refuse(row, unregistered);
+        }
+    }
+
+    /**
+     * Registers one item, as the placing item of a block of its name if there is
+     * one.
+     *
+     * <p>Vanilla's placing item is not a plain item that happens to share a
+     * block's name; it is built from the block, and that is what gives it a
+     * use-on. An item registered plainly under a block's identifier looks right
+     * in the inventory and does nothing when it is right clicked, which is what
+     * the eighth real launch found.
+     *
+     * <p>Two mods cannot claim one identifier — the loader refuses that before
+     * any of this — so an identifier that matches a block Ravel just registered
+     * matches a block of the same mod, and matching the name is matching the
+     * owner too.
+     *
+     * @param blocks what the block pass registered, by identifier
+     */
+    private static boolean registerItem(Row row, Map<String, Object> blocks) {
+        try {
+            Class<?> content = sibling();
+            if (content == null) {
+                return false;
+            }
+            List<String> behaviour = row.behaviour();
+            Object block = blocks.get(row.identifier());
+            if (block == null) {
                 Members.sibling(content, REGISTER_ITEM)
                         .invoke(
                                 null,
-                                namespace,
-                                path,
+                                row.namespace(),
+                                row.path(),
                                 Integer.parseInt(behaviour.get(0)),
                                 Boolean.parseBoolean(behaviour.get(1)));
+            } else {
+                Members.sibling(content, REGISTER_BLOCK_ITEM)
+                        .invoke(
+                                null,
+                                row.namespace(),
+                                row.path(),
+                                Integer.parseInt(behaviour.get(0)),
+                                Boolean.parseBoolean(behaviour.get(1)),
+                                block);
             }
             return true;
         } catch (Throwable unregistered) {
-            Agent.diagnose("could not register " + kind + " " + namespace + ":" + path
-                    + " (" + unusableName(unregistered) + ")");
-            return false;
+            return refuse(row, unregistered);
+        }
+    }
+
+    /** Reports one row that could not be registered, and registers no other. */
+    private static boolean refuse(Row row, Throwable unregistered) {
+        Agent.diagnose("could not register " + row.kind() + " " + row.identifier()
+                + " (" + unusableName(unregistered) + ")");
+        return false;
+    }
+
+    /**
+     * One decoded row of the payload, before anything is registered.
+     *
+     * <p>The payload is read whole before any of it is registered, because an
+     * item may be a block's placing item and the block has to exist first. The
+     * order the rows arrive in is the mod author's.
+     */
+    private record Row(String kind, String namespace, String path, List<String> behaviour) {
+
+        /** What names this row's content, which is what an item matches a block by. */
+        String identifier() {
+            return namespace + ":" + path;
         }
     }
 
@@ -251,7 +336,8 @@ final class Content {
      */
     private static Class<?> sibling() {
         if (!Screens.isInstalled()) {
-            Agent.diagnose("content registration has no component to register through");
+            Agent.diagnose("content registration has no component to register through; "
+                    + Screens.SCREEN_JAR + " is not beside the agent jar");
             return null;
         }
         try {

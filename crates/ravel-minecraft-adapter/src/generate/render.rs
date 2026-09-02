@@ -11,7 +11,7 @@ use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
 use super::inputs::{self, Adapter, Inventory, Lookup, Reflection};
 use super::mapping::Mapping;
 use super::resolve::Resolved;
-use super::stubs::Stub;
+use super::stubs::{Member, Stub};
 use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY, LIBRARY_PROPERTY};
 
 /// A JVM type a hook argument can carry across the boundary.
@@ -1192,6 +1192,9 @@ pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
         if let Some(parent) = &stub.extends {
             let _ = writeln!(text, "extends = \"{parent}\"");
         }
+        if let Some(chained) = &stub.super_constructor {
+            let _ = writeln!(text, "superConstructor = \"{chained}\"");
+        }
         if !stub.implements.is_empty() {
             let rendered = stub
                 .implements
@@ -1306,7 +1309,11 @@ pub(super) fn stub_java(
                 .collect::<Vec<_>>()
                 .join(", ");
             if member.name == "<init>" {
-                let _ = writeln!(text, "\n    {modifiers}{simple}({declared}) {{\n    }}");
+                let chained = chained_super(stub, mapping).map_err(&unsupported)?;
+                let _ = writeln!(
+                    text,
+                    "\n    {modifiers}{simple}({declared}) {{\n{chained}    }}"
+                );
             } else if returns == "void" {
                 let _ = writeln!(text, "\n    {modifiers}void {name}({declared}) {{\n    }}");
             } else {
@@ -1319,26 +1326,97 @@ pub(super) fn stub_java(
                      throw new UnsupportedOperationException(\"stub\");\n    }}"
                 );
             }
-        } else if stub.is_interface() {
-            return Err(unsupported(format!(
-                "{} is a field on an interface, which is implicitly final and \
-                 would need a value no stub can invent",
-                member.name
-            )));
         } else {
-            let (kind, rest) = java_type(&descriptor).map_err(&unsupported)?;
-            if !rest.is_empty() {
-                return Err(unsupported(format!(
-                    "{} declares {} which is not one type",
-                    member.name, member.descriptor
-                )));
-            }
-            let _ = writeln!(text, "\n    {modifiers}{kind} {name};");
+            let _ = writeln!(
+                text,
+                "{}",
+                stub_field(stub, member, &modifiers, &name, &descriptor).map_err(&unsupported)?
+            );
         }
     }
 
     let _ = writeln!(text, "}}");
     Ok((format!("{linked}.java"), text))
+}
+
+/// One stub field, as Java source declares it.
+///
+/// Separate from the method branch because a field is the one member a stub can
+/// be asked for and be unable to write: an interface's fields are implicitly
+/// final, so a stub would have to invent an initial value, and inventing one is
+/// how a stub stops standing in for the game.
+///
+/// # Errors
+///
+/// Returns the detail of a field on an interface, or of a descriptor that names
+/// more than one type.
+fn stub_field(
+    stub: &Stub,
+    member: &Member,
+    modifiers: &str,
+    name: &str,
+    descriptor: &str,
+) -> Result<String, String> {
+    if stub.is_interface() {
+        return Err(format!(
+            "{} is a field on an interface, which is implicitly final and would need a value no \
+             stub can invent",
+            member.name
+        ));
+    }
+    let (kind, rest) = java_type(descriptor)?;
+    if !rest.is_empty() {
+        return Err(format!(
+            "{} declares {} which is not one type",
+            member.name, member.descriptor
+        ));
+    }
+    Ok(format!("\n    {modifiers}{kind} {name};"))
+}
+
+/// The explicit `super(...)` one stub's constructor has to open with.
+///
+/// A constructor runs its superclass's first, and javac writes an implicit
+/// no-argument call where a source writes none. That reaches the implicit
+/// constructor of a superclass declaring none, which was every stubbed
+/// superclass until an item that places a block: its superclass's stub declares
+/// the one constructor the jar declares and so has no no-argument one.
+///
+/// The recorded descriptor is the reviewed shape and a stub is written in the
+/// names the JVM links, so it is translated the way every other descriptor here
+/// is. A constructor is never renamed, so only the parameter types move.
+///
+/// # Errors
+///
+/// Returns the detail of a descriptor that is not a method descriptor.
+fn chained_super(stub: &Stub, mapping: &Mapping) -> Result<String, String> {
+    let Some(recorded) = stub.super_constructor.as_ref() else {
+        return Ok(String::new());
+    };
+    let (_, linked) = mapping.linked_member(&stub.class, "<init>", recorded);
+    let (parameters, _) = signature(&linked)?;
+    Ok(format!("        super({});\n", placeholders(&parameters)))
+}
+
+/// Placeholder arguments for a chained constructor call.
+///
+/// A stub's constructor body is unreachable, so what these are does not matter
+/// and only their types do. A reference is a cast `null`, because an unqualified
+/// one is ambiguous the moment a superclass overloads its constructor.
+fn placeholders(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| match parameter.as_str() {
+            "boolean" => "false".to_owned(),
+            "char" => "'\\0'".to_owned(),
+            "byte" | "short" | "int" => "0".to_owned(),
+            "long" => "0L".to_owned(),
+            "float" => "0.0f".to_owned(),
+            "double" => "0.0".to_owned(),
+            reference => format!("({reference}) null"),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The modifiers a stub reproduces, as Java source writes them.
@@ -1881,6 +1959,7 @@ mod tests {
                     method: *method,
                 })
                 .collect(),
+            super_constructor: None,
         }
     }
 

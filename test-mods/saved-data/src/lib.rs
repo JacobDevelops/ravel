@@ -204,9 +204,21 @@ impl SavedDataMod {
         Self::migrate(payload, 3)
     }
 
+    /// Counts one opening of the world, which is what [`SavedState::visits`] is.
+    ///
+    /// Called from [`HostMod::open_saved_data`] rather than only from a test,
+    /// which is the whole difference between a counter and a field. Until it was
+    /// called there, nothing in a running game ever changed this mod's state:
+    /// every session produced the default payload, so the bytes a world stored
+    /// were identical whatever had happened, and a save that restored nothing
+    /// was indistinguishable from one that restored everything.
+    pub const fn open_counted(&mut self) {
+        self.state.visits = self.state.visits.saturating_add(1);
+    }
+
     /// Records a visit to the world, which is what a reload has to preserve.
     pub fn visit(&mut self, waypoint: &str) {
-        self.state.visits = self.state.visits.saturating_add(1);
+        self.open_counted();
         self.state.waypoints.push(waypoint.to_owned());
         self.state.waypoints.sort();
         self.state.waypoints.dedup();
@@ -303,6 +315,9 @@ impl HostMod for SavedDataMod {
                 detail: "the admitted saved-data plan changed during delivery".to_owned(),
             });
         }
+        // Last, so a delivery this mod refused above counts no visit and leaves
+        // the state it was holding alone.
+        self.open_counted();
         Ok(())
     }
 

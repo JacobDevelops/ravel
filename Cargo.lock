@@ -781,6 +781,7 @@ dependencies = [
  "ravel-observability",
  "ravel-save",
  "ravel-test-mod-audio",
+ "ravel-test-mod-saved-data",
  "semver",
  "serde_json",
 ]

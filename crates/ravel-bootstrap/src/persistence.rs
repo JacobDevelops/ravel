@@ -1257,6 +1257,98 @@ mod tests {
         );
     }
 
+    /// A runtime holding the packaged world-owning mod a launch composes.
+    ///
+    /// Every other test here drives [`Owning`], which is a fixture written to be
+    /// steered: a test sets its visit count and the crossing carries it. That
+    /// proves the crossing and says nothing about whether the mod a launch
+    /// actually ships ever has state to carry. This one holds the shipped mod
+    /// and steers nothing, so what reaches a world's file is what a running game
+    /// would put there.
+    fn shipped_running() -> LoaderRuntime {
+        let shipped = ravel_test_mod_saved_data::SavedDataMod::new();
+        let entries = vec![LifecycleEntry {
+            mod_id: shipped.id().clone(),
+            sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+            requirement: Requirement::Required,
+            saved_data_versions: shipped.declaration().versions().collect(),
+        }];
+        let mut machine =
+            LifecycleMachine::new(Side::Client, entries).expect("one mod is a legal plan");
+        for state in [
+            LifecycleState::Validated,
+            LifecycleState::Resolved,
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
+        ] {
+            machine.advance_all(state).expect("a legal step");
+        }
+        LoaderRuntime::profiling(
+            machine,
+            vec![Box::new(shipped)],
+            ravel_observability::Profiler::off(),
+            crate::runtime::pre_world_report(),
+        )
+    }
+
+    /// What `bytes` records for the shipped owner, through its own declaration.
+    fn shipped_visits(bytes: &[u8]) -> u64 {
+        let declaration = ravel_test_mod_saved_data::SavedDataMod::new().declaration();
+        let owner = declaration.owner().clone();
+        SavedDataAggregate::open(
+            Some(bytes),
+            std::slice::from_ref(&declaration),
+            &std::collections::BTreeMap::new(),
+        )
+        .expect("a produced aggregate is admissible")
+        .envelope(&owner)
+        .expect("the shipped owner is in the aggregate")
+        .payload()["visits"]
+            .as_u64()
+            .expect("the payload records a visit count")
+    }
+
+    /// The shipped owner stores a different world after a second visit.
+    ///
+    /// Three failures produce one symptom here, and the launch that found it
+    /// could tell them apart from neither the log nor the file: a reopen that
+    /// hands the mods nothing, a mod whose state never changes, and a save that
+    /// promotes a stage of unchanged content all write a payload identical to
+    /// the last one. This separates them. A reopen delivering nothing counts the
+    /// second visit from zero and answers one; a mod that never counts answers
+    /// zero twice and writes the same bytes; only a reopen that restores what
+    /// the world stored, to a mod that has something to store, answers two.
+    #[test]
+    fn the_shipped_world_owner_stores_a_different_world_after_a_second_visit() {
+        let runtime = shipped_running();
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("a new world stages");
+        let first = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+        assert_eq!(
+            shipped_visits(&first),
+            1,
+            "opening a world left the shipped owner with nothing to store"
+        );
+
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), Some(&first), false)
+            .expect("the world its own save wrote reopens");
+        let second = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+
+        assert_eq!(
+            shipped_visits(&second),
+            2,
+            "the reopen did not hand the shipped owner back what the world stored"
+        );
+        assert_ne!(
+            first, second,
+            "two sessions of one world stored byte-identical payloads"
+        );
+    }
+
     /// A mod refusing delivery withholds the world instead of opening it fresh.
     ///
     /// This is the failure with the quietest wrong answer. The mod is the only

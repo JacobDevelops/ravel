@@ -412,11 +412,15 @@ fn a_created_world_reloads_with_the_state_it_saved() {
 
     assert!(plan.is_current(), "a world just written needs no migration");
     assert_eq!(
-        reloaded.state(),
-        &written,
+        reloaded.state().waypoints,
+        written.waypoints,
         "the bytes that crossed did not carry the state that was saved"
     );
-    assert_eq!(reloaded.state().visits, 2);
+    // One more than the session wrote, because opening a world is itself what
+    // this counter counts and the reload above is an opening. A reload that
+    // carried nothing would answer one here too, so the waypoints above are what
+    // separate a restored world from a fresh one.
+    assert_eq!(reloaded.state().visits, written.visits + 1);
 }
 
 #[test]
@@ -425,7 +429,16 @@ fn a_fixture_world_survives_a_visit_and_a_reload() {
 
     let mut opened = SavedDataMod::new();
     reload(&mut opened, Some(&aggregate_bytes("current"))).expect("`current` opens");
-    assert_eq!(opened.state(), &held, "opening changed the state");
+    assert_eq!(
+        opened.state().waypoints,
+        held.waypoints,
+        "opening changed the state"
+    );
+    assert_eq!(
+        opened.state().visits,
+        held.visits + 1,
+        "the open went uncounted"
+    );
 
     opened.visit("summit");
     let bytes = emitted(&opened);
@@ -434,7 +447,8 @@ fn a_fixture_world_survives_a_visit_and_a_reload() {
     let mut reloaded = SavedDataMod::new();
     reload(&mut reloaded, Some(&bytes)).expect("the world it just wrote opens");
 
-    assert_eq!(reloaded.state().visits, held.visits + 1);
+    // The fixture's own count, plus the open above, the visit, and this open.
+    assert_eq!(reloaded.state().visits, held.visits + 3);
     assert_eq!(reloaded.state().waypoints, ["mine", "spawn", "summit"]);
 }
 
@@ -479,8 +493,9 @@ fn an_older_world_opens_and_names_every_version_it_steps_through() {
         [2, 3].map(|raw| SavedDataVersion::new(raw).expect("non-zero")),
         "a plan that skipped a version would be migrating across a gap"
     );
-    // Version 1 kept no waypoint list, and the state it did keep survives.
-    assert_eq!(saved.state().visits, held.visits);
+    // Version 1 kept no waypoint list, and the state it did keep survives the
+    // migration, one higher for the open that carried it across.
+    assert_eq!(saved.state().visits, held.visits + 1);
     assert_eq!(saved.state().waypoints, ["spawn"]);
 
     // Migrated in memory is not migrated on disk until a save writes it, and what
@@ -529,7 +544,16 @@ fn a_world_holding_no_data_this_mod_owns_initializes_fresh_state() {
             .expect("a world holding nothing for this mod initializes fresh state");
 
         assert!(plan.is_current());
-        assert_eq!(saved.state(), &SavedState::default());
+        // Fresh state plus the open that just happened, and the second pass
+        // answers one rather than two: absence initializes rather than
+        // accumulating whatever the previous world left in the mod.
+        assert_eq!(
+            saved.state(),
+            &SavedState {
+                visits: 1,
+                waypoints: Vec::new()
+            }
+        );
     }
 }
 

@@ -30,6 +30,7 @@ serde_json.workspace = true
 [dev-dependencies]
 ravel-data.workspace = true
 ravel-test-mod-audio.workspace = true
+ravel-test-mod-saved-data.workspace = true
 
 [lints]
 workspace = true

@@ -306,9 +306,13 @@ in
         # report is compared to the tree as well, because a report that disagrees
         # with what `write` emitted is the failure a single comparison would miss.
         expected="$(printf '%s\n' \
+          assets/copper_mod/items/copper_ingot.json \
           assets/copper_mod/lang/en_us.json \
+          assets/copper_mod/models/item/copper_ingot.json \
           assets/example_pack/textures/gui/progress.png \
+          assets/lantern_mod/items/copper_lantern.json \
           assets/lantern_mod/lang/en_us.json \
+          assets/lantern_mod/models/item/copper_lantern.json \
           data/c/tags/item/ingots.json \
           data/example_pack/recipe/copper_lantern.json \
           ravel/config/lantern_mod.json \

@@ -1249,6 +1249,25 @@ ravel_sdk::export_mod!(Installed::default());
                 .unwrap_or_else(|error| panic!("the model reached no pack: {error}")),
             "{\n  \"parent\": \"minecraft:block/lantern\"\n}\n"
         );
+        // The files an author did not write. A launch found a registered block
+        // rendering as the placeholder and dropping nothing, because a block
+        // needs three files and the mod supplies one.
+        for (path, expected) in [
+            (
+                "blockstates/copper_lantern.json",
+                "\"model\": \"content:block/copper_lantern\"",
+            ),
+            (
+                "models/item/copper_lantern.json",
+                "\"parent\": \"content:block/copper_lantern\"",
+            ),
+            ("items/copper_lantern.json", "\"type\": \"minecraft:model\""),
+        ] {
+            let written = fs::read_to_string(assets.join(path))
+                .unwrap_or_else(|error| panic!("`{path}` reached no pack: {error}"));
+            assert!(written.contains(expected), "`{path}`: {written}");
+        }
+
         let english = fs::read_to_string(assets.join("lang/en_us.json"))
             .unwrap_or_else(|error| panic!("the translations reached no pack: {error}"));
         assert!(english.contains("Copper Lantern"), "{english}");
@@ -1258,12 +1277,23 @@ ravel_sdk::export_mod!(Installed::default());
         );
 
         // And the world half, which the same set feeds.
-        let world = instance.join("saves/Driven/datapacks/ravel/data/c/tags");
+        let data = instance.join("saves/Driven/datapacks/ravel/data");
         for tag in ["block/lanterns.json", "item/lanterns.json"] {
-            let written = fs::read_to_string(world.join(tag))
+            let written = fs::read_to_string(data.join("c/tags").join(tag))
                 .unwrap_or_else(|error| panic!("`{tag}` reached no world pack: {error}"));
             assert!(written.contains("content:copper_lantern"), "{written}");
         }
+        // At the path the game derives from the block's own identifier, which is
+        // that identifier with `blocks/` in front of it. One directory up is a
+        // table nothing loads and a block that drops nothing.
+        let loot = fs::read_to_string(data.join("content/loot_table/blocks/copper_lantern.json"))
+            .unwrap_or_else(|error| panic!("the loot table reached no world pack: {error}"));
+        assert!(loot.contains("minecraft:survives_explosion"), "{loot}");
+        assert!(loot.contains("content:copper_lantern"), "{loot}");
+        // The author's own bytes, which Ravel writes no default for.
+        let recipe = fs::read_to_string(data.join("content/recipe/crafting/copper_lantern.json"))
+            .unwrap_or_else(|error| panic!("the recipe reached no world pack: {error}"));
+        assert!(recipe.contains("minecraft:crafting_shaped"), "{recipe}");
     }
 
     /// Copies a package directory the way a player copies one in.

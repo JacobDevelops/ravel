@@ -903,11 +903,15 @@ mod tests {
         assert_eq!(
             generated.paths().collect::<Vec<_>>(),
             [
+                "assets/waystone_ledger/blockstates/waystone.json",
+                "assets/waystone_ledger/items/waystone.json",
                 "assets/waystone_ledger/lang/de_de.json",
                 "assets/waystone_ledger/lang/en_us.json",
                 "assets/waystone_ledger/models/block/waystone.json",
+                "assets/waystone_ledger/models/item/waystone.json",
                 "data/c/tags/block/waystones.json",
                 "data/c/tags/item/waystones.json",
+                "data/waystone_ledger/loot_table/blocks/waystone.json",
             ]
         );
         assert_eq!(

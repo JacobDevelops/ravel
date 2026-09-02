@@ -44,6 +44,37 @@ const CONVENTION: &str = "c";
 /// rather than comparing the pack with itself.
 pub const MODEL: &[u8] = b"{\n  \"parent\": \"minecraft:block/lantern\"\n}\n";
 
+/// The bytes of the crafting recipe, which Ravel does not generate either.
+///
+/// A recipe body is the clearest case of what the SDK will not invent. The two
+/// Minecraft versions this repository tracks spell an ingredient differently —
+/// one wraps it in an object and the other writes the name on its own — so there
+/// is no shape a generator could pick that is right on both. An author who ships
+/// a recipe is targeting a version, and this one targets the version the example
+/// is played on.
+pub const RECIPE: &[u8] = br##"{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "#": {
+      "item": "minecraft:torch"
+    },
+    "X": {
+      "item": "minecraft:copper_ingot"
+    }
+  },
+  "pattern": [
+    "XXX",
+    "X#X",
+    "XXX"
+  ],
+  "result": {
+    "count": 1,
+    "id": "content:copper_lantern"
+  }
+}
+"##;
+
 /// A mod that adds a copper lantern.
 ///
 /// # Examples
@@ -70,16 +101,24 @@ pub const MODEL: &[u8] = b"{\n  \"parent\": \"minecraft:block/lantern\"\n}\n";
 ///     ]
 /// );
 ///
-/// // The generated files: a tag per registry, a language file per locale, and
-/// // the model.
+/// // The generated files. Two the mod supplies because their shape is a
+/// // version's to decide — the block model and the recipe — and eight Ravel
+/// // derives: a tag per registry, a language file per locale, and the
+/// // blockstates, item model, item definition and loot table a block needs to
+/// // render, be held and drop itself.
 /// assert_eq!(
 ///     content.generated().paths().collect::<Vec<_>>(),
 ///     [
+///         "assets/content/blockstates/copper_lantern.json",
+///         "assets/content/items/copper_lantern.json",
 ///         "assets/content/lang/en_us.json",
 ///         "assets/content/lang/fr_fr.json",
 ///         "assets/content/models/block/copper_lantern.json",
+///         "assets/content/models/item/copper_lantern.json",
 ///         "data/c/tags/block/lanterns.json",
 ///         "data/c/tags/item/lanterns.json",
+///         "data/content/loot_table/blocks/copper_lantern.json",
+///         "data/content/recipe/crafting/copper_lantern.json",
 ///     ]
 /// );
 /// ```
@@ -127,6 +166,21 @@ impl ContentMod {
     pub fn model_path() -> RelativePath {
         RelativePath::try_from(format!(
             "assets/{}/models/block/{LANTERN}.json",
+            Self::declared_id()
+        ))
+        .expect("a mod id and a literal cannot spell an illegal path")
+    }
+
+    /// Returns the path the crafting recipe is supplied at.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the derived path stops being a legal package path, which would
+    /// mean this mod's own identity can no longer name a file.
+    #[must_use]
+    pub fn recipe_path() -> RelativePath {
+        RelativePath::try_from(format!(
+            "data/{}/recipe/crafting/{LANTERN}.json",
             Self::declared_id()
         ))
         .expect("a mod id and a literal cannot spell an illegal path")
@@ -183,6 +237,9 @@ impl ContentMod {
         declaration
             .resource(Self::model_path(), MODEL.to_vec())
             .expect("the model is supplied once, and nothing generates that path");
+        declaration
+            .resource(Self::recipe_path(), RECIPE.to_vec())
+            .expect("the recipe is supplied once, and nothing generates that path");
 
         declaration
     }

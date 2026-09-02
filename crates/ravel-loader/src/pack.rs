@@ -213,7 +213,7 @@ mod tests {
 
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
     use crate::resources::{Supplied, open_resources};
-    use ravel_core::{ContentKind, LifecycleState, ModId, Side, SideSet};
+    use ravel_core::{LifecycleState, ModId, Side, SideSet};
     use ravel_data::ContentDeclaration;
     use ravel_host_api::{HostError, HostMod};
 
@@ -249,10 +249,10 @@ mod tests {
         }
 
         fn content_declaration(&self) -> Option<ContentDeclaration> {
+            // Supplied paths only. What a declared entry adds to a pack is
+            // `ravel-data`'s to decide and its own tests' to hold; these are
+            // about which supplied file lands where.
             let mut declaration = ContentDeclaration::new(self.id.clone());
-            declaration
-                .entry(ContentKind::Item, "thing")
-                .expect("a legal, undeclared entry");
             for (path, bytes) in &self.supplies {
                 declaration
                     .resource(

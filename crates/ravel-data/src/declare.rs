@@ -1,9 +1,12 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ravel_core::{ContentId, ContentIdError, ContentKind, ModId, RegistryKey, RelativePath};
 
-use crate::generate::{GeneratedData, tag_document, translation_document};
+use crate::generate::{
+    GeneratedData, blockstate_document, item_definition_document, item_model_document,
+    loot_table_document, sprite_model_document, tag_document, translation_document,
+};
 use crate::tags::TagId;
 
 /// Everything one mod contributes to the game's content, declared in one place.
@@ -61,13 +64,19 @@ use crate::tags::TagId;
 /// // A name for it, in one locale.
 /// declaration.translation("en_us", "block.example_mod.copper_lantern", "Copper Lantern")?;
 ///
-/// // The tag and the translation are the two files this declaration produces.
+/// // The tag and the translation, plus the files a version needs for a block and
+/// // its item that nobody supplied: where the block's model is, what its item
+/// // looks like in a hand, and what breaking it drops.
 /// let generated = declaration.generate();
 /// assert_eq!(
 ///     generated.paths().collect::<Vec<_>>(),
 ///     [
+///         "assets/example_mod/blockstates/copper_lantern.json",
+///         "assets/example_mod/items/copper_lantern.json",
 ///         "assets/example_mod/lang/en_us.json",
+///         "assets/example_mod/models/item/copper_lantern.json",
 ///         "data/c/tags/item/lanterns.json",
+///         "data/example_mod/loot_table/blocks/copper_lantern.json",
 ///     ]
 /// );
 /// # Ok::<(), DeclarationError>(())
@@ -333,6 +342,13 @@ impl ContentDeclaration {
     pub fn generate(&self) -> GeneratedData {
         let mut data = GeneratedData::default();
 
+        // First, so that anything the author supplied at the same path replaces
+        // it below. That ordering is the whole of the precedence rule: a default
+        // is what an author did not write, and `GeneratedData::insert` keeps the
+        // last bytes recorded for a path.
+        for (path, bytes) in self.conventional() {
+            data.insert(path, bytes);
+        }
         for (tag, members) in &self.tags {
             let mut spellings: Vec<String> = members
                 .iter()
@@ -351,6 +367,116 @@ impl ContentDeclaration {
             data.insert(path.clone(), bytes.clone());
         }
         data
+    }
+
+    /// The files a version needs for the declared content that nobody supplied.
+    ///
+    /// A block is three files, not one. The author writes the block model,
+    /// because its shape is theirs; what a version needs beside it is a
+    /// blockstates file mapping the block's one variant to that model, an item
+    /// model so the block can be held and seen in an inventory, and a loot table
+    /// so breaking it drops something. None of those has a choice in it for a
+    /// block with one state, so an author writing them by hand would be writing
+    /// the same four lines every time and getting a placeholder texture and an
+    /// empty drop when they forgot. Ravel writes them, and a declaration stays a
+    /// declaration.
+    ///
+    /// Every path here is one an author may take back simply by supplying it:
+    /// these are inserted before the supplied resources, so the author's bytes
+    /// replace them. [`ContentDeclaration::supplied_defaults`] says which.
+    ///
+    /// # Two spellings of an item's model, on purpose
+    ///
+    /// The tracked versions disagree about how an item finds its model. The
+    /// older reads `models/item/<name>.json` directly; the newer reads an item
+    /// definition at `items/<name>.json` that names a model. Both are written,
+    /// because this crate is version-neutral and has no way to ask which version
+    /// is running — `docs/architecture/dependency-rules.md` is what keeps it that
+    /// way. The cost is one file the running version never looks up, which is a
+    /// path nothing resolves rather than a wrong answer; the alternative was
+    /// threading version data into the crate a mod's declaration lives in.
+    fn conventional(&self) -> Vec<(RelativePath, Vec<u8>)> {
+        let namespace = &self.owner;
+        let blocks: BTreeSet<&str> = self
+            .entries
+            .iter()
+            .filter(|entry| entry.kind() == ContentKind::Block)
+            .map(|entry| entry.id().path())
+            .collect();
+
+        let mut files = Vec::new();
+        for path in &blocks {
+            files.push((
+                Self::asset(namespace, &format!("blockstates/{path}.json")),
+                blockstate_document(namespace.as_str(), path),
+            ));
+            files.push((
+                Self::data(namespace, &format!("loot_table/blocks/{path}.json")),
+                loot_table_document(namespace.as_str(), path),
+            ));
+        }
+        for entry in &self.entries {
+            if entry.kind() != ContentKind::Item {
+                continue;
+            }
+            let path = entry.id().path();
+            // An item sharing a block's name places that block, so it shows the
+            // block's model rather than a flat sprite.
+            let model = if blocks.contains(path) {
+                format!("{namespace}:block/{path}")
+            } else {
+                format!("{namespace}:item/{path}")
+            };
+            files.push((
+                Self::asset(namespace, &format!("models/item/{path}.json")),
+                if blocks.contains(path) {
+                    item_model_document(&model)
+                } else {
+                    sprite_model_document(&model)
+                },
+            ));
+            files.push((
+                Self::asset(namespace, &format!("items/{path}.json")),
+                item_definition_document(&model),
+            ));
+        }
+        files
+    }
+
+    /// Returns the conventional paths the author supplied rather than inherited.
+    ///
+    /// A default nobody took back is invisible and a default an author replaced
+    /// is a decision they made, so a pack that ships one of each can say which is
+    /// which rather than leaving a reader to diff the bytes.
+    #[must_use]
+    pub fn supplied_defaults(&self) -> Vec<RelativePath> {
+        self.conventional()
+            .into_iter()
+            .map(|(path, _)| path)
+            .filter(|path| self.resources.contains_key(path))
+            .collect()
+    }
+
+    /// One path below this pack's `assets` half, in the owner's namespace.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the derived path is not a legal [`RelativePath`], which cannot
+    /// happen: a [`ModId`] and a validated content path hold no backslash, no
+    /// line terminator and no `..` component.
+    fn asset(owner: &ModId, rest: &str) -> RelativePath {
+        RelativePath::try_from(format!("assets/{owner}/{rest}"))
+            .expect("a mod id and a content path cannot spell an illegal path")
+    }
+
+    /// One path below this pack's `data` half, in the owner's namespace.
+    ///
+    /// # Panics
+    ///
+    /// Panics for the reason [`ContentDeclaration::asset`] does, and as rarely.
+    fn data(owner: &ModId, rest: &str) -> RelativePath {
+        RelativePath::try_from(format!("data/{owner}/{rest}"))
+            .expect("a mod id and a content path cannot spell an illegal path")
     }
 
     /// Returns the path a locale's translations are generated into.
@@ -891,12 +1017,116 @@ mod tests {
         declaration.tag(&items, &item).expect("an item tag");
         declaration.tag(&blocks, &block).expect("a block tag");
 
+        // The two tag files are the claim, and the four beside them are the
+        // conventional files a block and its item need, which this declaration
+        // gets for having declared them.
         assert_eq!(
             declaration.generate().paths().collect::<Vec<_>>(),
             [
+                "assets/example_mod/blockstates/lantern.json",
+                "assets/example_mod/items/lantern.json",
+                "assets/example_mod/models/item/lantern.json",
                 "data/c/tags/block/lanterns.json",
                 "data/c/tags/item/lanterns.json",
+                "data/example_mod/loot_table/blocks/lantern.json",
             ]
         );
+    }
+
+    /// A default an author supplied is the author's, and is named as such.
+    ///
+    /// The precedence is the point. A mod that ships a blockstates file with two
+    /// variants has decided something Ravel cannot, so the generated one must not
+    /// be what lands in the pack.
+    #[test]
+    fn an_author_supplied_default_replaces_the_generated_one_and_is_recorded() {
+        let owner: ModId = "example_mod".parse().expect("a legal mod id");
+        let mut declaration = ContentDeclaration::new(owner);
+        declaration
+            .entry(ContentKind::Block, "lantern")
+            .expect("a legal entry");
+        let path = RelativePath::try_from("assets/example_mod/blockstates/lantern.json".to_owned())
+            .expect("a legal path");
+        let mine = b"{\n  \"variants\": {\n    \"lit=true\": {}\n  }\n}\n".to_vec();
+        declaration
+            .resource(path.clone(), mine.clone())
+            .expect("nothing else in this declaration writes that path");
+
+        let generated = declaration.generate();
+
+        assert_eq!(
+            generated.file(&path).map(crate::GeneratedFile::bytes),
+            Some(mine.as_slice()),
+            "the author's bytes, not the generated ones"
+        );
+        assert_eq!(declaration.supplied_defaults(), [path]);
+        // The loot table beside it was not supplied, so it is still Ravel's.
+        let loot =
+            RelativePath::try_from("data/example_mod/loot_table/blocks/lantern.json".to_owned())
+                .expect("a legal path");
+        assert!(generated.file(&loot).is_some());
+    }
+
+    /// An item nothing else claims is a flat sprite rather than a block.
+    #[test]
+    fn a_plain_item_is_generated_as_a_sprite_and_a_blocks_item_as_the_block() {
+        let owner: ModId = "example_mod".parse().expect("a legal mod id");
+        let mut declaration = ContentDeclaration::new(owner);
+        declaration
+            .entry(ContentKind::Block, "lantern")
+            .expect("a legal entry");
+        declaration
+            .entry(ContentKind::Item, "lantern")
+            .expect("a legal entry");
+        declaration
+            .entry(ContentKind::Item, "dust")
+            .expect("a legal entry");
+
+        let generated = declaration.generate();
+        let read = |path: &str| {
+            let path = RelativePath::try_from(path.to_owned()).expect("a legal path");
+            String::from_utf8(
+                generated
+                    .file(&path)
+                    .unwrap_or_else(|| panic!("{path} is generated"))
+                    .bytes()
+                    .to_vec(),
+            )
+            .expect("generated JSON is UTF-8")
+        };
+
+        assert!(
+            read("assets/example_mod/models/item/lantern.json")
+                .contains("\"parent\": \"example_mod:block/lantern\""),
+            "an item sharing a block's name shows that block"
+        );
+        assert!(
+            read("assets/example_mod/models/item/dust.json")
+                .contains("\"parent\": \"minecraft:item/generated\""),
+            "an item no block claims is a flat sprite"
+        );
+        assert!(
+            read("assets/example_mod/models/item/dust.json")
+                .contains("\"layer0\": \"example_mod:item/dust\"")
+        );
+        assert!(
+            read("assets/example_mod/items/dust.json")
+                .contains("\"model\": \"example_mod:item/dust\"")
+        );
+    }
+
+    /// A recipe entry writes no file, and that is the decision rather than a gap.
+    #[test]
+    fn a_declared_recipe_generates_nothing_because_its_body_is_a_versions_shape() {
+        let owner: ModId = "example_mod".parse().expect("a legal mod id");
+        let mut declaration = ContentDeclaration::new(owner);
+        declaration
+            .entry(ContentKind::Recipe, "crafting/lantern")
+            .expect("a legal entry");
+        declaration
+            .entry(ContentKind::Command, "lanterns")
+            .expect("a legal entry");
+
+        assert!(declaration.generate().is_empty());
     }
 }

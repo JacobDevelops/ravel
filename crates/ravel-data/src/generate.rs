@@ -137,6 +137,108 @@ pub(crate) fn tag_document(members: &[String]) -> Vec<u8> {
     document(&Value::Object(object))
 }
 
+/// Renders the blockstates file mapping a block's one variant to its model.
+///
+/// One variant, spelled `""`, which is what a block with no properties has. A
+/// block whose states a mod wants to vary supplies this file itself; nothing
+/// here can guess a mapping it was never told about.
+pub(crate) fn blockstate_document(namespace: &str, path: &str) -> Vec<u8> {
+    let mut variant = Map::new();
+    variant.insert(
+        "model".to_owned(),
+        Value::String(format!("{namespace}:block/{path}")),
+    );
+    let mut variants = Map::new();
+    variants.insert(String::new(), Value::Object(variant));
+    let mut object = Map::new();
+    object.insert("variants".to_owned(), Value::Object(variants));
+    document(&Value::Object(object))
+}
+
+/// Renders the loot table a block that drops itself carries.
+///
+/// The single pool with a survives-explosion condition, which is what every
+/// vanilla block that drops one of itself declares. It is written at the path
+/// the game derives from the block's own identifier: a block sets no table, so
+/// the game looks for its id with `blocks/` in front of it.
+pub(crate) fn loot_table_document(namespace: &str, path: &str) -> Vec<u8> {
+    let mut condition = Map::new();
+    condition.insert(
+        "condition".to_owned(),
+        Value::String("minecraft:survives_explosion".to_owned()),
+    );
+    let mut entry = Map::new();
+    entry.insert(
+        "type".to_owned(),
+        Value::String("minecraft:item".to_owned()),
+    );
+    entry.insert(
+        "name".to_owned(),
+        Value::String(format!("{namespace}:{path}")),
+    );
+    let mut pool = Map::new();
+    pool.insert(
+        "bonus_rolls".to_owned(),
+        Value::Number(serde_json::Number::from_f64(0.0).expect("zero is a number")),
+    );
+    pool.insert(
+        "conditions".to_owned(),
+        Value::Array(vec![Value::Object(condition)]),
+    );
+    pool.insert(
+        "entries".to_owned(),
+        Value::Array(vec![Value::Object(entry)]),
+    );
+    pool.insert(
+        "rolls".to_owned(),
+        Value::Number(serde_json::Number::from_f64(1.0).expect("one is a number")),
+    );
+    let mut object = Map::new();
+    object.insert("pools".to_owned(), Value::Array(vec![Value::Object(pool)]));
+    object.insert(
+        "type".to_owned(),
+        Value::String("minecraft:block".to_owned()),
+    );
+    document(&Value::Object(object))
+}
+
+/// Renders an item model that shows a block.
+pub(crate) fn item_model_document(model: &str) -> Vec<u8> {
+    let mut object = Map::new();
+    object.insert("parent".to_owned(), Value::String(model.to_owned()));
+    document(&Value::Object(object))
+}
+
+/// Renders an item model that shows a flat sprite.
+///
+/// The sprite is the texture named after the item, which is a file the author
+/// ships. An item with no texture renders as the missing one, which is a visible
+/// answer rather than a silent one.
+pub(crate) fn sprite_model_document(texture: &str) -> Vec<u8> {
+    let mut textures = Map::new();
+    textures.insert("layer0".to_owned(), Value::String(texture.to_owned()));
+    let mut object = Map::new();
+    object.insert(
+        "parent".to_owned(),
+        Value::String("minecraft:item/generated".to_owned()),
+    );
+    object.insert("textures".to_owned(), Value::Object(textures));
+    document(&Value::Object(object))
+}
+
+/// Renders the item definition a newer version resolves a model through.
+pub(crate) fn item_definition_document(model: &str) -> Vec<u8> {
+    let mut named = Map::new();
+    named.insert("model".to_owned(), Value::String(model.to_owned()));
+    named.insert(
+        "type".to_owned(),
+        Value::String("minecraft:model".to_owned()),
+    );
+    let mut object = Map::new();
+    object.insert("model".to_owned(), Value::Object(named));
+    document(&Value::Object(object))
+}
+
 /// Renders one locale's translations.
 pub(crate) fn translation_document(entries: &BTreeMap<String, String>) -> Vec<u8> {
     let object: Map<String, Value> = entries

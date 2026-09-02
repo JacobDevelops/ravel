@@ -24,7 +24,7 @@ use std::collections::BTreeSet;
 
 use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet};
 use ravel_data::{ContentDeclaration, DeclarationError, TagId, TagSet};
-use ravel_example_content_mod::{ContentMod, MODEL};
+use ravel_example_content_mod::{ContentMod, MODEL, RECIPE};
 use ravel_host_api::{HostError, HostMod, Registrar};
 use ravel_host_runtime::{Member, compose, install_packs, write_resource_pack, write_world_pack};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
@@ -131,12 +131,68 @@ const DECLARED_ENTRIES: &[&str] = &[
 
 /// The paths the example's declaration generates, spelled out for the same reason.
 const GENERATED_PATHS: &[&str] = &[
+    "assets/content/blockstates/copper_lantern.json",
+    "assets/content/items/copper_lantern.json",
     "assets/content/lang/en_us.json",
     "assets/content/lang/fr_fr.json",
     "assets/content/models/block/copper_lantern.json",
+    "assets/content/models/item/copper_lantern.json",
     "data/c/tags/block/lanterns.json",
     "data/c/tags/item/lanterns.json",
+    "data/content/loot_table/blocks/copper_lantern.json",
+    "data/content/recipe/crafting/copper_lantern.json",
 ];
+
+/// The blockstates file Ravel writes for a block whose author supplied none.
+///
+/// The bytes, not the shape. A file naming the wrong model is a file that exists
+/// and still renders the placeholder, which is what a launch found.
+const BLOCKSTATES: &str = r#"{
+  "variants": {
+    "": {
+      "model": "content:block/copper_lantern"
+    }
+  }
+}
+"#;
+
+/// The item model an item that places a block inherits.
+const ITEM_MODEL: &str = r#"{
+  "parent": "content:block/copper_lantern"
+}
+"#;
+
+/// The item definition the newer of the two tracked versions resolves through.
+const ITEM_DEFINITION: &str = r#"{
+  "model": {
+    "model": "content:block/copper_lantern",
+    "type": "minecraft:model"
+  }
+}
+"#;
+
+/// The loot table a block that drops itself carries.
+const LOOT_TABLE: &str = r#"{
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ],
+      "entries": [
+        {
+          "name": "content:copper_lantern",
+          "type": "minecraft:item"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "type": "minecraft:block"
+}
+"#;
 
 #[test]
 fn the_example_still_declares_the_content_this_suite_is_written_against() {
@@ -484,6 +540,9 @@ fn declared_in_another_order() -> ContentDeclaration {
             b"{\n  \"parent\": \"minecraft:block/lantern\"\n}\n".to_vec(),
         )
         .expect("the model is supplied once");
+    declaration
+        .resource(ContentMod::recipe_path(), RECIPE.to_vec())
+        .expect("the recipe is supplied once");
 
     for (locale, name) in [("fr_fr", "Lanterne de cuivre"), ("en_us", "Copper Lantern")] {
         for prefix in ["item", "block"] {
@@ -634,7 +693,25 @@ fn every_generated_path_is_derived_from_a_declaration_rather_than_spelled() {
     for supplied in declaration.resources() {
         derived.push(supplied.as_str().to_owned());
     }
+    // The conventional files a version needs for what was declared. Derived from
+    // the entries the same way the tags above are derived from the tag ids, so a
+    // path is still never spelled twice — once here and once in the generator.
+    for entry in declaration.entries() {
+        let (owner, path) = (entry.id().namespace(), entry.id().path());
+        match entry.kind() {
+            ContentKind::Block => {
+                derived.push(format!("assets/{owner}/blockstates/{path}.json"));
+                derived.push(format!("data/{owner}/loot_table/blocks/{path}.json"));
+            }
+            ContentKind::Item => {
+                derived.push(format!("assets/{owner}/models/item/{path}.json"));
+                derived.push(format!("assets/{owner}/items/{path}.json"));
+            }
+            ContentKind::Recipe | ContentKind::Command => {}
+        }
+    }
     derived.sort();
+    derived.dedup();
 
     assert_eq!(generated.paths().collect::<Vec<_>>(), derived);
     assert_eq!(generated.len(), derived.len());
@@ -773,15 +850,32 @@ fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
     assert_eq!(
         written.paths(),
         [
+            "assets/content/blockstates/copper_lantern.json",
+            "assets/content/items/copper_lantern.json",
             "assets/content/lang/en_us.json",
             "assets/content/lang/fr_fr.json",
             "assets/content/models/block/copper_lantern.json",
+            "assets/content/models/item/copper_lantern.json",
             "pack.mcmeta",
         ]
     );
-    for path in written.paths() {
-        assert!(written.root().join(path).is_file(), "{path}");
+    // The three files a block needs beside the model its author wrote, held to
+    // the exact bytes rather than to their presence: a blockstates file naming
+    // the wrong model, or an item model parented at nothing, is a file that
+    // exists and still shows the placeholder.
+    for (path, expected) in [
+        ("blockstates/copper_lantern.json", BLOCKSTATES),
+        ("models/item/copper_lantern.json", ITEM_MODEL),
+        ("items/copper_lantern.json", ITEM_DEFINITION),
+    ] {
+        assert_eq!(
+            std::fs::read_to_string(written.root().join("assets/content").join(path))
+                .unwrap_or_else(|error| panic!("{path} reached no pack: {error}")),
+            expected,
+            "{path}"
+        );
     }
+
     assert!(
         !written.root().join("data").exists(),
         "the data half belongs to a world, not to the instance"
@@ -858,8 +952,35 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
         [
             "data/c/tags/block/lanterns.json",
             "data/c/tags/item/lanterns.json",
+            "data/content/loot_table/blocks/copper_lantern.json",
+            "data/content/recipe/crafting/copper_lantern.json",
             "pack.mcmeta",
         ]
+    );
+    // The loot table is written at the path the game derives from the block's
+    // own identifier, which is that identifier with `blocks/` in front of it. A
+    // table one directory up is a table nothing loads and a block that drops
+    // nothing, which is what a launch found.
+    assert_eq!(
+        std::fs::read_to_string(
+            written
+                .root()
+                .join("data/content/loot_table/blocks/copper_lantern.json")
+        )
+        .expect("the loot table is readable"),
+        LOOT_TABLE
+    );
+    // The recipe is the author's bytes, unchanged. Ravel generates no body for
+    // one: the two tracked versions spell an ingredient differently, so there is
+    // no shape a generator could pick that is right on both.
+    assert_eq!(
+        std::fs::read(
+            written
+                .root()
+                .join("data/content/recipe/crafting/copper_lantern.json")
+        )
+        .expect("the recipe is readable"),
+        RECIPE
     );
     assert!(
         !written.root().join("assets").exists(),

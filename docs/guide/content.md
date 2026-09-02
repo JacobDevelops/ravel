@@ -89,6 +89,29 @@ can disagree about a path.
 Generation is deterministic: the same declaration produces the same bytes, and
 the same content declared in a different order produces the same bytes too.
 
+## Ravel writes the files your content needs and you did not write
+
+A block is three files, not one. Beside the model you wrote, a version wants a
+blockstates file mapping the block's one variant to that model, an item model so
+the block can be held and seen in an inventory, and a loot table so breaking it
+drops something. None of those has a choice in it for a block with one state, so
+Ravel writes them from the declaration: a blockstates file pointing at
+`<you>:block/<name>`, an item model parented at that block for an item sharing
+its name and a flat sprite for one that does not, and a loot table that drops the
+block itself.
+
+Supply any of those paths yourself and yours is the one in the pack. That is the
+same rule as everywhere else here — you declare, Ravel derives, and anything you
+write by hand wins — and `ContentDeclaration::supplied_defaults` names the ones
+you took back.
+
+A recipe is the exception, and it is the exception on purpose. Ravel writes no
+recipe body, because the shape of one is a Minecraft version's to decide and the
+versions disagree about it: an ingredient is an object in one and a bare name in
+the next. So `ContentKind::Recipe` claims the name and you supply the bytes
+through `ContentDeclaration::resource`, exactly as you supply a model. A recipe
+you declare and never write is a name nothing stands behind.
+
 ## The registries that exist
 
 `ContentKind` is a closed set: `Block`, `Item`, `Recipe`, `Command`. If your mod

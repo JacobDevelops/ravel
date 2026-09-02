@@ -115,9 +115,15 @@ are written against, the player build takes the Minecraft version as an argument
 `Hook` loads the library with `System.load` from the path `-Dravel.host` names, refusing to start when
 it is unset or not a file. No launch stages a native into the launcher's natives directory any more.
 
-Launch 6 is the proof: an example mod installed as a package, compiled by the host build, loaded through
-the property, listed as running. If this paragraph still says "is the proof" the launch has not been
-recorded; look for launch 6 in the private notes.
+Launch 6 proved it: `examples/minimal-mod` copied whole into `<instance>/ravel/mods/minimal/`, its
+shipped digests already correct, compiled by the host build in 7.7 s cold and 0.13 s warm to a
+byte-identical library both times, loaded through the property, and listed as `1 mod on client, none
+needing attention`, with the five compiled-in test mods gone. A world opened and its pause save wrote
+the mod's 89-byte data file. With the property pointed at a missing file the JVM refused to start and
+named the property and the path. The instance has no natives directory and needs none.
+
+Only `minimal-mod` ships package metadata. `content-mod` and `stateful-mod` carry a crate and a README
+and no manifest or provenance record, so they cannot be installed until the tree gives them one.
 
 ## Questions only Jacob can answer
 

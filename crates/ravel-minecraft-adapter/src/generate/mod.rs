@@ -459,8 +459,6 @@ fn write(
 ) -> Result<Generated, GenerateError> {
     let java_directory = root.join(JAVA_OUTPUT);
     let stub_directory = root.join(STUB_OUTPUT);
-    // Every artefact is placed and never swept: two builds share this tree, and a
-    // generator that emptied it would delete a tree another process was reading.
     let _held = OutputLock::take(root)?;
 
     // Every output tree is emptied before it is written, because a build emits one

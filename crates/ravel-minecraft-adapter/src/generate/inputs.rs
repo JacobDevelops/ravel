@@ -576,8 +576,16 @@ fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), GenerateErr
 /// manifest is a large upstream document whose every other field is none of this
 /// generator's business, and a struct for it would be a second thing to maintain
 /// against Mojang.
+///
+/// The scan starts at `javaVersion` rather than at the number, because
+/// `majorVersion` is not a name only that object uses: a manifest carrying one
+/// anywhere earlier — a library rule, a future sibling of `javaVersion` — would
+/// hand this the wrong number under the right name, and the drift check that
+/// reads it would then compare the adapter's release against something else
+/// entirely.
 fn major_version(text: &str) -> Option<u16> {
-    let at = text.find("\"majorVersion\"")? + "\"majorVersion\"".len();
+    let object = text.find("\"javaVersion\"")?;
+    let at = text[object..].find("\"majorVersion\"")? + object + "\"majorVersion\"".len();
     let rest = text[at..].trim_start().strip_prefix(':')?.trim_start();
     let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
@@ -1149,6 +1157,19 @@ mod tests {
             .expect("the crate lives under crates/<name>")
     }
 
+    /// `majorVersion` is not a name only `javaVersion` uses, and the scan used
+    /// to take the first one in the file. A manifest carrying one earlier hands
+    /// the release check a number from somewhere else under the right name.
+    #[test]
+    fn the_java_release_is_read_from_the_java_version_object() {
+        let manifest = r#"{
+  "downloads": {"client": {"majorVersion": 3, "size": 1}},
+  "javaVersion": {"component": "java-runtime-delta", "majorVersion": 21}
+}"#;
+
+        assert_eq!(super::major_version(manifest), Some(21));
+    }
+
     #[test]
     fn the_tracked_version_data_reads_back_as_a_reviewed_inventory() {
         let root = repository_root();
@@ -1193,16 +1214,19 @@ mod tests {
             // seam moves out of the agent jar and into the sibling, which content
             // registration did, and a fixed count would then have to be edited
             // down every time — which is the same as not having one.
-            assert!(
-                pinned
-                    .surface
-                    .classes
-                    .iter()
-                    .map(|reflected| reflected.members.len())
-                    .sum::<usize>()
-                    >= pinned.surface.classes.len(),
-                "the reflective surface should declare the members the agent jar reaches"
-            );
+            //
+            // Held per class rather than over the sum. A sum satisfies the floor
+            // with the members of one class and nothing on the rest, which is the
+            // shape a lost declaration actually takes: the classes stay, one of
+            // them loses its members, and a total that another class is carrying
+            // never moves.
+            for reflected in &pinned.surface.classes {
+                assert!(
+                    !reflected.members.is_empty(),
+                    "{} is reflected and declares no member the agent jar reaches",
+                    reflected.class
+                );
+            }
 
             // A seed with no members earns its place by being named by something
             // else in the set. Nothing calls a member on it, so the only work it can

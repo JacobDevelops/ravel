@@ -316,7 +316,13 @@ public final class Transformer implements ClassFileTransformer {
                 classMethods++;
             }
         }
-        transformedClasses.incrementAndGet();
+        // Counted only when a method was actually rewritten. A class whose
+        // targets all matched nothing is a class this transformer read and left
+        // alone, and counting it made the shutdown report's two figures say a
+        // seam was installed where the second figure says none was.
+        if (classMethods > 0) {
+            transformedClasses.incrementAndGet();
+        }
         rewrittenMethods.addAndGet(classMethods);
         // Published only now, when the rewritten class is the one being returned.
         installed.addAll(matched);
@@ -403,6 +409,45 @@ public final class Transformer implements ClassFileTransformer {
                         "the title-menu target returns " + returnKind
                                 + ", and the bridge is written for an int or for nothing");
             }
+            if (isWorldOpen(target)) {
+                requireWorldOpenShape();
+            }
+        }
+
+        /**
+         * Refuses a world-open target the injected sequence cannot load from.
+         *
+         * <p>The slots are derived from the descriptor, so a parameter that moved
+         * is followed. What cannot be derived is what sits there once it is
+         * reached, and the two instructions disagree with a drifted list in
+         * opposite ways: an {@code aload} of an {@code int} and an {@code iload}
+         * of a reference are both a {@code VerifyError} when the game loads the
+         * rewritten class, which is a launch that aborts rather than a build that
+         * fails. The scaffold check holds the tracked versions to this shape, and
+         * this is the same rule at the one place a version's data cannot reach:
+         * the running JVM.
+         */
+        private void requireWorldOpenShape() {
+            int last = targetType.parameterCount() - 1;
+            if (last < 2) {
+                throw new IllegalArgumentException(
+                        "the world-open target declares " + targetType.parameterCount()
+                                + " parameters, and the adapter is handed its first, its third"
+                                + " and its last");
+            }
+            requireKind(0, TypeKind.REFERENCE, "the storage access");
+            requireKind(2, TypeKind.REFERENCE, "the world stem");
+            requireKind(last, TypeKind.BOOLEAN, "the advisory new-world marker");
+        }
+
+        /** Refuses one parameter the injected load cannot read as {@code kind}. */
+        private void requireKind(int parameter, TypeKind kind, String role) {
+            TypeKind declared = TypeKind.from(targetType.parameterList().get(parameter));
+            if (declared != kind) {
+                throw new IllegalArgumentException(
+                        "parameter " + parameter + " of the world-open target is " + declared
+                                + " and " + role + " is loaded as " + kind + " there");
+            }
         }
 
         private boolean matched() {
@@ -471,6 +516,11 @@ public final class Transformer implements ClassFileTransformer {
                     builder.invokestatic(TRANSFORMER, "performOutward", PERFORM_OUTWARD);
                 }
             }
+            // At every return of the declared kind, which is one call per
+            // invocation and not one per site: a builder with an early return
+            // has two return instructions and runs exactly one of them. Adding
+            // the button at the first site instead would leave the column
+            // without it on every path that leaves by the other.
             if (isTitleMenu(target)
                     && element instanceof ReturnInstruction instruction
                     && instruction.typeKind() == returnKind) {

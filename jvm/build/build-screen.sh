@@ -45,7 +45,11 @@ if [ ! -f "$release_file" ]; then
 fi
 release="$(cat "$release_file")"
 
+# The jar goes with them. Every refusal below exits with no jar at this path
+# rather than with the one a previous build left, so a step that reads the path
+# reads this build's verdict rather than the last build's product.
 rm -rf "$stubs" "$classes"
+rm -f "$jar"
 mkdir -p "$stubs" "$classes"
 
 # The stubs are generated and their shape is not ours to adjust, so a lint
@@ -86,27 +90,26 @@ while IFS= read -r -d '' stub; do
 	fi
 done < <(find "$generated" -name '*.java' -print0 | sort -z)
 
-stamp="${RAVEL_JAR_DATE:-1980-01-01T00:00:02Z}"
-mapfile -d '' compiled < <(cd "$classes" && find . -name '*.class' -print0 | sort -z)
-entries=()
-for class in "${compiled[@]}"; do
-	entries+=(-C "$classes" "${class#./}")
-done
-
-jar --create --file "$jar" --date "$stamp" "${entries[@]}"
-
-# Every class in the jar has to be one this version generated. The trees this is
-# built from are shared by every version, so a build after a version switch
-# shipped the previous version's screens beside this one's — and both compiled,
-# because the stubs for both were there too, and both went in the jar.
+# Every class about to go in the jar has to be one this version generated. The
+# trees this is built from are shared by every version, so a build after a
+# version switch shipped the previous version's screens beside this one's — and
+# both compiled, because the stubs for both were there too, and both went in the
+# jar.
+#
+# Checked before the jar is written rather than after. The check used to read the
+# finished jar, so a refusal exited with the wrong version's jar sitting at the
+# path every later step reads: the refusal was loud and what it left behind was
+# indistinguishable from a build that had passed.
 #
 # The list compared against is `ScreenNames`, which the generator writes from the
 # templates it actually rendered. Comparing against the source tree instead would
 # be comparing the jar with the thing that filled it, and a stale source is
-# exactly what filled it wrongly.
+# exactly what filled it wrongly. The compiled tree is not that: it is the set
+# the entries below are built from, class for class.
 #
 # Nested and anonymous classes are named after the source that declares them, so
 # the outer name is what is looked up.
+mapfile -d '' compiled < <(cd "$classes" && find . -name '*.class' -print0 | sort -z)
 names="$work/generated/dev/ravel/jvm/ScreenNames.java"
 if [ ! -f "$names" ]; then
 	echo "the generated screen names are missing; run:" >&2
@@ -114,16 +117,23 @@ if [ ! -f "$names" ]; then
 	exit 1
 fi
 generated_names="$(sed -n 's/.*static final String [A-Z_]* = "\(.*\)";/\1/p' "$names")"
-while IFS= read -r entry; do
-	case "$entry" in
-	*/ | META-INF/*) continue ;;
-	esac
+for class in "${compiled[@]}"; do
+	entry="${class#./}"
 	outer="${entry%.class}"
 	outer="${outer%%\$*}"
 	outer="${outer//\//.}"
 	if ! printf '%s\n' "$generated_names" | grep -qxF "$outer"; then
-		echo "$entry is in the screen jar and this version's ScreenNames records no such class; refusing to ship another version's classes" >&2
+		echo "$entry was compiled for the screen jar and this version's ScreenNames records no such class; refusing to build a jar that would ship another version's classes" >&2
 		exit 1
 	fi
-done < <(jar --list --file "$jar")
+done
+
+stamp="${RAVEL_JAR_DATE:-1980-01-01T00:00:02Z}"
+entries=()
+for class in "${compiled[@]}"; do
+	entries+=(-C "$classes" "${class#./}")
+done
+
+jar --create --file "$jar" --date "$stamp" "${entries[@]}"
+
 echo "$jar"

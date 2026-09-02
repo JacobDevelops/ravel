@@ -211,12 +211,19 @@ Unlocked!" toast. Installed as a source package, compiled into the instance's ho
 
 One ceiling stated where it lives: a fresh instance is seeded on its second launch, because writing an
 `options.txt` without the game's own `version` line would change which migrations it runs. The other
-is closed: a hook at `WorldOpenFlows.openWorldLoadLevelData`, which holds the world's storage access
-before the game scans the world's `datapacks/`, writes the datapack so a world's first session already
-has its tags, recipes and loot tables; the open-time write stays for a world admitted by another path
-and leaves an identical tree untouched. Launch 8 also proved the
-screen-less refusal now reaches the
-game's crash handler naming Ravel and the reason, with the session lock released, where launch 2 hung.
+is half closed: a hook at `WorldOpenFlows.openWorldLoadLevelData` writes the datapack before the game
+scans the world's `datapacks/`, and launch 13 showed the pack listed as available in a new world's
+first session, but not enabled, with the vanilla recipe count. A fresh world's enabled list is fixed
+at creation, before that seam runs; only a reopen auto-adds a world pack. The creation seam is the fix
+in flight. The open-time write stays for a world admitted by another path and leaves an identical
+tree untouched. Launch 8 also proved the screen-less refusal now reaches the game's crash handler
+naming Ravel and the reason, with the session lock released, where launch 2 hung.
+
+**Launch 13 (interrupted): the early datapack write lands, the new world does not enable it.** A new
+superflat world's first session listed `file/ravel (world)` as available and only `vanilla` as
+enabled, and loaded 1290 recipes where launch 12's reopen loaded 1291. The launch was cut short by an
+unrelated crash before the mtime, regression and `resourcePacks:oops` checks ran; the world saved
+cleanly and the client was closed from the title. Those three checks move to launch 14.
 
 `stateful-mod` writes its journal only through a record call nothing in a launch makes, so its saved
 data was rewritten across sessions but never changed. The example cannot change state from inside a

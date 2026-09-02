@@ -148,6 +148,13 @@ translation key. Default if nobody objects: one tab, key `ravel.creative_tab`, f
 Until then `/give` is how a registered item is obtained. The model is a resource-pack provider per
 version and is owned by no work package.
 
+Launch 8 confirmed the mapper fix (`/setblock`, render, break, save, reopen, no packet failure) and
+found the next layer: right-clicking the registered item places nothing, because Ravel registers the
+block and its item as two independent entries and a plain `Item` has no use-on. Vanilla's placing item
+is a `BlockItem` holding the block. Being fixed: an item whose identifier equals a block's in the same
+mod registers as that block's `BlockItem`. Launch 8 also proved the screen-less refusal now reaches the
+game's crash handler naming Ravel and the reason, with the session lock released, where launch 2 hung.
+
 `stateful-mod` writes its journal only through a record call nothing in a launch makes, so its saved
 data was rewritten across sessions but never changed. The example cannot change state from inside a
 game; the saved-data test mod, which counts visits, is what launch 5 proved with.

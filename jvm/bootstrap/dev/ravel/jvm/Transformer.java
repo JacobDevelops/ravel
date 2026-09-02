@@ -52,6 +52,8 @@ public final class Transformer implements ClassFileTransformer {
     private static final ClassDesc TRANSFORMER = ClassDesc.of("dev.ravel.jvm.Transformer");
     private static final MethodTypeDesc TITLE_MENU =
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;II)I");
+    private static final MethodTypeDesc TITLE_MENU_COLUMN =
+            MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;II)V");
     private static final MethodTypeDesc WORLD_OPEN =
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;Ljava/lang/Object;Z)Z");
     private static final MethodTypeDesc WORLD_SAVE =
@@ -82,9 +84,31 @@ public final class Transformer implements ClassFileTransformer {
         this.rewrittenByClass = collectTargets ? new ConcurrentHashMap<>() : null;
     }
 
+    /**
+     * How many options the game's normal title-menu column holds.
+     *
+     * <p>A ceiling, and the only one here: the count is in no descriptor, so the
+     * void-returning shape below cannot derive it and every tracked version
+     * builds the same three. A version that builds a different column has to
+     * carry the count as version data rather than gain a third bridge.
+     */
+    private static final int NORMAL_MENU_OPTIONS = 3;
+
     /** Gives transformed game code a public path to the package-private screen loader. */
     public static int addTitleMenu(Object titleScreen, int bottom, int spacing) {
         return Screens.addTitleMenu(titleScreen, bottom, spacing);
+    }
+
+    /**
+     * Adds the mods button under a menu column whose builder returns nothing.
+     *
+     * <p>The int-returning shape hands back the row its last option took, and
+     * this shape hands back nothing, so the row is computed from the column's
+     * own base and spacing instead. Both end at the same call, because where the
+     * button goes is a fact about the column rather than about the return kind.
+     */
+    public static void addTitleMenuColumn(Object titleScreen, int top, int spacing) {
+        Screens.addTitleMenu(titleScreen, top + (NORMAL_MENU_OPTIONS - 1) * spacing, spacing);
     }
 
     /**
@@ -361,12 +385,25 @@ public final class Transformer implements ClassFileTransformer {
         private final HookTarget target;
         private final MethodTypeDesc targetType;
         private final MethodTypeDesc hookType;
+        private final TypeKind returnKind;
         private boolean injected;
 
         private PrependTransform(HookTarget target) {
             this.target = target;
             targetType = MethodTypeDesc.ofDescriptor(target.descriptor());
             hookType = MethodTypeDesc.ofDescriptor(target.hookDescriptor());
+            returnKind = TypeKind.from(targetType.returnType());
+            if (isTitleMenu(target)
+                    && returnKind != TypeKind.INT
+                    && returnKind != TypeKind.VOID) {
+                // Refused rather than skipped. A shape neither bridge is written
+                // for used to mean the menu was quietly not extended, and this
+                // is the class of defect where a silent miss costs more than a
+                // recorded failure.
+                throw new IllegalArgumentException(
+                        "the title-menu target returns " + returnKind
+                                + ", and the bridge is written for an int or for nothing");
+            }
         }
 
         private boolean matched() {
@@ -413,12 +450,15 @@ public final class Transformer implements ClassFileTransformer {
                 // it, and an observer that refused has already left the method.
                 if (isWorldOpen(target)) {
                     // The storage access and the world stem are the two arguments
-                    // a refusal has to close, and the last one is the advisory
-                    // new-world marker. A refusal returns from the host method
-                    // before its body's first persistent mutation.
+                    // a refusal has to close, and the advisory new-world marker is
+                    // the last parameter the target declares — counted rather than
+                    // written down, because the versions differ in how many
+                    // parameters sit between the stem and it. A refusal returns
+                    // from the host method before its body's first persistent
+                    // mutation.
                     builder.aload(slot(0));
                     builder.aload(slot(2));
-                    builder.iload(slot(4));
+                    builder.iload(slot(targetType.parameterCount() - 1));
                     builder.invokestatic(TRANSFORMER, "openWorldPersistence", WORLD_OPEN);
                     builder.ifThen(blk -> blk.return_());
                 } else if (isWorldSave(target)) {
@@ -434,13 +474,32 @@ public final class Transformer implements ClassFileTransformer {
             }
             if (isTitleMenu(target)
                     && element instanceof ReturnInstruction instruction
-                    && instruction.typeKind() == TypeKind.INT) {
-                builder.aload(0);
-                builder.swap();
-                builder.iload(2);
-                builder.invokestatic(TRANSFORMER, "addTitleMenu", TITLE_MENU);
+                    && instruction.typeKind() == returnKind) {
+                addMenuButton(builder);
             }
             builder.with(element);
+        }
+
+        /**
+         * Calls the title-menu bridge at the target's own return.
+         *
+         * <p>Which sequence that is follows the target's declared return kind
+         * rather than a version. The int-returning shape leaves the last option's
+         * row on the stack and the bridge hands a row back in its place; the void
+         * one leaves nothing, so the column's base and spacing are read out of
+         * the arguments the descriptor declares and nothing is handed back.
+         */
+        private void addMenuButton(CodeBuilder builder) {
+            builder.aload(0);
+            if (returnKind == TypeKind.INT) {
+                builder.swap();
+                builder.iload(slot(1));
+                builder.invokestatic(TRANSFORMER, "addTitleMenu", TITLE_MENU);
+                return;
+            }
+            builder.iload(slot(0));
+            builder.iload(slot(1));
+            builder.invokestatic(TRANSFORMER, "addTitleMenuColumn", TITLE_MENU_COLUMN);
         }
     }
 }

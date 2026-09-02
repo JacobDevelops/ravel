@@ -405,6 +405,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_harness_lifecycles(root, &mut violations);
     verify_persistence_reflection(root, &mut violations);
     verify_hook_name_literals(root, &inventories, &mut violations);
+    verify_transformer_shape(root, &inventories, &mut violations);
     verify_screen_templates(root, &mut violations);
     verify_screen_overrides(root, &mut violations);
     verify_version_readmes(root, &mut violations);
@@ -2034,6 +2035,275 @@ fn verify_hook_name_literals(
     }
 }
 
+/// Where the shape check records the versions it held the transformer to.
+///
+/// `devenv tasks run` shows neither stdout nor stderr of a task that succeeds,
+/// so a check that speaks only by printing is invisible in the gate that runs
+/// it. The file is the fact, and it is written from the versions that held
+/// rather than from the versions that were opened.
+const TRANSFORMER_SHAPE_RECORD: &str = "target/ravel-jvm/transformer-shape.txt";
+
+/// Where in a target's parameter list one of the transformer's loads sits.
+#[derive(Clone, Copy)]
+enum Parameter {
+    /// A fixed position, counted from the first declared parameter.
+    At(usize),
+    /// The last declared parameter, wherever the ones before it drifted.
+    Last,
+}
+
+/// What an injected instruction needs to find where it loads.
+#[derive(Clone, Copy, PartialEq)]
+enum Shape {
+    /// `aload`: a class or an array.
+    Reference,
+    /// `iload` against a declared `boolean`.
+    Boolean,
+    /// `iload` against a declared `int`.
+    Int,
+    /// A method that returns nothing.
+    Void,
+}
+
+/// One seam `Transformer.java` injects into, and what its sequence assumes.
+struct Seam {
+    /// The hook id the generated hook name is rendered from.
+    id: &'static str,
+    /// Whether the sequence loads the receiver, which only an instance method has.
+    receiver: bool,
+    /// Every parameter the sequence loads, and what the load needs to find.
+    loads: &'static [(Parameter, Shape)],
+    /// The return kinds a sequence is written for, or nothing when the seam's
+    /// sequence does not read the return at all.
+    returns: &'static [Shape],
+}
+
+/// The shapes `Transformer.java` injects against, stated as data.
+///
+/// The transform derives every local slot from the target's own descriptor, so
+/// it survives a parameter that moves. What it cannot derive is what it expects
+/// to find once it gets there: an `aload` against an `int` and an `iload`
+/// against a reference are both a `VerifyError` at class load, which is a launch
+/// that aborts rather than a build that fails. Both defects this table was
+/// written for were exactly that — `iload` at a position 1.21.1's
+/// `doWorldLoad` does not have, and an int-return sequence at a method that
+/// returns nothing — and neither was reachable by any check, because the
+/// transformer compiles against no version at all.
+///
+/// **What it cannot do.** It is the Rust statement of what the Java emits, so
+/// the two can disagree: an assumption added there and not here is unchecked.
+/// It holds the shapes rather than the seams — the set of seams is
+/// [`verify_hook_name_literals`]'s subject, and a hook name no version declares
+/// is reported there instead of twice.
+const TRANSFORMER_SEAMS: [Seam; 3] = [
+    Seam {
+        id: "world.open-persistence",
+        receiver: true,
+        loads: &[
+            (Parameter::At(0), Shape::Reference),
+            (Parameter::At(2), Shape::Reference),
+            (Parameter::Last, Shape::Boolean),
+        ],
+        returns: &[Shape::Void],
+    },
+    Seam {
+        id: "world.save-persistence",
+        receiver: true,
+        loads: &[],
+        returns: &[],
+    },
+    Seam {
+        id: "screen.title-menu-options",
+        receiver: true,
+        loads: &[
+            (Parameter::At(0), Shape::Int),
+            (Parameter::At(1), Shape::Int),
+        ],
+        returns: &[Shape::Int, Shape::Void],
+    },
+];
+
+/// Holds the transformer's injected sequences to the shapes each version declares.
+///
+/// [`verify_hook_name_literals`] asks whether a seam the transformer names is
+/// declared at all. This asks the next question: whether what it is declared as
+/// is what the injected bytecode assumes. Nothing had, and a transform written
+/// against one version's parameter list is not a build failure anywhere — the
+/// agent jar compiles against no game, so the first thing to notice is the JVM
+/// verifying the rewritten class during a launch.
+///
+/// A version that declares none of these seams is not this check's business:
+/// the sibling above is what refuses that. What is refused here is a run in
+/// which no tracked version named a single one of them, because a sweep with no
+/// subject passes for the same reason a correct one does.
+fn verify_transformer_shape(
+    root: &Path,
+    inventories: &[HookInventory],
+    violations: &mut Vec<String>,
+) {
+    let mut held = Vec::new();
+    let mut named = 0;
+    for inventory in inventories {
+        let before = violations.len();
+        let mut seams = 0;
+        for seam in &TRANSFORMER_SEAMS {
+            let Some((kind, descriptor)) = declared_hook(&inventory.text, seam.id) else {
+                continue;
+            };
+            seams += 1;
+            named += 1;
+            verify_seam_shape(inventory, seam, kind, descriptor, violations);
+        }
+        if violations.len() == before && seams > 0 {
+            held.push(format!(
+                "held: Minecraft {} against {seams} transformer seams",
+                inventory.version
+            ));
+        }
+    }
+
+    if named == 0 {
+        violations.push(format!(
+            "no tracked version declares a seam {AGENT_JAR_SOURCES}'s transformer injects into, \
+             so its parameter positions and return kinds were checked against nothing"
+        ));
+    }
+
+    let record = root.join(TRANSFORMER_SHAPE_RECORD);
+    let written = record
+        .parent()
+        .map_or_else(|| Ok(()), fs::create_dir_all)
+        .and_then(|()| fs::write(&record, held.join("\n") + "\n"));
+    if let Err(error) = written {
+        violations.push(format!(
+            "cannot record the verified transformer shapes in \
+             {TRANSFORMER_SHAPE_RECORD}: {error}"
+        ));
+    }
+}
+
+/// Every assumption one seam makes that one version's declaration does not bear out.
+fn verify_seam_shape(
+    inventory: &HookInventory,
+    seam: &Seam,
+    kind: &str,
+    descriptor: &str,
+    violations: &mut Vec<String>,
+) {
+    let path = &inventory.path;
+    let id = seam.id;
+    if seam.receiver && kind != "instance-method" {
+        violations.push(format!(
+            "{path} declares {id} as a {kind} and the transformer loads its receiver; local zero \
+             is the first argument on a static method, so the injected call would hand the \
+             adapter an argument in place of the object the seam is about"
+        ));
+    }
+
+    let Some(parameters) = descriptor_parameters(descriptor) else {
+        violations.push(format!(
+            "{path} declares {id} at `{descriptor}`, which is not a method descriptor, so the \
+             transformer's slots are derived from nothing"
+        ));
+        return;
+    };
+
+    for (position, shape) in seam.loads {
+        let (index, declared) = match position {
+            Parameter::At(index) => (*index, parameters.get(*index)),
+            Parameter::Last => (parameters.len().saturating_sub(1), parameters.last()),
+        };
+        let Some(declared) = declared else {
+            violations.push(format!(
+                "{path} declares {id} with {} parameters and the transformer loads parameter \
+                 {index}; a load past the declared list is a local the method never received",
+                parameters.len()
+            ));
+            continue;
+        };
+        if !shape.matches(declared) {
+            violations.push(format!(
+                "{path} declares parameter {index} of {id} as `{declared}` and the transformer \
+                 loads {} there; the load and the local disagree, which the class file verifier \
+                 refuses at load time rather than anything here refusing at build time",
+                shape.instruction()
+            ));
+        }
+    }
+
+    if !seam.returns.is_empty() {
+        let returned = descriptor
+            .split_once(')')
+            .map_or(descriptor, |(_, returned)| returned);
+        if !seam.returns.iter().any(|shape| shape.matches(returned)) {
+            violations.push(format!(
+                "{path} declares {id} returning `{returned}` and the transformer injects at its \
+                 return for {}; a sequence written for another return kind either matches no \
+                 return instruction and is silently never applied, or leaves the stack the \
+                 verifier refuses",
+                seam.returns
+                    .iter()
+                    .copied()
+                    .map(Shape::instruction)
+                    .collect::<Vec<_>>()
+                    .join(" or ")
+            ));
+        }
+    }
+}
+
+impl Shape {
+    /// Whether one declared type is the shape an injected instruction needs.
+    fn matches(self, declared: &str) -> bool {
+        match self {
+            Self::Reference => declared.starts_with('L') || declared.starts_with('['),
+            Self::Boolean => declared == "Z",
+            Self::Int => declared == "I",
+            Self::Void => declared == "V",
+        }
+    }
+
+    /// How a violation names the instruction this shape belongs to.
+    fn instruction(self) -> &'static str {
+        match self {
+            Self::Reference => "a reference",
+            Self::Boolean => "a boolean",
+            Self::Int => "an int",
+            Self::Void => "nothing",
+        }
+    }
+}
+
+/// One hook's declared kind and descriptor, or nothing when the id is absent.
+///
+/// An entry declaring the id without one of the two reads as absent, because
+/// [`hook_counts`] is what reports an entry missing either and one file is not
+/// two violations.
+fn declared_hook<'a>(inventory: &'a str, id: &str) -> Option<(&'a str, &'a str)> {
+    for block in inventory.split("[[hook]]").skip(1) {
+        let body = block
+            .split("\n[")
+            .next()
+            .expect("splitting a string yields at least one part");
+        let mut declared = None;
+        let mut kind = None;
+        let mut descriptor = None;
+        for line in body.lines().map(str::trim) {
+            if let Some(value) = quoted_value(line, "id") {
+                declared = Some(value);
+            } else if let Some(value) = quoted_value(line, "kind") {
+                kind = Some(value);
+            } else if let Some(value) = quoted_value(line, "descriptor") {
+                descriptor = Some(value);
+            }
+        }
+        if declared == Some(id) {
+            return Some((kind?, descriptor?));
+        }
+    }
+    None
+}
+
 /// The templates the Ravel-owned screen jar's sources are generated from.
 const SCREEN_JAR_SOURCES: &str = "jvm/screen/template";
 
@@ -2682,31 +2952,45 @@ fn quoted_value<'a>(line: &'a str, name: &str) -> Option<&'a str> {
 /// `java/lang/String` is the one reference the generator renders as a string
 /// instead. Returns nothing when the descriptor is not a method descriptor.
 fn descriptor_handles(descriptor: &str) -> Option<usize> {
+    Some(
+        descriptor_parameters(descriptor)?
+            .iter()
+            .filter(|parameter| {
+                parameter.starts_with('[')
+                    || (parameter.starts_with('L') && **parameter != "Ljava/lang/String;")
+            })
+            .count(),
+    )
+}
+
+/// Each parameter of a method descriptor, in declaration order.
+///
+/// Split rather than counted, because a slot and a position are two different
+/// numbers: a `long` or a `double` occupies two locals, so nothing that walks
+/// the list can be replaced by an index into the text. Returns nothing when the
+/// descriptor is not a method descriptor.
+fn descriptor_parameters(descriptor: &str) -> Option<Vec<&str>> {
     let mut rest = descriptor.strip_prefix('(')?.split_once(')')?.0;
-    let mut handles = 0;
+    let mut parameters = Vec::new();
     while !rest.is_empty() {
         let arrays = rest.len() - rest.trim_start_matches('[').len();
-        rest = &rest[arrays..];
-        if let Some(named) = rest.strip_prefix('L') {
-            let (name, tail) = named.split_once(';')?;
-            if arrays > 0 || name != "java/lang/String" {
-                handles += 1;
-            }
-            rest = tail;
+        let named = &rest[arrays..];
+        let length = if let Some(class) = named.strip_prefix('L') {
+            class.split_once(';')?.0.len() + 2
         } else {
             if !matches!(
-                rest.as_bytes().first()?,
+                named.as_bytes().first()?,
                 b'B' | b'C' | b'D' | b'F' | b'I' | b'J' | b'S' | b'Z'
             ) {
                 return None;
             }
-            if arrays > 0 {
-                handles += 1;
-            }
-            rest = &rest[1..];
-        }
+            1
+        };
+        let (parameter, tail) = rest.split_at(arrays + length);
+        parameters.push(parameter);
+        rest = tail;
     }
-    Some(handles)
+    Some(parameters)
 }
 
 /// Recomputes every digest a milestone manifest records for its own results.
@@ -7867,20 +8151,21 @@ mod tests {
         AGENT_JAR_SOURCES, CRATE_NAMES, CampaignInventory, DECISION_RECORDS, EXAMPLE_NAMES,
         GATE_DEFINITION, GUIDE_DIRECTORY, HOOK_DOCUMENT, HookCounts, JVM_ENTRY_DECISION,
         MILESTONE_MANIFESTS, NETWORK_SOURCE, REFLECTION_FILE, SCREEN_JAR_SOURCES, SWEPT_SCOPE,
-        TEST_MOD_NAMES, VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE,
-        campaign_document_violations, change_mismatch, declared_hook_names,
-        declares_unsafe_prohibition, denied_hook_names, documented_versions, game_class_literals,
-        hook_counts, hook_document_violations, hook_inventories, numbers_before,
-        pinned_commit_mismatch, redacted_path, reflective_surfaces, required_scaffold_paths,
-        round_count_restatements, verify_campaign_inventory, verify_decision_hook_claims,
-        verify_evidence_records, verify_experiment_fence, verify_guide_enumerations,
-        verify_harness_lifecycles, verify_hook_inventory_document, verify_hook_name_literals,
-        verify_ignored_boundaries, verify_m4_gate_figures, verify_m4_process_matrix,
-        verify_m4_surface, verify_manifest_percentages, verify_milestone,
+        TEST_MOD_NAMES, TRANSFORMER_SHAPE_RECORD, VERSION_CLASS_EXCUSES, VERSION_DATA,
+        VERSION_FILES, VERSION_PROSE_FILE, campaign_document_violations, change_mismatch,
+        declared_hook_names, declares_unsafe_prohibition, denied_hook_names, documented_versions,
+        game_class_literals, hook_counts, hook_document_violations, hook_inventories,
+        numbers_before, pinned_commit_mismatch, redacted_path, reflective_surfaces,
+        required_scaffold_paths, round_count_restatements, verify_campaign_inventory,
+        verify_decision_hook_claims, verify_evidence_records, verify_experiment_fence,
+        verify_guide_enumerations, verify_harness_lifecycles, verify_hook_inventory_document,
+        verify_hook_name_literals, verify_ignored_boundaries, verify_m4_gate_figures,
+        verify_m4_process_matrix, verify_m4_surface, verify_manifest_percentages, verify_milestone,
         verify_persistence_reflection, verify_resolved_class_figure, verify_review_round_counts,
         verify_scaffold, verify_screen_templates, verify_spikes, verify_testkit_fence,
-        verify_tracked_contents, verify_tracked_paths, verify_version_boundary,
-        verify_version_directories, verify_void_limits, version_class_names, visible_commit,
+        verify_tracked_contents, verify_tracked_paths, verify_transformer_shape,
+        verify_version_boundary, verify_version_directories, verify_void_limits,
+        version_class_names, visible_commit,
     };
     use super::{
         M6_ARITHMETIC, M6_CARRIED_FIGURES, M6_DECISIONS, M7_ARITHMETIC, M7_CARRIED_FIGURES,
@@ -10070,6 +10355,165 @@ mod tests {
         verify_hook_name_literals(&root, &inventories, &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Writes one version whose inventory declares exactly the seams given.
+    fn seam_root(label: &str, seams: &str) -> PathBuf {
+        let root = temporary_root(label);
+        version_directory(&root, "26.1.2", &[]);
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),
+            format!("schemaVersion = 1\nminecraft = \"26.1.2\"\n{seams}"),
+        )
+        .expect("version data should be writable");
+        root
+    }
+
+    /// One entry, at the shape `Transformer.java`'s sequences are written for.
+    fn seam(id: &str, kind: &str, descriptor: &str) -> String {
+        format!(
+            "\n[[hook]]\nid = \"{id}\"\nclass = \"net.minecraft.client.One\"\nmember = \
+             \"one\"\nkind = \"{kind}\"\ndescriptor = \"{descriptor}\"\n"
+        )
+    }
+
+    /// The three seams as every tracked version declares them.
+    fn declared_seams() -> String {
+        seam(
+            "world.open-persistence",
+            "instance-method",
+            "(Lnet/minecraft/One;Lnet/minecraft/Two;Lnet/minecraft/Three;Z)V",
+        ) + &seam("world.save-persistence", "instance-method", "(ZZZ)Z")
+            + &seam("screen.title-menu-options", "instance-method", "(II)V")
+    }
+
+    /// The defect this check was written for: 1.21.1's `doWorldLoad` takes four
+    /// parameters where 26.1.2 takes five, and the transform loaded an int at the
+    /// position the fifth used to sit in. Nothing could see it, because the
+    /// transformer compiles against no version and only a launch would verify the
+    /// rewritten class.
+    #[test]
+    fn a_seam_whose_loaded_parameter_moved_is_refused() {
+        let root = seam_root(
+            "transformer-shape-parameter",
+            &(seam(
+                "world.open-persistence",
+                "instance-method",
+                "(Lnet/minecraft/One;Lnet/minecraft/Two;Lnet/minecraft/Three;)V",
+            ) + &seam("world.save-persistence", "instance-method", "(ZZZ)Z")
+                + &seam("screen.title-menu-options", "instance-method", "(II)V")),
+        );
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+
+        verify_transformer_shape(&root, &inventories, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("the transformer loads a boolean there"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The second defect: the title-menu bridge injected at an int return, and
+    /// 1.21.1 returns nothing, so the sequence matched no return instruction and
+    /// the mods button was silently never added.
+    #[test]
+    fn a_seam_returning_what_no_sequence_is_written_for_is_refused() {
+        let root = seam_root(
+            "transformer-shape-return",
+            &(seam(
+                "world.open-persistence",
+                "instance-method",
+                "(Lnet/minecraft/One;Lnet/minecraft/Two;Lnet/minecraft/Three;Z)V",
+            ) + &seam("world.save-persistence", "instance-method", "(ZZZ)Z")
+                + &seam(
+                    "screen.title-menu-options",
+                    "instance-method",
+                    "(II)Ljava/lang/String;",
+                )),
+        );
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+
+        verify_transformer_shape(&root, &inventories, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("injects at its return for an int or nothing"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A receiver the transform loads that the target does not have. Local zero
+    /// is the first argument on a static method, so the adapter would be handed
+    /// an argument in place of the server the seam is about.
+    #[test]
+    fn a_seam_declared_static_where_the_receiver_is_loaded_is_refused() {
+        let root = seam_root(
+            "transformer-shape-static",
+            &(seam(
+                "world.open-persistence",
+                "instance-method",
+                "(Lnet/minecraft/One;Lnet/minecraft/Two;Lnet/minecraft/Three;Z)V",
+            ) + &seam("world.save-persistence", "static-method", "(ZZZ)Z")
+                + &seam("screen.title-menu-options", "instance-method", "(II)V")),
+        );
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+
+        verify_transformer_shape(&root, &inventories, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("the transformer loads its receiver"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The shapes the sequences are written for, and the record that says which
+    /// version was actually held to them. `devenv tasks run` prints nothing for a
+    /// task that succeeds, so a check that only printed would pass invisibly.
+    #[test]
+    fn the_shapes_the_transformer_injects_against_are_recorded_by_version() {
+        let root = seam_root("transformer-shape-held", &declared_seams());
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+
+        verify_transformer_shape(&root, &inventories, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
+        let record = fs::read_to_string(root.join(TRANSFORMER_SHAPE_RECORD))
+            .expect("the record should be written");
+        assert_eq!(
+            record,
+            "held: Minecraft 26.1.2 against 3 transformer seams\n"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A sweep with no subject passes for the same reason a correct one does, and
+    /// every seam here is named by data a version can stop declaring.
+    #[test]
+    fn a_run_no_version_names_a_seam_in_is_refused() {
+        let root = seam_root(
+            "transformer-shape-vacuous",
+            &seam("level.tick", "instance-method", "()V"),
+        );
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+
+        verify_transformer_shape(&root, &inventories, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("checked against nothing"),
+            "{violations:?}"
+        );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 

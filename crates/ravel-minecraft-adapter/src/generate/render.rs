@@ -145,9 +145,9 @@ pub(super) struct Shape {
     rust_function: String,
     java_method: String,
     parameters: Vec<JavaType>,
-    internal_class: String,
-    member: String,
-    descriptor: String,
+    runtime_class: String,
+    runtime_member: String,
+    runtime_descriptor: String,
     is_static: bool,
     refuses: bool,
 }
@@ -193,7 +193,7 @@ pub(super) fn shapes(
         // target that returns a value would need one synthesized to leave
         // early, and nothing has decided what it would be, so this is a hard
         // error rather than a warning that renders anyway.
-        if hook.refuses && !target.descriptor.ends_with(")V") {
+        if hook.refuses && !target.runtime_descriptor.ends_with(")V") {
             return Err(GenerateError::Unsupported(format!(
                 "{} may refuse its target, but {} does not return void and an early \
                  return would have to invent a value",
@@ -205,11 +205,14 @@ pub(super) fn shapes(
             constant: constant_name(&hook.id),
             rust_function: rust_name(&hook.id),
             java_method: java_name(&hook.id),
+            // The reviewed descriptor, because the only thing a parameter keeps
+            // of its class is the string `JavaHandle::new` declares, and that
+            // one is read by a mod rather than linked by the JVM.
             parameters: parameters(&target.descriptor)
                 .map_err(|detail| GenerateError::Unsupported(format!("{}: {detail}", hook.id)))?,
-            internal_class: target.internal_class.clone(),
-            member: target.member.clone(),
-            descriptor: target.descriptor.clone(),
+            runtime_class: target.runtime_class.clone(),
+            runtime_member: target.runtime_member.clone(),
+            runtime_descriptor: target.runtime_descriptor.clone(),
             is_static: target.is_static,
             refuses: hook.refuses,
         });
@@ -366,15 +369,40 @@ pub(super) fn lock(adapter: &Adapter, resolved: &[Resolved]) -> String {
         adapter.minecraft,
         adapter.schema_version,
         adapter.minecraft,
-        adapter.mapping_source,
+        adapter.mapping_source.as_str(),
         adapter.inputs.client_jar.sha256.as_deref().unwrap_or("")
     );
+    // A source that reads no mapping has none to pin, so the key exists only
+    // where one decided the linked names below.
+    if let Some(mappings) = &adapter.inputs.client_mappings {
+        let _ = writeln!(
+            text,
+            "clientMappingsSha256 = \"{}\"",
+            mappings.sha256.as_deref().unwrap_or("")
+        );
+    }
     for target in resolved {
         let _ = writeln!(
             text,
             "\n[target.\"{}\"]\nclass = \"{}\"\nmember = \"{}\"\ndescriptor = \"{}\"\nstatic = {}",
-            target.id, target.internal_class, target.member, target.descriptor, target.is_static
+            target.id, target.mojang_class, target.member, target.descriptor, target.is_static
         );
+        // A linked name is written only where the mapping source made one, so a
+        // lock under a source that translates nothing says each name once and a
+        // reader can see at a glance which names moved.
+        for (key, reviewed, linked) in [
+            ("runtimeClass", &target.mojang_class, &target.runtime_class),
+            ("runtimeMember", &target.member, &target.runtime_member),
+            (
+                "runtimeDescriptor",
+                &target.descriptor,
+                &target.runtime_descriptor,
+            ),
+        ] {
+            if reviewed != linked {
+                let _ = writeln!(text, "{key} = \"{linked}\"");
+            }
+        }
     }
     text
 }
@@ -392,7 +420,9 @@ pub(super) fn bindings(adapter: &Adapter, inventory: &Inventory, resolved: &[Res
          \n\
          /// The Minecraft version every target below was resolved against.\n\
          pub const MINECRAFT_VERSION: &str = \"{}\";\n",
-        adapter.minecraft, adapter.mapping_source, adapter.minecraft
+        adapter.minecraft,
+        adapter.mapping_source.as_str(),
+        adapter.minecraft
     );
 
     for (hook, target) in inventory.hooks.iter().zip(resolved) {
@@ -409,9 +439,9 @@ pub(super) fn bindings(adapter: &Adapter, inventory: &Inventory, resolved: &[Res
             hook.capability,
             constant_name(&hook.id),
             target.id,
-            target.internal_class,
-            target.member,
-            target.descriptor,
+            target.runtime_class,
+            target.runtime_member,
+            target.runtime_descriptor,
             hook.kind.variant()
         );
     }
@@ -557,9 +587,9 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
              \x20               \"{}\",\n\
              \x20               \"{}\",\n\
              \x20               {}),",
-            shape.internal_class,
-            shape.member,
-            shape.descriptor,
+            shape.runtime_class,
+            shape.runtime_member,
+            shape.runtime_descriptor,
             shape.is_static,
             shape.java_method,
             shape.hook_descriptor(),
@@ -1070,11 +1100,12 @@ fn java_type(descriptor: &str) -> Result<(String, &str), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::inputs::{Adapter, Hook, Input, Inputs, Inventory, Kind};
+    use super::super::inputs::{Adapter, Hook, Input, Inputs, Inventory, Kind, MappingSource};
     use super::super::resolve::Resolved;
     use super::super::stubs::{Member as StubMember, Stub};
     use super::{
-        JavaType, constant_name, exports, hook_java, java_name, parameters, rust_name, shapes,
+        JavaType, bindings, constant_name, exports, hook_java, java_name, parameters, rust_name,
+        shapes,
     };
     use super::{java_type, signature, stub_java, stub_lock};
 
@@ -1094,9 +1125,10 @@ mod tests {
         Adapter {
             schema_version: 1,
             minecraft: "0.0.0-test".to_owned(),
-            mapping_source: "unobfuscated-class-files".to_owned(),
+            mapping_source: MappingSource::UnobfuscatedClassFiles,
             inputs: Inputs {
                 client_jar: unpinned(),
+                client_mappings: None,
                 data_fixer_jar: unpinned(),
                 version_manifest: unpinned(),
                 hook_inventory: unpinned(),
@@ -1126,8 +1158,11 @@ mod tests {
             .iter()
             .map(|hook| Resolved {
                 id: hook.id.clone(),
-                internal_class: hook.class.replace('.', "/"),
+                runtime_class: hook.class.replace('.', "/"),
+                mojang_class: hook.class.replace('.', "/"),
+                runtime_member: hook.member.clone(),
                 member: hook.member.clone(),
+                runtime_descriptor: hook.descriptor.clone(),
                 descriptor: hook.descriptor.clone(),
                 is_static: false,
             })
@@ -1346,6 +1381,36 @@ mod tests {
         assert!(
             rust.contains("|_env|"),
             "no handle needs the environment, so no export asks for it: {rust}"
+        );
+    }
+
+    /// The class a handle declares is what a mod reads back off it, so it comes
+    /// from the reviewed descriptor even where the JVM links an obfuscated one.
+    #[test]
+    fn a_handle_declares_the_reviewed_class_where_the_mapping_obfuscates_it() {
+        let (inventory, mut resolved) = reviewed(&CANDIDATES[..1]);
+        resolved[0].runtime_class = "ezb".to_owned();
+        resolved[0].runtime_member = "a".to_owned();
+        resolved[0].runtime_descriptor = "(Lfhk;Ljava/lang/Object;Lezc;)Lezd;".to_owned();
+
+        let shapes = shapes(&inventory, &resolved).expect("the candidate should render");
+        let rust = exports(&shapes);
+        let table = bindings(&adapter(), &inventory, &resolved);
+
+        assert!(
+            rust.contains(
+                "::ravel_minecraft::JavaHandle::new(\"com/example/resources/ResourceKey\", \
+                 &argument0)"
+            ),
+            "{rust}"
+        );
+        assert!(
+            !rust.contains("JavaHandle::new(\"fhk\""),
+            "no linked name reaches an observer: {rust}"
+        );
+        assert!(
+            table.contains("(Lfhk;Ljava/lang/Object;Lezc;)Lezd;"),
+            "the target table still links the runtime descriptor: {table}"
         );
     }
 

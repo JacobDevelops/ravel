@@ -16,6 +16,35 @@ use super::GenerateError;
 /// Every pinned version's data lives here, relative to the repository root.
 const VERSIONS: &str = "minecraft/versions";
 
+/// Where the names the generator resolves against come from.
+///
+/// ADG-3's amendment admits two, and nothing else: an unknown value is refused
+/// here rather than carried through as descriptive text, because this string
+/// decides whether a name is translated before an archive is asked for it.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum MappingSource {
+    /// The jar declares the names the reviewed inventory carries.
+    UnobfuscatedClassFiles,
+    /// The version's own published mapping file relates the two name spaces.
+    OfficialProguardMappings,
+}
+
+impl MappingSource {
+    /// How the adapter inputs and the generated locks write this down.
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnobfuscatedClassFiles => "unobfuscated-class-files",
+            Self::OfficialProguardMappings => "official-proguard-mappings",
+        }
+    }
+
+    /// Whether this source needs a published mapping file to be read.
+    pub(super) const fn needs_mappings(self) -> bool {
+        matches!(self, Self::OfficialProguardMappings)
+    }
+}
+
 /// Shape of a hook target, which the class file's flags have to agree with.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -119,6 +148,15 @@ pub(super) struct Input {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Inputs {
     pub(super) client_jar: Input,
+    /// The version's published client mapping, where the source calls for one.
+    ///
+    /// It is declared exactly as the jar is and never tracked, for the reasons
+    /// ADG-3's amendment records: it is upstream material this repository does
+    /// not own, it is derived from the build that produced the jar, and it is
+    /// larger than every tracked file of a version put together. What is tracked
+    /// is its hash.
+    #[serde(default)]
+    pub(super) client_mappings: Option<Input>,
     /// The library jar carrying the serialization types the game's signatures
     /// name. Those classes are not in the client jar, so a stub for one has to be
     /// read from the library that declares it rather than guessed at.
@@ -138,7 +176,7 @@ pub(super) struct Inputs {
 pub(super) struct Adapter {
     pub(super) schema_version: u8,
     pub(super) minecraft: String,
-    pub(super) mapping_source: String,
+    pub(super) mapping_source: MappingSource,
     pub(super) inputs: Inputs,
 }
 
@@ -216,13 +254,39 @@ pub(super) fn pinned(root: &Path) -> Result<PinnedVersion, GenerateError> {
         )));
     }
 
+    // The source decides whether a mapping file exists, so a pair that
+    // disagrees is refused rather than resolved one way: a mapping file nothing
+    // reads is a pin nobody maintains, and a source with none to read cannot
+    // translate the name it is about to ask an archive for.
+    match (
+        adapter.mapping_source.needs_mappings(),
+        adapter.inputs.client_mappings.is_some(),
+    ) {
+        (true, false) => {
+            return Err(GenerateError::Input(format!(
+                "{} reads a published mapping but the adapter inputs declare none",
+                adapter.mapping_source.as_str()
+            )));
+        }
+        (false, true) => {
+            return Err(GenerateError::Input(format!(
+                "{} reads names from the class files but the adapter inputs declare a mapping",
+                adapter.mapping_source.as_str()
+            )));
+        }
+        _ => {}
+    }
+
     for input in [
         &adapter.inputs.client_jar,
         &adapter.inputs.data_fixer_jar,
         &adapter.inputs.version_manifest,
         &adapter.inputs.hook_inventory,
         &adapter.inputs.stub_seeds,
-    ] {
+    ]
+    .into_iter()
+    .chain(adapter.inputs.client_mappings.as_ref())
+    {
         // An input that records where it came from has to record a fetchable
         // origin, because that string is the only trail back to the bytes the
         // hash pins.
@@ -378,7 +442,7 @@ pub(super) fn sha256(bytes: &[u8]) -> String {
 mod tests {
     use std::path::Path;
 
-    use super::{Adapter, Input, Kind, file_name, pinned, sha256, verify_input};
+    use super::{Adapter, Input, Kind, MappingSource, file_name, pinned, sha256, verify_input};
 
     fn repository_root() -> &'static Path {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -392,7 +456,10 @@ mod tests {
         let pinned = pinned(repository_root()).expect("the tracked version data should parse");
 
         assert_eq!(pinned.adapter.schema_version, 1);
-        assert_eq!(pinned.adapter.mapping_source, "unobfuscated-class-files");
+        assert_eq!(
+            pinned.adapter.mapping_source,
+            MappingSource::UnobfuscatedClassFiles
+        );
         assert_eq!(pinned.inventory.minecraft, pinned.adapter.minecraft);
         assert!(
             pinned.directory.ends_with(&pinned.adapter.minecraft),
@@ -581,7 +648,10 @@ class = \"net/minecraft/Unreferenced\"
             &inputs.stub_seeds,
             &inputs.mappings_lock,
             &inputs.stubs_lock,
-        ] {
+        ]
+        .into_iter()
+        .chain(inputs.client_mappings.as_ref())
+        {
             assert!(
                 input.sha256.is_some() || input.bytes.is_some(),
                 "{} is declared with nothing to verify it against",
@@ -672,5 +742,56 @@ bytes = 2
             "hashing is a function of the bytes alone"
         );
         assert_ne!(sha256(b"ravel"), sha256(b"Ravel"));
+    }
+
+    /// Adapter inputs written out, with one mapping source and one mapping pin.
+    fn document(source: &str, mappings: &str) -> String {
+        format!(
+            "schemaVersion = 1\n\
+             minecraft = \"0.0.0-test\"\n\
+             mappingSource = \"{source}\"\n\
+             {mappings}\
+             [inputs.clientJar]\npath = \"a\"\nsha256 = \"0\"\n\
+             [inputs.dataFixerJar]\npath = \"b\"\nsha256 = \"0\"\n\
+             [inputs.versionManifest]\npath = \"c\"\nsha256 = \"0\"\n\
+             [inputs.hookInventory]\npath = \"d\"\nsha256 = \"0\"\n\
+             [inputs.stubSeeds]\npath = \"e\"\nsha256 = \"0\"\n\
+             [inputs.mappingsLock]\npath = \"f\"\nsha256 = \"0\"\n\
+             [inputs.stubsLock]\npath = \"g\"\nsha256 = \"0\"\n"
+        )
+    }
+
+    #[test]
+    fn a_mapping_source_nothing_implements_is_refused_where_it_is_written() {
+        let error = toml::from_str::<Adapter>(&document("community-mappings", ""))
+            .expect_err("a source the generator cannot act on must be refused");
+
+        assert!(error.to_string().contains("unknown variant"), "{error}");
+        assert!(
+            error.to_string().contains("unobfuscated-class-files"),
+            "the refusal names the sources there are: {error}"
+        );
+    }
+
+    #[test]
+    fn both_admitted_sources_parse_and_write_back_the_string_they_came_from() {
+        for source in [
+            MappingSource::UnobfuscatedClassFiles,
+            MappingSource::OfficialProguardMappings,
+        ] {
+            let mappings = if source.needs_mappings() {
+                "[inputs.clientMappings]\npath = \"m\"\nsha256 = \"0\"\n"
+            } else {
+                ""
+            };
+            let adapter: Adapter = toml::from_str(&document(source.as_str(), mappings))
+                .expect("an admitted source parses");
+
+            assert_eq!(adapter.mapping_source, source);
+            assert_eq!(
+                adapter.inputs.client_mappings.is_some(),
+                source.needs_mappings()
+            );
+        }
     }
 }

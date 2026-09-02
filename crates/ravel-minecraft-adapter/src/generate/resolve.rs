@@ -4,33 +4,55 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use super::inputs::{Adapter, Inventory};
+use super::inputs::{Adapter, Inventory, MappingSource};
+use super::mapping::Mapping;
 use super::{GenerateError, classfile, jar};
 
-/// A member as the generator read it.
+/// A member as the generator read it, under both of the names it has.
+///
+/// The reviewed inventory names a target the way a human reviews it and the JVM
+/// links it the way the mapping source says. Under `unobfuscated-class-files`
+/// the two are the same string; under a published mapping they are not, and the
+/// generated doc comments want the first while the target tables want the second.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Resolved {
     /// Hook identifier this resolves.
     pub(super) id: String,
-    /// Internal class name, as the JVM writes it.
-    pub(super) internal_class: String,
-    /// Declared member name.
+    /// Internal class name the reviewed inventory carries.
+    pub(super) mojang_class: String,
+    /// Internal class name the JVM links.
+    pub(super) runtime_class: String,
+    /// Member name the reviewed inventory carries.
     pub(super) member: String,
-    /// Exact JVM descriptor.
+    /// Member name the JVM links.
+    pub(super) runtime_member: String,
+    /// JVM descriptor the reviewed inventory carries.
     pub(super) descriptor: String,
+    /// JVM descriptor the JVM links.
+    pub(super) runtime_descriptor: String,
     /// Whether the class file declares the member static.
     pub(super) is_static: bool,
 }
 
 /// One pinned member, as the tracked mapping lock records it.
+///
+/// The three runtime fields are written only where the mapping source makes them
+/// differ from the reviewed name, so a lock written under
+/// `unobfuscated-class-files` says each name once.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Pinned {
     class: String,
     member: String,
     descriptor: String,
     #[serde(rename = "static")]
     is_static: bool,
+    #[serde(default)]
+    runtime_class: Option<String>,
+    #[serde(default)]
+    runtime_member: Option<String>,
+    #[serde(default)]
+    runtime_descriptor: Option<String>,
 }
 
 /// The tracked mapping lock.
@@ -39,9 +61,15 @@ struct Pinned {
 struct Lock {
     schema_version: u8,
     minecraft: String,
-    mapping_source: String,
+    mapping_source: MappingSource,
     extractor: String,
     client_jar_sha256: String,
+    /// The published mapping the linked names below were read from.
+    ///
+    /// Absent under a source that reads none, which is the same shape the
+    /// adapter inputs declare it in.
+    #[serde(default)]
+    client_mappings_sha256: Option<String>,
     #[serde(rename = "target")]
     targets: BTreeMap<String, Pinned>,
 }
@@ -50,24 +78,32 @@ struct Lock {
 pub(super) fn from_jar(
     archive: &jar::Archive,
     inventory: &Inventory,
+    mapping: &Mapping,
 ) -> Result<Vec<Resolved>, GenerateError> {
     let mut classes: BTreeMap<&str, Vec<classfile::Member>> = BTreeMap::new();
     let mut resolved = Vec::new();
 
     for hook in &inventory.hooks {
+        let mojang_class = hook.class.replace('.', "/");
         // Each class is read once, however many hooks it holds.
         if !classes.contains_key(hook.class.as_str()) {
-            let entry = format!("{}.class", hook.class.replace('.', "/"));
-            let bytes = archive.entry(&entry)?;
+            let bytes = archive.entry(&mapping.entry(&mojang_class))?;
             let members = classfile::members(&bytes)
                 .map_err(|error| GenerateError::Extraction(format!("{}: {error}", hook.class)))?;
             classes.insert(&hook.class, members);
         }
         let members = &classes[hook.class.as_str()];
 
+        // The inventory reviews a Mojang name and the class file declares a
+        // linked one, so the two are compared in the class file's own name space
+        // and never by hoping they coincide.
+        let (runtime_member, runtime_descriptor) =
+            mapping.runtime_member(&mojang_class, &hook.member, &hook.descriptor)?;
         let matches = members
             .iter()
-            .filter(|member| member.name == hook.member && member.descriptor == hook.descriptor)
+            .filter(|member| {
+                member.name == runtime_member && member.descriptor == runtime_descriptor
+            })
             .collect::<Vec<_>>();
         let [member] = matches.as_slice() else {
             return Err(GenerateError::Unresolved(format!(
@@ -92,29 +128,20 @@ pub(super) fn from_jar(
 
         resolved.push(Resolved {
             id: hook.id.clone(),
-            internal_class: hook.class.replace('.', "/"),
-            member: member.name.clone(),
-            descriptor: member.descriptor.clone(),
+            runtime_class: mapping.runtime_class(&mojang_class).to_owned(),
+            mojang_class,
+            member: hook.member.clone(),
+            runtime_member: member.name.clone(),
+            descriptor: hook.descriptor.clone(),
+            runtime_descriptor: member.descriptor.clone(),
             is_static: member.is_static(),
         });
     }
     Ok(resolved)
 }
 
-/// Resolves every hook entry against the tracked mapping lock.
-///
-/// This is what a machine without the restricted client jar generates from, and
-/// it is why `cargo check --workspace` succeeds on one. The lock already carries
-/// every name the jar resolved to, and it is tracked, so a silent rename shows
-/// up in a diff rather than in a build that quietly disagreed with it.
-pub(super) fn from_lock(
-    tracked: &str,
-    adapter: &Adapter,
-    inventory: &Inventory,
-) -> Result<Vec<Resolved>, GenerateError> {
-    let lock: Lock = toml::from_str(tracked)
-        .map_err(|error| GenerateError::Input(format!("cannot parse mappings.lock: {error}")))?;
-
+/// Refuses a lock whose header disagrees with the inputs it claims to describe.
+fn header(lock: &Lock, adapter: &Adapter, inventory: &Inventory) -> Result<(), GenerateError> {
     for (what, tracked, pinned) in [
         (
             "the version",
@@ -130,6 +157,19 @@ pub(super) fn from_lock(
             "the client jar hash",
             lock.client_jar_sha256.as_str(),
             adapter.inputs.client_jar.sha256.as_deref().unwrap_or(""),
+        ),
+        // Nothing on this path opens the mapping file, so its hash is the only
+        // thing that can say the lock's linked names came from the mapping the
+        // inputs now pin.
+        (
+            "the client mapping hash",
+            lock.client_mappings_sha256.as_deref().unwrap_or(""),
+            adapter
+                .inputs
+                .client_mappings
+                .as_ref()
+                .and_then(|input| input.sha256.as_deref())
+                .unwrap_or(""),
         ),
     ] {
         if tracked != pinned {
@@ -157,14 +197,31 @@ pub(super) fn from_lock(
             inventory.hooks.len()
         )));
     }
+    Ok(())
+}
+
+/// Resolves every hook entry against the tracked mapping lock.
+///
+/// This is what a machine without the restricted client jar generates from, and
+/// it is why `cargo check --workspace` succeeds on one. The lock already carries
+/// every name the jar resolved to, and it is tracked, so a silent rename shows
+/// up in a diff rather than in a build that quietly disagreed with it.
+pub(super) fn from_lock(
+    tracked: &str,
+    adapter: &Adapter,
+    inventory: &Inventory,
+) -> Result<Vec<Resolved>, GenerateError> {
+    let lock: Lock = toml::from_str(tracked)
+        .map_err(|error| GenerateError::Input(format!("cannot parse mappings.lock: {error}")))?;
+    header(&lock, adapter, inventory)?;
 
     let mut resolved = Vec::with_capacity(inventory.hooks.len());
     for hook in &inventory.hooks {
         let pinned = lock.targets.get(&hook.id).ok_or_else(|| {
             GenerateError::Drift(format!("mappings.lock pins no target for {}", hook.id))
         })?;
-        let internal_class = hook.class.replace('.', "/");
-        if pinned.class != internal_class
+        let mojang_class = hook.class.replace('.', "/");
+        if pinned.class != mojang_class
             || pinned.member != hook.member
             || pinned.descriptor != hook.descriptor
             || pinned.is_static != hook.kind.is_static()
@@ -174,11 +231,35 @@ pub(super) fn from_lock(
                 hook.id
             )));
         }
+        // A source that translates nothing has no second name to pin, so a lock
+        // that carries one under it was written by something else.
+        if !adapter.mapping_source.needs_mappings()
+            && (pinned.runtime_class.is_some()
+                || pinned.runtime_member.is_some()
+                || pinned.runtime_descriptor.is_some())
+        {
+            return Err(GenerateError::Drift(format!(
+                "mappings.lock pins a linked name for {} under a source that links none",
+                hook.id
+            )));
+        }
         resolved.push(Resolved {
             id: hook.id.clone(),
-            internal_class,
+            runtime_class: pinned
+                .runtime_class
+                .clone()
+                .unwrap_or_else(|| mojang_class.clone()),
+            mojang_class,
             member: pinned.member.clone(),
+            runtime_member: pinned
+                .runtime_member
+                .clone()
+                .unwrap_or_else(|| pinned.member.clone()),
             descriptor: pinned.descriptor.clone(),
+            runtime_descriptor: pinned
+                .runtime_descriptor
+                .clone()
+                .unwrap_or_else(|| pinned.descriptor.clone()),
             is_static: pinned.is_static,
         });
     }
@@ -189,9 +270,16 @@ pub(super) fn from_lock(
 mod tests {
     use std::path::Path;
 
-    use super::super::inputs::{self, PinnedVersion};
+    use super::super::inputs::{self, MappingSource, PinnedVersion};
     use super::super::jar::fixture;
+    use super::super::mapping::Mapping;
     use super::{from_jar, from_lock};
+
+    /// The mapping every reviewed name already agrees with.
+    fn identity() -> Mapping {
+        Mapping::read(MappingSource::UnobfuscatedClassFiles, "")
+            .expect("the identity needs no text")
+    }
 
     fn pinned() -> PinnedVersion {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -216,7 +304,8 @@ mod tests {
         assert_eq!(resolved.len(), pinned.inventory.hooks.len());
         for (hook, target) in pinned.inventory.hooks.iter().zip(&resolved) {
             assert_eq!(target.id, hook.id);
-            assert_eq!(target.internal_class, hook.class.replace('.', "/"));
+            assert_eq!(target.mojang_class, hook.class.replace('.', "/"));
+            assert_eq!(target.runtime_class, target.mojang_class);
             assert_eq!(target.descriptor, hook.descriptor);
             assert_eq!(target.is_static, hook.kind.is_static());
         }
@@ -240,6 +329,40 @@ mod tests {
             .expect_err("a drifted lock must be refused");
 
         assert!(error.to_string().contains("the client jar hash"), "{error}");
+    }
+
+    /// Nothing on this path opens the mapping file, so swapping it for another
+    /// version's would otherwise leave every linked name in the lock stale.
+    #[test]
+    fn a_lock_that_pins_a_different_client_mapping_is_refused() {
+        let mut pinned = pinned();
+        pinned.adapter.mapping_source = MappingSource::OfficialProguardMappings;
+        pinned.adapter.inputs.client_mappings = Some(inputs::Input {
+            path: "nowhere/client.txt".to_owned(),
+            sha256: Some("a".repeat(64)),
+            bytes: None,
+            upstream: None,
+        });
+        let tracked = tracked_lock(&pinned)
+            .replace(
+                MappingSource::UnobfuscatedClassFiles.as_str(),
+                MappingSource::OfficialProguardMappings.as_str(),
+            )
+            .replace(
+                "extractor = ",
+                &format!(
+                    "clientMappingsSha256 = \"{}\"\nextractor = ",
+                    "b".repeat(64)
+                ),
+            );
+
+        let error = from_lock(&tracked, &pinned.adapter, &pinned.inventory)
+            .expect_err("a lock written from another mapping must be refused");
+
+        assert!(
+            error.to_string().contains("the client mapping hash"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -313,12 +436,18 @@ mod tests {
         let (inventory, bytes) = one_hook(0x0008);
         let archive = fixture::parse(bytes).expect("a synthetic archive");
 
-        let resolved = from_jar(&archive, &inventory).expect("the member resolves");
+        let resolved = from_jar(&archive, &inventory, &identity()).expect("the member resolves");
 
         assert_eq!(resolved[0].id, inventory.hooks[0].id);
         assert_eq!(resolved[0].member, inventory.hooks[0].member);
         assert_eq!(resolved[0].descriptor, inventory.hooks[0].descriptor);
-        assert_eq!(resolved[0].internal_class, "net/minecraft/util/StringUtil");
+        assert_eq!(resolved[0].mojang_class, "net/minecraft/util/StringUtil");
+        assert_eq!(
+            resolved[0].runtime_class, resolved[0].mojang_class,
+            "a source that translates nothing gives a target one name twice"
+        );
+        assert_eq!(resolved[0].runtime_member, resolved[0].member);
+        assert_eq!(resolved[0].runtime_descriptor, resolved[0].descriptor);
         assert!(resolved[0].is_static);
     }
 
@@ -327,7 +456,7 @@ mod tests {
         let (inventory, bytes) = one_hook(0);
         let archive = fixture::parse(bytes).expect("a synthetic archive");
 
-        let error = from_jar(&archive, &inventory).expect_err("static must agree");
+        let error = from_jar(&archive, &inventory, &identity()).expect_err("static must agree");
 
         assert!(
             error.to_string().contains("disagrees about static"),
@@ -340,7 +469,8 @@ mod tests {
         let (inventory, _) = one_hook(0x0008);
         let archive = fixture::parse(fixture::stored("other/Class.class", b"\0")).expect("archive");
 
-        let error = from_jar(&archive, &inventory).expect_err("a missing class must be refused");
+        let error = from_jar(&archive, &inventory, &identity())
+            .expect_err("a missing class must be refused");
 
         assert!(error.to_string().contains("StringUtil.class"), "{error}");
     }
@@ -354,5 +484,87 @@ mod tests {
 
         assert!(message.contains("client.jar"), "{message}");
         assert!(!message.contains("/nowhere"), "{message}");
+    }
+
+    /// An invented obfuscated version: an inventory, its mapping, and its jar.
+    ///
+    /// Nothing here is any real version's. The point is that the reviewed
+    /// inventory and the class file share no name at all, so a resolution that
+    /// succeeds can only have gone through the mapping.
+    fn obfuscated(member: &str) -> (super::Inventory, Mapping, Vec<u8>) {
+        let inventory = toml::from_str(
+            "schemaVersion = 1\n\
+             minecraft = \"0.0.0-test\"\n\
+             [[hook]]\n\
+             id = \"invented.hook\"\n\
+             class = \"com.example.Alpha\"\n\
+             member = \"allowed\"\n\
+             descriptor = \"(C)Z\"\n\
+             kind = \"static-method\"\n\
+             capability = \"an invented capability\"\n",
+        )
+        .expect("the invented inventory should parse");
+        let mapping = Mapping::read(
+            MappingSource::OfficialProguardMappings,
+            "com.example.Alpha -> a:\n    17:26:boolean allowed(char) -> a\n",
+        )
+        .expect("the invented mapping should parse");
+
+        let mut class = Vec::new();
+        class.extend(0xCAFE_BABE_u32.to_be_bytes());
+        class.extend(0_u16.to_be_bytes());
+        class.extend(69_u16.to_be_bytes());
+        class.extend(3_u16.to_be_bytes());
+        for text in [member, "(C)Z"] {
+            class.push(1);
+            class.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
+            class.extend(text.as_bytes());
+        }
+        for value in [0_u16, 0, 0, 0, 0, 1, 0x0008, 1, 2, 0, 0] {
+            class.extend(value.to_be_bytes());
+        }
+        (inventory, mapping, fixture::stored("a.class", &class))
+    }
+
+    #[test]
+    fn an_obfuscated_jar_is_asked_for_the_entry_the_mapping_names() {
+        let (inventory, mapping, bytes) = obfuscated("a");
+        let archive = fixture::parse(bytes).expect("a synthetic archive");
+
+        let resolved = from_jar(&archive, &inventory, &mapping).expect("the mapping resolves it");
+
+        assert_eq!(resolved[0].mojang_class, "com/example/Alpha");
+        assert_eq!(resolved[0].runtime_class, "a");
+        assert_eq!(resolved[0].member, "allowed");
+        assert_eq!(resolved[0].runtime_member, "a");
+    }
+
+    #[test]
+    fn a_mapped_member_the_class_file_does_not_declare_is_refused() {
+        let (inventory, mapping, bytes) = obfuscated("b");
+        let archive = fixture::parse(bytes).expect("a synthetic archive");
+
+        let error = from_jar(&archive, &inventory, &mapping)
+            .expect_err("the class declares b and the mapping says a");
+
+        assert!(error.to_string().contains("resolves 0 times"), "{error}");
+    }
+
+    #[test]
+    fn a_lock_that_pins_a_linked_name_under_a_source_that_links_none_is_refused() {
+        let pinned = pinned();
+        let first = &pinned.inventory.hooks[0].id;
+        let tracked = tracked_lock(&pinned).replace(
+            &format!("[target.\"{first}\"]\nclass = "),
+            &format!("[target.\"{first}\"]\nruntimeClass = \"a\"\nclass = "),
+        );
+
+        let error = from_lock(&tracked, &pinned.adapter, &pinned.inventory)
+            .expect_err("a linked name must be refused under the identity source");
+
+        assert!(
+            error.to_string().contains("a source that links none"),
+            "{error}"
+        );
     }
 }

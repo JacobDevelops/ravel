@@ -25,6 +25,7 @@ use serde::Deserialize;
 
 use super::classfile::{ACC_ABSTRACT, ACC_FINAL, ACC_INTERFACE, Hierarchy};
 use super::inputs::{Adapter, Seeds};
+use super::mapping::Mapping;
 use super::{GenerateError, classfile, jar};
 
 /// Packages already on every class path, which are never stubbed.
@@ -99,13 +100,14 @@ struct Lock {
 pub(super) fn from_jar(
     archives: &[&jar::Archive],
     seeds: &Seeds,
+    mapping: &Mapping,
 ) -> Result<Vec<Stub>, GenerateError> {
     let mut members: BTreeMap<String, Vec<Member>> = BTreeMap::new();
     let mut referenced = BTreeSet::new();
 
     for seed in &seeds.stubs {
         let class = seed.class.replace('.', "/");
-        let declared = read_members(archives, &class)?;
+        let declared = read_members(archives, mapping, &class)?;
         let mut selected = Vec::new();
         for name in &seed.members {
             let matched = declared
@@ -122,10 +124,11 @@ pub(super) fn from_jar(
             // descriptor into the seed list, which is the transcription this
             // generator exists to avoid.
             for member in matched {
-                referenced.extend(names_in(&member.descriptor));
+                let descriptor = mapping.mojang_descriptor(&member.descriptor);
+                referenced.extend(names_in(&descriptor));
                 selected.push(Member {
                     name: member.name.clone(),
-                    descriptor: member.descriptor.clone(),
+                    descriptor,
                     flags: member.flags,
                     method: member.method,
                 });
@@ -151,12 +154,12 @@ pub(super) fn from_jar(
 
     let mut hierarchies = BTreeMap::new();
     for class in &set {
-        hierarchies.insert(class.clone(), read_hierarchy(archives, class)?);
+        hierarchies.insert(class.clone(), read_hierarchy(archives, mapping, class)?);
     }
 
     let mut stubs = Vec::with_capacity(set.len());
     for class in &set {
-        let (extends, implements) = above(archives, class, &set, &hierarchies)?;
+        let (extends, implements) = above(archives, mapping, class, &set, &hierarchies)?;
         stubs.push(Stub {
             class: class.clone(),
             flags: hierarchies[class].flags,
@@ -247,9 +250,10 @@ pub(super) fn from_lock(
     Ok(lock.stubs)
 }
 
-/// Whether any pinned jar carries a class file under this exact name.
-fn held(archives: &[&jar::Archive], entry: &str) -> bool {
-    archives.iter().any(|archive| archive.holds(entry))
+/// Whether any pinned jar carries the class file one reviewed name resolves to.
+fn held(archives: &[&jar::Archive], mapping: &Mapping, class: &str) -> bool {
+    let entry = mapping.entry(class);
+    archives.iter().any(|archive| archive.holds(&entry))
 }
 
 /// One class's bytes, from the first pinned jar that carries it.
@@ -257,8 +261,12 @@ fn held(archives: &[&jar::Archive], entry: &str) -> bool {
 /// A class no jar carries is unresolved rather than extracted: the seed list
 /// named something that is in none of the sources the adapter inputs pin, and
 /// guessing a declaration for it is the transcription the stubs exist to avoid.
-fn read_class(archives: &[&jar::Archive], class: &str) -> Result<Vec<u8>, GenerateError> {
-    let entry = format!("{class}.class");
+fn read_class(
+    archives: &[&jar::Archive],
+    mapping: &Mapping,
+    class: &str,
+) -> Result<Vec<u8>, GenerateError> {
+    let entry = mapping.entry(class);
     let archive = archives
         .iter()
         .find(|archive| archive.holds(&entry))
@@ -271,18 +279,36 @@ fn read_class(archives: &[&jar::Archive], class: &str) -> Result<Vec<u8>, Genera
 /// Reads one class's declared members out of the jars.
 fn read_members(
     archives: &[&jar::Archive],
+    mapping: &Mapping,
     class: &str,
 ) -> Result<Vec<classfile::Member>, GenerateError> {
-    let bytes = read_class(archives, class)?;
+    let bytes = read_class(archives, mapping, class)?;
     classfile::members(&bytes)
         .map_err(|error| GenerateError::Extraction(format!("{class}: {error}")))
 }
 
 /// Reads one class's own flags and supertypes out of the jars.
-fn read_hierarchy(archives: &[&jar::Archive], class: &str) -> Result<Hierarchy, GenerateError> {
-    let bytes = read_class(archives, class)?;
-    classfile::hierarchy(&bytes)
-        .map_err(|error| GenerateError::Extraction(format!("{class}: {error}")))
+fn read_hierarchy(
+    archives: &[&jar::Archive],
+    mapping: &Mapping,
+    class: &str,
+) -> Result<Hierarchy, GenerateError> {
+    let bytes = read_class(archives, mapping, class)?;
+    let read = classfile::hierarchy(&bytes)
+        .map_err(|error| GenerateError::Extraction(format!("{class}: {error}")))?;
+    // A class file names its supertypes the way the JVM links them, and every
+    // set this walk compares against is in the reviewed name space.
+    Ok(Hierarchy {
+        flags: read.flags,
+        super_class: read
+            .super_class
+            .map(|name| mapping.mojang_class(&name).to_owned()),
+        interfaces: read
+            .interfaces
+            .iter()
+            .map(|name| mapping.mojang_class(name).to_owned())
+            .collect(),
+    })
 }
 
 /// The stubbed types one class is assignable to.
@@ -294,6 +320,7 @@ fn read_hierarchy(archives: &[&jar::Archive], class: &str) -> Result<Hierarchy, 
 /// library, and not everything either of those compiles against.
 fn above(
     archives: &[&jar::Archive],
+    mapping: &Mapping,
     class: &str,
     set: &BTreeSet<String>,
     hierarchies: &BTreeMap<String, Hierarchy>,
@@ -301,7 +328,7 @@ fn above(
     let mut extends = None;
     let mut walk = Some(class.to_owned());
     while let Some(current) = walk {
-        let hierarchy = hierarchy_of(archives, &current, hierarchies)?;
+        let hierarchy = hierarchy_of(archives, mapping, &current, hierarchies)?;
         let Some(parent) = hierarchy.super_class else {
             break;
         };
@@ -309,7 +336,7 @@ fn above(
             extends = Some(parent);
             break;
         }
-        walk = held(archives, &format!("{parent}.class")).then_some(parent);
+        walk = held(archives, mapping, &parent).then_some(parent);
     }
 
     let mut implements = BTreeSet::new();
@@ -319,12 +346,12 @@ fn above(
         if !seen.insert(current.clone()) {
             continue;
         }
-        let hierarchy = hierarchy_of(archives, &current, hierarchies)?;
+        let hierarchy = hierarchy_of(archives, mapping, &current, hierarchies)?;
         for supertype in hierarchy.supertypes() {
             if set.contains(supertype) && Some(supertype) != extends.as_deref() {
                 implements.insert(supertype.to_owned());
             }
-            if held(archives, &format!("{supertype}.class")) {
+            if held(archives, mapping, supertype) {
                 pending.push(supertype.to_owned());
             }
         }
@@ -335,12 +362,13 @@ fn above(
 /// The hierarchy of one class, reading a jar only for a class not already read.
 fn hierarchy_of(
     archives: &[&jar::Archive],
+    mapping: &Mapping,
     class: &str,
     hierarchies: &BTreeMap<String, Hierarchy>,
 ) -> Result<Hierarchy, GenerateError> {
     match hierarchies.get(class) {
         Some(known) => Ok(known.clone()),
-        None => read_hierarchy(archives, class),
+        None => read_hierarchy(archives, mapping, class),
     }
 }
 

@@ -19,6 +19,7 @@
 mod classfile;
 mod inputs;
 mod jar;
+mod mapping;
 mod render;
 mod resolve;
 mod stubs;
@@ -140,14 +141,15 @@ pub fn regenerate_locks(root: &Path) -> Result<(), GenerateError> {
     inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
     inputs::verify_input(root, &pinned.adapter.inputs.data_fixer_jar)?;
     inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
+    let mapping = mapping(root, &pinned.adapter)?;
 
     // Hook targets are game members, so they are resolved against the client jar
     // alone: a target that only the library declares would be a hook on something
     // the game does not own.
     let archive = jar::Archive::open(&jar_path)?;
     let library = jar::Archive::open(&library_path)?;
-    let resolved = resolve::from_jar(&archive, &pinned.inventory)?;
-    let stubbed = stubs::from_jar(&[&archive, &library], &pinned.seeds)?;
+    let resolved = resolve::from_jar(&archive, &pinned.inventory, &mapping)?;
+    let stubbed = stubs::from_jar(&[&archive, &library], &pinned.seeds, &mapping)?;
 
     write_atomically(
         &pinned.directory.join("mappings.lock"),
@@ -210,13 +212,16 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
         inputs::verify_input(root, &pinned.adapter.inputs.data_fixer_jar)?;
         inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
+        // The mapping decides which entry every name below asks an archive for,
+        // so it is read and verified before an archive is opened at all.
+        let mapping = mapping(root, &pinned.adapter)?;
         let archive = jar::Archive::open(&jar_path)?;
         let library = jar::Archive::open(&library_path)?;
         (
             // Hook targets are game members and are never looked for in the
             // library jar.
-            resolve::from_jar(&archive, &pinned.inventory)?,
-            stubs::from_jar(&[&archive, &library], &pinned.seeds)?,
+            resolve::from_jar(&archive, &pinned.inventory, &mapping)?,
+            stubs::from_jar(&[&archive, &library], &pinned.seeds, &mapping)?,
         )
     } else {
         (
@@ -291,23 +296,48 @@ fn write(
     }
 
     let pins = &pinned.adapter.inputs;
+    let mut watched = vec![
+        pinned.directory.join("adapter.toml"),
+        pinned.directory.join("mappings.lock"),
+        pinned.directory.join("stubs.lock"),
+        root.join(&pins.hook_inventory.path),
+        root.join(&pins.stub_seeds.path),
+        root.join(&pins.client_jar.path),
+        root.join(&pins.data_fixer_jar.path),
+        root.join(&pins.version_manifest.path),
+    ];
+    watched.extend(
+        pins.client_mappings
+            .as_ref()
+            .map(|input| root.join(&input.path)),
+    );
+
     Ok(Generated {
-        watched: vec![
-            pinned.directory.join("adapter.toml"),
-            pinned.directory.join("mappings.lock"),
-            pinned.directory.join("stubs.lock"),
-            root.join(&pins.hook_inventory.path),
-            root.join(&pins.stub_seeds.path),
-            root.join(&pins.client_jar.path),
-            root.join(&pins.data_fixer_jar.path),
-            root.join(&pins.version_manifest.path),
-        ],
+        watched,
         bindings,
         exports,
         java,
         stubs: stub_directory,
         sha256: inputs::sha256(digest.as_bytes()),
     })
+}
+
+/// Reads the mapping the pinned source calls for, refusing a drifted one first.
+///
+/// The source decides whether there is a file at all, and `inputs::pinned` has
+/// already refused a source and an input that disagree. What is left here is the
+/// order: the hash is checked before the bytes are read for meaning, and both
+/// happen before any archive is opened, so a mapping that is not the pinned one
+/// stops the run before a single class is looked at.
+fn mapping(root: &Path, adapter: &inputs::Adapter) -> Result<mapping::Mapping, GenerateError> {
+    let Some(input) = &adapter.inputs.client_mappings else {
+        return mapping::Mapping::read(adapter.mapping_source, "");
+    };
+    inputs::verify_input(root, input)?;
+    let name = inputs::file_name(&input.path);
+    let text = fs::read_to_string(root.join(&input.path))
+        .map_err(|error| GenerateError::Input(format!("cannot read {name}: {error}")))?;
+    mapping::Mapping::read(adapter.mapping_source, &text)
 }
 
 fn create(directory: &Path) -> Result<(), GenerateError> {
@@ -688,5 +718,75 @@ mod tests {
         ] {
             assert!(error.to_string().starts_with(expected), "{error}");
         }
+    }
+
+    /// Rewrites the staged adapter inputs, one whole line at a time.
+    fn rewrite(directory: &Path, from: &str, to: &str) {
+        let path = directory.join("adapter.toml");
+        let document = std::fs::read_to_string(&path).expect("readable");
+        assert!(
+            document.contains(from),
+            "{from} is not in the staged inputs"
+        );
+        std::fs::write(&path, document.replace(from, to)).expect("writable");
+    }
+
+    #[test]
+    fn a_source_and_a_mapping_pin_that_disagree_are_refused_before_anything_resolves() {
+        let (root, directory) = staged("mapping-pairing");
+        let out = output("mapping-pairing-out");
+        let source = "mappingSource = \"unobfuscated-class-files\"";
+        let mappings = "\n[inputs.clientMappings]\npath = \"nowhere/client.txt\"\nsha256 = \"0\"\n";
+
+        rewrite(
+            &directory,
+            source,
+            "mappingSource = \"official-proguard-mappings\"",
+        );
+        let missing = run(&root, &out).expect_err("a source that reads a mapping needs one");
+        assert!(
+            missing
+                .to_string()
+                .contains("the adapter inputs declare none"),
+            "{missing}"
+        );
+
+        rewrite(
+            &directory,
+            "mappingSource = \"official-proguard-mappings\"",
+            &format!("{source}{mappings}"),
+        );
+        let spurious = run(&root, &out).expect_err("a source that reads none may not pin one");
+        assert!(
+            spurious
+                .to_string()
+                .contains("the adapter inputs declare a mapping"),
+            "{spurious}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn a_client_mapping_that_no_longer_hashes_to_its_pin_is_refused_before_its_text_is_read() {
+        let root = repository_root();
+        let pinned = inputs::pinned(root).expect("the tracked version data should parse");
+        let mut adapter = pinned.adapter;
+        // A real file under a hash that is not its own. Nothing may be read out
+        // of it, and nothing may be opened before it is refused.
+        adapter.mapping_source = inputs::MappingSource::OfficialProguardMappings;
+        adapter.inputs.client_mappings = Some(inputs::Input {
+            path: adapter.inputs.hook_inventory.path.clone(),
+            sha256: Some("0".repeat(64)),
+            bytes: None,
+            upstream: None,
+        });
+
+        let error = super::mapping(root, &adapter).expect_err("a drifted mapping must be refused");
+
+        assert!(matches!(error, GenerateError::Drift(_)), "{error}");
+        assert!(error.to_string().contains("hooks.toml"), "{error}");
+        assert!(!error.to_string().contains('/'), "a message names no path");
     }
 }

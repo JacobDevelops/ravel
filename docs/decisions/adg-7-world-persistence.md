@@ -81,9 +81,15 @@ times, then closes levels, saved-data storage, and level access. One prepend at
 `save.save-everything` native observation hook remains distinct and does not
 become a persistence adapter.
 
-The mapping source is `unobfuscated-class-files`: these names and descriptors are
-both named and official, with no intermediary identifier. The 26.1.2 inventory
-and generated mapping lock are the authoritative pins. Phase C gives both seams
+The mapping source is `unobfuscated-class-files` for 26.1.2: these names and
+descriptors are both named and official, with no intermediary identifier. The
+26.1.2 inventory and generated mapping lock are the authoritative pins.
+[ADG-3](adg-3-bindings.md)'s amendment admits a second source, so this is a
+premise of the seams named here rather than a property of every version. What an
+obfuscated version does to this decision is unresolved: 1.21.1's saved-data API
+is factory-based where the design below is codec-based, which is a different
+persistence contract rather than a rename, and re-deciding it is its own work
+package with its own review. Phase C gives both seams
 the complete M3-W0 inventory, independent-resolution, lock, and architecture-trace
 treatment; this decision does not substitute for that enforcement.
 

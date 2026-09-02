@@ -1,6 +1,11 @@
 # ADG-3 — Minecraft bindings
 
-Status: accepted at M1-W4.
+Status: accepted at M1-W4; amended while scoping the 1.21.1 mapping source,
+ahead of the version-directory work package, to admit Mojang's own published
+mapping file as a second source. The amendment is recorded under "Amendment: a
+second mapping source" below and each sentence it corrects is marked where it
+appears. Nothing about where a binding comes from changed: it is still the pinned
+jar, resolved rather than transcribed, pinned by a generated lock.
 
 ## Decision
 
@@ -16,8 +21,13 @@ it resolved.
 
 The generator refuses to write anything unless every entry resolves exactly once,
 with the shape the inventory declares, from inputs whose hashes match what is
-tracked. Names come from the class files themselves, because 26.1.2 ships
-unobfuscated and publishes no mapping file.
+tracked. Where the names in those class files come from is what `mappingSource`
+decides: under `unobfuscated-class-files` they are the names, because 26.1.2
+ships unobfuscated and publishes no mapping file, and under
+`official-proguard-mappings` the jar carries obfuscated names and the version's
+own published mapping file is what relates them to the names the inventory
+reviews. **Amended:** this sentence read "names come from the class files
+themselves" without a condition. See "Amendment: a second mapping source".
 
 ## Context
 
@@ -110,7 +120,10 @@ worth more than either extractor alone, and it costs half a second.
   download, and its class files carry real names, so there is nothing to
   translate. Recorded in `adg3-official-mappings.json`. An obfuscated future
   version brings this back; `adapter.toml` records `mappingSource`, so that
-  change would have to be explicit.
+  change would have to be explicit. **Amended:** the version that brings it back
+  arrived. This rejection was for 26.1.2 and on the premise this bullet states,
+  and the reversal condition it named is the one that fired. See "Amendment: a
+  second mapping source".
 - **Community mapping sets.** A per-version external dependency, with its own
   cadence and licence, to translate names the jar already carries, plus a
   human-curated layer between the pinned jar and the binding that can drift
@@ -167,3 +180,101 @@ worth more than either extractor alone, and it costs half a second.
 - Generation was measured on the development JDK's `javap` for the second
   extractor. A different JDK would print differently, which is itself part of the
   argument against depending on that output.
+
+## Amendment: a second mapping source
+
+Amended while scoping the 1.21.1 mapping source, ahead of the version-directory
+work package. `mappingSource` admits a second value, `official-proguard-mappings`,
+which reads the version's own published client mapping file to relate the names
+the reviewed inventory carries to the names an obfuscated jar declares. The
+generator refuses any other value at parse, so the set is closed rather than
+descriptive.
+
+Everything the original decision selected is untouched. Bindings still come from
+the pinned jar rather than from a file that describes it; every entry still has
+to resolve exactly once, with the declared shape, or nothing is written; the
+lock is still generated and tracked, so a rename still shows up in a diff; and
+drift still fires on an input hash before a class is read.
+
+### Why this is the branch this record already authorised
+
+The rejection above is stated for 26.1.2 and on a premise 26.1.2 satisfies:
+"publishes no client mapping download, and its class files carry real names, so
+there is nothing to translate". It then names the reversal condition — "an
+obfuscated future version brings this back" — and the mechanism that would carry
+it, `mappingSource` in `adapter.toml`. 1.21.1 is that version. Its client jar
+holds 8269 class files of which 26 keep a `net/minecraft/...` path, and the same
+version manifest that publishes the jar publishes a `client_mappings` download
+hashed beside it. So the premise of the rejection is false for that version, and
+the mechanism this record chose for the case is the one being used.
+
+### Why Mojang's own file is not the mapping sets this record rejected
+
+A reader who stops at the shape of the thing — a mapping file, fetched, applied
+between the jar and the binding — will read this as the second rejection above
+rather than the first. It is not, and the difference is every reason that
+rejection gives.
+
+- **No external cadence.** The community sets are "a per-version external
+  dependency, with its own cadence". Mojang's file ships in the same version
+  manifest as the jar, at the same moment, for the same build. There is no
+  second release to wait for and no second project to track.
+- **No second hash to trust.** The manifest that pins the jar's `sha1` pins the
+  mapping file's, in the same document, and that document is already an
+  `adapter.toml` input. The two artefacts are hashed together, so a jar and a
+  mapping file cannot be paired out of step without a hash refusing them.
+- **No human-curated layer.** The objection was "a human-curated layer between
+  the pinned jar and the binding that can drift silently". The proguard file is
+  emitted by the build that emitted the jar. Nobody names anything in it, so
+  there is nothing in it to drift.
+- **Same names, not different ones.** A community set supplies names its authors
+  chose. This file supplies the names Mojang's own source uses, which are the
+  names `hooks.toml` already reviews. It translates; it does not rename.
+
+What the two rejections share is a caution about anything standing between the
+pinned jar and a binding. This amendment keeps that caution intact by treating
+the mapping file exactly as the jar is treated: an input pinned by hash, verified
+before a class is read, refused on drift.
+
+### The mapping file is an untracked local fixture pinned by hash
+
+`adapter.toml` declares it as `inputs.clientMappings`, with a `sha256` and a
+path under `tests/fixtures/local/`, and it is never tracked. Three reasons, and
+the first two are the jar's own:
+
+- It is upstream material this repository does not own, and the repository
+  tracks no game artefact. The rule that keeps the jar out keeps this out.
+- It is derived from the build that produced the jar, so tracking it stores a
+  second copy of something the jar already determines.
+- It is 9.6 MB of generated text per version, which is larger than every tracked
+  file in `minecraft/versions/` put together and would grow by that much again
+  on each version added.
+
+What is tracked is its hash, which is the same trade the jar makes and is what
+the consequence above is amended to say. A machine without the fixture takes the
+lock path exactly as it does without the jar, because the mapping file is only
+ever read on the path that reads the jar.
+
+### What this costs
+
+- A resolution now has two names per target: the Mojang name the reviewed
+  inventory carries and a human reads, and the runtime name the JVM links. The
+  generated doc comments and the inventory keep the first; the Rust target table
+  and the Java `HookTarget` table carry the second. Under
+  `unobfuscated-class-files` the two are equal, which is why adopting this
+  changed no generated byte for 26.1.2.
+- The lock records the runtime name only where it differs from the Mojang name,
+  so a jar-less machine can still generate under either source and a lock
+  written under `unobfuscated-class-files` is unchanged.
+- Everything outside the generator that spells a game name is unaffected by this
+  record and is not made correct by it. The agent jar resolves game classes
+  reflectively by string literals in `jvm/`, and those are Mojang names; under an
+  obfuscated source they are wrong at runtime. That is a separate work package
+  and this amendment does not pretend to close it.
+
+### Limits of this amendment
+
+- No obfuscated version is pinned yet. What is decided here is the source and
+  the mechanism; which version directory uses it, and whether it replaces or
+  joins 26.1.2, is not decided by this record.
+- Nothing here was measured on a launched game. The claim is about generation.

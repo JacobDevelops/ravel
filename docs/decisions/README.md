@@ -19,7 +19,7 @@ decides the obligations that come with it.
 | --- | --- | --- |
 | [ADG-1](adg-1-jvm-entry.md) | JVM entry and hook mechanism | accepted (M1-W2); amended before M3-W3 for the sibling Java artifact, at M3-W3 for the measured one-loader model, and before M3-W4 for one receiver-aware adapter |
 | [ADG-2](adg-2-mod-execution.md) | Rust mod execution and ABI | accepted (M3): interchangeable mods, distributed as source and compiled on the player's machine |
-| [ADG-3](adg-3-bindings.md) | Minecraft bindings | accepted (M1-W4) |
+| [ADG-3](adg-3-bindings.md) | Minecraft bindings | accepted (M1-W4); amended while scoping the 1.21.1 mapping source, ahead of the version-directory work package, to admit Mojang's own published mapping file as a second source |
 | [ADG-4](adg-4-state-ownership.md) | State ownership | accepted (M1-W5); amended (M3-W0) to admit opaque handles |
 | [ADG-5](adg-5-prism-integration.md) | Prism integration | accepted: two stock instance arguments, launch observed |
 | [ADG-6](adg-6-configuration-ui.md) | Configuration schema and Ravel-owned UI | accepted before M3-W3: declared in data, drawn in Java |

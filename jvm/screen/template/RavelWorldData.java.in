@@ -24,9 +24,11 @@
  * format and every admission decision about it. This class's entire job is to be
  * a thing Minecraft's own serialization knows how to write.
  *
- * <p>The three entry points are public because {@code dev.ravel.jvm.Persistence}
+ * <p>The entry points are public because {@code dev.ravel.jvm.Persistence}
  * reaches them by name from the agent jar, which is the same route every screen
- * here is opened through and the only one ADG-1 leaves open.
+ * here is opened through and the only one ADG-1 leaves open. They are the whole
+ * shape of the storage seam this version disagrees with 1.21.1 about: what the
+ * directory is wanted as, what the storage is keyed by, and what it is handed.
  */
 public final class RavelWorldData extends {{SavedData}} {
 
@@ -44,13 +46,34 @@ public final class RavelWorldData extends {{SavedData}} {
     }
 
     /**
+     * Where this version's storage keeps a world's saved data.
+     *
+     * <p>The agent jar resolves the directory and this decides what the storage
+     * constructor wants it as, because the two tracked versions disagree about
+     * the type and not only the place.
+     */
+    public static Object folder(java.nio.file.Path data) {
+        return data;
+    }
+
+    /** What this version's storage is asked for a stored object with. */
+    public static Object[] lookup() {
+        return new Object[] {type()};
+    }
+
+    /** What this version's storage is handed a replacement with. */
+    public static Object[] replacement(byte[] aggregate) {
+        return new Object[] {type(), of(aggregate)};
+    }
+
+    /**
      * The registration Minecraft reads and writes this object through.
      *
      * <p>Built fresh rather than cached in a static, because the type carries a
      * codec and a supplier and nothing here is hot: it is touched twice per world
      * lifecycle, once at open and once per save.
      */
-    public static {{SavedDataType}} type() {
+    private static {{SavedDataType}} type() {
         // `BASE64_STRING` is already a codec over `byte[]`, so nothing here
         // hand-rolls one. `fieldOf` puts it under a key so the encoded form is
         // the compound tag the storage writes; a bare leaf codec would encode to
@@ -68,7 +91,7 @@ public final class RavelWorldData extends {{SavedData}} {
     }
 
     /** Wraps replacement bytes as the object the storage will write. */
-    public static {{SavedData}} of(byte[] aggregate) {
+    private static {{SavedData}} of(byte[] aggregate) {
         RavelWorldData held = new RavelWorldData(aggregate);
         // The pinned `SavedDataStorage.set` marks the replacement dirty exactly
         // once, so this must not do it again.

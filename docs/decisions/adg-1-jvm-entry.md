@@ -231,10 +231,11 @@ generator declares every reference parameter as `java.lang.Object` precisely so
 that generated `Hook.java` declares no game type and still compiles without the
 client jar. Neither artifact is free of game *names*: `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-three adapters between them resolve eighteen classes by name — all of which the invariant
+three adapters between them resolve twenty-two classes by name — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
-on the class path. Those eighteen names are generated rather than written; the
-amendment below records why and what carries them.
+on the class path. Those twenty-two names are generated rather than written, and so is
+every member the adapters reach on them; the amendment below records why and what
+carries them.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled
 without it. Putting the screen in this jar would make the licensed client jar a
 build input for the agent, for every contributor on every build, in a public
@@ -538,6 +539,21 @@ left out of the declaration, which was correct when the declaration existed only
 to catch an undeclared literal. It is wrong now, because the declaration is what
 the constants are generated from, and a class with no role has nothing to be
 reached by.
+
+It moves again, from eighteen to twenty-two, because the surface now declares the
+members as well. The persistence adapter used to spell every member name it asked
+for as a literal, which was 26.1.2's spelling asserted over every version and the
+obfuscated name of none: 1.21.1 links `getWorldPath` as `a` and `LevelResource.ROOT`
+as `l`. Declaring the members brought their owners in with them — the level a
+storage hangs off, the world being opened, the loaded world and the registry
+layers under it — because a member is declared against the class that has it.
+
+A member is declared by its descriptor rather than by an argument count, and the
+generated constant carries both the linked name and the linked descriptor. Under
+an obfuscated version a name and a width picks no single member: 1.21.1 links both
+`DimensionDataStorage.computeIfAbsent` and its `set` as a two-argument `a`, so a
+lookup by width would read a world with whichever the class file happened to
+declare first.
 
 ## Limits of this evidence
 

@@ -74,16 +74,17 @@ mkdir -p "$order/classes" "$(dirname "$order_agent")" "$order/agent-classes"
 # built from.
 # Only `Hook` is stood in for here, because it is the one class that would load
 # the native library; the names the adapters resolve are the real ones.
+# Swept rather than listed, because a list of the bootstrap's classes is a
+# second inventory of them: a source added there compiled into the agent jar and
+# not into this one, and the harness went on proving a jar the launch no longer
+# ships. The generated names are named one by one because only `Hook` is stood
+# in for, and its stand-in has to win over the generated one.
+mapfile -d '' agent_sources < <(find "$root/jvm/bootstrap" -name '*.java' -print0 | sort -z)
 javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/target/ravel-jvm/generated/dev/ravel/jvm/GameNames.java" \
+	"$root/target/ravel-jvm/generated/dev/ravel/jvm/GameMembers.java" \
 	"$root/target/ravel-jvm/generated/dev/ravel/jvm/ScreenNames.java" \
-	"$root/jvm/bootstrap/dev/ravel/jvm/Agent.java" \
-	"$root/jvm/bootstrap/dev/ravel/jvm/Content.java" \
-	"$root/jvm/bootstrap/dev/ravel/jvm/HookTarget.java" \
-	"$root/jvm/bootstrap/dev/ravel/jvm/Outward.java" \
-	"$root/jvm/bootstrap/dev/ravel/jvm/Persistence.java" \
-	"$root/jvm/bootstrap/dev/ravel/jvm/Screens.java" \
-	"$root/jvm/bootstrap/dev/ravel/jvm/Transformer.java" \
+	"${agent_sources[@]}" \
 	"$root/jvm/harness/initialization/dev/ravel/jvm/Hook.java"
 mapfile -d '' hierarchy_sources < <(find "$root/jvm/harness/hierarchy" -name '*.java' -print0 | sort -z)
 javac -d "$order/classes" "${hierarchy_sources[@]}"
@@ -268,7 +269,9 @@ javac -Xlint:all -Werror -d "$persist/classes" "${persist_sources[@]}"
 # counters. A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$persist/classes:$order/agent-classes" -d "$persist/classes" \
 	"$root/jvm/harness/PersistenceMain.java"
-javac -Xlint:all -Werror -d "$persist/sibling" \
+# Against the stand-in game, because the sibling is the compiled half of the
+# seam and its argument vectors are the game's own types.
+javac -Xlint:all -Werror -cp "$persist/classes" -d "$persist/sibling" \
 	"$root/jvm/harness/sibling/dev/ravel/jvm/screen/RavelWorldData.java"
 jar --create --file "$persist_screen" --date 1980-01-01T00:00:02Z \
 	-C "$persist/sibling" dev/ravel/jvm/screen/RavelWorldData.class

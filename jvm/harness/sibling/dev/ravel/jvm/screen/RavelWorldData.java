@@ -1,11 +1,14 @@
 package dev.ravel.jvm.screen;
 
+import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.saveddata.SavedDataType;
+
 /**
  * Stands in for the sibling artifact's stored-data class.
  *
  * <p>The real one extends a game type and carries a codec, and the agent jar
  * reaches it by name through reflection, which is exactly why a stand-in proves
- * the control flow: the same three entry points under the same name, without a
+ * the control flow: the same entry points under the same names, without a
  * game the harness does not have. That the real class compiles against the
  * pinned stubs is what {@code jvm/build/build-screen.sh} proves, and it is a
  * different claim from this one.
@@ -20,17 +23,25 @@ public final class RavelWorldData {
     }
 
     /** The registration Minecraft would read and write Ravel's object through. */
-    public static Object type() {
-        return "ravel:mods";
+    private static final SavedDataType TYPE = new SavedDataType();
+
+    /** Where this version's storage keeps a world's saved data. */
+    public static Object folder(java.nio.file.Path data) {
+        return data;
     }
 
-    /** Wraps replacement bytes as the object the storage would write. */
-    public static Object of(byte[] aggregate) {
-        return aggregate;
+    /** What this version's storage is asked for a stored object with. */
+    public static Object[] lookup() {
+        return new Object[] {TYPE};
+    }
+
+    /** What this version's storage is handed a replacement with. */
+    public static Object[] replacement(byte[] aggregate) {
+        return new Object[] {TYPE, new SavedData(aggregate)};
     }
 
     /** The stored aggregate, or {@code null} when there is no Ravel object. */
     public static byte[] bytes(Object stored) {
-        return stored instanceof byte[] held ? held : null;
+        return stored instanceof SavedData held ? held.aggregate() : null;
     }
 }

@@ -1,6 +1,5 @@
 package dev.ravel.jvm;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -12,13 +11,20 @@ import java.util.Arrays;
  * <p>Everything here is reflective, because this class ships in the always
  * present agent jar and ADG-1 forbids that jar <em>declaring</em> a game type:
  * the jar is compiled with no client jar on the class path, so a source declaring
- * one would not compile. The class names below are strings this class resolves at
- * runtime, which the rule permits and which is not free — they are a version
- * coupling no lock covers, recorded as such in {@code evidence/m3/manifest.json}
- * and pinned as a set by {@code verify_persistence_reflection}. The one half that
- * cannot be reflective — a concrete {@code SavedData} subclass and its codec — is
- * compiled in the sibling artifact, and this class reaches it by name too, for
- * exactly the reason {@link Screens} does.
+ * one would not compile. Every game name it resolves at runtime — the classes
+ * through {@link GameNames}, the members through {@link GameMembers} — is
+ * generated from the version's reviewed reflective surface, so this one source
+ * is right about every tracked version. The one half that cannot be reflective —
+ * a concrete {@code SavedData} subclass and its codec — is compiled in the
+ * sibling artifact, and this class reaches it by name too, for exactly the
+ * reason {@link Screens} does.
+ *
+ * <p><b>What the sibling decides and this does not.</b> Three things about the
+ * storage are version shape rather than version naming: what its constructor
+ * wants the directory as, what it is keyed by, and what it is handed. Those are
+ * the sibling's {@code folder}, {@code lookup} and {@code replacement}, because
+ * the sibling already exists per version and a role binding answers a rename
+ * rather than a different argument list.
  *
  * <p><b>The sibling is required here, where a screen is optional.</b> An absent
  * screen jar loses the settings UI and leaves a working game, so
@@ -56,6 +62,16 @@ final class Persistence {
 
     private static final String LEVEL_RESOURCE = GameNames.LEVEL_RESOURCE;
     private static final String DATA_FIXERS = GameNames.DATA_FIXERS;
+
+    /**
+     * The saved-data directory, below the world root.
+     *
+     * <p>Written here rather than read off a game constant because only one of
+     * the tracked versions has one to read: 26.1.2 names it as a
+     * {@code LevelResource} and 1.21.1 resolves the same word against the
+     * dimension directory itself.
+     */
+    private static final String DATA_DIRECTORY = "data";
     /**
      * The generated saved-data class, wherever this version's names put it.
      *
@@ -129,7 +145,7 @@ final class Persistence {
                     + "installation.";
         }
 
-        String identity = path(access, "getLevelPath", "ROOT");
+        String identity = path(access, GameMembers.LEVEL_STORAGE_ACCESS_GET_LEVEL_PATH);
         byte[] stored = read(access, stem, data);
 
         String verdict = Hook.ravelOpenWorldPersistence(stored, identity, freshWorld);
@@ -156,8 +172,8 @@ final class Persistence {
      */
     private static boolean saveSeamInstalled() {
         try {
-            Class.forName(SERVER, true, ClassLoader.getSystemClassLoader());
-        } catch (ClassNotFoundException | LinkageError absent) {
+            game(SERVER);
+        } catch (ReflectiveOperationException | LinkageError absent) {
             return false;
         }
         return Agent.isInstalled(SAVE_HOOK);
@@ -176,22 +192,39 @@ final class Persistence {
      */
     private static byte[] read(Object access, Object stem, Class<?> data)
             throws ReflectiveOperationException {
-        Object directory = call(access, "getLevelPath", constant(LEVEL_RESOURCE, "DATA"));
-        Object fixer = Class.forName(DATA_FIXERS, true, ClassLoader.getSystemClassLoader())
-                .getMethod("getDataFixer")
+        Object root = Members.method(
+                access.getClass(), GameMembers.LEVEL_STORAGE_ACCESS_GET_LEVEL_PATH)
+                .invoke(access, constant(LEVEL_RESOURCE, GameMembers.LEVEL_RESOURCE_ROOT));
+        Object fixer = Members.method(game(DATA_FIXERS), GameMembers.DATA_FIXERS_GET_DATA_FIXER)
                 .invoke(null);
-        Object registries = call(call(stem, "registries"), "compositeAccess");
+        Object layers = Members.method(stem.getClass(), GameMembers.WORLD_STEM_REGISTRIES)
+                .invoke(stem);
+        Object registries = Members.method(
+                layers.getClass(), GameMembers.REGISTRY_LAYERS_COMPOSITE_ACCESS).invoke(layers);
 
-        Class<?> storage = Class.forName(STORAGE, true, ClassLoader.getSystemClassLoader());
-        Object opened = only(storage.getConstructors(), 3)
-                .newInstance(directory, fixer, registries);
+        Class<?> storage = game(STORAGE);
+        Object opened = Members.constructor(storage, GameMembers.STORAGE_NEW)
+                .newInstance(folder(data, root), fixer, registries);
         Object stored;
         try {
-            stored = method(opened.getClass(), "get", 1).invoke(opened, type(data));
+            stored = Members.method(opened.getClass(), GameMembers.STORAGE_GET)
+                    .invoke(opened, (Object[]) method(data, "lookup", 0).invoke(null));
         } finally {
-            method(opened.getClass(), "close", 0).invoke(opened);
+            close(opened);
         }
         return (byte[]) method(data, "bytes", 1).invoke(null, stored);
+    }
+
+    /**
+     * The directory this version's storage is opened over.
+     *
+     * <p>The sibling decides it, because the two versions disagree about the
+     * type and not only the place: one storage takes a {@code Path} and the
+     * other a {@code File}, and a shared source cannot hold both.
+     */
+    private static Object folder(Class<?> data, Object root) throws ReflectiveOperationException {
+        return method(data, "folder", 1)
+                .invoke(null, ((java.nio.file.Path) root).resolve(DATA_DIRECTORY));
     }
 
     /**
@@ -213,10 +246,10 @@ final class Persistence {
             return;
         }
         try {
-            Class<?> client = Class.forName(
-                    GameNames.MINECRAFT, true, ClassLoader.getSystemClassLoader());
-            Object instance = client.getMethod("getInstance").invoke(null);
-            method(client, "setScreen", 1).invoke(instance, screen);
+            Class<?> client = game(GameNames.MINECRAFT);
+            Object instance = Members.method(client, GameMembers.MINECRAFT_GET_INSTANCE)
+                    .invoke(null);
+            Members.method(client, GameMembers.MINECRAFT_SET_SCREEN).invoke(instance, screen);
         } catch (ReflectiveOperationException | LinkageError | RuntimeException undrawable) {
             Agent.diagnose("the world refusal screen could not be shown ("
                     + undrawable.getClass().getName() + ")");
@@ -237,7 +270,7 @@ final class Persistence {
      */
     static void save(Object server) {
         try {
-            String identity = path(server, "getWorldPath", "ROOT");
+            String identity = path(server, GameMembers.SERVER_GET_WORLD_PATH);
             byte[] answer = Hook.ravelSaveWorldPersistence(identity);
             if (answer == null || answer.length == 0) {
                 // Null is what a failed native leaves behind, so it is read as a
@@ -274,9 +307,16 @@ final class Persistence {
             Agent.diagnose("world persistence has no component to store the replacement with");
             return;
         }
-        Object storage = call(server, "getDataStorage");
-        Object held = method(data, "of", 1).invoke(null, (Object) aggregate);
-        method(storage.getClass(), "set", 2).invoke(storage, type(data), held);
+        // Through the overworld rather than off the server, because only one of
+        // the two tracked versions declares a storage getter on the server and
+        // both hang one off a level.
+        Object level = Members.method(server.getClass(), GameMembers.SERVER_OVERWORLD)
+                .invoke(server);
+        Object storage = Members.method(
+                level.getClass(), GameMembers.SERVER_LEVEL_GET_DATA_STORAGE).invoke(level);
+        Members.method(storage.getClass(), GameMembers.STORAGE_SET)
+                .invoke(storage,
+                        (Object[]) method(data, "replacement", 1).invoke(null, (Object) aggregate));
     }
 
     /** The remainder of a tagged answer, as the diagnostic it carries. */
@@ -290,54 +330,39 @@ final class Persistence {
             return null;
         }
         try {
-            return Class.forName(WORLD_DATA, true, ClassLoader.getSystemClassLoader());
-        } catch (ClassNotFoundException | LinkageError absent) {
+            return game(WORLD_DATA);
+        } catch (ReflectiveOperationException | LinkageError absent) {
             Agent.diagnose("the world persistence component could not be loaded ("
                     + absent.getClass().getName() + ")");
             return null;
         }
     }
 
-    /** The registration Minecraft reads and writes Ravel's object through. */
-    private static Object type(Class<?> data) throws ReflectiveOperationException {
-        return method(data, "type", 0).invoke(null);
-    }
-
     /** One world identity, as the seam that produced it spells it. */
-    private static String path(Object receiver, String getter, String resource)
+    private static String path(Object receiver, String getter)
             throws ReflectiveOperationException {
-        return String.valueOf(call(receiver, getter, constant(LEVEL_RESOURCE, resource)));
+        return String.valueOf(Members.method(receiver.getClass(), getter)
+                .invoke(receiver, constant(LEVEL_RESOURCE, GameMembers.LEVEL_RESOURCE_ROOT)));
     }
 
-    /** Reads one static constant by name. */
-    private static Object constant(String owner, String name) throws ReflectiveOperationException {
-        return Class.forName(owner, true, ClassLoader.getSystemClassLoader())
-                .getField(name)
-                .get(null);
+    /** Reads one static constant the reviewed surface names. */
+    private static Object constant(String owner, String member) throws ReflectiveOperationException {
+        return Members.field(game(owner), member).get(null);
     }
 
-    /** Invokes one method by name and argument count, on the receiver's own class. */
-    private static Object call(Object receiver, String name, Object... arguments)
-            throws ReflectiveOperationException {
-        return method(receiver.getClass(), name, arguments.length).invoke(receiver, arguments);
+    /** One game class, resolved through the loader the game itself is on. */
+    private static Class<?> game(String name) throws ReflectiveOperationException {
+        return Class.forName(name, true, ClassLoader.getSystemClassLoader());
     }
 
     /**
-     * Finds one member by name and shape rather than by declared parameter types.
+     * Finds one static member of the sibling artifact by name and argument count.
      *
-     * <p>Naming the parameter types would mean either declaring them here, which
-     * the agent jar cannot do because it compiles with no client jar on the class
-     * path, or resolving every one of them by name as well — which widens the set
-     * of game names this jar carries and buys nothing. Name and arity identify
-     * each member used here uniquely in the pinned classes.
-     *
-     * <p>What that costs is worth stating where the lookup is. These member names,
-     * the two {@code LevelResource} field constants, and the three-argument
-     * {@code SavedDataStorage} constructor appear in no pinned file, so ADG-3's
-     * drift gate does not reach any of them and a rename in the next pinned
-     * version lands as a runtime refusal rather than as a generation failure. The
-     * class names are pinned as a set by {@code verify_persistence_reflection},
-     * which cannot see a rename either.
+     * <p>Name and arity is enough here and nowhere else in this class, because
+     * these are Ravel's own names on Ravel's own class: nothing renames them and
+     * nothing overloads them. Every game member goes through {@link Members}
+     * against the descriptor its version links, which is what a name shared by
+     * several methods needs.
      */
     private static Method method(Class<?> owner, String name, int arity)
             throws ReflectiveOperationException {
@@ -353,25 +378,22 @@ final class Persistence {
         throw new NoSuchMethodException(owner.getName() + "." + name + "/" + arity);
     }
 
-    /** The one constructor of the given arity. */
-    private static Constructor<?> only(Constructor<?>[] candidates, int arity)
-            throws ReflectiveOperationException {
-        for (Constructor<?> candidate : candidates) {
-            if (candidate.getParameterCount() == arity) {
-                return candidate;
-            }
-        }
-        throw new NoSuchMethodException("no constructor of " + arity + " arguments");
-    }
-
-    /** Closes one {@code AutoCloseable} game object without letting it throw. */
+    /**
+     * Closes one game object that has a close to perform.
+     *
+     * <p>Asked of the JVM rather than of the reviewed surface, because whether a
+     * thing closes is what {@code AutoCloseable} already answers and the answer
+     * differs between the versions: 26.1.2's storage flushes on close and
+     * 1.21.1's is not closeable at all. A read that set nothing has nothing to
+     * flush either way, so the version that does close writes nothing.
+     */
     private static void close(Object closeable) {
-        if (closeable == null) {
+        if (!(closeable instanceof AutoCloseable shut)) {
             return;
         }
         try {
-            method(closeable.getClass(), "close", 0).invoke(closeable);
-        } catch (ReflectiveOperationException | LinkageError | RuntimeException unclosed) {
+            shut.close();
+        } catch (Exception | LinkageError unclosed) {
             Agent.diagnose("a refused world could not be closed cleanly ("
                     + unclosed.getClass().getName() + ")");
         }

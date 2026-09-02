@@ -1,7 +1,11 @@
 package net.minecraft.world.level.storage;
 
+import com.mojang.datafixers.DataFixer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.saveddata.SavedDataType;
 
 /**
  * Stands in for the pinned storage, and counts what the adapter does to it.
@@ -22,7 +26,7 @@ public final class SavedDataStorage implements AutoCloseable {
 
     private boolean closed;
 
-    public SavedDataStorage(Path directory, Object fixer, Object registries) {
+    public SavedDataStorage(Path directory, DataFixer fixer, HolderLookup.Provider registries) {
     }
 
     /** Seeds the aggregate a world already holds, or {@code null} for a world that holds none. */
@@ -42,13 +46,13 @@ public final class SavedDataStorage implements AutoCloseable {
         return written == null ? "" : new String(written, StandardCharsets.UTF_8);
     }
 
-    public Object get(Object type) {
-        return stored;
+    public SavedData get(SavedDataType type) {
+        return stored == null ? null : new SavedData(stored);
     }
 
-    public void set(Object type, Object data) {
+    public void set(SavedDataType type, SavedData data) {
         writes++;
-        written = (byte[]) data;
+        written = data.aggregate();
     }
 
     @Override

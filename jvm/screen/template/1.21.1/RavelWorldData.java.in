@@ -26,7 +26,10 @@
  *
  * <p>The entry points keep the names the shared template gives them, because
  * {@code dev.ravel.jvm.Persistence} reaches them by name and arity from the
- * agent jar and that file is shared by every version.
+ * agent jar and that file is shared by every version. They are also where the
+ * rest of the disagreement lives: this version keys its storage by a factory and
+ * a string, hands a replacement a string and the object, and wants its directory
+ * as a {@code File}.
  */
 public final class RavelWorldData extends {{SavedData}} {
 
@@ -43,13 +46,29 @@ public final class RavelWorldData extends {{SavedData}} {
     }
 
     /**
-     * What this version's storage is keyed by.
+     * Where this version's storage keeps a world's saved data.
      *
-     * <p>1.21.1 names a saved datum with a plain string where 26.1.2 carries the
-     * name inside its type, so the name has to be reachable on its own here.
+     * <p>1.21.1 takes a {@code File} where 26.1.2 takes the {@code Path} the
+     * agent jar resolved, which is a disagreement about the type and not only
+     * about the place.
      */
-    public static String name() {
-        return NAME;
+    public static Object folder(java.nio.file.Path data) {
+        return data.toFile();
+    }
+
+    /**
+     * What this version's storage is asked for a stored object with.
+     *
+     * <p>1.21.1 names a saved datum with a plain string beside its factory,
+     * where 26.1.2 carries the name inside one typed key.
+     */
+    public static Object[] lookup() {
+        return new Object[] {type(), NAME};
+    }
+
+    /** What this version's storage is handed a replacement with. */
+    public static Object[] replacement(byte[] aggregate) {
+        return new Object[] {NAME, of(aggregate)};
     }
 
     /**
@@ -62,7 +81,7 @@ public final class RavelWorldData extends {{SavedData}} {
      * signature is erased, which is what the generated stub carries and what the
      * JVM links.
      */
-    public static {{SavedDataFactory}} type() {
+    private static {{SavedDataFactory}} type() {
         return new {{SavedDataFactory}}(
                 () -> new RavelWorldData(new byte[0]),
                 (tag, registries) -> new RavelWorldData(
@@ -79,7 +98,7 @@ public final class RavelWorldData extends {{SavedData}} {
     }
 
     /** Wraps replacement bytes as the object the storage will write. */
-    public static {{SavedData}} of(byte[] aggregate) {
+    private static {{SavedData}} of(byte[] aggregate) {
         return new RavelWorldData(aggregate);
     }
 

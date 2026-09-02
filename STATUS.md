@@ -70,6 +70,10 @@ Newest last. All local, nothing pushed.
 | `tttozorv` | count a world visit on the open the game delivers, not only in tests |
 | `qkzxprrk` | supply the mod-facing dependency set and take the Minecraft version as an argument of the player build |
 | `qtpomxvm` | load the host library from the path `-Dravel.host` names instead of the library path |
+| `zymvypkt` | ship package metadata for every example and prove each installs and compiles |
+| `ppyqqtmn` | refuse a world-open shape the transformer cannot load, anchor the Java release scan, floor members per class, and leave no jar on refusal |
+| `vunwnrmk` | add every registered block's states to the id mapper and initialise their caches |
+| `tqltolny` | refuse a second screen install, mark a truncated refusal, and drop duplicated javadoc params |
 
 ## The queue is drained
 
@@ -134,8 +138,15 @@ named by `/give` and `/setblock`, but its states were never added to the block-s
 fills during its own bootstrap, so the first `block_update` packet carrying it threw and disconnected
 the session. Registered items are in no creative tab, so the creative search cannot find them. And the
 item renders as the missing-model placeholder, because nothing serves a package's models to the game:
-M4's disclosed pack-read limit, now visible on screen. The first two are being fixed as this is
-written; the third is a resource-pack provider per version and is owned by no work package.
+M4's disclosed pack-read limit, now visible on screen. The state mapper is fixed: the agent walks every
+registered block's states reflectively (Guava's `ImmutableList` is in neither jar, so no stub can name
+it) and adds each to the mapper and initialises its cache, exactly what `Blocks.<clinit>` does. The
+creative tab is deferred: it is expressible at 1.21.1 (the tab registry is read live, so a tab
+registered before the freeze appears) but costs eight stub seeds per version plus 26.1.2's reworked tab
+API verified from scratch, and two decisions: one Ravel tab for all mods or one per mod, and the
+translation key. Default if nobody objects: one tab, key `ravel.creative_tab`, fallback text "Ravel".
+Until then `/give` is how a registered item is obtained. The model is a resource-pack provider per
+version and is owned by no work package.
 
 `stateful-mod` writes its journal only through a record call nothing in a launch makes, so its saved
 data was rewritten across sessions but never changed. The example cannot change state from inside a

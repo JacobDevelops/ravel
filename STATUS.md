@@ -126,8 +126,20 @@ All three examples now ship package metadata. `content-mod` and `stateful-mod` h
 and a `provenance.json` of the same shape as `minimal-mod`'s, so any of the three can be copied whole
 into `<instance>/ravel/mods`. `ravel-build`'s compiling test installs every example that carries a
 manifest and requires the host build to succeed, and the scaffold gate checks every example's digests
-rather than only the one. No launch has run `content-mod` or `stateful-mod` yet; what is proven is that
-they install, verify and compile.
+rather than only the one.
+
+Launch 7 installed all three: 3 running, content-mod's two entries registered, host built in 8 s cold
+and 0.18 s warm. It also found the content surface half-registered at 1.21.1: a registered block can be
+named by `/give` and `/setblock`, but its states were never added to the block-state id mapper vanilla
+fills during its own bootstrap, so the first `block_update` packet carrying it threw and disconnected
+the session. Registered items are in no creative tab, so the creative search cannot find them. And the
+item renders as the missing-model placeholder, because nothing serves a package's models to the game:
+M4's disclosed pack-read limit, now visible on screen. The first two are being fixed as this is
+written; the third is a resource-pack provider per version and is owned by no work package.
+
+`stateful-mod` writes its journal only through a record call nothing in a launch makes, so its saved
+data was rewritten across sessions but never changed. The example cannot change state from inside a
+game; the saved-data test mod, which counts visits, is what launch 5 proved with.
 
 ## Questions only Jacob can answer
 

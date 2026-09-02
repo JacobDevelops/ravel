@@ -597,6 +597,43 @@ pub fn ravel_save_world_persistence<'local>(
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
+/// Writes the mods' data pack into a world before the game reads its pack list.
+///
+/// The seam this crosses from runs while the world's storage access exists and
+/// before the pack repository over its `datapacks` directory is built, which is
+/// the window `packs.rs` records as the ceiling on the open crossing: a pack
+/// written there is on disk for the world's next open, so a new world's first
+/// session has none of the mods' recipes, tags or loot tables.
+///
+/// Writing here does not replace the later write. Both put the same tree from the
+/// same installed set, so the second is a whole-tree replace over identical
+/// bytes; keeping it means a world admitted through a path this seam never ran on
+/// still gets its pack.
+///
+/// A failure is noticed rather than raised, exactly as the later write's is: this
+/// runs inside the game's own world-open call, and refusing a world over a data
+/// file would cost a player their session for something the game would have
+/// started without.
+///
+/// # Panics
+///
+/// Does not panic, for the same reason as [`ravel_open_world_persistence`].
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelWriteWorldDatapack")]
+pub fn ravel_write_world_datapack<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    world: JString<'local>,
+) {
+    env.with_env(|env: &mut Env<'local>| -> Result<(), HookError> {
+        let world = text(env, &world)?;
+        if let Ok(runtime) = runtime() {
+            runtime.write_world_pack(&world);
+        }
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+}
+
 impl From<SavedDataError> for OpenOutcome {
     fn from(error: SavedDataError) -> Self {
         Self::Refused(error.to_string())

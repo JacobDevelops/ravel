@@ -2182,7 +2182,7 @@ struct Seam {
 /// It holds the shapes rather than the seams — the set of seams is
 /// [`verify_hook_name_literals`]'s subject, and a hook name no version declares
 /// is reported there instead of twice.
-const TRANSFORMER_SEAMS: [Seam; 3] = [
+const TRANSFORMER_SEAMS: [Seam; 4] = [
     Seam {
         id: "world.open-persistence",
         receiver: true,
@@ -2191,6 +2191,15 @@ const TRANSFORMER_SEAMS: [Seam; 3] = [
             (Parameter::At(2), Shape::Reference),
             (Parameter::Last, Shape::Boolean),
         ],
+        returns: &[Shape::Void],
+    },
+    Seam {
+        // The pack seam, and the one whose whole point is where it sits. It is
+        // handed the storage access first and the transformer loads it from
+        // there; a version that moved it would be an `aload` of something else.
+        id: "world.open-level-data",
+        receiver: true,
+        loads: &[(Parameter::At(0), Shape::Reference)],
         returns: &[Shape::Void],
     },
     Seam {

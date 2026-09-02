@@ -860,6 +860,9 @@ mod tests {
                 "public static native byte[] ravelSaveWorldPersistence(String identity);"
             )
         );
+        // The earlier of the two world crossings, and the one that carries a
+        // directory: it writes files before the game reads that world's packs.
+        assert!(java.contains("public static native void ravelWriteWorldDatapack(String world);"));
 
         let _ = std::fs::remove_dir_all(&out);
     }

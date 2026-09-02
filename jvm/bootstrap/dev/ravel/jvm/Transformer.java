@@ -58,6 +58,8 @@ public final class Transformer implements ClassFileTransformer {
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;Ljava/lang/Object;Z)Z");
     private static final MethodTypeDesc WORLD_SAVE =
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
+    private static final MethodTypeDesc WORLD_LEVEL_DATA =
+            MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
     private static final MethodTypeDesc REGISTER_CONTENT = MethodTypeDesc.ofDescriptor("()V");
     private static final MethodTypeDesc PERFORM_OUTWARD = MethodTypeDesc.ofDescriptor("()V");
 
@@ -108,6 +110,18 @@ public final class Transformer implements ClassFileTransformer {
      */
     public static void addTitleMenuColumn(Object titleScreen, int top, int spacing) {
         Screens.addTitleMenu(titleScreen, top + MenuLayout.RAVEL_ROW - spacing, spacing);
+    }
+
+    /**
+     * Gives the rewritten world-open flow a public path to the data pack writer.
+     *
+     * <p>Its own bridge rather than a widened hook, for the reason every other
+     * one here has: the world directory is on the storage access, ADG-4 keeps a
+     * hook's hands off the receiver's members, so the access is handed to an
+     * adapter that reads it.
+     */
+    public static void openWorldDatapack(Object access) {
+        Datapack.write(access);
     }
 
     /**
@@ -382,6 +396,20 @@ public final class Transformer implements ClassFileTransformer {
         return target.hookMethod().equals("clientTick");
     }
 
+    /**
+     * The seam a world's own data pack is written at.
+     *
+     * <p>Earlier than the world-open seam and for a reason the open one cannot
+     * fix: the game builds the world's pack list from its {@code datapacks}
+     * directory before it reaches the open crossing, so a pack written there is
+     * read on the world's next open. This is the last seam that still runs
+     * before the pack repository is built, and it is handed the storage access,
+     * which is where the world directory comes from.
+     */
+    private static boolean isWorldLevelData(HookTarget target) {
+        return target.hookMethod().equals("worldOpenLevelData");
+    }
+
     private static boolean isTitleMenu(HookTarget target) {
         return target.hookMethod().equals("screenTitleMenuOptions");
     }
@@ -412,6 +440,14 @@ public final class Transformer implements ClassFileTransformer {
             if (isWorldOpen(target)) {
                 requireWorldOpenShape();
             }
+            if (isWorldLevelData(target) && !hasReferenceAt(0)) {
+                // Refused rather than skipped, for the reason the world-open
+                // shape is: an `aload` of anything but a reference is a
+                // `VerifyError` when the game loads the rewritten class.
+                throw new IllegalArgumentException(
+                        "the world-level-data target's first parameter is not a reference, and"
+                                + " the storage access is loaded from there");
+            }
         }
 
         /**
@@ -438,6 +474,13 @@ public final class Transformer implements ClassFileTransformer {
             requireKind(0, TypeKind.REFERENCE, "the storage access");
             requireKind(2, TypeKind.REFERENCE, "the world stem");
             requireKind(last, TypeKind.BOOLEAN, "the advisory new-world marker");
+        }
+
+        /** Whether the target declares a reference at one parameter. */
+        private boolean hasReferenceAt(int parameter) {
+            return targetType.parameterCount() > parameter
+                    && TypeKind.from(targetType.parameterList().get(parameter))
+                            == TypeKind.REFERENCE;
         }
 
         /** Refuses one parameter the injected load cannot read as {@code kind}. */
@@ -510,6 +553,12 @@ public final class Transformer implements ClassFileTransformer {
                     // identity can come from.
                     builder.aload(0);
                     builder.invokestatic(TRANSFORMER, "saveWorldPersistence", WORLD_SAVE);
+                } else if (isWorldLevelData(target)) {
+                    // The storage access, which is the only thing this seam needs
+                    // to cross: the native side writes files into the directory
+                    // it names.
+                    builder.aload(slot(0));
+                    builder.invokestatic(TRANSFORMER, "openWorldDatapack", WORLD_LEVEL_DATA);
                 } else if (isBuiltInFreeze(target)) {
                     builder.invokestatic(TRANSFORMER, "registerContent", REGISTER_CONTENT);
                 } else if (isClientTick(target)) {

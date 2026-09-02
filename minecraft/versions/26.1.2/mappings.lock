@@ -220,6 +220,12 @@ member = "saveEverything"
 descriptor = "(ZZZ)Z"
 static = false
 
+[target."world.open-level-data"]
+class = "net/minecraft/client/gui/screens/worldselection/WorldOpenFlows"
+member = "openWorldLoadLevelData"
+descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Ljava/lang/Runnable;)V"
+static = false
+
 [target."world.open-persistence"]
 class = "net/minecraft/client/Minecraft"
 member = "doWorldLoad"

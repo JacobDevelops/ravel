@@ -332,6 +332,25 @@ capability = "Observe a full world save, told whether it is silent, flushing, an
 # static flag, and ADG-7 records why each is the single common seam for its half.
 
 [[hook]]
+# The world's data pack has to be on disk before the game builds the pack list,
+# and this is the last seam that runs before it does. `openWorld` makes the level
+# storage access and hands it here; two calls later `openWorldLoadLevelStem`
+# builds the folder source over the world's `datapacks` directory and scans it to
+# make the world stem. `world.open-persistence` is handed that stem, so a pack
+# written there is on disk in time for the world's *next* open and the first
+# session of a new world runs without the mod's tags, recipes and loot tables.
+#
+# The access is the first argument, so the prologue has the world directory
+# without the pack repository existing yet, which is exactly the window the pack
+# has to be written in.
+id = "world.open-level-data"
+class = "net.minecraft.client.gui.screens.worldselection.WorldOpenFlows"
+member = "openWorldLoadLevelData"
+descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Ljava/lang/Runnable;)V"
+kind = "instance-method"
+capability = "Observe a world being opened before its data pack list is built, which is where a world's own pack has to be written."
+
+[[hook]]
 id = "world.open-persistence"
 class = "net.minecraft.client.Minecraft"
 member = "doWorldLoad"

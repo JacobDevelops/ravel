@@ -173,7 +173,7 @@ final class Persistence {
                     + "installation.";
         }
 
-        String identity = path(access, GameMembers.LEVEL_STORAGE_ACCESS_GET_LEVEL_PATH);
+        String identity = worldPath(access);
         byte[] stored = read(access, stem, data);
 
         String verdict = Hook.ravelOpenWorldPersistence(stored, identity, freshWorld);
@@ -371,6 +371,17 @@ final class Persistence {
                     + absent.getClass().getName() + ")");
             return null;
         }
+    }
+
+    /**
+     * The world directory one storage access is holding.
+     *
+     * <p>Package-private because two seams need it and there is one way to get
+     * it. {@link Datapack} runs earlier than this class does and asks the same
+     * question of the same object.
+     */
+    static String worldPath(Object access) throws ReflectiveOperationException {
+        return path(access, GameMembers.LEVEL_STORAGE_ACCESS_GET_LEVEL_PATH);
     }
 
     /** One world identity, as the seam that produced it spells it. */

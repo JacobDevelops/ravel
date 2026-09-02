@@ -194,11 +194,26 @@ public final class Hook {
                 "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;"
                         + "Ljava/lang/Object;Z)Z",
                 true);
+        // The seam a world's own data pack is written at, which runs before the
+        // game builds that world's pack list. It is in both sets below, because
+        // the case the save seam is missing from is about the save marker and
+        // says nothing about the pack: dropping this one there would make that
+        // case silently stop covering it.
+        HookTarget levelData = new HookTarget(
+                "net/minecraft/client/gui/screens/worldselection/WorldOpenFlows",
+                "openWorldLoadLevelData",
+                "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;"
+                        + "Ljava/lang/Runnable;)V",
+                false,
+                "worldOpenLevelData",
+                "(Ljava/lang/Object;Ljava/lang/Object;)V",
+                false);
         if (Boolean.getBoolean("ravel.test.persistence.saveSeamMissing")) {
-            return new HookTarget[] {open};
+            return new HookTarget[] {open, levelData};
         }
         return new HookTarget[] {
             open,
+            levelData,
             new HookTarget(
                     "net/minecraft/server/MinecraftServer",
                     "saveAllChunks",
@@ -370,6 +385,31 @@ public final class Hook {
 
     public static void worldSavePersistence(boolean quiet, boolean flush, boolean forced) {
         invocations++;
+    }
+
+    public static void worldOpenLevelData(Object access, Object onFail) {
+        invocations++;
+    }
+
+    /** The world the pack crossing was given, or empty when it never happened. */
+    private static String datapackWorld = "";
+
+    /** Where the pack was asked for, which says the crossing carried a directory. */
+    public static String datapackWorld() {
+        return datapackWorld;
+    }
+
+    /**
+     * Answers the pack crossing and records the world it named.
+     *
+     * <p>When it happened is what the harness reads back, and it reads it from
+     * the caller rather than from here: this class is compiled without the
+     * stand-in game on its class path, so it cannot ask how many world loads had
+     * run. The caller can, and the seam's whole claim is that the answer is none.
+     */
+    public static void ravelWriteWorldDatapack(String world) {
+        invocations++;
+        datapackWorld = world;
     }
 
     /** How many times the open crossing was reached, which a refusal before it never does. */

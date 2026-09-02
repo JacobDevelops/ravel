@@ -7,20 +7,22 @@
 //! so the set is installed here rather than passed down a call chain that does not
 //! exist.
 //!
-//! # A world's data pack is read on the next open, not this one
+//! # Written twice, and the earlier one is what a first session reads
 //!
-//! This is the ceiling and it is worth stating plainly. The crossing that knows
-//! which world is being opened is `world.open-persistence`, and the game builds
-//! that world's pack list before it reaches that method: the folder source over
-//! the world's `datapacks` directory is constructed and scanned to make the world
-//! stem the crossing is handed. So a pack written here is on disk in time for the
-//! *next* open of that world, and a world opened for the first time runs its first
-//! session without Ravel's data.
+//! `world.open-persistence` is handed the world stem, and the game builds that
+//! stem by scanning the world's `datapacks` directory. So a pack written from
+//! that crossing is on disk in time for the *next* open of that world, and a
+//! world opened for the first time used to run its whole first session without
+//! Ravel's data. `world.open-level-data` is the earlier seam that closes it: the
+//! game reaches it with the storage access made and two calls before it builds
+//! the pack repository, which is the whole window a pack can be written in.
 //!
-//! Closing it needs an earlier seam — the level storage access being created,
-//! before the pack repository is built — which is a hook no version's reviewed
-//! inventory declares. That is a work package rather than a wire-up: a hook entry,
-//! a descriptor verified against each version's jar, and both locks regenerated.
+//! Both crossings still ask, and that is deliberate rather than tolerated. Both
+//! write the same tree from the one installed set, and `write_pack` compares the
+//! tree on disk with the one it would write and leaves an identical one alone —
+//! so the second ask writes nothing at all and neither crossing has to know about
+//! the other. Keeping the later one means a world admitted through a path the
+//! earlier seam never ran on still gets its pack.
 
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};

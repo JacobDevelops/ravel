@@ -1,5 +1,6 @@
 import java.util.Optional;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.worldselection.WorldOpenFlows;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.WorldStem;
 import net.minecraft.server.packs.repository.PackRepository;
@@ -26,6 +27,14 @@ public final class PersistenceMain {
         LevelStorageSource.LevelStorageAccess access =
                 new LevelStorageSource.LevelStorageAccess("world");
         WorldStem stem = new WorldStem();
+
+        // The pack step first, as the game runs it: the access exists, and the
+        // pack list has not been built. What the harness reads back is that the
+        // crossing named this world and that no world load had run when it did.
+        new WorldOpenFlows().openWorldLoadLevelData(access, () -> {});
+        System.out.println("datapack=" + dev.ravel.jvm.Hook.datapackWorld()
+                + " loadsAtWrite=" + Minecraft.loads());
+
         new Minecraft().doWorldLoad(access, new PackRepository(), stem, Optional.empty(), false);
         System.out.println("loads=" + Minecraft.loads()
                 + " accessClosed=" + access.isClosed()

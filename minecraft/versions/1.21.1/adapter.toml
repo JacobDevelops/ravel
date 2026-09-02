@@ -69,8 +69,8 @@ upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa60
 
 [inputs.hookInventory]
 path = "minecraft/versions/1.21.1/hooks.toml"
-sha256 = "52ee92c075955d2384f7b74c405bcedb89aba73ec220f7185c2e1001a194f65d"
-bytes = 16460
+sha256 = "3f1d19e24661f04a6c10cc52d3229f54022caf41f65eba04041dd3d4487e5fc3"
+bytes = 17615
 
 [inputs.stubSeeds]
 path = "minecraft/versions/1.21.1/stubs.toml"
@@ -88,8 +88,8 @@ bytes = 8389
 
 [inputs.mappingsLock]
 path = "minecraft/versions/1.21.1/mappings.lock"
-sha256 = "381b9bf63f0dcbd4f5f7a36131b5455242cbbd0d1ce8f33e923cb8274fa14ced"
-bytes = 6506
+sha256 = "a266d482054aff3818c4f512c3e1ad8f73fe413fe67a7b29d622743b6d2e45f3"
+bytes = 6868
 
 [inputs.stubsLock]
 path = "minecraft/versions/1.21.1/stubs.lock"

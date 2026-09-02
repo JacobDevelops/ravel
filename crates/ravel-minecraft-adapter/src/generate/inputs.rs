@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use super::{GenerateError, SELECTION};
+use super::{GenerateError, SELECTION, jar};
 
 /// Every pinned version's data lives here, relative to the repository root.
 const VERSIONS: &str = "minecraft/versions";
@@ -392,7 +392,67 @@ pub(super) struct Adapter {
     /// version manifest, and re-derived from the manifest's
     /// `javaVersion.majorVersion` wherever that file is present.
     pub(super) java_release: u16,
+    /// The pack formats this version's own resource and data packs declare.
+    ///
+    /// Version data like `java_release`, and for the same reason: a pack whose
+    /// `pack_format` the game does not recognise is a pack the game refuses to
+    /// load, and the number changes with the version. The jar states it in its own
+    /// `version.json`, so it is declared for the machines that hold no jar and
+    /// re-derived from the jar wherever one is present.
+    pub(super) pack_format: PackFormat,
     pub(super) inputs: Inputs,
+}
+
+/// The pack formats one Minecraft version declares, and how it spells them.
+///
+/// Two formats rather than one because a version states them separately and the
+/// tracked versions disagree by more than sixty. Each carries a minor because the
+/// newer of the two versions split every format in half, and the spelling is here
+/// because the same split changed the shape of the document a pack writes: the
+/// older version's own packs declare `pack_format`, and the newer one's declare a
+/// `max_format` beside a `min_format` pair. A pack written in the wrong spelling
+/// is a pack the game declines, so the shape is version data like the numbers.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PackFormat {
+    /// What a resource pack this version accepts declares.
+    pub(super) resource: u16,
+    /// The resource format's minor, which a version that states none has as zero.
+    pub(super) resource_minor: u16,
+    /// What a data pack this version accepts declares.
+    pub(super) data: u16,
+    /// The data format's minor, which a version that states none has as zero.
+    pub(super) data_minor: u16,
+    /// The document shape this version's own packs are written in.
+    pub(super) spelling: Spelling,
+}
+
+/// How a version's own packs spell the format they declare.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum Spelling {
+    /// One `pack_format` integer.
+    PackFormat,
+    /// A `max_format` integer beside a `min_format` major and minor.
+    MinMaxFormat,
+}
+
+impl Spelling {
+    /// The key a pack.mcmeta written in this spelling always carries.
+    const fn key(self) -> &'static str {
+        match self {
+            Self::PackFormat => "\"pack_format\"",
+            Self::MinMaxFormat => "\"min_format\"",
+        }
+    }
+
+    /// The name this spelling is declared under.
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::PackFormat => "pack-format",
+            Self::MinMaxFormat => "min-max-format",
+        }
+    }
 }
 
 /// The one version this build generates against, and everything tracked for it.
@@ -568,6 +628,131 @@ fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), GenerateErr
         )));
     }
     Ok(())
+}
+
+/// Refuses a declared pack format the version's own jar disagrees with.
+///
+/// The jar states both numbers in a `version.json` at its root, so wherever a
+/// build holds the jar the declaration is re-derived rather than trusted — the
+/// same split [`verify_java_release`] makes over the launcher's manifest. A jar
+/// that states none is refused rather than skipped: the jar is here, so the
+/// answer is here, and a pack written under a number nothing checked is a pack
+/// the game silently declines to load.
+///
+/// # Errors
+///
+/// Returns an error when the jar holds no `version.json`, when that document
+/// states no pack versions, or when it states numbers the adapter inputs do not
+/// declare.
+pub(super) fn verify_pack_format(
+    adapter: &Adapter,
+    archive: &jar::Archive,
+) -> Result<(), GenerateError> {
+    let text = jar_text(archive, JAR_VERSION)?;
+    let declared = adapter.pack_format;
+    let stated = pack_versions(&text).ok_or_else(|| {
+        GenerateError::Input(format!(
+            "{JAR_VERSION} in the pinned jar states no pack_version, so nothing says which pack \
+             formats this version reads"
+        ))
+    })?;
+    let expected = (
+        declared.resource,
+        declared.resource_minor,
+        declared.data,
+        declared.data_minor,
+    );
+    if stated != expected {
+        return Err(GenerateError::Drift(format!(
+            "the adapter inputs declare packFormat {expected:?} but {JAR_VERSION} in the pinned \
+             jar states {stated:?}, as resource major, resource minor, data major, data minor"
+        )));
+    }
+    verify_spelling(declared.spelling, archive)
+}
+
+/// Refuses a declared spelling this version's own packs do not use.
+///
+/// The correlation between the split numbers and the newer document shape is
+/// real and it is still an inference, so it is checked rather than assumed: the
+/// jar ships packs of its own, every one of them written by the game's authors in
+/// the shape the game's own reader accepts, and that is the evidence.
+///
+/// # Errors
+///
+/// Returns an error when the jar ships no pack of its own, and when the packs it
+/// ships are written in the other spelling.
+fn verify_spelling(spelling: Spelling, archive: &jar::Archive) -> Result<(), GenerateError> {
+    let Some(name) = archive.names().find(|name| name.ends_with(PACK_METADATA)) else {
+        return Err(GenerateError::Input(format!(
+            "the pinned jar ships no {PACK_METADATA} of its own, so nothing says which shape a \
+             pack this version reads is written in"
+        )));
+    };
+    let name = name.to_owned();
+    let text = jar_text(archive, &name)?;
+    if !text.contains(spelling.key()) {
+        return Err(GenerateError::Drift(format!(
+            "the adapter inputs declare packFormat spelling {} but {name} in the pinned jar \
+             carries no {}",
+            spelling.as_str(),
+            spelling.key()
+        )));
+    }
+    Ok(())
+}
+
+/// One named entry of the pinned jar, as text.
+fn jar_text(archive: &jar::Archive, name: &str) -> Result<String, GenerateError> {
+    let bytes = archive.entry(name)?;
+    String::from_utf8(bytes).map_err(|error| {
+        GenerateError::Input(format!("{name} in the pinned jar is not UTF-8: {error}"))
+    })
+}
+
+/// The document every pack, Ravel's included, declares its format in.
+const PACK_METADATA: &str = "pack.mcmeta";
+
+/// The document inside a client jar that states what the build is.
+const JAR_VERSION: &str = "version.json";
+
+/// The resource and data pack formats one jar's `version.json` states.
+///
+/// Two spellings, because the tracked versions use two: an older one states
+/// `resource` and `data`, and a newer one splits each into a major and a minor.
+/// The major is the format a pack declares in both, so the split spelling is read
+/// for its major and its minor is not a number this generator has a use for.
+///
+/// The scan is bounded to the `pack_version` object rather than run over the
+/// whole document, because `data` is not a name only that object uses and a
+/// manifest carrying one elsewhere would hand this the wrong number under the
+/// right name.
+fn pack_versions(text: &str) -> Option<(u16, u16, u16, u16)> {
+    let named = text.find("\"pack_version\"")?;
+    let open = text[named..].find('{')? + named;
+    let close = text[open..].find('}')? + open;
+    let scope = &text[open..close];
+    if let Some(resource) = number_after(scope, "resource") {
+        return Some((resource, 0, number_after(scope, "data")?, 0));
+    }
+    Some((
+        number_after(scope, "resource_major")?,
+        number_after(scope, "resource_minor")?,
+        number_after(scope, "data_major")?,
+        number_after(scope, "data_minor")?,
+    ))
+}
+
+/// The number one JSON key is set to, where the key is spelled exactly.
+///
+/// The quotes are part of the search, so `resource` does not match
+/// `resource_major` and the two spellings stay distinguishable.
+fn number_after(text: &str, key: &str) -> Option<u16> {
+    let quoted = format!("\"{key}\"");
+    let at = text.find(&quoted)? + quoted.len();
+    let rest = text[at..].trim_start().strip_prefix(':')?.trim_start();
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
 }
 
 /// The `javaVersion.majorVersion` one version manifest states.
@@ -1170,6 +1355,29 @@ mod tests {
         assert_eq!(super::major_version(manifest), Some(21));
     }
 
+    /// Both spellings the tracked jars use, and the trap between them.
+    ///
+    /// One version states `resource` and `data`; the other splits each into a
+    /// major and a minor. A scan for `resource` that ignored the closing quote
+    /// would match `resource_major` and read a major as though it were the whole
+    /// number, and a scan not bounded to the object would find `data` in a key
+    /// that has nothing to do with packs.
+    #[test]
+    fn both_spellings_of_a_jars_pack_version_are_read_and_neither_reads_the_other() {
+        let joined = r#"{"data": 9, "pack_version": {"resource": 34, "data": 48}}"#;
+        assert_eq!(super::pack_versions(joined), Some((34, 0, 48, 0)));
+
+        let split = r#"{"pack_version": {"resource_major": 84, "resource_minor": 0,
+          "data_major": 101, "data_minor": 1}, "world_version": 4790}"#;
+        assert_eq!(super::pack_versions(split), Some((84, 0, 101, 1)));
+
+        assert_eq!(super::pack_versions(r#"{"world_version": 4790}"#), None);
+        assert_eq!(
+            super::pack_versions(r#"{"pack_version": {"data": 48}}"#),
+            None
+        );
+    }
+
     #[test]
     fn the_tracked_version_data_reads_back_as_a_reviewed_inventory() {
         let root = repository_root();
@@ -1506,6 +1714,8 @@ bytes = 2
              minecraft = \"0.0.0-test\"\n\
              javaRelease = 25\n\
              mappingSource = \"{source}\"\n\
+             [packFormat]\nresource = 7\nresourceMinor = 0\ndata = 11\ndataMinor = 0\n\
+             spelling = \"pack-format\"\n\
              {mappings}\
              [inputs.clientJar]\npath = \"a\"\nsha256 = \"0\"\n\
              [inputs.dataFixerJar]\npath = \"b\"\nsha256 = \"0\"\n\

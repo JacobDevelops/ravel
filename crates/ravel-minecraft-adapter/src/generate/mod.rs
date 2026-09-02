@@ -306,6 +306,7 @@ pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), Gener
     // finding.
     mapping::verify_reflection(&pinned.surface, &mapping)?;
     mapping::verify_reflected_members(&pinned.surface, &mapping, &archive)?;
+    inputs::verify_pack_format(&pinned.adapter, &archive)?;
     let resolved = resolve::from_jar(&archive, &pinned.inventory, &mapping)?;
     let stubbed = stubs::from_jar(&[&archive, &library], &pinned.seeds, &mapping)?;
 
@@ -393,6 +394,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         // runtime, so no compiler ever sees them, and the mapping says what a
         // name becomes and never that the class still declares it.
         mapping::verify_reflected_members(&pinned.surface, &mapping, &archive)?;
+        inputs::verify_pack_format(&pinned.adapter, &archive)?;
         (
             // Hook targets are game members and are never looked for in the
             // library jar.

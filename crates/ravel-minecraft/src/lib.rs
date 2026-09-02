@@ -406,8 +406,131 @@ pub trait VersionAdapter {
     }
 }
 
+/// One pack format a Minecraft version reads, as a major and a minor.
+///
+/// Version-neutral because every version has one and no version's number belongs
+/// here: the generated bindings carry the values the pinned version declares, and
+/// this is the shape they are carried in.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PackFormat {
+    major: u16,
+    minor: u16,
+}
+
+impl PackFormat {
+    /// Names a format by its major and minor.
+    #[must_use]
+    pub const fn new(major: u16, minor: u16) -> Self {
+        Self { major, minor }
+    }
+
+    /// Returns the number a pack declares as its format.
+    #[must_use]
+    pub const fn major(self) -> u16 {
+        self.major
+    }
+
+    /// Returns the minor a version that splits its formats states beside it.
+    #[must_use]
+    pub const fn minor(self) -> u16 {
+        self.minor
+    }
+}
+
+/// How a Minecraft version's packs spell the format they declare.
+///
+/// The two tracked versions disagree, which is why this exists rather than a
+/// single renderer: the older writes one `pack_format` integer, and the newer
+/// writes a `max_format` integer beside a `min_format` major and minor. A pack
+/// written in the other version's spelling is one the game declines to load, and
+/// it declines quietly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PackFormatSpelling {
+    /// One `pack_format` integer.
+    PackFormat,
+    /// A `max_format` integer beside a `min_format` pair.
+    MinMaxFormat,
+}
+
+/// Renders the `pack.mcmeta` a pack of `format` carries, with `description`.
+///
+/// The bytes are what the file holds, so this is where the shape of that document
+/// is decided once. Rendering it at each call site would be the same document
+/// written twice, and the two spellings make that a difference a version can hide.
+///
+/// The description is JSON-escaped rather than interpolated: it is text a host
+/// composes and nothing here can promise it carries no quote.
+#[must_use]
+pub fn pack_metadata(
+    format: PackFormat,
+    spelling: PackFormatSpelling,
+    description: &str,
+) -> String {
+    let escaped: String = description
+        .chars()
+        .flat_map(|character| match character {
+            '"' => vec!['\\', '"'],
+            '\\' => vec!['\\', '\\'],
+            '\n' => vec!['\\', 'n'],
+            other => vec![other],
+        })
+        .collect();
+    let declared = match spelling {
+        PackFormatSpelling::PackFormat => format!("    \"pack_format\": {}\n", format.major),
+        PackFormatSpelling::MinMaxFormat => format!(
+            "    \"max_format\": {major},\n    \"min_format\": [\n      {major},\n      {minor}\n    ]\n",
+            major = format.major,
+            minor = format.minor
+        ),
+    };
+    format!("{{\n  \"pack\": {{\n    \"description\": \"{escaped}\",\n{declared}  }}\n}}\n")
+}
+
 #[cfg(test)]
 mod tests {
+    use super::{PackFormat, PackFormatSpelling, pack_metadata};
+
+    /// The two shapes, each pinned to the exact text the version's own packs use.
+    ///
+    /// Written out rather than compared to a renderer, because the whole point is
+    /// that a pack in the other version's shape is one the game declines quietly.
+    /// The values are the ones the tracked jars' own packs carry.
+    #[test]
+    fn each_spelling_renders_the_document_that_versions_own_packs_carry() {
+        assert_eq!(
+            pack_metadata(
+                PackFormat::new(34, 0),
+                PackFormatSpelling::PackFormat,
+                "Ravel"
+            ),
+            "{\n  \"pack\": {\n    \"description\": \"Ravel\",\n    \"pack_format\": 34\n  }\n}\n"
+        );
+        assert_eq!(
+            pack_metadata(
+                PackFormat::new(101, 1),
+                PackFormatSpelling::MinMaxFormat,
+                "Ravel"
+            ),
+            "{\n  \"pack\": {\n    \"description\": \"Ravel\",\n    \"max_format\": 101,\n    \
+             \"min_format\": [\n      101,\n      1\n    ]\n  }\n}\n"
+        );
+    }
+
+    /// A description is text a host composes, so it is escaped rather than trusted.
+    #[test]
+    fn a_description_holding_a_quote_still_renders_legal_json() {
+        let rendered = pack_metadata(
+            PackFormat::new(34, 0),
+            PackFormatSpelling::PackFormat,
+            "a \"quoted\" name\nand a newline",
+        );
+        assert!(
+            rendered.contains("a \\\"quoted\\\" name\\nand a newline"),
+            "{rendered}"
+        );
+        assert_eq!(rendered.lines().count(), 6, "{rendered}");
+    }
+
     use jni::objects::JObject;
 
     use super::{

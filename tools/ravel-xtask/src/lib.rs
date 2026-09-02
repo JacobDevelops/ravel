@@ -301,8 +301,57 @@ fn verify_version_directories(root: &Path, violations: &mut Vec<String>) {
             {
                 violations.push(format!("cannot count {relative}: {error}"));
             }
+            if file == "adapter.toml"
+                && let Some(missing) = missing_pack_format(&text)
+            {
+                violations.push(format!("{relative} {missing}"));
+            }
         }
     }
+}
+
+/// What a version's adapter inputs fail to say about the packs it reads.
+///
+/// The generator already refuses a `packFormat` that disagrees with the jar, and
+/// refuses an adapter.toml that omits it — but only for the directory a build
+/// *selected*. An unselected version could carry no pack format at all and be
+/// caught by nothing until the day something built it, which is the shape of
+/// nearly every defect this repository has found. So the requirement is asked of
+/// every tracked version here, where selection cannot hide it.
+///
+/// Read by scanning for the same reason [`declared_version`] scans: this file
+/// holds no TOML parser and the keys wanted are two integers under one table.
+fn missing_pack_format(text: &str) -> Option<String> {
+    let Some(table) = text.find("\n[packFormat]\n") else {
+        return Some(
+            "declares no `[packFormat]`, so nothing says which pack formats this version reads \
+             and a pack written for it would carry a number from another version"
+                .to_owned(),
+        );
+    };
+    let rest = &text[table + "\n[packFormat]\n".len()..];
+    let scope = rest.find("\n[").map_or(rest, |next| &rest[..next]);
+    let absent: Vec<&str> = ["resource", "data"]
+        .into_iter()
+        .filter(|key| scoped_number(scope, key).is_none())
+        .collect();
+    if absent.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "declares `[packFormat]` without {}, and a pack format is two numbers because a version \
+         states them separately",
+        absent.join(" or ")
+    ))
+}
+
+/// The integer one key is assigned inside a TOML table's own lines.
+fn scoped_number(scope: &str, key: &str) -> Option<u32> {
+    scope
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .find(|(name, _)| name.trim() == key)
+        .and_then(|(_, value)| value.trim().parse().ok())
 }
 
 /// One tracked version's reviewed hook inventory, read once for every check that
@@ -10159,6 +10208,9 @@ mod tests {
                      \"ONE\"\nclass = \"net.minecraft.client.One\"\nruntime = \
                      \"net.minecraft.client.One\"\n"
                 ),
+                "adapter.toml" => format!(
+                    "schemaVersion = 1\nminecraft = \"{version}\"\n\n[packFormat]\nresource =                      1\ndata = 2\n"
+                ),
                 _ => format!("schemaVersion = 1\nminecraft = \"{version}\"\n"),
             };
             fs::write(directory.join(file), text).expect("version data should be writable");
@@ -10264,6 +10316,50 @@ mod tests {
                 "{violations:?}"
             );
         }
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A tracked version that says nothing about pack formats is reported, whether
+    /// or not any build ever selects it.
+    ///
+    /// The generator refuses the same omission, and only for the version a build
+    /// chose. This is the half that holds the version nobody built.
+    #[test]
+    fn a_version_declaring_no_pack_format_is_reported() {
+        let root = temporary_root("pack-format");
+        version_directory(&root, "26.1.2", &[]);
+        let adapter = root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml"));
+
+        for (written, expected) in [
+            (
+                "schemaVersion = 1\nminecraft = \"26.1.2\"\n",
+                "declares no `[packFormat]`",
+            ),
+            (
+                "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[packFormat]\nresource = 34\n",
+                "without data",
+            ),
+            (
+                "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[packFormat]\ndata = 48\n",
+                "without resource",
+            ),
+        ] {
+            fs::write(&adapter, written).expect("version data should be writable");
+            let mut violations = Vec::new();
+
+            verify_version_directories(&root, &mut violations);
+
+            assert_eq!(violations.len(), 1, "{violations:?}");
+            assert!(violations[0].contains(expected), "{violations:?}");
+        }
+
+        // The positive control: the fixture as written declares both and is clean,
+        // so the three failures above are the omission rather than the sweep.
+        version_directory(&root, "26.1.2", &[]);
+        let mut violations = Vec::new();
+        verify_version_directories(&root, &mut violations);
+        assert!(violations.is_empty(), "{violations:?}");
+
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 

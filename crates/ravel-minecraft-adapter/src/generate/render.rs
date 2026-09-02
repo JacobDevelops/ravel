@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
-use super::inputs::{self, Adapter, Inventory, Lookup, Reflection};
+use super::inputs::{self, Adapter, Inventory, Lookup, Reflection, Spelling};
 use super::mapping::Mapping;
 use super::resolve::Resolved;
 use super::stubs::{Member, Stub};
@@ -418,13 +418,34 @@ pub(super) fn bindings(adapter: &Adapter, inventory: &Inventory, resolved: &[Res
          //\n\
          // Source of names: {}. Regenerate by building this crate.\n\
          \n\
-         use ravel_minecraft::{{HookId, HookKind, HookTarget}};\n\
+         use ravel_minecraft::{{HookId, HookKind, HookTarget, PackFormat, PackFormatSpelling}};\n\
          \n\
          /// The Minecraft version every target below was resolved against.\n\
          pub const MINECRAFT_VERSION: &str = \"{}\";\n",
         adapter.minecraft,
         adapter.mapping_source.as_str(),
         adapter.minecraft
+    );
+
+    let format = &adapter.pack_format;
+    let _ = writeln!(
+        text,
+        "/// What a resource pack this version reads declares as its format.\n\
+         pub const RESOURCE_PACK_FORMAT: PackFormat = PackFormat::new({}, {});\n\
+         \n\
+         /// What a data pack this version reads declares as its format.\n\
+         pub const DATA_PACK_FORMAT: PackFormat = PackFormat::new({}, {});\n\
+         \n\
+         /// The shape this version's own packs write their format in.\n\
+         pub const PACK_FORMAT_SPELLING: PackFormatSpelling = PackFormatSpelling::{};\n",
+        format.resource,
+        format.resource_minor,
+        format.data,
+        format.data_minor,
+        match format.spelling {
+            Spelling::PackFormat => "PackFormat",
+            Spelling::MinMaxFormat => "MinMaxFormat",
+        }
     );
 
     let _ = writeln!(
@@ -1522,7 +1543,9 @@ pub(super) fn java_type(descriptor: &str) -> Result<(String, &str), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::inputs::{Adapter, Hook, Input, Inputs, Inventory, Kind, MappingSource};
+    use super::super::inputs::{
+        Adapter, Hook, Input, Inputs, Inventory, Kind, MappingSource, PackFormat, Spelling,
+    };
     use super::super::resolve::Resolved;
     use super::super::stubs::{Member as StubMember, Stub};
     use super::{
@@ -1549,6 +1572,13 @@ mod tests {
             minecraft: "0.0.0-test".to_owned(),
             mapping_source: MappingSource::UnobfuscatedClassFiles,
             java_release: 25,
+            pack_format: PackFormat {
+                resource: 7,
+                resource_minor: 0,
+                data: 11,
+                data_minor: 0,
+                spelling: Spelling::PackFormat,
+            },
             inputs: Inputs {
                 client_jar: unpinned(),
                 client_mappings: None,

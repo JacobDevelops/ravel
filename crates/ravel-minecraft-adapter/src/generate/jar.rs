@@ -104,6 +104,14 @@ impl Archive {
         self.entries.contains_key(name)
     }
 
+    /// Every entry name the archive holds, in sorted order.
+    ///
+    /// Sorted because the index is a `BTreeMap`, which is what makes a caller
+    /// that takes the first match take the same match on every machine.
+    pub(super) fn names(&self) -> impl Iterator<Item = &str> + '_ {
+        self.entries.keys().map(String::as_str)
+    }
+
     /// Reads one entry back out, inflating it when it is deflated.
     pub(super) fn entry(&self, name: &str) -> Result<Vec<u8>, GenerateError> {
         self.read_entry(name)

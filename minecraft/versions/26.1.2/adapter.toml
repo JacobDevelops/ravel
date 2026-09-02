@@ -22,6 +22,18 @@ javaRelease = 25
 
 mappingSource = "unobfuscated-class-files"
 
+# The pack formats this version reads. A pack declaring a number the game does not
+# recognise is a pack the game refuses, and the number moves with the version, so
+# this is version data like the release above: declared for the machines that hold
+# no jar and re-derived from the `version.json` inside the pinned client jar
+# wherever one is present. That document splits each into a major and a minor, and the major is what a pack declares.
+[packFormat]
+resource = 84
+resourceMinor = 0
+data = 101
+dataMinor = 1
+spelling = "min-max-format"
+
 [inputs.clientJar]
 path = "tests/fixtures/local/tooling/minecraft-26.1.2/client.jar"
 sha256 = "b1b3158572666445eff01e82fad8c7de2e4953db6d354f311730d77a8359d0b0"

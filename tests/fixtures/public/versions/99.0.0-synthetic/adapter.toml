@@ -16,6 +16,16 @@ javaRelease = 25
 
 mappingSource = "unobfuscated-class-files"
 
+# The synthetic version's own pack formats. Numbers no real version states, for
+# the reason every other value here is synthetic: a fixture that borrowed a
+# tracked version's number would pass a check by resembling it.
+[packFormat]
+resource = 900
+resourceMinor = 0
+data = 901
+dataMinor = 0
+spelling = "pack-format"
+
 [inputs.clientJar]
 path = "tests/fixtures/local/tooling/99.0.0-synthetic/client.jar"
 sha256 = "1111111111111111111111111111111111111111111111111111111111111111"

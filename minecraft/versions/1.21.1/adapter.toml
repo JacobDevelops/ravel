@@ -24,6 +24,18 @@ javaRelease = 21
 
 mappingSource = "official-proguard-mappings"
 
+# The pack formats this version reads. A pack declaring a number the game does not
+# recognise is a pack the game refuses, and the number moves with the version, so
+# this is version data like the release above: declared for the machines that hold
+# no jar and re-derived from the `version.json` inside the pinned client jar
+# wherever one is present. That document states them as `resource` and `data`.
+[packFormat]
+resource = 34
+resourceMinor = 0
+data = 48
+dataMinor = 0
+spelling = "pack-format"
+
 [inputs.clientJar]
 path = "tests/fixtures/local/tooling/minecraft-1.21.1/client.jar"
 sha256 = "499f6897d1837516680f3114072d8106e11c9adcd933fe5cf051b551089b0c99"

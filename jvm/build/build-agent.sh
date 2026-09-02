@@ -24,6 +24,19 @@ if [ ! -f "$generated/dev/ravel/jvm/Hook.java" ]; then
 	exit 1
 fi
 
+# The Java release this jar is built for, written by the generator beside the
+# Java it generated. Read from there rather than from the environment: a script
+# that asked the shell could compile for a release the generator did not generate
+# for. It is the game's declared release or the transformer's floor, whichever is
+# higher, because the transformer is written on the JDK's Class-File API.
+release_file="$generated/dev/ravel/jvm/agent-release.txt"
+if [ ! -f "$release_file" ]; then
+	echo "the generated Java release is missing; run:" >&2
+	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	exit 1
+fi
+release="$(cat "$release_file")"
+
 rm -rf "$classes"
 mkdir -p "$classes"
 
@@ -33,7 +46,7 @@ mkdir -p "$classes"
 # class path, and the absent `-cp` is what enforces that rather than records it —
 # which is also what lets this run on a machine without the restricted fixture.
 mapfile -d '' sources < <(find "$root/jvm/bootstrap" "$generated" -name '*.java' -print0 | sort -z)
-javac -Xlint:all -Werror -d "$classes" "${sources[@]}"
+javac --release "$release" -Xlint:all -Werror -d "$classes" "${sources[@]}"
 
 printf 'Premain-Class: dev.ravel.jvm.Agent\nCan-Retransform-Classes: false\n' >"$manifest"
 

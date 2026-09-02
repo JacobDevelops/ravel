@@ -370,6 +370,16 @@ pub(super) struct Adapter {
     pub(super) schema_version: u8,
     pub(super) minecraft: String,
     pub(super) mapping_source: MappingSource,
+    /// The Java release every jar built for this version is compiled for.
+    ///
+    /// A game refuses a class file newer than the runtime it declares, and the
+    /// first real launch against an older version had to be started with the
+    /// runtime compatibility check switched off, because Ravel's jars were built
+    /// by whatever JDK the shell happened to hold. So it is version data like
+    /// every other build fact here: declared for the machines that hold no
+    /// version manifest, and re-derived from the manifest's
+    /// `javaVersion.majorVersion` wherever that file is present.
+    pub(super) java_release: u16,
     pub(super) inputs: Inputs,
 }
 
@@ -500,6 +510,8 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
         }
     }
 
+    verify_java_release(root, &adapter)?;
+
     Ok(PinnedVersion {
         directory,
         adapter,
@@ -507,6 +519,55 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
         seeds,
         surface,
     })
+}
+
+/// Refuses a declared Java release the version's own manifest disagrees with.
+///
+/// The manifest is upstream material this repository does not track, so most
+/// machines cannot read it and the declaration is what they build from. Where it
+/// is present the declaration is re-derived rather than trusted, which is the
+/// same split `runtime` already makes in the reflective surface: a record for the
+/// machines that cannot check, and a check wherever the material is there.
+///
+/// # Errors
+///
+/// Returns an error when the manifest is present and unreadable, states no
+/// `javaVersion.majorVersion`, or states one the adapter inputs do not declare.
+fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), GenerateError> {
+    let path = root.join(&adapter.inputs.version_manifest.path);
+    if !path.is_file() {
+        return Ok(());
+    }
+    let text = std::fs::read_to_string(&path).map_err(|error| {
+        GenerateError::Input(format!("{} is unreadable: {error}", path.display()))
+    })?;
+    let declared = major_version(&text).ok_or_else(|| {
+        GenerateError::Input(format!(
+            "{} states no javaVersion.majorVersion, so nothing says what release this version runs",
+            file_name(&adapter.inputs.version_manifest.path)
+        ))
+    })?;
+    if declared != adapter.java_release {
+        return Err(GenerateError::Drift(format!(
+            "the adapter inputs declare javaRelease {} but {} states {declared}",
+            adapter.java_release,
+            file_name(&adapter.inputs.version_manifest.path)
+        )));
+    }
+    Ok(())
+}
+
+/// The `javaVersion.majorVersion` one version manifest states.
+///
+/// Read by scanning rather than by deserializing the manifest, because the
+/// manifest is a large upstream document whose every other field is none of this
+/// generator's business, and a struct for it would be a second thing to maintain
+/// against Mojang.
+fn major_version(text: &str) -> Option<u16> {
+    let at = text.find("\"majorVersion\"")? + "\"majorVersion\"".len();
+    let rest = text[at..].trim_start().strip_prefix(':')?.trim_start();
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
 }
 
 /// Checks that a version's declared non-goals say something the hooks do not.
@@ -1360,6 +1421,7 @@ bytes = 2
         format!(
             "schemaVersion = 1\n\
              minecraft = \"0.0.0-test\"\n\
+             javaRelease = 25\n\
              mappingSource = \"{source}\"\n\
              {mappings}\
              [inputs.clientJar]\npath = \"a\"\nsha256 = \"0\"\n\

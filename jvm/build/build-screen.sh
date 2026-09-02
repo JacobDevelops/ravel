@@ -34,6 +34,17 @@ for tree in "$generated" "$screens"; do
 	fi
 done
 
+# The Java release this version's game refuses anything newer than, written by
+# the generator beside the Java it generated. Read from there rather than from
+# the environment, for the reason `build-agent.sh` gives.
+release_file="$work/generated/dev/ravel/jvm/java-release.txt"
+if [ ! -f "$release_file" ]; then
+	echo "the generated Java release is missing; run:" >&2
+	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	exit 1
+fi
+release="$(cat "$release_file")"
+
 rm -rf "$stubs" "$classes"
 mkdir -p "$stubs" "$classes"
 
@@ -41,7 +52,7 @@ mkdir -p "$stubs" "$classes"
 # warning in one would block a build nobody could fix. Our own sources below
 # keep `-Xlint:all -Werror`.
 mapfile -d '' stub_sources < <(find "$generated" -name '*.java' -print0 | sort -z)
-javac -nowarn -d "$stubs" "${stub_sources[@]}"
+javac --release "$release" -nowarn -d "$stubs" "${stub_sources[@]}"
 
 # The screen's two crossings are `dev.ravel.jvm.Hook`'s natives, so the generated
 # hook class is on the compile path beside the stubs. It is not packaged here
@@ -53,11 +64,11 @@ if [ ! -f "$hook/dev/ravel/jvm/Hook.java" ]; then
 	echo "  cargo build -p ravel-minecraft-adapter" >&2
 	exit 1
 fi
-javac -Xlint:all -Werror -cp "$stubs" -d "$stubs" \
+javac --release "$release" -Xlint:all -Werror -cp "$stubs" -d "$stubs" \
 	"$hook/dev/ravel/jvm/Hook.java" "$root/jvm/bootstrap/dev/ravel/jvm/HookTarget.java"
 
 mapfile -d '' sources < <(find "$screens" -name '*.java' -print0 | sort -z)
-javac -Xlint:all -Werror -cp "$stubs" -d "$classes" "${sources[@]}"
+javac --release "$release" -Xlint:all -Werror -cp "$stubs" -d "$classes" "${sources[@]}"
 
 # No stub goes in. A stub class inside this jar would shadow the game's own class
 # on the loader they share, and the game would then draw against a method that
@@ -83,4 +94,36 @@ for class in "${compiled[@]}"; do
 done
 
 jar --create --file "$jar" --date "$stamp" "${entries[@]}"
+
+# Every class in the jar has to be one this version generated. The trees this is
+# built from are shared by every version, so a build after a version switch
+# shipped the previous version's screens beside this one's — and both compiled,
+# because the stubs for both were there too, and both went in the jar.
+#
+# The list compared against is `ScreenNames`, which the generator writes from the
+# templates it actually rendered. Comparing against the source tree instead would
+# be comparing the jar with the thing that filled it, and a stale source is
+# exactly what filled it wrongly.
+#
+# Nested and anonymous classes are named after the source that declares them, so
+# the outer name is what is looked up.
+names="$work/generated/dev/ravel/jvm/ScreenNames.java"
+if [ ! -f "$names" ]; then
+	echo "the generated screen names are missing; run:" >&2
+	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	exit 1
+fi
+generated_names="$(sed -n 's/.*static final String [A-Z_]* = "\(.*\)";/\1/p' "$names")"
+while IFS= read -r entry; do
+	case "$entry" in
+	*/ | META-INF/*) continue ;;
+	esac
+	outer="${entry%.class}"
+	outer="${outer%%\$*}"
+	outer="${outer//\//.}"
+	if ! printf '%s\n' "$generated_names" | grep -qxF "$outer"; then
+		echo "$entry is in the screen jar and this version's ScreenNames records no such class; refusing to ship another version's classes" >&2
+		exit 1
+	fi
+done < <(jar --list --file "$jar")
 echo "$jar"

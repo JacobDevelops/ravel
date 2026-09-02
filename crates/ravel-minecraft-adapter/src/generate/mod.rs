@@ -41,6 +41,15 @@ const EXTRACTOR: &str = "classfile";
 /// the tests below would have no way to ask it a question.
 pub const SELECTION: &str = "RAVEL_MINECRAFT_VERSION";
 
+/// The oldest Java release the agent jar's own sources can be compiled for.
+///
+/// ADG-1 chose the JDK's Class-File API over a bytecode library so the agent jar
+/// carries no dependency, and `java.lang.classfile` first exists in 24. So the
+/// agent jar has a floor of its own that is not the game's: a version declaring
+/// an older runtime gets a jar built for this instead, and what that costs is
+/// stated where the two numbers are written out.
+const AGENT_RELEASE_FLOOR: u16 = 24;
+
 /// Reads a selection out of the raw value the environment carries.
 ///
 /// A value that is not UTF-8 names no tracked directory, and it is refused
@@ -64,6 +73,9 @@ const HOOK_CLASS: &str = "dev.ravel.jvm.Hook";
 
 /// Library name `System.loadLibrary` resolves, without its platform decoration.
 const LIBRARY: &str = "ravel_bootstrap";
+
+/// The root of the generated Java tree, which this generator owns outright.
+const JAVA_ROOT: &str = "target/ravel-jvm/generated";
 
 /// Where the generated Java lands, relative to the repository root.
 ///
@@ -125,6 +137,10 @@ struct Rendered {
     hook_java: String,
     game_names_java: String,
     game_members_java: String,
+    /// The Java release the screen jar for this version is compiled for.
+    java_release: String,
+    /// The Java release the agent jar for this version is compiled for.
+    agent_release: String,
     screen_names_java: String,
     lock: String,
     stub_lock: String,
@@ -334,6 +350,8 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         hook_java: render::hook_java(&pinned.adapter, &shapes),
         game_names_java: render::game_names(&pinned.adapter, &pinned.surface),
         game_members_java: render::game_members(&pinned.adapter, &pinned.surface, &mapping)?,
+        java_release: format!("{}\n", pinned.adapter.java_release),
+        agent_release: format!("{}\n", pinned.adapter.java_release.max(AGENT_RELEASE_FLOOR)),
         screen_names_java: render::screen_names(&pinned.adapter, &screens.names),
         lock,
         stub_lock,
@@ -354,12 +372,34 @@ fn write(
     let stub_directory = root.join(STUB_OUTPUT);
     // Every artefact is placed and never swept: two builds share this tree, and a
     // generator that emptied it would delete a tree another process was reading.
-    // What a switch of version can leave behind is a source at a path this
-    // version writes nothing to — the screens move package under an obfuscated
-    // one — and that fails the screen build loudly, on a stale source naming
-    // classes the new stubs do not declare. The stub tree has always worked this
-    // way for the same reason.
+    // Every output tree is emptied before it is written, because a build emits one
+    // version and these paths are shared by every version. A per-file overwrite
+    // leaves whatever the previous version wrote at a path this one does not use,
+    // and `build-screen.sh` sweeps both trees with `find`: a build after a version
+    // switch shipped the previous version's screens and its stale stubs in the
+    // same jar as this version's, and every one of them compiled.
+    //
+    // This used to be left to the tasks that package the trees, on the reasoning
+    // that a generator emptying them would delete what a concurrent build is
+    // reading. That reasoning holds and the conclusion did not: two builds of
+    // different versions sharing one output tree is already the defect, and
+    // leaving the sweep to a caller means every caller has to remember it.
     let screen_directory = root.join(SCREEN_OUTPUT);
+    let java_root = root.join(JAVA_ROOT);
+    for directory in [
+        java_root.as_path(),
+        stub_directory.as_path(),
+        screen_directory.as_path(),
+    ] {
+        if directory.is_dir() {
+            std::fs::remove_dir_all(directory).map_err(|error| {
+                GenerateError::Input(format!(
+                    "{} could not be emptied: {error}",
+                    directory.display()
+                ))
+            })?;
+        }
+    }
     for directory in [
         out,
         java_directory.as_path(),
@@ -374,6 +414,19 @@ fn write(
     let java = java_directory.join("Hook.java");
     let game_names = java_directory.join("GameNames.java");
     let game_members = java_directory.join("GameMembers.java");
+    // Beside the generated Java rather than in a build script, for the reason
+    // the version selection itself is read from here: a script that asked the
+    // environment could compile for a release the generator did not generate
+    // for, and that is the silent mismatch this whole tree exists to prevent.
+    let java_release = java_directory.join("java-release.txt");
+    // Two numbers because there are two requirements. The screen jar holds only
+    // Ravel's own screens and compiles against stubs, so it is built for the
+    // release the game declares. The agent jar carries the transformer, which is
+    // written on the JDK's Class-File API, so it cannot go below
+    // `AGENT_RELEASE_FLOOR` whatever the game declares — and a game running an
+    // older runtime than that could not run the transformer under any class-file
+    // version, which is a launch requirement rather than a build setting.
+    let agent_release = java_directory.join("agent-release.txt");
     let screen_names = java_directory.join("ScreenNames.java");
     let mut digest = String::new();
     for (path, content) in [
@@ -382,6 +435,8 @@ fn write(
         (&java, &rendered.hook_java),
         (&game_names, &rendered.game_names_java),
         (&game_members, &rendered.game_members_java),
+        (&java_release, &rendered.java_release),
+        (&agent_release, &rendered.agent_release),
         (&screen_names, &rendered.screen_names_java),
     ] {
         write_atomically(path, content)?;

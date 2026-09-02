@@ -1367,6 +1367,7 @@ mod tests {
             schema_version: 1,
             minecraft: "0.0.0-test".to_owned(),
             mapping_source: MappingSource::UnobfuscatedClassFiles,
+            java_release: 25,
             inputs: Inputs {
                 client_jar: unpinned(),
                 client_mappings: None,

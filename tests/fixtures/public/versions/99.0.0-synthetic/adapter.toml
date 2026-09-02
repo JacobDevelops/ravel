@@ -11,6 +11,9 @@ minecraft = "99.0.0-synthetic"
 # Invented, like the rest of this directory. The pinned version records why a
 # real one would say unobfuscated class files; a synthetic one records the same
 # string because the generator compares it to the lock and to nothing else.
+# The Java release every jar built for this version is compiled for.
+javaRelease = 25
+
 mappingSource = "unobfuscated-class-files"
 
 [inputs.clientJar]

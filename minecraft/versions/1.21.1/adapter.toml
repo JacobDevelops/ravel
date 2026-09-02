@@ -17,6 +17,11 @@
 schemaVersion = 1
 minecraft = "1.21.1"
 
+# The Java release every jar built for this version is compiled for. A game
+# refuses a class file newer than the runtime it declares, and `version.json`
+# states which that is; this is re-derived from it on any machine that holds it.
+javaRelease = 21
+
 mappingSource = "official-proguard-mappings"
 
 [inputs.clientJar]

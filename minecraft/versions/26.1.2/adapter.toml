@@ -15,6 +15,11 @@ minecraft = "26.1.2"
 
 # 26.1.2 ships unobfuscated class files and publishes no client mapping file, so
 # the class files are the mapping. See docs/decisions/adg-3-bindings.md.
+# The Java release every jar built for this version is compiled for. A game
+# refuses a class file newer than the runtime it declares, and `version.json`
+# states which that is; this is re-derived from it on any machine that holds it.
+javaRelease = 25
+
 mappingSource = "unobfuscated-class-files"
 
 [inputs.clientJar]

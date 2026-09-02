@@ -419,7 +419,7 @@ mod tests {
             .ancestors()
             .nth(2)
             .expect("the crate lives under crates/<name>");
-        inputs::pinned(root).expect("the tracked version data should parse")
+        inputs::pinned(root, None).expect("the tracked version data should parse")
     }
 
     fn tracked_lock(pinned: &PinnedVersion) -> String {

@@ -25,10 +25,13 @@ Two properties are worth stating because a reader will otherwise wonder:
   member. That is what makes a general crate version-neutral: it names ids, and
   ids are what two versions share.
 - **It is a fixture rather than a second directory under
-  `minecraft/versions/`.** The generator refuses two pinned versions on purpose,
-  because two would need two hook classes and two exported symbol sets and ADG-3
-  decided neither. Staging this one as if it were the pinned version asks the
-  question M4-W6 asks without answering a question ADG-3 left open.
+  `minecraft/versions/`.** Everything in it is invented, so it is a question to
+  ask the generator rather than a version anything ships. Staged as the only
+  version it asks M4-W6's question, whether the generator works on a version
+  that is not the pinned one. Staged beside the pinned one it asks the question
+  [`version-selection-is-a-build-time-choice.md`](../../../../docs/decisions/version-selection-is-a-build-time-choice.md)
+  answers, whether a build reads the version it was told to and refuses to guess
+  when it was told nothing.
 
 The gate that reads it is
 `crates/ravel-minecraft-adapter/src/generate/mod.rs`'s

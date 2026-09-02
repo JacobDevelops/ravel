@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use super::GenerateError;
+use super::{GenerateError, SELECTION};
 
 /// Every pinned version's data lives here, relative to the repository root.
 const VERSIONS: &str = "minecraft/versions";
@@ -189,13 +189,20 @@ pub(super) struct PinnedVersion {
     pub(super) seeds: Seeds,
 }
 
-/// Reads the tracked data of the pinned version.
+/// Reads the tracked data of the version this build generates against.
 ///
-/// The adapter generates against exactly one version at a time. A second
-/// directory under `minecraft/versions` is refused rather than guessed at,
-/// because two versions would need two hook classes and two exported symbol
-/// sets, and nothing has decided how those are told apart.
-pub(super) fn pinned(root: &Path) -> Result<PinnedVersion, GenerateError> {
+/// One build emits one version's artefacts, which is what
+/// `docs/decisions/version-selection-is-a-build-time-choice.md` decided: one
+/// hook class, one exported symbol set, one stub tree, chosen before the
+/// compiler runs rather than by the running game. Several directories under
+/// `minecraft/versions` may be tracked and reviewed side by side, and `selected`
+/// is which of them this build reads.
+///
+/// A directory this build did not select is not read at all. Whether every
+/// tracked version is well formed is the scaffold contract's guarantee, which
+/// holds over all of them at once regardless of what any build chose, and one
+/// rule written in two places is two rules that can disagree.
+pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersion, GenerateError> {
     let versions = root.join(VERSIONS);
     let mut names = Vec::new();
     let entries = fs::read_dir(&versions)
@@ -207,16 +214,10 @@ pub(super) fn pinned(root: &Path) -> Result<PinnedVersion, GenerateError> {
     }
     names.sort();
 
-    let [name] = names.as_slice() else {
-        return Err(GenerateError::Input(format!(
-            "the adapter generates one pinned version at a time, but the version data holds {}",
-            names.len()
-        )));
-    };
-
+    let name = choose(&names, selected)?;
     let directory = versions.join(name);
     let adapter: Adapter = parse(&directory.join("adapter.toml"))?;
-    if &adapter.minecraft != name {
+    if adapter.minecraft != name {
         return Err(GenerateError::Drift(format!(
             "the version directory is named {name} but its adapter inputs pin {}",
             adapter.minecraft
@@ -306,6 +307,54 @@ pub(super) fn pinned(root: &Path) -> Result<PinnedVersion, GenerateError> {
         inventory,
         seeds,
     })
+}
+
+/// Picks the one version directory this build reads.
+///
+/// One tracked directory needs no selection, because there is no other answer.
+/// More than one requires the build to name the one it means: alphabetical
+/// order, the most recent version, and whichever one was there first are all
+/// silent answers to a question an operator should have answered. A name no
+/// directory carries is refused with the names that were actually found, so the
+/// refusal says what the build can act on rather than only what it wanted.
+fn choose<'a>(names: &'a [String], selected: Option<&str>) -> Result<&'a str, GenerateError> {
+    if let Some(wanted) = selected {
+        return names
+            .iter()
+            .find(|name| name.as_str() == wanted)
+            .map(String::as_str)
+            .ok_or_else(|| {
+                let what = if wanted.is_empty() {
+                    "names nothing".to_owned()
+                } else {
+                    format!("names {wanted}")
+                };
+                GenerateError::Input(format!(
+                    "{SELECTION} {what}, but the version data holds {}",
+                    listed(names)
+                ))
+            });
+    }
+    match names {
+        [] => Err(GenerateError::Input(
+            "the version data holds no version directory to generate against".to_owned(),
+        )),
+        [only] => Ok(only),
+        _ => Err(GenerateError::Input(format!(
+            "the adapter emits one version per build and the version data holds {}, so \
+             {SELECTION} has to name the one this build means",
+            listed(names)
+        ))),
+    }
+}
+
+/// Names the version directories a refusal found, for a reader of that refusal.
+fn listed(names: &[String]) -> String {
+    if names.is_empty() {
+        "no version directory".to_owned()
+    } else {
+        names.join(", ")
+    }
 }
 
 /// Reads one tracked TOML document.
@@ -453,7 +502,8 @@ mod tests {
 
     #[test]
     fn the_tracked_version_data_reads_back_as_a_reviewed_inventory() {
-        let pinned = pinned(repository_root()).expect("the tracked version data should parse");
+        let pinned =
+            pinned(repository_root(), None).expect("the tracked version data should parse");
 
         assert_eq!(pinned.adapter.schema_version, 1);
         assert_eq!(
@@ -541,7 +591,8 @@ class = \"net/minecraft/Unreferenced\"
 
     #[test]
     fn a_version_tree_with_no_pinned_version_is_refused_rather_than_guessed() {
-        let error = pinned(Path::new("/nonexistent-ravel-root")).expect_err("this must not parse");
+        let error =
+            pinned(Path::new("/nonexistent-ravel-root"), None).expect_err("this must not parse");
 
         assert!(error.to_string().contains("cannot read the version data"));
     }
@@ -566,7 +617,7 @@ class = \"net/minecraft/Unreferenced\"
         let adapter: Adapter = super::parse(
             &root
                 .join("minecraft/versions")
-                .join(pinned(root).expect("pinned").adapter.minecraft)
+                .join(pinned(root, None).expect("pinned").adapter.minecraft)
                 .join("adapter.toml"),
         )
         .expect("the tracked adapter inputs should parse");
@@ -637,7 +688,8 @@ class = \"net/minecraft/Unreferenced\"
 
     #[test]
     fn the_tracked_adapter_inputs_pin_every_input_they_declare() {
-        let pinned = pinned(repository_root()).expect("the tracked version data should parse");
+        let pinned =
+            pinned(repository_root(), None).expect("the tracked version data should parse");
         let inputs = &pinned.adapter.inputs;
 
         for input in [

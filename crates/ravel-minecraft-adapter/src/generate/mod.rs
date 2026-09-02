@@ -24,12 +24,39 @@ mod render;
 mod resolve;
 mod stubs;
 
+use std::ffi::OsString;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The reading of the jar this generator performs, as recorded in the lock.
 const EXTRACTOR: &str = "classfile";
+
+/// Names which tracked Minecraft version a build generates against.
+///
+/// Version selection is a build-time choice, so this is read by the build script
+/// and passed down rather than reached for here: a generator that read its own
+/// environment would make the same call answer differently in two processes, and
+/// the tests below would have no way to ask it a question.
+pub const SELECTION: &str = "RAVEL_MINECRAFT_VERSION";
+
+/// Reads a selection out of the raw value the environment carries.
+///
+/// A value that is not UTF-8 names no tracked directory, and it is refused
+/// rather than read as no selection at all: an operator who set the variable
+/// steered this build, and treating their value as absence would generate a
+/// version nobody chose and report nothing.
+///
+/// # Errors
+///
+/// Returns an error when the value is present but is not valid UTF-8.
+pub fn selection(raw: Option<OsString>) -> Result<Option<String>, GenerateError> {
+    raw.map(OsString::into_string).transpose().map_err(|_| {
+        GenerateError::Input(format!(
+            "{SELECTION} is not valid UTF-8, so it names no version directory"
+        ))
+    })
+}
 
 /// Java class holding the generated native declarations.
 const HOOK_CLASS: &str = "dev.ravel.jvm.Hook";
@@ -123,8 +150,8 @@ pub struct Generated {
 /// Returns an error when an input is missing or has drifted from the hash the
 /// adapter inputs pin, when the pinned jar is absent, or when an inventory entry
 /// does not resolve to exactly one member of the declared shape.
-pub fn regenerate_locks(root: &Path) -> Result<(), GenerateError> {
-    let pinned = inputs::pinned(root)?;
+pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), GenerateError> {
+    let pinned = inputs::pinned(root, selected)?;
     let jar_path = root.join(&pinned.adapter.inputs.client_jar.path);
     let library_path = root.join(&pinned.adapter.inputs.data_fixer_jar.path);
     for (path, input) in [
@@ -172,8 +199,8 @@ pub fn regenerate_locks(root: &Path) -> Result<(), GenerateError> {
 /// Returns an error when an input is missing, has drifted from the hash the
 /// adapter inputs pin, does not resolve to exactly one member of the declared
 /// shape, or resolves to a shape no hook can carry.
-pub fn run(root: &Path, out: &Path) -> Result<Generated, GenerateError> {
-    let pinned = inputs::pinned(root)?;
+pub fn run(root: &Path, out: &Path, selected: Option<&str>) -> Result<Generated, GenerateError> {
+    let pinned = inputs::pinned(root, selected)?;
     let first = compose(root, &pinned)?;
     // ADG-3 requires generation to be reproducible, and the cheapest evidence of
     // that is doing it twice: a generator whose second run differs from its
@@ -359,9 +386,10 @@ fn write_atomically(path: &Path, content: &str) -> Result<(), GenerateError> {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
     use std::path::{Path, PathBuf};
 
-    use super::{GenerateError, inputs, run};
+    use super::{GenerateError, SELECTION, inputs, run, selection};
 
     fn repository_root() -> &'static Path {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -393,7 +421,7 @@ mod tests {
         let root = output(name);
         // The version is read from the tracked data rather than written here, so
         // nothing outside the version data names a Minecraft version.
-        let source = inputs::pinned(repository_root())
+        let source = inputs::pinned(repository_root(), None)
             .expect("the tracked version data should parse")
             .directory;
         let relative = source
@@ -414,7 +442,8 @@ mod tests {
         let (root, _) = staged("jarless-honest");
         let out = output("jarless-honest-out");
 
-        let generated = run(&root, &out).expect("an unedited lock still matches what is pinned");
+        let generated =
+            run(&root, &out, None).expect("an unedited lock still matches what is pinned");
 
         assert!(generated.bindings.is_file());
 
@@ -441,7 +470,7 @@ mod tests {
         std::fs::write(&adapter, stale).expect("writable");
 
         let error =
-            run(&root, &out).expect_err("a lock that is not what is pinned must be refused");
+            run(&root, &out, None).expect_err("a lock that is not what is pinned must be refused");
 
         assert!(matches!(error, GenerateError::Drift(_)), "{error}");
         let message = error.to_string();
@@ -456,7 +485,8 @@ mod tests {
     fn generating_from_the_tracked_inputs_writes_every_artefact() {
         let out = output("artefacts");
 
-        let generated = run(repository_root(), &out).expect("the tracked inputs should generate");
+        let generated =
+            run(repository_root(), &out, None).expect("the tracked inputs should generate");
 
         assert!(generated.bindings.is_file());
         assert!(generated.exports.is_file());
@@ -519,21 +549,21 @@ mod tests {
     /// Where the synthetic second version's data lives.
     ///
     /// It is a fixture rather than a second directory under `minecraft/versions`
-    /// because [`inputs::pinned`] refuses two of those on purpose: two pinned
-    /// versions would need two hook classes and two exported symbol sets, and
-    /// nothing has decided how those are told apart. A drop-in *replacement*
-    /// asks the question M4-W6 actually asks — whether the generator works on a
-    /// version that is not the pinned one — without deciding a question ADG-3
-    /// left open.
+    /// because it is invented: the version it names does not exist and the
+    /// classes its inventory reviews do not exist either, so it is a question to
+    /// ask the generator rather than a version anything ships. Staged as the
+    /// only version it asks M4-W6's question, whether the generator works on a
+    /// version that is not the pinned one; staged beside the pinned one it asks
+    /// this record's, whether a build reads the version it was told to.
     const SECOND_VERSION: &str = "tests/fixtures/public/versions";
 
-    /// Stages the synthetic second version as if it were the pinned one.
+    /// The synthetic version's own directory and the name it carries.
     ///
     /// The directory name is read off the filesystem rather than written here,
     /// so no source file in any crate spells a version, which is the property
-    /// `ravel-verify-scaffold` enforces and this test would otherwise be the
+    /// `ravel-verify-scaffold` enforces and these tests would otherwise be the
     /// first thing to break.
-    fn staged_second_version(name: &str) -> (PathBuf, String) {
+    fn synthetic_version() -> (PathBuf, String) {
         let source = repository_root().join(SECOND_VERSION);
         let mut versions = std::fs::read_dir(&source)
             .expect("the synthetic version fixture should be readable")
@@ -545,16 +575,221 @@ mod tests {
         let [version] = versions.as_slice() else {
             panic!("the fixture holds one synthetic version, not {versions:?}");
         };
+        (source.join(version), version.clone())
+    }
 
-        let root = output(name);
-        let directory = root.join("minecraft/versions").join(version);
-        std::fs::create_dir_all(&directory).expect("the staged directory should be made");
-        for entry in std::fs::read_dir(source.join(version)).expect("listable") {
+    /// Copies one version directory's files into `directory`.
+    fn copy_version(source: &Path, directory: &Path) {
+        std::fs::create_dir_all(directory).expect("the staged directory should be made");
+        for entry in std::fs::read_dir(source).expect("listable") {
             let file = entry.expect("a readable entry").file_name();
-            std::fs::copy(source.join(version).join(&file), directory.join(&file))
-                .expect("copyable");
+            std::fs::copy(source.join(&file), directory.join(&file)).expect("copyable");
         }
-        (root, version.clone())
+    }
+
+    /// Stages the synthetic second version as if it were the pinned one.
+    fn staged_second_version(name: &str) -> (PathBuf, String) {
+        let (source, version) = synthetic_version();
+        let root = output(name);
+        copy_version(&source, &root.join("minecraft/versions").join(&version));
+        (root, version)
+    }
+
+    /// Stages the tracked version data and the synthetic one side by side.
+    ///
+    /// This is the shape selection exists for and the one nothing in the
+    /// repository holds yet: two well-formed version directories under one root,
+    /// neither of which a build may pick on its own. Returns the root, the
+    /// tracked version's name, and the synthetic one's.
+    fn staged_two_versions(name: &str) -> (PathBuf, String, String) {
+        let (root, directory) = staged(name);
+        let tracked = directory
+            .file_name()
+            .expect("a version directory is named")
+            .to_string_lossy()
+            .into_owned();
+        let (source, synthetic) = synthetic_version();
+        copy_version(&source, &root.join("minecraft/versions").join(&synthetic));
+        assert_ne!(
+            tracked, synthetic,
+            "two directories that are one version prove nothing"
+        );
+        (root, tracked, synthetic)
+    }
+
+    /// Each of two tracked versions generates, and only the one that was named.
+    ///
+    /// This is what makes version selection a build-time choice rather than a
+    /// refusal: the same generator, the same root, two well-formed directories,
+    /// and the artefacts name whichever one the build asked for. Both directions
+    /// are run, because a selector that always returned the first one would pass
+    /// half of this.
+    #[test]
+    fn a_build_generates_the_version_it_names_and_not_the_other() {
+        let (root, tracked, synthetic) = staged_two_versions("selected");
+
+        for (wanted, other) in [(&tracked, &synthetic), (&synthetic, &tracked)] {
+            let out = output(&format!("selected-out-{wanted}"));
+            let generated = run(&root, &out, Some(wanted)).expect("the named version generates");
+
+            for artefact in [&generated.bindings, &generated.java] {
+                let text = std::fs::read_to_string(artefact).expect("readable");
+                assert!(
+                    text.contains(wanted),
+                    "the artefact should name the selected version: {}",
+                    artefact.display()
+                );
+                assert!(
+                    !text.contains(other.as_str()),
+                    "a selected build may not emit the version it did not select: {}",
+                    artefact.display()
+                );
+            }
+
+            let _ = std::fs::remove_dir_all(&out);
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Two versions and nothing naming one is refused, with both names in the
+    /// refusal.
+    ///
+    /// Picking one would be a silent answer to a question the operator should
+    /// have answered, and a refusal that named neither would leave them guessing
+    /// at what to set.
+    #[test]
+    fn two_versions_and_no_selection_is_refused_naming_both() {
+        let (root, tracked, synthetic) = staged_two_versions("unselected");
+        let out = output("unselected-out");
+
+        let error = run(&root, &out, None).expect_err("two versions need one named");
+
+        assert!(matches!(error, GenerateError::Input(_)));
+        let message = error.to_string();
+        assert!(message.contains(SELECTION), "{message}");
+        assert!(message.contains(&tracked), "{message}");
+        assert!(message.contains(&synthetic), "{message}");
+        assert!(!out.exists(), "a refused build writes nothing");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A selection no directory carries is refused with what was actually there.
+    #[test]
+    fn a_selection_no_directory_carries_is_refused_with_what_was_found() {
+        let (root, tracked, synthetic) = staged_two_versions("unknown");
+        let out = output("unknown-out");
+
+        let error = run(&root, &out, Some("no-such-version"))
+            .expect_err("a name nothing carries selects nothing");
+
+        assert!(matches!(error, GenerateError::Input(_)));
+        let message = error.to_string();
+        assert!(message.contains("no-such-version"), "{message}");
+        assert!(message.contains(&tracked), "{message}");
+        assert!(message.contains(&synthetic), "{message}");
+        assert!(!out.exists(), "a refused build writes nothing");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An empty selection reads as a refusal rather than a sentence with a hole.
+    #[test]
+    fn an_empty_selection_is_refused_in_words_a_reader_can_act_on() {
+        let (root, tracked, synthetic) = staged_two_versions("empty");
+        let out = output("empty-out");
+
+        let error = run(&root, &out, Some("")).expect_err("an empty name selects nothing");
+
+        let message = error.to_string();
+        assert!(message.contains("names nothing"), "{message}");
+        assert!(message.contains(&tracked), "{message}");
+        assert!(message.contains(&synthetic), "{message}");
+        assert!(!out.exists(), "a refused build writes nothing");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A malformed directory this build did not select does not fail the build.
+    ///
+    /// This is the record's load-bearing claim and the one two well-formed
+    /// directories cannot ask: a generator that swept every tracked version
+    /// would pass every other test here and then break every build the day a
+    /// malformed second directory landed, for a reason no artefact of that build
+    /// derives from. Selecting the corrupt one is asserted too, because a
+    /// corruption the generator would have tolerated anyway proves nothing.
+    #[test]
+    fn a_malformed_unselected_directory_does_not_fail_the_build() {
+        let (root, tracked, synthetic) = staged_two_versions("corrupt-unselected");
+        let corrupt = root
+            .join("minecraft/versions")
+            .join(&synthetic)
+            .join("adapter.toml");
+        std::fs::write(&corrupt, b"this is not toml [").expect("the fixture should be writable");
+
+        let out = output("corrupt-unselected-out");
+        run(&root, &out, Some(&tracked)).expect("a build that selected the other one generates");
+
+        let other = output("corrupt-selected-out");
+        let error = run(&root, &other, Some(&synthetic))
+            .expect_err("a corruption the generator tolerates proves nothing");
+        assert!(matches!(error, GenerateError::Input(_)), "{error}");
+
+        for directory in [&root, &out, &other] {
+            let _ = std::fs::remove_dir_all(directory);
+        }
+    }
+
+    /// A selection that is not UTF-8 is refused rather than read as absence.
+    ///
+    /// `build.rs` reads the raw environment value; this is the parse it hands
+    /// over. Silently treating it as unset would generate the only tracked
+    /// version under an operator who explicitly asked for another.
+    #[test]
+    fn a_selection_that_is_not_utf8_is_refused() {
+        use std::os::unix::ffi::OsStringExt;
+
+        assert!(
+            selection(None)
+                .expect("nothing selected is not an error")
+                .is_none()
+        );
+        assert_eq!(
+            selection(Some(OsString::from("a-readable-name")))
+                .expect("a readable value is a selection"),
+            Some("a-readable-name".to_owned())
+        );
+
+        let error = selection(Some(OsString::from_vec(vec![0xff])))
+            .expect_err("a value that is not UTF-8 names no directory");
+        assert!(matches!(error, GenerateError::Input(_)));
+        assert!(error.to_string().contains(SELECTION), "{error}");
+    }
+
+    /// Naming the only tracked version generates what naming nothing generates.
+    ///
+    /// This is what makes the decision cost nothing to adopt. Under a single
+    /// tracked version, selection is the behaviour that already existed, and the
+    /// comparison is the whole generated tree's digest rather than a spot check.
+    #[test]
+    fn selecting_the_only_version_generates_what_selecting_nothing_does() {
+        let root = repository_root();
+        let tracked = inputs::pinned(root, None)
+            .expect("the tracked version data should parse")
+            .adapter
+            .minecraft;
+        let default = output("default-selection");
+        let named = output("named-selection");
+
+        let unselected = run(root, &default, None).expect("generates");
+        let selected = run(root, &named, Some(&tracked)).expect("generates");
+
+        assert_eq!(unselected.sha256, selected.sha256);
+
+        for directory in [&default, &named] {
+            let _ = std::fs::remove_dir_all(directory);
+        }
     }
 
     /// M4-W6's gate: the shared adapter is not welded to the pinned version.
@@ -577,9 +812,9 @@ mod tests {
         let (root, version) = staged_second_version("second-version");
         let out = output("second-version-out");
 
-        let generated = run(&root, &out).expect("a second version's data should generate");
+        let generated = run(&root, &out, None).expect("a second version's data should generate");
 
-        let pinned_version = inputs::pinned(repository_root())
+        let pinned_version = inputs::pinned(repository_root(), None)
             .expect("the tracked version data should parse")
             .adapter
             .minecraft;
@@ -616,9 +851,9 @@ mod tests {
         );
 
         // Every reviewed id, in both versions, mapped onto different members.
-        let second = inputs::pinned(&root).expect("the staged data should parse");
+        let second = inputs::pinned(&root, None).expect("the staged data should parse");
         let bindings = std::fs::read_to_string(&generated.bindings).expect("readable");
-        let pinned_inventory = inputs::pinned(repository_root())
+        let pinned_inventory = inputs::pinned(repository_root(), None)
             .expect("the tracked version data should parse")
             .inventory;
         let mut ids = pinned_inventory
@@ -673,8 +908,8 @@ mod tests {
         let first = output("once");
         let second = output("twice");
 
-        let one = run(root, &first).expect("generates");
-        let two = run(root, &second).expect("generates");
+        let one = run(root, &first, None).expect("generates");
+        let two = run(root, &second, None).expect("generates");
 
         assert_eq!(one.sha256, two.sha256);
         for (left, right) in [(&one.bindings, &two.bindings), (&one.exports, &two.exports)] {
@@ -691,8 +926,12 @@ mod tests {
 
     #[test]
     fn a_root_without_version_data_generates_nothing() {
-        let error = run(Path::new("/nonexistent-ravel-root"), Path::new("/tmp"))
-            .expect_err("there is nothing to generate from");
+        let error = run(
+            Path::new("/nonexistent-ravel-root"),
+            Path::new("/tmp"),
+            None,
+        )
+        .expect_err("there is nothing to generate from");
 
         assert!(matches!(error, GenerateError::Input(_)));
         assert!(error.to_string().starts_with("an input is unusable"));
@@ -743,7 +982,7 @@ mod tests {
             source,
             "mappingSource = \"official-proguard-mappings\"",
         );
-        let missing = run(&root, &out).expect_err("a source that reads a mapping needs one");
+        let missing = run(&root, &out, None).expect_err("a source that reads a mapping needs one");
         assert!(
             missing
                 .to_string()
@@ -756,7 +995,8 @@ mod tests {
             "mappingSource = \"official-proguard-mappings\"",
             &format!("{source}{mappings}"),
         );
-        let spurious = run(&root, &out).expect_err("a source that reads none may not pin one");
+        let spurious =
+            run(&root, &out, None).expect_err("a source that reads none may not pin one");
         assert!(
             spurious
                 .to_string()
@@ -771,7 +1011,7 @@ mod tests {
     #[test]
     fn a_client_mapping_that_no_longer_hashes_to_its_pin_is_refused_before_its_text_is_read() {
         let root = repository_root();
-        let pinned = inputs::pinned(root).expect("the tracked version data should parse");
+        let pinned = inputs::pinned(root, None).expect("the tracked version data should parse");
         let mut adapter = pinned.adapter;
         // A real file under a hash that is not its own. Nothing may be read out
         // of it, and nothing may be opened before it is refused.

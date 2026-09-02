@@ -94,9 +94,10 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
   compiled reference is the one place left. The JVM checks nest membership only for private access
   and the factory is a public record, so the reading is that it links, but that is reasoning, not
   evidence.
-- The classloader check proves an ordinary classpath, while the launch appends the screen jar through
-  `Instrumentation.appendToSystemClassLoaderSearch` with the game already loaded. Same name, different
-  loader.
+- The classloader check now builds the loader the agent builds, requires each screen to be defined by it,
+  and reproduces the signed-jar certificate failure both ways over probe jars it signs itself. What it
+  still cannot reach is that an access a different runtime package forbids is raised when the member is
+  resolved, not when the class is defined, so a screen that loads there can still fail on the first click.
 
 ## Known open, beyond the above
 

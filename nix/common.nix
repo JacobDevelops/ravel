@@ -395,6 +395,30 @@ in
         mkdir -p "$(dirname "$compiled")"
         : >"$compiled"
 
+        # Two probe jars, one signed and one not, both holding a class in the
+        # unnamed package. They are what gives a build machine the condition the
+        # launch had and nothing here otherwise has: Mojang ships a signed client
+        # jar, and an obfuscated version puts its classes where the generated
+        # screens go. Built once, because neither depends on a Minecraft version.
+        probe="$DEVENV_ROOT/target/ravel-jvm/signer-probe"
+        rm -rf "$probe"
+        mkdir -p "$probe/signed" "$probe/unsigned"
+        echo 'public final class RavelSignerProbeSigned {}' \
+          >"$probe/RavelSignerProbeSigned.java"
+        echo 'public final class RavelSignerProbeUnsigned {}' \
+          >"$probe/RavelSignerProbeUnsigned.java"
+        javac -d "$probe/signed" "$probe/RavelSignerProbeSigned.java"
+        javac -d "$probe/unsigned" "$probe/RavelSignerProbeUnsigned.java"
+        jar --create --file "$probe/signed.jar" -C "$probe/signed" RavelSignerProbeSigned.class
+        jar --create --file "$probe/unsigned.jar" \
+          -C "$probe/unsigned" RavelSignerProbeUnsigned.class
+        keytool -genkeypair -alias ravel-probe -keyalg RSA -keysize 2048 \
+          -dname CN=ravel-signer-probe -validity 1 \
+          -keystore "$probe/keystore.p12" -storetype PKCS12 \
+          -storepass ravelprobe -keypass ravelprobe >/dev/null
+        jarsigner -keystore "$probe/keystore.p12" -storepass ravelprobe \
+          "$probe/signed.jar" ravel-probe >/dev/null
+
         for version_directory in minecraft/versions/*/; do
           version="$(basename "$version_directory")"
           mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
@@ -417,20 +441,35 @@ in
           ./jvm/build/build-agent.sh >/dev/null
           ./jvm/build/build-screen.sh >/dev/null
 
-          # Every name the agent jar would open, opened. Under an obfuscated
-          # version these have no package, which is a shape nothing had ever
-          # asked a JVM to resolve. The stubs join the class path because
-          # defining a screen resolves its game superclass, and here that is the
-          # stub rather than the game.
+          # Every name the agent jar would open, opened, through the loader the
+          # agent jar itself builds. Under an obfuscated version these have no
+          # package, which is a shape nothing had ever asked a JVM to resolve.
+          # The stubs join the class path because defining a screen resolves its
+          # game superclass, and here that is the stub rather than the game; the
+          # agent jar joins it because the check calls Screens.loader rather than
+          # writing a loader that looks like it.
           names="$(sed -n 's/.*static final String [A-Z_]* = "\(.*\)";/\1/p' \
             target/ravel-jvm/generated/dev/ravel/jvm/ScreenNames.java)"
           if [ -z "$names" ]; then
             echo "ScreenNames records no screen for $version" >&2
             exit 1
           fi
+          # The screen jar is passed as an argument rather than put on the class
+          # path, because the check is about which loader defines those classes
+          # and a class path would hand them to the parent.
+          # Compiled rather than source-launched: this check calls into the agent
+          # jar's own package, and a source launch defines the class in a loader
+          # of the compiler's own, where that access is refused.
+          names_classes="$DEVENV_ROOT/target/ravel-jvm/screen-names-classes"
+          rm -rf "$names_classes"
+          mkdir -p "$names_classes"
+          javac -Xlint:all -Werror -cp "target/ravel-jvm/ravel-agent.jar" \
+            -d "$names_classes" jvm/harness/screen-names/dev/ravel/jvm/LoadScreens.java
           # shellcheck disable=SC2086
-          java -cp "target/ravel-jvm/ravel-screen.jar:target/ravel-jvm/screen-stubs" \
-            jvm/harness/screen-names/LoadScreens.java $names
+          java -cp "target/ravel-jvm/ravel-agent.jar:target/ravel-jvm/screen-stubs:$names_classes" \
+            dev.ravel.jvm.LoadScreens \
+            "target/ravel-jvm/ravel-screen.jar" \
+            "$probe/signed.jar" "$probe/unsigned.jar" $names
 
           echo "compiled: Minecraft $version" | tee -a "$compiled"
         done

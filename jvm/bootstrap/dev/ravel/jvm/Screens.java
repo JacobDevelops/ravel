@@ -1,9 +1,11 @@
 package dev.ravel.jvm;
 
 import java.io.File;
-import java.lang.instrument.Instrumentation;
 import java.lang.reflect.InvocationTargetException;
+import java.net.MalformedURLException;
 import java.net.URISyntaxException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.jar.JarFile;
 
 /**
@@ -15,50 +17,72 @@ import java.util.jar.JarFile;
  * a Java source in a package cannot name a supertype that has none.
  *
  * <p>ADG-1's amendment named two ways to get a screen class into the game
- * process and chose this one: the agent appends a second jar to the class path
- * the game already loads from, rather than a launcher putting it there. That
- * keeps ADG-5's property that Ravel adds JVM arguments to a stock instance and
- * nothing else, because a class path cannot be appended through a JVM argument
- * on a launcher that builds its own and takes the last one.
+ * process and chose the agent carrying a second jar, rather than a launcher
+ * putting it on the class path. That keeps ADG-5's property that Ravel adds JVM
+ * arguments to a stock instance and nothing else, because a class path cannot be
+ * appended through a JVM argument on a launcher that builds its own and takes
+ * the last one.
  *
  * <p>The jar is found beside the agent's own jar rather than named in an
  * argument, so {@link Agent#premain} keeps rejecting arguments and there is
  * still nothing to configure.
  *
- * <p>Appending is not defining. This runs at {@code premain} and only widens
- * where the loader may look; it loads no class, so no game class is forced to
- * load before the client bootstraps. Defining the screen is lazy and belongs to
- * whatever hook first needs it, because a {@code Screen} subclass cannot be
- * defined without loading {@code Screen} itself.
+ * <p><b>A child loader rather than the system one.</b> The jar was appended with
+ * {@code Instrumentation.appendToSystemClassLoaderSearch}, and the first real
+ * 1.21.1 launch showed why that cannot stand: Mojang's client jar is signed and
+ * an obfuscated version puts its classes in the unnamed package, which is where
+ * the generated screens go too. Defining an unsigned {@code RavelMenu} into a
+ * runtime package the system loader had already recorded signers for fails
+ * {@code ClassLoader.checkCerts} with a {@code SecurityException}, and the mods
+ * button threw on every click. A runtime package is a defining loader and a
+ * package name together, so a loader of Ravel's own puts the screens in a
+ * package of their own and the certificate check has nothing to compare.
  *
- * <p>That the appended entry is then found is not a guess:
- * {@code evidence/m3/class-loader-identity.json} measured the loader that loads
- * a rewritten {@code net.minecraft} class to be the same object as
- * {@code ClassLoader.getSystemClassLoader()}, which is the loader this method
- * widens.
+ * <p>The parent is the system loader, so a screen still resolves its game
+ * supertype to the class the game itself loaded rather than to a second copy.
+ * That the game's classes are on that loader is not a guess:
+ * {@code evidence/m3/class-loader-identity.json} measured the loader of a
+ * rewritten {@code net.minecraft} class to be the same object as
+ * {@code ClassLoader.getSystemClassLoader()}.
+ *
+ * <p>Constructing the loader is not defining. This runs at {@code premain} and
+ * loads no class, so no game class is forced to load before the client
+ * bootstraps. Defining a screen is lazy and belongs to whatever hook first needs
+ * it, because a {@code Screen} subclass cannot be defined without loading
+ * {@code Screen} itself.
  */
 final class Screens {
 
     /** The jar the generated screen ships in, beside the agent's own. */
     static final String SCREEN_JAR = "ravel-screen.jar";
 
-    private static volatile boolean appended;
+    /**
+     * The loader every Ravel class in the screen jar is defined by.
+     *
+     * <p>One instance for the process, because the screens and the sibling
+     * saved-data class have to be one another's nestmates in the plain sense: a
+     * second loader would define a second {@code RavelWorldData}, and the
+     * {@code instanceof} that reads a stored aggregate back would answer false.
+     */
+    private static volatile ClassLoader screens;
 
     private Screens() {
     }
 
     /**
-     * Appends the screen jar to the system class loader's search path.
+     * Opens the screen jar under a loader of Ravel's own.
      *
      * <p>A missing jar is not a failure. The screen is an optional artefact and
      * a launch without it is a launch with no settings screen, which is a
      * working game; refusing to start would turn a missing convenience into an
-     * outage. {@link #isAppended} is what a caller asks before it tries to
+     * outage. {@link #isInstalled} is what a caller asks before it tries to
      * define anything.
      *
-     * @param instrumentation the JVM's own instrumentation service
+     * <p>The jar is opened before the loader is built, so a truncated or
+     * non-jar file is reported here rather than as a class that cannot be found
+     * much later.
      */
-    static void append(Instrumentation instrumentation) {
+    static void install() {
         File jar = beside(SCREEN_JAR);
         if (jar == null) {
             diagnose("could not locate " + SCREEN_JAR + " beside the agent jar");
@@ -69,18 +93,45 @@ final class Screens {
             return;
         }
         try (JarFile opened = new JarFile(jar)) {
-            instrumentation.appendToSystemClassLoaderSearch(opened);
-            appended = true;
+            screens = loader(opened.getName(), ClassLoader.getSystemClassLoader());
         } catch (java.io.IOException unreadable) {
-            appended = false;
+            screens = null;
             diagnose(SCREEN_JAR + " is unreadable or invalid ("
                     + unreadable.getClass().getName() + ")");
         }
     }
 
-    /** Whether the screen jar was appended and may be defined from. */
-    static boolean isAppended() {
-        return appended;
+    /**
+     * The loader the screen jar is read through.
+     *
+     * <p>Package-private so the per-version Java compile can build the same
+     * loader over the same jar rather than a second one written to look like it.
+     * A check that models the mechanism proves nothing about the mechanism.
+     *
+     * <p>The parent is a parameter for the same reason. A launch hands it the
+     * system loader, which is where the game is; the check hands it a loader
+     * holding a signed jar, which is the condition that made the launch fail and
+     * which nothing on a build machine has otherwise.
+     *
+     * @param path the screen jar to read
+     * @param parent where a class this loader does not hold is looked for
+     */
+    static ClassLoader loader(String path, ClassLoader parent) throws MalformedURLException {
+        return new URLClassLoader(new URL[] {new File(path).toURI().toURL()}, parent);
+    }
+
+    /** Whether the screen jar was opened and may be defined from. */
+    static boolean isInstalled() {
+        return screens != null;
+    }
+
+    /**
+     * One class out of the screen jar, defined by Ravel's own loader.
+     *
+     * @param name the class to load, as this version's names spell it
+     */
+    static Class<?> load(String name) throws ClassNotFoundException {
+        return Class.forName(name, true, screens);
     }
 
     /**
@@ -95,10 +146,10 @@ final class Screens {
      * <p>Reflection rather than a direct reference, because this class is in the
      * agent jar and ADG-1 requires that jar to declare no game type — and
      * {@code RavelSettingsScreen}'s supertype is one. The screen is loaded
-     * through the system class loader, which
-     * {@code evidence/m3/class-loader-identity.json} measured to be the same
-     * object as the loader that loads the game's own classes, so the superclass
-     * resolves against the real {@code Screen} rather than a second copy.
+     * through Ravel's own loader, whose parent is the system class loader, so
+     * the superclass resolves against the real {@code Screen} rather than a
+     * second copy while the screen itself lands in a runtime package the game's
+     * signed jar has no claim on.
      *
      * @param owner the canonical mod id whose settings to show
      * @return the screen as an {@code Object} for the caller to hand to the
@@ -156,12 +207,12 @@ final class Screens {
 
     /** Adds Ravel's entry to the title screen through the optional screen jar. */
     static int addTitleMenu(Object titleScreen, int bottom, int spacing) {
-        if (!appended) {
+        if (!isInstalled()) {
             return bottom;
         }
         String name = ScreenNames.RAVEL_MENU;
         try {
-            Class<?> bridge = Class.forName(name, true, ClassLoader.getSystemClassLoader());
+            Class<?> bridge = load(name);
             bridge.getMethod("add", Object.class, int.class, int.class)
                     .invoke(null, titleScreen, bottom, spacing);
             return bottom + spacing;
@@ -185,11 +236,11 @@ final class Screens {
      *     takes none
      */
     private static Object build(String name, String owner) {
-        if (!appended) {
+        if (!isInstalled()) {
             return null;
         }
         try {
-            Class<?> screen = Class.forName(name, true, ClassLoader.getSystemClassLoader());
+            Class<?> screen = load(name);
             if (owner == null) {
                 return screen.getMethod("open").invoke(null);
             }

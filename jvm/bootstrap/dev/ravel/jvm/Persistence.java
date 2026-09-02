@@ -28,7 +28,7 @@ import java.util.Arrays;
  *
  * <p><b>The sibling is required here, where a screen is optional.</b> An absent
  * screen jar loses the settings UI and leaves a working game, so
- * {@link Screens#append} treats it as a diagnostic. An absent sibling loses all
+ * {@link Screens#install} treats it as a diagnostic. An absent sibling loses all
  * persistence, and a world opened without it would run, accept a player's work,
  * and save none of it. So this path refuses the world load instead. That
  * asymmetry is deliberate and is the opposite of the policy next door.
@@ -326,11 +326,11 @@ final class Persistence {
 
     /** Ravel's stored-object class from the sibling artifact, or {@code null}. */
     private static Class<?> sibling() {
-        if (!Screens.isAppended()) {
+        if (!Screens.isInstalled()) {
             return null;
         }
         try {
-            return game(WORLD_DATA);
+            return Screens.load(WORLD_DATA);
         } catch (ReflectiveOperationException | LinkageError absent) {
             Agent.diagnose("the world persistence component could not be loaded ("
                     + absent.getClass().getName() + ")");

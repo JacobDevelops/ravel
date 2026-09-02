@@ -62,6 +62,14 @@ and no launcher change:
 -Djava.library.path=<instance natives>:<directory holding libravel_bootstrap.so>
 ```
 
+`ravel-screen.jar` has to sit in the same directory as the agent jar. The agent
+takes no arguments, so it finds the screen jar by resolving that name beside the
+jar it was itself loaded from, and both are built into `target/ravel-jvm/`. Copy
+one to an instance without the other and the launch prints `ravel-screen.jar is
+missing or not a regular file beside the agent jar`, then runs with no settings
+screen, no mod list and no world persistence. The derivation is exact; what is
+fragile is that nothing checks the two jars travelled together.
+
 The agent takes no arguments; what it rewrites comes from the generated class it
 ships with. `java.library.path` must **append** to the instance's own natives
 directory rather than replace it, because the launcher sets that property for

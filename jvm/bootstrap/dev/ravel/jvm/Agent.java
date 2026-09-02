@@ -51,7 +51,7 @@ public final class Agent {
         // path stay a single branch rather than an atomic on every crossing.
         Hook.ravelEnableProfiling(System.getProperty("ravel.profiling"));
         Hook.ravelInitialize();
-        Screens.append(instrumentation);
+        Screens.install();
         Runtime.getRuntime().addShutdownHook(new Thread(Agent::report, "ravel-report"));
     }
 

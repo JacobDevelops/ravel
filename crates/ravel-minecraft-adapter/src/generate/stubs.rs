@@ -107,12 +107,27 @@ pub(super) fn from_jar(
 
     for seed in &seeds.stubs {
         let class = seed.class.replace('.', "/");
-        let declared = read_members(archives, mapping, &class)?;
+        // A class file names both halves of every member the way the JVM links
+        // them, and the seed list is in the reviewed name space. Both halves
+        // cross here, once, so nothing below can compare one name space against
+        // the other or emit a stub that is half of each.
+        let declared = read_members(archives, mapping, &class)?
+            .iter()
+            .filter(|member| member.is_visible())
+            .map(|member| Member {
+                name: mapping
+                    .mojang_member(&class, &member.name, &member.descriptor)
+                    .to_owned(),
+                descriptor: mapping.mojang_descriptor(&member.descriptor),
+                flags: member.flags,
+                method: member.method,
+            })
+            .collect::<Vec<_>>();
         let mut selected = Vec::new();
         for name in &seed.members {
             let matched = declared
                 .iter()
-                .filter(|member| &member.name == name && member.is_visible())
+                .filter(|member| &member.name == name)
                 .collect::<Vec<_>>();
             if matched.is_empty() {
                 return Err(GenerateError::Unresolved(format!(
@@ -124,14 +139,8 @@ pub(super) fn from_jar(
             // descriptor into the seed list, which is the transcription this
             // generator exists to avoid.
             for member in matched {
-                let descriptor = mapping.mojang_descriptor(&member.descriptor);
-                referenced.extend(names_in(&descriptor));
-                selected.push(Member {
-                    name: member.name.clone(),
-                    descriptor,
-                    flags: member.flags,
-                    method: member.method,
-                });
+                referenced.extend(names_in(&member.descriptor));
+                selected.push(member.clone());
             }
         }
         selected.sort_by(|left, right| {
@@ -411,8 +420,11 @@ pub(super) fn names_in(descriptor: &str) -> Vec<String> {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::super::inputs::{self, PinnedVersion};
-    use super::{Lock, Stub, from_lock, names_in};
+    use super::super::classfile::ACC_PUBLIC;
+    use super::super::inputs::{self, MappingSource, PinnedVersion, Seeds};
+    use super::super::jar::fixture;
+    use super::super::mapping::Mapping;
+    use super::{Lock, Stub, from_jar, from_lock, names_in};
 
     fn pinned() -> PinnedVersion {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -598,6 +610,117 @@ mod tests {
         let named = names_in("()Lcom/example/core/Holder$Reference;");
 
         assert_eq!(named, ["com/example/core/Holder$Reference"]);
+    }
+
+    /// The smallest class file declaring some public methods and nothing above.
+    fn class_of(methods: &[(&str, &str)]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(0xCAFE_BABE_u32.to_be_bytes());
+        bytes.extend(0_u16.to_be_bytes()); // minor
+        bytes.extend(69_u16.to_be_bytes()); // major
+        let pool = u16::try_from(methods.len() * 2 + 1).expect("a short pool");
+        bytes.extend(pool.to_be_bytes());
+        for (name, descriptor) in methods {
+            for text in [name, descriptor] {
+                bytes.push(1); // TAG_UTF8
+                bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
+                bytes.extend(text.as_bytes());
+            }
+        }
+        for value in [0_u16, 0, 0, 0, 0] {
+            // flags, this class, no superclass, no interfaces, no fields
+            bytes.extend(value.to_be_bytes());
+        }
+        bytes.extend(u16::try_from(methods.len()).expect("short").to_be_bytes());
+        for index in 0..methods.len() {
+            let name = u16::try_from(index * 2 + 1).expect("short");
+            bytes.extend(ACC_PUBLIC.to_be_bytes());
+            bytes.extend(name.to_be_bytes());
+            bytes.extend((name + 1).to_be_bytes());
+            bytes.extend(0_u16.to_be_bytes()); // method attributes
+        }
+        bytes.extend(0_u16.to_be_bytes()); // class attributes
+        bytes
+    }
+
+    /// An invented obfuscated version: a seed list, its mapping, and its jars.
+    ///
+    /// The seed list and the class files share no member name at all, and the
+    /// seeded name is overloaded so the two overloads link as two different
+    /// names. A stub that comes out of this can only have gone through the
+    /// mapping, in both directions: the filter has to find the seeded name on a
+    /// class that declares neither, and the descriptor it keeps names a class the
+    /// jar writes as `b`.
+    fn obfuscated() -> (Seeds, Mapping, Vec<u8>, Vec<u8>) {
+        let seeds = toml::from_str(
+            "schemaVersion = 1\n\
+             minecraft = \"0.0.0-test\"\n\
+             [[stub]]\n\
+             class = \"com.example.Screen\"\n\
+             members = [\"init\"]\n",
+        )
+        .expect("the invented seed list should parse");
+        let mapping = Mapping::read(
+            MappingSource::OfficialProguardMappings,
+            "com.example.Screen -> a:\n    \
+             5:5:void init() -> aT_\n    \
+             6:6:void init(com.example.Widget) -> b\n\
+             com.example.Widget -> b:\n",
+        )
+        .expect("the invented mapping should parse");
+
+        (
+            seeds,
+            mapping,
+            fixture::stored("a.class", &class_of(&[("aT_", "()V"), ("b", "(Lb;)V")])),
+            fixture::stored("b.class", &class_of(&[])),
+        )
+    }
+
+    #[test]
+    fn an_obfuscated_seed_resolves_through_the_mapping_in_both_directions() {
+        let (seeds, mapping, screen, widget) = obfuscated();
+        let screen = fixture::parse(screen).expect("a synthetic archive");
+        let widget = fixture::parse(widget).expect("a synthetic archive");
+
+        let stubs = from_jar(&[&screen, &widget], &seeds, &mapping)
+            .expect("the mapping names every seeded member");
+
+        let seeded = stubs
+            .iter()
+            .find(|stub| stub.class == "com/example/Screen")
+            .expect("the seeded class is stubbed");
+        assert_eq!(
+            seeded
+                .members
+                .iter()
+                .map(|member| (member.name.as_str(), member.descriptor.as_str()))
+                .collect::<Vec<_>>(),
+            [("init", "()V"), ("init", "(Lcom/example/Widget;)V")],
+            "an overloaded seed stubs every overload, under the name the seed \
+             list writes and never the one the jar declares"
+        );
+        assert!(
+            stubs.iter().any(|stub| stub.class == "com/example/Widget"),
+            "the kept descriptor is in the reviewed name space, so the closure \
+             it names is too"
+        );
+    }
+
+    #[test]
+    fn a_seeded_member_the_obfuscated_class_does_not_declare_is_refused() {
+        let (mut seeds, mapping, screen, widget) = obfuscated();
+        seeds.stubs[0].members = vec!["onClose".to_owned()];
+        let screen = fixture::parse(screen).expect("a synthetic archive");
+        let widget = fixture::parse(widget).expect("a synthetic archive");
+
+        let error = from_jar(&[&screen, &widget], &seeds, &mapping)
+            .expect_err("the mapping names no onClose");
+
+        assert!(
+            error.to_string().contains("declares no reachable onClose"),
+            "{error}"
+        );
     }
 
     #[test]

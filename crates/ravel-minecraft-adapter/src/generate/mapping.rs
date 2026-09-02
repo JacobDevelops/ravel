@@ -6,7 +6,7 @@
 //! and the version's own published mapping file says which is which, so every
 //! name the generator hands to an archive goes through here first.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::GenerateError;
 use super::inputs::{MappingSource, Reflection};
@@ -87,6 +87,33 @@ impl Mapping {
         }
     }
 
+    /// The reviewed name a linked member of one reviewed class came from.
+    ///
+    /// This is the direction a stub seed needs, and [`Self::runtime_member`]
+    /// cannot serve it. A seed names a member and deliberately never a
+    /// descriptor, because a name the class overloads is meant to stub every
+    /// overload — and the forward direction is keyed on the descriptor precisely
+    /// because one reviewed name can link as several. So the translation runs
+    /// the other way: a class file declares both halves of the linked pair, and
+    /// that pair is what names one member.
+    ///
+    /// A pair the mapping does not carry reads as itself, for the reason
+    /// [`Self::mojang_class`] does: the pinned library jar beside the game is
+    /// described by no published mapping, and a mapped class still declares
+    /// members — bridges, and anything the mapping had no reason to name — that
+    /// the file lists none of.
+    pub(super) fn mojang_member<'a>(
+        &'a self,
+        mojang_class: &str,
+        member: &'a str,
+        descriptor: &str,
+    ) -> &'a str {
+        match self {
+            Self::Identity => member,
+            Self::Proguard(proguard) => proguard.mojang_member(mojang_class, member, descriptor),
+        }
+    }
+
     /// The member name and descriptor the JVM links for a reviewed member.
     ///
     /// A class the mapping does not name keeps its members, which is what a
@@ -156,6 +183,9 @@ type Member = (String, String);
 /// Every member of one class, from the reviewed name to the linked one.
 type Members = BTreeMap<Member, Member>;
 
+/// Every member of one class, from the linked name back to the reviewed one.
+type Reviewed = BTreeMap<Member, String>;
+
 /// One parsed proguard mapping file.
 #[derive(Clone, Debug)]
 pub(super) struct Proguard {
@@ -165,6 +195,8 @@ pub(super) struct Proguard {
     mojang: BTreeMap<String, String>,
     /// Reviewed internal class name, then reviewed member and descriptor.
     members: BTreeMap<String, Members>,
+    /// Reviewed internal class name, then linked member and descriptor.
+    linked: BTreeMap<String, Reviewed>,
 }
 
 impl Proguard {
@@ -218,12 +250,22 @@ impl Proguard {
         // Descriptors are rewritten once every class is known, because a
         // parameter can name a class the file has not reached yet.
         let mut members = BTreeMap::new();
+        let mut linked = BTreeMap::new();
         for (class, entries) in declared {
             let mut forward = BTreeMap::new();
-            let mut linked = BTreeSet::new();
+            let mut backward = BTreeMap::new();
             for entry in entries {
                 let runtime = map_descriptor(&classes, &entry.descriptor);
-                if !linked.insert((entry.runtime.clone(), runtime.clone())) {
+                // Refusing a second member on one linked pair is what makes the
+                // backward direction a function: it is the same refusal the
+                // forward direction needs, and it now owns the map it guards.
+                if backward
+                    .insert(
+                        (entry.runtime.clone(), runtime.clone()),
+                        entry.member.clone(),
+                    )
+                    .is_some()
+                {
                     return Err(GenerateError::Input(format!(
                         "the client mapping maps two members of {class} onto {} {}",
                         entry.runtime, runtime
@@ -240,7 +282,8 @@ impl Proguard {
                     )));
                 }
             }
-            members.insert(class, forward);
+            members.insert(class.clone(), forward);
+            linked.insert(class, backward);
         }
 
         // A mapping that names nothing translates nothing, and every lookup
@@ -257,6 +300,7 @@ impl Proguard {
             classes,
             mojang,
             members,
+            linked,
         })
     }
 
@@ -275,6 +319,18 @@ impl Proguard {
                 mojang.replace('/', ".")
             ))
         })
+    }
+
+    fn mojang_member<'a>(
+        &'a self,
+        mojang_class: &str,
+        member: &'a str,
+        descriptor: &str,
+    ) -> &'a str {
+        self.linked
+            .get(mojang_class)
+            .and_then(|declared| declared.get(&(member.to_owned(), descriptor.to_owned())))
+            .map_or(member, String::as_str)
     }
 
     fn runtime_member(
@@ -480,6 +536,74 @@ com.example.Plain -> com.example.Plain:
                 .runtime_member("com/example/Alpha", "grid", "[[I")
                 .expect("an array field is a member too"),
             ("g".to_owned(), "[[I".to_owned())
+        );
+    }
+
+    /// The direction a stub seed reads, on the pair a class file declares.
+    ///
+    /// `widen` is the case the forward direction cannot answer: a stub seed
+    /// carries no descriptor, so nothing could hand `runtime_member` the one it
+    /// is keyed on, and the linked descriptor is in the obfuscated name space
+    /// besides.
+    #[test]
+    fn a_linked_member_reads_back_as_the_name_the_seed_list_writes() {
+        let mapping = Mapping::Proguard(parsed());
+
+        assert_eq!(
+            mapping.mojang_member("com/example/Alpha", "a", "(C)Z"),
+            "allowed"
+        );
+        assert_eq!(
+            mapping.mojang_member("com/example/Alpha", "b", "(Lb$c;[I)Lb$c;"),
+            "widen"
+        );
+        assert_eq!(
+            mapping.mojang_member("com/example/Alpha", "f", "Ljava/util/regex/Pattern;"),
+            "PATTERN"
+        );
+        assert_eq!(
+            mapping.mojang_member("com/example/Alpha", "g", "[[I"),
+            "grid"
+        );
+    }
+
+    /// The descriptor is what tells one linked name from another, both ways.
+    #[test]
+    fn a_linked_name_the_class_reuses_is_told_apart_by_its_descriptor() {
+        let mapping = Mapping::Proguard(
+            Proguard::parse(
+                "com.example.Alpha -> a:\n    \
+                 5:5:java.lang.String getValue() -> a\n    \
+                 6:6:void setValue(java.lang.String) -> a\n",
+            )
+            .expect("one linked name on two descriptors is one mapping, not a collision"),
+        );
+
+        assert_eq!(
+            mapping.mojang_member("com/example/Alpha", "a", "()Ljava/lang/String;"),
+            "getValue"
+        );
+        assert_eq!(
+            mapping.mojang_member("com/example/Alpha", "a", "(Ljava/lang/String;)V"),
+            "setValue"
+        );
+    }
+
+    /// The leniency [`Mapping::mojang_class`] has, for the same reason: a mapped
+    /// class still declares members the published file names none of.
+    #[test]
+    fn a_linked_pair_no_mapping_carries_reads_as_itself() {
+        let mapping = Mapping::Proguard(parsed());
+
+        assert_eq!(mapping.mojang_member("com/example/Alpha", "a", "(I)Z"), "a");
+        assert_eq!(
+            mapping.mojang_member("com/example/Absent", "a", "(C)Z"),
+            "a"
+        );
+        assert_eq!(
+            Mapping::Identity.mojang_member("com/example/Alpha", "a", "(C)Z"),
+            "a",
+            "an identity mapping translates nothing, which is what hid this"
         );
     }
 

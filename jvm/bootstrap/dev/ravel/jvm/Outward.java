@@ -38,14 +38,14 @@ final class Outward {
     /** The wire contract the payload is read under. */
     private static final String VERSION = "1";
 
-    private static final String MINECRAFT = "net.minecraft.client.Minecraft";
-    private static final String IDENTIFIER = "net.minecraft.resources.Identifier";
-    private static final String SOUND_EVENT = "net.minecraft.sounds.SoundEvent";
-    private static final String SOUND_INSTANCE =
-            "net.minecraft.client.resources.sounds.SoundInstance";
-    private static final String SIMPLE_SOUND_INSTANCE =
-            "net.minecraft.client.resources.sounds.SimpleSoundInstance";
-    private static final String SOUND_MANAGER = "net.minecraft.client.sounds.SoundManager";
+    // Generated from the version's reviewed reflective surface, because this
+    // source is shared across versions and the names in it are not.
+    private static final String MINECRAFT = GameNames.MINECRAFT;
+    private static final String IDENTIFIER = GameNames.IDENTIFIER;
+    private static final String SOUND_EVENT = GameNames.SOUND_EVENT;
+    private static final String SOUND_INSTANCE = GameNames.SOUND_INSTANCE;
+    private static final String SIMPLE_SOUND_INSTANCE = GameNames.SIMPLE_SOUND_INSTANCE;
+    private static final String SOUND_MANAGER = GameNames.SOUND_MANAGER;
 
     /** Plays one sound a mod declared: its owner, its entry, and the pitch. */
     private static final String PLAY = "audio.play";

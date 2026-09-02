@@ -42,16 +42,17 @@ final class Content {
     private static final int BLOCK_FIELDS = 4;
     private static final int ITEM_FIELDS = 2;
 
-    private static final String REGISTRY = "net.minecraft.core.Registry";
-    private static final String BUILT_IN = "net.minecraft.core.registries.BuiltInRegistries";
-    private static final String REGISTRIES = "net.minecraft.core.registries.Registries";
-    private static final String IDENTIFIER = "net.minecraft.resources.Identifier";
-    private static final String RESOURCE_KEY = "net.minecraft.resources.ResourceKey";
-    private static final String BLOCK = "net.minecraft.world.level.block.Block";
-    private static final String BLOCK_PROPERTIES =
-            "net.minecraft.world.level.block.state.BlockBehaviour$Properties";
-    private static final String ITEM = "net.minecraft.world.item.Item";
-    private static final String ITEM_PROPERTIES = "net.minecraft.world.item.Item$Properties";
+    // Generated from the version's reviewed reflective surface, because this
+    // source is shared across versions and the names in it are not.
+    private static final String REGISTRY = GameNames.REGISTRY;
+    private static final String BUILT_IN = GameNames.BUILT_IN;
+    private static final String REGISTRIES = GameNames.REGISTRIES;
+    private static final String IDENTIFIER = GameNames.IDENTIFIER;
+    private static final String RESOURCE_KEY = GameNames.RESOURCE_KEY;
+    private static final String BLOCK = GameNames.BLOCK;
+    private static final String BLOCK_PROPERTIES = GameNames.BLOCK_PROPERTIES;
+    private static final String ITEM = GameNames.ITEM;
+    private static final String ITEM_PROPERTIES = GameNames.ITEM_PROPERTIES;
 
     private Content() {
     }

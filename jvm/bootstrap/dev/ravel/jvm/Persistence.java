@@ -43,14 +43,19 @@ final class Persistence {
      */
     private static final String SAVE_HOOK = "worldSavePersistence";
 
+    // Generated from the version's reviewed reflective surface, because this
+    // source is shared across versions and the names in it are not: the storage
+    // one version calls SavedDataStorage another calls DimensionDataStorage, and
+    // an obfuscated version calls it neither.
+
     /** The class whose transformation the marker above is about. */
-    private static final String SERVER = "net.minecraft.server.MinecraftServer";
+    private static final String SERVER = GameNames.SERVER;
 
-    /** The pinned 26.1.2 storage. There is no {@code DimensionDataStorage} here. */
-    private static final String STORAGE = "net.minecraft.world.level.storage.SavedDataStorage";
+    /** The world's aggregate store, whatever this version names it. */
+    private static final String STORAGE = GameNames.STORAGE;
 
-    private static final String LEVEL_RESOURCE = "net.minecraft.world.level.storage.LevelResource";
-    private static final String DATA_FIXERS = "net.minecraft.util.datafix.DataFixers";
+    private static final String LEVEL_RESOURCE = GameNames.LEVEL_RESOURCE;
+    private static final String DATA_FIXERS = GameNames.DATA_FIXERS;
     private static final String WORLD_DATA = "dev.ravel.jvm.screen.RavelWorldData";
 
     /** Tag byte at element zero of a save answer, payload in the remainder. */
@@ -201,7 +206,7 @@ final class Persistence {
         }
         try {
             Class<?> client = Class.forName(
-                    "net.minecraft.client.Minecraft", true, ClassLoader.getSystemClassLoader());
+                    GameNames.MINECRAFT, true, ClassLoader.getSystemClassLoader());
             Object instance = client.getMethod("getInstance").invoke(null);
             method(client, "setScreen", 1).invoke(instance, screen);
         } catch (ReflectiveOperationException | LinkageError | RuntimeException undrawable) {

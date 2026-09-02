@@ -403,7 +403,9 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_manifest_percentages(root, &mut violations);
     verify_void_limits(root, &mut violations);
     verify_harness_lifecycles(root, &mut violations);
-    verify_persistence_reflection(root, &inventories, &mut violations);
+    verify_persistence_reflection(root, &mut violations);
+    verify_hook_name_literals(root, &inventories, &mut violations);
+    verify_screen_jar_names(root, &mut violations);
     verify_guide_enumerations(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
@@ -1709,29 +1711,33 @@ const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
 const REFLECTION_FILE: &str = "reflection.toml";
 
 /// One tracked version's declared reflective surface, read beside its inventory.
-struct ReflectiveSurface<'a> {
-    /// The inventory whose hook targets the surface complements.
-    inventory: &'a HookInventory,
+struct ReflectiveSurface {
     /// The declaring file's repository-relative path, which the messages name.
     path: String,
-    /// Every class name the file declares, in the order it declares them.
-    classes: Vec<String>,
+    /// Every role the file declares, in the order it declares them.
+    roles: Vec<Reflected>,
+}
+
+/// One declared role and the Mojang name a reviewer reads it as.
+///
+/// The runtime name the same table carries is required to be there and is not
+/// kept: what it resolves to is decided by the version's mapping, which only the
+/// generator holds, so re-deriving it here would be the weaker of two copies of
+/// one rule. See [`verify_persistence_reflection`].
+struct Reflected {
+    /// The constant a shared source under [`AGENT_JAR_SOURCES`] spells.
+    name: String,
+    /// The Mojang name a reviewer reads.
+    class: String,
 }
 
 /// Every tracked version's declared reflective surface.
 ///
-/// Keyed on the tracked versions rather than on the inventories that could be
-/// read, because a version whose inventory is missing is a version whose
+/// Keyed on the tracked versions rather than on anything a version might be
+/// missing, because a version whose file cannot be read is a version whose
 /// reflective surface goes unchecked, and that is a fact about this check rather
-/// than about the missing file. Iterating the inventories made deleting one
-/// `hooks.toml` silently disarm the both-directions comparison below and the
-/// figure anchored to it, while reporting a single missing-file line that reads
-/// like it is about something else.
-fn reflective_surfaces<'a>(
-    root: &Path,
-    inventories: &'a [HookInventory],
-    violations: &mut Vec<String>,
-) -> Vec<ReflectiveSurface<'a>> {
+/// than about the missing file.
+fn reflective_surfaces(root: &Path, violations: &mut Vec<String>) -> Vec<ReflectiveSurface> {
     let versions = match tracked_versions(root) {
         Ok(versions) => versions,
         Err(error) => {
@@ -1743,98 +1749,130 @@ fn reflective_surfaces<'a>(
     let mut surfaces = Vec::new();
     for version in versions {
         let path = format!("{VERSION_DATA}/{version}/{REFLECTION_FILE}");
-        let Some(inventory) = inventories
-            .iter()
-            .find(|inventory| inventory.version == version)
-        else {
-            violations.push(format!(
-                "{path} is held to the hook targets {VERSION_DATA}/{version}/hooks.toml pins and \
-                 that inventory cannot be read, so this version's reflective surface is checked \
-                 by nothing"
-            ));
-            continue;
-        };
         match fs::read_to_string(root.join(&path)) {
-            Ok(text) => surfaces.push(ReflectiveSurface {
-                inventory,
-                classes: text
-                    .lines()
-                    .map(str::trim)
-                    .filter_map(|line| quoted_value(line, "class"))
-                    .map(str::to_owned)
-                    .collect(),
-                path,
-            }),
+            Ok(text) => match declared_roles(&text, &path) {
+                Ok(roles) => surfaces.push(ReflectiveSurface { path, roles }),
+                Err(violation) => violations.push(violation),
+            },
             Err(error) => violations.push(format!("cannot read {path}: {error}")),
         }
     }
     surfaces
 }
 
+/// Reads the `[[reflected]]` triples one declaring file carries.
+///
+/// A table missing any of the three is refused rather than skipped. Two of the
+/// names are what a reviewer and the JVM each read, and the third is what a
+/// shared source spells, so a table short of one is a role that resolves to
+/// nothing or a name held to nothing, and dropping it silently is how a surface
+/// goes unchecked while the count still looks right.
+fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
+    let mut roles: Vec<Reflected> = Vec::new();
+    let mut name = None;
+    let mut class = None;
+    let mut runtime = None;
+    let finish = |name: &mut Option<String>,
+                  class: &mut Option<String>,
+                  runtime: &mut Option<String>,
+                  roles: &mut Vec<Reflected>|
+     -> Result<(), String> {
+        match (name.take(), class.take(), runtime.take()) {
+            (None, None, None) => Ok(()),
+            (Some(name), Some(class), Some(_runtime)) => {
+                roles.push(Reflected { name, class });
+                Ok(())
+            }
+            (name, class, _) => Err(format!(
+                "{path} declares a reflected table without all three of name, class and runtime \
+                 ({}); a role that resolves to nothing is a name held to nothing",
+                name.or(class).unwrap_or_else(|| "unnamed".to_owned())
+            )),
+        }
+    };
+    for line in text.lines().map(str::trim) {
+        if line == "[[reflected]]" {
+            finish(&mut name, &mut class, &mut runtime, &mut roles)?;
+            continue;
+        }
+        if let Some(value) = quoted_value(line, "name") {
+            name = Some(value.to_owned());
+        } else if let Some(value) = quoted_value(line, "class") {
+            class = Some(value.to_owned());
+        } else if let Some(value) = quoted_value(line, "runtime") {
+            runtime = Some(value.to_owned());
+        }
+    }
+    finish(&mut name, &mut class, &mut runtime, &mut roles)?;
+    Ok(roles)
+}
+
 /// Pins the game class names the always-present agent jar's own sources carry.
 ///
 /// ADG-1 forbids that jar from *declaring* a game type and `build-agent.sh`
-/// enforces it by construction, compiling with no `-cp` at all. ADG-7's persistence
-/// adapter resolves the game classes it needs by name instead, and ADG-1's
-/// amendment said for a while that the agent jar "names no game type", which was
-/// false of the shipped jar. This holds the jar's game-class literals to a set that
-/// is either declared in a version's `reflection.toml` or declared as a hook target
-/// in the same version's `hooks.toml`, and it fails in both directions: an
-/// undeclared name in the jar, and a declared name no source resolves any more.
+/// enforces it by construction, compiling with no `-cp` at all. ADG-4's adapters
+/// resolve the game classes they need by name instead, and that name used to be a
+/// string literal in the shared source. It cannot be: `jvm/bootstrap` is one
+/// source tree serving every tracked version, so a literal there spells one
+/// version's names and is wrong about every other, and an obfuscated version
+/// makes it wrong at runtime while a Mojang-name presence check passes.
 ///
-/// It runs once per tracked version, against that version's two files and no
-/// other's. That is the point of the per-version split: a name that is right for
-/// one version does not excuse the same literal under another, so a second version
-/// whose spelling differs is refused here rather than accepted by borrowing the
-/// first version's list. What follows from that, and is a real obligation rather
-/// than an oversight, is that the sources under [`AGENT_JAR_SOURCES`] are shared
-/// while the names in them are not: tracking a version that renames one of these
-/// classes fails this check until the literal stops being a literal. That work
-/// belongs to the package that authors the second version, and it is better named
-/// by a failing gate than hidden by a list that is true of one version only.
+/// So the mechanism is generated rather than written, exactly as `HookTarget` is.
+/// Each version's `reflection.toml` declares a role, the Mojang name a reviewer
+/// reads, and the runtime name the JVM links; the generator renders the roles
+/// into `dev.ravel.jvm.GameNames` with the runtime names as values; and the
+/// shared sources spell `GameNames.<role>`. This holds that mechanism in three
+/// ways, and fails in both directions on the third:
 ///
-/// **What it cannot do, because the gap is the reason it exists.** It cannot detect
-/// a game-side rename. Both sides of the comparison are Ravel's own — the jar's
-/// literals and the version's declared set — and neither comes from the pinned
-/// client jar, so a
-/// class renamed in the next pinned version passes here and fails at runtime as a
-/// refused world load. Hook target classes are the exception and only because
-/// `hooks.toml` and `mappings.lock` are re-pinned against the jar; the reflective
-/// set is in no lock. Nor does this reach anything below a class: the member names
-/// [`method`] resolves by name and arity, the two `LevelResource` field constants,
-/// and the three-argument `SavedDataStorage` constructor are checked only by
-/// `jvm/harness/persistence/net/minecraft/**`, which are stand-ins Ravel wrote, so
-/// that harness asserts Ravel's stubs against Ravel's reflection.
+/// - A game-class literal anywhere under [`AGENT_JAR_SOURCES`] is a violation
+///   outright. There is no longer a declared set that excuses one, because a
+///   literal is the defect rather than a thing to be declared.
+/// - Every role a source spells is declared by every tracked version. A role one
+///   version answers and another does not is a source that compiles against one
+///   game and not the other.
+/// - Every declared role is spelled by some source. A role nothing reaches says
+///   the surface drifted rather than that it is pinned.
 ///
-/// Two further limits, stated because a gate that promises more than it enforces is
-/// the defect this one was written to close. It sees only the prefixes
-/// [`GAME_PACKAGES`] lists, so a game name under any other package escapes it
-/// entirely. And it reads only the tracked sources under [`AGENT_JAR_SOURCES`],
-/// while `build-agent.sh` compiles those *and* the generated hook tree: generated
-/// `Hook.java` carries an internal game name for every class it transforms, and
-/// nothing here reads it. That half is `hooks.toml`-derived by construction and so
-/// cannot drift from the pinned inventory without the generator drifting, which is
-/// why this function does not reach for a build output — but it means "the agent
-/// jar's game names" is wider than what this reads. A name assembled by
-/// concatenation, or held in a constant declared elsewhere, is outside it too.
+/// **What it cannot do, and who does it instead.** It does not re-derive a
+/// runtime name from a mapping. That is the generator's, in
+/// `ravel-minecraft-adapter`'s `mapping::verify_reflection`, which refuses a
+/// declared runtime name the version's mapping source does not resolve its
+/// Mojang name to and runs on every build that can read that mapping — always,
+/// under an unobfuscated source, because the identity needs no file. Writing the
+/// same rule here would be one rule in two places that can disagree, and this one
+/// would be the weaker copy: a build reads the version it selected, so only the
+/// generator holds the mapping at all, and for an unselected version the pinned
+/// material may not be on the machine.
+///
+/// It still cannot detect a game-side rename, for the reason it never could: both
+/// sides of what it compares are Ravel's own. Nor does it reach anything below a
+/// class — the member names [`method`] resolves by name and arity, the two
+/// `LevelResource` field constants, and the three-argument storage constructor are
+/// checked only by `jvm/harness/persistence/net/minecraft/**`, which are stand-ins
+/// Ravel wrote, so that harness asserts Ravel's stubs against Ravel's reflection.
+///
+/// Three further limits, stated because a gate that promises more than it
+/// enforces is the defect this one was written to close. It sees only the
+/// prefixes [`GAME_PACKAGES`] lists, so a game name under any other package
+/// escapes the literal half entirely. It reads one whole literal at a time, so
+/// both spellings of a written-out name are caught — [`game_class_literals`]
+/// normalises the internal `net/minecraft/…` form the transformer writes — while
+/// a name assembled by concatenation, formatted into a template, or held in a
+/// constant declared elsewhere is not a literal it can see at all. And it reads
+/// only the tracked sources under
+/// [`AGENT_JAR_SOURCES`], while `build-agent.sh` compiles those *and* the
+/// generated tree: generated `Hook.java` carries an internal game name for every
+/// class it transforms, and `GameNames` carries the runtime names themselves.
+/// Both halves are generated from pinned version data by construction, which is
+/// why this function does not reach for a build output.
 ///
 /// `evidence/m3/manifest.json` records the surface as a named deviation and
 /// `ROADMAP.md` records bringing it under `stubs.toml` and `mappings.lock` as owed
 /// work, which needs the re-pin ceremony against the pinned jar.
-fn verify_persistence_reflection(
-    root: &Path,
-    inventories: &[HookInventory],
-    violations: &mut Vec<String>,
-) {
-    let surfaces = reflective_surfaces(root, inventories, violations);
+fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
+    let surfaces = reflective_surfaces(root, violations);
 
-    let mut sources = Vec::new();
-    collect_files(&root.join(AGENT_JAR_SOURCES), &mut sources);
-    sources.retain(|path| {
-        path.extension()
-            .is_some_and(|extension| extension == "java")
-    });
-    sources.sort();
+    let sources = java_sources(&root.join(AGENT_JAR_SOURCES));
     if sources.is_empty() {
         violations.push(format!(
             "{AGENT_JAR_SOURCES} holds no Java source, so no game class the agent jar resolves is \
@@ -1843,7 +1881,7 @@ fn verify_persistence_reflection(
         return;
     }
 
-    let mut literals: Vec<(String, String)> = Vec::new();
+    let mut spelled: Vec<(String, String)> = Vec::new();
     for path in &sources {
         let relative = path
             .strip_prefix(root)
@@ -1851,54 +1889,261 @@ fn verify_persistence_reflection(
             .to_string_lossy()
             .replace('\\', "/");
         match fs::read_to_string(path) {
-            Ok(source) => literals.extend(
-                game_class_literals(&source)
-                    .into_iter()
-                    .map(|name| (relative.clone(), name)),
-            ),
+            Ok(source) => {
+                for name in game_class_literals(&source) {
+                    violations.push(format!(
+                        "{relative} spells the game class {name} as a literal; \
+                         {AGENT_JAR_SOURCES} is one source tree for every tracked version, so a \
+                         game name written here is one version's spelling asserted over all of \
+                         them and is the obfuscated name of none. Reach it as {GAME_NAMES}.<role> \
+                         and declare the role in each version's {REFLECTION_FILE}"
+                    ));
+                }
+                spelled.extend(
+                    generated_roles(&source)
+                        .into_iter()
+                        .map(|role| (relative.clone(), role)),
+                );
+            }
             Err(error) => violations.push(format!("cannot read {relative}: {error}")),
         }
     }
 
     for surface in &surfaces {
-        let pinned: Vec<&str> = surface
-            .inventory
-            .text
-            .lines()
-            .map(str::trim)
-            .filter_map(|line| quoted_value(line, "class"))
-            .collect();
         let declaring = &surface.path;
-        let pinning = &surface.inventory.path;
+        let declared: Vec<&str> = surface
+            .roles
+            .iter()
+            .map(|role| role.name.as_str())
+            .collect();
 
-        let mut resolved: Vec<&String> = Vec::new();
-        for (relative, name) in &literals {
-            if surface.classes.contains(name) {
-                resolved.push(name);
-                continue;
+        for (relative, role) in &spelled {
+            if !declared.contains(&role.as_str()) {
+                violations.push(format!(
+                    "{relative} resolves the game class {GAME_NAMES}.{role} and {declaring} \
+                     declares no such role; a role one version answers and another does not is a \
+                     shared source that compiles against one game and not the other"
+                ));
             }
-            if pinned.contains(&name.as_str()) {
-                continue;
-            }
-            violations.push(format!(
-                "{relative} names the game class {name}, which is neither in {declaring} nor a \
-                 hook target {pinning} pins; a game name in the always-present jar that no lock \
-                 and no declared set covers is coupled to the pinned version by nothing"
-            ));
         }
 
-        for declared in &surface.classes {
-            if !resolved.contains(&declared) {
+        for role in &surface.roles {
+            if !spelled.iter().any(|(_, spelled)| spelled == &role.name) {
                 violations.push(format!(
-                    "{declaring} declares {declared} and no source under {AGENT_JAR_SOURCES} \
-                     resolves it; a declared name nothing uses says the surface drifted rather \
-                     than that it is pinned"
+                    "{declaring} declares the role {} for {} and no source under \
+                     {AGENT_JAR_SOURCES} resolves it; a declared name nothing uses says the \
+                     surface drifted rather than that it is pinned",
+                    role.name, role.class
                 ));
             }
         }
     }
 
     verify_resolved_class_figure(root, &surfaces, violations);
+}
+
+/// Every Java source under one directory, in path order.
+fn java_sources(directory: &Path) -> Vec<PathBuf> {
+    let mut sources = Vec::new();
+    collect_files(directory, &mut sources);
+    sources.retain(|path| {
+        path.extension()
+            .is_some_and(|extension| extension == "java")
+    });
+    sources.sort();
+    sources
+}
+
+/// How a source under [`AGENT_JAR_SOURCES`] names one generated hook.
+const HOOK_NAME_MATCH: &str = "hookMethod().equals(\"";
+
+/// Holds the transformer's hook-name literals to the reviewed hook inventories.
+///
+/// `Transformer.java` decides which of ADG-7's seams a rewritten target is by
+/// comparing the generated hook name against a literal. Those literals used to be
+/// class and member names, and the class half was reached by
+/// [`verify_persistence_reflection`]; the names are per-version data now and the
+/// literals bind to nothing, so a version declaring the same seam under another
+/// id renders another hook name, every comparison is false, and the seam's
+/// transform is silently not applied to a jar that still builds.
+///
+/// A literal here has to name a hook every tracked version declares, for the
+/// same reason a role does: [`AGENT_JAR_SOURCES`] is one source tree for every
+/// version, so a seam one version answers and another does not is a transformer
+/// that installs against one game and not the other. The other direction is not a
+/// rule — most hooks are ordinary observers no seam matches on.
+///
+/// **What it cannot do.** It compares an id with a literal after dropping case
+/// and separators, rather than restating how the generator turns one into the
+/// other. That is deliberate: the camel-case rule lives in
+/// `ravel-minecraft-adapter`'s `render::java_name` and a copy here would be one
+/// rule in two places that can disagree. The cost is that it would not notice a
+/// generator that changed its capitalisation, which no source here would compile
+/// against either way. And it reads only the `equals` form above, so a comparison
+/// written any other way — `contains`, a switch, a name held in a constant — is
+/// outside it.
+fn verify_hook_name_literals(
+    root: &Path,
+    inventories: &[HookInventory],
+    violations: &mut Vec<String>,
+) {
+    let flattened = |name: &str| -> String {
+        name.chars()
+            .filter(char::is_ascii_alphanumeric)
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+
+    for path in java_sources(&root.join(AGENT_JAR_SOURCES)) {
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        // The literal sweep in `verify_persistence_reflection` reports an
+        // unreadable source already, and one file cannot be two violations.
+        let Ok(source) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let mut rest = source.as_str();
+        while let Some(at) = rest.find(HOOK_NAME_MATCH) {
+            rest = &rest[at + HOOK_NAME_MATCH.len()..];
+            let Some((literal, tail)) = rest.split_once('"') else {
+                break;
+            };
+            rest = tail;
+            for inventory in inventories {
+                if !inventory
+                    .text
+                    .lines()
+                    .filter_map(|line| quoted_value(line, "id"))
+                    .any(|id| flattened(id) == flattened(literal))
+                {
+                    violations.push(format!(
+                        "{relative} matches the generated hook {literal} and {} declares no hook \
+                         it is rendered from; the hook names are per-version data, so a seam one \
+                         version declares under another id renders another name here, every \
+                         comparison is false, and the transform is silently not applied",
+                        inventory.path
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// The sources compiled into the Ravel-owned screen jar.
+const SCREEN_JAR_SOURCES: &str = "jvm/screen/src";
+
+/// Refuses an obfuscated version while the screen jar still imports game types.
+///
+/// The screen sources `extend` the game's own classes and import them by their
+/// Mojang names, and `stubs.rs` emits the stub tree they compile against in that
+/// same name space. So those imports become `net/minecraft/…` constant-pool
+/// entries: under an unobfuscated version they are the names the JVM links, and
+/// under an obfuscated one they are the names of nothing and the screen jar links
+/// against a game that is not there. `GameNames` does not reach them — a
+/// compile-time reference cannot be replaced by a runtime string the way a
+/// `Class.forName` can — so closing it means deciding where Ravel-owned screens
+/// live, which is an ADG-6 question rather than an edit.
+///
+/// This does not close it. It refuses to let it be inherited silently: the first
+/// tracked version declaring `official-proguard-mappings` fails here, naming the
+/// decision, instead of producing a green gate and a screen jar that links
+/// nothing.
+///
+/// **What it cannot do.** It reads `import` lines, so a game type named by its
+/// fully qualified name inside a declaration escapes it, as does one reached
+/// through a stub that imports it on the screen's behalf. And it sees only the
+/// prefixes [`GAME_PACKAGES`] lists.
+fn verify_screen_jar_names(root: &Path, violations: &mut Vec<String>) {
+    let versions = match tracked_versions(root) {
+        Ok(versions) => versions,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+
+    let mut imported = Vec::new();
+    for path in java_sources(&root.join(SCREEN_JAR_SOURCES)) {
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let Ok(source) = fs::read_to_string(&path) else {
+            violations.push(format!("cannot read {relative}"));
+            continue;
+        };
+        for line in source.lines() {
+            let Some(name) = line
+                .trim()
+                .strip_prefix("import ")
+                .and_then(|rest| rest.trim_end_matches(';').split_whitespace().next_back())
+            else {
+                continue;
+            };
+            if GAME_PACKAGES
+                .iter()
+                .any(|package| name.starts_with(package))
+            {
+                imported.push((relative.clone(), name.to_owned()));
+            }
+        }
+    }
+    if imported.is_empty() {
+        return;
+    }
+
+    for version in versions {
+        let relative = format!("{VERSION_DATA}/{version}/adapter.toml");
+        let Ok(text) = fs::read_to_string(root.join(&relative)) else {
+            continue;
+        };
+        if !text
+            .lines()
+            .filter_map(|line| quoted_value(line, "mappingSource"))
+            .any(|source| source == OBFUSCATED_SOURCE)
+        {
+            continue;
+        }
+        let (source, name) = &imported[0];
+        violations.push(format!(
+            "{relative} declares {OBFUSCATED_SOURCE} while {SCREEN_JAR_SOURCES} still imports game \
+             types by their Mojang names ({source} imports {name}, and {} such imports are \
+             tracked). The stub tree those sources compile against is emitted in the Mojang name \
+             space, so the screen jar would carry names that version links nothing under. Decide \
+             where Ravel-owned screens live before a version that obfuscates them lands",
+            imported.len()
+        ));
+    }
+}
+
+/// The mapping source under which the game declares none of its reviewed names.
+const OBFUSCATED_SOURCE: &str = "official-proguard-mappings";
+
+/// The generated Java class the shared adapters read their game names out of.
+const GAME_NAMES: &str = "GameNames";
+
+/// Every role a source reaches through the generated class.
+fn generated_roles(source: &str) -> Vec<String> {
+    let mut roles = Vec::new();
+    let mut rest = source;
+    let anchor = format!("{GAME_NAMES}.");
+    while let Some(index) = rest.find(&anchor) {
+        let after = &rest[index + anchor.len()..];
+        let end = after
+            .find(|character: char| !character.is_ascii_uppercase() && character != '_')
+            .unwrap_or(after.len());
+        if end > 0 {
+            roles.push(after[..end].to_owned());
+        }
+        rest = &after[end..];
+    }
+    roles.sort();
+    roles.dedup();
+    roles
 }
 
 /// The record that states in prose how large the reflective surface is.
@@ -1953,7 +2198,7 @@ fn verify_resolved_class_figure(
     let mut declaring: BTreeMap<usize, Vec<&str>> = BTreeMap::new();
     for surface in surfaces {
         declaring
-            .entry(surface.classes.len())
+            .entry(surface.roles.len())
             .or_default()
             .push(surface.path.as_str());
     }
@@ -2177,9 +2422,12 @@ fn stated_variants(document: &str, name: &str) -> BTreeSet<String> {
 /// Two M3 repair passes each swept for the sentence "names no game type" by hand
 /// and each left sites behind, and a third pass found more. A grep finds them all
 /// at once, which is why this is a gate rather than a fourth sweep. The claim is
-/// false of two shipped artifacts: `jvm/bootstrap/dev/ravel/jvm/Transformer.java`
-/// holds game class names as string constants and compares against them, and
-/// generated `Hook.java` carries the internal name of every class it transforms.
+/// false of two shipped artifacts, both of them generated: `Hook.java` carries
+/// the internal name of every class it transforms, and `GameNames.java` is
+/// nothing but game class names, one for every role the version's reflective
+/// surface declares. The tracked sources carry none of them, which is what
+/// [`verify_persistence_reflection`] holds them to; the jar they compile into
+/// carries both generated classes.
 /// What holds is narrower and enforced by construction — the jar *declares* no
 /// game type, so `jvm/build/build-agent.sh` compiles it with no `-cp` at all and
 /// needs no licensed fixture, and a source declaring one would fail to compile.
@@ -2246,9 +2494,10 @@ fn verify_game_type_claims(root: &Path, paths: &[String], violations: &mut Vec<S
 ///
 /// Literals only, and one line at a time, so a game class named in a doc comment is
 /// read as the prose it is and an unpaired quotation mark in prose cannot shift the
-/// parity of the rest of the file. Both spellings count: the transformer writes hook
-/// targets in internal `net/minecraft/…` form and the persistence adapter writes
-/// binary `net.minecraft.…` form, and they are the same coupling.
+/// parity of the rest of the file. Both spellings count: a class file names a class
+/// in internal `net/minecraft/…` form and `Class.forName` takes the binary
+/// `net.minecraft.…` form, and a source writing either one has written the same
+/// coupling.
 fn game_class_literals(source: &str) -> Vec<String> {
     source
         .lines()
@@ -7465,21 +7714,21 @@ mod tests {
     use super::{
         AGENT_JAR_SOURCES, CRATE_NAMES, CampaignInventory, DECISION_RECORDS, EXAMPLE_NAMES,
         GATE_DEFINITION, GUIDE_DIRECTORY, HOOK_DOCUMENT, HookCounts, JVM_ENTRY_DECISION,
-        MILESTONE_MANIFESTS, NETWORK_SOURCE, REFLECTION_FILE, SWEPT_SCOPE, TEST_MOD_NAMES,
-        VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE,
+        MILESTONE_MANIFESTS, NETWORK_SOURCE, REFLECTION_FILE, SCREEN_JAR_SOURCES, SWEPT_SCOPE,
+        TEST_MOD_NAMES, VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE,
         campaign_document_violations, change_mismatch, declared_hook_names,
         declares_unsafe_prohibition, denied_hook_names, documented_versions, game_class_literals,
         hook_counts, hook_document_violations, hook_inventories, numbers_before,
         pinned_commit_mismatch, redacted_path, reflective_surfaces, required_scaffold_paths,
         round_count_restatements, verify_campaign_inventory, verify_decision_hook_claims,
         verify_evidence_records, verify_experiment_fence, verify_guide_enumerations,
-        verify_harness_lifecycles, verify_hook_inventory_document, verify_ignored_boundaries,
-        verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface,
-        verify_manifest_percentages, verify_milestone, verify_persistence_reflection,
-        verify_resolved_class_figure, verify_review_round_counts, verify_scaffold, verify_spikes,
-        verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
-        verify_version_boundary, verify_version_directories, verify_void_limits,
-        version_class_names, visible_commit,
+        verify_harness_lifecycles, verify_hook_inventory_document, verify_hook_name_literals,
+        verify_ignored_boundaries, verify_m4_gate_figures, verify_m4_process_matrix,
+        verify_m4_surface, verify_manifest_percentages, verify_milestone,
+        verify_persistence_reflection, verify_resolved_class_figure, verify_review_round_counts,
+        verify_scaffold, verify_screen_jar_names, verify_spikes, verify_testkit_fence,
+        verify_tracked_contents, verify_tracked_paths, verify_version_boundary,
+        verify_version_directories, verify_void_limits, version_class_names, visible_commit,
     };
     use super::{
         M6_ARITHMETIC, M6_CARRIED_FIGURES, M6_DECISIONS, M7_ARITHMETIC, M7_CARRIED_FIGURES,
@@ -9262,7 +9511,7 @@ mod tests {
             .join("../..");
         let mut violations = Vec::new();
 
-        verify_persistence_reflection(&root, &hook_inventories(&root), &mut violations);
+        verify_persistence_reflection(&root, &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
     }
@@ -9287,6 +9536,11 @@ mod tests {
                     "schemaVersion = 1\nminecraft = \"{version}\"\n\n[[hook]]\nid = \
                      \"level.tick\"\nkind = \"instance-method\"\nmember = \
                      \"tick\"\ndescriptor = \"()V\"\n"
+                ),
+                REFLECTION_FILE => format!(
+                    "schemaVersion = 1\nminecraft = \"{version}\"\n\n[[reflected]]\nname = \
+                     \"ONE\"\nclass = \"net.minecraft.client.One\"\nruntime = \
+                     \"net.minecraft.client.One\"\n"
                 ),
                 _ => format!("schemaVersion = 1\nminecraft = \"{version}\"\n"),
             };
@@ -9452,65 +9706,236 @@ mod tests {
         assert_eq!(named.into_iter().collect::<Vec<_>>(), ["26.1.2"]);
     }
 
-    /// The reason `AGENT_REFLECTED_CLASSES` could not stay one global list: the
-    /// class 26.1.2 calls `Identifier` is `ResourceLocation` at 1.21.1, so a name
-    /// that is right for one version must not satisfy the other.
-    #[test]
-    fn a_reflected_name_from_another_version_does_not_satisfy_this_one() {
-        let root = temporary_root("version-reflection");
+    /// Writes one agent source and one figure, so a reflection test asks only
+    /// about the surface.
+    fn reflection_root(label: &str, source: &str, figure: usize) -> PathBuf {
+        let root = temporary_root(label);
         version_directory(&root, "26.1.2", &[]);
-        fs::write(
-            root.join(format!("{VERSION_DATA}/26.1.2/{REFLECTION_FILE}")),
-            "schemaVersion = 1\n\n[[reflected]]\nclass = \"net.minecraft.resources.ResourceLocation\"\n",
-        )
-        .expect("version data should be writable");
         let sources = root.join(AGENT_JAR_SOURCES).join("dev/ravel/jvm");
         fs::create_dir_all(&sources).expect("agent sources should be creatable");
-        fs::write(
-            sources.join("Content.java"),
-            "String identifier = \"net.minecraft.resources.Identifier\";\n",
-        )
-        .expect("agent source should be writable");
+        fs::write(sources.join("Content.java"), source).expect("agent source should be writable");
         fs::create_dir_all(root.join(DECISION_RECORDS)).expect("records should be creatable");
         fs::write(
             root.join(JVM_ENTRY_DECISION),
-            "The adapters resolve 1 classes by name.\n",
+            format!("The adapters resolve {figure} classes by name.\n"),
         )
         .expect("record should be writable");
+        root
+    }
+
+    /// The defect the generated names close: `jvm/bootstrap` is one source tree
+    /// for every tracked version, so a game name written there is one version's
+    /// spelling asserted over all of them and is the obfuscated name of none.
+    #[test]
+    fn a_hand_written_game_literal_in_the_agent_sources_is_refused() {
+        let root = reflection_root(
+            "version-reflection-literal",
+            "String identifier = \"net.minecraft.resources.Identifier\";\n    String one = \
+             GameNames.ONE;\n",
+            1,
+        );
         let mut violations = Vec::new();
 
-        verify_persistence_reflection(&root, &hook_inventories(&root), &mut violations);
+        verify_persistence_reflection(&root, &mut violations);
 
-        assert_eq!(violations.len(), 2, "{violations:?}");
+        assert_eq!(violations.len(), 1, "{violations:?}");
         assert!(
-            violations[0].contains("names the game class net.minecraft.resources.Identifier"),
-            "{violations:?}"
-        );
-        assert!(
-            violations[1].contains("declares net.minecraft.resources.ResourceLocation"),
+            violations[0]
+                .contains("spells the game class net.minecraft.resources.Identifier as a literal"),
             "{violations:?}"
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
-    /// Deleting one `hooks.toml` used to disarm the reflection comparison and the
-    /// figure anchored to it while reporting one missing-file line, because the
-    /// surfaces were keyed on the inventories that could be read rather than on
-    /// the versions that are tracked.
+    /// A role one version answers and another does not is a shared source that
+    /// compiles against one game and not the other, which is what a per-version
+    /// declared set has to catch.
     #[test]
-    fn a_version_without_an_inventory_disarms_no_reflection_check_silently() {
-        let root = temporary_root("version-reflection-missing");
-        version_directory(&root, "26.1.2", &["hooks.toml"]);
+    fn a_role_a_version_does_not_declare_is_refused() {
+        let root = reflection_root(
+            "version-reflection-role",
+            "String one = GameNames.ONE;\n    String other = GameNames.STORAGE;\n",
+            1,
+        );
         let mut violations = Vec::new();
 
-        verify_persistence_reflection(&root, &hook_inventories(&root), &mut violations);
+        verify_persistence_reflection(&root, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("resolves the game class GameNames.STORAGE"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The other direction: a declared role nothing reaches says the surface
+    /// drifted rather than that it is pinned.
+    #[test]
+    fn a_declared_role_no_source_resolves_is_refused() {
+        let root = reflection_root("version-reflection-unused", "String nothing = null;\n", 1);
+        let mut violations = Vec::new();
+
+        verify_persistence_reflection(&root, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("declares the role ONE for net.minecraft.client.One"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A table short of one of its three names is a role that resolves to nothing
+    /// or a name held to nothing, so it is refused rather than dropped from the
+    /// set — dropping it silently is how a surface goes unchecked while the count
+    /// still looks right.
+    #[test]
+    fn a_reflected_table_missing_a_name_is_refused_rather_than_skipped() {
+        let root = reflection_root(
+            "version-reflection-partial",
+            "String one = GameNames.ONE;\n",
+            1,
+        );
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/{REFLECTION_FILE}")),
+            "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[[reflected]]\nname = \"ONE\"\nclass = \
+             \"net.minecraft.client.One\"\n",
+        )
+        .expect("version data should be writable");
+        let mut violations = Vec::new();
+
+        verify_persistence_reflection(&root, &mut violations);
+
+        assert!(
+            violations.iter().any(|violation| violation.contains(
+                "declares a reflected table without all three of name, class and \
+                           runtime"
+            )),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Deleting one `reflection.toml` used to be reported as a missing-file line
+    /// that reads like it is about something else, while the both-directions
+    /// comparison and the figure anchored to it went quiet.
+    #[test]
+    fn a_version_without_a_reflection_file_disarms_no_check_silently() {
+        let root = temporary_root("version-reflection-missing");
+        version_directory(&root, "26.1.2", &[REFLECTION_FILE]);
+        let mut violations = Vec::new();
+
+        verify_persistence_reflection(&root, &mut violations);
 
         assert!(
             violations.iter().any(|violation| violation
-                .contains("minecraft/versions/26.1.2/reflection.toml is held to the hook targets")
-                && violation.contains("checked by nothing")),
+                .contains("cannot read minecraft/versions/26.1.2/reflection.toml")),
             "{violations:?}"
         );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The transformer decides which of ADG-7's seams a rewritten target is by
+    /// comparing the generated hook name against a literal, and nothing bound
+    /// those literals to a hook id: a version declaring the seam under another id
+    /// renders another name, the comparison is false for every target, and the
+    /// transform is silently not applied to a jar that still builds.
+    #[test]
+    fn a_hook_name_no_version_declares_is_refused() {
+        let root = reflection_root(
+            "version-hook-name",
+            "boolean seam = target.hookMethod().equals(\"worldSave\");\n    String one = \
+             GameNames.ONE;\n",
+            1,
+        );
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+
+        verify_hook_name_literals(&root, &inventories, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("matches the generated hook worldSave"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The same literal against the id it is rendered from, which is the whole
+    /// coupling: the comparison holds across the separators the generator drops.
+    #[test]
+    fn a_hook_name_every_version_declares_is_accepted() {
+        let root = reflection_root(
+            "version-hook-name-declared",
+            "boolean seam = target.hookMethod().equals(\"levelTick\");\n    String one = \
+             GameNames.ONE;\n",
+            1,
+        );
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+
+        verify_hook_name_literals(&root, &inventories, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Writes one screen source and one version declaring a mapping source.
+    fn screen_root(label: &str, source: &str, mapping_source: &str) -> PathBuf {
+        let root = temporary_root(label);
+        version_directory(&root, "26.1.2", &[]);
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml")),
+            format!(
+                "schemaVersion = 1\nminecraft = \"26.1.2\"\nmappingSource = \
+                 \"{mapping_source}\"\n"
+            ),
+        )
+        .expect("version data should be writable");
+        let sources = root.join(SCREEN_JAR_SOURCES).join("dev/ravel/jvm/screen");
+        fs::create_dir_all(&sources).expect("screen sources should be creatable");
+        fs::write(sources.join("Content.java"), source).expect("screen source should be writable");
+        root
+    }
+
+    /// The screen sources import game types by their Mojang names and compile
+    /// against a stub tree emitted in that same name space, so under a version
+    /// that obfuscates them the screen jar would link nothing. Closing that is an
+    /// ADG-6 decision; refusing to let it be inherited silently is this.
+    #[test]
+    fn an_obfuscated_version_beside_a_screen_jar_that_imports_game_types_is_refused() {
+        let root = screen_root(
+            "screen-obfuscated",
+            "import net.minecraft.client.One;\n",
+            "official-proguard-mappings",
+        );
+        let mut violations = Vec::new();
+
+        verify_screen_jar_names(&root, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("imports net.minecraft.client.One"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Under an unobfuscated version those imports are the names the JVM links,
+    /// which is why this is a conditional rather than a prohibition.
+    #[test]
+    fn an_unobfuscated_version_beside_the_same_screen_jar_is_accepted() {
+        let root = screen_root(
+            "screen-unobfuscated",
+            "import net.minecraft.client.One;\n",
+            "unobfuscated-class-files",
+        );
+        let mut violations = Vec::new();
+
+        verify_screen_jar_names(&root, &mut violations);
+
+        assert_eq!(violations, Vec::<String>::new());
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
@@ -9523,12 +9948,14 @@ mod tests {
         for (version, declarations) in [
             (
                 "26.1.2",
-                "[[reflected]]\nclass = \"net.minecraft.client.One\"\n",
+                "[[reflected]]\nname = \"ONE\"\nclass = \"net.minecraft.client.One\"\nruntime = \
+                 \"net.minecraft.client.One\"\n",
             ),
             (
                 "99.0.0-synthetic",
-                "[[reflected]]\nclass = \"net.minecraft.client.One\"\n\n[[reflected]]\nclass = \
-                 \"net.minecraft.client.Two\"\n",
+                "[[reflected]]\nname = \"ONE\"\nclass = \"net.minecraft.client.One\"\nruntime = \
+                 \"net.minecraft.client.One\"\n\n[[reflected]]\nname = \"TWO\"\nclass = \
+                 \"net.minecraft.client.Two\"\nruntime = \"net.minecraft.client.Two\"\n",
             ),
         ] {
             version_directory(&root, version, &[]);
@@ -9544,10 +9971,9 @@ mod tests {
             "The adapters resolve 1 classes by name, and 3 classes by name at the other.\n",
         )
         .expect("record should be writable");
-        let inventories = hook_inventories(&root);
         let mut violations = Vec::new();
 
-        let surfaces = reflective_surfaces(&root, &inventories, &mut violations);
+        let surfaces = reflective_surfaces(&root, &mut violations);
         verify_resolved_class_figure(&root, &surfaces, &mut violations);
 
         assert_eq!(violations.len(), 2, "{violations:?}");

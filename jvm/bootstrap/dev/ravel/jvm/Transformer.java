@@ -313,8 +313,7 @@ public final class Transformer implements ClassFileTransformer {
      * second call at the same seam instead of a widened hook contract.
      */
     private static boolean isWorldOpen(HookTarget target) {
-        return target.internalClass().equals("net/minecraft/client/Minecraft")
-                && target.member().equals("doWorldLoad");
+        return target.hookMethod().equals("worldOpenPersistence");
     }
 
     /**
@@ -327,8 +326,7 @@ public final class Transformer implements ClassFileTransformer {
      * screen it adds a button to.
      */
     private static boolean isWorldSave(HookTarget target) {
-        return target.internalClass().equals("net/minecraft/server/MinecraftServer")
-                && target.member().equals("saveAllChunks");
+        return target.hookMethod().equals("worldSavePersistence");
     }
 
     /**
@@ -340,27 +338,23 @@ public final class Transformer implements ClassFileTransformer {
      * front of the game's own.
      */
     private static boolean isBuiltInFreeze(HookTarget target) {
-        return target.internalClass().equals("net/minecraft/core/registries/BuiltInRegistries")
-                && target.member().equals("freeze");
+        return target.hookMethod().equals("registryBuiltInFreeze");
     }
 
     /**
      * The seam a queued action is performed at.
      *
-     * <p>The descriptor is checked as well as the name because {@code Minecraft}
-     * declares more than one tick, and the client frame one is a separate hook
-     * that this must not also fire from.
+     * <p>{@code Minecraft} declares more than one tick and the client frame one
+     * is a separate hook this must not also fire from. Naming the hook rather
+     * than the member tells them apart without a descriptor, because one id
+     * renders one hook name.
      */
     private static boolean isClientTick(HookTarget target) {
-        return target.internalClass().equals("net/minecraft/client/Minecraft")
-                && target.member().equals("tick")
-                && target.descriptor().equals("()V");
+        return target.hookMethod().equals("clientTick");
     }
 
     private static boolean isTitleMenu(HookTarget target) {
-        return target.internalClass().equals("net/minecraft/client/gui/screens/TitleScreen")
-                && target.member().equals("createNormalMenuOptions")
-                && target.descriptor().equals("(II)I");
+        return target.hookMethod().equals("screenTitleMenuOptions");
     }
 
     private static final class PrependTransform implements CodeTransform {

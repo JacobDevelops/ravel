@@ -13,6 +13,10 @@ rust-version.workspace = true
 # scheme with the same job and no borrow checker behind it.
 jni.workspace = true
 ravel-core.workspace = true
+# A pack.mcmeta is a JSON document, and the only alternative to a serialiser is a
+# hand-written escaper — which is what this replaced, after it turned out to
+# escape three characters and emit invalid JSON for the rest of the C0 range.
+serde_json.workspace = true
 
 [lints]
 workspace = true

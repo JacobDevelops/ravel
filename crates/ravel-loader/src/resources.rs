@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 
 use ravel_core::{FailureKind, LifecycleState, ModId, RelativePath, StructuredFailure};
@@ -66,7 +67,12 @@ pub fn open_resources(
             .map(|(owner, files)| (owner, files.files().iter().map(GeneratedFile::path))),
     );
 
-    Ok(Supplied { generated, set })
+    let at = generated
+        .iter()
+        .enumerate()
+        .map(|(index, (owner, _))| (owner.clone(), index))
+        .collect();
+    Ok(Supplied { generated, at, set })
 }
 
 /// Every file the admitted set supplies, layered, with the bytes behind it.
@@ -79,6 +85,14 @@ pub fn open_resources(
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Supplied {
     generated: Vec<(ModId, GeneratedData)>,
+    /// Where each owner sits in `generated`, so a lookup is not a walk.
+    ///
+    /// A pack is asked for the bytes of every path it writes, once per file, and
+    /// a set with a mod for every entry in a large pack made that a scan over
+    /// every mod per file. The order in `generated` is the resolved load order
+    /// and is the answer to a different question, so the index sits beside it
+    /// rather than replacing it.
+    at: BTreeMap<ModId, usize>,
     set: ResourceSet,
 }
 
@@ -104,8 +118,7 @@ impl Supplied {
     pub fn bytes(&self, path: &RelativePath) -> Option<&[u8]> {
         let supplier = self.set.supplier(path)?;
         self.generated
-            .iter()
-            .find(|(owner, _)| owner == supplier)
+            .get(*self.at.get(supplier)?)
             .and_then(|(_, files)| files.file(path))
             .map(GeneratedFile::bytes)
     }

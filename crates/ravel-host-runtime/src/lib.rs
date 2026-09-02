@@ -285,7 +285,7 @@ pub fn initialize(env: &mut jni::Env<'_>, members: Vec<Member>) -> Result<(), La
     // And offered to the player, once. A folder pack nobody enabled is a pack the
     // game finds and does not read, so the first launch that finds a settings file
     // puts the id in the list; after that the list is the player's.
-    seed_pack(&game_directory).map_err(LaunchError::Options)?;
+    let seeded = seed_pack(&game_directory).map_err(LaunchError::Options)?;
     // The data half is not written here. It belongs to a world, and no world is
     // open yet, so the set is installed for the crossing that knows which one.
     install_packs(resources);
@@ -296,7 +296,49 @@ pub fn initialize(env: &mut jni::Env<'_>, members: Vec<Member>) -> Result<(), La
     // failure here installs no runtime at all. What the report is for is the
     // pipeline that validates packages and orders a graph, which runs when a
     // pack is compiled and not in this process.
-    install(machine, mods, pre_world_report()).map_err(LaunchError::Install)
+    //
+    // It does carry a notice when the pack is written and switched off, because
+    // that is a launch where every model the mods registered is a placeholder and
+    // nothing else would say why.
+    let mut report = pre_world_report();
+    if let Some(notice) = pack_notice(&seeded) {
+        report.note(&notice);
+    }
+    install(machine, mods, report).map_err(LaunchError::Install)
+}
+
+/// What a player is told when their settings leave Ravel's pack switched off.
+///
+/// [`Seeded::Added`], [`Seeded::Present`] and [`Seeded::AlreadyOffered`] say
+/// nothing: in the first two the pack is on, and in the third it is off because
+/// the player turned it off, which is their decision and not a diagnostic.
+///
+/// The rest are launches where the pack was written, the mods registered their
+/// content, and either the game will show the missing-model placeholder for all
+/// of it or the player's own choice about the pack will not stick. Each says what
+/// happened and what can be done about it now, because none of them is worth a
+/// lost session and every one of them is invisible otherwise.
+fn pack_notice(seeded: &Seeded) -> Option<String> {
+    let ending = "Turn `ravel` on under Options, Resource Packs to use them now.";
+    match seeded {
+        Seeded::Added | Seeded::Present | Seeded::AlreadyOffered => None,
+        Seeded::NoSettings => Some(format!(
+            "Ravel wrote the resource pack its mods supply and could not switch it on, because \
+             this instance has no `options.txt` yet. It will be switched on the next time the \
+             game starts. {ending}"
+        )),
+        Seeded::Unrecorded(reason) => Some(format!(
+            "Ravel could not keep its record of having offered this instance the resource pack \
+             its mods supply, so it will offer again the next time the game starts — turning the \
+             pack off may not stick until this is fixed. The reason was: {reason}"
+        )),
+        Seeded::Unreadable(line) => Some(format!(
+            "Ravel wrote the resource pack its mods supply and could not switch it on, because \
+             the `resourcePacks` list in `options.txt` is not a list of pack names and was left \
+             exactly as it is. It reads `{line}`. Repairing or deleting that line lets the next \
+             launch switch the pack on. {ending}"
+        )),
+    }
 }
 
 /// Writes the asset half of a composed set as a pack in `game_directory`.
@@ -538,6 +580,58 @@ mod tests {
         );
         let mod_id = id.parse().expect("a legal mod id");
         (document, mod_id, Arc::new(Mutex::new(Vec::new())))
+    }
+
+    /// Which outcomes a player hears about, and which are none of their business.
+    ///
+    /// The two that produce a notice are the launches where the pack exists, the
+    /// content is registered and every model of it renders as the placeholder.
+    /// The three that do not are a pack that is on and a player who turned it
+    /// off, and telling somebody about a choice they made is noise.
+    #[test]
+    fn only_a_launch_whose_pack_is_off_by_accident_tells_the_player_anything() {
+        use super::{Seeded, pack_notice, pre_world_report};
+
+        for silent in [Seeded::Added, Seeded::Present, Seeded::AlreadyOffered] {
+            assert_eq!(pack_notice(&silent), None, "{silent:?}");
+        }
+
+        for loud in [
+            Seeded::NoSettings,
+            Seeded::Unreadable("[unclosed".to_owned()),
+            Seeded::Unrecorded("permission denied".to_owned()),
+        ] {
+            let notice = pack_notice(&loud).unwrap_or_else(|| panic!("{loud:?} is not silent"));
+            assert!(
+                notice.contains("Options, Resource Packs") || notice.contains("offer again"),
+                "a notice a player cannot act on is noise: {notice}"
+            );
+        }
+        assert!(
+            pack_notice(&Seeded::NoSettings)
+                .expect("this one is loud")
+                .contains("options.txt")
+        );
+
+        // Through a real report, because a notice nothing carries is a string.
+        let mut report = pre_world_report();
+        report.note(&pack_notice(&Seeded::NoSettings).expect("this one is loud"));
+        assert_eq!(report.notices().len(), 1);
+        assert!(
+            report.world_access().is_ok(),
+            "a pack that is off withholds nobody's world"
+        );
+    }
+
+    /// The unreadable line reaches the player, because it is what they have to fix.
+    #[test]
+    fn the_unreadable_settings_line_is_quoted_in_what_the_player_is_told() {
+        use super::{Seeded, pack_notice};
+
+        let notice = pack_notice(&Seeded::Unreadable("[1,2]".to_owned()))
+            .expect("an unreadable list is not silent");
+
+        assert!(notice.contains("`[1,2]`"), "{notice}");
     }
 
     /// The property this crate exists to hold: a declaration decides what runs.

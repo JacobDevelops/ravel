@@ -35,6 +35,8 @@ pub enum Seeded {
     NoSettings,
     /// The list is not a list of names, so nothing was rewritten.
     Unreadable(String),
+    /// The pack was offered and the record of that could not be kept.
+    Unrecorded(String),
 }
 
 /// Adds Ravel's pack to a player's enabled list, once, and never again.
@@ -69,11 +71,19 @@ pub enum Seeded {
 /// Returns an [`OptionsError`] when a settings file that exists cannot be read,
 /// when it is not UTF-8, or when the rewrite cannot be put in place. Those are a
 /// broken instance rather than an unexpected shape, and the launch is failed on
-/// them.
+/// them; the rewrite is staged and renamed, so a failed one has edited nothing.
+///
+/// Reading or writing Ravel's own record of the offer is never one of them. See
+/// [`record_offer`].
 pub fn seed_pack(game_directory: &Path) -> Result<Seeded, OptionsError> {
     let record = game_directory.join(RAVEL).join(RECORD);
-    if offered(&record)? {
-        return Ok(Seeded::AlreadyOffered);
+    match offered(&record) {
+        Ok(true) => return Ok(Seeded::AlreadyOffered),
+        Ok(false) => {}
+        // A record that cannot be read is not a reason to refuse a launch, and it
+        // is not a reason to edit somebody's settings either. Nothing is touched
+        // and the player is told why the pack is not on.
+        Err(refused) => return Ok(Seeded::Unrecorded(refused.to_string())),
     }
 
     let settings = game_directory.join(OPTIONS);
@@ -89,16 +99,14 @@ pub fn seed_pack(game_directory: &Path) -> Result<Seeded, OptionsError> {
         let ending = if text.ends_with('\n') { "" } else { "\n" };
         let appended = format!("{text}{ending}{KEY}{}\n", list(&[PACK_ID.to_owned()]));
         replace(&settings, &appended)?;
-        write_record(&record)?;
-        return Ok(Seeded::Added);
+        return Ok(record_offer(&record, Seeded::Added));
     };
 
     let Some(mut enabled) = parse(line.value) else {
         return Ok(Seeded::Unreadable(line.value.to_owned()));
     };
     if enabled.iter().any(|name| name == PACK_ID) {
-        write_record(&record)?;
-        return Ok(Seeded::Present);
+        return Ok(record_offer(&record, Seeded::Present));
     }
 
     enabled.push(PACK_ID.to_owned());
@@ -108,8 +116,29 @@ pub fn seed_pack(game_directory: &Path) -> Result<Seeded, OptionsError> {
     rewritten.push_str(&list(&enabled));
     rewritten.push_str(&text[line.end..]);
     replace(&settings, &rewritten)?;
-    write_record(&record)?;
-    Ok(Seeded::Added)
+    Ok(record_offer(&record, Seeded::Added))
+}
+
+/// Records that the offer was made, and answers `made` when it could be.
+///
+/// **A record that cannot be written never fails a launch.** It used to, and the
+/// failure was permanent in the worst way: the settings had already been edited
+/// when the record was attempted, so the launch aborted with the pack switched on
+/// and no record of it, and every launch after that reached the same line and
+/// aborted the same way. An instance whose `ravel` directory a player cannot write
+/// to would never have started again.
+///
+/// The record is still written after the settings rather than before them. Before
+/// would leave a record of an offer that a failed settings write never made, and
+/// the pack would then never be switched on at all. After, the worst case is that
+/// the offer is made again next launch, which changes nothing while the pack is in
+/// the list — and the notice says so, because a player who turns the pack off is
+/// owed the warning that it may come back.
+fn record_offer(record: &Path, made: Seeded) -> Seeded {
+    match write_record(record) {
+        Ok(()) => made,
+        Err(refused) => Seeded::Unrecorded(refused.to_string()),
+    }
 }
 
 /// Where one key's value sits in the settings text.
@@ -452,6 +481,80 @@ mod tests {
             seed_pack(&game).expect("a readable instance"),
             Seeded::AlreadyOffered
         );
+        let _ = std::fs::remove_dir_all(game);
+    }
+
+    /// A record Ravel cannot keep never fails a launch, and never fails it twice.
+    ///
+    /// This is the shape the first version had: the settings were edited and the
+    /// record written after, and a record that could not be written aborted the
+    /// launch — with the pack already switched on, so every launch after it
+    /// reached the same line and aborted identically. An instance whose `ravel`
+    /// directory had turned read-only would never have started again.
+    ///
+    /// Two calls, because one proves nothing about a failure that repeats.
+    #[test]
+    fn a_record_that_cannot_be_kept_leaves_the_launch_running_and_does_so_every_time() {
+        let game = directory("unrecordable");
+        write_settings(&game, "resourcePacks:[]\n");
+        // A file where Ravel's own directory belongs, so nothing under it can be
+        // read or written and the failure needs no permission bits to arrange.
+        std::fs::write(game.join(RAVEL), b"not a directory").expect("a writable file");
+
+        for attempt in 1..=2 {
+            let outcome = seed_pack(&game).expect("a record Ravel cannot keep is not a refusal");
+
+            assert!(
+                matches!(outcome, Seeded::Unrecorded(_)),
+                "attempt {attempt}: {outcome:?}"
+            );
+            assert_eq!(
+                settings(&game),
+                "resourcePacks:[]\n",
+                "attempt {attempt}: a record that cannot be kept edits nothing"
+            );
+        }
+        let _ = std::fs::remove_dir_all(game);
+    }
+
+    /// The half of the same rule where the settings were already edited.
+    ///
+    /// The record is written after the settings, so this is the case the old code
+    /// aborted on. It needs the directory to exist and refuse a write, which is
+    /// permission bits and nothing else — and the probe below is what stops the
+    /// test passing on a system that ignores them.
+    #[cfg(unix)]
+    #[test]
+    fn a_record_write_that_is_refused_still_leaves_the_pack_switched_on() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let game = directory("readonly-record");
+        write_settings(&game, "resourcePacks:[]\n");
+        let ravel = game.join(RAVEL);
+        std::fs::create_dir_all(&ravel).expect("a writable directory");
+        std::fs::set_permissions(&ravel, std::fs::Permissions::from_mode(0o555))
+            .expect("permissions are settable");
+        assert!(
+            std::fs::write(ravel.join("probe"), b"x").is_err(),
+            "this system ignores the mode bits, so the case below is not arranged"
+        );
+
+        let outcome = seed_pack(&game).expect("a record Ravel cannot keep is not a refusal");
+
+        assert!(matches!(outcome, Seeded::Unrecorded(_)), "{outcome:?}");
+        assert_eq!(
+            settings(&game),
+            "resourcePacks:[\"file/ravel\"]\n",
+            "the settings edit happened and stands"
+        );
+        // And the next launch finds the pack already there rather than adding it
+        // twice, so repeating the offer costs nothing.
+        let again = seed_pack(&game).expect("still not a refusal");
+        assert!(matches!(again, Seeded::Unrecorded(_)), "{again:?}");
+        assert_eq!(settings(&game), "resourcePacks:[\"file/ravel\"]\n");
+
+        std::fs::set_permissions(&ravel, std::fs::Permissions::from_mode(0o755))
+            .expect("permissions are settable");
         let _ = std::fs::remove_dir_all(game);
     }
 

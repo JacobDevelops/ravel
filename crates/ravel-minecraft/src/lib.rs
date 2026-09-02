@@ -458,32 +458,53 @@ pub enum PackFormatSpelling {
 /// is decided once. Rendering it at each call site would be the same document
 /// written twice, and the two spellings make that a difference a version can hide.
 ///
-/// The description is JSON-escaped rather than interpolated: it is text a host
-/// composes and nothing here can promise it carries no quote.
+/// Serialized rather than formatted. The description is text a host composes and
+/// nothing here can promise what is in it: the first version of this escaped a
+/// quote, a backslash and a newline and emitted invalid JSON for every other
+/// control character, which is a file the game refuses to read and a pack that
+/// silently does not load. `serde_json` was already in this workspace's lock file
+/// and it is the rung above a hand-written escaper.
+///
+/// Object keys come out sorted, because `serde_json`'s map is a `BTreeMap` unless
+/// its `preserve_order` feature is on and this workspace enables no features on
+/// it. So the ordering is a property of the build rather than of a sort this
+/// function has to remember.
+///
+/// # Panics
+///
+/// Panics if a map of strings and numbers stops serializing, which `serde_json`
+/// only does for a map with a non-string key or a float that is not a number,
+/// and this builds neither.
 #[must_use]
 pub fn pack_metadata(
     format: PackFormat,
     spelling: PackFormatSpelling,
     description: &str,
 ) -> String {
-    let escaped: String = description
-        .chars()
-        .flat_map(|character| match character {
-            '"' => vec!['\\', '"'],
-            '\\' => vec!['\\', '\\'],
-            '\n' => vec!['\\', 'n'],
-            other => vec![other],
-        })
-        .collect();
-    let declared = match spelling {
-        PackFormatSpelling::PackFormat => format!("    \"pack_format\": {}\n", format.major),
-        PackFormatSpelling::MinMaxFormat => format!(
-            "    \"max_format\": {major},\n    \"min_format\": [\n      {major},\n      {minor}\n    ]\n",
-            major = format.major,
-            minor = format.minor
-        ),
-    };
-    format!("{{\n  \"pack\": {{\n    \"description\": \"{escaped}\",\n{declared}  }}\n}}\n")
+    let mut declared = serde_json::Map::new();
+    declared.insert(
+        "description".to_owned(),
+        serde_json::Value::String(description.to_owned()),
+    );
+    match spelling {
+        PackFormatSpelling::PackFormat => {
+            declared.insert("pack_format".to_owned(), format.major.into());
+        }
+        PackFormatSpelling::MinMaxFormat => {
+            declared.insert("max_format".to_owned(), format.major.into());
+            declared.insert(
+                "min_format".to_owned(),
+                serde_json::Value::Array(vec![format.major.into(), format.minor.into()]),
+            );
+        }
+    }
+    let mut document = serde_json::Map::new();
+    document.insert("pack".to_owned(), serde_json::Value::Object(declared));
+
+    let mut text = serde_json::to_string_pretty(&serde_json::Value::Object(document))
+        .expect("a map of strings and numbers always serializes");
+    text.push('\n');
+    text
 }
 
 #[cfg(test)]
@@ -516,19 +537,39 @@ mod tests {
         );
     }
 
-    /// A description is text a host composes, so it is escaped rather than trusted.
+    /// A description is text a host composes, so every control character survives.
+    ///
+    /// The escaper this replaced handled a quote, a backslash and a newline and
+    /// emitted a raw control byte for everything else, which is a document the
+    /// game refuses and a pack that silently does not load. The check is that the
+    /// result parses and reads back identical, over the whole C0 range at once —
+    /// a test naming three characters is how the first one passed.
     #[test]
-    fn a_description_holding_a_quote_still_renders_legal_json() {
+    fn a_description_holding_any_control_character_still_renders_legal_json() {
+        let hostile: String = (0..=0x1f_u8)
+            .map(char::from)
+            .chain(['"', '\\', '\u{7f}', '\u{2028}', 'é'])
+            .collect();
+
         let rendered = pack_metadata(
             PackFormat::new(34, 0),
             PackFormatSpelling::PackFormat,
-            "a \"quoted\" name\nand a newline",
+            &hostile,
         );
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&rendered).expect("the metadata is legal JSON");
+        assert_eq!(
+            parsed["pack"]["description"].as_str(),
+            Some(hostile.as_str()),
+            "the description reads back exactly as it went in"
+        );
+        assert_eq!(parsed["pack"]["pack_format"].as_u64(), Some(34));
+        // No raw control byte reached the file, which is what the game refuses.
         assert!(
-            rendered.contains("a \\\"quoted\\\" name\\nand a newline"),
-            "{rendered}"
+            !rendered.bytes().any(|byte| byte < 0x20 && byte != b'\n'),
+            "{rendered:?}"
         );
-        assert_eq!(rendered.lines().count(), 6, "{rendered}");
     }
 
     use jni::objects::JObject;

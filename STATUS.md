@@ -173,6 +173,14 @@ the `version.json` inside the pinned jar, and the `pack.mcmeta` shape is checked
 ships (1.21.1 says `pack_format`, 26.1.2 says `min_format`/`max_format`). An injected `RepositorySource`
 is the successor once a launch measures whether the written pack falls short.
 
+Launch 10 proved the mechanism: `resourcePacks:["file/ravel"]` seeded before the client read it,
+`Reloading ResourceManager: vanilla, file/ravel`, the pack selected in the game's own Resource Packs
+screen, the world datapack written on first open and auto-loaded on the second. And found both packs
+holding only `pack.mcmeta`: nothing the example declares reached the layered set through the generated
+host, though the same composition through `compose` in a conformance test carried all five files. The
+real launch path differs somewhere between the generated driver and `open_resources`; being found as
+this is written.
+
 Two ceilings, stated where they live: a fresh instance is seeded on its second launch, because writing
 an `options.txt` without the game's own `version` line would change which migrations it runs; and a
 world reads its datapack on its next open, not the one that wrote it, because the game builds the world's

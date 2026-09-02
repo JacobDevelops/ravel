@@ -59,8 +59,12 @@ and no launcher change:
 
 ```text
 -javaagent:<path to ravel-agent.jar>
--Djava.library.path=<instance natives>:<directory holding libravel_bootstrap.so>
+-Dravel.host=<absolute path to libravel_bootstrap.so>
 ```
+
+A host `ravel-cli host build` produced sits at
+`<instance>/ravel/host/libravel_bootstrap.so`, and that is the path a launch
+names. Ravel is still switched off by removing the `-javaagent` argument.
 
 `ravel-screen.jar` has to sit in the same directory as the agent jar. The agent
 takes no arguments, so it finds the screen jar by resolving that name beside the
@@ -71,10 +75,12 @@ screen, no mod list and no world persistence. The derivation is exact; what is
 fragile is that nothing checks the two jars travelled together.
 
 The agent takes no arguments; what it rewrites comes from the generated class it
-ships with. `java.library.path` must **append** to the instance's own natives
-directory rather than replace it, because the launcher sets that property for
-LWJGL and replacing it breaks the game. Removing these two arguments switches
-Ravel off without uninstalling anything.
+ships with. The library is named rather than searched: the generated `Hook`
+reads `ravel.host` in its own static initializer and calls `System.load` on the
+file it names. A launch that sets no property, or one whose property names
+something that is not a file, throws from that initializer before the
+transformer is installed and says which property and which path. Removing these
+two arguments switches Ravel off without uninstalling anything.
 
 At shutdown the agent prints one line naming how many classes and methods it
 rewrote and how many hook invocations reached native code. ADG-5's launch proved
@@ -82,23 +88,23 @@ the JVM accepted the `-javaagent` and the client ran with it attached; it could
 not prove the rewrite happened, because nothing reported it. That line is what closes it, and
 `evidence/m2/prism-launch.json` records the launch where it did.
 
-### What that launch found about the second argument
+### Why the second argument is a property and not a library path
 
-The library-path argument does not work as ADG-5 described it, and the first
-real launch is what showed it. Prism 11.0.3 puts the instance's `JvmArgs` on the
-command line *before* its own `-Djava.library.path=<instance>/natives`, and the
-last one wins, so appending a directory through the instance setting has no
-effect: the agent's `System.loadLibrary` fails, `premain` throws, and the JVM
-aborts before the client starts. The launcher also deletes that natives
-directory when a launch ends, so a library placed there lasts one launch.
+ADG-5 first described the second argument as `-Djava.library.path` appending the
+directory holding the library, and the first real launch showed it does not
+work. Prism 11.0.3 puts the instance's `JvmArgs` on the command line *before*
+its own `-Djava.library.path=<instance>/natives`, and the last one wins, so
+appending a directory through the instance setting has no effect. The launcher
+also deletes that natives directory when a launch ends, so a library placed
+there lasts one launch.
 
-M2's launch therefore put `libravel_bootstrap.so` into `<instance>/natives`
-before starting, kept both arguments set, and recorded the override as a
-deviation. Ravel is still switched off by removing the `-javaagent` argument,
-because nothing loads the library without it. Which of the two proper fixes
-Ravel takes — the generated `Hook` calling `System.load` on a path given by a
-`-D` property, or an installer that owns the instance's natives directory — is
-an ADG-5 amendment and is not M2's to make.
+M2 and M3 launched by staging `libravel_bootstrap.so` into `<instance>/natives`
+immediately before starting, which ADG-5 recorded as a workaround and told
+nobody to build on. Its amendment chose the fix: the generated `Hook` calls
+`System.load` on a path a `-D` property supplies. `ravel.host` is that property.
+It is Ravel's own name in Ravel's own namespace, so nothing about the library
+depends on a directory the launcher owns, populates on launch, and deletes on
+exit.
 
 ## Proving it without the game
 
@@ -184,14 +190,16 @@ fields are not call targets and never appear here.
 
 ## Three questions M2-W5 owed by name
 
-### Who calls `System.loadLibrary`, and from which class loader
+### Who loads the library, and from which class loader
 
-The generated `Hook` class calls it, from its own static initializer, and the
+The generated `Hook` class loads it, from its own static initializer, and the
 agent forces that initializer to run from `premain`.
 
 JNI binds a loaded library to the class loader that loaded the class whose code
-called `System.loadLibrary`, and resolves a native method only against that
-loader's copy of the declaring class. If some other class loaded the library, a
+called `System.load`, and resolves a native method only against that
+loader's copy of the declaring class. What binds it is which class's code
+called, not which overload it called, so naming the file rather than searching
+for it changes nothing here. If some other class loaded the library, a
 second copy of `Hook` under a different loader would fail at the first hook
 invocation with `UnsatisfiedLinkError` — at launch, not at build. Putting the
 call in the declaring class's own initializer makes the loading loader and the

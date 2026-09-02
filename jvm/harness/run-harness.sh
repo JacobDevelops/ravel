@@ -17,6 +17,10 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 jar="$root/target/ravel-jvm/ravel-agent.jar"
 screen="$root/target/ravel-jvm/ravel-screen.jar"
 library="$root/target/release"
+# ADG-5's amendment: the generated Hook loads the library from the file this
+# property names, so the harness names the file the build produced rather than a
+# directory for the JVM to search.
+host="$library/libravel_bootstrap.so"
 work="$root/target/ravel-jvm/harness"
 agent="$work/agent/ravel-agent.jar"
 
@@ -660,12 +664,42 @@ if [ "$failure_diagnostic" != "$failure_expected_diagnostic" ]; then
 	exit 1
 fi
 
-# `java.library.path` is the directory holding the library, not the file.
+# ADG-5's amendment is only worth having if a launch that names no library
+# refuses instead of searching for one, so both refusals are run rather than
+# read. Each is the same launch as the one below with the property broken, and
+# each has to end nonzero and say which property and which path.
+refuse_load() {
+	refusal_what="$1"
+	refusal_stderr="$work/load-$2-stderr"
+	shift 2
+	if (cd "$work" && java \
+		-javaagent:"$agent" \
+		"$@" \
+		-cp . Main >/dev/null 2>"$refusal_stderr"); then
+		echo >&2
+		echo "a launch whose $refusal_what started anyway" >&2
+		exit 1
+	fi
+	if ! grep -qF -- "$refusal_message" "$refusal_stderr"; then
+		echo >&2
+		echo "a launch whose $refusal_what did not say so; expected to find:" >&2
+		printf '%s\n' "$refusal_message" >&2
+		cat "$refusal_stderr" >&2
+		exit 1
+	fi
+}
+
+refusal_message='-Dravel.host is unset, so nothing names the ravel_bootstrap library this class loads'
+refuse_load 'library property is unset' unset
+
+refusal_message="-Dravel.host names $work/no-such-library.so, which is not a file, so the ravel_bootstrap library cannot be loaded"
+refuse_load 'library property names no file' missing -Dravel.host="$work/no-such-library.so"
+
 stdout="$work/stdout"
 stderr="$work/stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-Dravel.report.targets=true \
 	-cp . Main >"$stdout" 2>"$stderr")
 observed="$(<"$stdout")"
@@ -711,7 +745,7 @@ missing_stdout="$work/missing-stdout"
 missing_stderr="$work/missing-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-cp . TitleMenuMissingMain >"$missing_stdout" 2>"$missing_stderr")
 missing_observed="$(<"$missing_stdout")"
 missing_diagnostic="$(grep '^\[ravel\]' "$missing_stderr")"
@@ -743,7 +777,7 @@ invalid_stdout="$work/invalid-stdout"
 invalid_stderr="$work/invalid-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-cp . TitleMenuMissingMain >"$invalid_stdout" 2>"$invalid_stderr")
 rm "$(dirname "$agent")/ravel-screen.jar"
 invalid_observed="$(<"$invalid_stdout")"
@@ -773,7 +807,7 @@ relaunch_stdout="$work/relaunch-stdout"
 relaunch_stderr="$work/relaunch-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-cp . Main >"$relaunch_stdout" 2>"$relaunch_stderr")
 relaunch_observed="$(<"$relaunch_stdout")"
 relaunch_diagnostic="$(grep '^\[ravel\]' "$relaunch_stderr")"
@@ -816,7 +850,7 @@ settings_stdout="$work/settings-stdout"
 settings_stderr="$work/settings-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-cp ".:$screen" SettingsScreenMain >"$settings_stdout" 2>"$settings_stderr")
 settings_observed="$(<"$settings_stdout")"
 settings_expected='owner=configuration
@@ -843,7 +877,7 @@ refusal_stdout="$work/refusal-stdout"
 refusal_stderr="$work/refusal-stderr"
 (cd "$refusal_work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-cp "$work:$screen" SettingsScreenMain refuse-save >"$refusal_stdout" 2>"$refusal_stderr")
 refusal_observed="$(<"$refusal_stdout")"
 refusal_expected='owner=configuration
@@ -875,7 +909,7 @@ profiling_stdout="$work/profiling-stdout"
 profiling_stderr="$work/profiling-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-cp ".:$screen" ProfilingScreenMain >"$profiling_stdout" 2>"$profiling_stderr")
 profiling_observed="$(<"$profiling_stdout")"
 # `rows` climbs with the window because the report gives its spare rows away in
@@ -913,7 +947,7 @@ driven_stdout="$work/profiling-driven-stdout"
 driven_stderr="$work/profiling-driven-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-Dravel.profiling=true \
 	-cp ".:$screen" ProfilingScreenMain driven >"$driven_stdout" 2>"$driven_stderr")
 driven_observed="$(<"$driven_stdout")"
@@ -943,7 +977,7 @@ ui_relaunch_stdout="$work/ui-relaunch-stdout"
 ui_relaunch_stderr="$work/ui-relaunch-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-cp . Main >"$ui_relaunch_stdout" 2>"$ui_relaunch_stderr")
 ui_relaunch_observed="$(<"$ui_relaunch_stdout")"
 ui_relaunch_expected='allowed=true
@@ -977,7 +1011,7 @@ menu_stdout="$work/menu-stdout"
 menu_stderr="$work/menu-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-cp . TitleMenuMain >"$menu_stdout" 2>"$menu_stderr")
 menu_observed="$(<"$menu_stdout")"
 menu_diagnostic="$(grep '^\[ravel\]' "$menu_stdout")"
@@ -1043,7 +1077,7 @@ for case in client dedicated; do
 	case_stderr="$side/$case-stderr"
 	(cd "$side/$case" && java \
 		-javaagent:"$agent" \
-		-Djava.library.path="$library" \
+		-Dravel.host="$host" \
 		-cp ".:$side/classes" SideMain >"$case_stdout" 2>"$case_stderr")
 	side_observed="$side_observed$case=$(head -n 1 "$case_stdout")"$'\n'
 	while IFS= read -r line; do
@@ -1068,7 +1102,7 @@ undeterminable_stderr="$side/undeterminable-stderr"
 set +e
 (cd "$side/undeterminable" && java \
 	-javaagent:"$agent" \
-	-Djava.library.path="$library" \
+	-Dravel.host="$host" \
 	-cp ".:$side/classes" SideMain >"$undeterminable_stdout" 2>"$undeterminable_stderr")
 undeterminable_status=$?
 set -e

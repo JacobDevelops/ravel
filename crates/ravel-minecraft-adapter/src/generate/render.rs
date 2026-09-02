@@ -12,7 +12,7 @@ use super::inputs::{self, Adapter, Inventory, Lookup, Reflection};
 use super::mapping::Mapping;
 use super::resolve::Resolved;
 use super::stubs::Stub;
-use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY};
+use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY, LIBRARY_PROPERTY};
 
 /// A JVM type a hook argument can carry across the boundary.
 ///
@@ -547,9 +547,71 @@ pub(super) fn exports(shapes: &[Shape]) -> String {
     text
 }
 
+/// The library load the generated `Hook` performs, and why it names a file.
+///
+/// Its own function because `hook_java` renders the whole class and this is
+/// the one part of it that is neither generated from the inventory nor
+/// boilerplate: `docs/decisions/adg-5-prism-integration.md` decided this exact
+/// shape, and the comment it emits is load-bearing rather than decoration.
+fn library_load_java() -> String {
+    format!(
+        "\
+        \x20   /** Native library carrying the generated exports. */\n\
+         \x20   public static final String LIBRARY = \"{LIBRARY}\";\n\n\
+         \x20   /** System property naming the file to load the library from. */\n\
+         \x20   public static final String LIBRARY_PROPERTY = \"{LIBRARY_PROPERTY}\";\n\n\
+         \x20   static {{\n\
+         \x20       loadLibrary();\n\
+         \x20   }}\n\n\
+         \x20   // JNI binds a loaded library to the class loader that loaded the class\n\
+         \x20   // whose code called System.load, and resolves native methods only against\n\
+         \x20   // that loader's copy of the declaring class. Loading it here, from the\n\
+         \x20   // declaring class's own initializer, makes those two loaders the same one\n\
+         \x20   // by construction rather than by convention, so a second copy of this class\n\
+         \x20   // under another loader cannot bind to a library this one loaded. What binds\n\
+         \x20   // the library is which class's code called, not which overload it called.\n\
+         \x20   //\n\
+         \x20   // The file is named rather than searched because the launcher owns\n\
+         \x20   // java.library.path: it appends its own after the instance's and the last\n\
+         \x20   // one wins, and it rebuilds the directory that path names on every launch.\n\
+         \x20   // A library reached by that search is one another program decides the\n\
+         \x20   // existence of.\n\
+         \x20   //\n\
+         \x20   // The load is a restricted method under JEP 472. It is exactly the\n\
+         \x20   // operation this class exists to perform, and the launch enables native\n\
+         \x20   // access for it, so the warning is acknowledged here rather than silenced\n\
+         \x20   // across the whole class.\n\
+         \x20   @SuppressWarnings(\"restricted\")\n\
+         \x20   private static void loadLibrary() {{\n\
+         \x20       String named = System.getProperty(LIBRARY_PROPERTY);\n\
+         \x20       if (named == null || named.isEmpty()) {{\n\
+         \x20           throw new IllegalStateException(\n\
+         \x20                   \"-D\"\n\
+         \x20                           + LIBRARY_PROPERTY\n\
+         \x20                           + \" is unset, so nothing names the \"\n\
+         \x20                           + LIBRARY\n\
+         \x20                           + \" library this class loads\");\n\
+         \x20       }}\n\
+         \x20       java.io.File file = new java.io.File(named);\n\
+         \x20       if (!file.isFile()) {{\n\
+         \x20           throw new IllegalStateException(\n\
+         \x20                   \"-D\"\n\
+         \x20                           + LIBRARY_PROPERTY\n\
+         \x20                           + \" names \"\n\
+         \x20                           + named\n\
+         \x20                           + \", which is not a file, so the \"\n\
+         \x20                           + LIBRARY\n\
+         \x20                           + \" library cannot be loaded\");\n\
+         \x20       }}\n\
+         \x20       System.load(file.getAbsolutePath());\n\
+         \x20   }}\n\n"
+    )
+}
+
 /// Renders the generated Java hook class.
 pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
     let mut text = String::with_capacity(shapes.len() * 384 + 2048);
+    let load = library_load_java();
     let _ = writeln!(
         text,
         "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
@@ -568,26 +630,7 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
          \x20* that returns anything but void cannot opt in at all.\n\
          \x20*/\n\
          public final class Hook {{\n\n\
-         \x20   /** Native library carrying the generated exports. */\n\
-         \x20   public static final String LIBRARY = \"{LIBRARY}\";\n\n\
-         \x20   static {{\n\
-         \x20       loadLibrary();\n\
-         \x20   }}\n\n\
-         \x20   // JNI binds a loaded library to the class loader that loaded the class\n\
-         \x20   // whose code called System.loadLibrary, and resolves native methods only\n\
-         \x20   // against that loader's copy of the declaring class. Loading it here, from\n\
-         \x20   // the declaring class's own initializer, makes those two loaders the same\n\
-         \x20   // one by construction rather than by convention, so a second copy of this\n\
-         \x20   // class under another loader cannot bind to a library this one loaded.\n\
-         \x20   //\n\
-         \x20   // The load is a restricted method under JEP 472. It is exactly the\n\
-         \x20   // operation this class exists to perform, and the launch enables native\n\
-         \x20   // access for it, so the warning is acknowledged here rather than silenced\n\
-         \x20   // across the whole class.\n\
-         \x20   @SuppressWarnings(\"restricted\")\n\
-         \x20   private static void loadLibrary() {{\n\
-         \x20       System.loadLibrary(LIBRARY);\n\
-         \x20   }}\n\n\
+{load}\
          \x20   /** Targets the agent rewrites, in reviewed inventory order. */\n\
          \x20   public static final HookTarget[] TARGETS = {{",
         adapter.minecraft

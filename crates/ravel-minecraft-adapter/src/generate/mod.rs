@@ -39,7 +39,10 @@ const EXTRACTOR: &str = "classfile";
 /// and passed down rather than reached for here: a generator that read its own
 /// environment would make the same call answer differently in two processes, and
 /// the tests below would have no way to ask it a question.
-pub const SELECTION: &str = "RAVEL_MINECRAFT_VERSION";
+///
+/// The name itself is `ravel-core`'s, because a build Ravel runs on a player's
+/// machine has to set the same variable this build script reads.
+pub use ravel_core::MINECRAFT_VERSION_SELECTION as SELECTION;
 
 /// The oldest Java release the agent jar's own sources can be compiled for.
 ///
@@ -71,8 +74,19 @@ pub fn selection(raw: Option<OsString>) -> Result<Option<String>, GenerateError>
 /// Java class holding the generated native declarations.
 const HOOK_CLASS: &str = "dev.ravel.jvm.Hook";
 
-/// Library name `System.loadLibrary` resolves, without its platform decoration.
+/// Library name the generated exports are compiled into, without decoration.
 const LIBRARY: &str = "ravel_bootstrap";
+
+/// System property naming the file the generated `Hook` loads that library from.
+///
+/// `docs/decisions/adg-5-prism-integration.md`'s amendment selects `System.load`
+/// on a path a `-D` property supplies, and names no property, so this is the
+/// name Ravel takes: one `-D` beside the `-javaagent`, and nothing of the
+/// launcher's for Ravel to borrow. The launcher owns `java.library.path` — it
+/// appends its own after the instance's, and rebuilds the directory that path
+/// names on every launch — so a searched library is one another program decides
+/// the existence of.
+const LIBRARY_PROPERTY: &str = "ravel.host";
 
 /// The root of the generated Java tree, which this generator owns outright.
 const JAVA_ROOT: &str = "target/ravel-jvm/generated";
@@ -612,7 +626,7 @@ mod tests {
     use std::fmt::Write as _;
     use std::path::{Path, PathBuf};
 
-    use super::{GenerateError, SELECTION, inputs, run, selection};
+    use super::{GenerateError, LIBRARY_PROPERTY, SELECTION, inputs, run, selection};
 
     fn repository_root() -> &'static Path {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -811,7 +825,20 @@ mod tests {
         );
 
         let java = std::fs::read_to_string(&generated.java).expect("readable");
-        assert!(java.contains("System.loadLibrary(LIBRARY);"));
+        // ADG-5's amendment: the library is loaded from a file a `-D` property
+        // names, and a launch that names none refuses before anything else runs
+        // rather than searching a path the launcher owns.
+        assert!(
+            java.contains("System.load(file.getAbsolutePath());"),
+            "{java}"
+        );
+        assert!(!java.contains("System.loadLibrary("), "{java}");
+        assert!(
+            java.contains(&format!("LIBRARY_PROPERTY = \"{LIBRARY_PROPERTY}\"")),
+            "{java}"
+        );
+        assert!(java.contains("named == null || named.isEmpty()"), "{java}");
+        assert!(java.contains("!file.isFile()"), "{java}");
         assert!(java.contains("public static native long nativeInvocations();"));
         // The screen's two crossings are declared on this class and nowhere
         // else: ADG-1 gives Ravel one exported symbol surface, so a screen that

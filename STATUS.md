@@ -82,6 +82,8 @@ Newest last. All local, nothing pushed.
 | `vmyployz` | compile the shipped content example into the generated host and require its files in the written packs |
 | `kltkmyxs` | generate the blockstates, item model and self-drop loot table a declaration does not supply |
 | `zvrqrqwm` | write a world's datapack before the game scans it, from the seam that first holds the storage access |
+| `xwoupqkq` | report every seed outcome, stage the pack and skip an unchanged one, build pack.mcmeta with serde_json |
+| `ukqpxsqs` | map states after recording the block, refuse a payload whole, guard the world path, pin the cache step |
 
 ## The queue is drained
 
@@ -228,8 +230,7 @@ documented decision left standing. The second, over the resource path, found ele
 blocking: a state-mapping failure reported as an unregistered block, silent `Seeded` outcomes when
 `options.txt` cannot be seeded, the raw world path from JNI driving a recursive delete unvalidated, and
 a partial refusal of a payload with an unknown kind that the comment calls whole. All eleven except the
-Windows-only path rule are being fixed as this is written; the `C:/x` case is out of scope until Windows
-is.
+Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows is.
 
 ## Questions only Jacob can answer
 

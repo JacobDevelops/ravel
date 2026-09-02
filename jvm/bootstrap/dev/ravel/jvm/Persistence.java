@@ -113,8 +113,6 @@ final class Persistence {
      * whose next save would either lose a player's mod state or overwrite it
      * with state nothing checked, and neither is worth a running game.
      *
-     * @param access the selected {@code LevelStorageAccess}, held opaquely
-     * @param stem the selected {@code WorldStem}, held opaquely
      * <p>A refusal the player cannot be shown is thrown rather than returned.
      * Returning leaves the game on the loading screen it was already on with
      * nothing coming, which the first real 1.21.1 launch sat on: the world was

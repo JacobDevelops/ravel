@@ -83,6 +83,16 @@ final class Screens {
      * much later.
      */
     static void install() {
+        if (screens != null) {
+            // Called once, from `premain`. A second call would replace a loader
+            // that holds an open jar, and nothing would ever close the first: the
+            // classes it defined stay reachable and so does the file handle. It
+            // is a diagnostic rather than a close, because a loader whose classes
+            // are already loaded cannot be closed safely and a second install is
+            // a caller defect rather than a state to recover from.
+            diagnose(SCREEN_JAR + " is already open; ignoring a second attempt to open it");
+            return;
+        }
         File jar = beside(SCREEN_JAR);
         if (jar == null) {
             diagnose("could not locate " + SCREEN_JAR + " beside the agent jar");

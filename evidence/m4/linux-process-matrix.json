@@ -101,6 +101,13 @@
       "doesNotProve": "Anything about M4; this row is here because it is part of the global gate M4-W8 has to pass, not because M4 added to it."
     },
     {
+      "surface": "per-version Java compile",
+      "command": "devenv tasks run ravel:verify-java",
+      "exitStatus": 0,
+      "proves": "Every tracked version's generated Java is put through javac under -Xlint:all -Werror, and every screen class is loaded by the name that version's ScreenNames records. Before this existed nothing compiled any version but the one the shell selects, so an obfuscated version's screens, stubs, GameNames and ScreenNames were generated, byte-compared and never seen by a compiler.",
+      "doesNotProve": "That the compiled classes link against the real game. The stubs are the game at compile time and the stub tree is deliberately never packaged, so a flat stub standing in for a nested type models no nestmate access and a class can compile here and fail to link there. The screens are loaded from an ordinary class path with the stubs on it, not through Instrumentation.appendToSystemClassLoaderSearch against an already-loaded game, which is the loader a launch uses. A version whose published mapping is absent is skipped rather than compiled, and target/ravel-jvm/compiled-versions.txt is what says which versions were actually compiled."
+    },
+    {
       "surface": "JVM harness lifecycles",
       "command": "devenv tasks run ravel:verify-jvm",
       "exitStatus": 0,

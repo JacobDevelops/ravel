@@ -368,6 +368,80 @@ in
     #
     # It builds rather than requiring artifacts, because a check that fails on a
     # clean checkout with instructions is a check nobody runs.
+    # Every tracked version's generated Java, through javac.
+    #
+    # Nothing compiled 1.21.1's half before this existed. `ravel-verify-jvm`
+    # builds whatever sits in the shared tree, which is whatever the selected
+    # version last generated, so an entire version's screens, stubs, `GameNames`
+    # and `ScreenNames` were generated, byte-compared and never once put in front
+    # of a compiler. The obfuscated half is where that matters: its stubs and
+    # screens land in the unnamed package, its nested types are emitted as
+    # top-level classes whose names carry `$`, and `build-screen.sh` compiles
+    # with `-Xlint:all -Werror`.
+    #
+    # No restricted material is needed to compile — the stubs are the game and
+    # neither build script puts a client jar on the class path — but generating
+    # the sources under a translating source does need that version's published
+    # mapping, so a version without it is skipped. The verdict goes to a file
+    # because `devenv tasks run` shows nothing from a task that succeeds, and a
+    # skip nobody can see is the silent pass this check exists to prevent.
+    ravel-verify-java = {
+      description = "Compile every tracked version's generated Java.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+
+        compiled="$DEVENV_ROOT/target/ravel-jvm/compiled-versions.txt"
+        mkdir -p "$(dirname "$compiled")"
+        : >"$compiled"
+
+        for version_directory in minecraft/versions/*/; do
+          version="$(basename "$version_directory")"
+          mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
+            "$version_directory/adapter.toml" | head -n 1)"
+          if [ -n "$mapping" ] && [ ! -f "$mapping" ]; then
+            verdict="SKIPPED: Minecraft $version Java was NOT compiled; $mapping is absent"
+            echo "$verdict" >&2
+            echo "$verdict" >>"$compiled"
+            continue
+          fi
+
+          # One version at a time in a tree the generator never sweeps: the
+          # screens change package between versions, so a source left behind
+          # compiles into the next version's jar.
+          rm -rf target/ravel-jvm/generated target/ravel-jvm/generated-stubs \
+            target/ravel-jvm/generated-screen
+          touch crates/ravel-minecraft-adapter/build.rs
+          RAVEL_MINECRAFT_VERSION="$version" \
+            cargo build --locked -p ravel-minecraft-adapter
+          ./jvm/build/build-agent.sh >/dev/null
+          ./jvm/build/build-screen.sh >/dev/null
+
+          # Every name the agent jar would open, opened. Under an obfuscated
+          # version these have no package, which is a shape nothing had ever
+          # asked a JVM to resolve. The stubs join the class path because
+          # defining a screen resolves its game superclass, and here that is the
+          # stub rather than the game.
+          names="$(sed -n 's/.*static final String [A-Z_]* = "\(.*\)";/\1/p' \
+            target/ravel-jvm/generated/dev/ravel/jvm/ScreenNames.java)"
+          if [ -z "$names" ]; then
+            echo "ScreenNames records no screen for $version" >&2
+            exit 1
+          fi
+          # shellcheck disable=SC2086
+          java -cp "target/ravel-jvm/ravel-screen.jar:target/ravel-jvm/screen-stubs" \
+            jvm/harness/screen-names/LoadScreens.java $names
+
+          echo "compiled: Minecraft $version" | tee -a "$compiled"
+        done
+
+        if ! grep -q '^compiled: ' "$compiled"; then
+          echo "no tracked version's Java was compiled, so this task proved nothing" >&2
+          exit 1
+        fi
+      '';
+    };
+
     ravel-verify-jvm = {
       description = "Run Ravel's agent, transformer and native library against a real JVM.";
       exec = ''
@@ -670,6 +744,11 @@ in
     "ravel:verify-example-pack".exec = "ravel-verify-example-pack";
     "ravel:verify-example-package".exec = "ravel-verify-example-package";
     "ravel:verify-spikes".exec = "ravel-verify-spikes";
+    "ravel:verify-java" = {
+      exec = "ravel-verify-java";
+      # Shares `target/ravel-jvm` with the version loop, so it cannot run beside it.
+      after = [ "ravel:test" ];
+    };
     "ravel:verify-jvm" = {
       exec = "ravel-verify-jvm";
       # `ravel:test` generates once per tracked version and the generated Java
@@ -677,7 +756,7 @@ in
       # one packages what that one is still rewriting. It also sweeps before it
       # builds, because the screens change package between versions and a source
       # left behind by another version compiles into this version's jar.
-      after = [ "ravel:test" ];
+      after = [ "ravel:verify-java" ];
     };
     "ravel:spike-adg-1".exec = "ravel-spike-adg-1";
     "ravel:spike-adg-2".exec = "ravel-spike-adg-2";
@@ -708,6 +787,7 @@ in
         "ravel:verify-example-pack"
         "ravel:verify-example-package"
         "ravel:verify-spikes"
+        "ravel:verify-java"
         "ravel:verify-jvm"
         "ravel:verify-budget"
         "ravel:verify-stack"

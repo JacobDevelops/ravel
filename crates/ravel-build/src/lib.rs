@@ -803,6 +803,20 @@ ravel_sdk::export_mod!(Installed::default());
         );
     }
 
+    /// Installs one of this repository's examples the way a player installs it.
+    ///
+    /// Copied whole rather than rewritten, so what the generated host compiles is
+    /// the example as it is shipped — its manifest, its declared digests and its
+    /// source. A fixture retyped here would be a second copy of the example that
+    /// could pass while the example itself was broken, which is exactly the shape
+    /// this test exists to catch: a launch found the packs empty because the copy
+    /// installed in the instance was older than the example it came from.
+    fn install_example(instance: &Path, name: &str) {
+        let from = ravel_root().join("examples").join(name);
+        let into = instance.join(PACKAGES_DIRECTORY).join(name);
+        copy_tree(&from, &into);
+    }
+
     /// Installs a package the way a player would: a source tree with a manifest.
     ///
     /// `dependencies` is the body of the package's own `[dependencies]` table,
@@ -1082,6 +1096,11 @@ ravel_sdk::export_mod!(Installed::default());
              ravel-sdk.workspace = true\n",
         );
 
+        // The repository's own content example, copied whole the way a player
+        // installs one. The fixtures above declare no content, so without this
+        // the pack a launch writes would be empty and correct.
+        install_example(&instance, "content-mod");
+
         let plan = planned(&instance);
         let library =
             build(&plan, &instance, cache, &game()).expect("the installed package compiles");
@@ -1177,6 +1196,76 @@ ravel_sdk::export_mod!(Installed::default());
         fs::remove_dir_all(&instance).expect("cleanup");
     }
 
+    /// The driver's whole body, which is what a launch does with a composed set.
+    ///
+    /// A constant rather than an argument to the write above, because the
+    /// function that writes it is held to a length and this is most of it.
+    const DRIVER_SOURCE: &str = "fn main() {\n\
+             \x20   let game = std::env::args().nth(1).expect(\"a game directory\");\n\
+             \x20   // The library name the generated host declares, which is the\n\
+             \x20   // name the JVM loads and therefore the name a dependent links.\n\
+             \x20   let members = ravel_bootstrap::members(ravel_core::Side::Client);\n\
+             \x20   let (machine, _, _, resources) = ravel_host_runtime::compose(\n\
+             \x20       std::path::Path::new(&game),\n\
+             \x20       ravel_core::Side::Client,\n\
+             \x20       members,\n\
+             \x20   )\n\
+             \x20   .expect(\"the generated host composes\");\n\
+             \x20   for id in machine.order() {\n\
+             \x20       println!(\"{id}\");\n\
+             \x20   }\n\
+             \x20   // The rest of what a launch does with the composed set. Written\n\
+             \x20   // here rather than asserted in the parent process, because the\n\
+             \x20   // point is that the generated host reaches it.\n\
+             \x20   let game = std::path::Path::new(&game);\n\
+             \x20   ravel_host_runtime::write_resource_pack(game, &resources)\n\
+             \x20       .expect(\"the generated host writes its pack\");\n\
+             \x20   ravel_host_runtime::install_packs(resources);\n\
+             \x20   let world = game.join(\"saves\").join(\"Driven\");\n\
+             \x20   std::fs::create_dir_all(&world).expect(\"a world directory\");\n\
+             \x20   ravel_host_runtime::write_world_pack(&world)\n\
+             \x20       .expect(\"the generated host writes a world pack\")\n\
+             \x20       .expect(\"a host that installed a set writes one\");\n\
+             }\n";
+
+    /// What the packs a launch writes hold, once the generated host has written them.
+    ///
+    /// Split from the driver above because it is a different claim about the same
+    /// run: that one is about which mods were driven, this one about what reached
+    /// the player's disk.
+    fn the_written_packs_hold_the_examples_content(instance: &Path) {
+        // What launch 10 found empty. The generated host is the one a player
+        // runs, and until this ran nothing checked that a package installed into
+        // an instance reaches the pack a launch writes — the composed host and
+        // the conformance suite both build their members in this process.
+        //
+        // The expected bytes are written out rather than read back from the
+        // example, because the defect was an installed copy that differed from
+        // the example it came from: a comparison against that copy's own output
+        // would have agreed with it.
+        let assets = instance.join("resourcepacks/ravel/assets/content");
+        assert_eq!(
+            fs::read_to_string(assets.join("models/block/copper_lantern.json"))
+                .unwrap_or_else(|error| panic!("the model reached no pack: {error}")),
+            "{\n  \"parent\": \"minecraft:block/lantern\"\n}\n"
+        );
+        let english = fs::read_to_string(assets.join("lang/en_us.json"))
+            .unwrap_or_else(|error| panic!("the translations reached no pack: {error}"));
+        assert!(english.contains("Copper Lantern"), "{english}");
+        assert!(
+            assets.join("lang/fr_fr.json").is_file(),
+            "one locale reached the pack and the other did not"
+        );
+
+        // And the world half, which the same set feeds.
+        let world = instance.join("saves/Driven/datapacks/ravel/data/c/tags");
+        for tag in ["block/lanterns.json", "item/lanterns.json"] {
+            let written = fs::read_to_string(world.join(tag))
+                .unwrap_or_else(|error| panic!("`{tag}` reached no world pack: {error}"));
+            assert!(written.contains("content:copper_lantern"), "{written}");
+        }
+    }
+
     /// Copies a package directory the way a player copies one in.
     fn copy_tree(source: &Path, destination: &Path) {
         fs::create_dir_all(destination).expect("a package directory is creatable");
@@ -1259,25 +1348,8 @@ ravel_sdk::export_mod!(Installed::default());
             ),
         )
         .expect("the driver manifest is writable");
-        fs::write(
-            driver.join("src/main.rs"),
-            "fn main() {\n\
-             \x20   let game = std::env::args().nth(1).expect(\"a game directory\");\n\
-             \x20   // The library name the generated host declares, which is the\n\
-             \x20   // name the JVM loads and therefore the name a dependent links.\n\
-             \x20   let members = ravel_bootstrap::members(ravel_core::Side::Client);\n\
-             \x20   let (machine, _, _, _) = ravel_host_runtime::compose(\n\
-             \x20       std::path::Path::new(&game),\n\
-             \x20       ravel_core::Side::Client,\n\
-             \x20       members,\n\
-             \x20   )\n\
-             \x20   .expect(\"the generated host composes\");\n\
-             \x20   for id in machine.order() {\n\
-             \x20       println!(\"{id}\");\n\
-             \x20   }\n\
-             }\n",
-        )
-        .expect("the driver source is writable");
+        fs::write(driver.join("src/main.rs"), DRIVER_SOURCE)
+            .expect("the driver source is writable");
 
         let built = Command::new("cargo")
             .arg("build")
@@ -1315,6 +1387,14 @@ ravel_sdk::export_mod!(Installed::default());
             "the driven set does not hold the package naming `ravel-host-api`: {}",
             String::from_utf8_lossy(&run.stdout)
         );
+
+        assert!(
+            String::from_utf8_lossy(&run.stdout).contains("content"),
+            "the driven set does not hold the installed example: {}",
+            String::from_utf8_lossy(&run.stdout)
+        );
+
+        the_written_packs_hold_the_examples_content(instance);
 
         // Written by the mod, from inside its own body, in another process.
         let recorded = fs::read_to_string(&marks).expect("the installed mod recorded nothing");

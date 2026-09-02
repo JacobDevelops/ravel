@@ -83,6 +83,7 @@ mapfile -d '' agent_sources < <(find "$root/jvm/bootstrap" -name '*.java' -print
 javac -Xlint:all -Werror -d "$order/agent-classes" \
 	"$root/target/ravel-jvm/generated/dev/ravel/jvm/GameNames.java" \
 	"$root/target/ravel-jvm/generated/dev/ravel/jvm/GameMembers.java" \
+	"$root/target/ravel-jvm/generated/dev/ravel/jvm/MenuLayout.java" \
 	"$root/target/ravel-jvm/generated/dev/ravel/jvm/ScreenNames.java" \
 	"${agent_sources[@]}" \
 	"$root/jvm/harness/initialization/dev/ravel/jvm/Hook.java"

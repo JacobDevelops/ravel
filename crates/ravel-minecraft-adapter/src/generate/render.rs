@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
-use super::inputs::{Adapter, Inventory, Lookup, Reflection};
+use super::inputs::{self, Adapter, Inventory, Lookup, Reflection};
 use super::mapping::Mapping;
 use super::resolve::Resolved;
 use super::stubs::Stub;
@@ -809,6 +809,66 @@ fn member_constant(role: &str, member: &str) -> String {
     text
 }
 
+/// Renders the title-menu placement this version's column cannot supply.
+///
+/// The int-returning shape hands the transformer the row its last option took
+/// and the next row follows from it. The void-returning shape hands back
+/// nothing, and a version whose title screen places its own lower row at a
+/// constant rather than below the column reserves nothing by having a row added
+/// to it. So the number is read off that version's title screen and declared
+/// beside the seam whose descriptor cannot express it.
+///
+/// A version that needs none renders a class that says so, rather than no class
+/// at all: the shared transformer reads this constant either way, and a missing
+/// field would be a compile failure on the version that does not need one.
+pub(super) fn menu_layout(adapter: &Adapter, inventory: &Inventory) -> String {
+    let row = inventory
+        .hooks
+        .iter()
+        .find(|hook| hook.id == inputs::TITLE_MENU_SEAM)
+        .and_then(|hook| hook.title_menu_row);
+    let mut text = String::with_capacity(1024);
+    let _ = writeln!(
+        text,
+        "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
+         package dev.ravel.jvm;\n\n\
+         /**\n\
+         \x20* Where Ravel's own row goes on this version's title menu.\n\
+         \x20*\n\
+         \x20* <p>Measured down from the top the column builder is handed. It is\n\
+         \x20* declared rather than derived because a column builder that returns\n\
+         \x20* nothing says nothing about what is free below it, and a title screen\n\
+         \x20* that places its own lower row at a constant reserves nothing when a\n\
+         \x20* row is added to the column.\n\
+         \x20*\n\
+         \x20* <p>{} is what this version declares.\n\
+         \x20*/\n\
+         final class MenuLayout {{\n\n\
+         \x20   /**\n\
+         \x20    * What a version whose column returns its own row declares.\n\
+         \x20    *\n\
+         \x20    * <p>Out of the range of any row, because a row may be negative: a\n\
+         \x20    * version whose menu has no space below the column has Ravel's row\n\
+         \x20    * above it, and an ordinary sentinel would be a legal offset.\n\
+         \x20    */\n\
+         \x20   static final int DERIVED = Integer.MIN_VALUE;\n\n\
+         \x20   /**\n\
+         \x20    * The row, or DERIVED where this version's column hands one back.\n\
+         \x20    */\n\
+         \x20   static final int RAVEL_ROW = {};\n\n\
+         \x20   private MenuLayout() {{\n\
+         \x20   }}\n\
+         }}",
+        adapter.minecraft,
+        row.map_or_else(
+            || "No row, because this version's column hands one back".to_owned(),
+            |row| format!("A row {row} pixels below the column top")
+        ),
+        row.map_or_else(|| "DERIVED".to_owned(), |row| row.to_string())
+    );
+    text
+}
+
 /// Renders the screen class names the agent jar loads reflectively.
 ///
 /// The screens are generated, and where they are generated to is version data:
@@ -1395,6 +1455,7 @@ mod tests {
                 kind: Kind::InstanceMethod,
                 capability: format!("A candidate {id} hook."),
                 refuses: false,
+                title_menu_row: None,
             })
             .collect::<Vec<_>>();
         let resolved = hooks

@@ -406,6 +406,7 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_persistence_reflection(root, &mut violations);
     verify_hook_name_literals(root, &inventories, &mut violations);
     verify_transformer_shape(root, &inventories, &mut violations);
+    verify_menu_row_placement(root, &mut violations);
     verify_screen_templates(root, &mut violations);
     verify_screen_overrides(root, &mut violations);
     verify_version_readmes(root, &mut violations);
@@ -2159,6 +2160,63 @@ const TRANSFORMER_SEAMS: [Seam; 3] = [
         returns: &[Shape::Int, Shape::Void],
     },
 ];
+
+/// The generated constant the void-returning title-menu bridge has to place from.
+const MENU_ROW_CONSTANT: &str = "MenuLayout.RAVEL_ROW";
+
+/// The bridge that places Ravel's row when the column hands no row back.
+const MENU_COLUMN_BRIDGE: &str = "addTitleMenuColumn";
+
+/// Holds the void-returning title-menu bridge to the row its version declared.
+///
+/// The int-returning shape is handed the row its last option took and the next
+/// row follows from it. The void shape is handed nothing, and the row it needs
+/// cannot be worked out from the column either: a title screen that places its
+/// own lower row at a constant reserves nothing when a row is added to the
+/// column, so a row computed from the column's base and spacing lands on top of
+/// the game's own options. That is what the third real launch drew, and it drew
+/// it because the bridge computed the row from a constant of its own.
+///
+/// So the row is version data now, and this is what says the bridge reads it.
+/// Whether the number is declared where it is needed is the generator's, in
+/// `check_title_menu_row`, which refuses a void seam without one and an int seam
+/// with one; that runs per build and `ravel:verify-java` builds every tracked
+/// version. This is the other half and belongs here because its subject is the
+/// shared Java rather than any version's data.
+///
+/// **What it cannot do.** It reads the method body as text, so a row reached
+/// through a helper, a local, or a second constant is a shape it does not see.
+/// And it says nothing about where the row lands on a screen: only a launch
+/// draws one.
+fn verify_menu_row_placement(root: &Path, violations: &mut Vec<String>) {
+    let path = root
+        .join(AGENT_JAR_SOURCES)
+        .join("dev/ravel/jvm/Transformer.java");
+    let Ok(source) = fs::read_to_string(&path) else {
+        violations.push(format!(
+            "{AGENT_JAR_SOURCES}/dev/ravel/jvm/Transformer.java cannot be read, so nothing holds \
+             the title-menu bridge to the row its version declares"
+        ));
+        return;
+    };
+    let Some(at) = source.find(MENU_COLUMN_BRIDGE) else {
+        violations.push(format!(
+            "Transformer.java declares no {MENU_COLUMN_BRIDGE}, so the column shape that hands \
+             back no row has no bridge and this check has no subject"
+        ));
+        return;
+    };
+    let body = &source[at..];
+    let end = body.find("\n    }").map_or(body.len(), |end| end + 1);
+    let body = &body[..end];
+    if !body.contains(MENU_ROW_CONSTANT) {
+        violations.push(format!(
+            "Transformer.java's {MENU_COLUMN_BRIDGE} does not place from {MENU_ROW_CONSTANT}; a \
+             row worked out from the column's own base and spacing is one version's layout \
+             asserted over the rest, and it draws Ravel's row on top of the game's own options"
+        ));
+    }
+}
 
 /// Holds the transformer's injected sequences to the shapes each version declares.
 ///

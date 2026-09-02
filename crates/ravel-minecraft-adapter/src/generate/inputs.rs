@@ -96,6 +96,18 @@ pub(super) struct Hook {
     /// false, which is what every observation hook is.
     #[serde(default)]
     pub(super) refuses: bool,
+    /// Where Ravel's own title-menu row goes, measured down from the column top.
+    ///
+    /// Carried by the title-menu seam alone, and only where that seam's shape
+    /// cannot supply it. A version whose column builder returns the row it took
+    /// says where the next row is; one that returns nothing does not, and the
+    /// caller that places the game's own lower row may compute it from a
+    /// constant rather than from the column, so nothing about the column says
+    /// what is free. That number is version data for the same reason a linked
+    /// name is: it is read off one version's `init` and is the layout of no
+    /// other.
+    #[serde(default, rename = "titleMenuRow")]
+    pub(super) title_menu_row: Option<i16>,
 }
 
 /// One capability this version reviewed and deliberately does not carry.
@@ -447,6 +459,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
         )));
     }
     check_non_goals(&inventory)?;
+    check_title_menu_row(&inventory)?;
 
     // The seed list is tracked and therefore present everywhere too, for the
     // same reason: a build that generates stubs from the stub lock still has to
@@ -568,6 +581,52 @@ fn major_version(text: &str) -> Option<u16> {
     let rest = text[at..].trim_start().strip_prefix(':')?.trim_start();
     let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
+}
+
+/// The seam whose shape decides whether a title-menu row has to be declared.
+pub(super) const TITLE_MENU_SEAM: &str = "screen.title-menu-options";
+
+/// Checks that the title-menu row is declared exactly where it is needed.
+///
+/// The row is derivable from a column builder that returns the row it took, and
+/// is derivable from nothing at all when it returns void. So the descriptor
+/// decides whether the number has to be there, and a number carried by any other
+/// hook is a number nothing reads.
+///
+/// # Errors
+///
+/// Returns an error when a hook other than the title-menu seam carries a row,
+/// when a void-returning title-menu seam carries none, or when one that hands
+/// the row back carries one anyway.
+fn check_title_menu_row(inventory: &Inventory) -> Result<(), GenerateError> {
+    for hook in &inventory.hooks {
+        if hook.title_menu_row.is_some() && hook.id != TITLE_MENU_SEAM {
+            return Err(GenerateError::Drift(format!(
+                "{} declares a title-menu row and nothing reads one for it; only {TITLE_MENU_SEAM} \
+                 places a row",
+                hook.id
+            )));
+        }
+    }
+    let Some(seam) = inventory
+        .hooks
+        .iter()
+        .find(|hook| hook.id == TITLE_MENU_SEAM)
+    else {
+        return Ok(());
+    };
+    let returns_void = seam.descriptor.ends_with(")V");
+    match (returns_void, seam.title_menu_row) {
+        (true, None) => Err(GenerateError::Drift(format!(
+            "{TITLE_MENU_SEAM} returns void here, so it hands back no row and nothing else says \
+             where one is free; declare titleMenuRow, read off this version's title screen"
+        ))),
+        (false, Some(row)) => Err(GenerateError::Drift(format!(
+            "{TITLE_MENU_SEAM} hands back the row it took, so the declared titleMenuRow of {row} \
+             is a second answer to a question this version already answers"
+        ))),
+        _ => Ok(()),
+    }
 }
 
 /// Checks that a version's declared non-goals say something the hooks do not.

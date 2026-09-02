@@ -77,6 +77,79 @@ const LIBRARY: &str = "ravel_bootstrap";
 /// The root of the generated Java tree, which this generator owns outright.
 const JAVA_ROOT: &str = "target/ravel-jvm/generated";
 
+/// The file one generation holds while it empties and refills the output trees.
+const OUTPUT_LOCK: &str = "target/ravel-jvm/.generating";
+
+/// How long a generation waits for another to finish before it gives up.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_mins(1);
+
+/// How old a lock has to be before it is read as left behind rather than held.
+///
+/// A build killed between taking the lock and dropping it would otherwise wedge
+/// every later build on the machine, which is a worse failure than the race the
+/// lock exists to prevent.
+const LOCK_STALE: std::time::Duration = std::time::Duration::from_mins(5);
+
+/// Exclusive use of the generated trees, for as long as it is held.
+///
+/// The trees under `target/ravel-jvm` are shared by every version and emptied
+/// before they are refilled, so two generations running at once would have one
+/// deleting what the other is reading. That is not hypothetical: the crate's own
+/// tests generate from the tracked inputs concurrently, and the first sweep made
+/// them fail on an artefact another test had just written.
+struct OutputLock {
+    path: PathBuf,
+}
+
+impl OutputLock {
+    /// Waits for the trees, or reports who is holding them.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the lock cannot be created, or when another
+    /// generation held it for longer than a build should take.
+    fn take(root: &Path) -> Result<Self, GenerateError> {
+        let path = root.join(OUTPUT_LOCK);
+        if let Some(parent) = path.parent() {
+            create(parent)?;
+        }
+        let waited = std::time::Instant::now();
+        loop {
+            match std::fs::File::create_new(&path) {
+                Ok(_) => return Ok(Self { path }),
+                Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
+                    return Err(GenerateError::Input(format!(
+                        "{} could not be taken: {error}",
+                        path.display()
+                    )));
+                }
+                Err(_) => {}
+            }
+            let stale = std::fs::metadata(&path)
+                .and_then(|held| held.modified())
+                .is_ok_and(|held| held.elapsed().is_ok_and(|age| age > LOCK_STALE));
+            if stale {
+                let _ = std::fs::remove_file(&path);
+                continue;
+            }
+            if waited.elapsed() > LOCK_WAIT {
+                return Err(GenerateError::Input(format!(
+                    "another build has held {} for longer than a build should take; if none is \
+                     running, delete it",
+                    path.display()
+                )));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
+}
+
+impl Drop for OutputLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// Where the generated Java lands, relative to the repository root.
 ///
 /// It is under `target/` because it is a build product: nothing there is
@@ -137,6 +210,7 @@ struct Rendered {
     hook_java: String,
     game_names_java: String,
     game_members_java: String,
+    menu_layout_java: String,
     /// The Java release the screen jar for this version is compiled for.
     java_release: String,
     /// The Java release the agent jar for this version is compiled for.
@@ -350,6 +424,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         hook_java: render::hook_java(&pinned.adapter, &shapes),
         game_names_java: render::game_names(&pinned.adapter, &pinned.surface),
         game_members_java: render::game_members(&pinned.adapter, &pinned.surface, &mapping)?,
+        menu_layout_java: render::menu_layout(&pinned.adapter, &pinned.inventory),
         java_release: format!("{}\n", pinned.adapter.java_release),
         agent_release: format!("{}\n", pinned.adapter.java_release.max(AGENT_RELEASE_FLOOR)),
         screen_names_java: render::screen_names(&pinned.adapter, &screens.names),
@@ -372,6 +447,8 @@ fn write(
     let stub_directory = root.join(STUB_OUTPUT);
     // Every artefact is placed and never swept: two builds share this tree, and a
     // generator that emptied it would delete a tree another process was reading.
+    let _held = OutputLock::take(root)?;
+
     // Every output tree is emptied before it is written, because a build emits one
     // version and these paths are shared by every version. A per-file overwrite
     // leaves whatever the previous version wrote at a path this one does not use,
@@ -414,6 +491,7 @@ fn write(
     let java = java_directory.join("Hook.java");
     let game_names = java_directory.join("GameNames.java");
     let game_members = java_directory.join("GameMembers.java");
+    let menu_layout = java_directory.join("MenuLayout.java");
     // Beside the generated Java rather than in a build script, for the reason
     // the version selection itself is read from here: a script that asked the
     // environment could compile for a release the generator did not generate
@@ -435,6 +513,7 @@ fn write(
         (&java, &rendered.hook_java),
         (&game_names, &rendered.game_names_java),
         (&game_members, &rendered.game_members_java),
+        (&menu_layout, &rendered.menu_layout_java),
         (&java_release, &rendered.java_release),
         (&agent_release, &rendered.agent_release),
         (&screen_names, &rendered.screen_names_java),

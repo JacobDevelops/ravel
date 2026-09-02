@@ -308,6 +308,26 @@ member = "createNormalMenuOptions"
 descriptor = "(II)V"
 kind = "instance-method"
 capability = "Observe the main menu button column being built, which is where a mods button goes."
+# Where Ravel's own row goes, measured from the `top` this method is handed.
+# Negative is above the column, which is where this version's is.
+#
+# It is declared because nothing about this version says it. The method returns
+# void, so it hands back no row, and `TitleScreen.init` does not place the
+# Options and Quit row below whatever the column reached — it computes it as
+# `top + 72 + 12` and would compute the same thing if the column were empty. So
+# adding a row to the column reserves nothing, and a row derived from the
+# column's own base and spacing lands on top of Options and Quit, which is what
+# the third real launch drew.
+#
+# Below the column does not fit. Between the column's last option and the Options
+# and Quit row there are sixteen pixels, and between that row and the copyright
+# line there are eighteen; a row is twenty. Those gaps do not grow, because the
+# smallest interface this game scales to is 240 tall by construction and the
+# column's top is `height / 4 + 48`. Above the column does fit at every size: the
+# logo ends at 74 and the column starts at 108 or lower, so one spacing above the
+# column is clear of both. Read off `init` in the pinned jar, which is the only
+# place any of this is written down.
+titleMenuRow = -24
 
 # The eight capabilities this version reviewed and does not carry. The header
 # above explains the three kinds at length; these are the same eight as data, so

@@ -84,16 +84,6 @@ public final class Transformer implements ClassFileTransformer {
         this.rewrittenByClass = collectTargets ? new ConcurrentHashMap<>() : null;
     }
 
-    /**
-     * How many options the game's normal title-menu column holds.
-     *
-     * <p>A ceiling, and the only one here: the count is in no descriptor, so the
-     * void-returning shape below cannot derive it and every tracked version
-     * builds the same three. A version that builds a different column has to
-     * carry the count as version data rather than gain a third bridge.
-     */
-    private static final int NORMAL_MENU_OPTIONS = 3;
-
     /** Gives transformed game code a public path to the package-private screen loader. */
     public static int addTitleMenu(Object titleScreen, int bottom, int spacing) {
         return Screens.addTitleMenu(titleScreen, bottom, spacing);
@@ -103,12 +93,21 @@ public final class Transformer implements ClassFileTransformer {
      * Adds the mods button under a menu column whose builder returns nothing.
      *
      * <p>The int-returning shape hands back the row its last option took, and
-     * this shape hands back nothing, so the row is computed from the column's
-     * own base and spacing instead. Both end at the same call, because where the
-     * button goes is a fact about the column rather than about the return kind.
+     * the next row follows from it. This shape hands back nothing, and the row
+     * cannot be worked out from the column either: a title screen that places
+     * its own lower row at a constant reserves nothing when a row is added to
+     * the column, so a row derived from the column's base and spacing lands on
+     * top of the game's own options. That is what the third real launch drew.
+     *
+     * <p>So the row is version data, generated into {@link MenuLayout} from the
+     * seam's own inventory entry, and this passes it as the row the shared
+     * placement sits one spacing below. It may be negative, and at the version
+     * that forced this it is: that title screen has no gap below the column wide
+     * enough for a row, and the one above it is clear at every size the game
+     * scales to.
      */
     public static void addTitleMenuColumn(Object titleScreen, int top, int spacing) {
-        Screens.addTitleMenu(titleScreen, top + (NORMAL_MENU_OPTIONS - 1) * spacing, spacing);
+        Screens.addTitleMenu(titleScreen, top + MenuLayout.RAVEL_ROW - spacing, spacing);
     }
 
     /**

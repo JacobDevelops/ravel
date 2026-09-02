@@ -864,6 +864,13 @@ mod tests {
         // directory: it writes files before the game builds that world's pack
         // repository.
         assert!(java.contains("public static native void ravelWriteWorldDatapack(String world);"));
+        // The staging crossing, which carries the screen's directory rather than
+        // a world's: the two differ by one level and the names say which is which.
+        assert!(
+            java.contains(
+                "public static native boolean ravelWriteStagedDatapack(String directory);"
+            )
+        );
 
         let _ = std::fs::remove_dir_all(&out);
     }

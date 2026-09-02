@@ -368,6 +368,32 @@ descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorag
 kind = "static-method"
 capability = "Observe a world's data pack repository being built over its own `datapacks` directory, which is where a world's own pack has to be written."
 
+# Where a world being created gets the mods' data *loaded*, which is a different
+# thing from getting it selected. `world.create-pack-repository` puts the pack in
+# the world's own directory and the game selects it, but creating a world runs no
+# data load: `CreateWorldScreen` loads recipes, tags and loot tables once when it
+# opens, and `WorldOpenFlows.createLevelFromExistingSettings` hands the created
+# world those same resources. A pack that appears after that load is listed by
+# `/datapack list` and read by nothing.
+#
+# So the pack is staged where the screen's own load will see it. This seam is the
+# earliest point at which the screen exists, which the two members Ravel performs
+# need because both are instance methods, and it is reached again after the
+# reload it triggers, which is why the adapter runs once per screen.
+#
+# The cost, stated rather than left to be found: one data load when this screen
+# opens, with the game's own loading screen in front of it. That is the same
+# pause the game already pays when a player adds a data pack by hand, on the same
+# path, and it is paid only when something was staged — a launch whose mods supply
+# no data half is not reloaded for and sees no pause at all.
+[[hook]]
+id = "screen.create-world-init"
+class = "net.minecraft.client.gui.screens.worldselection.CreateWorldScreen"
+member = "init"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Observe the create-world screen building its widgets, which is where a world being created has its data staged."
+
 [[hook]]
 id = "world.save-persistence"
 class = "net.minecraft.server.MinecraftServer"

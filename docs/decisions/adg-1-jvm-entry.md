@@ -231,9 +231,9 @@ generator declares every reference parameter as `java.lang.Object` precisely so
 that generated `Hook.java` declares no game type and still compiles without the
 client jar. Neither artifact is free of game *names*: `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-three adapters between them resolve seventeen classes by name — all of which the invariant
+three adapters between them resolve twenty classes by name — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
-on the class path. Those seventeen names are generated rather than written, and so is
+on the class path. Those twenty names are generated rather than written, and so is
 every member the adapters reach on them; the amendment below records why and what
 carries them.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled
@@ -580,6 +580,15 @@ type, neither tracked jar carries Guava, and a stub declaring that return type
 would not compile. Reflection names no type, so the block, its state definition,
 the id mapper and the class that carries a state's cache step are declared here
 and reached by name.
+
+Three more came with it, to twenty, when a world being created turned out to
+need the mods' data staged before the create-world screen loads its own. The
+screen holds the staging directory and the reload behind two private methods, and
+the configuration those need behind three public ones, so the screen, its state
+and its settings are all declared. This is the same case as the block walk rather
+than a new one: what is reached is a member the surface pins, not a name a source
+spells, and nothing here could be compiled against instead — a private method is
+not on any stub's surface at all.
 
 ## Limits of this evidence
 

@@ -69,8 +69,8 @@ upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa60
 
 [inputs.hookInventory]
 path = "minecraft/versions/1.21.1/hooks.toml"
-sha256 = "994fea0a49173514c8e605043c593e9e138360148c0278ab2aa3e93e4ab67319"
-bytes = 17952
+sha256 = "65928c8328f267b5021a29f42d71388882e576c908ae7c4f6d978db0581bf32c"
+bytes = 19480
 
 [inputs.stubSeeds]
 path = "minecraft/versions/1.21.1/stubs.toml"
@@ -79,8 +79,8 @@ bytes = 10067
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/1.21.1/reflection.toml"
-sha256 = "63acdf6a836ef602ffa50db36c6c052f6cf549a4a053314eaad25b6b0fefef54"
-bytes = 8389
+sha256 = "482fa406ca9bdf6521a7e739d96f4a1bde85044c8d4e845e6ae02c6302792d8e"
+bytes = 10482
 
 # The two locks below are generated, not fetched, and they are pinned for the
 # machines that cannot check them any other way. Only RAVEL_REGENERATE_LOCKS
@@ -88,8 +88,8 @@ bytes = 8389
 
 [inputs.mappingsLock]
 path = "minecraft/versions/1.21.1/mappings.lock"
-sha256 = "4f0e910354e76787ecbf673f087ec3bb6df855504a151a60437e86fbb823ec5c"
-bytes = 6882
+sha256 = "9fe90dfbf140e2c69cbc0c52eee3bff551de615cef8a1975c5c95ee1c2e9fc77"
+bytes = 7088
 
 [inputs.stubsLock]
 path = "minecraft/versions/1.21.1/stubs.lock"

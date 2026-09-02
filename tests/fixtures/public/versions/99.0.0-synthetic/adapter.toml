@@ -40,8 +40,8 @@ sha256 = "3333333333333333333333333333333333333333333333333333333333333333"
 
 [inputs.hookInventory]
 path = "minecraft/versions/99.0.0-synthetic/hooks.toml"
-sha256 = "b6cc4887564f69206746353e08d4c078115e1f5cae37e211402b827841330949"
-bytes = 12154
+sha256 = "1090aed840eea48920cd646d177ac20f8579db8ba2f9c8d8d1ecce58b35717c3"
+bytes = 12412
 
 [inputs.stubSeeds]
 path = "minecraft/versions/99.0.0-synthetic/stubs.toml"
@@ -55,8 +55,8 @@ bytes = 2742
 
 [inputs.mappingsLock]
 path = "minecraft/versions/99.0.0-synthetic/mappings.lock"
-sha256 = "cb3ccb8876bb9b8dfc305e2f1621d7d58fe972caa33d0aa6790058cd22dd2892"
-bytes = 7191
+sha256 = "fa61ac36900a4e181224bf375a7a7d55807b7e5fac141e3e86efe6893c5b0fc3"
+bytes = 7328
 
 [inputs.stubsLock]
 path = "minecraft/versions/99.0.0-synthetic/stubs.lock"

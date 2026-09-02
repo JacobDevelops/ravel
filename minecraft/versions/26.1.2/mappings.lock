@@ -232,6 +232,12 @@ member = "createPackRepository"
 descriptor = "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;)Lnet/minecraft/server/packs/repository/PackRepository;"
 static = true
 
+[target."screen.create-world-init"]
+class = "net/minecraft/client/gui/screens/worldselection/CreateWorldScreen"
+member = "init"
+descriptor = "()V"
+static = false
+
 [target."world.save-persistence"]
 class = "net/minecraft/server/MinecraftServer"
 member = "saveAllChunks"

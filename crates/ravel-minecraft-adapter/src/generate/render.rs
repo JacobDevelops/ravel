@@ -1113,6 +1113,24 @@ fn written_declarations() -> &'static str {
          \x20    */\n\
          \x20   public static native void ravelWriteWorldDatapack(String world);\n\n\
          \x20   /**\n\
+         \x20    * Writes the mods' data pack where the create-world screen stages\n\
+         \x20    * packs.\n\
+         \x20    *\n\
+         \x20    * <p>Being selected and being loaded are different things. A world\n\
+         \x20    * being created runs no data load of its own; it is handed the\n\
+         \x20    * resources the screen loaded when it opened, so a pack that only\n\
+         \x20    * reaches the world's directory is listed and unread for the whole\n\
+         \x20    * first session. The screen stages packs in a directory of its own\n\
+         \x20    * and copies that directory's contents into the world it makes, so\n\
+         \x20    * the pack goes in there and the screen is asked to load again.\n\
+         \x20    *\n\
+         \x20    * @param directory the screen's staging directory, which holds pack\n\
+         \x20    *     directories rather than a {@code datapacks} directory\n\
+         \x20    * @return whether the screen now has a pack to load, which is false\n\
+         \x20    *     when no mod supplies data and when the write was refused\n\
+         \x20    */\n\
+         \x20   public static native boolean ravelWriteStagedDatapack(String directory);\n\n\
+         \x20   /**\n\
          \x20    * Offers the aggregate the saving world should now store.\n\
          \x20    *\n\
          \x20    * <p>ADG-7's save crossing, and the opposite failure priority to the\n\

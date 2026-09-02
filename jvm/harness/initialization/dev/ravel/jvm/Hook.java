@@ -208,12 +208,24 @@ public final class Hook {
                 "worldCreatePackRepository",
                 "(Ljava/lang/Object;)V",
                 false);
+        // The seam a world being created has its data staged at. In both sets
+        // for the same reason the pack seam is: the missing-save case is about
+        // the save marker and says nothing about staging.
+        HookTarget createWorld = new HookTarget(
+                "net/minecraft/client/gui/screens/worldselection/CreateWorldScreen",
+                "init",
+                "()V",
+                false,
+                "screenCreateWorldInit",
+                "()V",
+                false);
         if (Boolean.getBoolean("ravel.test.persistence.saveSeamMissing")) {
-            return new HookTarget[] {open, packRepository};
+            return new HookTarget[] {open, packRepository, createWorld};
         }
         return new HookTarget[] {
             open,
             packRepository,
+            createWorld,
             new HookTarget(
                     "net/minecraft/server/MinecraftServer",
                     "saveAllChunks",
@@ -389,6 +401,50 @@ public final class Hook {
 
     public static void worldCreatePackRepository(Object access) {
         invocations++;
+    }
+
+    public static void screenCreateWorldInit() {
+        invocations++;
+    }
+
+    /** How many times the staging native was asked, which the guard bounds. */
+    private static int stagedWrites;
+
+    /** Where the pack was staged, or empty when staging never happened. */
+    private static String stagedDirectory = "";
+
+    public static String stagedDirectory() {
+        return stagedDirectory;
+    }
+
+    public static int stagedWrites() {
+        return stagedWrites;
+    }
+
+    /**
+     * Answers the staging crossing and writes the pack where the screen loads.
+     *
+     * <p>One directory level shallower than the world crossing below, because the
+     * game copies this directory's contents into the world it makes. Writing a
+     * {@code datapacks} directory here would put the pack at
+     * {@code datapacks/datapacks/ravel} in the created world.
+     */
+    public static boolean ravelWriteStagedDatapack(String directory) {
+        invocations++;
+        stagedWrites++;
+        stagedDirectory = directory;
+        if (Boolean.getBoolean("ravel.test.persistence.noStagedData")) {
+            // The launch whose mods supply no data half. Nothing is staged and
+            // the caller must not ask the screen to reload for it.
+            return false;
+        }
+        try {
+            java.nio.file.Files.createDirectories(java.nio.file.Path.of(directory, "ravel"));
+        } catch (java.io.IOException unwritten) {
+            stagedDirectory = "unwritable";
+            return false;
+        }
+        return true;
     }
 
     /** The world the pack crossing was given, or empty when it never happened. */

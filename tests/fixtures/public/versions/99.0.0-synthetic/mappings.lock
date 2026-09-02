@@ -226,6 +226,12 @@ member = "createPackRepository"
 descriptor = "(Lorg/exampleengine/store/WorldStore;)Lorg/exampleengine/resource/PackStore;"
 static = true
 
+[target."screen.create-world-init"]
+class = "org/exampleengine/client/NewWorldScreen"
+member = "init"
+descriptor = "()V"
+static = false
+
 [target."world.open-persistence"]
 class = "org/exampleengine/client/GameClient"
 member = "worldOpenPersistence"

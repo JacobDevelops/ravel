@@ -275,3 +275,52 @@ runtime = "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase"
 [[reflected.member]]
 name = "initCache"
 descriptor = "()V"
+
+[[reflected]]
+# The create-world screen, whose two staging members Ravel performs rather than
+# observes. Both are private, which is why they are declared here: ADG-4 keeps a
+# hook's hands off a receiver's members, so a hook observes the screen and an
+# adapter reaches the members by the names this file pins.
+name = "CREATE_WORLD_SCREEN"
+class = "net.minecraft.client.gui.screens.worldselection.CreateWorldScreen"
+runtime = "net.minecraft.client.gui.screens.worldselection.CreateWorldScreen"
+
+[[reflected.member]]
+# The screen's own state, which is where the configuration the two calls below
+# need comes from. Reading it rather than passing the game's default is what
+# keeps a world being recreated from silently re-enabling a pack its player had
+# turned off.
+name = "getUiState"
+descriptor = "()Lnet/minecraft/client/gui/screens/worldselection/WorldCreationUiState;"
+
+[[reflected.member]]
+# Forces the screen's staging directory and the repository over it into
+# existence, and hands back both. It is the only way to reach that directory
+# without naming a member the versions spell differently.
+name = "getDataPackSelectionSettings"
+descriptor = "(Lnet/minecraft/world/level/WorldDataConfiguration;)Lcom/mojang/datafixers/util/Pair;"
+
+[[reflected.member]]
+# Reloads the screen's data from a repository. The boolean asks whether an
+# experimental selection should be confirmed by the player first, and Ravel
+# passes false: the pack it just staged is its own and needs no dialog.
+name = "tryApplyNewDataPacks"
+descriptor = "(Lnet/minecraft/server/packs/repository/PackRepository;ZLjava/util/function/Consumer;)V"
+
+[[reflected]]
+name = "WORLD_CREATION_UI_STATE"
+class = "net.minecraft.client.gui.screens.worldselection.WorldCreationUiState"
+runtime = "net.minecraft.client.gui.screens.worldselection.WorldCreationUiState"
+
+[[reflected.member]]
+name = "getSettings"
+descriptor = "()Lnet/minecraft/client/gui/screens/worldselection/WorldCreationContext;"
+
+[[reflected]]
+name = "WORLD_CREATION_CONTEXT"
+class = "net.minecraft.client.gui.screens.worldselection.WorldCreationContext"
+runtime = "net.minecraft.client.gui.screens.worldselection.WorldCreationContext"
+
+[[reflected.member]]
+name = "dataConfiguration"
+descriptor = "()Lnet/minecraft/world/level/WorldDataConfiguration;"

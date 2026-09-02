@@ -4,7 +4,7 @@ The version All the Mods 10: To the Sky 2.0.2 runs on, and the first obfuscated
 one this repository targets: names are read from Mojang's published client
 mapping rather than from the class files, which is what `mappingSource` records.
 
-This version carries 30 reviewed hooks and records 8 non-goals. Twenty-eight of
+This version carries 31 reviewed hooks and records 8 non-goals. Twenty-nine of
 the hooks resolve against the pinned jar unchanged from 26.1.2's inventory; the
 other two, `world.open-persistence` and `screen.title-menu-options`, are carried
 at drifted descriptors with re-reviewed capability sentences. Every non-goal is

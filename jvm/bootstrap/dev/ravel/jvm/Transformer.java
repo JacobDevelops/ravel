@@ -60,6 +60,8 @@ public final class Transformer implements ClassFileTransformer {
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
     private static final MethodTypeDesc WORLD_PACK_REPOSITORY =
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
+    private static final MethodTypeDesc CREATE_WORLD_SCREEN =
+            MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
     private static final MethodTypeDesc REGISTER_CONTENT = MethodTypeDesc.ofDescriptor("()V");
     private static final MethodTypeDesc PERFORM_OUTWARD = MethodTypeDesc.ofDescriptor("()V");
 
@@ -123,6 +125,19 @@ public final class Transformer implements ClassFileTransformer {
      */
     public static void openWorldDatapack(Object access) {
         Datapack.write(access);
+    }
+
+    /**
+     * Gives the rewritten create-world screen a public path to the data pack
+     * staging.
+     *
+     * <p>Its own bridge for the reason the one above has, and one more: the two
+     * members the staging performs are private to the screen, so the receiver is
+     * handed to an adapter that reaches them by name rather than reached into
+     * from here.
+     */
+    public static void createWorldScreen(Object screen) {
+        Datapack.stage(screen);
     }
 
     /**
@@ -410,6 +425,19 @@ public final class Transformer implements ClassFileTransformer {
         return target.hookMethod().equals("worldCreatePackRepository");
     }
 
+    /**
+     * The seam a world being created has its data staged at.
+     *
+     * <p>Separate from the seam above because being selected and being loaded are
+     * separate things. Creating a world runs no data load of its own, so a pack
+     * that only reaches the world's directory is listed and read by nothing for
+     * the whole first session. This is the screen whose load the created world
+     * inherits, and the adapter is what puts the pack inside it.
+     */
+    private static boolean isCreateWorldScreen(HookTarget target) {
+        return target.hookMethod().equals("screenCreateWorldInit");
+    }
+
     private static boolean isTitleMenu(HookTarget target) {
         return target.hookMethod().equals("screenTitleMenuOptions");
     }
@@ -559,6 +587,12 @@ public final class Transformer implements ClassFileTransformer {
                     // it names.
                     builder.aload(slot(0));
                     builder.invokestatic(TRANSFORMER, "openWorldDatapack", WORLD_PACK_REPOSITORY);
+                } else if (isCreateWorldScreen(target)) {
+                    // The screen itself, which is the only thing this seam
+                    // carries and everything the staging needs: the directory,
+                    // the repository and the configuration all hang off it.
+                    builder.aload(0);
+                    builder.invokestatic(TRANSFORMER, "createWorldScreen", CREATE_WORLD_SCREEN);
                 } else if (isBuiltInFreeze(target)) {
                     builder.invokestatic(TRANSFORMER, "registerContent", REGISTER_CONTENT);
                 } else if (isClientTick(target)) {

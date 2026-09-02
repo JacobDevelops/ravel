@@ -2216,7 +2216,7 @@ struct Seam {
 /// It holds the shapes rather than the seams — the set of seams is
 /// [`verify_hook_name_literals`]'s subject, and a hook name no version declares
 /// is reported there instead of twice.
-const TRANSFORMER_SEAMS: [Seam; 4] = [
+const TRANSFORMER_SEAMS: [Seam; 5] = [
     Seam {
         id: "world.open-persistence",
         receiver: true,
@@ -2235,6 +2235,15 @@ const TRANSFORMER_SEAMS: [Seam; 4] = [
         id: "world.create-pack-repository",
         receiver: false,
         loads: &[(Parameter::At(0), Shape::Reference)],
+        returns: &[],
+    },
+    Seam {
+        // The staging seam. It loads the receiver and nothing else, so the only
+        // thing a version can break here is declaring it static, and local zero
+        // would then be an argument rather than the screen.
+        id: "screen.create-world-init",
+        receiver: true,
+        loads: &[],
         returns: &[],
     },
     Seam {

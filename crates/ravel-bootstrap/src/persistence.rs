@@ -247,36 +247,66 @@ impl LoaderRuntime {
     /// a world Ravel does not write into, and the pack would be for a session that
     /// does not happen.
     ///
-    /// A refusal here is noticed rather than raised. The world opens either way —
-    /// the game read its pack list before this crossing was reached, so this pack
-    /// was never going to be read this session — and withholding a world over a
-    /// file that would not have been read until the next open would cost a player
-    /// their session for nothing. What it must not do is fail silently, which is
-    /// what the observation channel is for.
+    /// A refusal here is noticed rather than raised. The world opens either way,
+    /// and withholding a world over a data file would cost a player their session
+    /// for something the game would have started without. What it must not do is
+    /// fail silently, which is what the observation channel is for.
     fn write_world_pack(&self, world: &str) {
-        let path = std::path::Path::new(world);
+        let _ = self.put_pack(world, crate::packs::write_world_pack);
+    }
+
+    /// Puts the data half where the create-world screen stages packs.
+    ///
+    /// The directory is the screen's own rather than a world's, and it is written
+    /// into for the reason `packs.rs` records: a world being created is handed the
+    /// resources the screen already loaded, so a pack that is not in that load is
+    /// selected and unread for the whole first session.
+    ///
+    /// A refusal costs the pack and nothing else, exactly as above. The screen is
+    /// a screen either way.
+    ///
+    /// Answers whether the screen now has a pack to load, which is what decides
+    /// whether it is asked to load again. A launch whose mods supply no data
+    /// stages nothing and pays neither the reload nor the pause in front of it.
+    fn write_staged_pack(&self, directory: &str) -> bool {
+        self.put_pack(directory, crate::packs::write_staged_pack)
+    }
+
+    /// Writes one pack into `directory`, noticing whatever refused.
+    ///
+    /// Answers whether a pack is there afterwards, which a refusal and an absent
+    /// set both make false. An unchanged tree is true: the pack is present, and
+    /// whether these bytes are the ones already on disk says nothing about
+    /// whether the caller has read them.
+    fn put_pack(
+        &self,
+        directory: &str,
+        write: fn(&Path) -> Result<Option<ravel_loader::Written>, ravel_loader::PackError>,
+    ) -> bool {
+        let path = Path::new(directory);
         if let Err(refusal) = admissible_world(path) {
             self.inner
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .persistence
                 .notice(format!(
-                    "no data pack was written for `{world}`, so this world reads none of the \
-                     mods' recipes or tags: {refusal}"
+                    "no data pack was written into `{directory}`, so this world reads none of \
+                     the mods' recipes or tags: {refusal}"
                 ));
-            return;
+            return false;
         }
-        match crate::packs::write_world_pack(path) {
-            Ok(_) => {}
+        match write(path) {
+            Ok(written) => written.is_some(),
             Err(error) => {
                 self.inner
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner)
                     .persistence
                     .notice(format!(
-                        "`{world}` could not be given the mods' data pack, so this world reads \
-                         none of their recipes or tags: {error}"
+                        "`{directory}` could not be given the mods' data pack, so this world \
+                         reads none of their recipes or tags: {error}"
                     ));
+                false
             }
         }
     }
@@ -693,6 +723,49 @@ pub fn ravel_write_world_datapack<'local>(
         Ok(())
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+}
+
+/// Writes the mods' data pack where the create-world screen stages packs.
+///
+/// The other crossing is handed a world and puts the pack under its `datapacks`
+/// directory. This one is handed the screen's own staging directory, whose
+/// *contents* the game copies into the world it creates, so the pack directory
+/// goes in directly and the world ends up with the same tree.
+///
+/// It exists because being selected and being loaded are different things.
+/// Creating a world runs no data load of its own; it is handed the resources the
+/// screen loaded when it opened. So a pack that is only on disk is a pack the
+/// world lists and knows nothing about, and the fix is to be in the load the
+/// screen is about to run rather than to write earlier.
+///
+/// A failure is noticed rather than raised, for the reason the other write's is,
+/// and here the cost is even smaller: the screen opens either way.
+///
+/// # Returns
+///
+/// Whether the screen now has a pack to load. The caller asks the screen to load
+/// again only when this is true, so a launch whose mods supply no data pays
+/// neither the reload nor the pause the player would see in front of it. False is
+/// also what a refusal answers, which is the same choice: a pack that is not
+/// there is not worth reloading for.
+///
+/// # Panics
+///
+/// Does not panic, for the same reason as [`ravel_open_world_persistence`].
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelWriteStagedDatapack")]
+pub fn ravel_write_staged_datapack<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    directory: JString<'local>,
+) -> jboolean {
+    env.with_env(|env: &mut Env<'local>| -> Result<jboolean, HookError> {
+        let directory = text(env, &directory)?;
+        let Ok(runtime) = runtime() else {
+            return Ok(JNI_FALSE);
+        };
+        Ok(jboolean::from(runtime.write_staged_pack(&directory)))
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
 impl From<SavedDataError> for OpenOutcome {
@@ -1474,6 +1547,26 @@ mod tests {
             ravel_observability::Profiler::off(),
             crate::runtime::pre_world_report(),
         )
+    }
+
+    /// A launch that staged nothing says so, and the screen is not reloaded.
+    ///
+    /// The answer is the whole point of the crossing returning one. Asking the
+    /// create-world screen to load again costs a data load and puts the game's
+    /// loading screen in front of the player, and a launch whose mods supply no
+    /// data half has nothing for that load to find. Nobody installed a set here,
+    /// which is the state every launch is in before a host installs one.
+    #[test]
+    fn a_launch_that_stages_no_pack_does_not_ask_for_a_reload() {
+        let staging = std::env::temp_dir().join(format!("ravel-unstaged-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&staging);
+        std::fs::create_dir_all(&staging).expect("a writable temporary directory");
+
+        let staged = shipped_running().write_staged_pack(&staging.to_string_lossy());
+
+        assert!(!staged);
+        assert!(!staging.join("ravel").exists());
+        let _ = std::fs::remove_dir_all(staging);
     }
 
     /// What `bytes` records for the shipped owner, through its own declaration.

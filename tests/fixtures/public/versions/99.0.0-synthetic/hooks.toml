@@ -306,6 +306,14 @@ kind = "static-method"
 capability = "Synthetic second-version target standing in for the `world.create-pack-repository` capability."
 
 [[hook]]
+id = "screen.create-world-init"
+class = "org.exampleengine.client.NewWorldScreen"
+member = "init"
+descriptor = "()V"
+kind = "instance-method"
+capability = "Synthetic second-version target standing in for the `screen.create-world-init` capability."
+
+[[hook]]
 id = "world.open-persistence"
 class = "org.exampleengine.client.GameClient"
 member = "worldOpenPersistence"

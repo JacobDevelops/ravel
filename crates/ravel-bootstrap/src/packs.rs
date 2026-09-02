@@ -7,32 +7,40 @@
 //! so the set is installed here rather than passed down a call chain that does not
 //! exist.
 //!
-//! # Written twice, and the earlier one is what this session reads
+//! # Three paths ask, because the game reads a world's data at three moments
 //!
-//! `world.open-persistence` is handed the world stem, and the game builds that
-//! stem from a pack repository it has already configured. So a pack written from
-//! that crossing is on disk in time for the *next* open of that world, and the
+//! Being on disk and being *loaded* are different things, and a pack has to make
+//! both. The game selects packs by scanning a directory, and it loads their
+//! contents in a separate step that a path may skip.
+//!
+//! `world.open-persistence` is the latest of the three. It is handed the world
+//! stem, which the game built from a repository it had already configured, so a
+//! pack written there is on disk in time for the world's *next* open and the
 //! session that wrote it runs without Ravel's data.
 //!
-//! `world.create-pack-repository` is the earlier seam that closes it. It is the
-//! one call every path that gives a world a repository makes, it is handed the
-//! world's storage access, and it returns the repository the game then reloads
-//! and configures — and configuring adds every available pack whose source asks
-//! to be added automatically, which a world's own pack does. A pack on disk
-//! before it returns is enabled for the session that is starting.
+//! `world.create-pack-repository` is the seam that gets the pack selected. It is
+//! the one call every path that gives a world a repository makes, it carries the
+//! world's storage access, and the repository it returns is reloaded and
+//! configured — and configuring adds every available pack whose source asks to be
+//! added automatically, which a world's own pack does. Opening an existing world
+//! reloads the world's data after this, so for that path it is enough on its own.
 //!
-//! Which path matters, because the world-open flow's own steps are not on all of
-//! them: creating a fresh level makes the access, builds the repository and
-//! loads, reaching no open step at all. A seam chosen from that flow covers every
-//! session except a new world's first one, which is the session a player is most
-//! likely to judge the mods by.
+//! `screen.create-world-init` is the seam that gets the pack *loaded* in a world
+//! being created. Creating a world does not reload data: the create-world screen
+//! loads recipes, tags and loot tables once when it opens, and the created world
+//! is handed those same resources. A pack that appears after that load is
+//! selected and unread, which is a world listing the mod's pack and knowing none
+//! of its recipes. So the pack is written where the screen's own data load will
+//! see it, into the staging directory the screen copies into the new world, and
+//! the screen is asked to load again — which is the path the game already runs
+//! when a player adds a data pack by hand.
 //!
-//! Both crossings still ask, and that is deliberate rather than tolerated. Both
-//! write the same tree from the one installed set, and `write_pack` compares the
-//! tree on disk with the one it would write and leaves an identical one alone —
-//! so the second ask writes nothing at all and neither crossing has to know about
-//! the other. Keeping the later one means a world admitted through a path the
-//! earlier seam never ran on still gets its pack.
+//! All three still ask, and that is deliberate rather than tolerated. Each writes
+//! the same tree from the one installed set, and `write_pack` compares the tree on
+//! disk with the one it would write and leaves an identical one alone — so a
+//! later ask over an unchanged tree writes nothing at all and no crossing has to
+//! know about the others. Keeping the latest one means a world admitted through a
+//! path the earlier seams never ran on still gets its pack.
 
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
@@ -63,12 +71,33 @@ pub fn install(supplied: Supplied) {
 /// Returns whatever the filesystem refused. The caller decides what that costs; it
 /// is not this function's to decide whether a world opens.
 pub fn write_world_pack(world: &Path) -> Result<Option<Written>, ravel_loader::PackError> {
+    write_data_pack(&world.join(WORLD_DATA_PACKS))
+}
+
+/// Writes the data half of the installed set into the pack directory `holder`.
+///
+/// The same tree as [`write_world_pack`] one level higher up, because the
+/// create-world screen stages packs in a directory of its own and copies that
+/// directory's *contents* into the world it makes. So what goes here is the pack
+/// directory itself, and the world ends up with the tree the other crossings
+/// would have written.
+///
+/// # Errors
+///
+/// Returns whatever the filesystem refused, for the same reason and with the same
+/// consequence as [`write_world_pack`].
+pub fn write_staged_pack(holder: &Path) -> Result<Option<Written>, ravel_loader::PackError> {
+    write_data_pack(holder)
+}
+
+/// Puts the data half's pack directory inside `holder`.
+fn write_data_pack(holder: &Path) -> Result<Option<Written>, ravel_loader::PackError> {
     let held = SUPPLIED.lock().unwrap_or_else(PoisonError::into_inner);
     let Some(supplied) = held.as_ref() else {
         return Ok(None);
     };
     write_pack(
-        &world.join(WORLD_DATA_PACKS).join(PACK_DIRECTORY),
+        &holder.join(PACK_DIRECTORY),
         supplied,
         Half::Data,
         &crate::runtime::data_pack_metadata(Half::Data.description()),
@@ -80,7 +109,7 @@ pub fn write_world_pack(world: &Path) -> Result<Option<Written>, ravel_loader::P
 mod tests {
     use std::path::PathBuf;
 
-    use super::write_world_pack;
+    use super::{write_staged_pack, write_world_pack};
 
     fn directory(name: &str) -> PathBuf {
         let at =
@@ -106,5 +135,24 @@ mod tests {
         assert!(written.is_none());
         assert!(!world.join("datapacks").exists());
         let _ = std::fs::remove_dir_all(world);
+    }
+
+    /// The staging entry point invents no pack either, and puts none where the
+    /// world one would.
+    ///
+    /// Both halves matter. A directory that is a world's and a directory that is
+    /// the create-world screen's differ by exactly one level, and an entry point
+    /// that wrote the world's shape into the screen's would land the pack at
+    /// `datapacks/datapacks/ravel` in the world the screen copies into.
+    #[test]
+    fn a_launch_with_no_installed_set_stages_nothing() {
+        let staging = directory("unstaged");
+
+        let written = write_staged_pack(&staging).expect("nothing to write cannot fail");
+
+        assert!(written.is_none());
+        assert!(!staging.join("ravel").exists());
+        assert!(!staging.join("datapacks").exists());
+        let _ = std::fs::remove_dir_all(staging);
     }
 }

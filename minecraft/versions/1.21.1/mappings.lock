@@ -244,6 +244,14 @@ runtimeClass = "ats"
 runtimeMember = "a"
 runtimeDescriptor = "(Lerf$c;)Latp;"
 
+[target."screen.create-world-init"]
+class = "net/minecraft/client/gui/screens/worldselection/CreateWorldScreen"
+member = "init"
+descriptor = "()V"
+static = false
+runtimeClass = "ftc"
+runtimeMember = "aT_"
+
 [target."screen.title-menu-options"]
 class = "net/minecraft/client/gui/screens/TitleScreen"
 member = "createNormalMenuOptions"

@@ -51,8 +51,8 @@ upstream = "https://piston-meta.mojang.com/v1/packages/a5ba42111e0de7712d677c458
 
 [inputs.hookInventory]
 path = "minecraft/versions/26.1.2/hooks.toml"
-sha256 = "076783c5b6fc51077d5c036ba46a94dd0fa3b9b52f4caea1fb7369e6db0b74d0"
-bytes = 15490
+sha256 = "d4b9b1cd8996605ee24cd519f41dfdfad3169e7a6c140a04939f843f67bd5833"
+bytes = 17019
 
 [inputs.stubSeeds]
 path = "minecraft/versions/26.1.2/stubs.toml"
@@ -67,8 +67,8 @@ bytes = 10277
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/26.1.2/reflection.toml"
-sha256 = "941f015d3e0b4da38ab980053662e81d40b6975c2f0017524858705c87ff8153"
-bytes = 11929
+sha256 = "37b9de2e22aa51d5a3d25d859e4357f35826c8942d9f40464eecc165c6ad778b"
+bytes = 14214
 
 # The two locks below are generated, not fetched, and they are pinned for the
 # machines that cannot check them any other way. Without the jars there is
@@ -80,8 +80,8 @@ bytes = 11929
 
 [inputs.mappingsLock]
 path = "minecraft/versions/26.1.2/mappings.lock"
-sha256 = "f320f77f13f86453042cc36ac2d365c9a7d4235a7b6580ae2691118a81b86d5d"
-bytes = 7325
+sha256 = "edfe9e6cbe74a5bed983b9a2ab3cd59b47c4b52b43601e6b9ac92caa1074f571"
+bytes = 7488
 
 [inputs.stubsLock]
 path = "minecraft/versions/26.1.2/stubs.lock"

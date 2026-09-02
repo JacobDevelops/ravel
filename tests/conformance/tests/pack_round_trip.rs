@@ -206,7 +206,7 @@ fn manifests() -> Vec<PackageManifest> {
 /// Composes `game` and returns what reached each mod, in [`MEMBERS`] order.
 fn launch(game: &Path) -> Vec<Option<i64>> {
     let (composed, applied) = members();
-    let (machine, _, configurations) =
+    let (machine, _, configurations, _) =
         compose(game, SIDE, composed).expect("the composition should start");
 
     for owner in MEMBERS {

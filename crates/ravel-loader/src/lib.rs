@@ -10,6 +10,7 @@ mod events;
 mod interception;
 mod lifecycle;
 mod registry;
+mod resources;
 mod saves;
 mod services;
 mod surface;
@@ -30,6 +31,7 @@ pub use lifecycle::{
     executes_mod_code,
 };
 pub use registry::Registration;
+pub use resources::{ResourceRefused, Supplied, open_resources};
 pub use saves::{SaveRefused, open_saved_data};
 pub use services::{ServiceOrder, ServiceRefused, open_services};
 pub use surface::{ModEntry, ModSurface};

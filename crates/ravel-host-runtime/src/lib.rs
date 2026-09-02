@@ -41,7 +41,7 @@ use ravel_core::{ModId, Side};
 use ravel_host_api::HostMod;
 use ravel_loader::{
     ConfigRefused, DiscoveryRefused, DriveError, LifecycleEntry, LifecycleError, LifecycleMachine,
-    admitted, discover, drive, open_configuration,
+    ResourceRefused, Supplied, admitted, discover, drive, open_configuration, open_resources,
 };
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
@@ -77,11 +77,13 @@ pub struct Member {
 /// What the lifecycle is driven from: one admitted entry beside its value.
 type Admitted = Vec<(LifecycleEntry, Box<dyn HostMod>)>;
 
-/// The driven runtime pieces and resolved settings produced for one launch.
+/// The driven runtime pieces, resolved settings and supplied files produced for
+/// one launch.
 pub type Composition = (
     LifecycleMachine,
     Vec<Box<dyn HostMod>>,
     Vec<LayeredConfiguration>,
+    Supplied,
 );
 
 /// Constructs and drives a composed mod set for one launch.
@@ -136,8 +138,12 @@ pub fn compose(
     };
 
     let (machine, mods) = drive(side, composed).map_err(LaunchError::Drive)?;
+    // After the set is driven rather than before it, because the walk asks a mod
+    // for the declaration it registered from and the registration window is
+    // inside `drive`.
+    let resources = open_resources(&machine, &mods).map_err(LaunchError::Resources)?;
 
-    Ok((machine, mods, configurations))
+    Ok((machine, mods, configurations, resources))
 }
 
 /// Reads the player's own document for every member that declares settings.
@@ -260,7 +266,9 @@ pub fn initialize(env: &mut jni::Env<'_>, members: Vec<Member>) -> Result<(), La
     // below depends on it, so a launch that cannot name its side installs nothing
     // instead of composing a set for a side it guessed.
     let side = side(env)?;
-    let (machine, mods, configurations) = compose(&game_directory, side, members)?;
+    // The supplied files are held by the composition rather than installed. What
+    // reads them is the pack a launch writes, which no work package has built yet.
+    let (machine, mods, configurations, _resources) = compose(&game_directory, side, members)?;
     install_settings(side, configurations);
     // The report this host hands over holds no refusal, and that is a statement
     // about this composition rather than an empty gesture: every stage before
@@ -300,6 +308,8 @@ pub enum LaunchError {
     Lifecycle(LifecycleError),
     /// The set's settings could not be resolved or consumed.
     Config(ConfigRefused),
+    /// The set's supplied files could not be layered.
+    Resources(ResourceRefused),
     /// The lifecycle could not drive a composed value.
     Drive(DriveError),
     /// The driven runtime could not be installed.
@@ -349,6 +359,9 @@ impl fmt::Display for LaunchError {
             Self::Config(error) => {
                 write!(formatter, "the set's settings were not applied: {error}")
             }
+            Self::Resources(error) => {
+                write!(formatter, "the set's files were not layered: {error}")
+            }
             Self::Drive(error) => write!(formatter, "the composed mod set cannot start: {error}"),
             Self::Install(error) => write!(
                 formatter,
@@ -377,6 +390,7 @@ impl std::error::Error for LaunchError {
             Self::Resolution(error) => Some(error),
             Self::Lifecycle(error) => Some(error),
             Self::Config(error) => Some(error),
+            Self::Resources(error) => Some(error),
             Self::Composition(_) | Self::NotComposed(_) => None,
             Self::Drive(error) => Some(error),
             Self::Install(error) => Some(error),

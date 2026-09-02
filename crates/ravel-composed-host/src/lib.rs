@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn the_client_only_member_is_admitted_and_parked_on_a_dedicated_server() {
         let game = directory("dedicated");
-        let (machine, mods, _) =
+        let (machine, mods, _, _) =
             compose(&game, Side::DedicatedServer).expect("the tracked composition should start");
 
         assert_eq!(
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn the_server_only_member_is_admitted_and_parked_on_the_client() {
         let game = directory("client");
-        let (machine, mods, _) =
+        let (machine, mods, _, _) =
             compose(&game, Side::Client).expect("the tracked composition should start");
 
         assert_eq!(
@@ -225,7 +225,7 @@ mod tests {
     fn the_shipped_pair_runs_on_opposite_sides_of_every_launch() {
         for side in Side::ALL {
             let game = directory(&format!("pair-{}", side.name()));
-            let (machine, _, _) =
+            let (machine, _, _, _) =
                 compose(&game, side).expect("the tracked composition should start");
 
             assert_eq!(
@@ -246,7 +246,7 @@ mod tests {
     #[test]
     fn the_selected_composition_drives_every_mod_its_manifests_admit() {
         let game = directory("defaults");
-        let (machine, mods, configurations) =
+        let (machine, mods, configurations, _) =
             compose(&game, Side::Client).expect("the tracked composition should start");
 
         for id in [owner(), saved_owner(), client_owner(), registries_owner()] {
@@ -405,14 +405,15 @@ mod tests {
         let game = directory("installed-known");
         install(&game, "client_only", SOURCE_DIGEST);
 
-        let (machine, _, _) = compose(&game, Side::Client).expect("the composition should start");
+        let (machine, _, _, _) =
+            compose(&game, Side::Client).expect("the composition should start");
         assert_eq!(machine.state(&client_owner()), Ok(LifecycleState::Running));
     }
 
     #[test]
     fn the_world_owning_mod_carries_the_versions_it_declares() {
         let game = directory("saved-versions");
-        let (machine, _, _) =
+        let (machine, _, _, _) =
             compose(&game, Side::Client).expect("the tracked composition should start");
 
         assert!(
@@ -458,7 +459,7 @@ mod tests {
         std::fs::write(&pack_path, pack.to_json()).expect("the pack file should be writable");
         file::write(&game, &player).expect("the player file should be writable");
 
-        let (_, _, configurations) =
+        let (_, _, configurations, _) =
             compose(&game, Side::Client).expect("the selected pack values should resolve");
         let resolved = &configurations[0];
 
@@ -500,7 +501,7 @@ mod tests {
         .expect("a valid player document");
         file::write(&game, &player).expect("the player file should be writable");
 
-        let (_, _, configurations) =
+        let (_, _, configurations, _) =
             compose(&game, Side::Client).expect("the player values should resolve");
 
         assert_eq!(

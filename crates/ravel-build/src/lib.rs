@@ -55,7 +55,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use ravel_core::{FailureKind, LifecycleState, StructuredFailure};
+use ravel_core::{FailureKind, LifecycleState, MINECRAFT_VERSION_SELECTION, StructuredFailure};
 use ravel_loader::Discovered;
 use ravel_package::Sha256Digest;
 use sha2::{Digest, Sha256};
@@ -220,6 +220,15 @@ fn crate_ident(crate_name: &str) -> String {
     crate_name.replace('-', "_")
 }
 
+/// The workspace root every installed package inherits its dependencies from.
+///
+/// The declared set is what a mod may name, which is what this repository's own
+/// `test-mods/` name: the SDK, the host-facing trait a mod implements, and the
+/// feature crates for identity, configuration, content, packages and saves,
+/// beside the two serialization crates a saved or configured mod cannot be
+/// written without. Narrower than that and an installed package inheriting a
+/// dependency it inherits here would fail to build on the player's machine
+/// alone, which is a mod that passes its author's tests and refuses the launch.
 fn workspace_manifest(members: &[PlannedMember], ravel_root: &Path) -> String {
     let mut listed = String::from("\"host\"");
     for member in members {
@@ -240,9 +249,16 @@ fn workspace_manifest(members: &[PlannedMember], ravel_root: &Path) -> String {
          \n\
          [workspace.dependencies]\n\
          jni = \"0.22.4\"\n\
+         ravel-config = {{ path = \"{root}/crates/ravel-config\" }}\n\
          ravel-core = {{ path = \"{root}/crates/ravel-core\" }}\n\
+         ravel-data = {{ path = \"{root}/crates/ravel-data\" }}\n\
+         ravel-host-api = {{ path = \"{root}/crates/ravel-host-api\" }}\n\
          ravel-host-runtime = {{ path = \"{root}/crates/ravel-host-runtime\" }}\n\
+         ravel-package = {{ path = \"{root}/crates/ravel-package\" }}\n\
+         ravel-save = {{ path = \"{root}/crates/ravel-save\" }}\n\
          ravel-sdk = {{ path = \"{root}/crates/ravel-sdk\" }}\n\
+         serde = {{ version = \"1.0.229\", features = [\"derive\"] }}\n\
+         serde_json = \"1.0.151\"\n\
          \n\
          [workspace.lints.rust]\n\
          unsafe_code = \"forbid\"\n"
@@ -358,6 +374,18 @@ fn host_source(members: &[PlannedMember]) -> String {
 /// cache is shared and every instance's host has one name inside it, so the
 /// path a launch is given has to be this instance's own copy.
 ///
+/// `minecraft` names the tracked version the host is generated against, and it
+/// is an argument because nothing in the instance states it. A package declares
+/// `compatibility.minecraft` as a list that may hold ranges and an instance
+/// holding no package declares nothing at all, so a version read off the
+/// installed set would be a guess where the set is silent and ambiguous where
+/// it is not. It is passed to the toolchain rather than left to the environment
+/// for the same reason
+/// `docs/decisions/version-selection-is-a-build-time-choice.md` refuses a
+/// default: a build that inherited the variable would compile whichever version
+/// the shell around it happened to name, which on a player's machine is nothing
+/// anyone chose.
+///
 /// A generated file is written only when its bytes differ from what is there,
 /// so an unchanged set leaves Cargo nothing to rebuild.
 ///
@@ -372,6 +400,7 @@ pub fn build(
     plan: &HostPlan,
     game_directory: &Path,
     cache: &Path,
+    minecraft: &str,
 ) -> Result<PathBuf, BuildRefused> {
     let workspace = game_directory.join(WORKSPACE_DIRECTORY);
     for (path, contents) in &plan.files {
@@ -403,6 +432,7 @@ pub fn build(
         .arg(workspace.join("host/Cargo.toml"))
         .arg("--target-dir")
         .arg(cache)
+        .env(MINECRAFT_VERSION_SELECTION, minecraft)
         .output()
         .map_err(|error| BuildRefused::Toolchain {
             detail: error.to_string(),
@@ -573,7 +603,10 @@ mod tests {
 
     use sha2::{Digest as _, Sha256};
 
-    use super::{BuildRefused, HOST_LIBRARY, Sha256Digest, WORKSPACE_DIRECTORY, build, plan};
+    use super::{
+        BuildRefused, HOST_LIBRARY, MINECRAFT_VERSION_SELECTION, Sha256Digest, WORKSPACE_DIRECTORY,
+        build, plan,
+    };
 
     /// The name the JVM resolves when it loads the built host.
     const ENTRY_SYMBOL: &str = "Java_dev_ravel_jvm_Hook_ravelInitialize";
@@ -645,6 +678,63 @@ impl Mod for Silent {
 }
 "#;
 
+    /// A mod written against the surface a package inherits, not just the SDK.
+    ///
+    /// Most installed packages will name more than `ravel-sdk`: the trait a mod
+    /// implements lives in `ravel-host-api` and the identity type in
+    /// `ravel-core`, and this repository's own test mods declare both by
+    /// workspace inheritance. A generated workspace that declares neither
+    /// compiles a package like this one nowhere but here, so the fixture names
+    /// them the way an installed package would.
+    const HOST_API_SOURCE: &str = r#"#![forbid(unsafe_code)]
+
+//! A mod that reaches the host-facing surface, built on the player's machine.
+
+use ravel_core::{LifecycleState, ModId};
+use ravel_host_api::{HostError, HostMod};
+
+/// The mod this package builds.
+pub struct Installed {
+    id: ModId,
+}
+
+impl Default for Installed {
+    fn default() -> Self {
+        Self {
+            id: "{id}".parse().expect("the packaged identity is a legal mod id"),
+        }
+    }
+}
+
+/// Records, from inside this mod's own body, that it was entered.
+fn record(mark: &str) {
+    use std::io::Write as _;
+
+    let Ok(path) = std::env::var("RAVEL_PROOF") else {
+        return;
+    };
+    let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) else {
+        return;
+    };
+    let _ = writeln!(file, "{mark}");
+}
+
+impl HostMod for Installed {
+    fn id(&self) -> &ModId {
+        &self.id
+    }
+
+    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+        if state == LifecycleState::Running {
+            record("host-api running");
+        }
+        Ok(())
+    }
+}
+
+ravel_sdk::export_mod!(Installed::default());
+"#;
+
     const RECORD: &[u8] = br#"{"origin":"example"}"#;
 
     /// The game a fixture declares.
@@ -701,8 +791,31 @@ impl Mod for Silent {
             .to_owned()
     }
 
-    /// Installs a package the way a player would: a source tree with a manifest.
+    /// Installs a package naming the one dependency every mod names.
     fn install(instance: &Path, directory: &str, id: &str, crate_name: &str, template: &str) {
+        install_with(
+            instance,
+            directory,
+            id,
+            crate_name,
+            template,
+            "ravel-sdk.workspace = true\n",
+        );
+    }
+
+    /// Installs a package the way a player would: a source tree with a manifest.
+    ///
+    /// `dependencies` is the body of the package's own `[dependencies]` table,
+    /// written the way an author writes it against this repository, so a fixture
+    /// can name the same inherited dependencies a mod under `test-mods/` does.
+    fn install_with(
+        instance: &Path,
+        directory: &str,
+        id: &str,
+        crate_name: &str,
+        template: &str,
+        dependencies: &str,
+    ) {
         let root = instance.join(PACKAGES_DIRECTORY).join(directory);
         fs::create_dir_all(root.join("src")).expect("a package directory is creatable");
         let source = source(template, id);
@@ -745,8 +858,7 @@ impl Mod for Silent {
                  rust-version.workspace = true\n\
                  \n\
                  [dependencies]\n\
-                 ravel-sdk.workspace = true\n\
-                 \n\
+                 {dependencies}\n\
                  [lints]\n\
                  workspace = true\n"
             ),
@@ -956,9 +1068,23 @@ impl Mod for Silent {
             "installed-mod",
             EXPORTING_SOURCE,
         );
+        // Installed beside it because most mods name more than the SDK, and a
+        // generated workspace that declares only the SDK builds this one
+        // nowhere but in the repository the author wrote it in.
+        install_with(
+            &instance,
+            "host-api-1.0.0",
+            "host_api_mod",
+            "host-api-mod",
+            HOST_API_SOURCE,
+            "ravel-core.workspace = true\n\
+             ravel-host-api.workspace = true\n\
+             ravel-sdk.workspace = true\n",
+        );
 
         let plan = planned(&instance);
-        let library = build(&plan, &instance, cache).expect("the installed package compiles");
+        let library =
+            build(&plan, &instance, cache, &game()).expect("the installed package compiles");
 
         assert!(library.is_file(), "{}", library.display());
         assert_eq!(
@@ -981,7 +1107,8 @@ impl Mod for Silent {
         // are rewritten only when their bytes differ, so this is the warm path
         // rather than a second cold build.
         let written = generated_times(&plan, &instance);
-        let again = build(&plan, &instance, cache).expect("an unchanged instance rebuilds");
+        let again =
+            build(&plan, &instance, cache, &game()).expect("an unchanged instance rebuilds");
         assert_eq!(again, library);
         assert_eq!(
             written,
@@ -991,7 +1118,40 @@ impl Mod for Silent {
 
         a_second_instance_keeps_its_own_host(&library, cache);
         a_package_that_names_no_value_refuses(cache);
+        a_version_naming_no_tracked_directory_refuses(&plan, &instance, cache);
         fs::remove_dir_all(&instance).expect("cleanup");
+    }
+
+    /// The version is this build's input, not whatever the shell was holding.
+    ///
+    /// The same plan and the same instance that compiled above are compiled
+    /// again with a version no tracked directory carries. A build that inherited
+    /// its selection would ignore the argument and succeed exactly as it just
+    /// did, so the refusal is the whole evidence that the argument is what the
+    /// toolchain reads — and the message it carries names the selection and the
+    /// versions that do exist, which is what a player can act on.
+    fn a_version_naming_no_tracked_directory_refuses(
+        plan: &super::HostPlan,
+        instance: &Path,
+        cache: &Path,
+    ) {
+        let refused = build(plan, instance, cache, "no-tracked-directory-carries-this")
+            .expect_err("the selected version names no tracked directory");
+        let BuildRefused::Compile { detail } = &refused else {
+            panic!("the refusal should be the toolchain's: {refused:?}");
+        };
+        assert!(
+            detail.contains(MINECRAFT_VERSION_SELECTION),
+            "the refusal does not name the selection: {detail}"
+        );
+        assert!(
+            detail.contains("no-tracked-directory-carries-this"),
+            "the refusal does not name the version that was asked for: {detail}"
+        );
+        assert!(
+            detail.contains(&game()),
+            "the refusal does not name a version that is tracked: {detail}"
+        );
     }
 
     /// The question this work package is actually about.
@@ -1081,6 +1241,11 @@ impl Mod for Silent {
             "the driven set does not hold the installed package: {}",
             String::from_utf8_lossy(&run.stdout)
         );
+        assert!(
+            String::from_utf8_lossy(&run.stdout).contains("host_api_mod"),
+            "the driven set does not hold the package naming `ravel-host-api`: {}",
+            String::from_utf8_lossy(&run.stdout)
+        );
 
         // Written by the mod, from inside its own body, in another process.
         let recorded = fs::read_to_string(&marks).expect("the installed mod recorded nothing");
@@ -1091,6 +1256,13 @@ impl Mod for Silent {
         assert!(
             recorded.contains("running"),
             "a package no Ravel developer compiled never reached `running`: {recorded}"
+        );
+        // The package that names the host-facing surface rather than the SDK
+        // alone. It compiled, so the generated workspace declared what it
+        // inherits, and it ran, so the dependency it inherited was the right one.
+        assert!(
+            recorded.contains("host-api running"),
+            "the package naming `ravel-host-api` never reached `running`: {recorded}"
         );
     }
 
@@ -1111,7 +1283,8 @@ impl Mod for Silent {
             EXPORTING_SOURCE,
         );
 
-        let beta = build(&planned(&second), &second, cache).expect("the second instance builds");
+        let beta =
+            build(&planned(&second), &second, cache, &game()).expect("the second instance builds");
         assert_ne!(first, beta);
 
         let bytes = fs::read(first).expect("the first instance's host is readable");
@@ -1145,7 +1318,8 @@ impl Mod for Silent {
         );
 
         let plan = planned(&instance);
-        let refused = build(&plan, &instance, cache).expect_err("one package names no value");
+        let refused =
+            build(&plan, &instance, cache, &game()).expect_err("one package names no value");
         let BuildRefused::Compile { detail } = &refused else {
             panic!("the refusal should be the compiler's: {refused:?}");
         };

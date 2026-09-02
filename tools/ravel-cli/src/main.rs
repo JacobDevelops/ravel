@@ -88,8 +88,13 @@ fn dispatch(args: &[String], root: &std::path::Path) -> Option<Result<(), CliErr
 
 fn dispatch_host(args: &[String], root: &std::path::Path) -> Option<Result<(), CliError>> {
     let result = match args {
-        [host, build, instance, cache] if host == "host" && build == "build" => {
-            build_host(&PathBuf::from(instance), root, &PathBuf::from(cache))
+        [host, build, instance, cache, minecraft] if host == "host" && build == "build" => {
+            build_host(
+                &PathBuf::from(instance),
+                root,
+                &PathBuf::from(cache),
+                minecraft,
+            )
         }
         _ => return None,
     };
@@ -100,8 +105,9 @@ fn build_host(
     instance: &std::path::Path,
     root: &std::path::Path,
     cache: &std::path::Path,
+    minecraft: &str,
 ) -> Result<(), CliError> {
-    let built = ravel_cli::build_host(instance, root, cache).map_err(CliError::Host)?;
+    let built = ravel_cli::build_host(instance, root, cache, minecraft).map_err(CliError::Host)?;
     println!(
         "Built a host for {} package(s) at fingerprint {}: {}",
         built.members.len(),
@@ -230,7 +236,7 @@ fn dispatch_performance(args: &[String], root: &std::path::Path) -> Option<Resul
 fn print_usage() {
     eprintln!(
         "usage:\n  ravel-cli fixture reconstruct [descriptor.json]\n  \
-         ravel-cli host build instance-directory cache-directory\n  \
+         ravel-cli host build instance-directory cache-directory minecraft-version\n  \
          ravel-cli fixture verify [descriptor.json archive.zip]\n  \
          ravel-cli performance verify-tracy-frames tracy-frames.csv\n  \
          ravel-cli performance export-tracy-frames capture.tracy tracy-frames.csv\n  \

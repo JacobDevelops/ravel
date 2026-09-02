@@ -38,11 +38,14 @@ its manifest stops it too. You can build a conforming mod, test it thoroughly as
 a library, and install it into an instance to have it validated and compiled into
 a host. You cannot yet drop it into an instance and see it run.
 
-One thing to plan around while that is true: a generated workspace supplies
-`ravel-sdk` and nothing else. A mod whose `Cargo.toml` writes
-`serde.workspace = true` builds in this repository and does not build once
-installed, because the generated workspace declares no such dependency to
-inherit. Name your own dependencies with explicit versions.
+One thing to plan around while that is true: a generated workspace supplies the
+dependencies a mod is written against and no others. Those are `ravel-sdk`,
+`ravel-host-api`, `ravel-core`, `ravel-config`, `ravel-data`, `ravel-package`,
+`ravel-save`, `serde` and `serde_json`, which is the set this repository's own
+test mods inherit, so a `Cargo.toml` that builds against a checkout builds once
+installed. Anything else you depend on has to name its own version rather than
+inherit one: `rand.workspace = true` builds nowhere but in a workspace that
+declares `rand`.
 
 **A launch reads its side, but only as far as the distribution it started from.**
 `initialize` no longer asserts a side. It asks its own JVM which Minecraft

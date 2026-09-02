@@ -32,8 +32,12 @@ pub struct BuiltHost {
 /// Discovers an instance's packages and compiles a host that names them.
 ///
 /// `ravel_root` is where this Ravel installation keeps its own crates, which the
-/// generated workspace depends on by path, and `cache` is the shared build
-/// cache.
+/// generated workspace depends on by path, `cache` is the shared build cache,
+/// and `minecraft` is the tracked version the host is generated against. That
+/// last one is an argument rather than something read off the instance because
+/// nothing in an instance states it: a package declares a compatibility list
+/// that may hold ranges, and an instance with nothing installed declares
+/// nothing.
 ///
 /// # Errors
 ///
@@ -44,10 +48,12 @@ pub fn build_host(
     game_directory: &Path,
     ravel_root: &Path,
     cache: &Path,
+    minecraft: &str,
 ) -> Result<BuiltHost, HostError> {
     let discovered = discover(game_directory).map_err(HostError::Discovery)?;
     let planned = plan(&discovered, ravel_root).map_err(HostError::Build)?;
-    let library = ravel_build::build(&planned, game_directory, cache).map_err(HostError::Build)?;
+    let library =
+        ravel_build::build(&planned, game_directory, cache, minecraft).map_err(HostError::Build)?;
 
     Ok(BuiltHost {
         members: planned
@@ -101,7 +107,11 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("the temporary instance is creatable");
 
-        let error = build_host(&root, &root, &root)
+        // The version reaches the toolchain as an environment variable and the
+        // toolchain never gets that far here: the generated workspace names
+        // Ravel crates that do not exist under this root, so Cargo refuses
+        // before any build script reads a selection.
+        let error = build_host(&root, &root, &root, "unread-by-a-refused-compile")
             .expect_err("no Ravel crates live under the temporary root, so the compile refuses");
 
         assert!(

@@ -279,14 +279,17 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
 - The JVM harness is a 26.1.2 artefact by construction: `devenv tasks run` drops an exported
   `RAVEL_MINECRAFT_VERSION`, so `ravel:verify-jvm` has always run at 26.1.2, and run directly at
   1.21.1 the harness fails to compile because the generated screens live in the obfuscated package
-  while the harness sources name them by Mojang name. No reflective adapter has ever met an
-  obfuscated name inside the gate, and obfuscated names are the reason the reflection mechanism
-  exists. In flight: the harness compiles at every tracked version, a per-version check resolves
-  every declared reflected member through the real `Members` class against that version's stubs,
-  and one xtask verb requires every tracked version in each of the three version records. The
-  screen sections still run at 26.1.2 only, because the harness's stand-in game carries Mojang names
-  and 1.21.1's generated constants carry linked ones. Closing that means generating the stand-in
-  game per version from templates, sixty-one files, which is its own work package.
+  while the harness sources name them by Mojang name. Linked names themselves are covered: the
+  generator resolves every declared reflected member through each version's mapping and requires
+  the linked class file to declare it. What no gate has run is the `Members` lookup at runtime, its
+  superclass walk and erased-descriptor construction, against an obfuscated class file; only a real
+  jar proves that, which the headless client run and the planned server harness are for. In flight:
+  the harness sections that take their targets from its own Mojang-named stand-ins (initialization,
+  hierarchy, refusal, members, side) run at every tracked version, `ravel:verify-jvm` loops and
+  records which sections ran per version, and one xtask verb requires every tracked version in each
+  of the three version records, with a reflective or screen section absent only where the version's
+  `adapter.toml` declares why. The reflective and screen sections stay at 26.1.2 until the stand-in
+  game is generated per version from templates, sixty-one files, which is its own work package.
 - A headless real-client proof under Xvfb with an offline account is being built beside the nested
   probe in the evidence skill, so a launch never again needs the display or the account.
 - The settings screen draws no rows for `stateful-mod`'s declared `journal.capacity` setting

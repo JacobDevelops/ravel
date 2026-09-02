@@ -108,7 +108,55 @@ pub(super) struct Inventory {
     pub(super) hooks: Vec<Hook>,
 }
 
+/// One member a screen template names, and the member this version spells it.
+///
+/// A template writes a role, so where the game renamed a member and not the job
+/// it does, the version's seed list is what says so. Written as a bare string
+/// where the two are the same word, which is every member under the version the
+/// templates were authored against and most members under any other.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub(super) enum SeedMember {
+    /// The template's word is the class's own member name.
+    Same(String),
+    /// The class spells this member differently from the word templates use.
+    Bound(BoundMember),
+}
+
+/// A member role bound to the name one version's class declares.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct BoundMember {
+    pub(super) role: String,
+    pub(super) member: String,
+}
+
+impl SeedMember {
+    /// The word a template names this member by.
+    pub(super) fn role(&self) -> &str {
+        match self {
+            Self::Same(name) => name,
+            Self::Bound(bound) => &bound.role,
+        }
+    }
+
+    /// The name this version's class declares.
+    pub(super) fn member(&self) -> &str {
+        match self {
+            Self::Same(name) => name,
+            Self::Bound(bound) => &bound.member,
+        }
+    }
+}
+
 /// One class the settings screen compiles against.
+///
+/// Three names for the same reason [`Reflected`] carries three: `role` is the
+/// word a screen template names the class by and is the same under every
+/// version, and `class` is the Mojang name this version calls it. A screen
+/// source is compiled, so it cannot resolve a name the way the agent jar does,
+/// and a template that spelled a game class directly would be one version's
+/// spelling asserted over every other.
 ///
 /// The members are named and nothing else: every descriptor comes from the jar,
 /// which is the whole reason these are generated rather than written by hand. A
@@ -117,8 +165,9 @@ pub(super) struct Inventory {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Seed {
+    pub(super) role: String,
     pub(super) class: String,
-    pub(super) members: Vec<String>,
+    pub(super) members: Vec<SeedMember>,
 }
 
 /// The tracked list of classes to stub.
@@ -289,6 +338,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
             seeds.minecraft, seeds.schema_version, adapter.minecraft, adapter.schema_version
         )));
     }
+    check_roles(&seeds)?;
 
     let surface = reflection(root, &adapter)?;
 
@@ -346,6 +396,89 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
         seeds,
         surface,
     })
+}
+
+/// Checks that every role a screen template could name is declared exactly once.
+///
+/// A role is what a template writes, so two seeds claiming one role is two
+/// answers to one placeholder and neither is the obvious one. The same holds
+/// inside a class for a member role. Roles are checked here rather than where a
+/// template is read because the seed list is what declares them, and a version
+/// whose data is ambiguous is ambiguous whether or not a template happens to
+/// name the ambiguous one.
+///
+/// # Errors
+///
+/// Returns an error when a role is not spelled like a name a template can write,
+/// when two seeds declare one class role, or when one seed declares one member
+/// role twice.
+fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
+    let mut seen = BTreeSet::new();
+    for seed in &seeds.stubs {
+        if !role_reference(&seed.role) {
+            return Err(GenerateError::Drift(format!(
+                "the stub seeds declare {} as a class role, which is not a name a template can \
+                 write",
+                seed.role
+            )));
+        }
+        if !class_name(&seed.class) {
+            return Err(GenerateError::Drift(format!(
+                "the stub seeds declare {} as a class, which is not one",
+                seed.class
+            )));
+        }
+        if !seen.insert(seed.role.as_str()) {
+            return Err(GenerateError::Drift(format!(
+                "the stub seeds declare the class role {} twice, and one role names one class",
+                seed.role
+            )));
+        }
+        let mut members = BTreeSet::new();
+        for member in &seed.members {
+            if !member_reference(member.role()) || !member_reference(member.member()) {
+                return Err(GenerateError::Drift(format!(
+                    "the stub seeds bind {}'s member role {} to {}, and one of the two is not a \
+                     name a template can write",
+                    seed.role,
+                    member.role(),
+                    member.member()
+                )));
+            }
+            if !members.insert(member.role()) {
+                return Err(GenerateError::Drift(format!(
+                    "the stub seeds declare {}'s member role {} twice, and one role names one \
+                     member",
+                    seed.role,
+                    member.role()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether a value is spelled like a role a screen template can write.
+///
+/// Narrower than the JVM's rule and wider than a Java identifier, because a
+/// nested type's role carries the `$` its binary name does. What has to fail is
+/// anything holding the punctuation a placeholder body or a Java declaration
+/// would end on, which is what keeps a role from becoming a second declaration.
+fn role_reference(value: &str) -> bool {
+    !value.is_empty()
+        && value.starts_with(|first: char| first.is_ascii_alphabetic() || first == '_')
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '$'
+        })
+}
+
+/// Whether a value is spelled like a member a seed list can bind.
+///
+/// Wider than [`role_reference`] by exactly the two names the JVM spells with
+/// angle brackets and Java cannot: a constructor is a member the screen calls
+/// through and the seed list has to be able to name it.
+fn member_reference(value: &str) -> bool {
+    matches!(value, "<init>" | "<clinit>") || role_reference(value)
 }
 
 /// Reads the reviewed set of classes the agent jar's adapters resolve by name.

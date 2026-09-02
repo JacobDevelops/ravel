@@ -1,11 +1,11 @@
 {{package}}
 
-{{import com.mojang.serialization.Codec}}
-{{import net.minecraft.resources.Identifier}}
-{{import net.minecraft.util.ExtraCodecs}}
-{{import net.minecraft.util.datafix.DataFixTypes}}
-{{import net.minecraft.world.level.saveddata.SavedData}}
-{{import net.minecraft.world.level.saveddata.SavedDataType}}
+{{import Codec}}
+{{import Identifier}}
+{{import ExtraCodecs}}
+{{import DataFixTypes}}
+{{import SavedData}}
+{{import SavedDataType}}
 
 /**
  * The one object Minecraft stores on Ravel's behalf, and the only game type
@@ -59,7 +59,7 @@ public final class RavelWorldData extends {{SavedData}} {
                 .{{Codec#xmap}}(stored -> new RavelWorldData((byte[]) stored),
                         data -> ((RavelWorldData) data).aggregate)
                 .{{Codec#fieldOf}}(FIELD)
-                .{{com.mojang.serialization.MapCodec#codec}}();
+                .{{MapCodec#codec}}();
         return new {{SavedDataType}}(
                 {{Identifier}}.{{Identifier#fromNamespaceAndPath}}(NAMESPACE, PATH),
                 () -> new RavelWorldData(new byte[0]),

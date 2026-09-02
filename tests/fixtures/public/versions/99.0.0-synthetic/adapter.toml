@@ -32,8 +32,8 @@ bytes = 11798
 
 [inputs.stubSeeds]
 path = "minecraft/versions/99.0.0-synthetic/stubs.toml"
-sha256 = "e256b32d46fe32c7bd5d75002cc02a34f3e6aba3b1c0c4905d332d690ca3ce1c"
-bytes = 615
+sha256 = "cfc939ea601dc46546cdbff40fa720e35674edbac346a13f19ffd109bf4ecffc"
+bytes = 649
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/99.0.0-synthetic/reflection.toml"

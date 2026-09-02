@@ -1,13 +1,13 @@
 {{package}}
 
-{{import net.minecraft.client.gui.components.Button}}
+{{import Button}}
 // The binary name is the type's name here, for the reason RavelSettingsScreen
 // records: the pinned version reaches every interactive widget through a nested
 // type and the stubs carry the binary name the JVM links on.
-{{import net.minecraft.client.gui.components.Button$OnPress}}
-{{import net.minecraft.client.gui.components.EditBox}}
-{{import net.minecraft.client.gui.screens.Screen}}
-{{import net.minecraft.network.chat.Component}}
+{{import Button$OnPress}}
+{{import EditBox}}
+{{import Screen}}
+{{import Component}}
 
 /**
  * What a player sees when Ravel refuses to open a world.
@@ -88,8 +88,8 @@ public final class RavelWorldRefusedScreen extends {{Screen}} {
                                 {{Screen#onClose}}();
                             }
                         })
-                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
+                        .{{Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{Button$Builder#build}}());
     }
 
     /** One uneditable text field, which is how this screen shows a line. */

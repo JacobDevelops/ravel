@@ -8,18 +8,25 @@
 //! under an obfuscated one it is not, and a hand-written source is then a jar
 //! that compiles and links nothing.
 //!
-//! So the sources are generated. The tracked half is a template that names game
-//! classes and members in the reviewed name space, inside `{{…}}`, and this
-//! module rewrites each one into the name that version links. Everything outside
-//! a placeholder is copied through byte for byte, which is what keeps a template
-//! reviewable as the Java it is and what makes an unobfuscated version's output
-//! the same source it was before it was generated.
+//! So the sources are generated. The tracked half is a template that names roles
+//! inside `{{…}}` — never a game class, because a template is shared by every
+//! version and a class name is one version's spelling asserted over the rest.
+//! Each version's `stubs.toml` binds a role to the class it means there and a
+//! member role to the member, exactly as `reflection.toml` binds the roles the
+//! agent jar resolves, and this module rewrites each placeholder into the name
+//! that version links. That indirection is what carries a template across a
+//! rename: 1.21.1 calls `Identifier` `ResourceLocation` and spells
+//! `splitIgnoringLanguage` `split`, and neither costs the template a word.
+//! Everything outside a placeholder is copied through byte for byte, which is
+//! what keeps a template reviewable as the Java it is and what makes an
+//! unobfuscated version's output the same source it was before it was
+//! generated.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::inputs::Adapter;
+use super::inputs::{Adapter, Seeds};
 use super::mapping::Mapping;
 use super::stubs::Stub;
 use super::{GenerateError, SCREEN_PACKAGE};
@@ -47,6 +54,7 @@ pub(super) struct Screens {
 pub(super) fn render(
     directory: &Path,
     adapter: &Adapter,
+    seeds: &Seeds,
     stubs: &[Stub],
     mapping: &Mapping,
 ) -> Result<Screens, GenerateError> {
@@ -59,13 +67,14 @@ pub(super) fn render(
     let mut referenced = BTreeSet::new();
     for template in &read {
         for placeholder in &template.placeholders {
-            if let Placeholder::Class(class) | Placeholder::Import(class) = placeholder {
-                referenced.insert(class.clone());
+            if let Placeholder::Class(role) | Placeholder::Import(role) = placeholder {
+                referenced.insert(role.clone());
             }
         }
     }
 
-    let linked = linked_classes(&referenced, stubs, mapping)?;
+    every_seeded_member_resolves(seeds, stubs, mapping)?;
+    let linked = linked_classes(&referenced, seeds, stubs, mapping)?;
     // A class the mapping puts in the unnamed package cannot be named from a
     // package at all — the language has no syntax for it — so the screens go
     // where their supertypes are. Under a version that keeps the game in
@@ -80,6 +89,7 @@ pub(super) fn render(
         let source = expand(
             template,
             adapter,
+            seeds,
             stubs,
             mapping,
             &linked,
@@ -148,36 +158,18 @@ enum Placeholder {
 }
 
 impl Placeholder {
-    /// Rewrites a name a template abbreviated into the reviewed one it meant.
-    ///
-    /// A template names a class the way the Java it renders does: in full where
-    /// it is imported, and by its simple name everywhere below. So an import
-    /// binds that simple name, exactly as Java's own does, and a reference to a
-    /// class no import bound has to spell it out — which is what the nested
-    /// builder types the widget chains return do, because the sources they are
-    /// rendered from never imported one either.
-    fn resolve(&mut self, imported: &BTreeMap<String, String>) -> Result<(), String> {
-        let class = match self {
-            Self::Package | Self::Import(_) => return Ok(()),
-            Self::Class(class) | Self::Member(class, _) => class,
-        };
-        if class.contains('/') {
-            return Ok(());
-        }
-        let full = imported.get(class.as_str()).ok_or_else(|| {
-            format!("{class} is named by no import, so nothing says which class it is")
-        })?;
-        class.clone_from(full);
-        Ok(())
-    }
-
     /// Reads what one placeholder's body asks for.
+    ///
+    /// Every body names a role rather than a game class, so nothing here is
+    /// abbreviated and nothing has to be expanded: a role is one word under
+    /// every version, and the version's seed list is what says which class and
+    /// which member that word means.
     fn read(body: &str) -> Result<Self, String> {
         if body == "package" {
             return Ok(Self::Package);
         }
-        if let Some(class) = body.strip_prefix("import ") {
-            return Ok(Self::Import(class.trim().replace('.', "/")));
+        if let Some(role) = body.strip_prefix("import ") {
+            return Ok(Self::Import(role.trim().to_owned()));
         }
         if body.is_empty() || body.contains(char::is_whitespace) {
             return Err(format!(
@@ -185,8 +177,8 @@ impl Placeholder {
             ));
         }
         Ok(match body.split_once('#') {
-            Some((class, member)) => Self::Member(class.replace('.', "/"), member.to_owned()),
-            None => Self::Class(body.replace('.', "/")),
+            Some((role, member)) => Self::Member(role.to_owned(), member.to_owned()),
+            None => Self::Class(body.to_owned()),
         })
     }
 }
@@ -234,22 +226,6 @@ fn template(path: &Path) -> Result<Template, GenerateError> {
         );
         rest = &after[end + 2..];
     }
-    let imported = placeholders
-        .iter()
-        .filter_map(|placeholder| match placeholder {
-            Placeholder::Import(class) => Some((
-                class.rsplit('/').next().unwrap_or(class).to_owned(),
-                class.clone(),
-            )),
-            _ => None,
-        })
-        .collect::<BTreeMap<_, _>>();
-    for placeholder in &mut placeholders {
-        placeholder
-            .resolve(&imported)
-            .map_err(|detail| GenerateError::Input(format!("{}: {detail}", path.display())))?;
-    }
-
     Ok(Template {
         name,
         text,
@@ -259,39 +235,81 @@ fn template(path: &Path) -> Result<Template, GenerateError> {
 
 /// The linked internal name of every class the templates reference.
 ///
-/// A reference is only rendered for a class the version's stub seeds carry,
-/// because the stub tree is what the screen jar compiles against: a name outside
-/// it would compile against nothing, and a seed list that does not carry it is
-/// the file that has to say so.
+/// A role is only rendered where the version's seed list binds it, and only
+/// where the stub tree carries the class it binds to, because that tree is what
+/// the screen jar compiles against: a name outside it would compile against
+/// nothing, and the seed list is the file that has to say so.
 fn linked_classes(
     referenced: &BTreeSet<String>,
+    seeds: &Seeds,
     stubs: &[Stub],
     mapping: &Mapping,
 ) -> Result<BTreeMap<String, String>, GenerateError> {
     let mut linked = BTreeMap::new();
     let mut simple: BTreeMap<String, String> = BTreeMap::new();
-    for class in referenced {
-        if !stubs.iter().any(|stub| &stub.class == class) {
+    for role in referenced {
+        let class = seeded_class(role, seeds)?;
+        if !stubs.iter().any(|stub| stub.class == class) {
             return Err(GenerateError::Unresolved(format!(
-                "a screen template names {} and the version's stub seeds do not carry it, so the \
-                 screen jar would compile against a class that is not stubbed",
+                "a screen template names {role}, which the version's stub seeds bind to {}, and \
+                 that class is not stubbed, so the screen jar would compile against nothing",
                 class.replace('/', ".")
             )));
         }
-        let name = mapping.runtime_class(class).to_owned();
+        let name = mapping.runtime_class(&class).to_owned();
         let last = name.rsplit('/').next().unwrap_or(&name).to_owned();
-        if let Some(other) = simple.insert(last.clone(), class.clone())
-            && &other != class
+        if let Some(other) = simple.insert(last.clone(), role.clone())
+            && &other != role
         {
             return Err(GenerateError::Unsupported(format!(
-                "{} and {} both link as {last}, and a source that names one names the other",
-                other.replace('/', "."),
-                class.replace('/', ".")
+                "the roles {other} and {role} both link as {last}, and a source that names one \
+                 names the other"
             )));
         }
-        linked.insert(class.clone(), name);
+        linked.insert(role.clone(), name);
     }
     Ok(linked)
+}
+
+/// Every seeded member has to name exactly one linked member.
+///
+/// Checked over the whole seed list rather than over the members templates
+/// happen to name, because the alternative hides the defect until someone writes
+/// the placeholder. An obfuscated version can link two overloads under different
+/// names, and a seed that does not say which one it means is ambiguous the day
+/// it is written — not the day it is first referenced. `SavedData#setDirty` was
+/// exactly that: two linked names, invisible because no template reached it.
+///
+/// # Errors
+///
+/// Returns an error when a seeded member resolves to no linked member or to
+/// more than one.
+fn every_seeded_member_resolves(
+    seeds: &Seeds,
+    stubs: &[Stub],
+    mapping: &Mapping,
+) -> Result<(), GenerateError> {
+    for seed in &seeds.stubs {
+        for member in &seed.members {
+            member_name(&seed.role, member.role(), seeds, stubs, mapping)?;
+        }
+    }
+    Ok(())
+}
+
+/// The internal class name one version's seed list binds a role to.
+fn seeded_class(role: &str, seeds: &Seeds) -> Result<String, GenerateError> {
+    seeds
+        .stubs
+        .iter()
+        .find(|seed| seed.role == role)
+        .map(|seed| seed.class.replace('.', "/"))
+        .ok_or_else(|| {
+            GenerateError::Unresolved(format!(
+                "a screen template names the role {role} and the version's stub seeds bind no \
+                 class to it, so nothing says which class this version means"
+            ))
+        })
 }
 
 /// Rewrites one template into the source the version compiles.
@@ -301,6 +319,7 @@ fn linked_classes(
 fn expand(
     template: &Template,
     adapter: &Adapter,
+    seeds: &Seeds,
     stubs: &[Stub],
     mapping: &Mapping,
     linked: &BTreeMap<String, String>,
@@ -322,6 +341,7 @@ fn expand(
         source.push_str(&resolve(
             placeholder,
             adapter,
+            seeds,
             stubs,
             mapping,
             linked,
@@ -337,6 +357,7 @@ fn expand(
 fn resolve(
     placeholder: &Placeholder,
     adapter: &Adapter,
+    seeds: &Seeds,
     stubs: &[Stub],
     mapping: &Mapping,
     linked: &BTreeMap<String, String>,
@@ -376,37 +397,66 @@ fn resolve(
             let linked = name(class)?;
             Ok(linked.rsplit('/').next().unwrap_or(&linked).to_owned())
         }
-        Placeholder::Member(class, member) => member_name(class, member, stubs, mapping),
+        Placeholder::Member(role, member) => member_name(role, member, seeds, stubs, mapping),
     }
 }
 
-/// The linked name of one reviewed member of one reviewed class.
+/// The linked name of the member one version binds a member role to.
 ///
-/// Every overload the seed list stubbed is asked, and they have to agree. A
-/// template names a member and never a descriptor, for the reason `stubs.toml`
-/// does not: writing one down is the transcription the generated stubs exist to
-/// avoid. Two overloads that link under different names cannot be written as one
-/// reference, so that is a refusal rather than a choice made here.
+/// Two bindings cross here. The seed list says which member of this version's
+/// class the template's word means, which is what carries a template across a
+/// rename, and the mapping says what that member links as. Every overload the
+/// seed list stubbed is asked, and they have to agree. A template names a member
+/// and never a descriptor, for the reason `stubs.toml` does not: writing one
+/// down is the transcription the generated stubs exist to avoid. Two overloads
+/// that link under different names cannot be written as one reference, so that
+/// is a refusal rather than a choice made here.
 fn member_name(
-    class: &str,
-    member: &str,
+    role: &str,
+    member_role: &str,
+    seeds: &Seeds,
     stubs: &[Stub],
     mapping: &Mapping,
 ) -> Result<String, GenerateError> {
-    let stub = stubs.iter().find(|stub| stub.class == class).ok_or_else(|| {
-        GenerateError::Unresolved(format!(
-            "a screen template names {}#{member} and the version's stub seeds do not carry that \
-             class",
-            class.replace('/', ".")
-        ))
-    })?;
+    let seed = seeds
+        .stubs
+        .iter()
+        .find(|seed| seed.role == role)
+        .ok_or_else(|| {
+            GenerateError::Unresolved(format!(
+                "a screen template names {role}#{member_role} and the version's stub seeds bind \
+                 no class to that role"
+            ))
+        })?;
+    let class = seed.class.replace('.', "/");
+    let member = seed
+        .members
+        .iter()
+        .find(|seeded| seeded.role() == member_role)
+        .ok_or_else(|| {
+            GenerateError::Unresolved(format!(
+                "a screen template names {role}#{member_role} and the version's stub seeds bind \
+                 no member of {} to that role",
+                seed.class
+            ))
+        })?
+        .member();
+    let stub = stubs
+        .iter()
+        .find(|stub| stub.class == class)
+        .ok_or_else(|| {
+            GenerateError::Unresolved(format!(
+                "a screen template names {role}#{member_role} and {} is not stubbed",
+                seed.class
+            ))
+        })?;
     let mut names = stub
         .members
         .iter()
         .filter(|declared| declared.name == member)
         .map(|declared| {
             mapping
-                .linked_member(class, &declared.name, &declared.descriptor)
+                .linked_member(&class, &declared.name, &declared.descriptor)
                 .0
         })
         .collect::<Vec<_>>();
@@ -414,14 +464,14 @@ fn member_name(
     names.dedup();
     match names.as_slice() {
         [] => Err(GenerateError::Unresolved(format!(
-            "a screen template names {}#{member} and the version's stub seeds do not carry that \
-             member",
-            class.replace('/', ".")
+            "a screen template names {role}#{member_role}, which this version binds to {}#{member}, \
+             and the stub tree does not carry that member",
+            seed.class
         ))),
         [one] => Ok(one.clone()),
         several => Err(GenerateError::Unsupported(format!(
             "{}#{member} links under {} names ({}), so no single reference names them all",
-            class.replace('/', "."),
+            seed.class,
             several.len(),
             several.join(", ")
         ))),
@@ -449,7 +499,7 @@ fn constant(name: &str) -> String {
 mod tests {
     use std::fmt::Write as _;
 
-    use super::super::inputs::{self, MappingSource};
+    use super::super::inputs::{self, MappingSource, Seed, SeedMember};
     use super::super::render;
     use super::super::stubs::{Member, Stub};
     use super::*;
@@ -485,6 +535,42 @@ com.example.util.Held -> com.example.util.Held:
             descriptor: descriptor.to_owned(),
             flags: 1,
             method: true,
+        }
+    }
+
+    /// The seed list binding a role to each invented class.
+    ///
+    /// The roles are the words a template would write, and they are deliberately
+    /// not the class names: what is under test is that the binding is what
+    /// carries a template, so a test whose role happened to equal the simple
+    /// name would pass under a generator that ignored the seed list entirely.
+    fn seeds() -> inputs::Seeds {
+        inputs::Seeds {
+            schema_version: 1,
+            minecraft: "0.0.0-invented".to_owned(),
+            stubs: vec![
+                Seed {
+                    role: "Surface".to_owned(),
+                    class: "com.example.gui.Panel".to_owned(),
+                    members: vec![
+                        SeedMember::Same("draw".to_owned()),
+                        SeedMember::Bound(inputs::BoundMember {
+                            role: "size".to_owned(),
+                            member: "width".to_owned(),
+                        }),
+                    ],
+                },
+                Seed {
+                    role: "Text".to_owned(),
+                    class: "com.example.text.Label".to_owned(),
+                    members: vec![SeedMember::Same("of".to_owned())],
+                },
+                Seed {
+                    role: "Clock".to_owned(),
+                    class: "com.example.util.Held".to_owned(),
+                    members: vec![SeedMember::Same("tick".to_owned())],
+                },
+            ],
         }
     }
 
@@ -527,7 +613,7 @@ com.example.util.Held -> com.example.util.Held:
 
     #[test]
     fn an_overload_set_that_links_under_one_name_renders_that_name() {
-        let name = member_name("com/example/gui/Panel", "draw", &stubs(), &proguard())
+        let name = member_name("Surface", "draw", &seeds(), &stubs(), &proguard())
             .expect("both overloads link under one name");
 
         assert_eq!(name, "b");
@@ -535,7 +621,7 @@ com.example.util.Held -> com.example.util.Held:
 
     #[test]
     fn a_member_the_seeds_do_not_carry_is_refused_rather_than_passed_through() {
-        let error = member_name("com/example/gui/Panel", "paint", &stubs(), &proguard())
+        let error = member_name("Surface", "paint", &seeds(), &stubs(), &proguard())
             .expect_err("a member no seed asked for is stubbed by nothing");
 
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
@@ -543,20 +629,19 @@ com.example.util.Held -> com.example.util.Held:
 
     #[test]
     fn a_class_the_mapping_leaves_in_a_package_is_still_imported() {
-        let referenced = ["com/example/util/Held".to_owned()].into_iter().collect();
-        let linked = linked_classes(&referenced, &stubs(), &proguard()).expect("resolvable");
+        let referenced = ["Clock".to_owned()].into_iter().collect();
+        let linked =
+            linked_classes(&referenced, &seeds(), &stubs(), &proguard()).expect("resolvable");
 
-        assert_eq!(linked["com/example/util/Held"], "com/example/util/Held");
+        assert_eq!(linked["Clock"], "com/example/util/Held");
     }
 
     #[test]
     fn a_class_the_stub_seeds_do_not_carry_is_refused() {
-        let referenced = ["com/example/gui/Unseeded".to_owned()]
-            .into_iter()
-            .collect();
+        let referenced = ["Unseeded".to_owned()].into_iter().collect();
 
-        let error = linked_classes(&referenced, &stubs(), &proguard())
-            .expect_err("a template may only name what the seeds stub");
+        let error = linked_classes(&referenced, &seeds(), &stubs(), &proguard())
+            .expect_err("a template may only name a role the seeds bind");
 
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
     }
@@ -630,6 +715,7 @@ com.example.util.Held -> com.example.util.Held:
         let screens = render(
             &root.join(super::super::SCREEN_TEMPLATES),
             &pinned.adapter,
+            &pinned.seeds,
             &stubs,
             &mapping,
         )
@@ -721,33 +807,122 @@ com.example.util.Held -> com.example.util.Held:
             .collect()
     }
 
+    /// A placeholder body is a role and is read as the one word it is. Nothing
+    /// binds it here, because the version's seed list is what binds it, and a
+    /// template that spelled a package would be naming a class rather than a
+    /// role.
     #[test]
-    fn a_simple_name_reads_as_the_class_the_template_imported() {
-        let imported = [("Panel".to_owned(), "com/example/gui/Panel".to_owned())]
-            .into_iter()
-            .collect();
-        let mut reference = Placeholder::read("Panel#draw").expect("a placeholder body");
-
-        reference.resolve(&imported).expect("the import binds it");
-
+    fn a_placeholder_body_reads_as_the_role_it_names() {
         assert_eq!(
-            reference,
-            Placeholder::Member("com/example/gui/Panel".to_owned(), "draw".to_owned())
+            Placeholder::read("Surface#draw").expect("a placeholder body"),
+            Placeholder::Member("Surface".to_owned(), "draw".to_owned())
+        );
+        assert_eq!(
+            Placeholder::read("import Surface").expect("a placeholder body"),
+            Placeholder::Import("Surface".to_owned())
         );
     }
 
-    /// A simple name no import binds is two classes away from being a reference:
-    /// nothing says which class it is, and rendering it as itself would emit a
-    /// reviewed name into a source that links none.
+    /// The property the whole indirection exists for: what a template renders is
+    /// decided by the binding and not by the word. Both halves are checked,
+    /// because a generator that resolved the role and then ignored the member
+    /// binding would pass a class-only test.
     #[test]
-    fn a_simple_name_no_import_binds_is_refused() {
-        let mut reference = Placeholder::read("Panel").expect("a placeholder body");
+    fn a_role_renders_the_class_and_member_the_seed_list_binds_it_to() {
+        let referenced = ["Surface".to_owned()].into_iter().collect();
+        let linked =
+            linked_classes(&referenced, &seeds(), &stubs(), &proguard()).expect("resolvable");
+        assert_eq!(linked["Surface"], "a");
 
-        let error = reference
-            .resolve(&BTreeMap::new())
-            .expect_err("nothing binds it");
+        let name = member_name("Surface", "size", &seeds(), &stubs(), &proguard())
+            .expect("the seed list binds the member role size to width");
 
-        assert!(error.contains("named by no import"), "{error}");
+        assert_eq!(name, "j");
+    }
+
+    /// A member role the seed list does not bind is refused rather than tried as
+    /// a member name, which is what keeps a template from quietly working on the
+    /// version it was authored against and failing on every other.
+    /// A seed list binding one member role of the panel to a named overload.
+    ///
+    /// `resize` is the pair that matters: the invented mapping links `resize()`
+    /// as `c` and `resize(int)` as `d`, which is the shape an obfuscated version
+    /// produces and the whole reason a count exists.
+    fn seeds_binding(member_role: &str, parameters: Option<usize>) -> inputs::Seeds {
+        let mut seeds = seeds();
+        seeds.stubs[0].members = vec![SeedMember::Bound(inputs::BoundMember {
+            role: member_role.to_owned(),
+            member: "resize".to_owned(),
+            parameters,
+        })];
+        seeds
+    }
+
+    /// The count names which overload the template meant, and the two overloads
+    /// link under different names, so getting this wrong is silently calling the
+    /// other method rather than failing.
+    #[test]
+    fn a_parameter_count_picks_the_overload_it_names() {
+        let none = seeds_binding("scale", Some(0));
+        assert_eq!(
+            member_name("Surface", "scale", &none, &stubs(), &proguard())
+                .expect("resize() is the zero-argument overload"),
+            "c"
+        );
+
+        let one = seeds_binding("scale", Some(1));
+        assert_eq!(
+            member_name("Surface", "scale", &one, &stubs(), &proguard())
+                .expect("resize(int) is the one-argument overload"),
+            "d"
+        );
+    }
+
+    /// A count that separates nothing is a binding that names no member, and is
+    /// refused rather than falling back to the whole overload set.
+    #[test]
+    fn a_parameter_count_matching_no_overload_is_refused() {
+        let seeds = seeds_binding("scale", Some(2));
+
+        let error = member_name("Surface", "scale", &seeds, &stubs(), &proguard())
+            .expect_err("the panel declares no two-argument resize");
+
+        assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
+    }
+
+    /// Without a count the two overloads are two answers, and the generator says
+    /// so instead of picking. This is the refusal the count exists to let a seed
+    /// list resolve deliberately.
+    #[test]
+    fn an_overload_set_linking_under_two_names_without_a_count_is_refused() {
+        let seeds = seeds_binding("scale", None);
+
+        let error = member_name("Surface", "scale", &seeds, &stubs(), &proguard())
+            .expect_err("resize links under two names here");
+
+        assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
+    }
+
+    /// The sweep that would have caught `SavedData#setDirty` before a template
+    /// reached it: every seeded member is resolved, not only the referenced ones.
+    #[test]
+    fn a_seeded_member_no_template_names_is_still_required_to_resolve() {
+        let ambiguous = seeds_binding("scale", None);
+
+        let error = every_seeded_member_resolves(&ambiguous, &stubs(), &proguard())
+            .expect_err("an ambiguous seed is a defect whether or not a template names it");
+
+        assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
+        every_seeded_member_resolves(&seeds_binding("scale", Some(0)), &stubs(), &proguard())
+            .expect("a bound overload resolves");
+    }
+
+    #[test]
+    fn a_member_role_the_seed_list_does_not_bind_is_refused() {
+        let error = member_name("Surface", "width", &seeds(), &stubs(), &proguard())
+            .expect_err("width is a member name here, and the role bound to it is size");
+
+        assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
     }
 
     #[test]

@@ -2,12 +2,12 @@
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-{{import net.minecraft.client.Minecraft}}
-{{import net.minecraft.client.gui.components.Button}}
-{{import net.minecraft.client.gui.components.Button$OnPress}}
-{{import net.minecraft.client.gui.components.events.GuiEventListener}}
-{{import net.minecraft.client.gui.screens.Screen}}
-{{import net.minecraft.network.chat.Component}}
+{{import Minecraft}}
+{{import Button}}
+{{import Button$OnPress}}
+{{import GuiEventListener}}
+{{import Screen}}
+{{import Component}}
 
 /** Adds Ravel's mod list to the game's normal title-menu button column. */
 public final class RavelMenu {
@@ -27,8 +27,8 @@ public final class RavelMenu {
                         {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(open("openMods", null));
                     }
                 })
-                .{{net.minecraft.client.gui.components.Button$Builder#bounds}}((title.{{Screen#width}} - BUTTON_WIDTH) / 2, bottom + spacing, BUTTON_WIDTH, BUTTON_HEIGHT)
-                .{{net.minecraft.client.gui.components.Button$Builder#build}}();
+                .{{Button$Builder#bounds}}((title.{{Screen#width}} - BUTTON_WIDTH) / 2, bottom + spacing, BUTTON_WIDTH, BUTTON_HEIGHT)
+                .{{Button$Builder#build}}();
         add(title, button);
     }
 

@@ -3,17 +3,17 @@
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
 import java.util.List;
-{{import net.minecraft.client.gui.components.AbstractSliderButton}}
-{{import net.minecraft.client.gui.components.Button}}
+{{import AbstractSliderButton}}
+{{import Button}}
 // The binary name is the type's name here. The pinned version reaches every
 // interactive widget through a nested type, and the stubs declare each one as a
 // top-level class carrying the binary name the JVM links on, so this is the same
 // class the game loads at runtime.
-{{import net.minecraft.client.gui.components.Button$OnPress}}
-{{import net.minecraft.client.gui.components.EditBox}}
-{{import net.minecraft.client.gui.components.events.GuiEventListener}}
-{{import net.minecraft.client.gui.screens.Screen}}
-{{import net.minecraft.network.chat.Component}}
+{{import Button$OnPress}}
+{{import EditBox}}
+{{import GuiEventListener}}
+{{import Screen}}
+{{import Component}}
 
 /**
  * Ravel's generated settings screen.
@@ -139,8 +139,8 @@ public final class RavelSettingsScreen extends {{Screen}} {
                                 {{Screen#onClose}}();
                             }
                         })
-                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
+                        .{{Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{Button$Builder#build}}());
     }
 
     /** Reads a settings document into rows, or into nothing if it does not read. */
@@ -378,11 +378,11 @@ public final class RavelSettingsScreen extends {{Screen}} {
                                 int at = values.indexOf(value);
                                 value = values.get((at + 1) % values.size());
                             }
-                            pressed.{{net.minecraft.client.gui.components.AbstractWidget#setMessage}}({{Component}}.{{Component#literal}}(caption()));
+                            pressed.{{AbstractWidget#setMessage}}({{Component}}.{{Component#literal}}(caption()));
                         }
                     })
-                    .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(x, y, WIDGET_WIDTH, WIDGET_HEIGHT)
-                    .{{net.minecraft.client.gui.components.Button$Builder#build}}();
+                    .{{Button$Builder#bounds}}(x, y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                    .{{Button$Builder#build}}();
         }
 
         /** The label a widget carries, with the value and any warning on it. */
@@ -446,7 +446,7 @@ public final class RavelSettingsScreen extends {{Screen}} {
 
         @Override
         protected void {{AbstractSliderButton#updateMessage}}() {
-            {{net.minecraft.client.gui.components.AbstractWidget#setMessage}}({{Component}}.{{Component#literal}}(row.caption()));
+            {{AbstractWidget#setMessage}}({{Component}}.{{Component#literal}}(row.caption()));
         }
 
         @Override

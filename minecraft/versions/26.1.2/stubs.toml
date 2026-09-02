@@ -26,6 +26,7 @@ minecraft = "26.1.2"
 # is the method it overrides to build its widgets, `addRenderableWidget` is how
 # each one is added, and `onClose` is what the done button calls. `font`, `width`
 # and `height` are the fields a widget is positioned and measured against.
+role = "Screen"
 class = "net.minecraft.client.gui.screens.Screen"
 members = [
   "<init>",
@@ -39,11 +40,13 @@ members = [
 
 [[stub]]
 # The title-menu bridge asks the running client to replace its current screen.
+role = "Minecraft"
 class = "net.minecraft.client.Minecraft"
 members = ["getInstance", "setScreen"]
 
 [[stub]]
 # The screen's title and every widget label cross as one of these.
+role = "Component"
 class = "net.minecraft.network.chat.Component"
 members = ["translatable", "literal"]
 
@@ -51,6 +54,7 @@ members = ["translatable", "literal"]
 # What `addRenderableWidget` takes. It is seeded with no member because nothing
 # calls one: it is here so the widget classes below declare it as a supertype and
 # are assignable to that parameter, which is the erased type the jar declares.
+role = "GuiEventListener"
 class = "net.minecraft.client.gui.components.events.GuiEventListener"
 members = []
 
@@ -58,6 +62,7 @@ members = []
 # The base every widget below extends, and the class that carries the
 # `GuiEventListener` edge. `setMessage` is what a widget that changes its own
 # label calls.
+role = "AbstractWidget"
 class = "net.minecraft.client.gui.components.AbstractWidget"
 members = ["setMessage"]
 
@@ -66,16 +71,19 @@ members = ["setMessage"]
 # so one button covers both and no checkbox or cycle button is seeded. 26.1.2
 # makes `Button` abstract and reaches it through `builder`, which is why the two
 # nested types below are here.
+role = "Button"
 class = "net.minecraft.client.gui.components.Button"
 members = ["builder"]
 
 [[stub]]
+role = "Button$Builder"
 class = "net.minecraft.client.gui.components.Button$Builder"
 members = ["bounds", "build"]
 
 [[stub]]
 # Seeded for its method rather than only for its name: the screen implements this
 # interface for every button it builds.
+role = "Button$OnPress"
 class = "net.minecraft.client.gui.components.Button$OnPress"
 members = ["onPress"]
 
@@ -90,11 +98,13 @@ members = ["onPress"]
 # extraction — and ADG-6 omits `extractRenderState` on purpose: Ravel never
 # draws. This class is subclassed instead precisely because the two methods it
 # declares abstract are neither of them an extraction.
+role = "AbstractSliderButton"
 class = "net.minecraft.client.gui.components.AbstractSliderButton"
 members = ["<init>", "value", "updateMessage", "applyValue"]
 
 [[stub]]
 # Everything a slider or a choice cannot constrain is typed into one of these.
+role = "EditBox"
 class = "net.minecraft.client.gui.components.EditBox"
 members = ["<init>", "getValue", "setValue", "setEditable", "setMaxLength"]
 
@@ -106,6 +116,7 @@ members = ["<init>", "getValue", "setValue", "setEditable", "setMaxLength"]
 # what makes a long row readable at all, and it is the font's job: the game
 # measures glyphs, and a screen that counted characters instead would break on
 # every script whose glyphs are not one width.
+role = "Font"
 class = "net.minecraft.client.gui.Font"
 members = ["splitIgnoringLanguage"]
 
@@ -114,6 +125,7 @@ members = ["splitIgnoringLanguage"]
 # split line back out. Seeded rather than reusing `Component` because the split
 # answers this type, and a screen that had to name `Component` on the way back
 # would be asserting an edge between the two that only the jar can state.
+role = "FormattedText"
 class = "net.minecraft.network.chat.FormattedText"
 members = ["of", "getString"]
 
@@ -122,6 +134,7 @@ members = ["of", "getString"]
 # than for a method anything calls: `SavedDataType(Identifier, Supplier<T>,
 # Codec<T>, DataFixTypes)` is the signature that names `Codec`, and a descriptor
 # read out of the jar is the only place that name can honestly come from.
+role = "SavedDataType"
 class = "net.minecraft.world.level.saveddata.SavedDataType"
 members = ["<init>"]
 
@@ -135,12 +148,14 @@ members = ["<init>"]
 # and `fieldOf` puts it under a key so the encoded form is the compound tag the
 # saved-data storage writes. A bare leaf codec would encode to a string tag and
 # the storage would have nothing to write.
+role = "Codec"
 class = "com.mojang.serialization.Codec"
 members = ["xmap", "fieldOf"]
 
 [[stub]]
 # What `fieldOf` answers. `codec` is what turns it back into a `Codec`, which is
 # the type `SavedDataType`'s constructor names.
+role = "MapCodec"
 class = "com.mojang.serialization.MapCodec"
 members = ["codec"]
 
@@ -150,6 +165,7 @@ members = ["codec"]
 # than from `Codec` itself because the codec constants on `Codec` are fields on
 # an interface — implicitly final, and a stub cannot invent the value one would
 # need.
+role = "ExtraCodecs"
 class = "net.minecraft.util.ExtraCodecs"
 members = ["BASE64_STRING"]
 
@@ -157,12 +173,14 @@ members = ["BASE64_STRING"]
 # The superclass of Ravel's one stored object. It is abstract, which is the whole
 # reason this half cannot live in the agent jar: storing a Ravel-owned saved data
 # means defining a concrete subclass of a game type, and reflection defines none.
+role = "SavedData"
 class = "net.minecraft.world.level.saveddata.SavedData"
 members = ["<init>", "setDirty"]
 
 [[stub]]
 # What a saved-data type is named by. The constructor is private, so the factory
 # is what a name can be built through.
+role = "Identifier"
 class = "net.minecraft.resources.Identifier"
 members = ["fromNamespaceAndPath"]
 
@@ -170,5 +188,6 @@ members = ["fromNamespaceAndPath"]
 # The fixer family `SavedDataType`'s constructor takes. Seeded for the one
 # constant Ravel names, whose byte preservation across the pinned version range
 # is what ADG-7's evidence measured.
+role = "DataFixTypes"
 class = "net.minecraft.util.datafix.DataFixTypes"
 members = ["SAVED_DATA_COMMAND_STORAGE"]

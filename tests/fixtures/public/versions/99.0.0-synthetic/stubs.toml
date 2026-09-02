@@ -9,9 +9,11 @@ schemaVersion = 1
 minecraft = "99.0.0-synthetic"
 
 [[stub]]
+role = "FrameSink"
 class = "org.exampleengine.screen.FrameSink"
 members = ["flush"]
 
 [[stub]]
+role = "Panel"
 class = "org.exampleengine.screen.Panel"
 members = ["<init>", "refresh", "sink", "width"]

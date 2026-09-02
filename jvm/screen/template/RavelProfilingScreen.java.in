@@ -3,15 +3,15 @@
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
 import java.util.List;
-{{import net.minecraft.client.gui.components.Button}}
+{{import Button}}
 // The binary name is the type's name here, for the reason RavelSettingsScreen
 // records: the pinned version reaches every interactive widget through a nested
 // type and the stubs carry the binary name the JVM links on.
-{{import net.minecraft.client.gui.components.Button$OnPress}}
-{{import net.minecraft.client.gui.components.EditBox}}
-{{import net.minecraft.client.gui.screens.Screen}}
-{{import net.minecraft.network.chat.Component}}
-{{import net.minecraft.network.chat.FormattedText}}
+{{import Button$OnPress}}
+{{import EditBox}}
+{{import Screen}}
+{{import Component}}
+{{import FormattedText}}
 
 /**
  * Ravel's opt-in profiling report.
@@ -220,8 +220,8 @@ public final class RavelProfilingScreen extends {{Screen}} {
                                 {{Screen#onClose}}();
                             }
                         })
-                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
+                        .{{Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{Button$Builder#build}}());
     }
 
     /**
@@ -284,7 +284,7 @@ public final class RavelProfilingScreen extends {{Screen}} {
         List<String> lines = new ArrayList<>();
         for (String text : texts) {
             for (Object piece :
-                    {{Screen#font}}.{{net.minecraft.client.gui.Font#splitIgnoringLanguage}}({{FormattedText}}.{{FormattedText#of}}(text), WIDGET_WIDTH - TEXT_INSET)) {
+                    {{Screen#font}}.{{Font#splitIgnoringLanguage}}({{FormattedText}}.{{FormattedText#of}}(text), WIDGET_WIDTH - TEXT_INSET)) {
                 lines.add((({{FormattedText}}) piece).{{FormattedText#getString}}());
             }
         }

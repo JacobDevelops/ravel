@@ -3,15 +3,15 @@
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
 import java.util.List;
-{{import net.minecraft.client.Minecraft}}
-{{import net.minecraft.client.gui.components.Button}}
+{{import Minecraft}}
+{{import Button}}
 // The binary name is the type's name here, for the reason RavelSettingsScreen
 // records: the pinned version reaches every interactive widget through a nested
 // type and the stubs carry the binary name the JVM links on.
-{{import net.minecraft.client.gui.components.Button$OnPress}}
-{{import net.minecraft.client.gui.components.EditBox}}
-{{import net.minecraft.client.gui.screens.Screen}}
-{{import net.minecraft.network.chat.Component}}
+{{import Button$OnPress}}
+{{import EditBox}}
+{{import Screen}}
+{{import Component}}
 
 /**
  * Ravel's mod list and dependency diagnostics screen.
@@ -163,8 +163,8 @@ public final class RavelModsScreen extends {{Screen}} {
                                         .{{Minecraft#setScreen}}(RavelMenu.openSettings("configuration"));
                             }
                         })
-                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
+                        .{{Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{Button$Builder#build}}());
         y += ROW;
         {{Screen#addRenderableWidget}}(
                 {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Profiling"), new {{Button$OnPress}}() {
@@ -173,8 +173,8 @@ public final class RavelModsScreen extends {{Screen}} {
                                 {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(RavelMenu.openProfiling());
                             }
                         })
-                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
+                        .{{Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{Button$Builder#build}}());
         y += ROW;
         {{Screen#addRenderableWidget}}(
                 {{Button}}.{{Button#builder}}({{Component}}.{{Component#translatable}}("gui.done"), new {{Button$OnPress}}() {
@@ -183,8 +183,8 @@ public final class RavelModsScreen extends {{Screen}} {
                                 {{Screen#onClose}}();
                             }
                         })
-                        .{{net.minecraft.client.gui.components.Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .{{net.minecraft.client.gui.components.Button$Builder#build}}());
+                        .{{Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{Button$Builder#build}}());
     }
 
     /**

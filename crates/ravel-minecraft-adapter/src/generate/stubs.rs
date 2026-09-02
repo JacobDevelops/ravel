@@ -124,10 +124,11 @@ pub(super) fn from_jar(
             })
             .collect::<Vec<_>>();
         let mut selected = Vec::new();
-        for name in &seed.members {
+        for seeded in &seed.members {
+            let name = seeded.member();
             let matched = declared
                 .iter()
-                .filter(|member| &member.name == name)
+                .filter(|member| member.name == name)
                 .collect::<Vec<_>>();
             if matched.is_empty() {
                 return Err(GenerateError::Unresolved(format!(
@@ -247,8 +248,9 @@ pub(super) fn from_lock(
             .ok_or_else(|| {
                 GenerateError::Drift(format!("stubs.lock carries no stub for {}", seed.class))
             })?;
-        for name in &seed.members {
-            if !stub.members.iter().any(|member| &member.name == name) {
+        for seeded in &seed.members {
+            let name = seeded.member();
+            if !stub.members.iter().any(|member| member.name == name) {
                 return Err(GenerateError::Drift(format!(
                     "stubs.lock pins no {name} on {}",
                     seed.class
@@ -421,7 +423,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::super::classfile::ACC_PUBLIC;
-    use super::super::inputs::{self, MappingSource, PinnedVersion, Seeds};
+    use super::super::inputs::{self, MappingSource, PinnedVersion, SeedMember, Seeds};
     use super::super::jar::fixture;
     use super::super::mapping::Mapping;
     use super::{Lock, Stub, from_jar, from_lock, names_in};
@@ -577,7 +579,7 @@ mod tests {
         let pinned = pinned();
         let tracked = tracked_lock(&pinned);
         let first = pinned.seeds.stubs[0].class.replace('.', "/");
-        let member = &pinned.seeds.stubs[0].members[0];
+        let member = pinned.seeds.stubs[0].members[0].member();
 
         let without_class = tracked.replace(&format!("class = \"{first}\""), "class = \"a/Ghost\"");
         let error = from_lock(&without_class, &pinned.adapter, &pinned.seeds)
@@ -656,6 +658,7 @@ mod tests {
             "schemaVersion = 1\n\
              minecraft = \"0.0.0-test\"\n\
              [[stub]]\n\
+             role = \"Screen\"\n\
              class = \"com.example.Screen\"\n\
              members = [\"init\"]\n",
         )
@@ -710,7 +713,7 @@ mod tests {
     #[test]
     fn a_seeded_member_the_obfuscated_class_does_not_declare_is_refused() {
         let (mut seeds, mapping, screen, widget) = obfuscated();
-        seeds.stubs[0].members = vec!["onClose".to_owned()];
+        seeds.stubs[0].members = vec![SeedMember::Same("onClose".to_owned())];
         let screen = fixture::parse(screen).expect("a synthetic archive");
         let widget = fixture::parse(widget).expect("a synthetic archive");
 

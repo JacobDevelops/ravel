@@ -1266,7 +1266,7 @@ ravel_sdk::export_mod!(Installed::default());
              \x20   // The library name the generated host declares, which is the\n\
              \x20   // name the JVM loads and therefore the name a dependent links.\n\
              \x20   let members = ravel_bootstrap::members(ravel_core::Side::Client);\n\
-             \x20   let (machine, _, _) = ravel_host_runtime::compose(\n\
+             \x20   let (machine, _, _, _) = ravel_host_runtime::compose(\n\
              \x20       std::path::Path::new(&game),\n\
              \x20       ravel_core::Side::Client,\n\
              \x20       members,\n\

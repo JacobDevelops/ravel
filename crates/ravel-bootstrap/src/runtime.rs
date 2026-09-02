@@ -485,6 +485,31 @@ pub fn environment() -> FailureEnvironment {
     }
 }
 
+/// Renders the `pack.mcmeta` for a resource pack this build's version reads.
+///
+/// Here rather than in the host that writes the pack, because the format and the
+/// shape it is spelled in are both version data and this is the crate that holds
+/// the generated bindings. A host composes the description and writes the file; it
+/// names no version number and no document shape.
+#[must_use]
+pub fn resource_pack_metadata(description: &str) -> String {
+    ravel_minecraft::pack_metadata(
+        ravel_minecraft_adapter::pinned::RESOURCE_PACK_FORMAT,
+        ravel_minecraft_adapter::pinned::PACK_FORMAT_SPELLING,
+        description,
+    )
+}
+
+/// Renders the `pack.mcmeta` for a data pack this build's version reads.
+#[must_use]
+pub fn data_pack_metadata(description: &str) -> String {
+    ravel_minecraft::pack_metadata(
+        ravel_minecraft_adapter::pinned::DATA_PACK_FORMAT,
+        ravel_minecraft_adapter::pinned::PACK_FORMAT_SPELLING,
+        description,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;

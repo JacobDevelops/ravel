@@ -173,7 +173,10 @@ fn outcome(
     fresh_world: bool,
 ) -> OpenOutcome {
     match runtime.stage_world(WorldIdentity::of(identity_raw), bytes, fresh_world) {
-        Ok(()) => OpenOutcome::Staged,
+        Ok(()) => {
+            runtime.write_world_pack(identity_raw);
+            OpenOutcome::Staged
+        }
         Err(error) => OpenOutcome::Refused(error),
     }
 }
@@ -235,6 +238,35 @@ impl LoaderRuntime {
         }
         aggregate.to_bytes().map_err(|error| error.to_string())?;
         Ok(aggregate)
+    }
+
+    /// Puts the data half of the installed set into the world being opened.
+    ///
+    /// After the world is admitted rather than before it: a world Ravel refuses is
+    /// a world Ravel does not write into, and the pack would be for a session that
+    /// does not happen.
+    ///
+    /// A refusal here is noticed rather than raised. The world opens either way —
+    /// the game read its pack list before this crossing was reached, so this pack
+    /// was never going to be read this session — and withholding a world over a
+    /// file that would not have been read until the next open would cost a player
+    /// their session for nothing. What it must not do is fail silently, which is
+    /// what the observation channel is for.
+    fn write_world_pack(&self, world: &str) {
+        let path = std::path::Path::new(world);
+        match crate::packs::write_world_pack(path) {
+            Ok(_) => {}
+            Err(error) => {
+                self.inner
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .persistence
+                    .notice(format!(
+                        "`{world}` could not be given the mods' data pack, so this world reads \
+                         none of their recipes or tags: {error}"
+                    ));
+            }
+        }
     }
 
     pub(crate) fn stage_world(

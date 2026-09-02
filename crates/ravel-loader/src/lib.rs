@@ -9,6 +9,7 @@ mod driver;
 mod events;
 mod interception;
 mod lifecycle;
+mod pack;
 mod registry;
 mod resources;
 mod saves;
@@ -29,6 +30,9 @@ pub use interception::{InterceptionError, intercept};
 pub use lifecycle::{
     LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, Requirement,
     executes_mod_code,
+};
+pub use pack::{
+    Half, PACK_DIRECTORY, PackError, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, write_pack,
 };
 pub use registry::Registration;
 pub use resources::{ResourceRefused, Supplied, open_resources};

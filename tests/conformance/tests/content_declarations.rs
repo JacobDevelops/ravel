@@ -26,7 +26,7 @@ use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Sid
 use ravel_data::{ContentDeclaration, DeclarationError, TagId, TagSet};
 use ravel_example_content_mod::{ContentMod, MODEL};
 use ravel_host_api::{HostError, HostMod, Registrar};
-use ravel_host_runtime::{Member, compose};
+use ravel_host_runtime::{Member, compose, install_packs, write_resource_pack, write_world_pack};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_sdk::Declared;
 use ravel_sdk::generate::{GeneratedData, GeneratedFile};
@@ -731,6 +731,142 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
             "{}",
             file.path()
         );
+    }
+
+    let _ = std::fs::remove_dir_all(&game);
+}
+
+/// The instance a launch leaves behind: the mod's assets are a pack on disk.
+///
+/// The end of the path the test above starts. `write_resource_pack` is the call
+/// `ravel_host_runtime::initialize` makes, so what lands here is what a launch
+/// writes rather than a rehearsal of it.
+///
+/// The expected tree is written out below rather than derived from the mod. A
+/// comparison against `generated()` would pass for a writer that put the data half
+/// in the resource pack, or dropped the metadata, or wrote nothing at all — the
+/// three things this is for. What the metadata's number *is* is not asserted here:
+/// it is version data, and the adapter refuses one the pinned jar disagrees with.
+#[test]
+fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
+    let game = std::env::temp_dir().join(format!("ravel-launch-pack-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&game);
+    std::fs::create_dir_all(&game).expect("a writable temporary directory");
+
+    let (_, _, _, resources) = compose(
+        &game,
+        Side::Client,
+        vec![Member {
+            package: include_str!("../../../examples/content-mod/package.json").to_owned(),
+            host: Box::new(ContentMod::new()) as Box<dyn HostMod>,
+        }],
+    )
+    .expect("the shipped example should compose");
+
+    let written = write_resource_pack(&game, &resources).expect("the pack should write");
+
+    assert_eq!(
+        written.root(),
+        game.join("resourcepacks").join("ravel"),
+        "the pack lands where the client's folder source scans"
+    );
+    assert_eq!(
+        written.paths(),
+        [
+            "assets/content/lang/en_us.json",
+            "assets/content/lang/fr_fr.json",
+            "assets/content/models/block/copper_lantern.json",
+            "pack.mcmeta",
+        ]
+    );
+    for path in written.paths() {
+        assert!(written.root().join(path).is_file(), "{path}");
+    }
+    assert!(
+        !written.root().join("data").exists(),
+        "the data half belongs to a world, not to the instance"
+    );
+    assert_eq!(
+        std::fs::read(
+            written
+                .root()
+                .join("assets/content/models/block/copper_lantern.json")
+        )
+        .expect("the model is readable"),
+        MODEL,
+        "the model the mod supplies is the model on disk"
+    );
+
+    let metadata = std::fs::read_to_string(written.root().join("pack.mcmeta"))
+        .expect("the metadata is readable");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&metadata).expect("the metadata is legal JSON");
+    let declared = parsed.get("pack").expect("the metadata declares a pack");
+    assert!(
+        declared.get("pack_format").is_some() || declared.get("min_format").is_some(),
+        "the pack declares a format this version reads: {metadata}"
+    );
+    assert!(
+        declared
+            .get("description")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|text| text.contains("Ravel")),
+        "the pack says whose it is: {metadata}"
+    );
+
+    let _ = std::fs::remove_dir_all(&game);
+}
+
+/// The world half: opening a world leaves the mods' data where the world reads it.
+///
+/// `write_world_pack` is the call the world-open crossing makes, reached here
+/// through the host runtime so a test and a launch take one route to it. The set
+/// it writes is the one `initialize` installs, which is what `install_packs` does.
+///
+/// **What this cannot show is that the world reads it during the same session.**
+/// The game builds a world's pack list before it reaches the crossing that knows
+/// which world is opening, so a pack written here is read from the next open of
+/// that world. That is recorded on `ravel_bootstrap`'s own module and is the
+/// reason this test asserts about the filesystem and not about a session.
+#[test]
+fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
+    let game = std::env::temp_dir().join(format!("ravel-world-data-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&game);
+    std::fs::create_dir_all(&game).expect("a writable temporary directory");
+
+    let (_, _, _, resources) = compose(
+        &game,
+        Side::IntegratedServer,
+        vec![Member {
+            package: include_str!("../../../examples/content-mod/package.json").to_owned(),
+            host: Box::new(ContentMod::new()) as Box<dyn HostMod>,
+        }],
+    )
+    .expect("the shipped example should compose");
+    install_packs(resources);
+
+    let world = game.join("saves").join("New World");
+    std::fs::create_dir_all(&world).expect("a writable world directory");
+
+    let written = write_world_pack(&world)
+        .expect("the pack should write")
+        .expect("a launch that installed a set writes one");
+
+    assert_eq!(written.root(), world.join("datapacks").join("ravel"));
+    assert_eq!(
+        written.paths(),
+        [
+            "data/c/tags/block/lanterns.json",
+            "data/c/tags/item/lanterns.json",
+            "pack.mcmeta",
+        ]
+    );
+    assert!(
+        !written.root().join("assets").exists(),
+        "a world reads data, and the assets are the instance's"
+    );
+    for path in written.paths() {
+        assert!(written.root().join(path).is_file(), "{path}");
     }
 
     let _ = std::fs::remove_dir_all(&game);

@@ -16,6 +16,7 @@ ravel-host-api.workspace = true
 ravel-loader.workspace = true
 ravel-package.workspace = true
 ravel-resolve.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

@@ -29,19 +29,29 @@
 //! [`initialize`] is the body behind that entry, and every host's entry is a
 //! wrapper around it.
 
+mod options;
+
+pub use options::{OptionsError, PACK_ID, Seeded, seed_pack};
+/// The world-open half of the pack, re-exported so a caller reaches one route to
+/// it rather than two: [`initialize`] installs the set and the crossing writes it.
+pub use ravel_bootstrap_runtime::{install_packs, write_world_pack};
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
 use ravel_bootstrap_runtime::{
-    HookError, SideError, install, install_settings, pre_world_report, side as running_side,
+    HookError, SideError, install, install_settings, pre_world_report, resource_pack_metadata,
+    side as running_side,
 };
 use ravel_config::{LayeredConfiguration, ValueDocument, file};
 use ravel_core::{ModId, Side};
 use ravel_host_api::HostMod;
+pub use ravel_loader::Written;
 use ravel_loader::{
-    ConfigRefused, DiscoveryRefused, DriveError, LifecycleEntry, LifecycleError, LifecycleMachine,
-    ResourceRefused, Supplied, admitted, discover, drive, open_configuration, open_resources,
+    ConfigRefused, DiscoveryRefused, DriveError, Half, LifecycleEntry, LifecycleError,
+    LifecycleMachine, PACK_DIRECTORY, PackError, RESOURCE_PACKS, ResourceRefused, Supplied,
+    admitted, discover, drive, open_configuration, open_resources, write_pack,
 };
 use ravel_package::{CompatibilityError, ManifestError, PackageManifest};
 use ravel_resolve::{ResolutionError, resolve};
@@ -266,9 +276,19 @@ pub fn initialize(env: &mut jni::Env<'_>, members: Vec<Member>) -> Result<(), La
     // below depends on it, so a launch that cannot name its side installs nothing
     // instead of composing a set for a side it guessed.
     let side = side(env)?;
-    // The supplied files are held by the composition rather than installed. What
-    // reads them is the pack a launch writes, which no work package has built yet.
-    let (machine, mods, configurations, _resources) = compose(&game_directory, side, members)?;
+    let (machine, mods, configurations, resources) = compose(&game_directory, side, members)?;
+    // Before the runtime is installed, because a pack the game reads late is a
+    // pack it does not read: the client builds its pack list while it starts, and
+    // a launch that could not serve the models of the mods it is about to
+    // register has not started correctly.
+    write_resource_pack(&game_directory, &resources)?;
+    // And offered to the player, once. A folder pack nobody enabled is a pack the
+    // game finds and does not read, so the first launch that finds a settings file
+    // puts the id in the list; after that the list is the player's.
+    seed_pack(&game_directory).map_err(LaunchError::Options)?;
+    // The data half is not written here. It belongs to a world, and no world is
+    // open yet, so the set is installed for the crossing that knows which one.
+    install_packs(resources);
     install_settings(side, configurations);
     // The report this host hands over holds no refusal, and that is a statement
     // about this composition rather than an empty gesture: every stage before
@@ -277,6 +297,35 @@ pub fn initialize(env: &mut jni::Env<'_>, members: Vec<Member>) -> Result<(), La
     // pipeline that validates packages and orders a graph, which runs when a
     // pack is compiled and not in this process.
     install(machine, mods, pre_world_report()).map_err(LaunchError::Install)
+}
+
+/// Writes the asset half of a composed set as a pack in `game_directory`.
+///
+/// The instance's own pack directory, which is where the client's folder source
+/// scans, so what a mod supplies is a pack the player can see. This is a separate
+/// function from [`initialize`] rather than a block inside it because
+/// [`initialize`] needs a JVM to call and this needs none: a test that rebuilt the
+/// same call would be a second route to the pack, and two routes can disagree
+/// about where it lands.
+///
+/// The data half is deliberately not written here. It belongs to a world rather
+/// than to an instance, and no world is open yet.
+///
+/// # Errors
+///
+/// Returns [`LaunchError::Pack`] for any filesystem refusal, which fails the
+/// launch rather than starting a game serving half a pack.
+pub fn write_resource_pack(
+    game_directory: &Path,
+    resources: &Supplied,
+) -> Result<Written, LaunchError> {
+    write_pack(
+        &game_directory.join(RESOURCE_PACKS).join(PACK_DIRECTORY),
+        resources,
+        Half::Assets,
+        &resource_pack_metadata(Half::Assets.description()),
+    )
+    .map_err(LaunchError::Pack)
 }
 
 /// Why a composed set could not start.
@@ -310,6 +359,10 @@ pub enum LaunchError {
     Config(ConfigRefused),
     /// The set's supplied files could not be layered.
     Resources(ResourceRefused),
+    /// The set's files could not be written as a pack the game reads.
+    Pack(PackError),
+    /// The player's settings could not be read or replaced.
+    Options(OptionsError),
     /// The lifecycle could not drive a composed value.
     Drive(DriveError),
     /// The driven runtime could not be installed.
@@ -362,6 +415,15 @@ impl fmt::Display for LaunchError {
             Self::Resources(error) => {
                 write!(formatter, "the set's files were not layered: {error}")
             }
+            Self::Pack(error) => {
+                write!(formatter, "the set's pack was not written: {error}")
+            }
+            Self::Options(error) => {
+                write!(
+                    formatter,
+                    "the player's settings were not readable: {error}"
+                )
+            }
             Self::Drive(error) => write!(formatter, "the composed mod set cannot start: {error}"),
             Self::Install(error) => write!(
                 formatter,
@@ -391,6 +453,8 @@ impl std::error::Error for LaunchError {
             Self::Lifecycle(error) => Some(error),
             Self::Config(error) => Some(error),
             Self::Resources(error) => Some(error),
+            Self::Pack(error) => Some(error),
+            Self::Options(error) => Some(error),
             Self::Composition(_) | Self::NotComposed(_) => None,
             Self::Drive(error) => Some(error),
             Self::Install(error) => Some(error),

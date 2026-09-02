@@ -952,6 +952,7 @@ dependencies = [
  "ravel-loader",
  "ravel-package",
  "ravel-resolve",
+ "serde_json",
 ]
 
 [[package]]

@@ -8,6 +8,7 @@ mod game_directory;
 mod guard;
 mod mods;
 pub mod outward;
+mod packs;
 mod persistence;
 mod profiling;
 mod report;
@@ -18,8 +19,12 @@ mod wire;
 
 pub use dispatch::register;
 pub use guard::HookError;
+pub use packs::{install as install_packs, write_world_pack};
 pub use persistence::{OpenOutcome, SaveOutcome, observations, save, stage};
-pub use runtime::{LoaderRuntime, environment, install, pre_world_report};
+pub use runtime::{
+    LoaderRuntime, data_pack_metadata, environment, install, pre_world_report,
+    resource_pack_metadata,
+};
 pub use settings::install as install_settings;
 pub use side::{SideError, side};
 

@@ -218,14 +218,18 @@ behaviour that already existed.
 
 ## What is not decided here, and who owns it
 
-- **The scaffold contract's per-version sweep.** `ravel-xtask` lists `26.1.2`'s
-  files literally and treats `minecraft/versions/26.1.2/hooks.toml` as *the* hook
-  inventory for its conformance, hook-count, and agent-reflection checks. Those
-  have to become per-directory sweeps before a second directory is tracked. The
-  `AGENT_REFLECTED_CLASSES` list is the sharp edge: it pins seventeen `26.1.2`
-  class names and at least one of them does not exist at 1.21.1, so that constant
-  becomes per-version data in that work package rather than in the one that
-  authors the version.
+- **The scaffold contract's per-version sweep.** Done, and it is what
+  `ravel-xtask` does now: every directory under `minecraft/versions` is swept for
+  the same seven files, for a `minecraft` key declaring the version its own
+  directory is named for, and for a countable inventory, and the hook-count,
+  decision-claim and agent-reflection checks each run once per tracked directory
+  rather than over `minecraft/versions/26.1.2/hooks.toml` as *the* inventory. The
+  `AGENT_REFLECTED_CLASSES` constant was the sharp edge — seventeen `26.1.2` class
+  names, at least one of which does not exist at 1.21.1 — and it is now
+  `minecraft/versions/<version>/reflection.toml`, one declared set per version.
+  What that sweep does not do is check a version's data against a jar: the
+  reflective set is in no lock, which `evidence/m3/manifest.json` records as a
+  named deviation and `ROADMAP.md` carries as owed work.
 - **`minecraft/versions/1.21.1/` itself.** The version data, its locks, and its
   review are the work package this record unblocks, not the one it is part of.
 - **Runtime selection.** Deferred, with the reversal condition named above. It
@@ -234,9 +238,11 @@ behaviour that already existed.
   repository sets `RAVEL_MINECRAFT_VERSION` today, and nothing has to while one
   directory is tracked. From the moment a second one is, a plain `cargo build`,
   `cargo test` and `devenv tasks run ravel:verify` each reach the refusal this
-  record decided, so each entry point has to export a selection first. That is a
-  precondition of the scaffold-contract work package named above and belongs in
-  it, not in the one that authors the version data. It is deliberately not
+  record decided, so each entry point has to export a selection first. The sweep
+  above being done did not do this and was not the place for it: it is a
+  precondition of tracking a second directory, owed before
+  `minecraft/versions/1.21.1/` lands rather than by the package that authors it.
+  It is deliberately not
   solved with a default: a default is the silent answer this record refuses.
 
 ## Limits of this record

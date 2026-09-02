@@ -157,12 +157,6 @@ const ROOT_FILES: &[&str] = &[
     "jvm/screen/src/dev/ravel/jvm/screen/RavelSettingsScreen.java",
     "jvm/screen/src/dev/ravel/jvm/screen/Wire.java",
     "minecraft/README.md",
-    "minecraft/versions/26.1.2/README.md",
-    "minecraft/versions/26.1.2/adapter.toml",
-    "minecraft/versions/26.1.2/hooks.toml",
-    "minecraft/versions/26.1.2/mappings.lock",
-    "minecraft/versions/26.1.2/stubs.lock",
-    "minecraft/versions/26.1.2/stubs.toml",
     "nix/ci.nix",
     "nix/common.nix",
     "nix/darwin.nix",
@@ -188,6 +182,162 @@ const ROOT_FILES: &[&str] = &[
     "tools/ravel-cli/Cargo.toml",
     "tools/ravel-xtask/Cargo.toml",
 ];
+
+/// The directory holding one tracked directory per supported Minecraft version.
+const VERSION_DATA: &str = "minecraft/versions";
+
+/// The files every tracked version directory carries.
+///
+/// These seven were spelled once, as `minecraft/versions/26.1.2/...`, inside
+/// [`ROOT_FILES`]. A path is a fine way to require a file and a poor way to
+/// require a *shape*: the moment a second version directory is tracked, a literal
+/// list asks nothing of it, so a version arriving without its locks is caught by
+/// nothing. `version-selection-is-a-build-time-choice.md` makes that gap explicit —
+/// a build reads the directory it selected and no other, so the guarantee that
+/// every tracked version is well formed has no owner but this sweep.
+const VERSION_FILES: [&str; 7] = [
+    "README.md",
+    "adapter.toml",
+    "hooks.toml",
+    "mappings.lock",
+    "reflection.toml",
+    "stubs.lock",
+    "stubs.toml",
+];
+
+/// The one file in [`VERSION_FILES`] that carries prose rather than a declaration.
+const VERSION_PROSE_FILE: &str = "README.md";
+
+/// The version a tracked version-data file declares about itself.
+///
+/// Every file in [`VERSION_FILES`] but the README writes a top-level
+/// `minecraft = "..."` key, and the first one is the file's own claim: the keys
+/// below it belong to `[[hook]]` and `[[reflected]]` tables that declare no
+/// version.
+fn declared_version(text: &str) -> Option<&str> {
+    text.lines()
+        .map(str::trim)
+        .find_map(|line| quoted_value(line, "minecraft"))
+}
+
+/// Every version directory tracked under [`VERSION_DATA`], in name order.
+fn tracked_versions(root: &Path) -> Result<Vec<String>, String> {
+    let entries = fs::read_dir(root.join(VERSION_DATA))
+        .map_err(|error| format!("cannot read {VERSION_DATA}: {error}"))?;
+    let mut versions = entries
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    versions.sort();
+    Ok(versions)
+}
+
+/// Holds every tracked version directory to the same file set, to the version its
+/// own name spells, and to a countable inventory.
+///
+/// The self-declaration half is what a copy-paste cannot satisfy.
+/// `cp -r minecraft/versions/26.1.2 minecraft/versions/1.21.1` produces seven
+/// present files and a countable inventory while every one of them still declares
+/// `26.1.2`, so a directory serving one version's bindings under another's name
+/// was well formed in shape and wrong in content. `generate::inputs::pinned`
+/// compares the same three keys but only for the directory a build *selected*, and
+/// its own comment delegates the all-versions case here, so an unselected
+/// directory was checked by nothing at all.
+///
+/// The countability half is not decoration either. `hook_counts` is what every
+/// figure derived from an inventory rests on, and it is the only thing in this file
+/// that reads an inventory's *structure* rather than grepping its lines, so an entry
+/// missing its kind or its descriptor is a malformed version that no other check
+/// notices. Under one tracked directory the document check below happened to run
+/// it; under two, the one the document does not name would go unread.
+fn verify_version_directories(root: &Path, violations: &mut Vec<String>) {
+    let versions = match tracked_versions(root) {
+        Ok(versions) => versions,
+        Err(error) => {
+            violations.push(error);
+            return;
+        }
+    };
+    if versions.is_empty() {
+        violations.push(format!(
+            "{VERSION_DATA} holds no version directory, so every check derived from version data \
+             sweeps nothing and passes by having nothing to say"
+        ));
+        return;
+    }
+
+    for version in &versions {
+        for file in VERSION_FILES {
+            let relative = format!("{VERSION_DATA}/{version}/{file}");
+            if !root.join(&relative).is_file() {
+                violations.push(format!("missing required file: {relative}"));
+                continue;
+            }
+            if file == VERSION_PROSE_FILE {
+                continue;
+            }
+            let text = match fs::read_to_string(root.join(&relative)) {
+                Ok(text) => text,
+                Err(error) => {
+                    violations.push(format!("cannot read {relative}: {error}"));
+                    continue;
+                }
+            };
+            match declared_version(&text) {
+                Some(declared) if declared == version => {}
+                Some(declared) => violations.push(format!(
+                    "{relative} declares Minecraft {declared} while its directory is named \
+                     {version}; a directory copied from another version and never re-pinned \
+                     serves one version's data under another version's name"
+                )),
+                None => violations.push(format!(
+                    "{relative} declares no `minecraft` version, so nothing holds it to the \
+                     version {VERSION_DATA}/{version} is named for"
+                )),
+            }
+            if file == "hooks.toml"
+                && let Err(error) = hook_counts(&text)
+            {
+                violations.push(format!("cannot count {relative}: {error}"));
+            }
+        }
+    }
+}
+
+/// One tracked version's reviewed hook inventory, read once for every check that
+/// derives something from it.
+struct HookInventory {
+    /// The version directory's name.
+    version: String,
+    /// The inventory's repository-relative path, which the messages name.
+    path: String,
+    /// The file's text.
+    text: String,
+}
+
+/// Every tracked version's inventory, skipping the ones that cannot be read.
+///
+/// Silently, because [`verify_version_directories`] is the check that reports a
+/// missing or unreadable inventory, and a second report of the same fact from
+/// every consumer is noise rather than coverage.
+fn hook_inventories(root: &Path) -> Vec<HookInventory> {
+    let Ok(versions) = tracked_versions(root) else {
+        return Vec::new();
+    };
+    versions
+        .into_iter()
+        .filter_map(|version| {
+            let path = format!("{VERSION_DATA}/{version}/hooks.toml");
+            let text = fs::read_to_string(root.join(&path)).ok()?;
+            Some(HookInventory {
+                version,
+                path,
+                text,
+            })
+        })
+        .collect()
+}
 
 /// Returns the files that define the minimum public repository scaffold.
 #[must_use]
@@ -243,15 +393,17 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     }
 
     verify_ignored_boundaries(root, &mut violations);
-    verify_hook_inventory_document(root, &mut violations);
-    verify_decision_hook_claims(root, &mut violations);
+    verify_version_directories(root, &mut violations);
+    let inventories = hook_inventories(root);
+    verify_hook_inventory_document(root, &inventories, &mut violations);
+    verify_decision_hook_claims(root, &inventories, &mut violations);
     verify_campaign_inventory(root, &mut violations);
     verify_review_round_counts(root, &mut violations);
     verify_review_blocking_counts(root, &mut violations);
     verify_manifest_percentages(root, &mut violations);
     verify_void_limits(root, &mut violations);
     verify_harness_lifecycles(root, &mut violations);
-    verify_persistence_reflection(root, &mut violations);
+    verify_persistence_reflection(root, &inventories, &mut violations);
     verify_guide_enumerations(root, &mut violations);
     verify_schema_documents(root, &mut violations);
     verify_version_boundary(root, &mut violations);
@@ -288,10 +440,7 @@ fn declares_unsafe_prohibition(source: &str) -> bool {
         .any(|line| line.starts_with("#![forbid(unsafe_code)]"))
 }
 
-/// The reviewed hook inventory for the pinned version.
-const HOOK_INVENTORY: &str = "minecraft/versions/26.1.2/hooks.toml";
-
-/// The document that describes the inventory above, and M3-W0's closing evidence.
+/// The document that describes one version's inventory, and M3-W0's closing evidence.
 const HOOK_DOCUMENT: &str = "docs/architecture/m3-hook-targets.md";
 
 /// The launch record that enumerates the inventory M3's campaigns reviewed.
@@ -338,14 +487,20 @@ struct HookCounts {
 /// the thing it is about, which is why nothing caught it. These four counts are
 /// derivable from `hooks.toml` alone, so they are derived here and compared rather
 /// than trusted.
-fn verify_hook_inventory_document(root: &Path, violations: &mut Vec<String>) {
-    let inventory = match fs::read_to_string(root.join(HOOK_INVENTORY)) {
-        Ok(text) => text,
-        Err(error) => {
-            violations.push(format!("cannot read {HOOK_INVENTORY}: {error}"));
-            return;
-        }
-    };
+///
+/// The document is about one version — its own title says so — and the version it
+/// is about is read out of the version-directory paths it links into rather than
+/// out of a constant here. That is what stops one document's figures from being
+/// asserted against a second version's inventory, which is a different file with a
+/// different count and no obligation to agree. A document that links into no
+/// version directory, or into more than one, names no subject and is refused: a
+/// second version needs a second document rather than a shared one that has to be
+/// true twice.
+fn verify_hook_inventory_document(
+    root: &Path,
+    inventories: &[HookInventory],
+    violations: &mut Vec<String>,
+) {
     let document = match fs::read_to_string(root.join(HOOK_DOCUMENT)) {
         Ok(text) => text,
         Err(error) => {
@@ -353,14 +508,65 @@ fn verify_hook_inventory_document(root: &Path, violations: &mut Vec<String>) {
             return;
         }
     };
-    let counts = match hook_counts(&inventory) {
+
+    let named = documented_versions(&document);
+    let mut naming = named.iter();
+    let (Some(version), None) = (naming.next(), naming.next()) else {
+        let found = named.iter().cloned().collect::<Vec<_>>().join(", ");
+        violations.push(format!(
+            "{HOOK_DOCUMENT} links into {} version directories ({found}); it states one \
+             inventory's counts, so the inventory it is held to has to be the one it names",
+            named.len()
+        ));
+        return;
+    };
+
+    let Some(inventory) = inventories
+        .iter()
+        .find(|inventory| &inventory.version == version)
+    else {
+        violations.push(format!(
+            "{HOOK_DOCUMENT} states the counts of {VERSION_DATA}/{version}, which is not a \
+             tracked version whose inventory can be read"
+        ));
+        return;
+    };
+
+    let counts = match hook_counts(&inventory.text) {
         Ok(counts) => counts,
         Err(error) => {
-            violations.push(format!("cannot count {HOOK_INVENTORY}: {error}"));
+            violations.push(format!("cannot count {}: {error}", inventory.path));
             return;
         }
     };
-    violations.extend(hook_document_violations(&document, &counts));
+    violations.extend(hook_document_violations(
+        &document,
+        &inventory.path,
+        &counts,
+    ));
+}
+
+/// Every version directory a document links into.
+///
+/// A link is structure rather than prose, which is why the subject is read from
+/// one. The name is taken as the run of non-slash, non-whitespace characters that
+/// a `/` closes, so a sentence that writes the directory itself without naming a
+/// version inside it contributes nothing.
+fn documented_versions(document: &str) -> BTreeSet<String> {
+    let prefix = format!("{VERSION_DATA}/");
+    let mut named = BTreeSet::new();
+    for (start, _) in document.match_indices(prefix.as_str()) {
+        let rest = &document[start + prefix.len()..];
+        let bytes = rest.as_bytes();
+        let mut end = 0;
+        while end < bytes.len() && bytes[end] != b'/' && !bytes[end].is_ascii_whitespace() {
+            end += 1;
+        }
+        if end > 0 && bytes.get(end) == Some(&b'/') {
+            named.insert(rest[..end].to_owned());
+        }
+    }
+    named
 }
 
 /// The directory holding the accepted decision records.
@@ -423,16 +629,30 @@ const PER_FRAME_MEMBER: &str = "extractRenderState";
 /// It knows one per-frame member, named above. A future version whose per-frame
 /// seam is called something else needs that name added, and the check reports
 /// nothing until it is.
-fn verify_decision_hook_claims(root: &Path, violations: &mut Vec<String>) {
-    let inventory = match fs::read_to_string(root.join(HOOK_INVENTORY)) {
-        Ok(text) => text,
-        Err(error) => {
-            violations.push(format!("cannot read {HOOK_INVENTORY}: {error}"));
-            return;
+///
+/// It reads every tracked version's inventory rather than one. A decision record
+/// is version-agnostic prose and denies a mechanism outright, so the claim is
+/// false as soon as any tracked version declares the hook, and the message names
+/// the inventory that falsifies it.
+fn verify_decision_hook_claims(
+    root: &Path,
+    inventories: &[HookInventory],
+    violations: &mut Vec<String>,
+) {
+    let mut sources: Vec<(String, &str)> = Vec::new();
+    for inventory in inventories {
+        for hook in declared_hook_names(&inventory.text) {
+            sources.push((hook, inventory.path.as_str()));
         }
-    };
-    let declared = declared_hook_names(&inventory);
-    let per_frame = declared.iter().any(|name| name == PER_FRAME_MEMBER);
+    }
+    let declared = sources
+        .iter()
+        .map(|(hook, _)| hook.clone())
+        .collect::<Vec<_>>();
+    let per_frame = sources
+        .iter()
+        .find(|(hook, _)| hook == PER_FRAME_MEMBER)
+        .map(|(_, path)| *path);
 
     let mut records: Vec<PathBuf> = match fs::read_dir(root.join(DECISION_RECORDS)) {
         Ok(entries) => entries
@@ -459,12 +679,16 @@ fn verify_decision_hook_claims(root: &Path, violations: &mut Vec<String>) {
             }
         };
         for denied in denied_hook_names(&record, &declared) {
+            let inventory = sources
+                .iter()
+                .find(|(hook, _)| *hook == denied)
+                .map_or("", |(_, path)| *path);
             violations.push(format!(
-                "{DECISION_RECORDS}/{name} says `{denied}` is not hooked while {HOOK_INVENTORY} \
+                "{DECISION_RECORDS}/{name} says `{denied}` is not hooked while {inventory} \
                  declares it"
             ));
         }
-        if per_frame
+        if let Some(inventory) = per_frame
             && record
                 .split_whitespace()
                 .collect::<Vec<_>>()
@@ -473,7 +697,7 @@ fn verify_decision_hook_claims(root: &Path, violations: &mut Vec<String>) {
                 .contains(NO_PER_FRAME)
         {
             violations.push(format!(
-                "{DECISION_RECORDS}/{name} says \"{NO_PER_FRAME}\" while {HOOK_INVENTORY} \
+                "{DECISION_RECORDS}/{name} says \"{NO_PER_FRAME}\" while {inventory} \
                  declares `{PER_FRAME_MEMBER}`, which the inventory itself calls the per-frame seam"
             ));
         }
@@ -534,6 +758,13 @@ fn denied_hook_names(record: &str, declared: &[String]) -> Vec<String> {
 }
 
 /// Counts the entries, kinds and handle parameters one `hooks.toml` declares.
+///
+/// An inventory declaring no entry is refused rather than counted as four zeroes.
+/// Zero is a number a truncated file reaches by having nothing in it, and every
+/// consumer reads a successful count as evidence the inventory was read: a
+/// version truncated to its header would contribute nothing to
+/// `declared_hook_names`, so no decision record could be falsified by it, and its
+/// document's figures would be satisfied by emptiness.
 fn hook_counts(inventory: &str) -> Result<HookCounts, String> {
     let mut counts = HookCounts {
         entries: 0,
@@ -569,6 +800,10 @@ fn hook_counts(inventory: &str) -> Result<HookCounts, String> {
         }
     }
 
+    if counts.entries == 0 {
+        return Err("the inventory declares no `[[hook]]` entry".to_owned());
+    }
+
     Ok(counts)
 }
 
@@ -590,7 +825,7 @@ fn hook_counts(inventory: &str) -> Result<HookCounts, String> {
 /// current claim is written in one of these phrasings, and the document's own
 /// coverage table is what a new sentence should extend rather than restate.
 /// `campaign_document_violations` carries the same limit for the same reason.
-fn hook_document_violations(document: &str, counts: &HookCounts) -> Vec<String> {
+fn hook_document_violations(document: &str, inventory: &str, counts: &HookCounts) -> Vec<String> {
     let mut violations = Vec::new();
     for (phrase, side, expected, subject) in [
         (" entries to ", Side::After, counts.entries, "hook entries"),
@@ -612,14 +847,14 @@ fn hook_document_violations(document: &str, counts: &HookCounts) -> Vec<String> 
         if stated.is_empty() {
             violations.push(format!(
                 "{HOOK_DOCUMENT} no longer writes a count against `{phrase}`, so nothing in it is \
-                 held to {HOOK_INVENTORY}'s {expected} {subject}"
+                 held to {inventory}'s {expected} {subject}"
             ));
             continue;
         }
         for count in stated {
             if count != expected {
                 violations.push(format!(
-                    "{HOOK_DOCUMENT} states {count} {subject} where {HOOK_INVENTORY} declares \
+                    "{HOOK_DOCUMENT} states {count} {subject} where {inventory} declares \
                      {expected}"
                 ));
             }
@@ -1455,32 +1690,86 @@ const AGENT_JAR_SOURCES: &str = "jvm/bootstrap";
 /// wearing a different prefix.
 const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
 
-/// Every game class the agent jar resolves reflectively, as a declared set.
+/// The per-version file declaring the game classes the agent jar resolves by name.
 ///
-/// Two sources resolve one, and for the same reason: ADG-4 admits a hook that
+/// This was a seventeen-name constant in this file, and the names in it are
+/// `26.1.2`'s: at `1.21.1` `net.minecraft.resources.Identifier` is called
+/// `ResourceLocation` and `net.minecraft.world.level.storage.SavedDataStorage` is
+/// called `DimensionDataStorage`. A single global list asserted one version's
+/// spelling against every other and passed while doing it, which is the defect a
+/// second version directory would have shipped with. The set is version data now,
+/// beside the `hooks.toml` whose classes it complements, and the check below runs
+/// once per tracked version.
+///
+/// Two sources resolve one set, and for the same reason: ADG-4 admits a hook that
 /// observes or vetoes, so anything the host has to *perform* — storing a world's
 /// aggregate, registering a mod's block — is performed by a hand-written adapter
 /// that reaches the game by name. Adding a name to either source without adding it
-/// here fails the scaffold, which is the whole point of the list.
-const AGENT_REFLECTED_CLASSES: [&str; 17] = [
-    "net.minecraft.client.Minecraft",
-    "net.minecraft.client.resources.sounds.SimpleSoundInstance",
-    "net.minecraft.client.resources.sounds.SoundInstance",
-    "net.minecraft.client.sounds.SoundManager",
-    "net.minecraft.core.Registry",
-    "net.minecraft.core.registries.Registries",
-    "net.minecraft.resources.Identifier",
-    "net.minecraft.resources.ResourceKey",
-    "net.minecraft.server.MinecraftServer",
-    "net.minecraft.sounds.SoundEvent",
-    "net.minecraft.util.datafix.DataFixers",
-    "net.minecraft.world.item.Item",
-    "net.minecraft.world.item.Item$Properties",
-    "net.minecraft.world.level.block.Block",
-    "net.minecraft.world.level.block.state.BlockBehaviour$Properties",
-    "net.minecraft.world.level.storage.LevelResource",
-    "net.minecraft.world.level.storage.SavedDataStorage",
-];
+/// to a version's file fails the scaffold, which is the whole point of the file.
+const REFLECTION_FILE: &str = "reflection.toml";
+
+/// One tracked version's declared reflective surface, read beside its inventory.
+struct ReflectiveSurface<'a> {
+    /// The inventory whose hook targets the surface complements.
+    inventory: &'a HookInventory,
+    /// The declaring file's repository-relative path, which the messages name.
+    path: String,
+    /// Every class name the file declares, in the order it declares them.
+    classes: Vec<String>,
+}
+
+/// Every tracked version's declared reflective surface.
+///
+/// Keyed on the tracked versions rather than on the inventories that could be
+/// read, because a version whose inventory is missing is a version whose
+/// reflective surface goes unchecked, and that is a fact about this check rather
+/// than about the missing file. Iterating the inventories made deleting one
+/// `hooks.toml` silently disarm the both-directions comparison below and the
+/// figure anchored to it, while reporting a single missing-file line that reads
+/// like it is about something else.
+fn reflective_surfaces<'a>(
+    root: &Path,
+    inventories: &'a [HookInventory],
+    violations: &mut Vec<String>,
+) -> Vec<ReflectiveSurface<'a>> {
+    let versions = match tracked_versions(root) {
+        Ok(versions) => versions,
+        Err(error) => {
+            violations.push(error);
+            return Vec::new();
+        }
+    };
+
+    let mut surfaces = Vec::new();
+    for version in versions {
+        let path = format!("{VERSION_DATA}/{version}/{REFLECTION_FILE}");
+        let Some(inventory) = inventories
+            .iter()
+            .find(|inventory| inventory.version == version)
+        else {
+            violations.push(format!(
+                "{path} is held to the hook targets {VERSION_DATA}/{version}/hooks.toml pins and \
+                 that inventory cannot be read, so this version's reflective surface is checked \
+                 by nothing"
+            ));
+            continue;
+        };
+        match fs::read_to_string(root.join(&path)) {
+            Ok(text) => surfaces.push(ReflectiveSurface {
+                inventory,
+                classes: text
+                    .lines()
+                    .map(str::trim)
+                    .filter_map(|line| quoted_value(line, "class"))
+                    .map(str::to_owned)
+                    .collect(),
+                path,
+            }),
+            Err(error) => violations.push(format!("cannot read {path}: {error}")),
+        }
+    }
+    surfaces
+}
 
 /// Pins the game class names the always-present agent jar's own sources carry.
 ///
@@ -1489,13 +1778,25 @@ const AGENT_REFLECTED_CLASSES: [&str; 17] = [
 /// adapter resolves the game classes it needs by name instead, and ADG-1's
 /// amendment said for a while that the agent jar "names no game type", which was
 /// false of the shipped jar. This holds the jar's game-class literals to a set that
-/// is either declared here or declared as a hook target in `hooks.toml`, and it
-/// fails in both directions: an undeclared name in the jar, and a declared name no
-/// source resolves any more.
+/// is either declared in a version's `reflection.toml` or declared as a hook target
+/// in the same version's `hooks.toml`, and it fails in both directions: an
+/// undeclared name in the jar, and a declared name no source resolves any more.
+///
+/// It runs once per tracked version, against that version's two files and no
+/// other's. That is the point of the per-version split: a name that is right for
+/// one version does not excuse the same literal under another, so a second version
+/// whose spelling differs is refused here rather than accepted by borrowing the
+/// first version's list. What follows from that, and is a real obligation rather
+/// than an oversight, is that the sources under [`AGENT_JAR_SOURCES`] are shared
+/// while the names in them are not: tracking a version that renames one of these
+/// classes fails this check until the literal stops being a literal. That work
+/// belongs to the package that authors the second version, and it is better named
+/// by a failing gate than hidden by a list that is true of one version only.
 ///
 /// **What it cannot do, because the gap is the reason it exists.** It cannot detect
 /// a game-side rename. Both sides of the comparison are Ravel's own — the jar's
-/// literals and the list above — and neither comes from the pinned client jar, so a
+/// literals and the version's declared set — and neither comes from the pinned
+/// client jar, so a
 /// class renamed in the next pinned version passes here and fails at runtime as a
 /// refused world load. Hook target classes are the exception and only because
 /// `hooks.toml` and `mappings.lock` are re-pinned against the jar; the reflective
@@ -1520,19 +1821,12 @@ const AGENT_REFLECTED_CLASSES: [&str; 17] = [
 /// `evidence/m3/manifest.json` records the surface as a named deviation and
 /// `ROADMAP.md` records bringing it under `stubs.toml` and `mappings.lock` as owed
 /// work, which needs the re-pin ceremony against the pinned jar.
-fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
-    let inventory = match fs::read_to_string(root.join(HOOK_INVENTORY)) {
-        Ok(inventory) => inventory,
-        Err(error) => {
-            violations.push(format!("cannot read {HOOK_INVENTORY}: {error}"));
-            return;
-        }
-    };
-    let pinned: Vec<&str> = inventory
-        .lines()
-        .map(str::trim)
-        .filter_map(|line| quoted_value(line, "class"))
-        .collect();
+fn verify_persistence_reflection(
+    root: &Path,
+    inventories: &[HookInventory],
+    violations: &mut Vec<String>,
+) {
+    let surfaces = reflective_surfaces(root, inventories, violations);
 
     let mut sources = Vec::new();
     collect_files(&root.join(AGENT_JAR_SOURCES), &mut sources);
@@ -1549,22 +1843,37 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
         return;
     }
 
-    let mut resolved: Vec<String> = Vec::new();
+    let mut literals: Vec<(String, String)> = Vec::new();
     for path in &sources {
         let relative = path
             .strip_prefix(root)
             .unwrap_or(path)
             .to_string_lossy()
             .replace('\\', "/");
-        let source = match fs::read_to_string(path) {
-            Ok(source) => source,
-            Err(error) => {
-                violations.push(format!("cannot read {relative}: {error}"));
-                continue;
-            }
-        };
-        for name in game_class_literals(&source) {
-            if AGENT_REFLECTED_CLASSES.contains(&name.as_str()) {
+        match fs::read_to_string(path) {
+            Ok(source) => literals.extend(
+                game_class_literals(&source)
+                    .into_iter()
+                    .map(|name| (relative.clone(), name)),
+            ),
+            Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+        }
+    }
+
+    for surface in &surfaces {
+        let pinned: Vec<&str> = surface
+            .inventory
+            .text
+            .lines()
+            .map(str::trim)
+            .filter_map(|line| quoted_value(line, "class"))
+            .collect();
+        let declaring = &surface.path;
+        let pinning = &surface.inventory.path;
+
+        let mut resolved: Vec<&String> = Vec::new();
+        for (relative, name) in &literals {
+            if surface.classes.contains(name) {
                 resolved.push(name);
                 continue;
             }
@@ -1572,25 +1881,24 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
                 continue;
             }
             violations.push(format!(
-                "{relative} names the game class {name}, which is neither in the agent jar's \
-                 declared reflective surface nor a hook target {HOOK_INVENTORY} pins; a game name \
-                 in the always-present jar that no lock and no declared set covers is coupled to \
-                 the pinned version by nothing"
+                "{relative} names the game class {name}, which is neither in {declaring} nor a \
+                 hook target {pinning} pins; a game name in the always-present jar that no lock \
+                 and no declared set covers is coupled to the pinned version by nothing"
             ));
+        }
+
+        for declared in &surface.classes {
+            if !resolved.contains(&declared) {
+                violations.push(format!(
+                    "{declaring} declares {declared} and no source under {AGENT_JAR_SOURCES} \
+                     resolves it; a declared name nothing uses says the surface drifted rather \
+                     than that it is pinned"
+                ));
+            }
         }
     }
 
-    for declared in AGENT_REFLECTED_CLASSES {
-        if !resolved.iter().any(|name| name == declared) {
-            violations.push(format!(
-                "the agent jar's declared reflective surface names {declared} and no source under \
-                 {AGENT_JAR_SOURCES} resolves it; a declared name nothing uses says the surface \
-                 drifted rather than that it is pinned"
-            ));
-        }
-    }
-
-    verify_resolved_class_figure(root, violations);
+    verify_resolved_class_figure(root, &surfaces, violations);
 }
 
 /// The record that states in prose how large the reflective surface is.
@@ -1609,7 +1917,22 @@ const JVM_ENTRY_DECISION: &str = "docs/decisions/adg-1-jvm-entry.md";
 /// Known limit: this holds the count and nothing else. A record that states the
 /// right number and describes the wrong classes passes, because prose about what
 /// the names *are* is held by nothing but reading.
-fn verify_resolved_class_figure(root: &Path, violations: &mut Vec<String>) {
+///
+/// The agent jar the sentence describes exists once per version, so the record
+/// owes a figure per *distinct* surface size: the figures it states and the sizes
+/// the tracked versions declare have to be the same set. Holding one figure
+/// against every surface's `len()` was unsatisfiable the moment two versions
+/// differed in size — no wording makes one number equal two — which hard-blocked
+/// the second version in the gate instead of in the work package that owns it.
+/// Set equality is the same rule under one version, where the set of sizes is a
+/// singleton, and under two it asks for the amendment the record can actually
+/// write. Versions that agree on a size share one figure, which is why the
+/// comparison is over distinct values rather than over a figure per version.
+fn verify_resolved_class_figure(
+    root: &Path,
+    surfaces: &[ReflectiveSurface],
+    violations: &mut Vec<String>,
+) {
     let record = match fs::read_to_string(root.join(JVM_ENTRY_DECISION)) {
         Ok(record) => record,
         Err(error) => {
@@ -1617,7 +1940,6 @@ fn verify_resolved_class_figure(root: &Path, violations: &mut Vec<String>) {
             return;
         }
     };
-    let declared = AGENT_REFLECTED_CLASSES.len();
     let stated = numbers_before(&record, &["classes", "by", "name"]);
     if stated.is_empty() {
         violations.push(format!(
@@ -1627,11 +1949,34 @@ fn verify_resolved_class_figure(root: &Path, violations: &mut Vec<String>) {
         ));
         return;
     }
-    for count in stated {
-        if count != declared {
+    let stated: BTreeSet<usize> = stated.into_iter().collect();
+    let mut declaring: BTreeMap<usize, Vec<&str>> = BTreeMap::new();
+    for surface in surfaces {
+        declaring
+            .entry(surface.classes.len())
+            .or_default()
+            .push(surface.path.as_str());
+    }
+
+    for (declared, paths) in &declaring {
+        if !stated.contains(declared) {
+            violations.push(format!(
+                "{} declares {declared} classes and {JVM_ENTRY_DECISION} states no such count; \
+                 the record owes one figure per distinct surface size",
+                paths.join(", ")
+            ));
+        }
+    }
+    for count in &stated {
+        if !declaring.contains_key(count) {
+            let sizes = declaring
+                .keys()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
             violations.push(format!(
                 "{JVM_ENTRY_DECISION} says the agent jar's adapters resolve {count} classes by \
-                 name while the declared reflective surface holds {declared}"
+                 name while no tracked version declares that many ({sizes})"
             ));
         }
     }
@@ -6807,10 +7152,13 @@ fn verify_version_boundary(root: &Path, violations: &mut Vec<String>) {
 /// Every fully-qualified game class name a version directory supplies, as an
 /// internal name with slashes.
 ///
-/// The names come out of the same data the generator reads: each `class` entry in
-/// `hooks.toml`, `stubs.toml` and `mappings.lock`, plus every class a descriptor
-/// in those files refers to, kept only when it sits under a package root a
-/// `class` entry declared. That last filter is what keeps `java/lang/String` out
+/// The names come out of the version directory's own data: each `class` entry in
+/// `hooks.toml`, `stubs.toml`, `mappings.lock` and `reflection.toml`, plus every
+/// class a descriptor in those files refers to, kept only when it sits under a
+/// package root a `class` entry declared. The reflected set is swept for the same
+/// reason as the other three and only became sweepable when it stopped being a
+/// Rust constant: a general crate spelling `net.minecraft.resources.Identifier`
+/// is welded to 26.1.2 whether the generator reads that file or not. That last filter is what keeps `java/lang/String` out
 /// of a set that is about the game rather than the platform.
 ///
 /// Member names are deliberately not swept. `width`, `tick` and `flush` are
@@ -6827,7 +7175,7 @@ fn version_class_names(root: &Path) -> Vec<String> {
             if !entry.path().is_dir() {
                 continue;
             }
-            for file in ["hooks.toml", "stubs.toml", "mappings.lock"] {
+            for file in ["hooks.toml", "stubs.toml", "mappings.lock", REFLECTION_FILE] {
                 if let Ok(text) = fs::read_to_string(entry.path().join(file)) {
                     texts.push(text);
                 }
@@ -7115,19 +7463,23 @@ mod tests {
     use std::process::Command;
 
     use super::{
-        CRATE_NAMES, CampaignInventory, EXAMPLE_NAMES, GATE_DEFINITION, GUIDE_DIRECTORY,
-        HOOK_DOCUMENT, HOOK_INVENTORY, HookCounts, MILESTONE_MANIFESTS, NETWORK_SOURCE,
-        SWEPT_SCOPE, TEST_MOD_NAMES, VERSION_CLASS_EXCUSES, campaign_document_violations,
-        change_mismatch, declared_hook_names, declares_unsafe_prohibition, denied_hook_names,
-        game_class_literals, hook_counts, hook_document_violations, numbers_before,
-        pinned_commit_mismatch, redacted_path, required_scaffold_paths, round_count_restatements,
-        verify_campaign_inventory, verify_decision_hook_claims, verify_evidence_records,
-        verify_experiment_fence, verify_guide_enumerations, verify_harness_lifecycles,
-        verify_hook_inventory_document, verify_ignored_boundaries, verify_m4_gate_figures,
-        verify_m4_process_matrix, verify_m4_surface, verify_manifest_percentages, verify_milestone,
-        verify_persistence_reflection, verify_review_round_counts, verify_scaffold, verify_spikes,
+        AGENT_JAR_SOURCES, CRATE_NAMES, CampaignInventory, DECISION_RECORDS, EXAMPLE_NAMES,
+        GATE_DEFINITION, GUIDE_DIRECTORY, HOOK_DOCUMENT, HookCounts, JVM_ENTRY_DECISION,
+        MILESTONE_MANIFESTS, NETWORK_SOURCE, REFLECTION_FILE, SWEPT_SCOPE, TEST_MOD_NAMES,
+        VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE,
+        campaign_document_violations, change_mismatch, declared_hook_names,
+        declares_unsafe_prohibition, denied_hook_names, documented_versions, game_class_literals,
+        hook_counts, hook_document_violations, hook_inventories, numbers_before,
+        pinned_commit_mismatch, redacted_path, reflective_surfaces, required_scaffold_paths,
+        round_count_restatements, verify_campaign_inventory, verify_decision_hook_claims,
+        verify_evidence_records, verify_experiment_fence, verify_guide_enumerations,
+        verify_harness_lifecycles, verify_hook_inventory_document, verify_ignored_boundaries,
+        verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface,
+        verify_manifest_percentages, verify_milestone, verify_persistence_reflection,
+        verify_resolved_class_figure, verify_review_round_counts, verify_scaffold, verify_spikes,
         verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
-        verify_version_boundary, verify_void_limits, visible_commit,
+        verify_version_boundary, verify_version_directories, verify_void_limits,
+        version_class_names, visible_commit,
     };
     use super::{
         M6_ARITHMETIC, M6_CARRIED_FIGURES, M6_DECISIONS, M7_ARITHMETIC, M7_CARRIED_FIGURES,
@@ -8649,21 +9001,19 @@ mod tests {
         let stale = "`hooks.toml` therefore grew from 6 entries to 35 — 31 methods and 4 fields,\n\
                      carrying 23 handle parameters between them.";
 
+        let inventory = "minecraft/versions/26.1.2/hooks.toml";
+
         assert_eq!(
-            hook_document_violations(current, &counts),
+            hook_document_violations(current, inventory, &counts),
             Vec::<String>::new()
         );
         assert_eq!(
-            hook_document_violations(stale, &counts),
+            hook_document_violations(stale, inventory, &counts),
             [
+                format!("{HOOK_DOCUMENT} states 35 hook entries where {inventory} declares 37"),
+                format!("{HOOK_DOCUMENT} states 31 method entries where {inventory} declares 33"),
                 format!(
-                    "{HOOK_DOCUMENT} states 35 hook entries where {HOOK_INVENTORY} declares 37"
-                ),
-                format!(
-                    "{HOOK_DOCUMENT} states 31 method entries where {HOOK_INVENTORY} declares 33"
-                ),
-                format!(
-                    "{HOOK_DOCUMENT} states 23 handle parameters where {HOOK_INVENTORY} declares 27"
+                    "{HOOK_DOCUMENT} states 23 handle parameters where {inventory} declares 27"
                 ),
             ]
         );
@@ -8678,7 +9028,11 @@ mod tests {
             handles: 27,
         };
 
-        let violations = hook_document_violations("The inventory grew.", &counts);
+        let violations = hook_document_violations(
+            "The inventory grew.",
+            "minecraft/versions/26.1.2/hooks.toml",
+            &counts,
+        );
 
         assert_eq!(violations.len(), 4, "{violations:?}");
         assert!(
@@ -8908,9 +9262,431 @@ mod tests {
             .join("../..");
         let mut violations = Vec::new();
 
-        verify_persistence_reflection(&root, &mut violations);
+        verify_persistence_reflection(&root, &hook_inventories(&root), &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
+    }
+
+    /// Writes one well-formed version directory, minus the files named.
+    ///
+    /// Well formed means what the sweep asks for and no more: every file declares
+    /// the version its directory is named for, and the inventory carries one
+    /// countable entry. Both used to be a bare `schemaVersion` line, which made
+    /// the fixture satisfy the sweep by being emptier than a real directory can
+    /// be — the shape of a version this fixture must never accidentally model.
+    fn version_directory(root: &Path, version: &str, without: &[&str]) {
+        let directory = root.join(format!("{VERSION_DATA}/{version}"));
+        fs::create_dir_all(&directory).expect("version directory should be creatable");
+        for file in VERSION_FILES {
+            if without.contains(&file) {
+                continue;
+            }
+            let text = match file {
+                VERSION_PROSE_FILE => format!("# Minecraft {version}\n"),
+                "hooks.toml" => format!(
+                    "schemaVersion = 1\nminecraft = \"{version}\"\n\n[[hook]]\nid = \
+                     \"level.tick\"\nkind = \"instance-method\"\nmember = \
+                     \"tick\"\ndescriptor = \"()V\"\n"
+                ),
+                _ => format!("schemaVersion = 1\nminecraft = \"{version}\"\n"),
+            };
+            fs::write(directory.join(file), text).expect("version data should be writable");
+        }
+    }
+
+    /// The defect the per-version sweep exists for: the contract named one
+    /// directory's six files by path, so a second directory arriving without its
+    /// locks was asked for nothing at all.
+    #[test]
+    fn a_version_directory_missing_a_required_file_is_reported() {
+        let root = temporary_root("version-files");
+        version_directory(&root, "26.1.2", &[]);
+        version_directory(&root, "99.0.0-synthetic", &["stubs.lock"]);
+        let mut violations = Vec::new();
+
+        verify_version_directories(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            ["missing required file: minecraft/versions/99.0.0-synthetic/stubs.lock"]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Countability is swept per version because it is the only check that reads an
+    /// inventory's structure, and under one directory it ran only by the document
+    /// check's accident.
+    #[test]
+    fn a_version_whose_inventory_cannot_be_counted_is_reported() {
+        let root = temporary_root("version-counts");
+        version_directory(&root, "26.1.2", &[]);
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),
+            "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[[hook]]\nid = \"an.id\"\n",
+        )
+        .expect("version data should be writable");
+        let mut violations = Vec::new();
+
+        verify_version_directories(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "cannot count minecraft/versions/26.1.2/hooks.toml: a `[[hook]]` entry declares no \
+              kind or no descriptor"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// An inventory truncated to its header counted as four zeroes and read as
+    /// countable, so the version contributed no hook name any decision record
+    /// could be falsified by and no figure any document could be held to.
+    #[test]
+    fn a_version_whose_inventory_declares_no_hook_is_reported() {
+        let root = temporary_root("version-empty-inventory");
+        version_directory(&root, "26.1.2", &[]);
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/hooks.toml")),
+            "schemaVersion = 1\nminecraft = \"26.1.2\"\n",
+        )
+        .expect("version data should be writable");
+        let mut violations = Vec::new();
+
+        verify_version_directories(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "cannot count minecraft/versions/26.1.2/hooks.toml: the inventory declares no \
+                 `[[hook]]` entry"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The copy-paste the sweep exists to refuse: a directory duplicated from
+    /// another version and never re-pinned is present, countable, and serving the
+    /// source version's data under the new version's name.
+    #[test]
+    fn a_version_directory_declaring_another_versions_data_is_reported() {
+        let root = temporary_root("version-declaration");
+        version_directory(&root, "26.1.2", &[]);
+        version_directory(&root, "1.21.1", &[]);
+        for file in VERSION_FILES {
+            if file == VERSION_PROSE_FILE {
+                continue;
+            }
+            let source = root.join(format!("{VERSION_DATA}/26.1.2/{file}"));
+            let text = fs::read_to_string(source).expect("version data should be readable");
+            fs::write(root.join(format!("{VERSION_DATA}/1.21.1/{file}")), text)
+                .expect("version data should be writable");
+        }
+        let mut violations = Vec::new();
+
+        verify_version_directories(&root, &mut violations);
+
+        assert_eq!(violations.len(), VERSION_FILES.len() - 1, "{violations:?}");
+        for violation in &violations {
+            assert!(
+                violation.contains("declares Minecraft 26.1.2 while its directory is named 1.21.1"),
+                "{violations:?}"
+            );
+        }
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A version-data file that declares no version at all is held to nothing, so
+    /// the absence is the violation rather than the excuse.
+    #[test]
+    fn a_version_file_declaring_no_version_is_reported() {
+        let root = temporary_root("version-undeclared");
+        version_directory(&root, "26.1.2", &[]);
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/stubs.toml")),
+            "schemaVersion = 1\n",
+        )
+        .expect("version data should be writable");
+        let mut violations = Vec::new();
+
+        verify_version_directories(&root, &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "minecraft/versions/26.1.2/stubs.toml declares no `minecraft` version, so nothing \
+                 holds it to the version minecraft/versions/26.1.2 is named for"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// An empty version tree is the vacuity the sweep replaced a literal list with,
+    /// so it is a violation rather than nothing to say.
+    #[test]
+    fn a_version_tree_holding_no_version_is_not_read_as_agreement() {
+        let root = temporary_root("version-empty");
+        fs::create_dir_all(root.join(VERSION_DATA)).expect("version tree should be creatable");
+        let mut violations = Vec::new();
+
+        verify_version_directories(&root, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("holds no version directory"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A hook document's subject is the version directory it links into, and the
+    /// bare directory in prose names none.
+    #[test]
+    fn a_documents_subject_version_comes_from_the_directories_it_links_into() {
+        let document = "Pinned in [adapter.toml](../../minecraft/versions/26.1.2/adapter.toml)\n\
+                        beside minecraft/versions/26.1.2/hooks.toml, while minecraft/versions/ \
+                        holds the rest.";
+
+        let named = documented_versions(document);
+
+        assert_eq!(named.into_iter().collect::<Vec<_>>(), ["26.1.2"]);
+    }
+
+    /// The reason `AGENT_REFLECTED_CLASSES` could not stay one global list: the
+    /// class 26.1.2 calls `Identifier` is `ResourceLocation` at 1.21.1, so a name
+    /// that is right for one version must not satisfy the other.
+    #[test]
+    fn a_reflected_name_from_another_version_does_not_satisfy_this_one() {
+        let root = temporary_root("version-reflection");
+        version_directory(&root, "26.1.2", &[]);
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/{REFLECTION_FILE}")),
+            "schemaVersion = 1\n\n[[reflected]]\nclass = \"net.minecraft.resources.ResourceLocation\"\n",
+        )
+        .expect("version data should be writable");
+        let sources = root.join(AGENT_JAR_SOURCES).join("dev/ravel/jvm");
+        fs::create_dir_all(&sources).expect("agent sources should be creatable");
+        fs::write(
+            sources.join("Content.java"),
+            "String identifier = \"net.minecraft.resources.Identifier\";\n",
+        )
+        .expect("agent source should be writable");
+        fs::create_dir_all(root.join(DECISION_RECORDS)).expect("records should be creatable");
+        fs::write(
+            root.join(JVM_ENTRY_DECISION),
+            "The adapters resolve 1 classes by name.\n",
+        )
+        .expect("record should be writable");
+        let mut violations = Vec::new();
+
+        verify_persistence_reflection(&root, &hook_inventories(&root), &mut violations);
+
+        assert_eq!(violations.len(), 2, "{violations:?}");
+        assert!(
+            violations[0].contains("names the game class net.minecraft.resources.Identifier"),
+            "{violations:?}"
+        );
+        assert!(
+            violations[1].contains("declares net.minecraft.resources.ResourceLocation"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// Deleting one `hooks.toml` used to disarm the reflection comparison and the
+    /// figure anchored to it while reporting one missing-file line, because the
+    /// surfaces were keyed on the inventories that could be read rather than on
+    /// the versions that are tracked.
+    #[test]
+    fn a_version_without_an_inventory_disarms_no_reflection_check_silently() {
+        let root = temporary_root("version-reflection-missing");
+        version_directory(&root, "26.1.2", &["hooks.toml"]);
+        let mut violations = Vec::new();
+
+        verify_persistence_reflection(&root, &hook_inventories(&root), &mut violations);
+
+        assert!(
+            violations.iter().any(|violation| violation
+                .contains("minecraft/versions/26.1.2/reflection.toml is held to the hook targets")
+                && violation.contains("checked by nothing")),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The record owes one figure per distinct surface size. One figure held
+    /// against every surface's length was unsatisfiable across two versions of
+    /// different sizes, so the rule is set equality and both directions fail.
+    #[test]
+    fn the_resolved_class_figure_is_owed_once_per_distinct_surface_size() {
+        let root = temporary_root("version-figures");
+        for (version, declarations) in [
+            (
+                "26.1.2",
+                "[[reflected]]\nclass = \"net.minecraft.client.One\"\n",
+            ),
+            (
+                "99.0.0-synthetic",
+                "[[reflected]]\nclass = \"net.minecraft.client.One\"\n\n[[reflected]]\nclass = \
+                 \"net.minecraft.client.Two\"\n",
+            ),
+        ] {
+            version_directory(&root, version, &[]);
+            fs::write(
+                root.join(format!("{VERSION_DATA}/{version}/{REFLECTION_FILE}")),
+                format!("schemaVersion = 1\nminecraft = \"{version}\"\n\n{declarations}"),
+            )
+            .expect("version data should be writable");
+        }
+        fs::create_dir_all(root.join(DECISION_RECORDS)).expect("records should be creatable");
+        fs::write(
+            root.join(JVM_ENTRY_DECISION),
+            "The adapters resolve 1 classes by name, and 3 classes by name at the other.\n",
+        )
+        .expect("record should be writable");
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+
+        let surfaces = reflective_surfaces(&root, &inventories, &mut violations);
+        verify_resolved_class_figure(&root, &surfaces, &mut violations);
+
+        assert_eq!(violations.len(), 2, "{violations:?}");
+        assert!(
+            violations[0].contains("99.0.0-synthetic/reflection.toml declares 2 classes"),
+            "{violations:?}"
+        );
+        assert!(
+            violations[1].contains("resolve 3 classes by name while no tracked version declares"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A document states one inventory's counts, so a document that links into no
+    /// version directory, or into two, names no subject and is refused rather than
+    /// held to whichever inventory happened to be first.
+    #[test]
+    fn a_hook_document_naming_no_single_version_is_refused() {
+        for (label, links, expected) in [
+            ("document-none", "It links nowhere.\n", "links into 0"),
+            (
+                "document-many",
+                "See minecraft/versions/26.1.2/hooks.toml and \
+                 minecraft/versions/99.0.0-synthetic/hooks.toml.\n",
+                "links into 2",
+            ),
+        ] {
+            let root = temporary_root(label);
+            version_directory(&root, "26.1.2", &[]);
+            let document = root.join(HOOK_DOCUMENT);
+            fs::create_dir_all(
+                document
+                    .parent()
+                    .expect("the document sits inside a directory"),
+            )
+            .expect("document directory should be creatable");
+            fs::write(&document, links).expect("document should be writable");
+            let mut violations = Vec::new();
+
+            verify_hook_inventory_document(&root, &hook_inventories(&root), &mut violations);
+
+            assert_eq!(violations.len(), 1, "{violations:?}");
+            assert!(violations[0].contains(expected), "{violations:?}");
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
+    }
+
+    /// A document whose subject is a version nothing tracks is refused too: the
+    /// counts it states are held to an inventory that does not exist.
+    #[test]
+    fn a_hook_document_naming_an_untracked_version_is_refused() {
+        let root = temporary_root("document-untracked");
+        version_directory(&root, "26.1.2", &[]);
+        let document = root.join(HOOK_DOCUMENT);
+        fs::create_dir_all(
+            document
+                .parent()
+                .expect("the document sits inside a directory"),
+        )
+        .expect("document directory should be creatable");
+        fs::write(
+            &document,
+            "Counted from minecraft/versions/99.0.0-synthetic/hooks.toml.\n",
+        )
+        .expect("document should be writable");
+        let mut violations = Vec::new();
+
+        verify_hook_inventory_document(&root, &hook_inventories(&root), &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains(
+                "states the counts of minecraft/versions/99.0.0-synthetic, which is not a tracked \
+                 version"
+            ),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A decision record denies a mechanism outright, so the denial is false as
+    /// soon as *any* tracked version declares the hook. The version the reader is
+    /// not on must not excuse the sentence, and the message names the inventory
+    /// that falsifies it.
+    #[test]
+    fn a_denial_is_falsified_by_any_tracked_versions_inventory() {
+        let root = temporary_root("decision-union");
+        version_directory(&root, "26.1.2", &[]);
+        version_directory(&root, "99.0.0-synthetic", &[]);
+        fs::write(
+            root.join(format!("{VERSION_DATA}/99.0.0-synthetic/hooks.toml")),
+            "schemaVersion = 1\nminecraft = \"99.0.0-synthetic\"\n\n[[hook]]\nid = \
+             \"screen.extract-render-state\"\nkind = \"instance-method\"\nmember = \
+             \"extractRenderState\"\ndescriptor = \"()V\"\n",
+        )
+        .expect("version data should be writable");
+        fs::create_dir_all(root.join(DECISION_RECORDS)).expect("records should be creatable");
+        fs::write(
+            root.join(format!("{DECISION_RECORDS}/adg-6-example.md")),
+            "Ravel does **not** hook `extractRenderState`.\n",
+        )
+        .expect("record should be writable");
+        let mut violations = Vec::new();
+
+        verify_decision_hook_claims(&root, &hook_inventories(&root), &mut violations);
+
+        assert_eq!(
+            violations,
+            [
+                "docs/decisions/adg-6-example.md says `extractRenderState` is not hooked while \
+                 minecraft/versions/99.0.0-synthetic/hooks.toml declares it"
+            ]
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The reflected names became version data in the same change that made them
+    /// version data, so the version-boundary sweep reads them: a general crate
+    /// spelling one is welded to that version whether the generator reads the file
+    /// or not.
+    #[test]
+    fn a_reflected_class_name_is_version_data_the_boundary_sweep_reads() {
+        let root = temporary_root("version-classes");
+        version_directory(&root, "26.1.2", &[]);
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/{REFLECTION_FILE}")),
+            "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[[reflected]]\nclass = \
+             \"net.minecraft.resources.Identifier\"\n",
+        )
+        .expect("version data should be writable");
+
+        let classes = version_class_names(&root);
+
+        assert!(
+            classes.contains(&"net/minecraft/resources/Identifier".to_owned()),
+            "{classes:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
     /// Both spellings of a game class name are read out of a literal, and neither a
@@ -8956,7 +9732,7 @@ mod tests {
             .join("../..");
         let mut violations = Vec::new();
 
-        verify_decision_hook_claims(&root, &mut violations);
+        verify_decision_hook_claims(&root, &hook_inventories(&root), &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
     }
@@ -9021,7 +9797,7 @@ mod tests {
             .join("../..");
         let mut violations = Vec::new();
 
-        verify_hook_inventory_document(&root, &mut violations);
+        verify_hook_inventory_document(&root, &hook_inventories(&root), &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
     }

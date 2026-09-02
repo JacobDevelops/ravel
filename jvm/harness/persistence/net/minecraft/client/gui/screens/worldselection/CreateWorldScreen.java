@@ -151,6 +151,11 @@ public final class CreateWorldScreen {
      * staged one level too deep arrives one level too deep.
      */
     public void copyInto(Path worldPacks) throws IOException {
+        // The game makes its staging directory only when something stages a pack,
+        // and creates no world packs directory when nothing did.
+        if (!Files.isDirectory(staging)) {
+            return;
+        }
         Files.createDirectories(worldPacks);
         try (Stream<Path> tree = Files.walk(staging)) {
             for (Path entry : tree.filter(path -> !path.equals(staging)).sorted().toList()) {

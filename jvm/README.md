@@ -116,13 +116,49 @@ provable without it, and `harness/` is where:
 devenv tasks run ravel:verify-jvm
 ```
 
-That runs all four steps and is inside `ravel:verify`, so the harness is a gate
-rather than something to remember. It did not used to be, and M3-W7 is what
-changed it: the harness sat here passing nothing, and a null
-`System.getProperty("ravel.profiling")` reaching a native method aborted every
-launch for a whole work package without a single check going red. This is the
-only thing in the gate graph that starts a JVM, so it is the only thing that runs
-`premain` at all.
+That runs all four steps for every tracked version and is inside `ravel:verify`,
+so the harness is a gate rather than something to remember. It did not used to
+be, and M3-W7 is what changed it: the harness sat here passing nothing, and a
+null `System.getProperty("ravel.profiling")` reaching a native method aborted
+every launch for a whole work package without a single check going red. This is
+the only thing in the gate graph that starts a JVM, so it is the only thing that
+runs `premain` at all.
+
+### What each version proves, and what it does not
+
+The harness stands in for the game rather than loading it, and its stand-in
+classes are written under Mojang names. That divides the sections in two, and the
+division is the honest limit of what this directory can prove.
+
+The **transformer sections** — initialization, hierarchy, refusal, members,
+transformation, load and side — reach the game only through the class transformer, and the harness
+supplies the transform targets as well as the stand-in classes. Neither side of
+what they compare is version data, so they run at every tracked version and no
+version may declare its way out of one. A version that stopped running one of
+them did not meet an obstacle; something broke.
+
+The **reflective and screen sections** — persistence, content, outward, the
+settings round trip and the screens — compare a *generated* name against a stand-in. `GameNames` and
+`GameMembers` carry the names each version links, and those are the Mojang names
+only under a version that does not obfuscate. Where the two differ, the adapter
+asks for `m` while the stand-in declares `getUiState`, and the section would be
+measuring the mismatch rather than the adapter. `run-harness.sh` decides which
+case it is by reading the generated class itself, where every role carries the
+Mojang name in its comment and the linked name in its value, so no version is
+named in the script.
+
+A section a version does not run has to say so in that version's `adapter.toml`,
+under `[harness.notRun]`, with a reason naming the work package that closes it.
+`cargo xtask verify gate-versions` refuses an undeclared absence, and refuses a
+declaration that outlived its reason. Closing the remaining ones means generating
+the stand-in game per version from templates, which is its own work package.
+
+**What no version of this harness proves** is `Members` against real obfuscated
+class files. That class walks a class's supertypes and rebuilds erased descriptors
+from reflection objects, and here it always meets a stand-in whose linked name is
+its Mojang name. The generator checks that every declared member exists in the
+pinned jar, which covers the names; the walk itself is exercised only by a real
+jar, which the headless client run and the planned server harness are what cover.
 
 The four steps, when one of them is what you want on its own:
 

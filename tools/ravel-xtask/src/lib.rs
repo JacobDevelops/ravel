@@ -4465,6 +4465,304 @@ fn hex_digest(bytes: &[u8]) -> String {
     digest
 }
 
+/// One per-version record a gate task writes, and the task that writes it.
+struct Record {
+    /// Where the task leaves it, under `target/` so it is never tracked.
+    path: &'static str,
+    /// The word a line uses for a version the task did reach.
+    verb: &'static str,
+    /// Who writes it, so a missing file names the task that did not run.
+    task: &'static str,
+}
+
+/// The three records the gate's per-version tasks write.
+///
+/// They are checked together because the rule is one rule. Each of these tasks
+/// loops the tracked versions and each was free to stop looping without anything
+/// noticing: `tested-versions.txt` and `compiled-versions.txt` were written for a
+/// year and read by nothing, so a loop that silently covered one version would
+/// have passed. Reading them in one place is what keeps the third from becoming a
+/// third unread file.
+const GATE_RECORDS: [Record; 3] = [
+    Record {
+        path: "target/ravel-jvm/tested-versions.txt",
+        verb: "tested",
+        task: "ravel:test",
+    },
+    Record {
+        path: "target/ravel-jvm/compiled-versions.txt",
+        verb: "compiled",
+        task: "ravel:verify-java",
+    },
+    Record {
+        path: "target/ravel-jvm/harness-versions.txt",
+        verb: "ran",
+        task: "ravel:verify-jvm",
+    },
+];
+
+/// Where the harness record is, named once because two rules read it.
+const HARNESS_RECORD: &str = "target/ravel-jvm/harness-versions.txt";
+
+/// The harness sections every version must run, with no declaration accepted.
+///
+/// None of these resolves a generated name against a stand-in. Six reach the
+/// game only through the transformer, and the harness supplies the targets as
+/// well as the stand-in classes, so neither side of what they compare is version
+/// data; the seventh drives the agent's two refusals to load a library nothing
+/// names, which mention no game class at all. A version that stopped running one
+/// of these did not meet an obstacle; something broke. That is why no reason
+/// excuses them.
+///
+/// Written down rather than derived from the record, because a record is what
+/// the check is holding to account: deriving the required set from the file
+/// being checked would make any file its own answer.
+const REQUIRED_SECTIONS: [&str; 7] = [
+    "hierarchy",
+    "initialization",
+    "load",
+    "members",
+    "refusal",
+    "side",
+    "transformation",
+];
+
+/// The harness sections a version may declare it does not run.
+///
+/// Each of these matches a generated name against a stand-in written under a
+/// Mojang name, and the two are the same string only under a version that links
+/// its Mojang names. Four resolve the name reflectively; the fifth drives the
+/// shipped agent jar, whose transformer looks its targets up in the generated
+/// inventory. That is a property of the version rather than a fault, so it is
+/// declarable — but only in writing, naming the work package, in the version's
+/// own data.
+const DECLARABLE_SECTIONS: [&str; 5] = ["content", "outward", "persistence", "screens", "settings"];
+
+/// What a declared absence has to name beside the obstacle.
+///
+/// A reason that says only what is in the way records a fact and closes nothing.
+/// Requiring the phrase makes the declaration point at the work rather than at
+/// the difficulty, which is the difference between a known gap and an excuse.
+const WORK_PACKAGE: &str = "work package:";
+
+/// Holds every gate task that loops versions to having looped all of them.
+///
+/// # What it checks
+///
+/// Each record exists, names every tracked version, and names at least one it
+/// actually reached — a file of nothing but skips is a task that proved nothing.
+/// The harness record carries the sections each version ran, and a section a
+/// version did not run is a violation unless that version's `adapter.toml`
+/// declares it under `[harness.notRun]` with a reason naming a work package.
+///
+/// # What it cannot do
+///
+/// It reads what the tasks wrote. A task that wrote a line without doing the work
+/// would satisfy it, which is why each line is written after the work and not
+/// before. It also cannot run the tasks, so a stale `target/` is a stale answer;
+/// the gate orders this after the three tasks for that reason.
+#[must_use]
+pub fn verify_gate_versions(root: &Path) -> Vec<String> {
+    let mut violations = Vec::new();
+    let versions = match tracked_versions(root) {
+        Ok(versions) => versions,
+        Err(error) => return vec![error],
+    };
+
+    for record in &GATE_RECORDS {
+        let Ok(text) = fs::read_to_string(root.join(record.path)) else {
+            violations.push(format!(
+                "{} is absent, so nothing says which versions {} covered; run it before this \
+                 check",
+                record.path, record.task
+            ));
+            continue;
+        };
+        let lines = text.lines().collect::<Vec<_>>();
+        let mut reached = 0;
+        for version in &versions {
+            let named = lines.iter().filter(|line| names_version(line, version));
+            let mut positive = false;
+            let mut mentioned = false;
+            for line in named {
+                mentioned = true;
+                if line.starts_with(&format!("{}: ", record.verb)) {
+                    positive = true;
+                }
+            }
+            if !mentioned {
+                violations.push(format!(
+                    "{} names no outcome for Minecraft {version}, so {} either stopped looping \
+                     the tracked versions or covered one without recording it",
+                    record.path, record.task
+                ));
+                continue;
+            }
+            if positive {
+                reached += 1;
+            }
+        }
+        if reached == 0 {
+            violations.push(format!(
+                "{} records no version {} actually reached, so the task exited zero having \
+                 proved nothing",
+                record.path, record.verb
+            ));
+        }
+    }
+
+    verify_harness_sections(root, &versions, &mut violations);
+    violations
+}
+
+/// Holds each version's harness run to every section, or to a declaration.
+fn verify_harness_sections(root: &Path, versions: &[String], violations: &mut Vec<String>) {
+    let Ok(text) = fs::read_to_string(root.join(HARNESS_RECORD)) else {
+        return;
+    };
+
+    for version in versions {
+        let declared = declared_absences(root, version);
+        let Some(line) = text
+            .lines()
+            .find(|line| line.starts_with("ran: ") && names_version(line, version))
+        else {
+            continue;
+        };
+        let ran = line
+            .split_once("sections=")
+            .map(|(_, sections)| {
+                sections
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|section| !section.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if ran.is_empty() {
+            violations.push(format!(
+                "{HARNESS_RECORD} says the harness ran for Minecraft {version} and names no \
+                 section it ran, so what it covered is unrecorded"
+            ));
+            continue;
+        }
+
+        for section in &ran {
+            if !REQUIRED_SECTIONS.contains(section) && !DECLARABLE_SECTIONS.contains(section) {
+                violations.push(format!(
+                    "{HARNESS_RECORD} says Minecraft {version} ran a {section} section and the \
+                     harness has no such section, so a renamed section answers for the one it \
+                     replaced and its absence goes unnoticed"
+                ));
+            }
+        }
+
+        for section in REQUIRED_SECTIONS {
+            if declared.contains_key(section) {
+                violations.push(format!(
+                    "minecraft/versions/{version}/adapter.toml declares the {section} section is \
+                     not run, and that section resolves no generated name against a stand-in; \
+                     nothing about a version can excuse it, so this declares away a break"
+                ));
+            } else if !ran.contains(&section) {
+                violations.push(format!(
+                    "the harness did not run the {section} section for Minecraft {version}, and \
+                     that section depends on nothing this version decides; find out what broke \
+                     rather than declaring it"
+                ));
+            }
+        }
+
+        for section in DECLARABLE_SECTIONS {
+            match (ran.contains(&section), declared.get(section)) {
+                (true, None) | (false, Some(_)) => {}
+                (true, Some(_)) => violations.push(format!(
+                    "minecraft/versions/{version}/adapter.toml declares the {section} section is \
+                     not run and {HARNESS_RECORD} says it ran; a declaration that outlived its \
+                     reason excuses the next absence for free"
+                )),
+                (false, None) => violations.push(format!(
+                    "the harness did not run the {section} section for Minecraft {version} and \
+                     minecraft/versions/{version}/adapter.toml declares no reason; declare it \
+                     under `[harness.notRun]` naming the work package that closes it, or find \
+                     out why a section that used to run stopped"
+                )),
+            }
+        }
+
+        for (section, reason) in &declared {
+            let known = REQUIRED_SECTIONS.contains(&section.as_str())
+                || DECLARABLE_SECTIONS.contains(&section.as_str());
+            if !known {
+                violations.push(format!(
+                    "minecraft/versions/{version}/adapter.toml declares the {section} section is \
+                     not run and the harness has no such section, so the declaration excuses \
+                     nothing and hides a typo"
+                ));
+            } else if !reason.contains(WORK_PACKAGE) {
+                violations.push(format!(
+                    "minecraft/versions/{version}/adapter.toml says the {section} section is not \
+                     run without naming a `{WORK_PACKAGE}`, so it records an obstacle and closes \
+                     nothing"
+                ));
+            }
+        }
+    }
+}
+
+/// Whether one record line is about one version, and not about a longer name.
+///
+/// `contains` alone is not enough and the reason is not hypothetical: version
+/// directories are named by the game's own scheme, so `1.21.1` is a prefix of
+/// `1.21.11` and a line about the second would answer for the first. What
+/// follows the name has to be a boundary.
+///
+/// A boundary is anything a version name cannot continue with. Whitespace alone
+/// was too narrow, and that was not hypothetical either: a writer that ended the
+/// name with `;` made this answer "no outcome recorded" for a version the file
+/// named on the line above.
+fn names_version(line: &str, version: &str) -> bool {
+    let needle = format!("Minecraft {version}");
+    line.match_indices(&needle).any(|(at, _)| {
+        line[at + needle.len()..]
+            .chars()
+            .next()
+            .is_none_or(|next| !next.is_alphanumeric() && !matches!(next, '.' | '-' | '_' | '+'))
+    })
+}
+
+/// The sections one version's adapter inputs declare it does not run.
+///
+/// Read line by line rather than deserialized, for the reason every other reader
+/// in this file is: the prose around a declaration is most of what it is for, and
+/// a round trip through a parser drops all of it.
+fn declared_absences(root: &Path, version: &str) -> BTreeMap<String, String> {
+    let path = root.join(format!("{VERSION_DATA}/{version}/adapter.toml"));
+    let Ok(text) = fs::read_to_string(path) else {
+        return BTreeMap::new();
+    };
+    let mut declared = BTreeMap::new();
+    let mut inside = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            inside = trimmed == "[harness.notRun]";
+            continue;
+        }
+        if !inside || trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((name, rest)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let quoted = rest.trim();
+        if let Some(reason) = quoted.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
+            declared.insert(name.trim().to_owned(), reason.to_owned());
+        }
+    }
+    declared
+}
+
 /// Checks every recorded architecture spike result against the M1 gate rules.
 ///
 /// An absent spike tree is not a violation; the M1 milestone gate is what
@@ -8389,6 +8687,7 @@ fn has_credential_assignment(line: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
@@ -8404,14 +8703,14 @@ mod tests {
         numbers_before, pinned_commit_mismatch, redacted_path, reflective_surfaces,
         required_scaffold_paths, round_count_restatements, verify_campaign_inventory,
         verify_decision_hook_claims, verify_evidence_records, verify_experiment_fence,
-        verify_guide_enumerations, verify_harness_lifecycles, verify_hook_inventory_document,
-        verify_hook_name_literals, verify_ignored_boundaries, verify_m4_gate_figures,
-        verify_m4_process_matrix, verify_m4_surface, verify_manifest_percentages, verify_milestone,
-        verify_persistence_reflection, verify_resolved_class_figure, verify_review_round_counts,
-        verify_scaffold, verify_screen_templates, verify_spikes, verify_testkit_fence,
-        verify_tracked_contents, verify_tracked_paths, verify_transformer_shape,
-        verify_version_boundary, verify_version_directories, verify_void_limits,
-        version_class_names, visible_commit,
+        verify_gate_versions, verify_guide_enumerations, verify_harness_lifecycles,
+        verify_hook_inventory_document, verify_hook_name_literals, verify_ignored_boundaries,
+        verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface,
+        verify_manifest_percentages, verify_milestone, verify_persistence_reflection,
+        verify_resolved_class_figure, verify_review_round_counts, verify_scaffold,
+        verify_screen_templates, verify_spikes, verify_testkit_fence, verify_tracked_contents,
+        verify_tracked_paths, verify_transformer_shape, verify_version_boundary,
+        verify_version_directories, verify_void_limits, version_class_names, visible_commit,
     };
     use super::{
         M6_ARITHMETIC, M6_CARRIED_FIGURES, M6_DECISIONS, M7_ARITHMETIC, M7_CARRIED_FIGURES,
@@ -12869,6 +13168,268 @@ mod tests {
             );
             fs::remove_dir_all(root).expect("temporary root should be removable");
         }
+    }
+
+    /// Every section the harness records when nothing is declared away.
+    const EVERY_SECTION: &str = "content,hierarchy,initialization,load,members,outward,persistence,\
+                                 refusal,screens,settings,side,transformation";
+
+    /// A root carrying the three per-version gate records and one version each.
+    ///
+    /// The two records the harness rules never read are written satisfied, so a
+    /// violation these tests assert on came from the rule under test rather than
+    /// from a record nobody was asking about.
+    fn gate_versions_root(label: &str, versions: &[(&str, &str)], harness: &str) -> PathBuf {
+        let root = temporary_root(label);
+        for (version, adapter) in versions {
+            let directory = root.join(format!("{VERSION_DATA}/{version}"));
+            fs::create_dir_all(&directory).expect("version directory should be creatable");
+            fs::write(directory.join("adapter.toml"), adapter)
+                .expect("adapter inputs should be writable");
+        }
+        let lines = |verb: &str| {
+            let mut record = String::new();
+            for (version, _) in versions {
+                writeln!(record, "{verb}: Minecraft {version}").expect("a String never fails");
+            }
+            record
+        };
+        let target = root.join("target/ravel-jvm");
+        fs::create_dir_all(&target).expect("record directory should be creatable");
+        fs::write(target.join("tested-versions.txt"), lines("tested"))
+            .expect("test record should be writable");
+        fs::write(target.join("compiled-versions.txt"), lines("compiled"))
+            .expect("compile record should be writable");
+        fs::write(target.join("harness-versions.txt"), harness)
+            .expect("harness record should be writable");
+        root
+    }
+
+    /// The shape every other test in this group deviates from by one thing.
+    #[test]
+    fn a_version_that_ran_every_section_raises_nothing() {
+        let root = gate_versions_root(
+            "gate-versions-clean",
+            &[("26.1.2", "")],
+            &format!("ran: Minecraft 26.1.2 sections={EVERY_SECTION}\n"),
+        );
+
+        assert_eq!(verify_gate_versions(&root), Vec::<String>::new());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A skipped version is named in prose, and prose puts punctuation after a
+    /// name. A reader that took only whitespace for a boundary called the first
+    /// line below unnamed and sent whoever ran the gate looking for a loop that
+    /// had stopped, when all that had happened was a mapping being absent.
+    ///
+    /// Both shapes are here because the writers have carried both: the second is
+    /// what the three tasks write today, and the first is what one of them wrote
+    /// until this was found.
+    #[test]
+    fn a_skip_line_names_the_version_it_skipped() {
+        let root = gate_versions_root(
+            "gate-versions-skip",
+            &[("1.21.1", ""), ("1.21.2", ""), ("26.1.2", "")],
+            &format!(
+                "SKIPPED: the harness was NOT run for Minecraft 1.21.1; \
+                 tests/fixtures/local/tooling/minecraft-1.21.1/client.txt is absent\n\
+                 SKIPPED: Minecraft 1.21.2 was NOT run by the harness; \
+                 tests/fixtures/local/tooling/minecraft-1.21.2/client.txt is absent\n\
+                 ran: Minecraft 26.1.2 sections={EVERY_SECTION}\n"
+            ),
+        );
+
+        assert_eq!(verify_gate_versions(&root), Vec::<String>::new());
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The boundary is not "anything but a letter": version directories are named
+    /// by the game's own scheme, so `1.21.1` is a prefix of `1.21.11` and a line
+    /// about the second must not answer for the first.
+    #[test]
+    fn a_line_about_a_longer_version_does_not_answer_for_a_shorter_one() {
+        let root = gate_versions_root(
+            "gate-versions-prefix",
+            &[("1.21.1", ""), ("1.21.11", "")],
+            &format!("ran: Minecraft 1.21.11 sections={EVERY_SECTION}\n"),
+        );
+
+        let violations = verify_gate_versions(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("names no outcome for Minecraft 1.21.1,")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_harness_line_naming_no_section_is_a_violation() {
+        let root = gate_versions_root(
+            "gate-versions-empty",
+            &[("26.1.2", "")],
+            "ran: Minecraft 26.1.2 sections=\n",
+        );
+
+        let violations = verify_gate_versions(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.ends_with("so what it covered is unrecorded")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// A renamed section drifts silently unless the record is held to the list
+    /// too: the old name simply stops appearing, and an absence nobody declared
+    /// is what the rest of this check is for.
+    #[test]
+    fn a_section_the_harness_does_not_have_is_a_violation_in_the_record() {
+        let root = gate_versions_root(
+            "gate-versions-unknown-record",
+            &[("26.1.2", "")],
+            &format!("ran: Minecraft 26.1.2 sections={EVERY_SECTION},screenz\n"),
+        );
+
+        let violations = verify_gate_versions(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("ran a screenz section")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_section_the_harness_does_not_have_is_a_violation_in_a_declaration() {
+        let root = gate_versions_root(
+            "gate-versions-unknown-declaration",
+            &[(
+                "26.1.2",
+                "[harness.notRun]\nscreenz = \"nothing; work package: none\"\n",
+            )],
+            &format!("ran: Minecraft 26.1.2 sections={EVERY_SECTION}\n"),
+        );
+
+        let violations = verify_gate_versions(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.ends_with("excuses nothing and hides a typo")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn an_absence_no_version_declared_is_a_violation() {
+        let root = gate_versions_root(
+            "gate-versions-undeclared",
+            &[("26.1.2", "")],
+            &format!(
+                "ran: Minecraft 26.1.2 sections={}\n",
+                EVERY_SECTION.replace("screens,", "")
+            ),
+        );
+
+        let violations = verify_gate_versions(&root);
+
+        assert!(
+            violations.iter().any(|violation| {
+                violation.contains("did not run the screens section")
+                    && violation.contains("declares no reason")
+            }),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_declaration_whose_section_ran_is_a_violation() {
+        let root = gate_versions_root(
+            "gate-versions-outlived",
+            &[(
+                "26.1.2",
+                "[harness.notRun]\nscreens = \"stand-ins; work package: templates\"\n",
+            )],
+            &format!("ran: Minecraft 26.1.2 sections={EVERY_SECTION}\n"),
+        );
+
+        let violations = verify_gate_versions(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.ends_with("excuses the next absence for free")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_declaration_for_a_required_section_is_a_violation() {
+        let root = gate_versions_root(
+            "gate-versions-required",
+            &[(
+                "26.1.2",
+                "[harness.notRun]\nmembers = \"stand-ins; work package: templates\"\n",
+            )],
+            &format!(
+                "ran: Minecraft 26.1.2 sections={}\n",
+                EVERY_SECTION.replace("members,", "")
+            ),
+        );
+
+        let violations = verify_gate_versions(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.ends_with("so this declares away a break")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn a_reason_naming_no_work_package_is_a_violation() {
+        let root = gate_versions_root(
+            "gate-versions-no-work-package",
+            &[(
+                "26.1.2",
+                "[harness.notRun]\nscreens = \"the stand-ins carry empty bodies\"\n",
+            )],
+            &format!(
+                "ran: Minecraft 26.1.2 sections={}\n",
+                EVERY_SECTION.replace("screens,", "")
+            ),
+        );
+
+        let violations = verify_gate_versions(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.ends_with("records an obstacle and closes nothing")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
     fn temporary_root(label: &str) -> PathBuf {

@@ -57,10 +57,100 @@ cat >"$work/ravel/config/configuration.json" <<'EOF'
 EOF
 cp "$jar" "$agent"
 
+# Which sections this run can prove, decided from the generated names rather
+# than from a version written down here.
+#
+# The harness stands in for the game, and its stand-ins are written under Mojang
+# names. A section that reaches the game only through the transformer does not
+# care: the harness supplies the targets as well as the classes, so neither side
+# of what it compares is version data. A section that resolves a *generated* name
+# does care, because `GameNames` and `GameMembers` carry the names this version
+# links, and those are the Mojang names only under a version that does not
+# obfuscate. Where they differ, the adapter asks for `m` and the stand-in
+# declares `getUiState`, and the section would be testing the mismatch rather
+# than the adapter.
+#
+# The generated class says which case this is without being asked: every role it
+# renders carries the Mojang name in its comment and the linked name in its
+# value, so the two agreeing everywhere *is* the condition. Reading it there
+# keeps this script from naming a version, which is what let one version's answer
+# be asserted over all of them before.
+generated_names="$root/target/ravel-jvm/generated/dev/ravel/jvm/GameNames.java"
+generated_members="$root/target/ravel-jvm/generated/dev/ravel/jvm/GameMembers.java"
+for generated in "$generated_names" "$generated_members"; do
+	if [ ! -f "$generated" ]; then
+		echo "$generated is absent, so nothing says which names this version links" >&2
+		exit 1
+	fi
+done
+# Both files, because the sections below resolve members as well as classes, and
+# a version can obfuscate one name space without the other. `GameMembers` renders
+# `name:descriptor` under a `Class#member` comment, so each side is cut at its
+# own separator before the two are compared.
+#
+# 0 says the two name spaces agree, 1 that they differ, 2 that nothing was
+# compared — which is not "they match" but "this decided nothing", and a
+# generator that stopped emitting roles would otherwise buy every section here.
+name_comparison=0
+awk '
+	/^[[:space:]]*\/\*\* / {
+		mojang = $2
+		sub(/\.$/, "", mojang)
+		at = index(mojang, "#")
+		if (at > 0) { mojang = substr(mojang, at + 1) }
+		next
+	}
+	/static final String/ {
+		if (mojang != "" && match($0, /"[^"]*"/) > 0) {
+			runtime = substr($0, RSTART + 1, RLENGTH - 2)
+			at = index(runtime, ":")
+			if (at > 0) { runtime = substr(runtime, 1, at - 1) }
+			compared++
+			if (mojang != runtime) { differs = 1 }
+			mojang = ""
+		}
+	}
+	END { exit compared == 0 ? 2 : (differs ? 1 : 0) }
+' "$generated_names" "$generated_members" || name_comparison=$?
+case "$name_comparison" in
+0) linked_names_are_mojang=true ;;
+1) linked_names_are_mojang=false ;;
+*)
+	echo "$generated_names and $generated_members carry no role to compare, so nothing says" >&2
+	echo "which names this version links" >&2
+	exit 1
+	;;
+esac
+
+# Every section this run reached, for the record the gate reads. A section is
+# added after it passes, never before, so the file says what was proved rather
+# than what was attempted.
+sections_record="$root/target/ravel-jvm/harness-sections.txt"
+: >"$sections_record"
+sections_ran=""
+section_ran() {
+	sections_ran="${sections_ran:+$sections_ran,}$1"
+	printf '%s' "$sections_ran" >"$sections_record"
+}
+
+# Whether a section that compares a generated name against a stand-in can run.
+resolves_generated_names() {
+	[ "$linked_names_are_mojang" = true ]
+}
+
 javac -d "$work" "$root/jvm/harness/net/minecraft/util/StringUtil.java"
+# The side marker, compiled outside the screen guard because every case that runs
+# premain needs it: Ravel reads the running side by asking the JVM for this name,
+# and the name is spelled in Rust rather than generated, so it is the same string
+# at every version.
+javac -d "$work" "$root/jvm/harness/net/minecraft/client/main/Main.java"
 # `Main` needs the agent jar on its compile class path only for the mid-run
 # `Agent.transformedClasses()` call. A real launch never compiles against it.
 javac -cp "$work:$jar" -d "$work" "$root/jvm/harness/Main.java"
+# Compiled inside the screen guard rather than beside it: a driver that names
+# a generated screen cannot compile where that screen is in another package,
+# and a section that is not going to run has no reason to try.
+if resolves_generated_names; then
 mapfile -d '' screen_stubs < <(find "$root/jvm/harness/net/minecraft/client" \
 	"$root/jvm/harness/net/minecraft/network" -name '*.java' -print0 | sort -z)
 javac -cp "$work" -d "$work" "${screen_stubs[@]}"
@@ -70,6 +160,7 @@ javac -cp "$work" -d "$work" \
 javac -cp "$work:$jar:$screen" -d "$work" \
 	"$root/jvm/harness/SettingsScreenMain.java" \
 	"$root/jvm/harness/ProfilingScreenMain.java"
+fi
 
 order="$work/initialization-order"
 order_agent="$order/agent/ravel-agent.jar"
@@ -209,6 +300,10 @@ for verdict in true false; do
 	fi
 done
 
+section_ran initialization
+section_ran hierarchy
+section_ran refusal
+
 # The four inventory entries that pin a field, against a stand-in game. A field
 # is not a call target: the generator emits no export and no prologue for one, so
 # there is nothing to rewrite and nothing to count. What each entry claims is
@@ -216,6 +311,7 @@ done
 # pinned descriptor, so each field is driven beside a method target in its own
 # class — the rewrite marker and the crossing count are what say the class going
 # past was the transformed one.
+
 members="$work/members"
 mkdir -p "$members/classes"
 mapfile -d '' member_sources < <(find "$root/jvm/harness/members" -name '*.java' -print0 | sort -z)
@@ -260,6 +356,15 @@ if [ "$members_diagnostic" != "$order_expected_diagnostic" ]; then
 	exit 1
 fi
 
+section_ran members
+
+# The reflective sections, which compare a generated name against a stand-in.
+# Under a version that links its Mojang names the two are the same string and
+# the section tests the adapter; under one that does not, the adapter asks for
+# `m` where the stand-in declares `getUiState`, and the section would be
+# measuring the mismatch. The version's own `adapter.toml` is what records that
+# and names the work package.
+if resolves_generated_names; then
 # ADG-7's world persistence seams and the two data pack seams, against a
 # stand-in game. The adapter is
 # reflective and reaches the sibling artifact by name, so a stand-in with the
@@ -525,6 +630,8 @@ if [ "$persistence_lifecycles" -ne "$persistence_lifecycles_declared" ]; then
 	exit 1
 fi
 
+section_ran persistence
+
 # The content-registration seam, against a stand-in game. The adapter is
 # reflective and reads the admitted set across its own crossing, so a stand-in
 # carrying the pinned names and descriptors exercises the real control flow:
@@ -532,6 +639,7 @@ fi
 # duplicate and refuse everything once frozen, and the properties objects refuse
 # to describe a block or an item that was never given an id — so a registration
 # that only looked like one fails here.
+
 content="$work/content"
 content_agent="$content/agent/ravel-agent.jar"
 content_screen="$content/agent/ravel-screen.jar"
@@ -691,6 +799,8 @@ if [ "$content_malformed_diagnostic" != "$content_malformed_expected" ]; then
 	exit 1
 fi
 
+section_ran content
+
 # The outward-action seam, against a stand-in game. The adapter is reflective
 # and reads the queued actions across its own crossing, so a stand-in carrying
 # the pinned names exercises the real control flow: what is stood in for is the
@@ -698,6 +808,7 @@ fi
 # one also appears as a literal in `crates/ravel-bootstrap/src/outward.rs` — the
 # two ends of this crossing are two languages, and a shared builder would only
 # prove one side agrees with itself.
+
 outward="$work/outward"
 outward_agent="$outward/agent/ravel-agent.jar"
 mkdir -p "$outward/classes" "$(dirname "$outward_agent")"
@@ -791,6 +902,13 @@ if [ "$outward_malformed_diagnostic" != "$outward_malformed_expected" ]; then
 	exit 1
 fi
 
+section_ran outward
+fi
+
+# The failed-transformation check and the two refusals below run at every
+# version. The transformer supplies its own target here, and a refusal to load a
+# library nothing names mentions no game class at all.
+
 failure_stdout="$order/failure-stdout"
 failure_stderr="$order/failure-stderr"
 (cd "$order/classes" && java \
@@ -831,6 +949,8 @@ if [ "$failure_diagnostic" != "$failure_expected_diagnostic" ]; then
 	exit 1
 fi
 
+section_ran transformation
+
 # ADG-5's amendment is only worth having if a launch that names no library
 # refuses instead of searching for one, so both refusals are run rather than
 # read. Each is the same launch as the one below with the property broken, and
@@ -862,6 +982,15 @@ refuse_load 'library property is unset' unset
 refusal_message="-Dravel.host names $work/no-such-library.so, which is not a file, so the ravel_bootstrap library cannot be loaded"
 refuse_load 'library property names no file' missing -Dravel.host="$work/no-such-library.so"
 
+section_ran load
+
+# The settings round trip, which drives the shipped agent jar rather than one the
+# harness assembles, so the targets it rewrites are the generated ones and the
+# stand-in they are matched against is written under a Mojang name. Where the two
+# name spaces differ nothing is rewritten and the recorded counts describe
+# another version, so the section is not run and the version's own `adapter.toml`
+# says so.
+if resolves_generated_names; then
 stdout="$work/stdout"
 stderr="$work/stderr"
 (cd "$work" && java \
@@ -908,6 +1037,11 @@ if [ "$diagnostic" != "$expected_diagnostic" ]; then
 	exit 1
 fi
 
+section_ran settings
+
+# The two screen-jar routes below drive `TitleMenuMissingMain`, which is compiled
+# against this version's generated screen stubs, so they belong to the screens
+# section and are recorded with it rather than with the settings round trip.
 missing_stdout="$work/missing-stdout"
 missing_stderr="$work/missing-stderr"
 (cd "$work" && java \
@@ -1011,6 +1145,15 @@ if [ "$relaunch_diagnostic" != "$expected_diagnostic" ]; then
 	printf '%s\n' "$expected_diagnostic" >&2
 	exit 1
 fi
+
+fi
+
+# The screen sections, which need more than a name to coincide: they press
+# buttons and read widget lists that survive a re-init, so they need stand-ins
+# that behave, and this version's generated stubs carry its linked names with
+# empty bodies. Where the two name spaces differ the sections are not run, and
+# the version's own `adapter.toml` is what says so and names the work package.
+if resolves_generated_names; then
 cp "$screen" "$(dirname "$agent")/ravel-screen.jar"
 
 settings_stdout="$work/settings-stdout"
@@ -1532,6 +1675,9 @@ if [ "$noroom_observed" != "$noroom_expected" ]; then
 	exit 1
 fi
 
+section_ran screens
+fi
+
 # The running side, read from the JVM rather than assumed.
 #
 # Ravel asks premain's own JVM which Minecraft classes it can load:
@@ -1544,6 +1690,7 @@ fi
 # Two of them also carry the composed set's side rule end to end: `client_only`
 # runs on the client and is parked on the dedicated server, `server_only` does the
 # opposite, and both are decided by the `sides` list each mod ships.
+
 side="$work/side"
 mkdir -p "$side/client" "$side/dedicated" "$side/undeterminable"
 javac -Xlint:all -Werror -d "$side/client" \
@@ -1645,3 +1792,5 @@ if grep -q '^mods=' "$undeterminable_stdout"; then
 	grep '^mods=' "$undeterminable_stdout" >&2
 	exit 1
 fi
+
+section_ran side

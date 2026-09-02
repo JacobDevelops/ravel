@@ -63,6 +63,9 @@ fn main() -> ExitCode {
         [verify, spikes] if verify == "verify" && spikes == "spikes" => {
             ("spikes", ravel_xtask::verify_spikes(&root))
         }
+        [verify, versions] if verify == "verify" && versions == "gate-versions" => {
+            ("gate versions", ravel_xtask::verify_gate_versions(&root))
+        }
         [verify, budget, runs @ ..]
             if verify == "verify" && budget == "budget" && !runs.is_empty() =>
         {
@@ -110,6 +113,7 @@ fn main() -> ExitCode {
         _ => {
             eprintln!(
                 "usage:\n  cargo xtask verify scaffold\n  cargo xtask verify spikes\n  \
+                 cargo xtask verify gate-versions\n  \
                  cargo xtask verify milestone M<N>\n  \
                  cargo xtask verify budget <run.json>...\n  \
                  cargo xtask scan instance <instance-directory>\n  \

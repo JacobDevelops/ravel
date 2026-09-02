@@ -298,24 +298,16 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
 
 ## Next
 
-- The JVM harness is a 26.1.2 artefact by construction: `devenv tasks run` drops an exported
-  `RAVEL_MINECRAFT_VERSION`, so `ravel:verify-jvm` has always run at 26.1.2, and run directly at
-  1.21.1 the harness fails to compile because the generated screens live in the obfuscated package
-  while the harness sources name them by Mojang name. Linked names themselves are covered: the
-  generator resolves every declared reflected member through each version's mapping and requires
-  the linked class file to declare it. What no gate has run is the `Members` lookup at runtime, its
-  superclass walk and erased-descriptor construction, against an obfuscated class file; only a real
-  jar proves that, which the headless client run and the planned server harness are for. In flight:
-  the harness sections that take their targets from its own Mojang-named stand-ins (initialization,
-  hierarchy, refusal, members, side) run at every tracked version, `ravel:verify-jvm` loops and
-  records which sections ran per version, and one xtask verb requires every tracked version in each
-  of the three version records, with a reflective or screen section absent only where the version's
-  `adapter.toml` declares why. The reflective and screen sections stay at 26.1.2 until the stand-in
-  game is generated per version from templates, sixty-one files, which is its own work package.
-- The harness per-version unit above is in the working copy, unsealed and unvalidated: `inputs.rs`,
-  `run-harness.sh`, `nix/common.nix`, `adapter.toml` for `1.21.1`, and the xtask verb. No gate has
-  run over it. Finish it or drop it before anything else lands on top; do not run `ravel:verify`
-  expecting green.
+- The JVM harness ran only at 26.1.2 until the per-version loop landed: `devenv tasks run` drops an
+  exported `RAVEL_MINECRAFT_VERSION`, so `ravel:verify-jvm` had always taken the default, and run
+  directly at 1.21.1 the screen drivers fail to compile because the generated screens live in the
+  obfuscated package while the harness sources name them by Mojang name. Linked names themselves are
+  covered: the generator resolves every declared reflected member through each version's mapping and
+  requires the linked class file to declare it. What no gate has run is the `Members` lookup at
+  runtime, its superclass walk and erased-descriptor construction, against an obfuscated class file;
+  only a real jar proves that, which the headless client run and the planned server harness are for.
+  The sections that do run per version, and the five that wait on the stand-in game generated per
+  version from templates, sixty-one files, are recorded in the work-package bullet below.
 - The headless real-client proof under Xvfb stalled at the launcher, not the game. Prism 11 refuses
   to launch any instance unless a Microsoft account that owns the game is signed in, even with an
   Offline account present and an isolated approot, so the offline route needs either that account
@@ -398,6 +390,24 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
   typed in a live client. Small.
 - `profilingTickCounter` — needs a tick boundary wired on the game's tick path.
 - ADG-3's re-pin of the agent jar's reflective surface is owned by no work package.
+- The JVM harness runs at every tracked version and `ravel:verify-gate-versions` holds it there. Both
+  versions run seven sections — initialization, hierarchy, refusal, members, side, transformation and
+  load — which is the first time any of them has run under an obfuscated version. Only the checks that
+  match a generated name against a stand-in sit behind the version guard, so the failed-transformation
+  check and the two refusals to load a library nothing names now run everywhere. 1.21.1 declares the
+  other five not run under `[harness.notRun]` in its own `adapter.toml`: content, outward, persistence,
+  screens and settings each match a generated name against a stand-in written under a Mojang name, so
+  they would measure the mismatch rather than the adapter. Each was measured on its own, with the
+  sections ahead of it removed, because the run stops at its first failure and measuring them in one
+  pass would have measured only the earliest. One work package closes all five — generate the stand-in
+  game per version from templates. Mutations proved the check, each exiting 1: an undeclared absence, a
+  declaration for a section that ran, a declaration for a required section, a reason naming no work
+  package, a section name in the record the harness does not have, and a version named with `;` after
+  it. An empty reason is refused one layer earlier, where `adapter.toml` is parsed.
+- The persistence stand-in's `copyInto` returns early when nothing staged a pack, as the game does. It
+  is unreachable at 26.1.2, where every run stages one, and load-bearing at 1.21.1, where the staging
+  seam raises `NoSuchMethodException`: without it the stand-in dies on a missing directory and hides the
+  refusal that is the measurement.
 
 ## Standing decisions
 

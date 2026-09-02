@@ -115,6 +115,13 @@
       "doesNotProve": "That the adapter's reflective surface matches the game's. Both sides of the harness are Ravel's own — Ravel's stubs asserted against Ravel's reflection — so a game-side rename would keep it passing. That surface is unpinned and is recorded as an owed obligation in evidence/m4/manifest.json."
     },
     {
+      "surface": "per-version gate coverage",
+      "command": "devenv tasks run ravel:verify-gate-versions",
+      "exitStatus": 0,
+      "proves": "The three gate tasks that loop the tracked versions each recorded an outcome for every one of them and reached at least one, and the harness record names the sections each version ran. A section a version did not run is a violation unless that version's adapter.toml declares it under [harness.notRun] with a reason naming the work package that closes it, and the seven sections that reach the game only through the transformer cannot be declared away at all. A declaration whose section has started running again fails too, so a reason cannot outlive what it excused.",
+      "doesNotProve": "That the work behind a line happened. This check reads files the tasks wrote, so a task that wrote its line without doing the work would satisfy it; each line is written after the work for that reason. It also cannot run the tasks, so a stale target/ tree is a stale answer, and the gate orders this after all three."
+    },
+    {
       "surface": "performance budget",
       "command": "devenv tasks run ravel:verify-budget",
       "exitStatus": 0,

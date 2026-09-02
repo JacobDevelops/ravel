@@ -500,24 +500,68 @@ in
       '';
     };
 
+    ravel-verify-gate-versions = {
+      description = "Hold every per-version gate task to having covered every tracked version.";
+      exec = ''
+        set -euo pipefail
+        cd "$DEVENV_ROOT"
+        cargo run --locked -p ravel-xtask -- verify gate-versions
+      '';
+    };
+
     ravel-verify-jvm = {
       description = "Run Ravel's agent, transformer and native library against a real JVM.";
       exec = ''
         set -euo pipefail
         cd "$DEVENV_ROOT"
-        # Everything below is packaged, so it has to come from one version. The
-        # generator never sweeps this tree — two builds share it and one that
-        # emptied it would delete what another is reading — so the sweep belongs
-        # here, in the task that packages it. Touching the build script is what
-        # makes the generation happen again after the sweep: cargo caches on
-        # inputs, and deleting an output is not one.
-        rm -rf target/ravel-jvm/generated target/ravel-jvm/generated-stubs \
-          target/ravel-jvm/generated-screen
-        touch crates/ravel-minecraft-adapter/build.rs
-        cargo build --locked -p ravel-minecraft-adapter
-        cargo build --locked -p ravel-composed-host --release
-        ./jvm/build/build-agent.sh
-        ./jvm/harness/run-harness.sh
+
+        # One line per tracked version, and each is written after the harness
+        # returned rather than before it ran. `ravel-test` and `ravel-verify-java`
+        # write the same shape beside it, and one xtask verb holds all three to
+        # having covered every tracked version — which is what stops a loop that
+        # quietly stopped looping from passing.
+        ran="$DEVENV_ROOT/target/ravel-jvm/harness-versions.txt"
+        mkdir -p "$(dirname "$ran")"
+        : >"$ran"
+
+        for version_directory in minecraft/versions/*/; do
+          version="$(basename "$version_directory")"
+          mapping="$(sed -n 's/^path = "\(.*client\.txt\)"$/\1/p' \
+            "$version_directory/adapter.toml" | head -n 1)"
+          if [ -n "$mapping" ] && [ ! -f "$mapping" ]; then
+            verdict="SKIPPED: Minecraft $version was NOT run by the harness; $mapping is absent"
+            echo "$verdict" >&2
+            echo "$verdict" >>"$ran"
+            continue
+          fi
+
+          # Everything below is packaged, so it has to come from one version. The
+          # generator never sweeps this tree — two builds share it and one that
+          # emptied it would delete what another is reading — so the sweep belongs
+          # here, in the task that packages it. Touching the build script is what
+          # makes the generation happen again after the sweep: cargo caches on
+          # inputs, and deleting an output is not one.
+          rm -rf target/ravel-jvm/generated target/ravel-jvm/generated-stubs \
+            target/ravel-jvm/generated-screen
+          touch crates/ravel-minecraft-adapter/build.rs
+          RAVEL_MINECRAFT_VERSION="$version" \
+            cargo build --locked -p ravel-minecraft-adapter
+          RAVEL_MINECRAFT_VERSION="$version" \
+            cargo build --locked -p ravel-composed-host --release
+          ./jvm/build/build-agent.sh
+          RAVEL_MINECRAFT_VERSION="$version" ./jvm/harness/run-harness.sh
+
+          # The harness names the sections it reached, and it names them as it
+          # reaches them, so a run that died halfway records what it proved rather
+          # than what it set out to prove.
+          echo "ran: Minecraft $version sections=$(cat target/ravel-jvm/harness-sections.txt)" \
+            | tee -a "$ran"
+        done
+
+        if ! grep -q '^ran: ' "$ran"; then
+          echo "the harness ran for no tracked version, so this task proved nothing" >&2
+          exit 1
+        fi
       '';
     };
 
@@ -799,6 +843,13 @@ in
     "ravel:coverage".exec = "ravel-coverage";
     "ravel:audit".exec = "ravel-audit";
     "ravel:verify-scaffold".exec = "ravel-verify-scaffold";
+    "ravel:verify-gate-versions" = {
+      exec = "ravel-verify-gate-versions";
+      # It reads what the three per-version tasks wrote, so it cannot run before
+      # them. `ravel:verify-jvm` is the last of the three and already runs after
+      # the other two, so naming it here orders this behind all of them.
+      after = [ "ravel:verify-jvm" ];
+    };
     "ravel:verify-example-pack".exec = "ravel-verify-example-pack";
     "ravel:verify-example-package".exec = "ravel-verify-example-package";
     "ravel:verify-spikes".exec = "ravel-verify-spikes";
@@ -847,6 +898,7 @@ in
         "ravel:verify-spikes"
         "ravel:verify-java"
         "ravel:verify-jvm"
+        "ravel:verify-gate-versions"
         "ravel:verify-budget"
         "ravel:verify-stack"
       ];

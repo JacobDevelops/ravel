@@ -211,12 +211,14 @@ Unlocked!" toast. Installed as a source package, compiled into the instance's ho
 
 One ceiling stated where it lives: a fresh instance is seeded on its second launch, because writing an
 `options.txt` without the game's own `version` line would change which migrations it runs. The other
-is half closed: a hook at `WorldOpenFlows.openWorldLoadLevelData` writes the datapack before the game
-scans the world's `datapacks/`, and launch 13 showed the pack listed as available in a new world's
-first session, but not enabled, with the vanilla recipe count. A fresh world's enabled list is fixed
-at creation, before that seam runs; only a reopen auto-adds a world pack. The creation seam is the fix
-in flight. The open-time write stays for a world admitted by another path and leaves an identical
-tree untouched. Launch 8 also proved the screen-less refusal now reaches the game's crash handler
+is closed in code and waits on launch 14: the datapack is now written from the static
+`ServerPacksSource.createPackRepository`, the one factory every path that gives a world a pack
+repository calls, world creation included. `configurePackRepository` reloads that repository and
+auto-adds every world pack it finds, so a pack on disk before the factory returns is enabled for the
+session that is starting. The earlier hook at `WorldOpenFlows.openWorldLoadLevelData` sat only on the
+open path, which is why launch 13's new world listed the pack as available and not enabled. The
+harness now drives the creation sequence and asserts the pack is available, proven by mutation. The
+open-time write stays for a world admitted by another path and leaves an identical tree untouched. Launch 8 also proved the screen-less refusal now reaches the game's crash handler
 naming Ravel and the reason, with the session lock released, where launch 2 hung.
 
 **Launch 13 (interrupted): the early datapack write lands, the new world does not enable it.** A new

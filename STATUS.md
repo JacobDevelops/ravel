@@ -77,6 +77,8 @@ Newest last. All local, nothing pushed.
 | `omlupokp` | register an item that shares a block's identifier as that block's placing item |
 | `ylkqyoun` | let the host ask a mod for its content declaration |
 | `zvqpomru` | layer every admitted mod's generated resources into one set per launch |
+| `vrxwnwoy` | declare each version's pack formats and pack.mcmeta shape, re-derived from the pinned jar |
+| `polrksos` | write the layered resources as a pack under the instance and the world, seeding the pack id once |
 
 ## The queue is drained
 
@@ -163,10 +165,19 @@ because no loot table reaches the game yet, which is the `data/` half of the res
 
 The missing model is being closed along the plan the resources work recorded: the `Mod` trait gained a
 defaulted `content_declaration`, the loader layers every admitted mod's generated files into one set per
-launch with overrides recorded, and the next units write that set as a real resource pack under the
-instance's `resourcepacks/`, seed it into `options.txt` only when never present so a player who disables
-it wins, and write the `data/` half into `<world>/datapacks/`. An injected `RepositorySource` is the
-successor once a launch measures whether the written pack falls short. Launch 8 also proved the
+launch with overrides recorded, the host writes that set's `assets/` half as a real resource pack at
+`<game>/resourcepacks/ravel/` before the runtime installs, seeds `file/ravel` into `options.txt` once
+and records that it did so a player who disables it wins, and writes the `data/` half into
+`<world>/datapacks/ravel/` when a world is admitted. Pack formats are per-version data re-derived from
+the `version.json` inside the pinned jar, and the `pack.mcmeta` shape is checked against a pack the jar
+ships (1.21.1 says `pack_format`, 26.1.2 says `min_format`/`max_format`). An injected `RepositorySource`
+is the successor once a launch measures whether the written pack falls short.
+
+Two ceilings, stated where they live: a fresh instance is seeded on its second launch, because writing
+an `options.txt` without the game's own `version` line would change which migrations it runs; and a
+world reads its datapack on its next open, not the one that wrote it, because the game builds the world's
+pack list before the hook that names the world runs. Closing the second needs a hook at level-storage
+creation that no version's reviewed inventory declares yet. Launch 8 also proved the
 screen-less refusal now reaches the
 game's crash handler naming Ravel and the reason, with the session lock released, where launch 2 hung.
 

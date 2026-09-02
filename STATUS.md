@@ -183,6 +183,15 @@ host's Cargo-running test now installs the shipped example whole and requires th
 independently to reach the written pack; against the stale shape it fails in twelve seconds. An
 installed copy that drifts from the tree is the operator's to refresh, and no general check can see it.
 
+Launch 11, with the copy refreshed: the resource pack carries the block model and both language files,
+the world datapack carries both tags, and the game says `Gave 5 [Copper Lantern]`. The first thing a
+Ravel mod supplies that the game renders is its name. The model is still the placeholder because a
+block needs three files and the example declares one: a blockstates file and an item model. And it
+drops nothing because no loot table is declared, and the declared recipe was not written. Decision
+taken: Ravel generates the conventional defaults an author does not supply (blockstates, item model,
+self-drop loot table), an author-supplied file at the same path wins, and 1.21.1's singular data folder
+names are per-version data. Being built as this is written.
+
 Two ceilings, stated where they live: a fresh instance is seeded on its second launch, because writing
 an `options.txt` without the game's own `version` line would change which migrations it runs; and a
 world reads its datapack on its next open, not the one that wrote it, because the game builds the world's

@@ -21,6 +21,22 @@ pub const WORLD_DATA_PACKS: &str = "datapacks";
 /// The one directory Ravel writes in either place.
 pub const PACK_DIRECTORY: &str = "ravel";
 
+/// The id the game gives the one directory Ravel writes.
+///
+/// The prefix is the game's own rule for a pack a folder source listed, and
+/// everything after it is [`PACK_DIRECTORY`]. Every side that names the pack — a
+/// player's enabled list, a world's selection, the create-world screen's — names
+/// it by this.
+///
+/// Borrowed rather than composed, because the value never changes and every
+/// caller only reads it: composing it handed a fresh `String` to each settings
+/// and record scan that asked. A test holds the spelling to [`PACK_DIRECTORY`],
+/// so the directory's name still has one owner.
+#[must_use]
+pub fn pack_id() -> &'static str {
+    concat!("file/", "ravel")
+}
+
 /// The file every pack declares its format in.
 const PACK_METADATA: &str = "pack.mcmeta";
 
@@ -122,8 +138,9 @@ pub fn write_pack(
     let written = Written {
         root: root.to_path_buf(),
         paths: wanted.iter().map(|(path, _)| path.clone()).collect(),
+        changed: !holds(root, &wanted),
     };
-    if holds(root, &wanted) {
+    if !written.changed {
         return Ok(written);
     }
 
@@ -248,6 +265,7 @@ fn relative(path: &Path, root: &Path) -> PathBuf {
 pub struct Written {
     root: PathBuf,
     paths: Vec<String>,
+    changed: bool,
 }
 
 impl Written {
@@ -261,6 +279,16 @@ impl Written {
     #[must_use]
     pub fn paths(&self) -> &[String] {
         &self.paths
+    }
+
+    /// Whether the tree on disk is not the tree that was there before.
+    ///
+    /// A pack written where none was and a pack written over a different one
+    /// answer alike, because what reads this asks whether anything holding the
+    /// old contents has to read them again, and both say yes.
+    #[must_use]
+    pub const fn changed(&self) -> bool {
+        self.changed
     }
 }
 
@@ -307,6 +335,13 @@ impl std::error::Error for PackError {
 
 #[cfg(test)]
 mod tests {
+
+    /// The id names the directory Ravel writes, under the game's own prefix.
+    #[test]
+    fn the_pack_id_is_the_directory_the_folder_source_would_have_listed() {
+        assert_eq!(super::pack_id(), format!("file/{}", super::PACK_DIRECTORY));
+    }
+
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
@@ -576,7 +611,19 @@ mod tests {
 
         let again = write_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
 
-        assert_eq!(again, first, "the same pack is reported either way");
+        assert_eq!(
+            again.paths(),
+            first.paths(),
+            "the same pack is reported either way"
+        );
+        assert!(
+            first.changed(),
+            "the first write is what put the pack there"
+        );
+        assert!(
+            !again.changed(),
+            "the second write found the pack it would have written"
+        );
         assert_eq!(timestamps(&root), before, "nothing on disk was touched");
         assert!(
             !root.with_file_name("ravel.pending").exists(),
@@ -592,7 +639,9 @@ mod tests {
                 ("assets/first_mod/models/block/a.json", "{\"a\":2}"),
             ],
         )]);
-        write_pack(&root, &changed, Half::Assets, METADATA).expect("the pack writes");
+        let replaced =
+            write_pack(&root, &changed, Half::Assets, METADATA).expect("the pack writes");
+        assert!(replaced.changed(), "a set that differs replaces the tree");
         assert_ne!(timestamps(&root), before);
         let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
     }

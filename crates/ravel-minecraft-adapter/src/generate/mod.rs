@@ -867,10 +867,11 @@ mod tests {
         // The staging crossing, which carries the screen's directory rather than
         // a world's: the two differ by one level and the names say which is which.
         assert!(
-            java.contains(
-                "public static native boolean ravelWriteStagedDatapack(String directory);"
-            )
+            java.contains("public static native int ravelWriteStagedDatapack(String directory);")
         );
+        // The id the staged pack is selected by, which Java asks for rather than
+        // spelling: the directory it is composed from is the native side's.
+        assert!(java.contains("public static native String ravelPackId();"));
 
         let _ = std::fs::remove_dir_all(&out);
     }

@@ -2,6 +2,8 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use ravel_loader::pack_id;
+
 /// The file a player's client keeps its settings in.
 const OPTIONS: &str = "options.txt";
 
@@ -13,14 +15,6 @@ const RAVEL: &str = "ravel";
 
 /// Where a seed is recorded, so it is offered once rather than every launch.
 const RECORD: &str = "seeded-packs";
-
-/// The id the game's folder pack source gives Ravel's written pack.
-///
-/// The prefix is the game's rather than Ravel's: the class that lists a pack
-/// directory builds every id it finds by putting `file/` in front of the
-/// directory's name, so this is what the pack Ravel writes is called in the list a
-/// player's settings hold.
-pub const PACK_ID: &str = "file/ravel";
 
 /// What seeding the pack into a player's settings did, or did not do.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -97,7 +91,7 @@ pub fn seed_pack(game_directory: &Path) -> Result<Seeded, OptionsError> {
         // this option into yet. Appending it states the one thing Ravel has to
         // say and touches nothing that is already there.
         let ending = if text.ends_with('\n') { "" } else { "\n" };
-        let appended = format!("{text}{ending}{KEY}{}\n", list(&[PACK_ID.to_owned()]));
+        let appended = format!("{text}{ending}{KEY}{}\n", list(&[pack_id().to_owned()]));
         replace(&settings, &appended)?;
         return Ok(record_offer(&record, Seeded::Added));
     };
@@ -105,12 +99,13 @@ pub fn seed_pack(game_directory: &Path) -> Result<Seeded, OptionsError> {
     let Some(mut enabled) = parse(line.value) else {
         return Ok(Seeded::Unreadable(line.value.to_owned()));
     };
-    if enabled.iter().any(|name| name == PACK_ID) {
+    let id = pack_id();
+    if enabled.iter().any(|name| name == id) {
         return Ok(record_offer(&record, Seeded::Present));
     }
 
-    enabled.push(PACK_ID.to_owned());
-    let mut rewritten = String::with_capacity(text.len() + PACK_ID.len() + 4);
+    let mut rewritten = String::with_capacity(text.len() + id.len() + 4);
+    enabled.push(id.to_owned());
     rewritten.push_str(&text[..line.at]);
     rewritten.push_str(KEY);
     rewritten.push_str(&list(&enabled));
@@ -191,7 +186,10 @@ fn list(names: &[String]) -> String {
 /// Whether this pack has been offered to this instance before.
 fn offered(record: &Path) -> Result<bool, OptionsError> {
     match std::fs::read_to_string(record) {
-        Ok(text) => Ok(text.lines().any(|line| line.trim() == PACK_ID)),
+        Ok(text) => {
+            let id = pack_id();
+            Ok(text.lines().any(|line| line.trim() == id))
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
         Err(source) => Err(OptionsError {
             path: record.to_path_buf(),
@@ -212,13 +210,14 @@ fn write_record(record: &Path) -> Result<(), OptionsError> {
             });
         }
     };
-    if recorded.lines().any(|line| line.trim() == PACK_ID) {
+    let id = pack_id();
+    if recorded.lines().any(|line| line.trim() == id) {
         return Ok(());
     }
     if !recorded.is_empty() && !recorded.ends_with('\n') {
         recorded.push('\n');
     }
-    recorded.push_str(PACK_ID);
+    recorded.push_str(id);
     recorded.push('\n');
     if let Some(parent) = record.parent() {
         std::fs::create_dir_all(parent).map_err(|source| OptionsError {
@@ -285,7 +284,7 @@ impl std::error::Error for OptionsError {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{OPTIONS, PACK_ID, RAVEL, RECORD, Seeded, seed_pack};
+    use super::{OPTIONS, RAVEL, RECORD, Seeded, pack_id, seed_pack};
 
     /// The lines around the one under test, which every case requires untouched.
     const SURROUNDING: &str = "version:3955\nfov:0.0\nincompatibleResourcePacks:[]\nlang:en_us\n";
@@ -365,7 +364,7 @@ mod tests {
         assert!(
             std::fs::read_to_string(game.join(RAVEL).join(RECORD))
                 .expect("the record should be readable")
-                .contains(PACK_ID)
+                .contains(pack_id())
         );
         let _ = std::fs::remove_dir_all(game);
     }

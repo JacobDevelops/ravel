@@ -46,17 +46,38 @@ public final class PersistenceMain {
         emptyTree(Path.of("world"));
         emptyTree(STAGING);
 
+        // A world being created from one that already had the pack starts here:
+        // the screen's staging directory is seeded from that world, so the pack
+        // is on disk and the configuration the screen holds already names it
+        // before Ravel has run at all. The id is the game's own composition of
+        // the directory's name, which is why this side of the seam spells it.
+        List<String> enabled = List.of("vanilla");
+        if (RESTAGED.contains(STAGING_ANSWER)) {
+            Path pack = STAGING.resolve("ravel");
+            Files.createDirectories(pack);
+            // What that earlier world's pack held. The screen's opening load
+            // reads it, so a run whose staged answer says the files changed has
+            // something to have changed from.
+            Files.writeString(pack.resolve(dev.ravel.jvm.Hook.PACK_FILE), SEEDED_CONTENTS);
+            enabled = List.of("vanilla", "file/ravel");
+        }
+
         // The screen, twice. Building widgets is what the game runs again every
         // time the screen is shown, including after the load staging asks for, so
         // the second call is the loop guard's own case: one staged write and one
         // data load however many times this runs.
-        CreateWorldScreen screen = new CreateWorldScreen(STAGING, List.of("vanilla"));
+        CreateWorldScreen screen = new CreateWorldScreen(STAGING, enabled);
         screen.init();
         screen.init();
         System.out.println("staged=" + where(dev.ravel.jvm.Hook.stagedDirectory())
                 + " stagedWrites=" + dev.ravel.jvm.Hook.stagedWrites()
                 + " screenLoads=" + screen.loads()
                 + " loaded=" + screen.loaded());
+        if (Boolean.getBoolean("ravel.test.persistence.screenOnly")) {
+            // The screen's own cases end here. What follows is a world lifecycle
+            // that says nothing about them, and running one would count as one.
+            return;
+        }
 
         LevelStorageSource.LevelStorageAccess access =
                 new LevelStorageSource.LevelStorageAccess("world");
@@ -96,6 +117,16 @@ public final class PersistenceMain {
      * does not reach and should not quietly contradict.
      */
     private static final Path STAGING = Path.of("staging").toAbsolutePath();
+
+    /** Which answer the staging crossing gives, which is one run's whole subject. */
+    private static final String STAGING_ANSWER =
+            System.getProperty("ravel.test.persistence.staging", "written");
+
+    /** The answers that describe a screen whose pack is already there and on. */
+    private static final List<String> RESTAGED = List.of("unchanged", "replaced");
+
+    /** What the pack on disk holds before Ravel runs, which a replacement changes. */
+    private static final String SEEDED_CONTENTS = "old";
 
     /**
      * Which directory the staging crossing named.

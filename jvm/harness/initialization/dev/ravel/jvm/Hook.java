@@ -410,6 +410,21 @@ public final class Hook {
     /** How many times the staging native was asked, which the guard bounds. */
     private static int stagedWrites;
 
+    /** Nothing is staged: no mod supplied data, or the write was refused. */
+    private static final int UNSTAGED = 0;
+
+    /** The staged pack holds what it already held. */
+    private static final int STAGED_UNCHANGED = 1;
+
+    /** The staged pack's files are not the ones that were there. */
+    private static final int STAGED_ANEW = 2;
+
+    /** What a pack this writes holds, which is not what a replaced one held. */
+    private static final String STAGED_CONTENTS = "new";
+
+    /** The one file a staged pack holds, which is what a load of it reads. */
+    public static final String PACK_FILE = "pack.txt";
+
     /** Where the pack was staged, or empty when staging never happened. */
     private static String stagedDirectory = "";
 
@@ -428,23 +443,53 @@ public final class Hook {
      * game copies this directory's contents into the world it makes. Writing a
      * {@code datapacks} directory here would put the pack at
      * {@code datapacks/datapacks/ravel} in the created world.
+     *
+     * <p>Which of the answers Rust would have given is a property, like the two
+     * world verdicts: what a run is about is what the caller does with an answer,
+     * not how the pack writer arrived at one. {@code undiscovered} is the
+     * exception that writes rather than answers — it puts the pack a level too
+     * deep, which is a pack on disk that no scan of this directory finds under
+     * the id the crossing names.
      */
-    public static boolean ravelWriteStagedDatapack(String directory) {
+    public static int ravelWriteStagedDatapack(String directory) {
         invocations++;
         stagedWrites++;
         stagedDirectory = directory;
-        if (Boolean.getBoolean("ravel.test.persistence.noStagedData")) {
+        String staging = System.getProperty("ravel.test.persistence.staging", "written");
+        if (staging.equals("nothing")) {
             // The launch whose mods supply no data half. Nothing is staged and
             // the caller must not ask the screen to reload for it.
-            return false;
+            return UNSTAGED;
         }
+        java.nio.file.Path pack = staging.equals("undiscovered")
+                ? java.nio.file.Path.of(directory, "deeper", "ravel")
+                : java.nio.file.Path.of(directory, "ravel");
         try {
-            java.nio.file.Files.createDirectories(java.nio.file.Path.of(directory, "ravel"));
+            java.nio.file.Files.createDirectories(pack);
+            if (staging.equals("unchanged")) {
+                // The answer that says the tree on disk is the one the mods
+                // supply, so writing a file here would contradict it.
+                return STAGED_UNCHANGED;
+            }
+            java.nio.file.Files.writeString(pack.resolve(PACK_FILE), STAGED_CONTENTS);
         } catch (java.io.IOException unwritten) {
             stagedDirectory = "unwritable";
-            return false;
+            return UNSTAGED;
         }
-        return true;
+        return STAGED_ANEW;
+    }
+
+
+    /**
+     * Answers the id crossing, which Rust composes from the directory it writes.
+     *
+     * <p>Spelled here because this class stands in for the native library, which
+     * is the side that owns it. Nothing on the game's side of the seam and
+     * nothing in the agent jar spells it at all.
+     */
+    public static String ravelPackId() {
+        invocations++;
+        return "file/ravel";
     }
 
     /** The world the pack crossing was given, or empty when it never happened. */

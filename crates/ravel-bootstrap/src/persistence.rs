@@ -14,7 +14,7 @@ use std::path::Path;
 use std::sync::{Arc, OnceLock, PoisonError};
 
 use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{JNI_FALSE, jboolean};
+use jni::sys::{JNI_FALSE, jboolean, jint};
 use jni::{Env, EnvUnowned};
 use ravel_core::ModId;
 use ravel_host_api::{HostMod, Outcome, Point};
@@ -71,6 +71,23 @@ pub enum OpenOutcome {
     Staged,
     /// World access is refused with the diagnostic text.
     Refused(String),
+}
+
+/// What one pack write left where the create-world screen stages packs.
+///
+/// The three the caller acts on differently: it selects and loads for a pack it
+/// has not got, it loads without selecting for one whose files changed under a
+/// selection that already names it, and it does neither for a pack that is there
+/// and unchanged. A first write and a replacement are one answer because the
+/// caller does the same thing for both.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StagedPack {
+    /// No pack is there: no set was installed, or the write was refused.
+    Nothing = 0,
+    /// The pack is there and holds what it already held.
+    Unchanged = 1,
+    /// The pack is there and its files are not the ones that were.
+    Written = 2,
 }
 
 /// What the Java adapter should do at a save crossing.
@@ -265,24 +282,22 @@ impl LoaderRuntime {
     /// A refusal costs the pack and nothing else, exactly as above. The screen is
     /// a screen either way.
     ///
-    /// Answers whether the screen now has a pack to load, which is what decides
-    /// whether it is asked to load again. A launch whose mods supply no data
-    /// stages nothing and pays neither the reload nor the pause in front of it.
-    fn write_staged_pack(&self, directory: &str) -> bool {
+    /// Answers what the screen now has to load, which is what decides whether it
+    /// is asked to load again. A launch whose mods supply no data stages nothing
+    /// and pays neither the reload nor the pause in front of it.
+    fn write_staged_pack(&self, directory: &str) -> StagedPack {
         self.put_pack(directory, crate::packs::write_staged_pack)
     }
 
     /// Writes one pack into `directory`, noticing whatever refused.
     ///
-    /// Answers whether a pack is there afterwards, which a refusal and an absent
-    /// set both make false. An unchanged tree is true: the pack is present, and
-    /// whether these bytes are the ones already on disk says nothing about
-    /// whether the caller has read them.
+    /// Answers what is in the directory afterwards, which a refusal and an absent
+    /// set both make [`StagedPack::Nothing`].
     fn put_pack(
         &self,
         directory: &str,
         write: fn(&Path) -> Result<Option<ravel_loader::Written>, ravel_loader::PackError>,
-    ) -> bool {
+    ) -> StagedPack {
         let path = Path::new(directory);
         if let Err(refusal) = admissible_world(path) {
             self.inner
@@ -293,10 +308,12 @@ impl LoaderRuntime {
                     "no data pack was written into `{directory}`, so this world reads none of \
                      the mods' recipes or tags: {refusal}"
                 ));
-            return false;
+            return StagedPack::Nothing;
         }
         match write(path) {
-            Ok(written) => written.is_some(),
+            Ok(None) => StagedPack::Nothing,
+            Ok(Some(written)) if written.changed() => StagedPack::Written,
+            Ok(Some(_)) => StagedPack::Unchanged,
             Err(error) => {
                 self.inner
                     .lock()
@@ -306,7 +323,7 @@ impl LoaderRuntime {
                         "`{directory}` could not be given the mods' data pack, so this world \
                          reads none of their recipes or tags: {error}"
                     ));
-                false
+                StagedPack::Nothing
             }
         }
     }
@@ -743,11 +760,12 @@ pub fn ravel_write_world_datapack<'local>(
 ///
 /// # Returns
 ///
-/// Whether the screen now has a pack to load. The caller asks the screen to load
-/// again only when this is true, so a launch whose mods supply no data pays
-/// neither the reload nor the pause the player would see in front of it. False is
-/// also what a refusal answers, which is the same choice: a pack that is not
-/// there is not worth reloading for.
+/// What the screen now has to load, as [`StagedPack`] numbers it: nothing, a
+/// pack that holds what it already held, or a pack whose files changed. Nothing
+/// is also what a refusal answers, which is the same choice — a pack that is not
+/// there is not worth reloading for — and it is what a launch whose mods supply
+/// no data gets, so that launch pays neither the reload nor the pause the player
+/// would see in front of it.
 ///
 /// # Panics
 ///
@@ -757,14 +775,37 @@ pub fn ravel_write_staged_datapack<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     directory: JString<'local>,
-) -> jboolean {
-    env.with_env(|env: &mut Env<'local>| -> Result<jboolean, HookError> {
+) -> jint {
+    env.with_env(|env: &mut Env<'local>| -> Result<jint, HookError> {
         let directory = text(env, &directory)?;
         let Ok(runtime) = runtime() else {
-            return Ok(JNI_FALSE);
+            return Ok(StagedPack::Nothing as jint);
         };
-        Ok(jboolean::from(runtime.write_staged_pack(&directory)))
+        Ok(runtime.write_staged_pack(&directory) as jint)
     })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+/// The id the game will give the pack Ravel writes.
+///
+/// Asked rather than spelled on the Java side, because the id is the game's
+/// composition rule over a directory name Rust owns and a launch has one of
+/// each. The pack the create-world screen has to select and the pack a player's
+/// enabled list names are the same directory, so they are the same id.
+///
+/// # Panics
+///
+/// Does not panic, for the same reason as [`ravel_open_world_persistence`].
+#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelPackId")]
+pub fn ravel_pack_id<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+) -> JString<'local> {
+    env.with_env(
+        |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
+            Ok(env.new_string(ravel_loader::pack_id())?)
+        },
+    )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
@@ -845,7 +886,7 @@ mod tests {
 
     use super::{
         FAILED, IDENTITY_MISMATCH, OBSERVATION_CAPACITY, OpenOutcome, REPLACEMENT, SaveOutcome,
-        UNCHANGED, WorldIdentity, tagged,
+        StagedPack, UNCHANGED, WorldIdentity, tagged,
     };
     use crate::runtime::LoaderRuntime;
 
@@ -1564,7 +1605,7 @@ mod tests {
 
         let staged = shipped_running().write_staged_pack(&staging.to_string_lossy());
 
-        assert!(!staged);
+        assert_eq!(staged, StagedPack::Nothing);
         assert!(!staging.join("ravel").exists());
         let _ = std::fs::remove_dir_all(staging);
     }
@@ -2137,6 +2178,67 @@ mod tests {
             OpenOutcome::Refused(
                 "the canonical saved-data aggregate exceeds the 1048576-byte limit".to_owned()
             )
+        );
+    }
+
+    /// The value of one `static final int` a Java source names.
+    fn java_int(source: &str, name: &str) -> i32 {
+        let (_, rest) = source
+            .split_once(&format!("static final int {name} = "))
+            .unwrap_or_else(|| panic!("the Java side names `{name}`"));
+        rest.split(';')
+            .next()
+            .expect("a declaration ends in a semicolon")
+            .trim()
+            .parse()
+            .expect("a Java int constant is an integer")
+    }
+
+    /// The numbers the generated staging hook's own javadoc gives a Java reader.
+    fn documented_staged_answers(generator: &str) -> Vec<i32> {
+        let (rendered, _) = generator
+            .split_once("public static native int ravelWriteStagedDatapack")
+            .expect("the generator renders the staging crossing");
+        let (_, answers) = rendered
+            .rsplit_once("@return")
+            .expect("the staging crossing documents what it answers");
+        answers
+            .split("{@code ")
+            .skip(1)
+            .filter_map(|tail| tail.split('}').next()?.trim().parse().ok())
+            .collect()
+    }
+
+    /// Rust owns the staged answer's numbers and three Java spellings restate them.
+    ///
+    /// Each is read from the file that spells it rather than repeated here, so a
+    /// discriminant that moves fails this instead of leaving one side of a
+    /// crossing quietly disagreeing with the other about what an answer means.
+    #[test]
+    fn every_java_spelling_of_a_staged_answer_is_the_number_rust_gives_it() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let read = |relative: &str| {
+            std::fs::read_to_string(root.join(relative))
+                .unwrap_or_else(|absent| panic!("{relative} is a tracked file: {absent}"))
+        };
+        let adapter = read("jvm/bootstrap/dev/ravel/jvm/Datapack.java");
+        let standin = read("jvm/harness/initialization/dev/ravel/jvm/Hook.java");
+        let generator = read("crates/ravel-minecraft-adapter/src/generate/render.rs");
+
+        let nothing = super::StagedPack::Nothing as i32;
+        let unchanged = super::StagedPack::Unchanged as i32;
+        let written = super::StagedPack::Written as i32;
+
+        // The adapter names the two it branches on; the third is the branch it
+        // does not take, so naming it there would be a constant nothing reads.
+        assert_eq!(java_int(&adapter, "UNSTAGED"), nothing);
+        assert_eq!(java_int(&adapter, "STAGED_ANEW"), written);
+        assert_eq!(java_int(&standin, "UNSTAGED"), nothing);
+        assert_eq!(java_int(&standin, "STAGED_UNCHANGED"), unchanged);
+        assert_eq!(java_int(&standin, "STAGED_ANEW"), written);
+        assert_eq!(
+            documented_staged_answers(&generator),
+            vec![nothing, unchanged, written]
         );
     }
 }

@@ -217,12 +217,34 @@ gives a world a pack repository calls; launch 14 showed that on creation this la
 enabled list on paper only. The Create World screen builds its `ReloadableServerResources` when it
 opens, over a repository with no directory, and `createLevelFromExistingSettings` hands those loaded
 resources through untouched, so the first session runs with no recipe reload, the loot table absent,
-and the selection not written to `level.dat`. The fix, landed and gated but not yet seen in a client, feeds the pack into the screen's own
+and the selection not written to `level.dat`. The fix feeds the pack into the screen's own
 add-a-datapack flow at `CreateWorldScreen.init`: force its staging directory, write the pack there,
-and run `tryApplyNewDataPacks`, which is the reload vanilla pays when a player adds a pack by hand.
-The reload is skipped when no mod supplies data. The five reflected members resolve against both
-pinned jars at generation time; the harness drives the whole creation sequence and fails by mutation.
+reload the repository, add the pack to its selection, and run `tryApplyNewDataPacks`, which is the
+reload vanilla pays when a player adds a pack by hand. Launch 15 caught the first cut of that
+skipping the reload and the selection; the harness now fails without them.
+The reload is skipped when no mod supplies data, and when the pack is already selected and unchanged;
+a pack replaced under a selection that already names it is loaded through the screen's own
+`applyNewPackConfig`, which is the load `tryApplyNewDataPacks` guards and would skip. An id the
+repository refuses is reported rather than passed over. The nine reflected members resolve against
+both pinned jars at generation time; the harness drives the whole creation sequence and fails by
+mutation.
 The open-time write stays for a world admitted by another path and leaves an identical tree untouched.
+
+**Launches 15 and 16: the new-world datapack path is proven in a client for the branch a first-time
+launch takes.** Launch 15 showed the create-screen seam writing the pack but leaving it under
+Available: the apply was handed an unreloaded repository with an unchanged selection and did
+nothing. Selecting by hand gave the full first-session proof, so the seam and the pack were right
+and only the selection was missing. The fix reloads and
+selects before applying, the harness fails without it, and launch 16 passed unaided: 1290 then 1291
+recipes at the create screen, `file/ravel` enabled on load and in `level.dat`, give, loot and craft in
+the first session, the reopened world at 1291 with every tree entry byte-identical, clean exit at
+14 classes and 27 methods. The server's own `loading it automatically` line no longer appears.
+That launch took the one branch where the pack was absent and had to be selected. Launch 17 ran the
+revised seam (the native three-state answer, the pack id crossing from the loader crate) on that
+branch again and on Re-Create, where the copied world already selects the pack: one load at 1291,
+nothing forced, no diagnostic, 14 classes and 27 methods at exit. Two branches remain landed, gated
+by harness and mutation, and unseen in a client: the forced reload for a pack replaced under a
+selection that already names it, and the report for an id the repository refuses.
 
 **Launch 14: enabled on paper, vanilla in fact; the unchanged-tree skip and regression hold.** New
 world, first session: `file/ravel (world)` under enabled, `Loaded 1290 recipes`, no server-side
@@ -300,6 +322,19 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   (not authorized) or a direct JVM launch from the recorded wrapper command that skips Prism. The
   script, its test and the recovery notes are sealed in the evidence skill; the run wrote no game
   log.
+- Launch 15 (2026-09-03, real client) showed the create-screen seam fires and writes the pack but
+  never selects it: `Datapack.stage` hands `tryApplyNewDataPacks` the same repository it got from
+  `getDataPackSelectionSettings`, unreloaded and with an unchanged selected set, so the apply is a
+  no-op and `ravel` sits under Available. Selecting it by hand gave the full first-session proof:
+  1291 recipes, give, loot and craft of the copper lantern, `level.dat` enabled `file/ravel`, world
+  tree written once. The fix reloads the repository after the write, adds `file/ravel` to its
+  selection, then applies; the harness fails without it. Launch 16 (2026-09-03, real client) passed
+  every assertion on the unaided path: 1290 then 1291 recipes at the create screen with nothing
+  selected by hand, `file/ravel` enabled on load and in `level.dat`, give, loot and craft in the
+  first session, the reopened world at 1291 with the tree byte-identical, clean exit. The
+  `Found new data pack ... loading it automatically` line launches 13 and 14 printed is gone.
+  Launch 17 repeated it on the revised seam and added Re-Create, the already-selected path. The
+  new-world path is proven; the replaced-tree reload and the refusal report are harness-proven only.
 - The settings screen draws no rows for `stateful-mod`'s declared `journal.capacity` setting
   (launch 14). Settings flow from the declaration through the host into the screen's sibling; find
   where the row list goes empty. Provable in the harness; the on-screen check waits on a client.

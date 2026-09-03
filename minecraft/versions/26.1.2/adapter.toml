@@ -67,8 +67,8 @@ bytes = 10277
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/26.1.2/reflection.toml"
-sha256 = "37b9de2e22aa51d5a3d25d859e4357f35826c8942d9f40464eecc165c6ad778b"
-bytes = 14214
+sha256 = "5c5c3df1cc82e790bbee39fff077d00285c3e8eb4c811056aa5388252d1d2a43"
+bytes = 16054
 
 # The two locks below are generated, not fetched, and they are pinned for the
 # machines that cannot check them any other way. Without the jars there is

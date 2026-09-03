@@ -1126,10 +1126,25 @@ fn written_declarations() -> &'static str {
          \x20    *\n\
          \x20    * @param directory the screen's staging directory, which holds pack\n\
          \x20    *     directories rather than a {@code datapacks} directory\n\
-         \x20    * @return whether the screen now has a pack to load, which is false\n\
-         \x20    *     when no mod supplies data and when the write was refused\n\
+         \x20    * @return {@code 0} when the screen has no pack to load, which is\n\
+         \x20    *     what no mod supplying data and a refused write both answer;\n\
+         \x20    *     {@code 1} when the pack is there and holds what it already\n\
+         \x20    *     held; {@code 2} when its files are not the ones that were\n\
          \x20    */\n\
-         \x20   public static native boolean ravelWriteStagedDatapack(String directory);\n\n\
+         \x20   public static native int ravelWriteStagedDatapack(String directory);\n\n\
+         \x20   /**\n\
+         \x20    * The id the game will give the pack Ravel writes.\n\
+         \x20    *\n\
+         \x20    * <p>The game composes it from the name of the directory it found\n\
+         \x20    * the pack in, and that name is the native side's. Asking for it\n\
+         \x20    * is what keeps one launch's pack one id: the same directory is\n\
+         \x20    * what a player's enabled list names and what a world being\n\
+         \x20    * created has to select.\n\
+         \x20    *\n\
+         \x20    * @return the id, which is the same for every crossing that names\n\
+         \x20    *     the pack\n\
+         \x20    */\n\
+         \x20   public static native String ravelPackId();\n\n\
          \x20   /**\n\
          \x20    * Offers the aggregate the saving world should now store.\n\
          \x20    *\n\

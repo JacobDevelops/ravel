@@ -31,7 +31,7 @@
 
 mod options;
 
-pub use options::{OptionsError, PACK_ID, Seeded, seed_pack};
+pub use options::{OptionsError, Seeded, seed_pack};
 /// The world-open half of the pack, re-exported so a caller reaches one route to
 /// it rather than two: [`initialize`] installs the set and the crossing writes it.
 pub use ravel_bootstrap_runtime::{install_packs, write_world_pack};

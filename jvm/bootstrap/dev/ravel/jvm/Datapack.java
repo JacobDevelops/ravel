@@ -1,7 +1,9 @@
 package dev.ravel.jvm;
 
 import java.lang.reflect.Method;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.function.Consumer;
@@ -50,6 +52,12 @@ final class Datapack {
     private static final Set<Object> STAGED =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
+    /** Nothing was staged, so there is nothing to select and nothing to load. */
+    private static final int UNSTAGED = 0;
+
+    /** The staged pack's files are not the ones that were there. */
+    private static final int STAGED_ANEW = 2;
+
     private Datapack() {
     }
 
@@ -90,7 +98,7 @@ final class Datapack {
         }
     }
 
-    /** The three steps, separated so the guard above reads as one thing. */
+    /** The steps, separated so the guard above reads as one thing. */
     private static void apply(Object screen) throws ReflectiveOperationException {
         Class<?> type = screen.getClass();
         Object uiState =
@@ -104,7 +112,8 @@ final class Datapack {
 
         // Asking for the screen's own configuration rather than the game's
         // default is what keeps a world being recreated from re-enabling a pack
-        // its player turned off: the call below selects exactly what it is given.
+        // its player turned off: the repository comes back selecting exactly
+        // what this call is given.
         Object selection = Members.method(
                 type, GameMembers.CREATE_WORLD_SCREEN_GET_DATA_PACK_SELECTION_SETTINGS)
                 .invoke(screen, configuration);
@@ -114,19 +123,90 @@ final class Datapack {
             return;
         }
 
-        if (!Hook.ravelWriteStagedDatapack(String.valueOf(pairPart(selection, "getFirst")))) {
+        int staged = Hook.ravelWriteStagedDatapack(String.valueOf(pairPart(selection, "getFirst")));
+        if (staged == UNSTAGED) {
             // Nothing was staged, so there is nothing to reload for. A launch
             // whose mods supply no data reaches here, and it should cost the
             // player exactly what it did before Ravel was installed.
             return;
         }
 
-        // False asks for no experimental-content dialog. The pack is Ravel's own
-        // and the player did not choose it, so there is nothing to confirm; the
-        // reload that follows selects it, because the game adds every pack it
-        // finds whose source asks to be added automatically.
-        Members.method(type, GameMembers.CREATE_WORLD_SCREEN_TRY_APPLY_NEW_DATA_PACKS)
-                .invoke(screen, pairPart(selection, "getSecond"), false, reportValidationFailure());
+        Object repository = pairPart(selection, "getSecond");
+        switch (select(repository, Hook.ravelPackId())) {
+            case REFUSED -> Agent.diagnose(
+                    "the game did not find the mods' data pack where it was staged, so this world "
+                            + "will have none of their recipes or tags");
+            // False asks for no experimental-content dialog. The pack is Ravel's
+            // own and the player did not choose it, so there is nothing to
+            // confirm. The selection this hands over is not the one the screen
+            // holds, which is what makes the call load rather than return.
+            case ADDED -> Members.method(
+                    type, GameMembers.CREATE_WORLD_SCREEN_TRY_APPLY_NEW_DATA_PACKS)
+                    .invoke(screen, repository, false, reportValidationFailure());
+            case ALREADY -> {
+                if (staged == STAGED_ANEW) {
+                    // The pack was already selected and its files changed under
+                    // that selection, so the call above would compare the two
+                    // configurations equal and load nothing — and the world
+                    // would be created from the data loaded before the
+                    // replacement. This is the load that call runs when it does
+                    // decide to, reached with the configuration the screen
+                    // already holds because the selection is not what changed.
+                    Members.method(type, GameMembers.CREATE_WORLD_SCREEN_APPLY_NEW_PACK_CONFIG)
+                            .invoke(screen, repository, configuration, reportValidationFailure());
+                }
+            }
+        }
+    }
+
+    /** What putting the staged pack into a repository's selection did. */
+    private enum Selection {
+        /** The repository does not have the pack, so selecting it did nothing. */
+        REFUSED,
+        /** The pack was not selected and now is. */
+        ADDED,
+        /** The pack was selected already, so the selection is unchanged. */
+        ALREADY
+    }
+
+    /**
+     * Puts the staged pack into a repository's selection, keeping what is there.
+     *
+     * <p>Both steps are Ravel's to take. The repository was scanned when the
+     * screen handed it over, which was before the pack existed, so a rescan is
+     * what makes the pack something this repository has; and the call this
+     * precedes reads a selection rather than making one, so nothing else would
+     * ever put the pack in it. Adding to the ids already selected rather than
+     * replacing them is what keeps a world being recreated from re-enabling a
+     * pack its player turned off.
+     *
+     * <p>The answer is read back rather than assumed, because setting a selection
+     * keeps only the ids the last scan found: a pack the game could not read is
+     * one this leaves entirely unselected, and the caller has to say so rather
+     * than hand the player a world that quietly has no mod data.
+     */
+    private static Selection select(Object repository, String id)
+            throws ReflectiveOperationException {
+        Class<?> type = repository.getClass();
+        Members.method(type, GameMembers.PACK_REPOSITORY_RELOAD).invoke(repository);
+        Collection<?> already = selected(repository);
+        if (already.contains(id)) {
+            return Selection.ALREADY;
+        }
+        Set<Object> selection = new LinkedHashSet<>(already);
+        // Last, which is the highest priority the game gives a pack: where a
+        // player's pack and a mod's supply the same file, the mod's wins.
+        selection.add(id);
+        Members.method(type, GameMembers.PACK_REPOSITORY_SET_SELECTED)
+                .invoke(repository, selection);
+        return selected(repository).contains(id) ? Selection.ADDED : Selection.REFUSED;
+    }
+
+    /** What the repository selects now. */
+    private static Collection<?> selected(Object repository) throws ReflectiveOperationException {
+        return (Collection<?>) Members.method(
+                repository.getClass(), GameMembers.PACK_REPOSITORY_GET_SELECTED_IDS)
+                .invoke(repository);
     }
 
     /**

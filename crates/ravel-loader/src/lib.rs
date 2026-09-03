@@ -32,7 +32,7 @@ pub use lifecycle::{
     executes_mod_code,
 };
 pub use pack::{
-    Half, PACK_DIRECTORY, PackError, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, write_pack,
+    Half, PACK_DIRECTORY, PackError, RESOURCE_PACKS, WORLD_DATA_PACKS, Written, pack_id, write_pack,
 };
 pub use registry::Registration;
 pub use resources::{ResourceRefused, Supplied, open_resources};

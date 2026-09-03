@@ -277,17 +277,17 @@ name = "initCache"
 descriptor = "()V"
 
 [[reflected]]
-# The create-world screen, whose two staging members Ravel performs rather than
-# observes. Both are private, which is why they are declared here: ADG-4 keeps a
-# hook's hands off a receiver's members, so a hook observes the screen and an
-# adapter reaches the members by the names this file pins.
+# The create-world screen, whose staging members Ravel performs rather than
+# observes. Three of the four below are private, which is why they are declared
+# here: ADG-4 keeps a hook's hands off a receiver's members, so a hook observes
+# the screen and an adapter reaches the members by the names this file pins.
 name = "CREATE_WORLD_SCREEN"
 class = "net.minecraft.client.gui.screens.worldselection.CreateWorldScreen"
 runtime = "net.minecraft.client.gui.screens.worldselection.CreateWorldScreen"
 
 [[reflected.member]]
-# The screen's own state, which is where the configuration the two calls below
-# need comes from. Reading it rather than passing the game's default is what
+# The screen's own state, which is where the configuration two of the three
+# calls below need comes from. Reading it rather than passing the game's default is what
 # keeps a world being recreated from silently re-enabling a pack its player had
 # turned off.
 name = "getUiState"
@@ -306,6 +306,45 @@ descriptor = "(Lnet/minecraft/world/level/WorldDataConfiguration;)Lcom/mojang/da
 # passes false: the pack it just staged is its own and needs no dialog.
 name = "tryApplyNewDataPacks"
 descriptor = "(Lnet/minecraft/server/packs/repository/PackRepository;ZLjava/util/function/Consumer;)V"
+
+[[reflected.member]]
+# The data load itself. The call above runs it only when the selection it reads
+# differs from the one the screen holds, and Ravel reaches it directly for the
+# case that comparison cannot see: the pack's files replaced under a selection
+# that already names it, where the screen would otherwise hand the created world
+# the data it loaded before the replacement.
+name = "applyNewPackConfig"
+descriptor = "(Lnet/minecraft/server/packs/repository/PackRepository;Lnet/minecraft/world/level/WorldDataConfiguration;Ljava/util/function/Consumer;)V"
+
+[[reflected]]
+# The repository the create-world screen stages packs in. Ravel reaches it
+# because the call above reads a selection rather than making one: a pack written
+# after the screen built this repository is neither discovered nor selected, and
+# both of those are steps somebody has to take.
+name = "PACK_REPOSITORY"
+class = "net.minecraft.server.packs.repository.PackRepository"
+runtime = "net.minecraft.server.packs.repository.PackRepository"
+
+[[reflected.member]]
+# Rescans the directory, which is what makes a pack written a moment ago exist
+# as far as this repository is concerned.
+name = "reload"
+descriptor = "()V"
+
+[[reflected.member]]
+# What is selected now, which is what the pack has to be added to rather than
+# replace: a player who turned a pack off keeps it off.
+name = "getSelectedIds"
+descriptor = "()Ljava/util/Collection;"
+
+[[reflected.member]]
+# Replaces the selection with the ids given, dropping any the rescan did not
+# find. Declared by descriptor like every member here, and this member is a
+# plain demonstration of why: an obfuscated version links it and
+# `getAvailableIds` under one name, and only the descriptor tells the writer
+# from the reader.
+name = "setSelected"
+descriptor = "(Ljava/util/Collection;)V"
 
 [[reflected]]
 name = "WORLD_CREATION_UI_STATE"

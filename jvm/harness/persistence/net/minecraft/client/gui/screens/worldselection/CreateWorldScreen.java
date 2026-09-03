@@ -33,13 +33,20 @@ public final class CreateWorldScreen {
     private final Path staging;
     private final WorldCreationUiState uiState;
 
-    private PackRepository stagingRepository;
+    private final PackRepository stagingRepository;
     private int loads;
 
     public CreateWorldScreen(Path staging, List<String> enabled) {
         this.staging = staging;
-        uiState = new WorldCreationUiState(
-                new WorldCreationContext(new WorldDataConfiguration(enabled)));
+        WorldDataConfiguration configuration = new WorldDataConfiguration(enabled);
+        uiState = new WorldCreationUiState(new WorldCreationContext(configuration));
+        // The load the real screen runs when it opens, before Ravel has staged
+        // anything. Without it nothing here holds data a later load can replace,
+        // and a case about re-reading a pack would have nothing to re-read.
+        stagingRepository = new PackRepository(staging);
+        stagingRepository.reload();
+        stagingRepository.setSelected(enabled);
+        load(stagingRepository, configuration);
     }
 
     /** The resources this screen loaded, which the created world is handed. */
@@ -76,32 +83,62 @@ public final class CreateWorldScreen {
     private Pair<Path, PackRepository> getDataPackSelectionSettings(
             WorldDataConfiguration configuration) throws IOException {
         Files.createDirectories(staging);
-        if (stagingRepository == null) {
-            stagingRepository = new PackRepository(staging);
-        }
+        stagingRepository.reload();
         stagingRepository.setSelected(configuration.enabled());
         return Pair.of(staging, stagingRepository);
     }
 
     /**
-     * Reloads this screen's data from a repository.
+     * Reloads this screen's data from a repository it is handed.
      *
-     * <p>The listing is taken here rather than at construction because that is
-     * where the game takes it: the reload rescans the directory and adds every
-     * pack it finds whose source asks to be added automatically. A pack staged
-     * after this ran is a pack this screen never loaded.
+     * <p>It reads a selection and makes none. Discovering the pack and selecting
+     * it are the caller's two steps, and this is where skipping either one costs
+     * the world its data.
+     *
+     * <p>The game's own version returns without loading when the selection it
+     * reads is the one this screen already holds, which is what makes a replaced
+     * pack invisible to it: the same ids over different files are the same ids.
+     * That comparison is not modelled here, because Ravel reaches this call only
+     * where it has just put an id into a selection the screen did not hold, so no
+     * run could take the branch — a stand-in carrying it would be an untested
+     * model of the game. The case it would have guarded is the one Ravel reaches
+     * {@link #applyNewPackConfig} directly for.
      */
     private void tryApplyNewDataPacks(
-            PackRepository repository, boolean confirmExperimental, Consumer<Object> onRefused)
-            throws IOException {
+            PackRepository repository, boolean confirmExperimental, Consumer<Object> onRefused) {
+        List<String> enabled = List.copyOf(repository.getSelectedIds());
+        applyNewPackConfig(repository, new WorldDataConfiguration(enabled), onRefused);
+    }
+
+    /**
+     * Loads the data a configuration names, which is the reload itself.
+     *
+     * <p>Split from the call above as the game splits it, because the two are
+     * reached separately: that one decides whether to load and this one loads.
+     * What the screen holds afterwards is what the created world is handed.
+     */
+    private void applyNewPackConfig(
+            PackRepository repository,
+            WorldDataConfiguration configuration,
+            Consumer<Object> onRefused) {
+        load(repository, configuration);
+    }
+
+    /**
+     * Reads what the selected packs hold, which is what the screen then holds.
+     *
+     * <p>Reading the files rather than restating the ids is what makes a
+     * replacement visible at all: the same ids over different files are the same
+     * ids, so a load that copied its configuration would look identical whether
+     * it ran over the pack that is there or the one that was.
+     */
+    private void load(PackRepository repository, WorldDataConfiguration configuration) {
+        uiState.setSettings(new WorldCreationContext(configuration));
         loads++;
         loaded.clear();
-        loaded.addAll(repository.selected());
-        try (Stream<Path> entries = Files.list(repository.directory())) {
-            entries.map(entry -> entry.getFileName().toString())
-                    .filter(name -> !loaded.contains(name))
-                    .sorted()
-                    .forEach(loaded::add);
+        for (String id : configuration.enabled()) {
+            String contents = repository.contents(id);
+            loaded.add(contents.isEmpty() ? id : id + "=" + contents);
         }
     }
 

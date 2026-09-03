@@ -68,17 +68,17 @@ upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa60
 # What the JVM harness does not run for this version, and what would close it.
 #
 # The harness stands in for the game rather than loading it, and its stand-in
-# classes are written under Mojang names. A section that names no generated class
-# or member runs here unchanged, because the harness supplies the targets as well
-# as the classes and neither is version data. Seven sections do run here, which is
-# the first time any of them has under an obfuscated version.
+# classes are written under Mojang names wherever they are still hand-written. A
+# section that names no generated class or member runs here unchanged, because
+# the harness supplies the targets as well as the classes and neither is version
+# data. The content and outward sections run here too, because their stand-in
+# game is generated per version from `jvm/harness/template/` and carries the
+# names this version links.
 #
-# The five below match a name this repository generated against one of those
-# stand-ins. `GameMembers` says `m:()Lftl;` here where the stand-in declares
-# `getUiState`, and `ScreenNames` says `RavelContent` where the sibling jar holds
-# `dev.ravel.jvm.screen.RavelContent`, so the adapters raise
-# `NoSuchMethodException` and `ClassNotFoundException` against a stand-in that is
-# not this version's game.
+# The three below match a name this repository generated against a stand-in that
+# is still hand-written. `GameMembers` says `m:()Lftl;` here where the stand-in
+# declares `getUiState`, so the adapters raise `NoSuchMethodException` against a
+# stand-in that is not this version's game.
 #
 # Each was measured on its own rather than inferred from the one before it. The
 # run stops at its first failure, so measuring them by running the harness once
@@ -86,25 +86,22 @@ upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa60
 # the ones ahead of it removed, and the failure recorded below is the one that
 # section produced. The recorded failures are: staging raises
 # `NoSuchMethodException` and the refused-world screen `ClassNotFoundException`
-# for persistence; the registration component raises `ClassNotFoundException` for
-# content; `audio.play` raises `ClassNotFoundException` for outward; the screen
-# drivers do not compile, because the generated screens extend `fod` where the
-# stand-in declares `Screen`; and the shipped agent jar rewrites none of the
-# stand-in for settings, which the section reads as `transformed=0`.
+# for persistence; the screen drivers do not compile, because the generated
+# screens extend `fod` where the stand-in declares `Screen`; and the shipped
+# agent jar rewrites none of the stand-in for settings, which the section reads
+# as `transformed=0`.
 #
 # What that does not mean is that the adapters are wrong. The generator resolves
 # every declared member through this version's mapping and requires the linked
 # class file to declare it, so under the real jar these names are the game's own.
-# What is missing is a stand-in that carries them, and one work package supplies
-# all five.
+# What is missing is a stand-in that carries them, and the work package that
+# supplied the content and outward ones is what supplies these.
 #
 # Declaring it here is what lets the gate tell a section nobody can run yet from
 # a section that quietly stopped being run: an absence with no line here fails,
 # and so does a line whose section has started running again.
 
 [harness.notRun]
-content = "the content adapter resolves this version's generated screen name and the stand-in sibling carries the Mojang one, so registration raises ClassNotFoundException; work package: generate the stand-in game per version from templates"
-outward = "the outward adapter resolves this version's generated names against stand-ins written under Mojang names, so performing an action raises ClassNotFoundException; work package: generate the stand-in game per version from templates"
 persistence = "the persistence and data pack adapters resolve this version's generated members against stand-ins written under Mojang names, so staging raises NoSuchMethodException; work package: generate the stand-in game per version from templates"
 screens = "the screen sections need stand-ins that behave and this version's generated stubs carry its linked names with empty bodies, so their drivers do not compile; work package: generate the stand-in game per version from templates"
 settings = "the settings round trip drives the shipped agent jar, whose transformer looks its targets up in this version's generated inventory, so the Mojang-named stand-in is not rewritten and the recorded counts describe another version; work package: generate the stand-in game per version from templates"
@@ -123,8 +120,8 @@ bytes = 13250
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/1.21.1/reflection.toml"
-sha256 = "7671cd5192eccf7a089fefd474676e90730e3adafc10f07521ddcf6b79049b06"
-bytes = 12273
+sha256 = "1ce841d123c4242eae9cffb030822fb249bac9d8937dd6498ab03b8ae5049799"
+bytes = 12675
 
 # The two locks below are generated, not fetched, and they are pinned for the
 # machines that cannot check them any other way. Only RAVEL_REGENERATE_LOCKS

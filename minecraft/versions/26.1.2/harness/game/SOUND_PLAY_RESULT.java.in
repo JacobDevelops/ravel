@@ -1,0 +1,13 @@
+{{package}}
+
+/**
+ * What the game made of one play request.
+ *
+ * <p>Only this version answers a play request at all, so only this version has
+ * a type for the answer.
+ */
+public enum {{SOUND_PLAY_RESULT}} {
+    STARTED,
+    STARTED_SILENTLY,
+    NOT_STARTED
+}

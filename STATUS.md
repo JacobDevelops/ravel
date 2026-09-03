@@ -391,19 +391,21 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
 - `profilingTickCounter` — needs a tick boundary wired on the game's tick path.
 - ADG-3's re-pin of the agent jar's reflective surface is owned by no work package.
 - The JVM harness runs at every tracked version and `ravel:verify-gate-versions` holds it there. Both
-  versions run seven sections — initialization, hierarchy, refusal, members, side, transformation and
-  load — which is the first time any of them has run under an obfuscated version. Only the checks that
-  match a generated name against a stand-in sit behind the version guard, so the failed-transformation
-  check and the two refusals to load a library nothing names now run everywhere. 1.21.1 declares the
-  other five not run under `[harness.notRun]` in its own `adapter.toml`: content, outward, persistence,
-  screens and settings each match a generated name against a stand-in written under a Mojang name, so
-  they would measure the mismatch rather than the adapter. Each was measured on its own, with the
-  sections ahead of it removed, because the run stops at its first failure and measuring them in one
-  pass would have measured only the earliest. One work package closes all five — generate the stand-in
-  game per version from templates. Mutations proved the check, each exiting 1: an undeclared absence, a
-  declaration for a section that ran, a declaration for a required section, a reason naming no work
-  package, a section name in the record the harness does not have, and a version named with `;` after
-  it. An empty reason is refused one layer earlier, where `adapter.toml` is parsed.
+  versions run nine sections — initialization, hierarchy, refusal, members, side, transformation, load,
+  content and outward. The last two joined them when their stand-in game stopped being hand-written
+  under Mojang names: it is rendered per version from `jvm/harness/template/` into
+  `target/ravel-jvm/generated-harness/`, so the name the adapter resolves and the name the stand-in
+  declares are one string by construction, and the obfuscated case is the one those sections read rather
+  than the one they skip. `javap -p` on 1.21.1's block stand-in reads `public dtd l()` and
+  `public static final js q`, which is what `GameMembers` says that version links. 1.21.1 declares the
+  other three not run under `[harness.notRun]` in its own `adapter.toml`: persistence, screens and
+  settings each match a generated name against a stand-in still written under a Mojang name, so they
+  would measure the mismatch rather than the adapter, and the work package that closes them is the one
+  that closed these two. Mutations proved the check, each exiting 1: an undeclared absence, a
+  declaration for a section that ran, a declaration for a required section, a declaration for a section
+  whose stand-in is now generated, a reason naming no work package, a section name in the record the
+  harness does not have, and a version named with `;` after it. An empty reason is refused one layer
+  earlier, where `adapter.toml` is parsed.
 - The persistence stand-in's `copyInto` returns early when nothing staged a pack, as the game does. It
   is unreachable at 26.1.2, where every run stages one, and load-bearing at 1.21.1, where the staging
   seam raises `NoSuchMethodException`: without it the stand-in dies on a missing directory and hides the

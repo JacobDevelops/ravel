@@ -1,0 +1,25 @@
+{{package}}
+
+import java.util.ArrayList;
+import java.util.List;
+{{import SOUND_INSTANCE}}
+
+/**
+ * The stand-in sound manager, for a version whose play request answers nothing.
+ *
+ * <p>A per-version source rather than a role binding: the other tracked version
+ * hands back what it made of the request and this one hands back nothing at all,
+ * and no renaming turns one of those into the other.
+ */
+public final class {{SOUND_MANAGER}} {
+
+    private final List<String> played = new ArrayList<>();
+
+    public void {{SOUND_MANAGER#play}}({{SOUND_INSTANCE}} sound) {
+        played.add(sound.toString());
+    }
+
+    public String contents() {
+        return String.join(",", played);
+    }
+}

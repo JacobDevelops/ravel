@@ -23,6 +23,14 @@ library="$root/target/release"
 host="$library/libravel_bootstrap.so"
 work="$root/target/ravel-jvm/harness"
 agent="$work/agent/ravel-agent.jar"
+# The stand-in game, generated per version from `jvm/harness/template/`. Its
+# classes carry the names this version links rather than the Mojang ones, which
+# is what lets a section resolving a generated name run under a version that
+# renames it.
+standins="$root/target/ravel-jvm/generated-harness"
+# Guava is a library beside the game rather than part of it, so no published
+# mapping renames it and its stand-in is written once rather than generated.
+guava="$root/jvm/harness/guava/com/google/common/collect/ImmutableList.java"
 
 if [ ! -f "$jar" ]; then
 	echo "the agent jar is missing; run:" >&2
@@ -37,6 +45,11 @@ fi
 if [ ! -f "$library/libravel_bootstrap.so" ]; then
 	echo "the native library is missing; run:" >&2
 	echo "  cargo build -p ravel-composed-host --release" >&2
+	exit 1
+fi
+if [ ! -d "$standins" ]; then
+	echo "the generated stand-in game is missing; run:" >&2
+	echo "  cargo build -p ravel-minecraft-adapter" >&2
 	exit 1
 fi
 
@@ -60,15 +73,17 @@ cp "$jar" "$agent"
 # Which sections this run can prove, decided from the generated names rather
 # than from a version written down here.
 #
-# The harness stands in for the game, and its stand-ins are written under Mojang
-# names. A section that reaches the game only through the transformer does not
-# care: the harness supplies the targets as well as the classes, so neither side
-# of what it compares is version data. A section that resolves a *generated* name
-# does care, because `GameNames` and `GameMembers` carry the names this version
-# links, and those are the Mojang names only under a version that does not
-# obfuscate. Where they differ, the adapter asks for `m` and the stand-in
-# declares `getUiState`, and the section would be testing the mismatch rather
-# than the adapter.
+# A section that reaches the game only through the transformer never asks: the
+# harness supplies the targets as well as the classes, so neither side of what it
+# compares is version data. A section that resolves a *generated* name asks only
+# where its stand-in is still hand-written under a Mojang name, because
+# `GameNames` and `GameMembers` carry the names this version links and those are
+# the Mojang names only under a version that does not obfuscate. Where they
+# differ, the adapter asks for `m` and the stand-in declares `getUiState`, and
+# the section would be testing the mismatch rather than the adapter. The content
+# and outward sections stopped asking when their stand-in game moved to
+# `jvm/harness/template/`: it is generated per version, so the two names are the
+# same string by construction.
 #
 # The generated class says which case this is without being asked: every role it
 # renders carries the Mojang name in its comment and the linked name in its
@@ -358,10 +373,10 @@ fi
 
 section_ran members
 
-# The reflective sections, which compare a generated name against a stand-in.
-# Under a version that links its Mojang names the two are the same string and
-# the section tests the adapter; under one that does not, the adapter asks for
-# `m` where the stand-in declares `getUiState`, and the section would be
+# The reflective sections whose stand-ins are still hand-written under Mojang
+# names. Under a version that links its Mojang names the two are the same string
+# and the section tests the adapter; under one that does not, the adapter asks
+# for `m` where the stand-in declares `getUiState`, and the section would be
 # measuring the mismatch. The version's own `adapter.toml` is what records that
 # and names the work package.
 if resolves_generated_names; then
@@ -631,11 +646,35 @@ if [ "$persistence_lifecycles" -ne "$persistence_lifecycles_declared" ]; then
 fi
 
 section_ran persistence
+fi
 
-# The content-registration seam, against a stand-in game. The adapter is
-# reflective and reads the admitted set across its own crossing, so a stand-in
-# carrying the pinned names and descriptors exercises the real control flow:
-# what is stood in for is the game, not Ravel. The stand-in registries refuse a
+# The seam a section transforms, read out of the generated hook table by Ravel's
+# own prologue name — the one word in an entry that no version renames. The
+# harness's stand-in `Hook` stands in for the native library and not for the
+# inventory, so the target it installs has to be this version's rather than a
+# name written down here. The table is written seven lines to an entry, class
+# first and prologue fifth, so the four lines before the prologue are the seam.
+generated_hook="$root/target/ravel-jvm/generated/dev/ravel/jvm/Hook.java"
+hook_seam() {
+	awk -v prologue="$1" '
+		{ fifth = fourth; fourth = third; third = second; second = first; first = $0 }
+		first ~ ("^[[:space:]]*\"" prologue "\",$") {
+			gsub(/^[[:space:]]*"?|"?,$/, "", fifth)
+			gsub(/^[[:space:]]*"?|"?,$/, "", fourth)
+			gsub(/^[[:space:]]*"?|"?,$/, "", third)
+			gsub(/^[[:space:]]*|,$/, "", second)
+			print fifth ":" fourth ":" third ":" second
+			exit
+		}
+	' "$generated_hook"
+}
+
+# The content-registration seam, against the generated stand-in game. The adapter
+# is reflective and reads the admitted set across its own crossing, so a stand-in
+# carrying the names this version links exercises the real control flow: what is
+# stood in for is the game, not Ravel. It runs at every version because the
+# stand-ins are generated from the same data the adapter's names are, so the
+# obfuscated case is the one this section reads rather than the one it skips. The stand-in registries refuse a
 # duplicate and refuse everything once frozen, and the properties objects refuse
 # to describe a block or an item that was never given an id — so a registration
 # that only looked like one fails here.
@@ -644,20 +683,79 @@ content="$work/content"
 content_agent="$content/agent/ravel-agent.jar"
 content_screen="$content/agent/ravel-screen.jar"
 mkdir -p "$content/classes" "$content/sibling" "$(dirname "$content_agent")"
-mapfile -d '' content_sources < <(find "$root/jvm/harness/content" -name '*.java' -print0 | sort -z)
-javac -Xlint:all -Werror -d "$content/classes" "${content_sources[@]}"
+mapfile -d '' content_sources < <(find "$standins" -name '*.java' \
+	! -name 'ContentMain.java' ! -name 'OutwardMain.java' -print0 | sort -z)
+javac -Xlint:all -Werror -d "$content/classes" "${content_sources[@]}" "$guava"
 # `ContentMain` needs the agent classes only to read the stand-in hook's counter.
 # A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$content/classes:$order/agent-classes" -d "$content/classes" \
-	"$root/jvm/harness/ContentMain.java"
-# The registration itself lives in the sibling artifact now, because the two
-# tracked versions build a block differently rather than name it differently, so
-# this section needs the sibling jar the persistence section already needed.
-javac -Xlint:all -Werror -cp "$content/classes" -d "$content/sibling" \
-	"$root/jvm/harness/sibling/dev/ravel/jvm/screen/RavelContent.java"
-jar --create --file "$content_screen" --date 1980-01-01T00:00:02Z \
-	-C "$content/sibling" dev/ravel/jvm/screen/RavelContent.class
+	"$standins/ContentMain.java"
+# The registration itself lives in the sibling artifact, because the two tracked
+# versions build a block differently rather than name it differently, so this
+# section needs the sibling jar the persistence section already needed. What is
+# compiled here is the generated source a launch ships rather than a copy of it:
+# the stand-ins carry this version's linked names, so the real sibling compiles
+# against them and a rename that broke it would break here.
+content_sibling="$(find "$root/target/ravel-jvm/generated-screen" -name 'RavelContent.java')"
+if [ ! -f "$content_sibling" ]; then
+	echo "the generated content sibling is missing; run:" >&2
+	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	exit 1
+fi
+javac -Xlint:all -Werror -cp "$content/classes" -d "$content/sibling" "$content_sibling"
+jar --create --file "$content_screen" --date 1980-01-01T00:00:02Z -C "$content/sibling" .
 cp "$order_agent" "$content_agent"
+content_seam="$(hook_seam registryBuiltInFreeze)"
+if [ -z "$content_seam" ]; then
+	echo "the generated hook table names no registry-freeze seam, so this section" >&2
+	echo "would transform a class this version does not link" >&2
+	exit 1
+fi
+
+# What a registered block or item prints back, which is version data rather than
+# one answer asserted over every version. A version whose properties builders
+# take a registry key has the adapter stamp one before the value exists, and the
+# value prints that key: a wrong root or a wrong identifier fails here. A version
+# whose builders take none names content by the identifier it was registered
+# under and has no key to print.
+#
+# Decided by asking the generator rather than by naming a version, the way the
+# section guards above are. The generator writes which tree rendered each
+# harness source beside the sources themselves, and the shared properties
+# templates are the id-bearing pair, so a version is on the plain expectation
+# only where it says it replaced them. Reading the generated Java for a phrase
+# instead made the weaker expectation the one a moved literal silently selected.
+origins="$standins/overrides.txt"
+if ! properties_origin="$(awk -F= -v block='game/BlockBehaviour$Properties' \
+	-v item='game/Item$Properties' '
+	$1 == block { found_block = $2 }
+	$1 == item { found_item = $2 }
+	END {
+		if (found_block == "" || found_item == "" || found_block != found_item) {
+			exit 1
+		}
+		print found_block
+	}' "$origins")"; then
+	echo "the generated harness record at $origins does not say, for both properties" >&2
+	echo "templates alike, which tree rendered them; run:" >&2
+	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	exit 1
+fi
+case "$properties_origin" in
+shared)
+	# The class, what precedes its properties (a placing item leads with the block
+	# it holds and nothing else leads with anything), then the key and the values.
+	described() { printf '%s(%s%s/%s|%s)' "$1" "$2" "$3" "$4" "$5"; }
+	;;
+override)
+	described() { printf '%s(%s%s)' "$1" "$2" "$5"; }
+	;;
+*)
+	echo "the generated harness record says the properties templates were" >&2
+	echo "'$properties_origin' rendered, which is neither tree" >&2
+	exit 1
+	;;
+esac
 
 # Each run is one initialization: the registries freeze once, and what they hold
 # afterwards is the whole answer.
@@ -668,6 +766,7 @@ content_run() {
 	(cd "$content/classes" && java \
 		-javaagent:"$content_agent" \
 		-Dravel.test.transform.content=true \
+		-Dravel.test.target="$content_seam" \
 		-Dravel.test.content.admitted="$admitted" \
 		-cp . ContentMain >"$out" 2>"$err")
 	local observed
@@ -696,11 +795,11 @@ content_run() {
 # differently from one that adds them all.
 content_run admitted \
 	'block:example_mod:copper:50.0:1200.0:true:false,item:example_mod:ingot:16:true' \
-	'block=example_mod:copper->Block(50.0/1200.0/true/false)
-item=example_mod:ingot->Item(16/true)
+	"block=example_mod:copper->$(described Block '' block example_mod:copper 50.0/1200.0/true/false)
+item=example_mod:ingot->$(described Item '' item example_mod:ingot 16/true)
 states=2 cached=2
 hooks=2
-[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code"
 
 # A block and an item under one identifier, which is how a mod declares a block
 # you can hold. The item has to be the block's placing item and be built from the
@@ -713,11 +812,11 @@ hooks=2
 # adapter reads the payload whole and registers every block before any item.
 content_run placing-item \
 	'item:example_mod:lantern:64:false,block:example_mod:lantern:3.0:3.0:false:false' \
-	'block=example_mod:lantern->Block(3.0/3.0/false/false)
-item=example_mod:lantern->BlockItem(block/example_mod:lantern/64/false)
+	"block=example_mod:lantern->$(described Block '' block example_mod:lantern 3.0/3.0/false/false)
+item=example_mod:lantern->$(described BlockItem example_mod:lantern/ item example_mod:lantern 64/false)
 states=2 cached=2
 hooks=2
-[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code"
 
 # A block whose state walk fails after it is registered. The two are separate
 # steps and only the second went wrong, so the block is in the registry and in no
@@ -729,11 +828,11 @@ hooks=2
 # be if the walk's failure left the block in the map.
 content_run unmapped-states \
 	'block:example_mod:unmappable:1.0:1.0:false:false,item:example_mod:unmappable:1:false' \
-	'block=example_mod:unmappable->Block(1.0/1.0/false/false)
-item=example_mod:unmappable->BlockItem(block/example_mod:unmappable/1/false)
+	"block=example_mod:unmappable->$(described Block '' block example_mod:unmappable 1.0/1.0/false/false)
+item=example_mod:unmappable->$(described BlockItem example_mod:unmappable/ item example_mod:unmappable 1/false)
 states=0 cached=0
 hooks=2
-[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code'
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code"
 content_unmapped_diagnostic="$(grep '^\[ravel\] registered example_mod' "$content/unmapped-states-stderr")"
 content_unmapped_expected='[ravel] registered example_mod:unmappable but its states are not mapped, so placing it will disconnect the session (java.lang.IllegalStateException)'
 if [ "$content_unmapped_diagnostic" != "$content_unmapped_expected" ]; then
@@ -801,10 +900,10 @@ fi
 
 section_ran content
 
-# The outward-action seam, against a stand-in game. The adapter is reflective
-# and reads the queued actions across its own crossing, so a stand-in carrying
-# the pinned names exercises the real control flow: what is stood in for is the
-# game, not Ravel. The payloads below are written out rather than built, and each
+# The outward-action seam, against the generated stand-in game. The adapter is
+# reflective and reads the queued actions across its own crossing, so a stand-in
+# carrying the names this version links exercises the real control flow: what is
+# stood in for is the game, not Ravel. The payloads below are written out rather than built, and each
 # one also appears as a literal in `crates/ravel-bootstrap/src/outward.rs` — the
 # two ends of this crossing are two languages, and a shared builder would only
 # prove one side agrees with itself.
@@ -812,14 +911,21 @@ section_ran content
 outward="$work/outward"
 outward_agent="$outward/agent/ravel-agent.jar"
 mkdir -p "$outward/classes" "$(dirname "$outward_agent")"
-mapfile -d '' outward_sources < <(find "$root/jvm/harness/outward" -name '*.java' -print0 | sort -z)
-javac -Xlint:all -Werror -d "$outward/classes" "${outward_sources[@]}" \
-	"$root/jvm/harness/content/net/minecraft/resources/Identifier.java"
+# The same stand-in game as the content section, because it is one game: the
+# sound seam and the registration seam name the same identifier class, and two
+# trees would let one of them drift.
+javac -Xlint:all -Werror -d "$outward/classes" "${content_sources[@]}" "$guava"
 # `OutwardMain` needs the agent classes only to read the stand-in hook's counter.
 # A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$outward/classes:$order/agent-classes" -d "$outward/classes" \
-	"$root/jvm/harness/OutwardMain.java"
+	"$standins/OutwardMain.java"
 cp "$order_agent" "$outward_agent"
+outward_seam="$(hook_seam clientTick)"
+if [ -z "$outward_seam" ]; then
+	echo "the generated hook table names no client-tick seam, so this section" >&2
+	echo "would transform a class this version does not link" >&2
+	exit 1
+fi
 
 outward_run() {
 	local label="$1" actions="$2" expected="$3"
@@ -828,6 +934,7 @@ outward_run() {
 	(cd "$outward/classes" && java \
 		-javaagent:"$outward_agent" \
 		-Dravel.test.transform.outward=true \
+		-Dravel.test.target="$outward_seam" \
 		-Dravel.test.outward.actions="$actions" \
 		-cp . OutwardMain >"$out" 2>"$err")
 	local observed
@@ -903,7 +1010,6 @@ if [ "$outward_malformed_diagnostic" != "$outward_malformed_expected" ]; then
 fi
 
 section_ran outward
-fi
 
 # The failed-transformation check and the two refusals below run at every
 # version. The transformer supplies its own target here, and a refusal to load a

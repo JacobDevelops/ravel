@@ -1,0 +1,46 @@
+{{package}}
+
+/**
+ * A block's properties, for a version whose builders carry no id setter.
+ *
+ * <p>A per-version source for the reason the item's properties are one here: a
+ * block is named by what it is registered under, so no registry key is built and
+ * none is stamped.
+ */
+public final class {{BlockBehaviour$Properties}} {
+
+    private float hardness = -1.0f;
+    private float explosionResistance = -1.0f;
+    private boolean requiresCorrectTool;
+    private boolean randomTicks;
+
+    private {{BlockBehaviour$Properties}}() {
+    }
+
+    public static {{BlockBehaviour$Properties}} {{BlockBehaviour$Properties#of}}() {
+        return new {{BlockBehaviour$Properties}}();
+    }
+
+    public {{BlockBehaviour$Properties}} {{BlockBehaviour$Properties#strength}}(
+            float hardness, float explosionResistance) {
+        this.hardness = hardness;
+        this.explosionResistance = explosionResistance;
+        return this;
+    }
+
+    public {{BlockBehaviour$Properties}} {{BlockBehaviour$Properties#requiresCorrectToolForDrops}}() {
+        this.requiresCorrectTool = true;
+        return this;
+    }
+
+    public {{BlockBehaviour$Properties}} {{BlockBehaviour$Properties#randomTicks}}() {
+        this.randomTicks = true;
+        return this;
+    }
+
+    /** What was applied, as the harness reads it back. */
+    public String applied() {
+        return hardness + "/" + explosionResistance + "/" + requiresCorrectTool + "/"
+                + randomTicks;
+    }
+}

@@ -12,10 +12,19 @@
 //! are stylistically disjoint today, so nothing currently resolves in more than
 //! one; that is a property of the files as they stand and not one anything
 //! enforces, which is why the comparison is here rather than assumed away.
+//!
+//! Members are bound two ways, because there are two questions. `stubs.toml`
+//! binds a member role to a member of a class the stub tree carries, which is
+//! what a caller writing a compile-time reference asks. `reflection.toml` and
+//! `hooks.toml` declare a member by name and descriptor, which is what a caller
+//! writing a *declaration* the runtime then resolves asks — the stand-in game
+//! declares the member the agent jar looks up, so the two have to be the same
+//! string. Both are bound under the reviewed member name, and a member role two
+//! lists answer differently is refused for the reason a class role is.
 
 use std::collections::BTreeMap;
 
-use super::inputs::{Inventory, Reflection, SeedMember, Seeds};
+use super::inputs::{Inventory, Lookup, Reflection, SeedMember, Seeds};
 use super::{GenerateError, render};
 
 /// Where one binding of a role was read, and what it bound the role to.
@@ -28,15 +37,28 @@ struct Binding {
     class: String,
 }
 
+/// One member a runtime list declares by name and descriptor.
+pub(super) struct Declared {
+    /// The tracked file that declares it.
+    pub(super) list: &'static str,
+    /// The reviewed member name, which is the descriptor's name space too.
+    pub(super) member: String,
+    /// The reviewed descriptor that picks it out of its overload set.
+    pub(super) descriptor: String,
+}
+
 /// Every admission list one version tracks, asked as one.
 pub(super) struct Roles {
     /// Every binding each role carries, in the order the lists were read.
     bound: BTreeMap<String, Vec<Binding>>,
+    /// The members the runtime lists declare, by the role and the member role.
+    declared: BTreeMap<(String, String), Vec<Declared>>,
     /// The members the stub seeds bind, by the role that declares them.
     ///
-    /// Only `stubs.toml` binds members by role: the other two lists name the
-    /// members the runtime resolves, which is a different question and one the
-    /// caller reaching for a compile-time reference cannot use.
+    /// Kept apart from the runtime declarations above because the two are
+    /// resolved differently: a seed names a member of a stubbed class and the
+    /// stub tree decides which overload it meant, while a declaration carries
+    /// its own descriptor and needs no tree at all.
     seeded: BTreeMap<String, Vec<SeedMember>>,
 }
 
@@ -46,8 +68,19 @@ impl Roles {
     /// The bindings are collected rather than compared here, because a version
     /// legitimately binds roles no template names and a comparison run over all
     /// of them would refuse a version for a disagreement nothing reads.
-    pub(super) fn new(seeds: &Seeds, surface: &Reflection, inventory: &Inventory) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a declared member says both how it is looked up
+    /// and neither, because a declaration that cannot be read binds no member
+    /// role and going on would leave the role bound by whatever else names it.
+    pub(super) fn new(
+        seeds: &Seeds,
+        surface: &Reflection,
+        inventory: &Inventory,
+    ) -> Result<Self, GenerateError> {
         let mut bound: BTreeMap<String, Vec<Binding>> = BTreeMap::new();
+        let mut declared: BTreeMap<(String, String), Vec<Declared>> = BTreeMap::new();
         let mut seeded = BTreeMap::new();
         for seed in &seeds.stubs {
             bound.entry(seed.role.clone()).or_default().push(Binding {
@@ -69,6 +102,30 @@ impl Roles {
                     key: "reflected name",
                     class: internal(&reflected.class),
                 });
+            for member in &reflected.members {
+                let lookup = member.lookup().map_err(|detail| {
+                    GenerateError::Drift(format!(
+                        "the reflective surface declares a member of {}: {detail}",
+                        reflected.class
+                    ))
+                })?;
+                match lookup {
+                    // A member declared by argument count has been given no
+                    // descriptor, and a declaration is one member or it is
+                    // nothing, so it binds no member role rather than a guess.
+                    Lookup::Parameters(_) => {}
+                    Lookup::Descriptor(descriptor) => {
+                        declared
+                            .entry((reflected.name.clone(), member.name.clone()))
+                            .or_default()
+                            .push(Declared {
+                                list: "reflection.toml",
+                                member: member.name.clone(),
+                                descriptor: descriptor.to_owned(),
+                            });
+                    }
+                }
+            }
         }
         for hook in &inventory.hooks {
             bound.entry(hook.id.clone()).or_default().push(Binding {
@@ -76,8 +133,20 @@ impl Roles {
                 key: "hook id",
                 class: internal(&hook.class),
             });
+            declared
+                .entry((hook.id.clone(), hook.member.clone()))
+                .or_default()
+                .push(Declared {
+                    list: "hooks.toml",
+                    member: hook.member.clone(),
+                    descriptor: hook.descriptor.clone(),
+                });
         }
-        Self { bound, seeded }
+        Ok(Self {
+            bound,
+            declared,
+            seeded,
+        })
     }
 
     /// The internal class name this version binds a role to.
@@ -123,6 +192,43 @@ impl Roles {
         self.seeded.get(role).map(Vec::as_slice)
     }
 
+    /// Every declaration one member role carries, where a runtime list carries one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when two lists declare the member role differently,
+    /// because a declaration is one member and two of them are two.
+    pub(super) fn declared_member(
+        &self,
+        role: &str,
+        member_role: &str,
+    ) -> Result<Option<&Declared>, GenerateError> {
+        let key = (role.to_owned(), member_role.to_owned());
+        let Some((first, rest)) = self
+            .declared
+            .get(&key)
+            .and_then(|found| found.split_first())
+        else {
+            return Ok(None);
+        };
+        if let Some(other) = rest
+            .iter()
+            .find(|other| other.member != first.member || other.descriptor != first.descriptor)
+        {
+            return Err(GenerateError::Input(format!(
+                "the member role {role}#{member_role} is declared as {}{} by {} and as {}{} by \
+                 {}, and one member role names one member",
+                first.member,
+                first.descriptor,
+                first.list,
+                other.member,
+                other.descriptor,
+                other.list
+            )));
+        }
+        Ok(Some(first))
+    }
+
     /// The tracked file that binds a role's class, where one binds it.
     pub(super) fn bound_by(&self, role: &str) -> Option<&'static str> {
         self.bound
@@ -139,7 +245,7 @@ fn internal(class: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::inputs::{Hook, Kind, Reflected, Seed};
+    use super::super::inputs::{Hook, Kind, Reflected, ReflectedMember, Seed};
     use super::*;
 
     fn seeds(bound: &[(&str, &str)]) -> Seeds {
@@ -201,7 +307,7 @@ mod tests {
             surface(&[]),
             inventory(&[]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory);
+        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
         assert_eq!(
             roles.class("Panel").expect("the stub seeds bind it"),
             "com/example/Panel"
@@ -215,7 +321,7 @@ mod tests {
             surface(&[("PANEL", "com.example.Panel")]),
             inventory(&[]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory);
+        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
         assert_eq!(
             roles.class("PANEL").expect("the surface binds it"),
             "com/example/Panel"
@@ -229,7 +335,7 @@ mod tests {
             surface(&[]),
             inventory(&[("panel.draw", "com.example.Panel")]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory);
+        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
         assert_eq!(
             roles.class("panel.draw").expect("the inventory binds it"),
             "com/example/Panel"
@@ -243,7 +349,7 @@ mod tests {
             surface(&[("Panel", "com.example.Panel")]),
             inventory(&[("Panel", "com.example.Panel")]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory);
+        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
         assert_eq!(
             roles.class("Panel").expect("all three agree"),
             "com/example/Panel"
@@ -257,7 +363,7 @@ mod tests {
             surface(&[("Panel", "com.example.Frame")]),
             inventory(&[]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory);
+        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
         let error = roles
             .class("Panel")
             .expect_err("two lists bind the role to two classes");
@@ -279,7 +385,7 @@ mod tests {
             surface(&[]),
             inventory(&[("Panel", "com.example.Frame")]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory);
+        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
         let message = roles
             .class("Panel")
             .expect_err("the inventory names another class")
@@ -290,13 +396,37 @@ mod tests {
     }
 
     #[test]
+    fn a_member_declared_both_ways_is_refused_rather_than_dropped() {
+        let surface = Reflection {
+            schema_version: 1,
+            minecraft: String::from("0.0.0"),
+            classes: vec![Reflected {
+                name: String::from("PANEL"),
+                class: String::from("com.example.Panel"),
+                runtime: String::from("com.example.Panel"),
+                members: vec![ReflectedMember {
+                    name: String::from("draw"),
+                    descriptor: Some(String::from("()V")),
+                    parameters: Some(0),
+                }],
+            }],
+        };
+        let Err(error) = Roles::new(&seeds(&[]), &surface, &inventory(&[])) else {
+            panic!("a member declared both ways says which member it is twice");
+        };
+        let message = error.to_string();
+        assert!(message.contains("com.example.Panel"), "{message}");
+        assert!(message.contains("draw"), "{message}");
+    }
+
+    #[test]
     fn an_unknown_role_is_refused() {
         let (seeds, surface, inventory) = (
             seeds(&[("Panel", "com.example.Panel")]),
             surface(&[]),
             inventory(&[]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory);
+        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
         let message = roles
             .class("Frame")
             .expect_err("nothing binds the role")

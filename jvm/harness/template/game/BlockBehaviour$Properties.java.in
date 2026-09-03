@@ -1,0 +1,63 @@
+{{package}}
+
+{{import ResourceKey}}
+
+/**
+ * A block's properties, which refuse to describe a block that has no id.
+ *
+ * <p>Deliberately hostile, for the reason the item's are: this version's
+ * constructor reads the id back out, so a properties object that never had one
+ * fails before the block exists.
+ *
+ * <p>What was applied leads with that key rather than only requiring one,
+ * because the key is the whole of what the adapter had to build here: the root
+ * the registry is named by and the identifier under it. A stand-in that only
+ * checked it was not null passed an adapter that stamped the item root, or a
+ * neighbouring block's name, on every block it registered.
+ */
+public final class {{BlockBehaviour$Properties}} {
+
+    private {{ResourceKey}} id;
+    private float hardness = -1.0f;
+    private float explosionResistance = -1.0f;
+    private boolean requiresCorrectTool;
+    private boolean randomTicks;
+
+    private {{BlockBehaviour$Properties}}() {
+    }
+
+    public static {{BlockBehaviour$Properties}} {{BlockBehaviour$Properties#of}}() {
+        return new {{BlockBehaviour$Properties}}();
+    }
+
+    public {{BlockBehaviour$Properties}} {{BlockBehaviour$Properties#setId}}({{ResourceKey}} id) {
+        this.id = id;
+        return this;
+    }
+
+    public {{BlockBehaviour$Properties}} {{BlockBehaviour$Properties#strength}}(
+            float hardness, float explosionResistance) {
+        this.hardness = hardness;
+        this.explosionResistance = explosionResistance;
+        return this;
+    }
+
+    public {{BlockBehaviour$Properties}} {{BlockBehaviour$Properties#requiresCorrectToolForDrops}}() {
+        this.requiresCorrectTool = true;
+        return this;
+    }
+
+    public {{BlockBehaviour$Properties}} {{BlockBehaviour$Properties#randomTicks}}() {
+        this.randomTicks = true;
+        return this;
+    }
+
+    /** What was applied, as the harness reads it back. */
+    public String applied() {
+        if (id == null) {
+            throw new IllegalStateException("Block id not set");
+        }
+        return id + "|" + hardness + "/" + explosionResistance + "/" + requiresCorrectTool + "/"
+                + randomTicks;
+    }
+}

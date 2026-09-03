@@ -1,0 +1,32 @@
+{{package}}
+
+{{import SOUND_EVENT}}
+{{import SOUND_INSTANCE}}
+
+/**
+ * The instance the adapter builds through the factory the surface pins.
+ *
+ * <p>It keeps the event and the pitch it was given so the harness can print
+ * them: a payload whose arguments were decoded in the wrong order reaches this
+ * class and is visible here rather than being lost in a void method.
+ */
+public final class {{SIMPLE_SOUND_INSTANCE}} implements {{SOUND_INSTANCE}} {
+
+    private final {{SOUND_EVENT}} sound;
+    private final float pitch;
+
+    private {{SIMPLE_SOUND_INSTANCE}}({{SOUND_EVENT}} sound, float pitch) {
+        this.sound = sound;
+        this.pitch = pitch;
+    }
+
+    public static {{SIMPLE_SOUND_INSTANCE}} {{SIMPLE_SOUND_INSTANCE#forUI}}(
+            {{SOUND_EVENT}} sound, float pitch) {
+        return new {{SIMPLE_SOUND_INSTANCE}}(sound, pitch);
+    }
+
+    @Override
+    public String toString() {
+        return sound.location() + "@" + pitch;
+    }
+}

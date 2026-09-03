@@ -1,0 +1,31 @@
+{{package}}
+
+{{import SOUND_MANAGER}}
+
+/**
+ * The running client, as much of it as the outward adapter reaches.
+ *
+ * <p>The tick below is the seam the reviewed inventory pins and carries the
+ * descriptor it pins, so the transformer's prologue lands on the same method
+ * here as in a launch. Its body does nothing, which is what makes an action that
+ * was performed visible: only the prologue can have caused it.
+ */
+public final class {{MINECRAFT}} {
+
+    private static final {{MINECRAFT}} INSTANCE = new {{MINECRAFT}}();
+    private final {{SOUND_MANAGER}} sounds = new {{SOUND_MANAGER}}();
+
+    private {{MINECRAFT}}() {
+    }
+
+    public static {{MINECRAFT}} {{MINECRAFT#getInstance}}() {
+        return INSTANCE;
+    }
+
+    public {{SOUND_MANAGER}} {{MINECRAFT#getSoundManager}}() {
+        return sounds;
+    }
+
+    public void {{client.tick#tick}}() {
+    }
+}

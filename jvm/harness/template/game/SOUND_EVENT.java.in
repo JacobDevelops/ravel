@@ -1,0 +1,21 @@
+{{package}}
+
+{{import IDENTIFIER}}
+
+/** The sound event, built the way the adapter builds one. */
+public final class {{SOUND_EVENT}} {
+
+    private final {{IDENTIFIER}} location;
+
+    private {{SOUND_EVENT}}({{IDENTIFIER}} location) {
+        this.location = location;
+    }
+
+    public static {{SOUND_EVENT}} {{SOUND_EVENT#createVariableRangeEvent}}({{IDENTIFIER}} location) {
+        return new {{SOUND_EVENT}}(location);
+    }
+
+    public {{IDENTIFIER}} location() {
+        return location;
+    }
+}

@@ -1,0 +1,29 @@
+{{package}}
+
+{{import IDENTIFIER}}
+{{import Item$Properties}}
+
+/** One item, named by what it was registered under. */
+public class {{Item}} {
+
+    private final String applied;
+    private {{IDENTIFIER}} identifier;
+
+    public {{Item}}({{Item$Properties}} properties) {
+        this.applied = properties.applied();
+    }
+
+    /** What this item was registered under, which is where its name comes from. */
+    public void named({{IDENTIFIER}} identifier) {
+        this.identifier = identifier;
+    }
+
+    public {{IDENTIFIER}} name() {
+        return identifier;
+    }
+
+    /** How this item behaves, as the properties it was built from describe it. */
+    public String applied() {
+        return applied;
+    }
+}

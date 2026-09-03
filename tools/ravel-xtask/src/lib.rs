@@ -1816,6 +1816,14 @@ struct Reflected {
     name: String,
     /// The Mojang name a reviewer reads.
     class: String,
+    /// The descriptors this role's own members are declared by.
+    ///
+    /// Kept per role rather than per file because a descriptor is the other way
+    /// the agent jar reaches a class — the type it passes to a lookup is written
+    /// inside one — and which member carries it is what says whether anything
+    /// reaches it. A flat list over the file admitted a role whose class merely
+    /// appeared beside some unrelated class's member.
+    descriptors: Vec<String>,
 }
 
 /// Every tracked version's declared reflective surface.
@@ -1859,15 +1867,22 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
     let mut name = None;
     let mut class = None;
     let mut runtime = None;
+    let mut descriptors: Vec<String> = Vec::new();
     let finish = |name: &mut Option<String>,
                   class: &mut Option<String>,
                   runtime: &mut Option<String>,
+                  descriptors: &mut Vec<String>,
                   roles: &mut Vec<Reflected>|
      -> Result<(), String> {
+        let carried = std::mem::take(descriptors);
         match (name.take(), class.take(), runtime.take()) {
             (None, None, None) => Ok(()),
             (Some(name), Some(class), Some(_runtime)) => {
-                roles.push(Reflected { name, class });
+                roles.push(Reflected {
+                    name,
+                    class,
+                    descriptors: carried,
+                });
                 Ok(())
             }
             (name, class, _) => Err(format!(
@@ -1884,7 +1899,13 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
     let mut member = false;
     for line in text.lines().map(str::trim) {
         if line == "[[reflected]]" {
-            finish(&mut name, &mut class, &mut runtime, &mut roles)?;
+            finish(
+                &mut name,
+                &mut class,
+                &mut runtime,
+                &mut descriptors,
+                &mut roles,
+            )?;
             member = false;
             continue;
         }
@@ -1893,6 +1914,9 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
             continue;
         }
         if member {
+            if let Some(value) = quoted_value(line, "descriptor") {
+                descriptors.push(value.to_owned());
+            }
             continue;
         }
         if let Some(value) = quoted_value(line, "name") {
@@ -1903,7 +1927,13 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
             runtime = Some(value.to_owned());
         }
     }
-    finish(&mut name, &mut class, &mut runtime, &mut roles)?;
+    finish(
+        &mut name,
+        &mut class,
+        &mut runtime,
+        &mut descriptors,
+        &mut roles,
+    )?;
     Ok(roles)
 }
 
@@ -2049,10 +2079,32 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
             }
         }
 
+        // Every role a source spells, and every role a member a source reaches
+        // belongs to. This is what a descriptor has to be written on for the
+        // class inside it to count as reached.
+        let reached: BTreeSet<&str> = spelled
+            .iter()
+            .map(|(_, role)| role.as_str())
+            .chain(used.iter().copied())
+            .collect();
+
         for role in &surface.roles {
-            if !spelled.iter().any(|(_, spelled)| spelled == &role.name)
-                && !used.contains(&role.name.as_str())
-            {
+            // A class reached only as a parameter or a return type is named by
+            // the agent jar inside a descriptor rather than through a constant,
+            // so a role declared for one is in use with nothing spelling it.
+            // The descriptor carrying it has to sit on a member of a role this
+            // version reaches: any descriptor in the file used to do, so a role
+            // whose class happened to appear beside an unrelated class's member
+            // was admitted by a lookup nothing performs.
+            let inside = format!("L{};", role.class.replace('.', "/"));
+            let passed_to_a_reached_lookup = surface.roles.iter().any(|reaching| {
+                reached.contains(reaching.name.as_str())
+                    && reaching
+                        .descriptors
+                        .iter()
+                        .any(|descriptor| descriptor.contains(&inside))
+            });
+            if !reached.contains(role.name.as_str()) && !passed_to_a_reached_lookup {
                 violations.push(format!(
                     "{declaring} declares the role {} for {} and no source under \
                      {AGENT_JAR_SOURCES} resolves it; a declared name nothing uses says the \
@@ -4517,11 +4569,13 @@ const HARNESS_RECORD: &str = "target/ravel-jvm/harness-versions.txt";
 /// Written down rather than derived from the record, because a record is what
 /// the check is holding to account: deriving the required set from the file
 /// being checked would make any file its own answer.
-const REQUIRED_SECTIONS: [&str; 7] = [
+const REQUIRED_SECTIONS: [&str; 9] = [
+    "content",
     "hierarchy",
     "initialization",
     "load",
     "members",
+    "outward",
     "refusal",
     "side",
     "transformation",
@@ -4529,14 +4583,19 @@ const REQUIRED_SECTIONS: [&str; 7] = [
 
 /// The harness sections a version may declare it does not run.
 ///
-/// Each of these matches a generated name against a stand-in written under a
-/// Mojang name, and the two are the same string only under a version that links
-/// its Mojang names. Four resolve the name reflectively; the fifth drives the
-/// shipped agent jar, whose transformer looks its targets up in the generated
-/// inventory. That is a property of the version rather than a fault, so it is
-/// declarable — but only in writing, naming the work package, in the version's
-/// own data.
-const DECLARABLE_SECTIONS: [&str; 5] = ["content", "outward", "persistence", "screens", "settings"];
+/// Each of these matches a generated name against a stand-in that is still
+/// hand-written under a Mojang name, and the two are the same string only under
+/// a version that links its Mojang names. Two resolve the name reflectively; the
+/// third drives the shipped agent jar, whose transformer looks its targets up in
+/// the generated inventory. That is a property of the version rather than a
+/// fault, so it is declarable — but only in writing, naming the work package, in
+/// the version's own data.
+///
+/// A section leaves this list when its stand-in is generated per version rather
+/// than written down, which is what the content and outward sections did: the
+/// stand-in then carries the linked name by construction and no version has an
+/// obstacle left to declare.
+const DECLARABLE_SECTIONS: [&str; 3] = ["persistence", "screens", "settings"];
 
 /// What a declared absence has to name beside the obstacle.
 ///
@@ -10898,6 +10957,39 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
+    /// A class named inside a descriptor is reached only where something reaches
+    /// the member carrying it.
+    ///
+    /// Descriptor admission used to ask whether the class appeared in *any*
+    /// descriptor in the file, so a role nothing performs a lookup for was
+    /// admitted by an unrelated class's member. Both halves here: `TWO` is a
+    /// parameter of a member of the role a source spells and is admitted, and
+    /// `THREE` is a parameter of a member of `TWO` — which is itself only
+    /// admitted, never reached — and is refused.
+    #[test]
+    fn a_role_named_only_inside_an_unreached_members_descriptor_is_refused() {
+        let root = reflection_root(
+            "version-reflection-descriptor",
+            "String one = GameNames.ONE;\n",
+            3,
+        );
+        fs::write(
+            root.join(format!("{VERSION_DATA}/26.1.2/{REFLECTION_FILE}")),
+            "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n             [[reflected]]\nname = \"ONE\"\nclass = \"net.minecraft.client.One\"\nruntime =              \"net.minecraft.client.One\"\n\n             [[reflected.member]]\nname = \"takes\"\ndescriptor =              \"(Lnet/minecraft/client/Two;)V\"\n\n             [[reflected]]\nname = \"TWO\"\nclass = \"net.minecraft.client.Two\"\nruntime =              \"net.minecraft.client.Two\"\n\n             [[reflected.member]]\nname = \"passes\"\ndescriptor =              \"(Lnet/minecraft/client/Three;)V\"\n\n             [[reflected]]\nname = \"THREE\"\nclass =              \"net.minecraft.client.Three\"\nruntime = \"net.minecraft.client.Three\"\n",
+        )
+        .expect("version data should be writable");
+        let mut violations = Vec::new();
+
+        verify_persistence_reflection(&root, &mut violations);
+
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        assert!(
+            violations[0].contains("declares the role THREE for net.minecraft.client.Three"),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
     /// A table short of one of its three names is a role that resolves to nothing
     /// or a name held to nothing, so it is refused rather than dropped from the
     /// set — dropping it silently is how a surface goes unchecked while the count
@@ -13391,6 +13483,35 @@ mod tests {
             &format!(
                 "ran: Minecraft 26.1.2 sections={}\n",
                 EVERY_SECTION.replace("members,", "")
+            ),
+        );
+
+        let violations = verify_gate_versions(&root);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.ends_with("so this declares away a break")),
+            "violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The content section left the declarable list when its stand-in game
+    /// became generated, so a version that declares it away now declares away a
+    /// break rather than an obstacle.
+    #[test]
+    fn a_declaration_for_a_generated_stand_ins_section_is_a_violation() {
+        let root = gate_versions_root(
+            "gate-versions-generated-stand-in",
+            &[(
+                "26.1.2",
+                "[harness.notRun]\ncontent = \"stand-ins; work package: templates\"\n",
+            )],
+            &format!(
+                "ran: Minecraft 26.1.2 sections={}\n",
+                EVERY_SECTION.replace("content,", "")
             ),
         );
 

@@ -22,6 +22,14 @@
 //! what keeps a template reviewable as the Java it is and what makes an
 //! unobfuscated version's output the same source it was before it was
 //! generated.
+//!
+//! The same reader renders the JVM harness's stand-in game, for the same reason
+//! one step further in: a stand-in exists to be resolved against a generated
+//! name, so under an obfuscated version it has to *be* that name. What differs
+//! there is who names the file — a stand-in declares a game class, so its
+//! package and its simple name are the role's linked name rather than the
+//! template's own word — and [`Purpose`] is where the three cases are written
+//! down.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -37,89 +45,301 @@ use super::{GenerateError, SCREEN_PACKAGE};
 /// The suffix a template carries, over the name of the source it renders.
 const TEMPLATE_SUFFIX: &str = ".in";
 
-/// Everything one version's screen sources come to.
-pub(super) struct Screens {
+/// What one template tree renders, which decides three things about it.
+///
+/// Each case answers the same three questions differently: what names a rendered
+/// source and where it lands, whether a role it references has to be stubbed,
+/// and whether a version may hold a template no other version does.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum Purpose {
+    /// The screen jar's sources: Ravel's own classes, named by their templates,
+    /// compiled against the stub tree, and the same set under every version
+    /// because the agent jar opens the same constants under all of them.
+    Screen,
+    /// The harness's stand-in game: one game class per template, named and
+    /// placed by the role the template is named after. Nothing stubs them —
+    /// they are what the harness compiles against — and a version whose game
+    /// carries a class another version's does not renders one template more,
+    /// because that difference is the game's rather than Ravel's.
+    StandIn,
+    /// The harness's own drivers: Ravel's classes in the name space a launch
+    /// runs them from, which is the unnamed package under every version.
+    Driver,
+}
+
+impl Purpose {
+    /// Whether a role a template references has to be carried by the stub tree.
+    fn stubbed(self) -> bool {
+        matches!(self, Self::Screen)
+    }
+
+    /// Why this tree may not carry a template no shared one is replaced by,
+    /// where it may not.
+    ///
+    /// Only the stand-in game may gain one, and the two refusals are worth
+    /// saying apart: a screen would be one the agent jar cannot open under the
+    /// others, while a driver is compiled by the sweep that finds it and
+    /// reached through no role, so the check that retires an outlived stand-in
+    /// has nothing to ask about a driver.
+    fn no_addition_reason(self) -> Option<&'static str> {
+        match self {
+            Self::StandIn => None,
+            Self::Screen => Some(
+                "a screen only one version draws is one the agent jar cannot open under the \
+                 others",
+            ),
+            Self::Driver => Some(
+                "a driver is reached by no role, so nothing could tell one that outlived what \
+                 it shadowed from one still in service",
+            ),
+        }
+    }
+}
+
+/// Everything a placeholder resolves against, which is one version's data.
+///
+/// Gathered rather than passed one by one because every one of these is read on
+/// every placeholder and none of them varies within a run.
+struct Version<'a> {
+    /// What the tree being rendered is for.
+    purpose: Purpose,
+    /// The version's own pins, for the provenance each source carries.
+    adapter: &'a Adapter,
+    /// What each role is bound to.
+    roles: &'a Roles,
+    /// The stub tree a seeded member is resolved against.
+    stubs: &'a [Stub],
+    /// What turns a reviewed name into the one this version links.
+    mapping: &'a Mapping,
+    /// The linked internal name of every role the templates reference.
+    linked: &'a BTreeMap<String, String>,
+}
+
+/// One template tree, and where this version keeps the sources it cannot share.
+pub(super) struct Tree<'a> {
+    /// The shared templates every version renders unless it replaces one.
+    pub(super) shared: &'a Path,
+    /// This version's own, which live under its version data rather than beside
+    /// the shared tree: a source only one version renders is that version's,
+    /// and everything a version owns is kept in one place.
+    pub(super) overrides: PathBuf,
+    /// What the tree renders.
+    pub(super) purpose: Purpose,
+}
+
+/// Everything one version's sources from one template tree come to.
+pub(super) struct Sources {
     /// Each source's path below the generated tree, with its Java.
     pub(super) java: Vec<(String, String)>,
     /// The templates a build has to watch.
     pub(super) templates: Vec<PathBuf>,
     /// Each screen class's constant name and the binary name it was emitted as.
     pub(super) names: Vec<(String, String)>,
+    /// Each source's name, and whether this version's own tree is what rendered it.
+    pub(super) origins: Vec<(String, bool)>,
+    /// Every role a placeholder in this tree named.
+    ///
+    /// A template's own name is not among them: what this answers is what the
+    /// sources *reach for*, which is how a version-only template is told from
+    /// one nothing renders any more.
+    referenced: BTreeSet<String>,
+    /// Each template this version added rather than replaced, with its role.
+    added: Vec<(String, PathBuf)>,
 }
 
 /// Renders every tracked template into the name space the version links.
 ///
 /// # Errors
 ///
-/// Returns an error when a template is unreadable, when it names a class the
-/// version's stub seeds do not carry, when it names a member that class does not
+/// Returns an error when a template is unreadable, when it names a role no
+/// admission list binds, when it names a member that role's class does not
 /// declare, or when the names it asks for cannot be written down together.
 pub(super) fn render(
-    directory: &Path,
+    tree: &Tree<'_>,
     adapter: &Adapter,
     roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
-) -> Result<Screens, GenerateError> {
-    let templates = templates(directory, &adapter.minecraft)?;
+) -> Result<Sources, GenerateError> {
+    let purpose = tree.purpose;
+    let Templates {
+        rendered: templates,
+        overridden,
+        added: version_only,
+    } = templates(tree)?;
     let mut read = Vec::with_capacity(templates.len());
     for path in &templates {
         read.push(template(path)?);
     }
 
     let mut referenced = BTreeSet::new();
+    let mut declared = BTreeSet::new();
+    let mut added = Vec::new();
     for template in &read {
+        let mut names = Vec::new();
+        // A stand-in declares the class its template is named after, so its own
+        // role is resolved as surely as the ones inside its placeholders — but
+        // it is kept apart from them, because a template naming its own role is
+        // not a source reaching for it.
+        if purpose == Purpose::StandIn {
+            names.push(template.name.clone());
+            declared.insert(template.name.clone());
+            if version_only.contains(&template.path) {
+                added.push((template.name.clone(), template.path.clone()));
+            }
+        }
         for placeholder in &template.placeholders {
             if let Placeholder::Class(role) | Placeholder::Import(role) = placeholder {
-                referenced.insert(role.clone());
+                // A stand-in writes its own role where its class name goes, and
+                // that is the declaration rather than a source reaching for it:
+                // counting it would make every version-only template reach
+                // itself and the check below say nothing.
+                if role != &template.name || purpose != Purpose::StandIn {
+                    referenced.insert(role.clone());
+                }
+                names.push(role.clone());
             }
+        }
+        // Resolved here, one template at a time, so a role nothing binds names
+        // the file that asked for it. The set below is resolved again as one,
+        // where what matters is that two roles do not collide.
+        for role in names {
+            roles
+                .class(&role)
+                .map_err(|error| in_template(template, error))?;
         }
     }
 
-    every_seeded_member_resolves(roles, stubs, mapping)?;
-    let linked = linked_classes(&referenced, roles, stubs, mapping)?;
+    let all = referenced.union(&declared).cloned().collect();
+    let linked = linked_classes(&all, roles, stubs, mapping, purpose)?;
     // A class the mapping puts in the unnamed package cannot be named from a
-    // package at all — the language has no syntax for it — so the screens go
-    // where their supertypes are. Under a version that keeps the game in
-    // packages they stay where ADG-6 put them, which is why an unobfuscated
-    // version generates the sources it already had.
+    // package at all — the language has no syntax for it — so Ravel's own
+    // sources go where their supertypes are. Under a version that keeps the game
+    // in packages they stay where ADG-6 put them, which is why an unobfuscated
+    // version generates the sources it already had. A driver is launched by the
+    // name a command line spells, so it has no package to lose under either.
     let unnamed = linked.values().any(|name| render::split(name).0.is_none());
-    let package = (!unnamed).then(|| SCREEN_PACKAGE.to_owned());
+    let owned = match purpose {
+        Purpose::Screen if !unnamed => Some(SCREEN_PACKAGE.to_owned()),
+        _ => None,
+    };
 
+    let version = Version {
+        purpose,
+        adapter,
+        roles,
+        stubs,
+        mapping,
+        linked: &linked,
+    };
     let mut java = Vec::with_capacity(read.len());
     let mut names = Vec::with_capacity(read.len());
     for template in &read {
-        let source = expand(
-            template,
-            adapter,
-            roles,
-            stubs,
-            mapping,
-            &linked,
-            package.as_deref(),
-        )?;
-        let (relative, binary) = match &package {
-            Some(package) => (
-                format!("{}/{}.java", package.replace('.', "/"), template.name),
-                format!("{package}.{}", template.name),
-            ),
-            None => (format!("{}.java", template.name), template.name.clone()),
+        // A stand-in is placed and named by the class it declares; Ravel's own
+        // sources are placed and named by the template that renders them.
+        let (package, simple, relative) = if purpose == Purpose::StandIn {
+            let declared = linked
+                .get(&template.name)
+                .ok_or_else(|| unresolved_role(template, &template.name))?;
+            let (package, simple) = render::split(declared);
+            (package, simple.to_owned(), format!("{declared}.java"))
+        } else {
+            let relative = match &owned {
+                Some(package) => {
+                    format!("{}/{}.java", package.replace('.', "/"), template.name)
+                }
+                None => format!("{}.java", template.name),
+            };
+            (owned.clone(), template.name.clone(), relative)
+        };
+        let source = expand(template, &version, package.as_deref())?;
+        let binary = match &package {
+            Some(package) => format!("{package}.{simple}"),
+            None => simple.clone(),
         };
         java.push((relative, source));
         names.push((constant(&template.name), binary));
     }
-    Ok(Screens {
+    let origins = read
+        .iter()
+        .map(|template| (template.name.clone(), overridden.contains(&template.path)))
+        .collect();
+    Ok(Sources {
         java,
         templates,
         names,
+        origins,
+        referenced,
+        added,
     })
+}
+
+/// Every template a version added rather than replaced has to be reached.
+///
+/// A version-only template is legitimate: the game itself gained a class between
+/// two versions, and a harness that could not say so would have to pretend the
+/// older one has it. What is not legitimate is one that shadows nothing and that
+/// nothing names — an override left behind after the source that reached for it
+/// was deleted or renamed, which renders a class into the tree on one version and
+/// is read by no compiler.
+///
+/// Asked across every tree at once, because the trees are rendered for each
+/// other: the harness's stand-in game exists so the screen jar's generated
+/// sources have something to compile against, so the source that reaches for a
+/// stand-in is often not in the stand-in's own tree.
+///
+/// # Errors
+///
+/// Returns an error naming the file and the role nothing reaches.
+pub(super) fn every_added_template_is_reached(rendered: &[&Sources]) -> Result<(), GenerateError> {
+    let mut reached = BTreeSet::new();
+    for sources in rendered {
+        reached.extend(sources.referenced.iter().cloned());
+    }
+    for sources in rendered {
+        for (role, path) in &sources.added {
+            if !reached.contains(role) {
+                return Err(GenerateError::Input(format!(
+                    "{} replaces no shared template and no source this version renders names the \
+                     role {role}, so it is an override that outlived the template it shadowed",
+                    path.display()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The refusal a template naming a role nothing resolved earns, with the file.
+fn unresolved_role(template: &Template, role: &str) -> GenerateError {
+    in_template(
+        template,
+        GenerateError::Unresolved(format!("no linked name was resolved for the role {role}")),
+    )
+}
+
+/// One template's failure, said with the template that carries it.
+///
+/// A placeholder resolves against version data rather than against the file it
+/// sits in, so a refusal that named only the role left a reader grepping every
+/// template for the word. The file is what they open.
+fn in_template(template: &Template, error: GenerateError) -> GenerateError {
+    let named = |detail: String| format!("{}: {detail}", template.path.display());
+    match error {
+        GenerateError::Input(detail) => GenerateError::Input(named(detail)),
+        GenerateError::Drift(detail) => GenerateError::Drift(named(detail)),
+        GenerateError::Unresolved(detail) => GenerateError::Unresolved(named(detail)),
+        GenerateError::Extraction(detail) => GenerateError::Extraction(named(detail)),
+        GenerateError::Unsupported(detail) => GenerateError::Unsupported(named(detail)),
+    }
 }
 
 /// Every template one version renders, in a stable order.
 ///
-/// The shared directory holds the screens every version draws the same way, and
-/// `<directory>/<version>/` holds the ones that version cannot. An override
-/// replaces the shared template of its own name and nothing else.
+/// [`Tree::shared`] holds the sources every version renders the same way and
+/// [`Tree::overrides`] the ones this version cannot. An override replaces the
+/// shared template of its own name. Returns every template this version renders
+/// and, beside it, the ones it added rather than replaced.
 ///
 /// The two are deliberately not the same tool. A role binding in `stubs.toml`
 /// answers a rename, which is what almost every drift between two versions is,
@@ -131,20 +351,20 @@ pub(super) fn render(
 /// has to be maintained twice, so an override that only renames is a mistake
 /// this mechanism cannot detect and a reviewer has to.
 ///
-/// An override has to replace something. A version-only screen would give one
+/// Whether an override has to replace something is
+/// [`Purpose::no_addition_reason`]'s answer. A version-only screen would give one
 /// version a screen the agent jar cannot count on finding, and the constants the
-/// jar opens screens by are the same set under every version.
-fn templates(directory: &Path, version: &str) -> Result<Vec<PathBuf>, GenerateError> {
-    let shared = in_directory(directory)?;
-    if shared.is_empty() {
-        return Err(GenerateError::Input(format!(
-            "{} holds no screen template, so the screen jar would be built from nothing",
-            directory.display()
-        )));
-    }
-
-    let overrides = directory.join(version);
-    let mut found = shared;
+/// jar opens screens by are the same set under every version. A version-only
+/// stand-in is the opposite: the game itself gained a class between two versions,
+/// and a harness that could not say so would have to pretend the older one has
+/// it. A driver sits with the screen rather than the stand-in, because the check
+/// that retires an outlived override reads the roles a version's sources name and
+/// a driver is named by none of them.
+fn templates(tree: &Tree<'_>) -> Result<Templates, GenerateError> {
+    let overrides = &tree.overrides;
+    let mut found = in_directory(tree.shared)?;
+    let mut overridden = BTreeSet::new();
+    let mut added = BTreeSet::new();
     if overrides.is_dir() {
         // A version's override directory holds templates and nothing else. A
         // directory inside it is refused rather than skipped, because
@@ -152,7 +372,7 @@ fn templates(directory: &Path, version: &str) -> Result<Vec<PathBuf>, GenerateEr
         // into nothing at all while saying nothing. The shared directory is
         // where these directories legitimately live, which is why this is here
         // rather than in the read.
-        for entry in fs::read_dir(&overrides).map_err(|error| {
+        for entry in fs::read_dir(overrides).map_err(|error| {
             GenerateError::Input(format!(
                 "cannot read the screen templates at {}: {error}",
                 overrides.display()
@@ -171,23 +391,53 @@ fn templates(directory: &Path, version: &str) -> Result<Vec<PathBuf>, GenerateEr
                 )));
             }
         }
-        for path in in_directory(&overrides)? {
+        for path in in_directory(overrides)? {
             let name = path.file_name().unwrap_or_default().to_owned();
             let replaced = found
                 .iter()
                 .position(|shared| shared.file_name().unwrap_or_default() == name);
-            let Some(index) = replaced else {
-                return Err(GenerateError::Input(format!(
-                    "{} overrides no shared template, and a screen only one version draws is \
-                     one the agent jar cannot open under the others",
-                    path.display()
-                )));
-            };
-            found[index] = path;
+            overridden.insert(path.clone());
+            match replaced {
+                Some(index) => found[index] = path,
+                None => match tree.purpose.no_addition_reason() {
+                    None => {
+                        added.insert(path.clone());
+                        found.push(path);
+                    }
+                    Some(reason) => {
+                        return Err(GenerateError::Input(format!(
+                            "{} overrides no shared template, and {reason}",
+                            path.display()
+                        )));
+                    }
+                },
+            }
         }
     }
+    if found.is_empty() {
+        return Err(GenerateError::Input(format!(
+            "{} holds no template this version renders, so the tree it feeds would be built \
+             from nothing",
+            tree.shared.display()
+        )));
+    }
     found.sort();
-    Ok(found)
+    Ok(Templates {
+        rendered: found,
+        overridden,
+        added,
+    })
+}
+
+/// Every template one version renders, and which tree each was read from.
+#[derive(Debug)]
+struct Templates {
+    /// What this version renders, in a stable order.
+    rendered: Vec<PathBuf>,
+    /// The ones read from this version's own directory rather than the shared tree.
+    overridden: BTreeSet<PathBuf>,
+    /// The ones it added rather than replaced.
+    added: BTreeSet<PathBuf>,
 }
 
 /// Every template directly inside one directory, in a stable order.
@@ -257,7 +507,9 @@ impl Placeholder {
 
 /// One template, read once.
 struct Template {
-    /// The Java class it renders.
+    /// Where it was read from, which is what a refusal names.
+    path: PathBuf,
+    /// The role or the Java class it renders.
     name: String,
     /// Its text, placeholders and all.
     text: String,
@@ -299,6 +551,7 @@ fn template(path: &Path) -> Result<Template, GenerateError> {
         rest = &after[end + 2..];
     }
     Ok(Template {
+        path: path.to_owned(),
         name,
         text,
         placeholders,
@@ -307,23 +560,25 @@ fn template(path: &Path) -> Result<Template, GenerateError> {
 
 /// The linked internal name of every class the templates reference.
 ///
-/// A role is only rendered where the version's admission lists bind it, and only
-/// where the stub tree carries the class they bind to, because that tree is what
-/// the screen jar compiles against: a name outside it would compile against
-/// nothing. Resolution reads all three lists, so a role a screen shares with the
-/// agent jar's surface is one class rather than two, and stubbing is still what
-/// says a compile-time reference to it can be written.
+/// A role is only rendered where the version's admission lists bind it, and, for
+/// the screen jar, only where the stub tree carries the class they bind to,
+/// because that tree is what the screen jar compiles against: a name outside it
+/// would compile against nothing. The harness compiles against the stand-ins
+/// themselves, so nothing there is asked to be stubbed. Resolution reads all
+/// three lists either way, so a role a source shares with the agent jar's
+/// surface is one class rather than two.
 fn linked_classes(
     referenced: &BTreeSet<String>,
     roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
+    purpose: Purpose,
 ) -> Result<BTreeMap<String, String>, GenerateError> {
     let mut linked = BTreeMap::new();
-    let mut simple: BTreeMap<String, String> = BTreeMap::new();
+    let mut simple: BTreeMap<String, (String, String)> = BTreeMap::new();
     for role in referenced {
         let class = roles.class(role)?;
-        if !stubs.iter().any(|stub| stub.class == class) {
+        if purpose.stubbed() && !stubs.iter().any(|stub| stub.class == class) {
             return Err(GenerateError::Unresolved(format!(
                 "a screen template names {role}, which this version binds to {}, and that class \
                  is not stubbed, so the screen jar would compile against nothing",
@@ -332,8 +587,12 @@ fn linked_classes(
         }
         let name = mapping.runtime_class(&class).to_owned();
         let last = render::split(&name).1.to_owned();
-        if let Some(other) = simple.insert(last.clone(), role.clone())
-            && &other != role
+        // Two roles for one class are two words for one thing, which is what a
+        // class the reflective surface and the stub seeds both name is. Two
+        // roles for two classes that link as one name are the collision: a
+        // source naming either of them names whichever the compiler resolves.
+        if let Some((other, held)) = simple.insert(last.clone(), (role.clone(), name.clone()))
+            && held != name
         {
             return Err(GenerateError::Unsupported(format!(
                 "the roles {other} and {role} both link as {last}, and a source that names one \
@@ -358,7 +617,7 @@ fn linked_classes(
 ///
 /// Returns an error when a seeded member resolves to no linked member or to
 /// more than one.
-fn every_seeded_member_resolves(
+pub(super) fn every_seeded_member_resolves(
     roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
@@ -377,11 +636,7 @@ fn every_seeded_member_resolves(
 /// structure is the generated source's.
 fn expand(
     template: &Template,
-    adapter: &Adapter,
-    roles: &Roles,
-    stubs: &[Stub],
-    mapping: &Mapping,
-    linked: &BTreeMap<String, String>,
+    version: &Version<'_>,
     package: Option<&str>,
 ) -> Result<String, GenerateError> {
     let mut source = String::with_capacity(template.text.len());
@@ -397,15 +652,10 @@ fn expand(
                 template.name
             ))
         })?;
-        source.push_str(&resolve(
-            placeholder,
-            adapter,
-            roles,
-            stubs,
-            mapping,
-            linked,
-            package,
-        )?);
+        source.push_str(
+            &resolve(placeholder, version, package)
+                .map_err(|error| in_template(template, error))?,
+        );
         rest = &after[end + 2..];
     }
     source.push_str(rest);
@@ -415,19 +665,12 @@ fn expand(
 /// What one placeholder renders as.
 fn resolve(
     placeholder: &Placeholder,
-    adapter: &Adapter,
-    roles: &Roles,
-    stubs: &[Stub],
-    mapping: &Mapping,
-    linked: &BTreeMap<String, String>,
+    version: &Version<'_>,
     package: Option<&str>,
 ) -> Result<String, GenerateError> {
-    let name = |class: &String| {
-        linked.get(class).cloned().ok_or_else(|| {
-            GenerateError::Unresolved(format!(
-                "no linked name was resolved for {}",
-                class.replace('/', ".")
-            ))
+    let name = |role: &String| {
+        version.linked.get(role).cloned().ok_or_else(|| {
+            GenerateError::Unresolved(format!("no linked name was resolved for the role {role}"))
         })
     };
     match placeholder {
@@ -437,12 +680,17 @@ fn resolve(
         Placeholder::Package => Ok(match package {
             Some(package) => format!(
                 "package {package}; // Generated from the pinned Minecraft {} inputs. Do not edit.",
-                adapter.minecraft
+                version.adapter.minecraft
             ),
             None => format!(
-                "// Generated from the pinned Minecraft {} inputs. Do not edit. The game is in the \
-                 unnamed package here, so this is too.",
-                adapter.minecraft
+                "// Generated from the pinned Minecraft {} inputs. Do not edit. {}",
+                version.adapter.minecraft,
+                match version.purpose {
+                    // A driver is started by the name a command line spells, and
+                    // that name has no package under any version.
+                    Purpose::Driver => "A command line names this class, so it has no package.",
+                    _ => "The game is in the unnamed package here, so this is too.",
+                }
             ),
         }),
         // A class the version links in the unnamed package is imported by
@@ -459,20 +707,26 @@ fn resolve(
             let linked = name(class)?;
             Ok(render::split(&linked).1.to_owned())
         }
-        Placeholder::Member(role, member) => member_name(role, member, roles, stubs, mapping),
+        Placeholder::Member(role, member) => {
+            member_name(role, member, version.roles, version.stubs, version.mapping)
+        }
     }
 }
 
 /// The linked name of the member one version binds a member role to.
 ///
-/// Two bindings cross here. The seed list says which member of this version's
-/// class the template's word means, which is what carries a template across a
-/// rename, and the mapping says what that member links as. Every overload the
-/// seed list stubbed is asked, and they have to agree. A template names a member
-/// and never a descriptor, for the reason `stubs.toml` does not: writing one
-/// down is the transcription the generated stubs exist to avoid. Two overloads
-/// that link under different names cannot be written as one reference, so that
-/// is a refusal rather than a choice made here.
+/// Two bindings cross here, and a version may carry either or both. The stub
+/// seeds say which member of this version's class the template's word means and
+/// the stub tree says which overloads that name covers; the runtime lists say it
+/// with a descriptor of their own and need no tree. The mapping is what turns
+/// each into the name the JVM links, and where both answer they have to answer
+/// the same thing — a stand-in whose declaration and the agent jar's lookup
+/// disagreed would be exactly the mismatch this whole tree exists to remove.
+///
+/// A template names a member and never a descriptor, for the reason `stubs.toml`
+/// does not: writing one down is the transcription the generated stubs exist to
+/// avoid. Two overloads that link under different names cannot be written as one
+/// reference, so that is a refusal rather than a choice made here.
 fn member_name(
     role: &str,
     member_role: &str,
@@ -481,35 +735,62 @@ fn member_name(
     mapping: &Mapping,
 ) -> Result<String, GenerateError> {
     let class = roles.class(role)?;
-    let Some(bound) = roles.seeded_members(role) else {
-        return Err(GenerateError::Unresolved(match roles.bound_by(role) {
+    let reviewed = render::source_name(&class);
+    let seeded = seeded_member_name(&class, role, member_role, roles, stubs, mapping)?;
+    let declared = roles.declared_member(role, member_role)?.map(|declared| {
+        mapping
+            .linked_member(&class, &declared.member, &declared.descriptor)
+            .0
+    });
+    match (seeded, declared) {
+        (Some(seeded), Some(declared)) if seeded != declared => {
+            Err(GenerateError::Unsupported(format!(
+                "{reviewed}#{member_role} links as {seeded} through the stub seeds and as \
+                 {declared} through this version's runtime lists, and one member role names one \
+                 member"
+            )))
+        }
+        (Some(name), _) | (None, Some(name)) => Ok(name),
+        (None, None) => Err(GenerateError::Unresolved(match roles.bound_by(role) {
             Some(list) => format!(
-                "a screen template names {role}#{member_role}, and this version's {list} binds \
-                 a class to that role while only stubs.toml binds member roles"
+                "a template names {role}#{member_role}, and this version's {list} binds a class \
+                 to that role and no member of it to that member role"
             ),
             None => format!(
-                "a screen template names {role}#{member_role} and none of this version's \
-                 stubs.toml, reflection.toml or hooks.toml binds a class to that role"
+                "a template names {role}#{member_role} and none of this version's stubs.toml, \
+                 reflection.toml or hooks.toml binds a class to that role"
             ),
-        }));
+        })),
+    }
+}
+
+/// The linked name the stub seeds bind a member role to, where they bind one.
+///
+/// `None` where the seeds bind no class to the role or no member of it to the
+/// member role, which leaves the answer to the runtime lists rather than
+/// deciding there is none.
+fn seeded_member_name(
+    class: &str,
+    role: &str,
+    member_role: &str,
+    roles: &Roles,
+    stubs: &[Stub],
+    mapping: &Mapping,
+) -> Result<Option<String>, GenerateError> {
+    let Some(bound) = roles.seeded_members(role) else {
+        return Ok(None);
     };
-    let reviewed = render::source_name(&class);
-    let seeded = bound
-        .iter()
-        .find(|seeded| seeded.role() == member_role)
-        .ok_or_else(|| {
-            GenerateError::Unresolved(format!(
-                "a screen template names {role}#{member_role} and the version's stub seeds bind \
-                 no member of {reviewed} to that role"
-            ))
-        })?;
+    let Some(seeded) = bound.iter().find(|seeded| seeded.role() == member_role) else {
+        return Ok(None);
+    };
+    let reviewed = render::source_name(class);
     let member = seeded.member();
     let stub = stubs
         .iter()
         .find(|stub| stub.class == class)
         .ok_or_else(|| {
             GenerateError::Unresolved(format!(
-                "a screen template names {role}#{member_role} and {reviewed} is not stubbed"
+                "a template names {role}#{member_role} and {reviewed} is not stubbed"
             ))
         })?;
     // Every overload is stubbed, because the seed list names a member and never
@@ -535,7 +816,7 @@ fn member_name(
         .iter()
         .map(|declared| {
             mapping
-                .linked_member(&class, &declared.name, &declared.descriptor)
+                .linked_member(class, &declared.name, &declared.descriptor)
                 .0
         })
         .collect::<Vec<_>>();
@@ -543,10 +824,10 @@ fn member_name(
     names.dedup();
     match names.as_slice() {
         [] => Err(GenerateError::Unresolved(format!(
-            "a screen template names {role}#{member_role}, which this version binds to \
+            "a template names {role}#{member_role}, which this version binds to \
              {reviewed}#{member}, and the stub tree does not carry that member"
         ))),
-        [one] => Ok(one.clone()),
+        [one] => Ok(Some(one.clone())),
         several => Err(GenerateError::Unsupported(format!(
             "{reviewed}#{member} links under {} names ({}), so no single reference names them all",
             several.len(),
@@ -574,6 +855,20 @@ fn constant(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// A tree over a staged shared directory, with its overrides beside it.
+    ///
+    /// The tracked trees keep a version's own templates under that version's
+    /// data; a staged one keeps them in a subdirectory, because what these tests
+    /// ask about is the shared-and-override rule rather than where a repository
+    /// files things.
+    fn tree<'a>(shared: &'a Path, version: &str, purpose: Purpose) -> Tree<'a> {
+        Tree {
+            shared,
+            overrides: shared.join(version),
+            purpose,
+        }
+    }
+
     use std::fmt::Write as _;
 
     use super::super::inputs::{self, MappingSource, Seed, SeedMember, Seeds};
@@ -639,6 +934,7 @@ com.example.util.Held -> com.example.util.Held:
                 non_goals: Vec::new(),
             },
         )
+        .expect("the invented declarations read")
     }
 
     fn roles(seeds: &Seeds) -> Roles {
@@ -759,8 +1055,14 @@ com.example.util.Held -> com.example.util.Held:
     #[test]
     fn a_class_the_mapping_leaves_in_a_package_is_still_imported() {
         let referenced = ["Clock".to_owned()].into_iter().collect();
-        let linked = linked_classes(&referenced, &roles(&seeds()), &stubs(), &proguard())
-            .expect("resolvable");
+        let linked = linked_classes(
+            &referenced,
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            Purpose::Screen,
+        )
+        .expect("resolvable");
 
         assert_eq!(linked["Clock"], "com/example/util/Held");
     }
@@ -769,8 +1071,14 @@ com.example.util.Held -> com.example.util.Held:
     fn a_class_the_stub_seeds_do_not_carry_is_refused() {
         let referenced = ["Unseeded".to_owned()].into_iter().collect();
 
-        let error = linked_classes(&referenced, &roles(&seeds()), &stubs(), &proguard())
-            .expect_err("a template may only name a role the seeds bind");
+        let error = linked_classes(
+            &referenced,
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            Purpose::Screen,
+        )
+        .expect_err("a template may only name a role the seeds bind");
 
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
     }
@@ -843,8 +1151,9 @@ com.example.util.Held -> com.example.util.Held:
                 .expect("the tracked lock should resolve");
             let mapping = obfuscating(&stubs);
 
+            let shared = root.join(super::super::SCREEN_TEMPLATES);
             let screens = render(
-                &root.join(super::super::SCREEN_TEMPLATES),
+                &tree(&shared, &version, Purpose::Screen),
                 &pinned.adapter,
                 &roles(&pinned.seeds),
                 &stubs,
@@ -914,8 +1223,9 @@ com.example.util.Held -> com.example.util.Held:
             let stubs = super::super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
                 .expect("the tracked lock should resolve");
             let mapping = obfuscating(&stubs);
+            let shared = root.join(super::super::SCREEN_TEMPLATES);
             let screens = render(
-                &root.join(super::super::SCREEN_TEMPLATES),
+                &tree(&shared, &version, Purpose::Screen),
                 &pinned.adapter,
                 &roles(&pinned.seeds),
                 &stubs,
@@ -1017,8 +1327,14 @@ com.example.util.Held -> com.example.util.Held:
     #[test]
     fn a_role_renders_the_class_and_member_the_seed_list_binds_it_to() {
         let referenced = ["Surface".to_owned()].into_iter().collect();
-        let linked = linked_classes(&referenced, &roles(&seeds()), &stubs(), &proguard())
-            .expect("resolvable");
+        let linked = linked_classes(
+            &referenced,
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            Purpose::Screen,
+        )
+        .expect("resolvable");
         assert_eq!(linked["Surface"], "a");
 
         let name = member_name("Surface", "size", &roles(&seeds()), &stubs(), &proguard())
@@ -1188,17 +1504,32 @@ com.example.util.Held -> com.example.util.Held:
     fn a_version_override_replaces_the_shared_template_of_its_name() {
         let root = staged_templates("applied", &[("Shared.java.in", "{{package}}\noverride\n")]);
 
-        let overridden = templates(&root, "9.9.9").expect("the override applies");
-        assert_eq!(overridden.len(), 1);
+        let applied =
+            templates(&tree(&root, "9.9.9", Purpose::Screen)).expect("the override applies");
+        assert_eq!(applied.rendered.len(), 1);
+        assert!(
+            applied.added.is_empty(),
+            "an override that replaces one adds none"
+        );
         assert_eq!(
-            std::fs::read_to_string(&overridden[0]).expect("readable"),
+            applied.overridden.len(),
+            1,
+            "the record has to say this version's own tree rendered it"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&applied.rendered[0]).expect("readable"),
             "{{package}}\noverride\n"
         );
 
-        let shared = templates(&root, "0.0.0-none").expect("a version with no override");
-        assert_eq!(shared.len(), 1);
+        let plain = templates(&tree(&root, "0.0.0-none", Purpose::Screen))
+            .expect("a version with no override");
+        assert_eq!(plain.rendered.len(), 1);
+        assert!(
+            plain.overridden.is_empty(),
+            "a version that overrides nothing has to say so"
+        );
         assert_eq!(
-            std::fs::read_to_string(&shared[0]).expect("readable"),
+            std::fs::read_to_string(&plain.rendered[0]).expect("readable"),
             "{{package}}\nshared\n"
         );
 
@@ -1211,7 +1542,8 @@ com.example.util.Held -> com.example.util.Held:
     fn a_version_override_that_replaces_nothing_is_refused() {
         let root = staged_templates("orphan", &[("Orphan.java.in", "{{package}}\n")]);
 
-        let error = templates(&root, "9.9.9").expect_err("an override must replace something");
+        let error = templates(&tree(&root, "9.9.9", Purpose::Screen))
+            .expect_err("an override must replace something");
 
         assert!(matches!(error, GenerateError::Input(_)), "{error}");
         assert!(
@@ -1230,7 +1562,8 @@ com.example.util.Held -> com.example.util.Held:
         std::fs::create_dir_all(root.join("9.9.9/inner")).expect("creatable");
         std::fs::write(root.join("9.9.9/inner/Shared.java.in"), "{{package}}\n").expect("writable");
 
-        let error = templates(&root, "9.9.9").expect_err("a nested directory is refused");
+        let error = templates(&tree(&root, "9.9.9", Purpose::Screen))
+            .expect_err("a nested directory is refused");
 
         assert!(error.to_string().contains("one level only"), "{error}");
         let _ = std::fs::remove_dir_all(&root);
@@ -1269,13 +1602,282 @@ com.example.util.Held -> com.example.util.Held:
             .adapter
     }
 
+    /// A template directory holding one template of the caller's own name.
+    fn staged_tree(name: &str, file: &str, text: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("ravel-tree-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("the staged directory should be made");
+        std::fs::write(root.join(file), text).expect("the template should be written");
+        root
+    }
+
+    /// A stand-in is named and placed by the class its role links to, not by its
+    /// template.
+    ///
+    /// Both halves of the name are checked and so is the path, because a
+    /// generator that took the template's own word would put a class called
+    /// `Clock` in the unnamed package and every one of those three would be
+    /// wrong in a different way.
+    #[test]
+    fn a_stand_in_is_named_and_placed_by_the_role_it_declares() {
+        let root = staged_tree(
+            "declaring",
+            "Clock.java.in",
+            "{{package}}\npublic class {{Clock}} {\n}\n",
+        );
+
+        let rendered = render(
+            &tree(&root, "0.0.0-none", Purpose::StandIn),
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+        )
+        .expect("the seeds bind the role the template is named after");
+
+        let (relative, source) = &rendered.java[0];
+        assert_eq!(relative, "com/example/util/Held.java");
+        assert!(source.starts_with("package com.example.util;"), "{source}");
+        assert!(source.contains("public class Held {"), "{source}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The same template under a mapping that puts the class in the unnamed
+    /// package, which is the shape the harness exists to reach.
+    #[test]
+    fn a_stand_in_whose_class_has_no_package_declares_none() {
+        let root = staged_tree(
+            "declaring-unnamed",
+            "Surface.java.in",
+            "{{package}}\npublic class {{Surface}} {\n}\n",
+        );
+
+        let rendered = render(
+            &tree(&root, "0.0.0-none", Purpose::StandIn),
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+        )
+        .expect("the seeds bind the role the template is named after");
+
+        let (relative, source) = &rendered.java[0];
+        assert_eq!(relative, "a.java");
+        assert!(!source.starts_with("package "), "{source}");
+        assert!(source.contains("public class a {"), "{source}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A driver keeps the name its template gives it and the package a command
+    /// line spells, which is none, even where the game it names is in packages.
+    #[test]
+    fn a_driver_is_named_by_its_template_and_placed_in_no_package() {
+        let root = staged_tree(
+            "driver",
+            "Driven.java.in",
+            "{{package}}\n{{import Clock}}\npublic class Driven {\n    {{Clock}} held;\n}\n",
+        );
+
+        let rendered = render(
+            &tree(&root, "0.0.0-none", Purpose::Driver),
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+        )
+        .expect("a driver names roles like anything else");
+
+        let (relative, source) = &rendered.java[0];
+        assert_eq!(relative, "Driven.java");
+        assert!(!source.starts_with("package "), "{source}");
+        assert!(source.contains("import com.example.util.Held;"), "{source}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A template named after a role no admission list binds is refused, and the
+    /// refusal names the file rather than only the word: the word is in every
+    /// template and the file is the one a reader opens.
+    #[test]
+    fn a_stand_in_naming_a_role_nothing_binds_is_refused_with_its_file() {
+        let root = staged_tree(
+            "declaring-unbound",
+            "Unbound.java.in",
+            "{{package}}\npublic class {{Unbound}} {\n}\n",
+        );
+
+        let Err(error) = render(
+            &tree(&root, "0.0.0-none", Purpose::StandIn),
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+        ) else {
+            panic!("no admission list binds the role the template is named after");
+        };
+
+        let message = error.to_string();
+        assert!(message.contains("Unbound.java.in"), "{message}");
+        assert!(message.contains("Unbound"), "{message}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A version-only stand-in is what a version whose game gained a class means.
+    /// The same file is still a screen nobody else can open under the screen
+    /// tree, and a driver nothing can retire under the driver tree.
+    #[test]
+    fn a_version_only_template_is_a_stand_in_and_nothing_else() {
+        let root = staged_templates("version-only", &[("Only.java.in", "{{package}}\n")]);
+
+        let held = templates(&tree(&root, "9.9.9", Purpose::StandIn))
+            .expect("a version's game may carry a class another version's does not");
+        assert_eq!(held.rendered.len(), 2);
+        assert_eq!(held.added.len(), 1, "the one it added rather than replaced");
+
+        let error = templates(&tree(&root, "9.9.9", Purpose::Screen))
+            .expect_err("a screen only one version draws is one the others cannot open");
+        assert!(
+            error.to_string().contains("overrides no shared template"),
+            "{error}"
+        );
+
+        // A driver that replaces nothing is refused for a reason of its own: it
+        // is compiled by the sweep that finds it and named by no role, so an
+        // added one renders and compiles with nothing able to say it outlived
+        // the source it was written for.
+        let error = templates(&tree(&root, "9.9.9", Purpose::Driver))
+            .expect_err("a driver only one version renders is reached by no role");
+        let message = error.to_string();
+        assert!(
+            message.contains("overrides no shared template"),
+            "{message}"
+        );
+        assert!(message.contains("reached by no role"), "{message}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A version-only stand-in has to be reached by something the version
+    /// renders, and the source that reaches it may be in another tree.
+    ///
+    /// Both halves: the stand-in a driver names is kept, and the one nothing
+    /// names is refused with its file. Without the second half an override left
+    /// behind after its caller was deleted renders a class on one version that
+    /// no compiler ever reads.
+    #[test]
+    fn a_version_only_stand_in_nothing_reaches_is_refused_with_its_file() {
+        let shared = staged_tree(
+            "reached-game",
+            "Text.java.in",
+            "{{package}}\npublic class {{Text}} {\n}\n",
+        );
+        let overrides = staged_tree(
+            "reached-overrides",
+            "Clock.java.in",
+            "{{package}}\npublic class {{Clock}} {\n}\n",
+        );
+        let game = Tree {
+            shared: &shared,
+            overrides: overrides.clone(),
+            purpose: Purpose::StandIn,
+        };
+        let render_game = || {
+            render(&game, &adapter(), &roles(&seeds()), &stubs(), &proguard())
+                .expect("both roles are bound")
+        };
+
+        let naming = staged_tree(
+            "reached-driver",
+            "Driven.java.in",
+            "{{package}}\n{{import Clock}}\npublic class Driven {\n    {{Clock}} held;\n}\n",
+        );
+        let driver = Tree {
+            shared: &naming,
+            overrides: naming.join("0.0.0-none"),
+            purpose: Purpose::Driver,
+        };
+        let drivers = render(&driver, &adapter(), &roles(&seeds()), &stubs(), &proguard())
+            .expect("the driver names a bound role");
+        every_added_template_is_reached(&[&render_game(), &drivers])
+            .expect("the driver in the other tree reaches the stand-in");
+
+        let silent = staged_tree(
+            "reached-silent",
+            "Driven.java.in",
+            "{{package}}\npublic class Driven {\n}\n",
+        );
+        let quiet = Tree {
+            shared: &silent,
+            overrides: silent.join("0.0.0-none"),
+            purpose: Purpose::Driver,
+        };
+        let quiet = render(&quiet, &adapter(), &roles(&seeds()), &stubs(), &proguard())
+            .expect("a driver may name nothing");
+
+        let Err(error) = every_added_template_is_reached(&[&render_game(), &quiet]) else {
+            panic!("nothing this version renders names the added stand-in");
+        };
+        let message = error.to_string();
+        assert!(message.contains("Clock.java.in"), "{message}");
+        assert!(
+            message.contains("outlived the template it shadowed"),
+            "{message}"
+        );
+
+        for root in [shared, overrides, naming, silent] {
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// A member role a runtime list declares renders without the stub seeds
+    /// binding it, which is what a stand-in declaring a reflected member needs.
+    ///
+    /// The field is the one the invented mapping renames, so a resolver that
+    /// passed the reviewed name through would answer `width` here.
+    #[test]
+    fn a_member_role_the_reflective_surface_declares_renders() {
+        let bound = Roles::new(
+            &seeds(),
+            &inputs::Reflection {
+                schema_version: 1,
+                minecraft: String::from("0.0.0"),
+                classes: vec![inputs::Reflected {
+                    name: "Ticker".to_owned(),
+                    class: "com.example.gui.Panel".to_owned(),
+                    runtime: "com.example.gui.Panel".to_owned(),
+                    members: vec![inputs::ReflectedMember {
+                        name: "width".to_owned(),
+                        descriptor: Some("I".to_owned()),
+                        parameters: None,
+                    }],
+                }],
+            },
+            &inputs::Inventory {
+                schema_version: 1,
+                minecraft: String::from("0.0.0"),
+                hooks: Vec::new(),
+                non_goals: Vec::new(),
+            },
+        )
+        .expect("the invented declarations read");
+
+        let name = member_name("Ticker", "width", &bound, &stubs(), &proguard())
+            .expect("the surface declares the member by descriptor");
+
+        assert_eq!(name, "j");
+    }
+
     #[test]
     fn a_role_only_the_reflective_surface_binds_renders_through_a_screen() {
         let root = staged_screen("reflected", TICKING);
         let bound = roles_over(&seeds(), &[("Ticker", "com.example.util.Held")], &[]);
 
-        let screens = render(&root, &adapter(), &bound, &stubs(), &proguard())
-            .expect("reflection.toml binds the role the template names");
+        let screens = render(
+            &tree(&root, "0.0.0-none", Purpose::Screen),
+            &adapter(),
+            &bound,
+            &stubs(),
+            &proguard(),
+        )
+        .expect("reflection.toml binds the role the template names");
 
         let (_, source) = &screens.java[0];
         assert!(source.contains("import com.example.util.Held;"), "{source}");
@@ -1288,8 +1890,14 @@ com.example.util.Held -> com.example.util.Held:
         let root = staged_screen("hooked", TICKING);
         let bound = roles_over(&seeds(), &[], &[("Ticker", "com.example.util.Held")]);
 
-        let screens = render(&root, &adapter(), &bound, &stubs(), &proguard())
-            .expect("hooks.toml binds the role the template names");
+        let screens = render(
+            &tree(&root, "0.0.0-none", Purpose::Screen),
+            &adapter(),
+            &bound,
+            &stubs(),
+            &proguard(),
+        )
+        .expect("hooks.toml binds the role the template names");
 
         let (_, source) = &screens.java[0];
         assert!(source.contains("import com.example.util.Held;"), "{source}");
@@ -1306,7 +1914,13 @@ com.example.util.Held -> com.example.util.Held:
             &[("Ticker", "com.example.gui.Panel")],
         );
 
-        let Err(error) = render(&root, &adapter(), &bound, &stubs(), &proguard()) else {
+        let Err(error) = render(
+            &tree(&root, "0.0.0-none", Purpose::Screen),
+            &adapter(),
+            &bound,
+            &stubs(),
+            &proguard(),
+        ) else {
             panic!("two lists bind the role to two classes");
         };
 

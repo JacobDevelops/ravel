@@ -65,6 +65,15 @@ name = "play"
 descriptor = "(Lnet/minecraft/client/resources/sounds/SoundInstance;)V"
 
 [[reflected]]
+# What the manager's play request takes, which is the erased type it declares.
+# Named here for its linked name alone: the agent jar passes it inside the
+# descriptor it looks the request up by, and the harness's stand-in has to
+# declare that same type or declare a different method.
+name = "SOUND_INSTANCE"
+class = "net.minecraft.client.resources.sounds.SoundInstance"
+runtime = "gua"
+
+[[reflected]]
 name = "SOUND_EVENT"
 class = "net.minecraft.sounds.SoundEvent"
 runtime = "avo"

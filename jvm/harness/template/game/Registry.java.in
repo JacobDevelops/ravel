@@ -1,0 +1,80 @@
+{{package}}
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+{{import IDENTIFIER}}
+{{import BLOCK}}
+{{import Item}}
+{{import BlockItem}}
+
+/**
+ * A stand-in registry with the behaviour that decides whether registration
+ * worked: it refuses a duplicate and refuses everything once frozen.
+ *
+ * <p>It also stamps what it registered with the identifier it was registered
+ * under, because that is where a registered value's name comes from under every
+ * tracked version. One of them additionally makes the caller describe the value
+ * with a key before it exists, and that is that version's properties builder's
+ * business rather than this one's.
+ */
+public class {{Registry}} {
+    private final String name;
+    private final Map<String, Object> entries = new LinkedHashMap<>();
+    private boolean frozen;
+
+    public {{Registry}}(String name) {
+        this.name = name;
+    }
+
+    public static Object {{Registry#register}}(
+            {{Registry}} registry, {{IDENTIFIER}} identifier, Object value) {
+        if (registry.frozen) {
+            throw new IllegalStateException("registry " + registry.name + " is frozen");
+        }
+        if (registry.entries.putIfAbsent(identifier.toString(), value) != null) {
+            throw new IllegalStateException(identifier + " is already registered");
+        }
+        if (value instanceof {{BLOCK}} block) {
+            block.named(identifier);
+        }
+        if (value instanceof {{Item}} item) {
+            item.named(identifier);
+        }
+        return value;
+    }
+
+    public void close() {
+        frozen = true;
+    }
+
+    /** One registered value, as its own type describes itself. */
+    private static String describe(Object value) {
+        if (value instanceof {{BLOCK}} block) {
+            return "Block(" + block.applied() + ")";
+        }
+        if (value instanceof {{BlockItem}} placing) {
+            // Named apart from a plain item on purpose: an item registered under
+            // a block's identifier has to be the block's placing item, and a
+            // stand-in that printed both the same way would pass either.
+            return "BlockItem(" + placing.holds().name() + "/" + placing.applied() + ")";
+        }
+        if (value instanceof {{Item}} item) {
+            return "Item(" + item.applied() + ")";
+        }
+        return value.getClass().getSimpleName();
+    }
+
+    /** What this registry holds, as the harness reads it back. */
+    public String contents() {
+        StringBuilder read = new StringBuilder(name).append("=");
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : entries.entrySet()) {
+            if (!first) {
+                read.append(",");
+            }
+            first = false;
+            read.append(entry.getKey()).append("->").append(describe(entry.getValue()));
+        }
+        return read.toString();
+    }
+}

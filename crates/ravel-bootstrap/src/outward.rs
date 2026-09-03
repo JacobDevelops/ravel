@@ -154,7 +154,7 @@ mod tests {
         }
     }
 
-    /// The payload `jvm/harness/OutwardMain.java` decodes, byte for byte.
+    /// The payload `jvm/harness/template/driver/OutwardMain.java.in` decodes, byte for byte.
     ///
     /// Written out rather than computed, because the two sides of this crossing
     /// are two languages and a shared helper would only prove this side agrees

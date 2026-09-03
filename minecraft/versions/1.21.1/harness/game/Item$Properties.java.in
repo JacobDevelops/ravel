@@ -1,0 +1,33 @@
+{{package}}
+
+/**
+ * An item's properties, for a version whose builders carry no id setter.
+ *
+ * <p>A per-version source rather than a role binding, and what differs is a call
+ * rather than a name: an item here is named by the identifier it is registered
+ * under and by nothing it carries, so there is no key to stamp and nothing to
+ * refuse the absence of.
+ */
+public final class {{Item$Properties}} {
+
+    private int stackSize = -1;
+    private boolean fireResistant;
+
+    public {{Item$Properties}}() {
+    }
+
+    public {{Item$Properties}} {{Item$Properties#stacksTo}}(int stackSize) {
+        this.stackSize = stackSize;
+        return this;
+    }
+
+    public {{Item$Properties}} {{Item$Properties#fireResistant}}() {
+        this.fireResistant = true;
+        return this;
+    }
+
+    /** What was applied, as the harness reads it back. */
+    public String applied() {
+        return stackSize + "/" + fireResistant;
+    }
+}

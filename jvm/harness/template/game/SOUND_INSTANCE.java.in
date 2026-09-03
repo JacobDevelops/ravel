@@ -1,0 +1,5 @@
+{{package}}
+
+/** What the sound manager takes, which is the erased type it declares. */
+public interface {{SOUND_INSTANCE}} {
+}

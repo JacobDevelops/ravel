@@ -1,0 +1,30 @@
+{{package}}
+
+{{import IDENTIFIER}}
+
+/** A key naming one entry inside one registry. */
+public final class {{ResourceKey}} {
+
+    private final String registry;
+    private final {{IDENTIFIER}} identifier;
+
+    private {{ResourceKey}}(String registry, {{IDENTIFIER}} identifier) {
+        this.registry = registry;
+        this.identifier = identifier;
+    }
+
+    /** The root key each registry is named by, which nothing but the roots build. */
+    public static {{ResourceKey}} root(String registry) {
+        return new {{ResourceKey}}(registry, null);
+    }
+
+    public static {{ResourceKey}} {{ResourceKey#create}}(
+            {{ResourceKey}} registry, {{IDENTIFIER}} identifier) {
+        return new {{ResourceKey}}(registry.registry, identifier);
+    }
+
+    @Override
+    public String toString() {
+        return registry + "/" + identifier;
+    }
+}

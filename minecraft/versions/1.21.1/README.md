@@ -24,10 +24,13 @@ content and outward adapters reach is declared in `reflection.toml`, checked
 against this version's jar, and generated into `GameMembers` as the name and
 descriptor the JVM links.
 
-One member is still written by hand, and it is a shape difference rather than a
-rename: `Content.withId` stamps a registry key onto a properties builder, which
-26.1.2 requires and this version has no setter for at all. A member a version does
-not declare cannot be declared for it, so under 1.21.1 that lookup throws and each
-block and item is reported as unregistered. Registering content here wants a
-differently shaped call, not the same one under another name, and no work package
-owns that yet.
+`harness/` holds the three JVM-harness templates this version renders instead of
+the shared ones, and each is a shape difference rather than a rename. This
+version's block and item properties builders carry no id setter in any spelling —
+a block is named by the identifier it is registered under and by nothing it
+carries — so `harness/game/BlockBehaviour$Properties.java.in` and
+`harness/game/Item$Properties.java.in` stamp no registry key and refuse the
+absence of none. `harness/game/SOUND_MANAGER.java.in` answers a play request with
+nothing, where the other tracked version answers with a type of its own. A role
+binding answers a rename; it does not answer a call one version makes and the
+other does not have.

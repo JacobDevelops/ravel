@@ -1,0 +1,52 @@
+{{package}}
+
+import com.google.common.collect.ImmutableList;
+
+/**
+ * What carries a state's cache step.
+ *
+ * <p>Declared apart from the state the walk actually holds, because that is
+ * where the pinned jars declare it: the reviewed surface names the class that
+ * carries a member rather than one that inherits it, so the adapter looks the
+ * member up on this class while the receiver it calls is a subclass. The
+ * subclass is beside it in this file rather than in one of its own, because it
+ * is the harness's own invention and no role names it — and nothing outside this
+ * file may name it either, which is what keeps it out of javac's way.
+ */
+public class {{BLOCK_STATE_BASE}} {
+
+    private boolean cached;
+
+    /** One block's states, which is more than one so a walk can stop halfway. */
+    public static ImmutableList states(String... names) {
+        Object[] held = new Object[names.length];
+        for (int index = 0; index < names.length; index++) {
+            held[index] = new {{BLOCK_STATE_BASE}}State(names[index]);
+        }
+        return ImmutableList.of(held);
+    }
+
+    public void {{BLOCK_STATE_BASE#initCache}}() {
+        cached = true;
+    }
+
+    /** Whether the walk initialised this state, as the harness reads it back. */
+    public boolean isCached() {
+        return cached;
+    }
+}
+
+/** One state, which inherits the cache step and declares none of it. */
+final class {{BLOCK_STATE_BASE}}State extends {{BLOCK_STATE_BASE}} {
+
+    private final String name;
+
+    {{BLOCK_STATE_BASE}}State(String name) {
+        this.name = name;
+    }
+
+    @Override
+    public String toString() {
+        return name;
+    }
+}

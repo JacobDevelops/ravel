@@ -231,9 +231,13 @@ generator declares every reference parameter as `java.lang.Object` precisely so
 that generated `Hook.java` declares no game type and still compiles without the
 client jar. Neither artifact is free of game *names*: `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-three adapters between them resolve twenty-one classes by name — all of which the invariant
+three adapters between them resolve twenty-two classes by name at one tracked version and
+twenty-three classes by name at the other — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
-on the class path. Those twenty-one names are generated rather than written, and so is
+on the class path. The two versions differ by one because one of them answers a
+sound request with a type of its own and the other answers nothing at all, and a
+class an adapter reaches only inside a descriptor is declared beside the ones it
+reaches by constant. Those names are generated rather than written, and so is
 every member the adapters reach on them; the amendment below records why and what
 carries them.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled
@@ -556,10 +560,11 @@ an obfuscated version a name and a width picks no single member: 1.21.1 links bo
 lookup by width would read a world with whichever the class file happened to
 declare first.
 
-The declared members also cost the set one class. `SoundInstance` was listed only
-so the outward adapter could name it as a parameter type, and a descriptor-declared
-member carries its parameter types itself, so nothing resolves that name any more
-and the mapping translates it either way.
+The declared members also cost the set one class for a while. `SoundInstance` was
+listed only so the outward adapter could name it as a parameter type, and a
+descriptor-declared member carries its parameter types itself, so nothing
+resolved that name and the mapping translated it either way. It is listed again
+below, for a reason the harness produced rather than the adapter.
 
 The eight the fall to thirteen removed are content registration's — the registry,
 the built-in holders, the root keys, both value types and both properties
@@ -596,6 +601,22 @@ none, so the pack repository is declared for its reload, its selected ids and
 the setter that puts the staged pack among them, and the screen's own
 `applyNewPackConfig` is declared beside those for the load that apply skips when
 the selection it reads is the one the screen already holds.
+
+`SoundInstance` came back with it, to twenty-two under both versions, and the
+reason is the harness rather than the adapter. A stand-in has to *declare* the
+member the adapter looks up, so the type in that member's signature is a name the
+generator has to render, and a class named only inside a descriptor has no role to
+render it from. Declaring it costs the adapter nothing — it still passes the type
+inside the descriptor it looks the play request up by — and it gives the
+stand-in game a name to be written under.
+
+The last of them, to twenty-three at one version and twenty-two at the other, is
+the first entry either version has that the other does not: 26.1.2 answers a play
+request with a type of its own and 1.21.1 answers `void`, so `SoundEngine$PlayResult`
+is declared where it exists and nowhere else. That is the difference the figure
+above records, and the check behind that figure asks for one count per distinct
+surface size rather than one count, so a record that stated a single number would
+fail rather than pass over the version it left out.
 
 ## Limits of this evidence
 

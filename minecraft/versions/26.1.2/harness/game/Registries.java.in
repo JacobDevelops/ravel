@@ -1,0 +1,18 @@
+{{package}}
+
+{{import ResourceKey}}
+
+/**
+ * The root keys the game names its registries by.
+ *
+ * <p>Only this version has them here: they exist to build the key its properties
+ * builders demand, and the other tracked version demands none.
+ */
+public final class {{Registries}} {
+
+    public static final {{ResourceKey}} {{Registries#BLOCK}} = {{ResourceKey}}.root("block");
+    public static final {{ResourceKey}} {{Registries#ITEM}} = {{ResourceKey}}.root("item");
+
+    private {{Registries}}() {
+    }
+}

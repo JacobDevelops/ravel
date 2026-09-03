@@ -109,6 +109,22 @@ name = "play"
 descriptor = "(Lnet/minecraft/client/resources/sounds/SoundInstance;)Lnet/minecraft/client/sounds/SoundEngine$PlayResult;"
 
 [[reflected]]
+# What the manager's play request takes, which is the erased type it declares.
+# Named here for its linked name alone: the agent jar passes it inside the
+# descriptor it looks the request up by, and the harness's stand-in has to
+# declare that same type or declare a different method.
+name = "SOUND_INSTANCE"
+class = "net.minecraft.client.resources.sounds.SoundInstance"
+runtime = "net.minecraft.client.resources.sounds.SoundInstance"
+
+[[reflected]]
+# What this version answers a play request with, named here for the same reason
+# and only here: the other tracked version answers nothing at all.
+name = "SOUND_PLAY_RESULT"
+class = "net.minecraft.client.sounds.SoundEngine$PlayResult"
+runtime = "net.minecraft.client.sounds.SoundEngine$PlayResult"
+
+[[reflected]]
 name = "SOUND_EVENT"
 class = "net.minecraft.sounds.SoundEvent"
 runtime = "net.minecraft.sounds.SoundEvent"

@@ -1,0 +1,43 @@
+{{package}}
+
+import java.util.ArrayList;
+import java.util.List;
+{{import BLOCK_STATE_BASE}}
+
+/**
+ * Stands in for the mapper the network protocol writes a block update through.
+ *
+ * <p>What the harness has to prove about it is membership: a block whose states
+ * never reached this is a block the game can place and cannot encode, which is
+ * the disconnect the seventh real launch hit.
+ */
+public final class {{ID_MAPPER}} {
+
+    private final List<Object> entries = new ArrayList<>();
+
+    public void {{ID_MAPPER#add}}(Object entry) {
+        entries.add(entry);
+    }
+
+    /** How many states this holds, as the harness reads it back. */
+    public int size() {
+        return entries.size();
+    }
+
+    /**
+     * How many of them had their cache initialised, as the harness reads it back.
+     *
+     * <p>Counted apart from membership because the walk does two things and a
+     * count of one of them would pass with the other missing. Vanilla's own
+     * bootstrap runs both on every state it registers.
+     */
+    public int cached() {
+        int cached = 0;
+        for (Object entry : entries) {
+            if (entry instanceof {{BLOCK_STATE_BASE}} state && state.isCached()) {
+                cached++;
+            }
+        }
+        return cached;
+    }
+}

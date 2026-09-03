@@ -1,0 +1,37 @@
+{{package}}
+
+/**
+ * Stands in for the identifier a claim is registered under.
+ *
+ * <p>Two of it is what a mod's own namespace buys, so equality is by the text
+ * rather than by the object: a block and the item that places it arrive as two
+ * identifiers and have to be one key.
+ */
+public final class {{IDENTIFIER}} {
+    private final String namespace;
+    private final String path;
+
+    private {{IDENTIFIER}}(String namespace, String path) {
+        this.namespace = namespace;
+        this.path = path;
+    }
+
+    public static {{IDENTIFIER}} {{IDENTIFIER#fromNamespaceAndPath}}(String namespace, String path) {
+        return new {{IDENTIFIER}}(namespace, path);
+    }
+
+    @Override
+    public String toString() {
+        return namespace + ":" + path;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        return other instanceof {{IDENTIFIER}} that && that.toString().equals(toString());
+    }
+
+    @Override
+    public int hashCode() {
+        return toString().hashCode();
+    }
+}

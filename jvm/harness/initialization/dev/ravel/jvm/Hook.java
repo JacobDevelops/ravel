@@ -37,34 +37,16 @@ public final class Hook {
                     ? persistenceTargets()
             : Boolean.getBoolean("ravel.test.transform.content")
                     ? new HookTarget[] {
-                        // The seam content is registered at, with the internal
-                        // name, member and descriptor the pinned inventory
-                        // carries for `registry.built-in-freeze`. The prologue
-                        // runs before the body that closes the registries.
-                        new HookTarget(
-                                "net/minecraft/core/registries/BuiltInRegistries",
-                                "freeze",
-                                "()V",
-                                true,
-                                "registryBuiltInFreeze",
-                                "()V",
-                                false),
+                        // The seam content is registered at. The prologue runs
+                        // before the body that closes the registries.
+                        linkedTarget("registryBuiltInFreeze"),
                     }
             : Boolean.getBoolean("ravel.test.transform.outward")
                     ? new HookTarget[] {
-                        // The seam a queued action is performed at, with the
-                        // internal name, member and descriptor the pinned
-                        // inventory carries for `client.tick`. Carrying an
+                        // The seam a queued action is performed at. Carrying an
                         // action needs no new target, which is the whole reason
                         // this one was chosen.
-                        new HookTarget(
-                                "net/minecraft/client/Minecraft",
-                                "tick",
-                                "()V",
-                                false,
-                                "clientTick",
-                                "()V",
-                                false),
+                        linkedTarget("clientTick"),
                     }
             : Boolean.getBoolean("ravel.test.transform.members")
                     ? new HookTarget[] {
@@ -237,6 +219,46 @@ public final class Hook {
         };
     }
 
+    /**
+     * The seam this run was told to transform, as this version links it.
+     *
+     * <p>The two sections that use it run against a stand-in game generated per
+     * version, so the class and the member they name are this version's rather
+     * than the reviewed ones. This class stands in for the native library and
+     * not for the inventory, so the harness reads the seam out of the generated
+     * hook table and hands it in here rather than letting a stand-in spell one
+     * version's names.
+     *
+     * <p>The prologue below is Ravel's own name on Ravel's own class, so it is
+     * the same word under every version and is written rather than handed in.
+     */
+    private static HookTarget linkedTarget(String prologue) {
+        String named = System.getProperty("ravel.test.target");
+        if (named == null) {
+            throw new IllegalStateException(
+                    prologue + " transforms a seam and this run named none");
+        }
+        String[] parts = named.split(":");
+        if (parts.length != 4) {
+            throw new IllegalStateException(
+                    "a seam is a class, a member, a descriptor and whether it is static: "
+                            + named);
+        }
+        return new HookTarget(
+                parts[0],
+                parts[1],
+                parts[2],
+                Boolean.parseBoolean(parts[3]),
+                prologue,
+                "()V",
+                false);
+    }
+
+    /** The binary name of the class this run's seam is declared on. */
+    private static String linkedTargetClass() {
+        return System.getProperty("ravel.test.target", "").split(":")[0].replace('/', '.');
+    }
+
     public static void initialize() {
     }
 
@@ -251,10 +273,9 @@ public final class Hook {
             className = "dev.ravel.jvm.refusal.RefusalTarget";
         } else if (Boolean.getBoolean("ravel.test.transform.persistence")) {
             className = "net.minecraft.client.Minecraft";
-        } else if (Boolean.getBoolean("ravel.test.transform.content")) {
-            className = "net.minecraft.core.registries.BuiltInRegistries";
-        } else if (Boolean.getBoolean("ravel.test.transform.outward")) {
-            className = "net.minecraft.client.Minecraft";
+        } else if (Boolean.getBoolean("ravel.test.transform.content")
+                || Boolean.getBoolean("ravel.test.transform.outward")) {
+            className = linkedTargetClass();
         } else if (Boolean.getBoolean("ravel.test.transform.members")) {
             className = "net.minecraft.util.SmoothDouble";
         } else {

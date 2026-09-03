@@ -453,7 +453,7 @@ in
           # screens change package between versions, so a source left behind
           # compiles into the next version's jar.
           rm -rf target/ravel-jvm/generated target/ravel-jvm/generated-stubs \
-            target/ravel-jvm/generated-screen
+            target/ravel-jvm/generated-screen target/ravel-jvm/generated-harness
           touch crates/ravel-minecraft-adapter/build.rs
           RAVEL_MINECRAFT_VERSION="$version" \
             cargo build --locked -p ravel-minecraft-adapter
@@ -542,7 +542,7 @@ in
           # makes the generation happen again after the sweep: cargo caches on
           # inputs, and deleting an output is not one.
           rm -rf target/ravel-jvm/generated target/ravel-jvm/generated-stubs \
-            target/ravel-jvm/generated-screen
+            target/ravel-jvm/generated-screen target/ravel-jvm/generated-harness
           touch crates/ravel-minecraft-adapter/build.rs
           RAVEL_MINECRAFT_VERSION="$version" \
             cargo build --locked -p ravel-minecraft-adapter

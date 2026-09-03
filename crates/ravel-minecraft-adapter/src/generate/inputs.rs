@@ -1503,12 +1503,31 @@ mod tests {
             // shape a lost declaration actually takes: the classes stay, one of
             // them loses its members, and a total that another class is carrying
             // never moves.
+            //
+            // A class the agent jar names and calls nothing on is the exception
+            // the floor has to make room for: a parameter or return type inside
+            // a descriptor is reached by name and has no member to declare. It
+            // earns its place by being named in one, which is what is asked
+            // instead of a member.
+            let descriptors = pinned
+                .surface
+                .classes
+                .iter()
+                .flat_map(|reflected| &reflected.members)
+                .filter_map(|member| member.descriptor.as_deref())
+                .collect::<Vec<_>>();
             for reflected in &pinned.surface.classes {
-                assert!(
-                    !reflected.members.is_empty(),
-                    "{} is reflected and declares no member the agent jar reaches",
-                    reflected.class
-                );
+                if reflected.members.is_empty() {
+                    let named = format!("L{};", reflected.class.replace('.', "/"));
+                    assert!(
+                        descriptors
+                            .iter()
+                            .any(|descriptor| descriptor.contains(&named)),
+                        "{} is reflected, declares no member the agent jar reaches, and no \
+                         member's descriptor names it either",
+                        reflected.class
+                    );
+                }
             }
 
             // A seed with no members earns its place by being named by something

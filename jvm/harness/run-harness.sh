@@ -884,7 +884,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:default:true
-mods=1:26:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:0
+mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code
 [ravel] rewritten targets: net.minecraft.util.StringUtil=4'
 expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
@@ -990,7 +990,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=verbose:player:false
-mods=1:26:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:0
+mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 
 printf '%s\n' "$relaunch_observed"
@@ -1159,7 +1159,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:player:true
-mods=1:26:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:0
+mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 
 printf '%s\n' "$ui_relaunch_observed"
@@ -1179,6 +1179,7 @@ menu_stderr="$work/menu-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
+	-Dstdout.encoding=UTF-8 \
 	-cp . TitleMenuMain >"$menu_stdout" 2>"$menu_stderr")
 menu_observed="$(<"$menu_stdout")"
 menu_diagnostic="$(grep '^\[ravel\]' "$menu_stdout")"
@@ -1189,6 +1190,15 @@ label=Ravel Mods
 buttonY=130
 screen=dev.ravel.jvm.screen.RavelModsScreen
 modWidgets=10
+notices=0
+within=true
+noticeRows=0
+summary=true 5 mods on client, none needing attention
+row=true 1. client_only — running
+row=true 2. configuration — running
+row=true 3. registries — running
+row=true 4. saved_data — running
+row=true 5. server_only — resolved (not on this side)
 entry=Settings: client_only
 settings=dev.ravel.jvm.screen.RavelSettingsScreen
 settingsOwner=client_only
@@ -1200,6 +1210,11 @@ settingsRows=2
 entry=Profiling
 profiling=dev.ravel.jvm.screen.RavelProfilingScreen
 entry=gui.done
+hostile=negativeNotices:false
+hostile=shortNoticeBlock:false
+hostile=wellFormed:true
+emptyRead=true
+emptySummary=No mods are installed, 1 needs attention
 [ravel] rewrote 3 classes and 4 methods; 11 hook invocations reached native code'
 menu_expected_diagnostic='[ravel] rewrote 3 classes and 4 methods; 11 hook invocations reached native code'
 
@@ -1219,6 +1234,140 @@ if [ "$menu_diagnostic" != "$menu_expected_diagnostic" ]; then
 	echo >&2
 	echo "the title-menu harness did not produce the recorded diagnostic; expected:" >&2
 	printf '%s\n' "$menu_expected_diagnostic" >&2
+	exit 1
+fi
+
+# The same screen on an instance whose `resourcePacks` line is not a list. Ravel
+# writes the pack, leaves that line exactly as it is, and cannot switch the pack
+# on — so every model the mods registered draws as a placeholder and this notice
+# is the only thing that says why. It reaches the summary and a drawn row here,
+# which is the surface launch 14 found it never reached.
+notice_work="$root/target/ravel-jvm/harness-notice"
+rm -rf "$notice_work"
+cp -r "$work" "$notice_work"
+# Without this the seeder answers from its own record before it reads settings.
+rm -f "$notice_work/ravel/seeded-packs"
+printf 'version:1\nresourcePacks:oops\n' >"$notice_work/options.txt"
+notice_stdout="$notice_work/notice-stdout"
+notice_stderr="$notice_work/notice-stderr"
+(cd "$notice_work" && java \
+	-javaagent:"$notice_work/agent/ravel-agent.jar" \
+	-Dravel.host="$host" \
+	-Dstdout.encoding=UTF-8 \
+	-cp . TitleMenuMain 400x300 >"$notice_stdout" 2>"$notice_stderr")
+notice_observed="$(grep -E '^(modWidgets|notices|within|summary|noticeRows?|row|entry)=' "$notice_stdout")"
+notice_expected='modWidgets=11
+notices=1
+within=true
+noticeRows=2
+summary=true 5 mods on client, 1 needs attention
+noticeRow=true [needs attention] Ravel wrote the resource pack its
+noticeRow=true mods supply and could not switch it on, because the
+row=true 5 more notice lines not shown
+row=true 1. client_only — running
+row=true 2. configuration — running
+row=true 3 more mods not shown
+entry=Settings: client_only
+entry=Settings: configuration
+entry=Profiling
+entry=gui.done'
+
+printf '%s\n' "$notice_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$notice_stderr"
+
+if [ "$notice_observed" != "$notice_expected" ]; then
+	echo >&2
+	echo "the pack notice did not reach the mod screen; expected:" >&2
+	printf '%s\n' "$notice_expected" >&2
+	exit 1
+fi
+
+# The same instance in the window a 1920x1080 display gives this screen at the
+# GUI scale the game picks for it. Three more rows than the run above, and every
+# one of them goes to the notice: the mod rows and the settings entries already
+# hold their floors and the remainder is the notice's first claim. What must not
+# change between the two sizes is that both groups are still on the screen, each
+# cut group still says how much it cut, and Profiling and Done are still inside
+# the window.
+sized_stdout="$notice_work/sized-stdout"
+sized_stderr="$notice_work/sized-stderr"
+(cd "$notice_work" && java \
+	-javaagent:"$notice_work/agent/ravel-agent.jar" \
+	-Dravel.host="$host" \
+	-Dstdout.encoding=UTF-8 \
+	-cp . TitleMenuMain 640x360 >"$sized_stdout" 2>"$sized_stderr")
+sized_observed="$(grep -E '^(modWidgets|within|summary|noticeRows?|row|entry)=' "$sized_stdout")"
+sized_expected='modWidgets=14
+within=true
+noticeRows=5
+summary=true 5 mods on client, 1 needs attention
+noticeRow=true [needs attention] Ravel wrote the resource pack its
+noticeRow=true mods supply and could not switch it on, because the
+noticeRow=true `resourcePacks` list in `options.txt` is not a list
+noticeRow=true of pack names and was left exactly as it is. It
+noticeRow=true starts `oops`. Repairing or deleting that line lets
+row=true 2 more notice lines not shown
+row=true 1. client_only — running
+row=true 2. configuration — running
+row=true 3 more mods not shown
+entry=Settings: client_only
+entry=Settings: configuration
+entry=Profiling
+entry=gui.done'
+
+printf '%s\n' "$sized_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$sized_stderr"
+
+if [ "$sized_observed" != "$sized_expected" ]; then
+	echo >&2
+	echo "the notice did not fit the window it was budgeted for; expected:" >&2
+	printf '%s\n' "$sized_expected" >&2
+	exit 1
+fi
+
+# The window too small for any group's floor, which is where a division can lie.
+# One row below the summary is one line, and the screen spends it on the notice's
+# first line rather than on a line saying seven were cut — the summary is already
+# carrying that count, and a row spent restating it is a row that showed nothing.
+# The mod rows and the settings entries are gone at this size and the summary is
+# what says so, because a group with no row cannot say it itself. Every group the
+# window dropped is named on that line: a screen that showed less than it counted
+# and said nothing is the one thing this size must never produce.
+#
+# `summary=false` is recorded rather than fixed. Two dropped groups need a clause
+# each and this font renders about fifty characters in a row of this screen, so
+# the box draws its tail and the mod count scrolls out of sight. The counts are
+# what nothing else on the screen says, so they are the half kept; wrapping the
+# line needs rows a window this size does not have.
+tiny_stdout="$notice_work/tiny-stdout"
+tiny_stderr="$notice_work/tiny-stderr"
+(cd "$notice_work" && java \
+	-javaagent:"$notice_work/agent/ravel-agent.jar" \
+	-Dravel.host="$host" \
+	-Dstdout.encoding=UTF-8 \
+	-cp . TitleMenuMain 400x140 >"$tiny_stdout" 2>"$tiny_stderr")
+tiny_observed="$(grep -E '^(modWidgets|within|summary|noticeRows?|row|entry)=' "$tiny_stdout")"
+tiny_expected='modWidgets=4
+within=true
+noticeRows=1
+summary=false 5 mods on client, 1 needs attention, 5 mods not shown, 2 settings not shown
+noticeRow=true [needs attention] Ravel wrote the resource pack its
+entry=Profiling
+entry=gui.done'
+
+printf '%s\n' "$tiny_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$tiny_stderr"
+
+if [ "$tiny_observed" != "$tiny_expected" ]; then
+	echo >&2
+	echo "a window with no room for the notice did not say so; expected:" >&2
+	printf '%s\n' "$tiny_expected" >&2
 	exit 1
 fi
 
@@ -1242,8 +1391,8 @@ javac -Xlint:all -Werror -d "$side/dedicated" \
 	"$root/jvm/harness/net/minecraft/SharedConstants.java"
 javac -Xlint:all -Werror -cp "$jar" -d "$side/classes" "$root/jvm/harness/SideMain.java"
 
-side_expected='client=mods=1:26:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:0
-dedicated=mods=1:216:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false4:true1:01:210:registries7:running8:required4:true5:false5:false1:01:310:saved_data7:running8:required4:true5:false5:false1:01:411:server_only7:running8:required4:true5:false5:false1:01:511:client_only8:resolved8:required5:false5:false5:false1:0'
+side_expected='client=mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:1238:Ravel wrote the resource pack its mods supply and could not switch it on, because this instance has no `options.txt` yet. It will be switched on the next time the game starts. Turn `ravel` on under Options, Resource Packs to use them now.
+dedicated=mods=1:316:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false4:true1:01:210:registries7:running8:required4:true5:false5:false1:01:310:saved_data7:running8:required4:true5:false5:false1:01:411:server_only7:running8:required4:true5:false5:false1:01:511:client_only8:resolved8:required5:false5:false5:false1:01:0'
 side_observed=""
 for case in client dedicated; do
 	case_stdout="$side/$case-stdout"
@@ -1265,6 +1414,35 @@ if [ "$side_observed" != "$side_expected" ]; then
 	echo >&2
 	echo "the side the JVM was asked for did not decide what ran; expected:" >&2
 	printf '%s\n' "$side_expected" >&2
+	exit 1
+fi
+
+# And the advice is a client's — the advice, not every notice. The side filter
+# names kinds rather than a shared ending: the two that send a player to Options,
+# Resource Packs are the two a dedicated server has no screen for, and the record
+# Ravel could not keep is a fault on every side and rides everywhere. These
+# instances have no `options.txt`, so the kind this launch seeds is the first of
+# those two, and it is matched by the sentence only that kind writes rather than
+# by the ending all three of the loud ones share. The unfiltered kind is driven
+# in `ravel-host-runtime`'s own unit test, which is where it can be produced.
+no_settings='could not switch it on, because this instance has no `options.txt` yet'
+if grep -qF "$no_settings" "$side/dedicated-stdout"; then
+	echo >&2
+	echo "a dedicated server was given advice about a screen it does not have:" >&2
+	grep '^mods=' "$side/dedicated-stdout" >&2
+	exit 1
+fi
+if ! grep -qF "$no_settings" "$side/client-stdout"; then
+	echo >&2
+	echo "no side carried that notice kind at all, so the case above proves nothing" >&2
+	exit 1
+fi
+# And nothing else reached it either, so the filter is a filter and not a launch
+# that happened to word its notice differently.
+if grep -qF 'resource pack its mods supply' "$side/dedicated-stdout"; then
+	echo >&2
+	echo "a dedicated server carried a pack notice under another wording:" >&2
+	grep '^mods=' "$side/dedicated-stdout" >&2
 	exit 1
 fi
 

@@ -33,7 +33,7 @@ final class Wire {
      * carries a version only it moves and the settings and profiling payloads
      * keep theirs.
      */
-    static final String MODS_VERSION = "2";
+    static final String MODS_VERSION = "3";
 
     private final String text;
     private int at;

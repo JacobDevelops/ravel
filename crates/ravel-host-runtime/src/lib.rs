@@ -301,10 +301,25 @@ pub fn initialize(env: &mut jni::Env<'_>, members: Vec<Member>) -> Result<(), La
     // that is a launch where every model the mods registered is a placeholder and
     // nothing else would say why.
     let mut report = pre_world_report();
-    if let Some(notice) = pack_notice(&seeded) {
+    if let Some(notice) = pack_notice(&seeded, side) {
         report.note(&notice);
     }
     install(machine, mods, report).map_err(LaunchError::Install)
+}
+
+/// How much of an unreadable `resourcePacks` line this quotes back.
+///
+/// A player recognises the line they have to repair from its opening, and the
+/// rest is a value of no known length that the report, the wire and every wrap
+/// the mod screen does on a resize would otherwise carry whole.
+const QUOTED_LINE: usize = 60;
+
+/// The opening of a line, ending in an ellipsis when there is more of it.
+fn quoted(line: &str) -> String {
+    match line.char_indices().nth(QUOTED_LINE) {
+        None => line.to_owned(),
+        Some((at, _)) => format!("{}…", &line[..at]),
+    }
 }
 
 /// What a player is told when their settings leave Ravel's pack switched off.
@@ -318,26 +333,40 @@ pub fn initialize(env: &mut jni::Env<'_>, members: Vec<Member>) -> Result<(), La
 /// of it or the player's own choice about the pack will not stick. Each says what
 /// happened and what can be done about it now, because none of them is worth a
 /// lost session and every one of them is invisible otherwise.
-fn pack_notice(seeded: &Seeded) -> Option<String> {
+///
+/// A dedicated server hears only [`Seeded::Unrecorded`]. The other two end by
+/// sending a player to Options, Resource Packs, and that process has no options
+/// screen to send an operator to and no player to send. `Unrecorded` names a
+/// record Ravel could not read or write, which is a fault on every side and one
+/// nothing else on a dedicated server reports. The report itself models no
+/// side — it is one host's report and a host is one side — so the side is
+/// applied here, where the notice is produced and the side is known.
+fn pack_notice(seeded: &Seeded, side: Side) -> Option<String> {
     let ending = "Turn `ravel` on under Options, Resource Packs to use them now.";
+    let advisable = side != Side::DedicatedServer;
     match seeded {
         Seeded::Added | Seeded::Present | Seeded::AlreadyOffered => None,
-        Seeded::NoSettings => Some(format!(
-            "Ravel wrote the resource pack its mods supply and could not switch it on, because \
+        Seeded::NoSettings => advisable.then(|| {
+            format!(
+                "Ravel wrote the resource pack its mods supply and could not switch it on, because \
              this instance has no `options.txt` yet. It will be switched on the next time the \
              game starts. {ending}"
-        )),
+            )
+        }),
         Seeded::Unrecorded(reason) => Some(format!(
             "Ravel could not keep its record of having offered this instance the resource pack \
              its mods supply, so it will offer again the next time the game starts — turning the \
              pack off may not stick until this is fixed. The reason was: {reason}"
         )),
-        Seeded::Unreadable(line) => Some(format!(
-            "Ravel wrote the resource pack its mods supply and could not switch it on, because \
+        Seeded::Unreadable(line) => advisable.then(|| {
+            format!(
+                "Ravel wrote the resource pack its mods supply and could not switch it on, because \
              the `resourcePacks` list in `options.txt` is not a list of pack names and was left \
-             exactly as it is. It reads `{line}`. Repairing or deleting that line lets the next \
-             launch switch the pack on. {ending}"
-        )),
+             exactly as it is. It starts `{}`. Repairing or deleting that line lets the next \
+             launch switch the pack on. {ending}",
+                quoted(line)
+            )
+        }),
     }
 }
 
@@ -593,7 +622,7 @@ mod tests {
         use super::{Seeded, pack_notice, pre_world_report};
 
         for silent in [Seeded::Added, Seeded::Present, Seeded::AlreadyOffered] {
-            assert_eq!(pack_notice(&silent), None, "{silent:?}");
+            assert_eq!(pack_notice(&silent, Side::Client), None, "{silent:?}");
         }
 
         for loud in [
@@ -601,21 +630,22 @@ mod tests {
             Seeded::Unreadable("[unclosed".to_owned()),
             Seeded::Unrecorded("permission denied".to_owned()),
         ] {
-            let notice = pack_notice(&loud).unwrap_or_else(|| panic!("{loud:?} is not silent"));
+            let notice = pack_notice(&loud, Side::Client)
+                .unwrap_or_else(|| panic!("{loud:?} is not silent"));
             assert!(
                 notice.contains("Options, Resource Packs") || notice.contains("offer again"),
                 "a notice a player cannot act on is noise: {notice}"
             );
         }
         assert!(
-            pack_notice(&Seeded::NoSettings)
+            pack_notice(&Seeded::NoSettings, Side::Client)
                 .expect("this one is loud")
                 .contains("options.txt")
         );
 
         // Through a real report, because a notice nothing carries is a string.
         let mut report = pre_world_report();
-        report.note(&pack_notice(&Seeded::NoSettings).expect("this one is loud"));
+        report.note(&pack_notice(&Seeded::NoSettings, Side::Client).expect("this one is loud"));
         assert_eq!(report.notices().len(), 1);
         assert!(
             report.world_access().is_ok(),
@@ -628,10 +658,79 @@ mod tests {
     fn the_unreadable_settings_line_is_quoted_in_what_the_player_is_told() {
         use super::{Seeded, pack_notice};
 
-        let notice = pack_notice(&Seeded::Unreadable("[1,2]".to_owned()))
+        let notice = pack_notice(&Seeded::Unreadable("[1,2]".to_owned()), Side::Client)
             .expect("an unreadable list is not silent");
 
         assert!(notice.contains("`[1,2]`"), "{notice}");
+    }
+
+    /// A line of any length costs the notice a bounded number of characters.
+    ///
+    /// `options.txt` is a file anything can have written, so the value on that
+    /// line has no length this code decides. Quoting it whole would put it in
+    /// the report, on the wire and through every wrap the mod screen does.
+    #[test]
+    fn an_unreadable_line_of_any_length_is_quoted_within_a_bound() {
+        use super::{QUOTED_LINE, Seeded, pack_notice};
+
+        let short = "[1,2]";
+        let long = "x".repeat(10_000);
+
+        let bounded = pack_notice(&Seeded::Unreadable(long.clone()), Side::Client)
+            .expect("an unreadable list is not silent");
+        let whole = pack_notice(&Seeded::Unreadable(short.to_owned()), Side::Client)
+            .expect("an unreadable list is not silent");
+
+        assert!(
+            bounded.len() < whole.len() + 2 * QUOTED_LINE,
+            "a ten-thousand-character line produced {} characters",
+            bounded.len()
+        );
+        assert!(bounded.contains('…'), "{bounded}");
+        assert!(
+            !bounded.contains(&long),
+            "the whole line reached the player anyway"
+        );
+        assert!(
+            !whole.contains('…'),
+            "a line that fits is quoted whole: {whole}"
+        );
+    }
+
+    /// The advice rides only where the screen it names exists.
+    ///
+    /// The two notices that end by sending a player to Options, Resource Packs
+    /// are the two a dedicated server does not hear: it has no such screen and no
+    /// player at the keyboard, so a notice telling its operator to open one is an
+    /// instruction that cannot be followed. A record Ravel could not read or write
+    /// is not advice, it is a fault, and silencing it on the one side that has no
+    /// other channel for it would leave the operator nothing.
+    #[test]
+    fn a_dedicated_server_is_told_nothing_about_a_screen_it_does_not_have() {
+        use super::{Seeded, pack_notice};
+
+        for advice in [
+            Seeded::NoSettings,
+            Seeded::Unreadable("[unclosed".to_owned()),
+        ] {
+            assert_eq!(
+                pack_notice(&advice, Side::DedicatedServer),
+                None,
+                "{advice:?} reached a dedicated server"
+            );
+            assert!(
+                pack_notice(&advice, Side::Client).is_some(),
+                "{advice:?} says nothing anywhere, so the case above proves nothing"
+            );
+        }
+
+        let unrecorded = Seeded::Unrecorded("permission denied".to_owned());
+        for side in Side::ALL {
+            assert!(
+                pack_notice(&unrecorded, side).is_some(),
+                "an unwritable record said nothing on {side:?}"
+            );
+        }
     }
 
     /// The property this crate exists to hold: a declaration decides what runs.

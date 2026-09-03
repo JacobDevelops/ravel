@@ -179,13 +179,18 @@ impl LoaderRuntime {
         inner.profiler.report()
     }
 
-    /// Builds the mod list's model from the set as it stands right now.
+    /// Everything the mod list draws, read at one instant.
     ///
-    /// The lock is taken to walk the machine and released with the value, so a
-    /// screen opening costs one short contention with the tick rather than
-    /// holding anything while it draws. Reading live rather than from a snapshot
-    /// is what stops a diagnostics screen reporting a set as healthy after
-    /// something in it has failed.
+    /// The rows and the notices come out of a single acquisition because they
+    /// are drawn on one screen: read under two, a set that fails between them
+    /// draws rows from before the failure under a notice from after it, and a
+    /// diagnostics screen that can disagree with itself about when it is has
+    /// lost the only thing it is for. The lock is taken to walk the machine and
+    /// copy the notices and released with the value, so a screen opening costs
+    /// one short contention with the tick rather than holding anything while it
+    /// draws. Reading live rather than from a snapshot taken at launch is what
+    /// stops the screen reporting a set as healthy after something in it has
+    /// failed.
     ///
     /// A poisoned lock is recovered for the same reason [`Self::observe`]
     /// recovers one: the panic that poisoned it happened in a mod's delivery,
@@ -193,13 +198,11 @@ impl LoaderRuntime {
     /// with no way to see why their mods are broken at exactly the moment they
     /// need it.
     #[must_use]
-    pub(crate) fn surface(&self) -> ModSurface {
-        ModSurface::of(
-            &self
-                .inner
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .machine,
+    pub(crate) fn mod_view(&self) -> (ModSurface, Vec<DiagnosticMessage>) {
+        let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        (
+            ModSurface::of(&inner.machine),
+            inner.report.notices().to_vec(),
         )
     }
 }

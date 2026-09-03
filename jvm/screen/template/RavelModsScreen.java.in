@@ -2,6 +2,7 @@
 
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 {{import Minecraft}}
 {{import Button}}
@@ -45,6 +46,17 @@ import java.util.List;
  * rather than this screen's — {@code ModEntry.is_actionable} decides it and this
  * screen only draws what it decided.
  *
+ * <p><b>A notice is drawn above the rows and counted with them.</b> The launch
+ * records things a player is told without being refused — a resource pack that
+ * was written and could not be switched on is the one there is — and those are
+ * about the launch rather than about any one mod, so they sit above the rows
+ * with no row of their own. The summary counts them, because that line is what a
+ * player reads before deciding nothing is wrong. Each is split across as many
+ * rows as its text needs: a notice says what happened <i>and</i> what can be
+ * done about it, and an {@link EditBox} given more text than it has width draws
+ * only the tail, so a notice on one row is a notice whose remedy is scrolled out
+ * of sight.
+ *
  * <p><b>Rows are drawn actionable-first, and every row states its load
  * position.</b> The two go together and the second is what makes the first safe.
  * The model stays in resolved load order — that is what {@code surface.rs}
@@ -57,14 +69,19 @@ import java.util.List;
  * where a row happens to sit. Without the numbers this reordering would not be
  * defensible.
  *
- * <p><b>Known limit: no scrolling.</b> A scroll container in the pinned version
- * is another nested builder and another stub seed, and this is the first pass
- * rather than the last. A set larger than {@link #MAX_ROWS} rows draws the first
- * {@code MAX_ROWS} and a line saying how many were not drawn, with actionable
- * entries ordered first so the ones a player has to act on are never the ones
- * cut. The settings entries below the rows are capped the same way at
- * {@link #MAX_SETTINGS}, so a set with dozens of configurable mods cannot push
- * Profiling and Done past the bottom either. Seeding a scroll widget is the fix
+ * <p><b>Known limit: no scrolling, so the window is divided rather than spent in
+ * order.</b> A scroll container in the pinned version is another nested builder
+ * and another stub seed, and this is the first pass rather than the last. So the
+ * rows the window has, less the summary, are divided: every group with anything
+ * to draw is guaranteed {@link #NOTICE_FLOOR}, {@link #MOD_FLOOR} or
+ * {@link #SETTINGS_FLOOR} rows including its own "not shown" line, and what is
+ * left over goes to the notices, then the rows, then the settings. No group can
+ * take another's floor, and nothing is cut without being counted: a group that
+ * kept a row says how many it cut, and the summary says it for every group that
+ * did not, including a group the window left with no row at all. Actionable
+ * entries are ordered first, so the rows a player has to act on are never cut,
+ * and no window makes this offer more than {@link #MAX_ROWS} rows or
+ * {@link #MAX_SETTINGS} settings entries. Seeding a scroll widget is the fix
  * when a real set outgrows this.
  *
  * <p>Every widget here is one the game builds without this class drawing
@@ -76,23 +93,32 @@ import java.util.List;
  */
 public final class RavelModsScreen extends {{Screen}} {
 
-    /** Where the first row sits, below the title. */
-    private static final int TOP = 32;
-
-    /** The distance between one row and the next. */
-    private static final int ROW = 22;
-
-    private static final int WIDGET_WIDTH = 320;
-    private static final int WIDGET_HEIGHT = 20;
-
-    /** How many rows fit before the screen would draw past its own bottom. */
+    /** The most mod rows this screen offers to draw, however tall the window is. */
     private static final int MAX_ROWS = 12;
 
-    /** How many settings entries fit under the rows without pushing Profiling and Done off. */
+    /** The most settings entries it offers, for the same reason. */
     private static final int MAX_SETTINGS = 4;
+
+    /** The rows a non-empty notice block is guaranteed, one of them its own line. */
+    private static final int NOTICE_FLOOR = 2;
+
+    /** The rows the mod list is guaranteed, one of them its own line. */
+    private static final int MOD_FLOOR = 3;
+
+    /** The rows the settings entries are guaranteed, one of them their own line. */
+    private static final int SETTINGS_FLOOR = 2;
+
+    /** What marks a line as one a player has to act on. */
+    private static final String ATTENTION = "[needs attention] ";
 
     /** The mod set as it stood when this screen opened. */
     private final List<Entry> entries = new ArrayList<>();
+
+    /** What the launch told the player without refusing them, as it stood then. */
+    private final List<String> notices = new ArrayList<>();
+
+    /** The rows those notices were split into, as this screen last drew them. */
+    private final List<String> noticeRows = new ArrayList<>();
 
     /** How many entries the loader says a player has to act on. */
     private int actionable;
@@ -130,6 +156,16 @@ public final class RavelModsScreen extends {{Screen}} {
         return actionable;
     }
 
+    /** What the launch told the player without refusing them. */
+    public List<String> notices() {
+        return List.copyOf(notices);
+    }
+
+    /** The rows those notices were split into, as this screen drew them. */
+    public List<String> noticeRows() {
+        return List.copyOf(noticeRows);
+    }
+
     /**
      * Reads the mod set once and builds one row per mod.
      *
@@ -141,28 +177,78 @@ public final class RavelModsScreen extends {{Screen}} {
     protected void {{Screen#init}}() {
         super.{{Screen#init}}();
         entries.clear();
+        notices.clear();
+        noticeRows.clear();
         read = parse(Hook.ravelModSurface());
 
-        int y = TOP;
-        {{Screen#addRenderableWidget}}(label(summary(), y));
-        y += ROW;
-
-        List<Entry> drawn = ordered();
-        for (int index = 0; index < drawn.size() && index < MAX_ROWS; index++) {
-            for (String line : drawn.get(index).lines()) {
-                {{Screen#addRenderableWidget}}(label(line, y));
-                y += ROW;
+        List<String> lines = new ArrayList<>();
+        List<Integer> owners = new ArrayList<>();
+        for (int index = 0; index < notices.size(); index++) {
+            for (String line : Layout.wrap({{Screen#font}}, ATTENTION + notices.get(index))) {
+                lines.add(line);
+                owners.add(index);
             }
         }
-        int undrawn = drawn.size() - Math.min(drawn.size(), MAX_ROWS);
-        if (undrawn > 0) {
-            {{Screen#addRenderableWidget}}(
-                    label(plural(undrawn, "more mod", "more mods") + " not shown", y));
-            y += ROW;
-        }
-
+        List<Entry> drawn = ordered();
         List<Entry> offered = configurable();
-        for (int index = 0; index < offered.size() && index < MAX_SETTINGS; index++) {
+        int[] noticeSizes = ones(lines.size());
+        int[] modSizes = new int[Math.min(drawn.size(), MAX_ROWS)];
+        for (int index = 0; index < modSizes.length; index++) {
+            modSizes[index] = drawn.get(index).lines().size();
+        }
+        int[] settingSizes = ones(Math.min(offered.size(), MAX_SETTINGS));
+        boolean moreMods = drawn.size() > modSizes.length;
+        boolean moreSettings = offered.size() > settingSizes.length;
+
+        int[] given =
+                share(
+                        rows() - 1,
+                        new int[] {
+                            demand(noticeSizes, false),
+                            demand(modSizes, moreMods),
+                            demand(settingSizes, moreSettings),
+                        });
+        // A single row goes to the notice's own first line rather than to a line
+        // saying the notice was cut, because the summary already says that.
+        int noticesDrawn =
+                given[0] == 1 && !lines.isEmpty() ? 1 : fitting(noticeSizes, given[0], false);
+        int modsDrawn = fitting(modSizes, given[1], moreMods);
+        int settingsDrawn = fitting(settingSizes, given[2], moreSettings);
+        noticeRows.addAll(lines.subList(0, noticesDrawn));
+
+        int modRows = 0;
+        for (int index = 0; index < modsDrawn; index++) {
+            modRows += modSizes[index];
+        }
+        int noticeRoom = given[0] - noticesDrawn;
+        int modRoom = given[1] - modRows;
+        int settingRoom = given[2] - settingsDrawn;
+
+        int y = Layout.TOP;
+        {{Screen#addRenderableWidget}}(
+                label(
+                        summary(
+                                noticesDrawn == 0 ? 0 : owners.get(noticesDrawn - 1) + 1,
+                                silent(drawn.size() - modsDrawn, modRoom),
+                                silent(offered.size() - settingsDrawn, settingRoom)),
+                        y));
+        y += Layout.ROW;
+
+        for (String line : noticeRows) {
+            {{Screen#addRenderableWidget}}(label(line, y));
+            y += Layout.ROW;
+        }
+        y = cut(lines.size() - noticesDrawn, noticeRoom, "more notice line", "more notice lines", y);
+
+        for (int index = 0; index < modsDrawn; index++) {
+            for (String line : drawn.get(index).lines()) {
+                {{Screen#addRenderableWidget}}(label(line, y));
+                y += Layout.ROW;
+            }
+        }
+        y = cut(drawn.size() - modsDrawn, modRoom, "more mod", "more mods", y);
+
+        for (int index = 0; index < settingsDrawn; index++) {
             final String owner = offered.get(index).modId;
             {{Screen#addRenderableWidget}}(
                     {{Button}}.{{Button#builder}}(
@@ -174,19 +260,17 @@ public final class RavelModsScreen extends {{Screen}} {
                                                     .{{Minecraft#setScreen}}(RavelMenu.openSettings(owner));
                                         }
                                     })
-                            .{{Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                            .{{Button$Builder#bounds}}(centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
                             .{{Button$Builder#build}}());
-            y += ROW;
+            y += Layout.ROW;
         }
-        int unoffered = offered.size() - Math.min(offered.size(), MAX_SETTINGS);
-        if (unoffered > 0) {
-            {{Screen#addRenderableWidget}}(
-                    label(
-                            plural(unoffered, "more settings screen", "more settings screens")
-                                    + " not shown",
-                            y));
-            y += ROW;
-        }
+        y =
+                cut(
+                        offered.size() - settingsDrawn,
+                        settingRoom,
+                        "more settings screen",
+                        "more settings screens",
+                        y);
         {{Screen#addRenderableWidget}}(
                 {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Profiling"), new {{Button$OnPress}}() {
                             @Override
@@ -194,9 +278,9 @@ public final class RavelModsScreen extends {{Screen}} {
                                 {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(RavelMenu.openProfiling());
                             }
                         })
-                        .{{Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{Button$Builder#bounds}}(centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
                         .{{Button$Builder#build}}());
-        y += ROW;
+        y += Layout.ROW;
         {{Screen#addRenderableWidget}}(
                 {{Button}}.{{Button#builder}}({{Component}}.{{Component#translatable}}("gui.done"), new {{Button$OnPress}}() {
                             @Override
@@ -204,8 +288,147 @@ public final class RavelModsScreen extends {{Screen}} {
                                 {{Screen#onClose}}();
                             }
                         })
-                        .{{Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{Button$Builder#bounds}}(centre(), y + Layout.ROW, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
                         .{{Button$Builder#build}}());
+    }
+
+    /**
+     * How many rows this window has between the title and the two buttons.
+     *
+     * <p>Two rows are reserved below the list: Profiling and Done. Subtracting
+     * them here is what keeps them on screen whatever is drawn above them.
+     * {@link Layout#rows} measures the rest.
+     *
+     * @return at least one row, however small the window claims to be
+     */
+    private int rows() {
+        return Layout.rows({{Screen#height}}, 2);
+    }
+
+    /**
+     * How the window's rows are divided between the three groups.
+     *
+     * <p>Every group that has something to draw takes its floor first, in
+     * priority order, and only what is left of the budget after all three is
+     * handed out — again in priority order, and only to a group that got a floor.
+     * Spending the budget in one pass instead is what let a seven-line notice
+     * leave a window with no mod row on it at all: a group that draws first and
+     * takes what it wants starves whatever draws after it, and a mod list with no
+     * mods is not a mod list.
+     *
+     * <p>A window too small for even the floors gives each group what is left
+     * when its turn comes, which can be nothing. A group with no rows cannot
+     * draw its own "not shown" line, so {@link #summary} names every such group
+     * — a screen that had to cut a whole group says so rather than quietly
+     * showing less than it counted. A group left exactly one row spends it on
+     * content, because the summary is already carrying the count.
+     *
+     * @param budget the rows below the summary
+     * @param want what each group needs to draw everything it has
+     * @return the rows each group may spend
+     */
+    private static int[] share(int budget, int[] want) {
+        int[] floors = {NOTICE_FLOOR, MOD_FLOOR, SETTINGS_FLOOR};
+        int[] given = new int[want.length];
+        for (int group = 0; group < want.length; group++) {
+            given[group] = Math.max(0, Math.min(Math.min(want[group], floors[group]), budget));
+            budget -= given[group];
+        }
+        for (int group = 0; group < want.length; group++) {
+            if (given[group] == 0) {
+                continue;
+            }
+            int extra = Math.min(want[group] - given[group], budget);
+            given[group] += extra;
+            budget -= extra;
+        }
+        return given;
+    }
+
+    /**
+     * How many rows a group needs to draw everything it has.
+     *
+     * @param sizes the rows each of its units draws
+     * @param beyond whether it holds units these sizes do not cover
+     * @return the rows, including one for a "not shown" line it already knows it
+     *     needs
+     */
+    private static int demand(int[] sizes, boolean beyond) {
+        int rows = beyond ? 1 : 0;
+        for (int size : sizes) {
+            rows += size;
+        }
+        return rows;
+    }
+
+    /**
+     * How many of a group's units fit in the rows it was given.
+     *
+     * <p>A unit is only drawn when the row its "not shown" line would need is
+     * still free after it, which is what makes that line unconditional: a group
+     * that cut anything always has the row to say so. The last unit is the
+     * exception, because a group with nothing left over has nothing to say.
+     *
+     * @param sizes the rows each unit draws
+     * @param share the rows the group was given
+     * @param beyond whether it holds units these sizes do not cover
+     * @return how many units to draw, from the front
+     */
+    private static int fitting(int[] sizes, int share, boolean beyond) {
+        int used = 0;
+        int count = 0;
+        for (int index = 0; index < sizes.length; index++) {
+            int held = index + 1 == sizes.length && !beyond ? 0 : 1;
+            if (used + sizes[index] + held > share) {
+                break;
+            }
+            used += sizes[index];
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * Draws a group's "not shown" line, if it cut anything and has the row.
+     *
+     * <p>The room is what is left of the group's share after its drawn units, not
+     * the share itself: a group given one row and spending it on content has
+     * nowhere to put this line, and {@link #summary} carries the count instead.
+     *
+     * @param undrawn how many units were not drawn
+     * @param room the rows left over from the group's share
+     * @param one the noun for one of them
+     * @param many the noun for several
+     * @param y where the line would sit
+     * @return where the next widget sits
+     */
+    private int cut(int undrawn, int room, String one, String many, int y) {
+        if (undrawn <= 0 || room <= 0) {
+            return y;
+        }
+        {{Screen#addRenderableWidget}}(label(plural(undrawn, one, many) + " not shown", y));
+        return y + Layout.ROW;
+    }
+
+    /**
+     * How many of a group's undrawn units nothing below the summary will mention.
+     *
+     * <p>Zero when the group kept a row for its own "not shown" line, because two
+     * lines saying the same thing read as two different cuts.
+     *
+     * @param undrawn how many units were not drawn
+     * @param room the rows left over from the group's share
+     * @return what the summary has to say itself
+     */
+    private static int silent(int undrawn, int room) {
+        return room > 0 ? 0 : Math.max(0, undrawn);
+    }
+
+    /** One row per unit, which is what a group of single-line units draws. */
+    private static int[] ones(int units) {
+        int[] sizes = new int[units];
+        Arrays.fill(sizes, 1);
+        return sizes;
     }
 
     /**
@@ -249,25 +472,67 @@ public final class RavelModsScreen extends {{Screen}} {
         return offered;
     }
 
-    /** The line above the list, saying what the player is looking at. */
-    private String summary() {
+    /**
+     * The line above the list, saying what the player is looking at.
+     *
+     * <p>The count includes a notice as well as a failed mod, and it is followed
+     * by what is not on the screen below it. A player who reads that three things
+     * need attention and finds two on the screen has been told the screen is
+     * complete, which is the one thing this line must never say when it is not.
+     *
+     * <p>All three groups are named here and not only the notices. A window too
+     * small for every floor gives some group nothing at all, and a group with no
+     * row has no way to say it was cut — so this line says it for them, and a
+     * group that kept the row says it itself. An installed-nothing launch still
+     * counts its notices, because a launch can have something to tell a player
+     * about with no mod to hang it on.
+     *
+     * <p><b>Known limit: this line is one row and can outgrow it.</b> A window
+     * that cut two groups needs a clause for each, and the widest text a row of
+     * this screen renders whole is about fifty characters — so on the smallest
+     * windows the box draws its tail and the mod count scrolls out of sight. The
+     * counts are the half worth keeping, because they are the half nothing else
+     * on the screen says. A wrapped summary is the fix, and it needs rows those
+     * windows do not have, so it waits for the scroll container the class note
+     * above already names.
+     *
+     * @param told how many notices are drawn below this line
+     * @param mods how many mod rows nothing below this line will mention
+     * @param settings how many settings entries nothing below it will mention
+     * @return the line
+     */
+    private String summary(int told, int mods, int settings) {
         if (!read) {
             return "The mod list could not be read.";
         }
-        if (entries.isEmpty()) {
-            return "No mods are installed.";
+        int attention = actionable + notices.size();
+        StringBuilder line =
+                new StringBuilder(
+                        entries.isEmpty()
+                                ? "No mods are installed"
+                                : plural(entries.size(), "mod", "mods") + " on " + side);
+        if (attention == 0) {
+            line.append(entries.isEmpty() ? "." : ", none needing attention");
+        } else {
+            line.append(", ").append(plural(attention, "needs", "need")).append(" attention");
         }
-        String counted = plural(entries.size(), "mod", "mods") + " on " + side;
-        if (actionable == 0) {
-            return counted + ", none needing attention";
+        unshown(line, notices.size() - told, "notice", "notices");
+        unshown(line, mods, "mod", "mods");
+        unshown(line, settings, "settings", "settings");
+        return line.toString();
+    }
+
+    /** Appends one group's "not shown" clause, when it has anything to report. */
+    private static void unshown(StringBuilder line, int count, String one, String many) {
+        if (count > 0) {
+            line.append(", ").append(plural(count, one, many)).append(" not shown");
         }
-        return counted + ", " + plural(actionable, "needs", "need") + " attention";
     }
 
     /** One uneditable text field, which is how this screen shows a line. */
     private {{EditBox}} label(String text, int y) {
         {{EditBox}} box =
-                new {{EditBox}}({{Screen#font}}, centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text));
+                new {{EditBox}}({{Screen#font}}, centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text));
         box.{{EditBox#setMaxLength}}(1024);
         box.{{EditBox#setValue}}(text);
         box.{{EditBox#setEditable}}(false);
@@ -275,7 +540,7 @@ public final class RavelModsScreen extends {{Screen}} {
     }
 
     private int centre() {
-        return ({{Screen#width}} - WIDGET_WIDTH) / 2;
+        return ({{Screen#width}} - Layout.WIDGET_WIDTH) / 2;
     }
 
     /** A count and the word that agrees with it. */
@@ -312,6 +577,19 @@ public final class RavelModsScreen extends {{Screen}} {
             }
             pending.add(entry);
         }
+
+        int noticed = wire.count();
+        if (noticed < 0) {
+            return false;
+        }
+        List<String> told = new ArrayList<>();
+        for (int index = 0; index < noticed; index++) {
+            String notice = wire.field();
+            if (notice == null) {
+                return false;
+            }
+            told.add(notice);
+        }
         if (!wire.finished()) {
             return false;
         }
@@ -319,6 +597,7 @@ public final class RavelModsScreen extends {{Screen}} {
         side = reportedSide;
         actionable = reportedActionable;
         entries.addAll(pending);
+        notices.addAll(told);
         return true;
     }
 

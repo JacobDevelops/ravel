@@ -346,9 +346,12 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   because the stub seeder binds one role per member name. Launch 18 (2026-09-03) saw it on screen:
   one `Settings: stateful` entry, none for content or minimal, and the settings screen drawing
   `Journal capacity: 16` as a slider. The cap and its line stand on unit tests only.
-- The pre-world pack notice never reaches a surface (launch 14, both `AlreadyOffered` by design and
-  `Unreadable`). Decide where it belongs (the mods screen's attention list is the existing surface)
-  and wire it.
+- The pre-world pack notice never reached a surface (launch 14): the host recorded it into the
+  pre-world report and nothing read that report's notices back. The mods payload now carries the
+  notices (wire version 3), the mods screen draws each above the rows as `[needs attention] ...`,
+  wrapped with the game's own splitter across a measured row budget so Profiling and Done stay on
+  screen, and its summary counts them. `AlreadyOffered` stays silent: the player turned the pack
+  off. Harness-proven at three window sizes by mutation; not yet seen in a client.
 
 - `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
   being true this session for all three adapters. Amending closed evidence is its own ceremony.

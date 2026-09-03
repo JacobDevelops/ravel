@@ -9,6 +9,14 @@
 //! is one read crossing carrying [`ModSurface`], on the framing the settings
 //! screen already uses, and no rendering at all.
 //!
+//! # A notice is carried beside the rows
+//!
+//! The pre-world report holds what the pipeline told a player without refusing
+//! them, and until this crossing carried it nothing read it after it was
+//! recorded. It rides here because the mods screen's attention summary is
+//! already the surface a player checks when something looks wrong, and a second
+//! screen for one line would be a second place to forget to look.
+//!
 //! # The surface is read live rather than snapshotted
 //!
 //! The store holds the runtime, not a copy of its answer, and every open asks it
@@ -34,6 +42,12 @@
 //! on the way in. Showing a player the raw text would publish exactly the
 //! launcher tokens and filesystem paths `SPEC.md` §9.1 forbids, so the detail
 //! runs through [`Redactor`] here and the payload carries only what came back.
+//!
+//! A notice is the exception, and it is not one: `PreWorldReport::note` is the
+//! report surface a notice already crossed, and it redacts there. The policy is
+//! not idempotent — a marker standing where a credential's value stood is
+//! itself the word after a credential's name, so a second pass marks the marker
+//! — so this carries what the report holds.
 
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -79,9 +93,10 @@ fn document() -> Option<String> {
     // Asked before the runtime is taken, so the two stores' locks are never held
     // at once and `settings.rs`'s opening claim stays true.
     let configurable = crate::settings::configurable();
-    // Take the runtime out of the store and let the store's lock go before the
-    // surface is built. The screen holds nothing.
-    document_of(lock().clone().as_deref(), &configurable)
+    // Bound rather than passed inline so the guard drops here: the store's lock
+    // is not held while the surface is built.
+    let runtime = lock().clone();
+    document_of(runtime.as_deref(), &configurable)
 }
 
 /// The mod list a screen reads from one runtime, or nothing without one.
@@ -97,7 +112,8 @@ fn document_of(runtime: Option<&LoaderRuntime>, configurable: &BTreeSet<ModId>) 
 impl LoaderRuntime {
     /// The whole mod list this runtime holds, as one payload.
     pub(crate) fn mod_document(&self, configurable: &BTreeSet<ModId>) -> String {
-        let surface = self.surface();
+        // One acquisition, so the rows and the notice describe the same instant.
+        let (surface, notices) = self.mod_view();
 
         let mut out = String::new();
         field(&mut out, MODS_VERSION);
@@ -106,6 +122,12 @@ impl LoaderRuntime {
         count(&mut out, surface.entries().len());
         for (index, entry) in surface.entries().iter().enumerate() {
             row(&mut out, index, entry, configurable.contains(&entry.mod_id));
+        }
+        // After the rows rather than beside the counts, because a notice is not a
+        // mod and the screen composes its own line for one.
+        count(&mut out, notices.len());
+        for notice in &notices {
+            field(&mut out, notice.text());
         }
         out
     }
@@ -330,7 +352,7 @@ mod tests {
 
         let read = fields(&runtime.mod_document(&configurable(&[])));
 
-        assert_eq!(read[0], "2", "the mod list's own version opens the payload");
+        assert_eq!(read[0], "3", "the mod list's own version opens the payload");
         assert_eq!(read[1], "client");
         assert_eq!(read[2], "0", "a valid graph asks the player to do nothing");
         assert_eq!(read[3], "2");
@@ -439,10 +461,8 @@ mod tests {
         plan.fail(&mod_id("broken_mod"), broken)
             .expect("a mod the machine holds can fail");
 
-        let detail = fields(&running(plan).mod_document(&configurable(&[])))
-            .last()
-            .expect("the detail closes the failure block")
-            .clone();
+        let read = fields(&running(plan).mod_document(&configurable(&[])));
+        let detail = read[20].clone();
 
         assert!(!detail.contains("/home/player"), "{detail}");
         assert!(!detail.contains("ghp_secretvalue"), "{detail}");
@@ -462,6 +482,79 @@ mod tests {
         assert_eq!(read[10], "false", "it declares nothing this side can show");
         assert_eq!(read[13], "second_mod");
         assert_eq!(read[18], "true", "and this one does");
+    }
+
+    /// A runtime whose pre-world report already carries one notice.
+    fn noticed(machine: LifecycleMachine, notice: &str) -> LoaderRuntime {
+        let mut report = crate::runtime::pre_world_report();
+        report.note(notice);
+        LoaderRuntime::profiling(
+            machine,
+            Vec::<Box<dyn HostMod>>::new(),
+            ravel_observability::Profiler::off(),
+            report,
+        )
+    }
+
+    #[test]
+    fn a_notice_the_pipeline_recorded_reaches_the_screen_that_shows_attention() {
+        let runtime = noticed(
+            machine(vec![entry("base_mod", Requirement::Required)]),
+            "Ravel wrote the resource pack its mods supply and could not switch it on.",
+        );
+
+        let read = fields(&runtime.mod_document(&configurable(&[])));
+
+        assert_eq!(read[12], "1", "one notice follows the rows");
+        assert_eq!(
+            read[13], "Ravel wrote the resource pack its mods supply and could not switch it on.",
+            "and it crosses whole"
+        );
+    }
+
+    #[test]
+    fn a_notice_is_redacted_before_a_player_can_read_it() {
+        let runtime = noticed(
+            machine(vec![entry("base_mod", Requirement::Required)]),
+            "could not read /home/player/.minecraft/options.txt, token=ghp_secretvalue",
+        );
+
+        let read = fields(&runtime.mod_document(&configurable(&[])));
+
+        assert_eq!(read[12], "1");
+        assert!(!read[13].contains("/home/player"), "{}", read[13]);
+        assert!(!read[13].contains("ghp_secretvalue"), "{}", read[13]);
+    }
+
+    /// Redacted once, which is the only number of times that reads as English.
+    ///
+    /// The policy is not idempotent: a marker standing where a credential's
+    /// value stood is itself the word after a credential's name, so a second
+    /// pass marks the marker and the player reads nested brackets.
+    #[test]
+    fn a_notice_carrying_a_credential_is_marked_once_and_not_twice() {
+        let runtime = noticed(
+            machine(vec![entry("base_mod", Requirement::Required)]),
+            "the launcher passed token hunter2 to the game",
+        );
+
+        let read = fields(&runtime.mod_document(&configurable(&[])));
+
+        assert!(!read[13].contains("hunter2"), "{}", read[13]);
+        assert_eq!(
+            read[13], "the launcher passed token [redacted] to the game",
+            "one marker, not a marker over a marker"
+        );
+    }
+
+    #[test]
+    fn a_set_with_nothing_to_say_carries_no_notices_at_all() {
+        let runtime = running(machine(vec![entry("base_mod", Requirement::Required)]));
+
+        let read = fields(&runtime.mod_document(&configurable(&[])));
+
+        assert_eq!(read[12], "0", "the block is present and empty");
+        assert_eq!(read.len(), 13, "and nothing follows it");
     }
 
     #[test]

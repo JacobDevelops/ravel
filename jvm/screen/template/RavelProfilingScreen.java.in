@@ -11,7 +11,6 @@ import java.util.List;
 {{import EditBox}}
 {{import Screen}}
 {{import Component}}
-{{import FormattedText}}
 
 /**
  * Ravel's opt-in profiling report.
@@ -76,18 +75,6 @@ import java.util.List;
  * anything, for the reason {@link RavelSettingsScreen} records at length.
  */
 public final class RavelProfilingScreen extends {{Screen}} {
-
-    /** Where the first row sits, below the title. */
-    private static final int TOP = 32;
-
-    /** The distance between one row and the next. */
-    private static final int ROW = 22;
-
-    private static final int WIDGET_WIDTH = 320;
-    private static final int WIDGET_HEIGHT = 20;
-
-    /** What a bordered {@link EditBox}'s own border takes from the text inside it. */
-    private static final int TEXT_INSET = 8;
 
     /** The most mod rows this screen draws, before the window's height cuts it further. */
     private static final int MAX_ROWS = 8;
@@ -191,26 +178,26 @@ public final class RavelProfilingScreen extends {{Screen}} {
         List<String> unmeasurable = unmeasurable(budget);
         budget -= unmeasurable.size();
 
-        int y = TOP;
+        int y = Layout.TOP;
         for (String line : above) {
             {{Screen#addRenderableWidget}}(label(line, y));
-            y += ROW;
+            y += Layout.ROW;
         }
         for (String line : table(budget)) {
             {{Screen#addRenderableWidget}}(label(line, y));
-            y += ROW;
+            y += Layout.ROW;
         }
         for (String line : unmeasurable) {
             {{Screen#addRenderableWidget}}(label(line, y));
-            y += ROW;
+            y += Layout.ROW;
         }
         for (String line : heading) {
             {{Screen#addRenderableWidget}}(label(line, y));
-            y += ROW;
+            y += Layout.ROW;
         }
         for (String line : caveat) {
             {{Screen#addRenderableWidget}}(label(line, y));
-            y += ROW;
+            y += Layout.ROW;
         }
 
         {{Screen#addRenderableWidget}}(
@@ -220,7 +207,7 @@ public final class RavelProfilingScreen extends {{Screen}} {
                                 {{Screen#onClose}}();
                             }
                         })
-                        .{{Button$Builder#bounds}}(centre(), y + ROW, WIDGET_WIDTH, WIDGET_HEIGHT)
+                        .{{Button$Builder#bounds}}(centre(), y + Layout.ROW, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
                         .{{Button$Builder#build}}());
     }
 
@@ -261,21 +248,17 @@ public final class RavelProfilingScreen extends {{Screen}} {
     /**
      * How many rows this window has between the title and the done button.
      *
-     * <p>Measured rather than fixed, because a player's GUI scale is what decides
-     * how tall this window is in the units everything here is placed in.
+     * <p>One row is reserved below the list, which is the gap the done button
+     * sits after. {@link Layout#rows} measures the rest.
      *
      * @return at least one row, however small the window claims to be
      */
     private int rows() {
-        return Math.max(1, ({{Screen#height}} - TOP - ROW - WIDGET_HEIGHT) / ROW);
+        return Layout.rows({{Screen#height}}, 1);
     }
 
     /**
      * Every line the given strings draw, each split to the width it is drawn at.
-     *
-     * <p>The split runs against the text a box has room for rather than against
-     * the box, because {@link EditBox} spends {@link #TEXT_INSET} of its width on
-     * its own border and a line that fits the border does not fit the text.
      *
      * @param texts the strings to draw, one or more rows each
      * @return the rows, in order
@@ -283,10 +266,7 @@ public final class RavelProfilingScreen extends {{Screen}} {
     private List<String> wrap(List<String> texts) {
         List<String> lines = new ArrayList<>();
         for (String text : texts) {
-            for (Object piece :
-                    {{Screen#font}}.{{Font#splitIgnoringLanguage}}({{FormattedText}}.{{FormattedText#of}}(text), WIDGET_WIDTH - TEXT_INSET)) {
-                lines.add((({{FormattedText}}) piece).{{FormattedText#getString}}());
-            }
+            lines.addAll(Layout.wrap({{Screen#font}}, text));
         }
         return lines;
     }
@@ -406,7 +386,7 @@ public final class RavelProfilingScreen extends {{Screen}} {
     /** One uneditable text field, which is how this screen shows a line. */
     private {{EditBox}} label(String text, int y) {
         {{EditBox}} box =
-                new {{EditBox}}({{Screen#font}}, centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text));
+                new {{EditBox}}({{Screen#font}}, centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text));
         box.{{EditBox#setMaxLength}}(1024);
         box.{{EditBox#setValue}}(text);
         box.{{EditBox#setEditable}}(false);
@@ -414,7 +394,7 @@ public final class RavelProfilingScreen extends {{Screen}} {
     }
 
     private int centre() {
-        return ({{Screen#width}} - WIDGET_WIDTH) / 2;
+        return ({{Screen#width}} - Layout.WIDGET_WIDTH) / 2;
     }
 
     /**

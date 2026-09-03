@@ -1,0 +1,82 @@
+{{package}}
+
+import java.util.ArrayList;
+import java.util.List;
+{{import Font}}
+{{import FormattedText}}
+
+/**
+ * The measurements Ravel's row-budgeted screens are laid out against.
+ *
+ * <p>{@link RavelModsScreen} and {@link RavelProfilingScreen} both divide a
+ * measured window into rows of drawn text, and both did it against their own
+ * copy of the same four numbers and the same two calculations. Two copies of a
+ * width is two chances for one screen's wrap to be measured against a box the
+ * other screen's rows are drawn in, and the mismatch would show as a row that
+ * silently loses its tail rather than as anything a compiler could catch. So
+ * the numbers live once and both screens ask this class.
+ *
+ * <p>Only the shared half is here. What a screen reserves below its rows and how
+ * it spends the rows it gets are that screen's own decisions, and {@link #rows}
+ * takes the reservation as an argument rather than knowing about either caller.
+ */
+final class Layout {
+
+    /** Where the first row sits, below the title. */
+    static final int TOP = 32;
+
+    /** The distance between one row and the next. */
+    static final int ROW = 22;
+
+    /** How wide every widget these screens build is drawn. */
+    static final int WIDGET_WIDTH = 320;
+
+    /** How tall one of them is. */
+    static final int WIDGET_HEIGHT = 20;
+
+    /** What a bordered text box's own border takes from the text inside it. */
+    private static final int TEXT_INSET = 8;
+
+    private Layout() {}
+
+    /**
+     * How many rows a window has between the title and what sits below them.
+     *
+     * <p>Measured rather than fixed, because a player's GUI scale is what decides
+     * how tall a window is in the units everything here is placed in. Splitting a
+     * line spends rows, so a screen that wraps must count the split against the
+     * same budget its other content comes out of.
+     *
+     * @param height the window's height, as the game reports it
+     * @param reserved the rows below the list the caller keeps for itself,
+     *     beside the one widget every caller keeps
+     * @return at least one row, however small the window claims to be
+     */
+    static int rows(int height, int reserved) {
+        return Math.max(1, (height - TOP - reserved * ROW - WIDGET_HEIGHT) / ROW);
+    }
+
+    /**
+     * One string as the lines it draws at the width it is drawn at.
+     *
+     * <p>The game's font does the splitting, because a screen that counted
+     * characters would be right only for scripts whose glyphs happen to be one
+     * width. The split runs against the text a box has room for rather than
+     * against the box, because a bordered box spends {@link #TEXT_INSET} of its
+     * width on its own border and a line that fits the border does not fit the
+     * text.
+     *
+     * @param font the window's font, which is what measures a glyph
+     * @param text the string to draw
+     * @return the lines, in order
+     */
+    static List<String> wrap({{Font}} font, String text) {
+        List<String> lines = new ArrayList<>();
+        for (Object piece :
+                font.{{Font#splitIgnoringLanguage}}(
+                        {{FormattedText}}.{{FormattedText#of}}(text), WIDGET_WIDTH - TEXT_INSET)) {
+            lines.add((({{FormattedText}}) piece).{{FormattedText#getString}}());
+        }
+        return lines;
+    }
+}

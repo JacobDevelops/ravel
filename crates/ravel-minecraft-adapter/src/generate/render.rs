@@ -1576,7 +1576,7 @@ fn modifiers(flags: u16, interface: bool, method: bool) -> String {
 /// what the JVM links against and what javac writes into the class file. A class
 /// with no package at all is the unnamed one, which an obfuscated version puts
 /// most of the game in.
-fn split(class: &str) -> (Option<String>, &str) {
+pub(super) fn split(class: &str) -> (Option<String>, &str) {
     class
         .rsplit_once('/')
         .map_or((None, class), |(package, simple)| {
@@ -1585,7 +1585,7 @@ fn split(class: &str) -> (Option<String>, &str) {
 }
 
 /// An internal class name as Java source writes it.
-fn source_name(class: &str) -> String {
+pub(super) fn source_name(class: &str) -> String {
     class.replace('/', ".")
 }
 

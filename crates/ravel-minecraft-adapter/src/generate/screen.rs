@@ -11,10 +11,10 @@
 //! So the sources are generated. The tracked half is a template that names roles
 //! inside `{{…}}` — never a game class, because a template is shared by every
 //! version and a class name is one version's spelling asserted over the rest.
-//! Each version's `stubs.toml` binds a role to the class it means there and a
-//! member role to the member, exactly as `reflection.toml` binds the roles the
-//! agent jar resolves, and this module rewrites each placeholder into the name
-//! that version links. That indirection is what carries a template across a
+//! Which class a role means is read from all three of the version's admission
+//! lists together — `stubs.toml`, `reflection.toml` and `hooks.toml` — while a
+//! member role is bound by `stubs.toml` alone, and this module rewrites each
+//! placeholder into the name that version links. That indirection is what carries a template across a
 //! rename: one version's `Identifier` is another's `ResourceLocation`, and one
 //! version's `splitIgnoringLanguage` is another's `split`, and neither costs
 //! the template a word.
@@ -27,9 +27,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::inputs::{Adapter, Seeds};
+use super::inputs::Adapter;
 use super::mapping::Mapping;
 use super::render;
+use super::roles::Roles;
 use super::stubs::Stub;
 use super::{GenerateError, SCREEN_PACKAGE};
 
@@ -56,7 +57,7 @@ pub(super) struct Screens {
 pub(super) fn render(
     directory: &Path,
     adapter: &Adapter,
-    seeds: &Seeds,
+    roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
 ) -> Result<Screens, GenerateError> {
@@ -75,14 +76,14 @@ pub(super) fn render(
         }
     }
 
-    every_seeded_member_resolves(seeds, stubs, mapping)?;
-    let linked = linked_classes(&referenced, seeds, stubs, mapping)?;
+    every_seeded_member_resolves(roles, stubs, mapping)?;
+    let linked = linked_classes(&referenced, roles, stubs, mapping)?;
     // A class the mapping puts in the unnamed package cannot be named from a
     // package at all — the language has no syntax for it — so the screens go
     // where their supertypes are. Under a version that keeps the game in
     // packages they stay where ADG-6 put them, which is why an unobfuscated
     // version generates the sources it already had.
-    let unnamed = linked.values().any(|name| !name.contains('/'));
+    let unnamed = linked.values().any(|name| render::split(name).0.is_none());
     let package = (!unnamed).then(|| SCREEN_PACKAGE.to_owned());
 
     let mut java = Vec::with_capacity(read.len());
@@ -91,7 +92,7 @@ pub(super) fn render(
         let source = expand(
             template,
             adapter,
-            seeds,
+            roles,
             stubs,
             mapping,
             &linked,
@@ -233,8 +234,8 @@ impl Placeholder {
     ///
     /// Every body names a role rather than a game class, so nothing here is
     /// abbreviated and nothing has to be expanded: a role is one word under
-    /// every version, and the version's seed list is what says which class and
-    /// which member that word means.
+    /// every version, the version's three admission lists say which class that
+    /// word means, and its seed list says which member.
     fn read(body: &str) -> Result<Self, String> {
         if body == "package" {
             return Ok(Self::Package);
@@ -306,29 +307,31 @@ fn template(path: &Path) -> Result<Template, GenerateError> {
 
 /// The linked internal name of every class the templates reference.
 ///
-/// A role is only rendered where the version's seed list binds it, and only
-/// where the stub tree carries the class it binds to, because that tree is what
+/// A role is only rendered where the version's admission lists bind it, and only
+/// where the stub tree carries the class they bind to, because that tree is what
 /// the screen jar compiles against: a name outside it would compile against
-/// nothing, and the seed list is the file that has to say so.
+/// nothing. Resolution reads all three lists, so a role a screen shares with the
+/// agent jar's surface is one class rather than two, and stubbing is still what
+/// says a compile-time reference to it can be written.
 fn linked_classes(
     referenced: &BTreeSet<String>,
-    seeds: &Seeds,
+    roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
 ) -> Result<BTreeMap<String, String>, GenerateError> {
     let mut linked = BTreeMap::new();
     let mut simple: BTreeMap<String, String> = BTreeMap::new();
     for role in referenced {
-        let class = seeded_class(role, seeds)?;
+        let class = roles.class(role)?;
         if !stubs.iter().any(|stub| stub.class == class) {
             return Err(GenerateError::Unresolved(format!(
-                "a screen template names {role}, which the version's stub seeds bind to {}, and \
-                 that class is not stubbed, so the screen jar would compile against nothing",
-                class.replace('/', ".")
+                "a screen template names {role}, which this version binds to {}, and that class \
+                 is not stubbed, so the screen jar would compile against nothing",
+                render::source_name(&class)
             )));
         }
         let name = mapping.runtime_class(&class).to_owned();
-        let last = name.rsplit('/').next().unwrap_or(&name).to_owned();
+        let last = render::split(&name).1.to_owned();
         if let Some(other) = simple.insert(last.clone(), role.clone())
             && &other != role
         {
@@ -356,31 +359,16 @@ fn linked_classes(
 /// Returns an error when a seeded member resolves to no linked member or to
 /// more than one.
 fn every_seeded_member_resolves(
-    seeds: &Seeds,
+    roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
 ) -> Result<(), GenerateError> {
-    for seed in &seeds.stubs {
-        for member in &seed.members {
-            member_name(&seed.role, member.role(), seeds, stubs, mapping)?;
+    for (role, members) in roles.seeded() {
+        for member in members {
+            member_name(role, member.role(), roles, stubs, mapping)?;
         }
     }
     Ok(())
-}
-
-/// The internal class name one version's seed list binds a role to.
-fn seeded_class(role: &str, seeds: &Seeds) -> Result<String, GenerateError> {
-    seeds
-        .stubs
-        .iter()
-        .find(|seed| seed.role == role)
-        .map(|seed| seed.class.replace('.', "/"))
-        .ok_or_else(|| {
-            GenerateError::Unresolved(format!(
-                "a screen template names the role {role} and the version's stub seeds bind no \
-                 class to it, so nothing says which class this version means"
-            ))
-        })
 }
 
 /// Rewrites one template into the source the version compiles.
@@ -390,7 +378,7 @@ fn seeded_class(role: &str, seeds: &Seeds) -> Result<String, GenerateError> {
 fn expand(
     template: &Template,
     adapter: &Adapter,
-    seeds: &Seeds,
+    roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
     linked: &BTreeMap<String, String>,
@@ -412,7 +400,7 @@ fn expand(
         source.push_str(&resolve(
             placeholder,
             adapter,
-            seeds,
+            roles,
             stubs,
             mapping,
             linked,
@@ -428,7 +416,7 @@ fn expand(
 fn resolve(
     placeholder: &Placeholder,
     adapter: &Adapter,
-    seeds: &Seeds,
+    roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
     linked: &BTreeMap<String, String>,
@@ -460,15 +448,18 @@ fn resolve(
         // A class the version links in the unnamed package is imported by
         // nothing: the language refuses the import and the simple name is the
         // whole name.
-        Placeholder::Import(class) => Ok(match name(class)?.rsplit_once('/') {
-            Some(_) => format!("import {};", name(class)?.replace('/', ".")),
-            None => String::new(),
-        }),
+        Placeholder::Import(class) => {
+            let linked = name(class)?;
+            Ok(match render::split(&linked).0 {
+                Some(_) => format!("import {};", render::source_name(&linked)),
+                None => String::new(),
+            })
+        }
         Placeholder::Class(class) => {
             let linked = name(class)?;
-            Ok(linked.rsplit('/').next().unwrap_or(&linked).to_owned())
+            Ok(render::split(&linked).1.to_owned())
         }
-        Placeholder::Member(role, member) => member_name(role, member, seeds, stubs, mapping),
+        Placeholder::Member(role, member) => member_name(role, member, roles, stubs, mapping),
     }
 }
 
@@ -485,30 +476,31 @@ fn resolve(
 fn member_name(
     role: &str,
     member_role: &str,
-    seeds: &Seeds,
+    roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
 ) -> Result<String, GenerateError> {
-    let seed = seeds
-        .stubs
-        .iter()
-        .find(|seed| seed.role == role)
-        .ok_or_else(|| {
-            GenerateError::Unresolved(format!(
-                "a screen template names {role}#{member_role} and the version's stub seeds bind \
-                 no class to that role"
-            ))
-        })?;
-    let class = seed.class.replace('.', "/");
-    let seeded = seed
-        .members
+    let class = roles.class(role)?;
+    let Some(bound) = roles.seeded_members(role) else {
+        return Err(GenerateError::Unresolved(match roles.bound_by(role) {
+            Some(list) => format!(
+                "a screen template names {role}#{member_role}, and this version's {list} binds \
+                 a class to that role while only stubs.toml binds member roles"
+            ),
+            None => format!(
+                "a screen template names {role}#{member_role} and none of this version's \
+                 stubs.toml, reflection.toml or hooks.toml binds a class to that role"
+            ),
+        }));
+    };
+    let reviewed = render::source_name(&class);
+    let seeded = bound
         .iter()
         .find(|seeded| seeded.role() == member_role)
         .ok_or_else(|| {
             GenerateError::Unresolved(format!(
                 "a screen template names {role}#{member_role} and the version's stub seeds bind \
-                 no member of {} to that role",
-                seed.class
+                 no member of {reviewed} to that role"
             ))
         })?;
     let member = seeded.member();
@@ -517,8 +509,7 @@ fn member_name(
         .find(|stub| stub.class == class)
         .ok_or_else(|| {
             GenerateError::Unresolved(format!(
-                "a screen template names {role}#{member_role} and {} is not stubbed",
-                seed.class
+                "a screen template names {role}#{member_role} and {reviewed} is not stubbed"
             ))
         })?;
     // Every overload is stubbed, because the seed list names a member and never
@@ -531,8 +522,7 @@ fn member_name(
         if let Some(wanted) = seeded.parameters() {
             let (parameters, _) = render::signature(&declared.descriptor).map_err(|detail| {
                 GenerateError::Unsupported(format!(
-                    "{}#{member} carries a descriptor that does not read: {detail}",
-                    seed.class
+                    "{reviewed}#{member} carries a descriptor that does not read: {detail}"
                 ))
             })?;
             if !wanted.matches(&parameters) {
@@ -553,14 +543,12 @@ fn member_name(
     names.dedup();
     match names.as_slice() {
         [] => Err(GenerateError::Unresolved(format!(
-            "a screen template names {role}#{member_role}, which this version binds to {}#{member}, \
-             and the stub tree does not carry that member",
-            seed.class
+            "a screen template names {role}#{member_role}, which this version binds to \
+             {reviewed}#{member}, and the stub tree does not carry that member"
         ))),
         [one] => Ok(one.clone()),
         several => Err(GenerateError::Unsupported(format!(
-            "{}#{member} links under {} names ({}), so no single reference names them all",
-            seed.class,
+            "{reviewed}#{member} links under {} names ({}), so no single reference names them all",
             several.len(),
             several.join(", ")
         ))),
@@ -588,7 +576,7 @@ fn constant(name: &str) -> String {
 mod tests {
     use std::fmt::Write as _;
 
-    use super::super::inputs::{self, MappingSource, Seed, SeedMember};
+    use super::super::inputs::{self, MappingSource, Seed, SeedMember, Seeds};
     use super::super::render;
     use super::super::stubs::{Member, Stub};
     use super::*;
@@ -614,6 +602,48 @@ com.example.text.Label -> a$b:
 com.example.util.Held -> com.example.util.Held:
     void tick() -> tick
 ";
+
+    /// The role table the screen tests resolve against, over all three lists.
+    fn roles_over(seeds: &Seeds, reflected: &[(&str, &str)], hooks: &[(&str, &str)]) -> Roles {
+        Roles::new(
+            seeds,
+            &inputs::Reflection {
+                schema_version: 1,
+                minecraft: String::from("0.0.0"),
+                classes: reflected
+                    .iter()
+                    .map(|(name, class)| inputs::Reflected {
+                        name: (*name).to_owned(),
+                        class: (*class).to_owned(),
+                        runtime: (*class).to_owned(),
+                        members: Vec::new(),
+                    })
+                    .collect(),
+            },
+            &inputs::Inventory {
+                schema_version: 1,
+                minecraft: String::from("0.0.0"),
+                hooks: hooks
+                    .iter()
+                    .map(|(id, class)| inputs::Hook {
+                        id: (*id).to_owned(),
+                        class: (*class).to_owned(),
+                        member: String::from("tick"),
+                        descriptor: String::from("()V"),
+                        kind: inputs::Kind::InstanceMethod,
+                        capability: String::from("test"),
+                        refuses: false,
+                        title_menu_row: None,
+                    })
+                    .collect(),
+                non_goals: Vec::new(),
+            },
+        )
+    }
+
+    fn roles(seeds: &Seeds) -> Roles {
+        roles_over(seeds, &[], &[])
+    }
 
     fn proguard() -> Mapping {
         Mapping::read(MappingSource::OfficialProguardMappings, MAPPING)
@@ -712,7 +742,7 @@ com.example.util.Held -> com.example.util.Held:
 
     #[test]
     fn an_overload_set_that_links_under_one_name_renders_that_name() {
-        let name = member_name("Surface", "draw", &seeds(), &stubs(), &proguard())
+        let name = member_name("Surface", "draw", &roles(&seeds()), &stubs(), &proguard())
             .expect("both overloads link under one name");
 
         assert_eq!(name, "b");
@@ -720,7 +750,7 @@ com.example.util.Held -> com.example.util.Held:
 
     #[test]
     fn a_member_the_seeds_do_not_carry_is_refused_rather_than_passed_through() {
-        let error = member_name("Surface", "paint", &seeds(), &stubs(), &proguard())
+        let error = member_name("Surface", "paint", &roles(&seeds()), &stubs(), &proguard())
             .expect_err("a member no seed asked for is stubbed by nothing");
 
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
@@ -729,8 +759,8 @@ com.example.util.Held -> com.example.util.Held:
     #[test]
     fn a_class_the_mapping_leaves_in_a_package_is_still_imported() {
         let referenced = ["Clock".to_owned()].into_iter().collect();
-        let linked =
-            linked_classes(&referenced, &seeds(), &stubs(), &proguard()).expect("resolvable");
+        let linked = linked_classes(&referenced, &roles(&seeds()), &stubs(), &proguard())
+            .expect("resolvable");
 
         assert_eq!(linked["Clock"], "com/example/util/Held");
     }
@@ -739,7 +769,7 @@ com.example.util.Held -> com.example.util.Held:
     fn a_class_the_stub_seeds_do_not_carry_is_refused() {
         let referenced = ["Unseeded".to_owned()].into_iter().collect();
 
-        let error = linked_classes(&referenced, &seeds(), &stubs(), &proguard())
+        let error = linked_classes(&referenced, &roles(&seeds()), &stubs(), &proguard())
             .expect_err("a template may only name a role the seeds bind");
 
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
@@ -816,7 +846,7 @@ com.example.util.Held -> com.example.util.Held:
             let screens = render(
                 &root.join(super::super::SCREEN_TEMPLATES),
                 &pinned.adapter,
-                &pinned.seeds,
+                &roles(&pinned.seeds),
                 &stubs,
                 &mapping,
             )
@@ -887,14 +917,20 @@ com.example.util.Held -> com.example.util.Held:
             let screens = render(
                 &root.join(super::super::SCREEN_TEMPLATES),
                 &pinned.adapter,
-                &pinned.seeds,
+                &roles(&pinned.seeds),
                 &stubs,
                 &mapping,
             )
             .expect("the tracked templates should render");
 
-            let dirty = member_name("SavedData", "setDirty", &pinned.seeds, &stubs, &mapping)
-                .expect("every tracked version binds the saved datum's dirty mark");
+            let dirty = member_name(
+                "SavedData",
+                "setDirty",
+                &roles(&pinned.seeds),
+                &stubs,
+                &mapping,
+            )
+            .expect("every tracked version binds the saved datum's dirty mark");
             let (_, source) = screens
                 .java
                 .iter()
@@ -981,11 +1017,11 @@ com.example.util.Held -> com.example.util.Held:
     #[test]
     fn a_role_renders_the_class_and_member_the_seed_list_binds_it_to() {
         let referenced = ["Surface".to_owned()].into_iter().collect();
-        let linked =
-            linked_classes(&referenced, &seeds(), &stubs(), &proguard()).expect("resolvable");
+        let linked = linked_classes(&referenced, &roles(&seeds()), &stubs(), &proguard())
+            .expect("resolvable");
         assert_eq!(linked["Surface"], "a");
 
-        let name = member_name("Surface", "size", &seeds(), &stubs(), &proguard())
+        let name = member_name("Surface", "size", &roles(&seeds()), &stubs(), &proguard())
             .expect("the seed list binds the member role size to width");
 
         assert_eq!(name, "j");
@@ -1016,14 +1052,14 @@ com.example.util.Held -> com.example.util.Held:
     fn a_parameter_count_picks_the_overload_it_names() {
         let none = seeds_binding("scale", Some(inputs::Overload::Count(0)));
         assert_eq!(
-            member_name("Surface", "scale", &none, &stubs(), &proguard())
+            member_name("Surface", "scale", &roles(&none), &stubs(), &proguard())
                 .expect("resize() is the zero-argument overload"),
             "c"
         );
 
         let one = seeds_binding("scale", Some(inputs::Overload::Count(1)));
         assert_eq!(
-            member_name("Surface", "scale", &one, &stubs(), &proguard())
+            member_name("Surface", "scale", &roles(&one), &stubs(), &proguard())
                 .expect("resize(int) is the one-argument overload"),
             "d"
         );
@@ -1048,14 +1084,20 @@ com.example.util.Held -> com.example.util.Held:
     #[test]
     fn declared_parameter_types_pick_an_overload_a_count_cannot() {
         let ambiguous = seeds_wrapping(Some(inputs::Overload::Count(1)));
-        let error = member_name("Surface", "split", &ambiguous, &stubs(), &proguard())
-            .expect_err("one parameter each, and two linked names");
+        let error = member_name(
+            "Surface",
+            "split",
+            &roles(&ambiguous),
+            &stubs(),
+            &proguard(),
+        )
+        .expect_err("one parameter each, and two linked names");
         assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
 
         for (declared, linked) in [("int", "e"), ("long", "f")] {
             let seeds = seeds_wrapping(Some(inputs::Overload::Types(vec![declared.to_owned()])));
             assert_eq!(
-                member_name("Surface", "split", &seeds, &stubs(), &proguard())
+                member_name("Surface", "split", &roles(&seeds), &stubs(), &proguard())
                     .expect("the declared type names one overload"),
                 linked
             );
@@ -1069,7 +1111,7 @@ com.example.util.Held -> com.example.util.Held:
     fn declared_parameter_types_matching_no_overload_are_refused() {
         let seeds = seeds_wrapping(Some(inputs::Overload::Types(vec!["boolean".to_owned()])));
 
-        let error = member_name("Surface", "split", &seeds, &stubs(), &proguard())
+        let error = member_name("Surface", "split", &roles(&seeds), &stubs(), &proguard())
             .expect_err("the panel declares no boolean wrap");
 
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
@@ -1081,7 +1123,7 @@ com.example.util.Held -> com.example.util.Held:
     fn a_parameter_count_matching_no_overload_is_refused() {
         let seeds = seeds_binding("scale", Some(inputs::Overload::Count(2)));
 
-        let error = member_name("Surface", "scale", &seeds, &stubs(), &proguard())
+        let error = member_name("Surface", "scale", &roles(&seeds), &stubs(), &proguard())
             .expect_err("the panel declares no two-argument resize");
 
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
@@ -1094,7 +1136,7 @@ com.example.util.Held -> com.example.util.Held:
     fn an_overload_set_linking_under_two_names_without_a_count_is_refused() {
         let seeds = seeds_binding("scale", None);
 
-        let error = member_name("Surface", "scale", &seeds, &stubs(), &proguard())
+        let error = member_name("Surface", "scale", &roles(&seeds), &stubs(), &proguard())
             .expect_err("resize links under two names here");
 
         assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
@@ -1106,21 +1148,18 @@ com.example.util.Held -> com.example.util.Held:
     fn a_seeded_member_no_template_names_is_still_required_to_resolve() {
         let ambiguous = seeds_binding("scale", None);
 
-        let error = every_seeded_member_resolves(&ambiguous, &stubs(), &proguard())
+        let error = every_seeded_member_resolves(&roles(&ambiguous), &stubs(), &proguard())
             .expect_err("an ambiguous seed is a defect whether or not a template names it");
 
         assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
-        every_seeded_member_resolves(
-            &seeds_binding("scale", Some(inputs::Overload::Count(0))),
-            &stubs(),
-            &proguard(),
-        )
-        .expect("a bound overload resolves");
+        let bound = seeds_binding("scale", Some(inputs::Overload::Count(0)));
+        every_seeded_member_resolves(&roles(&bound), &stubs(), &proguard())
+            .expect("a bound overload resolves");
     }
 
     #[test]
     fn a_member_role_the_seed_list_does_not_bind_is_refused() {
-        let error = member_name("Surface", "width", &seeds(), &stubs(), &proguard())
+        let error = member_name("Surface", "width", &roles(&seeds()), &stubs(), &proguard())
             .expect_err("width is a member name here, and the role bound to it is size");
 
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
@@ -1201,5 +1240,124 @@ com.example.util.Held -> com.example.util.Held:
     fn a_constant_is_the_screen_class_name() {
         assert_eq!(constant("RavelSettingsScreen"), "RAVEL_SETTINGS_SCREEN");
         assert_eq!(constant("Wire"), "WIRE");
+    }
+
+    /// A template naming one role as an import and as a reference.
+    ///
+    /// `Ticker` is bound by no seed, so a resolver reading the seed list alone
+    /// renders none of this.
+    const TICKING: &str = "{{package}}\n{{import Ticker}}\nclass Shared { {{Ticker}} held; }\n";
+
+    /// A template directory holding one shared template.
+    fn staged_screen(name: &str, text: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("ravel-screen-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("the staged directory should be made");
+        std::fs::write(root.join("Shared.java.in"), text).expect("the template should be written");
+        root
+    }
+
+    /// A tracked version's adapter, for the tests that render a staged template.
+    fn adapter() -> Adapter {
+        let root = repository_root();
+        let version = inputs::tracked_versions(&root)
+            .into_iter()
+            .next()
+            .expect("the repository tracks a version");
+        inputs::pinned(&root, Some(&version))
+            .expect("the tracked version data should parse")
+            .adapter
+    }
+
+    #[test]
+    fn a_role_only_the_reflective_surface_binds_renders_through_a_screen() {
+        let root = staged_screen("reflected", TICKING);
+        let bound = roles_over(&seeds(), &[("Ticker", "com.example.util.Held")], &[]);
+
+        let screens = render(&root, &adapter(), &bound, &stubs(), &proguard())
+            .expect("reflection.toml binds the role the template names");
+
+        let (_, source) = &screens.java[0];
+        assert!(source.contains("import com.example.util.Held;"), "{source}");
+        assert!(source.contains("Held held;"), "{source}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_role_only_the_hook_inventory_binds_renders_through_a_screen() {
+        let root = staged_screen("hooked", TICKING);
+        let bound = roles_over(&seeds(), &[], &[("Ticker", "com.example.util.Held")]);
+
+        let screens = render(&root, &adapter(), &bound, &stubs(), &proguard())
+            .expect("hooks.toml binds the role the template names");
+
+        let (_, source) = &screens.java[0];
+        assert!(source.contains("import com.example.util.Held;"), "{source}");
+        assert!(source.contains("Held held;"), "{source}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn two_lists_disagreeing_about_a_rendered_role_refuse_the_screen() {
+        let root = staged_screen("disagreeing", TICKING);
+        let bound = roles_over(
+            &seeds(),
+            &[("Ticker", "com.example.util.Held")],
+            &[("Ticker", "com.example.gui.Panel")],
+        );
+
+        let Err(error) = render(&root, &adapter(), &bound, &stubs(), &proguard()) else {
+            panic!("two lists bind the role to two classes");
+        };
+
+        assert!(matches!(error, GenerateError::Input(_)), "{error}");
+        let message = error.to_string();
+        for named in [
+            "com.example.util.Held",
+            "com.example.gui.Panel",
+            "reflection.toml",
+            "hooks.toml",
+        ] {
+            assert!(message.contains(named), "{message}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_member_role_on_a_disagreeing_class_reports_the_disagreement() {
+        let bound = roles_over(
+            &seeds(),
+            &[("Ticker", "com.example.util.Held")],
+            &[("Ticker", "com.example.gui.Panel")],
+        );
+
+        let error = member_name("Ticker", "tick", &bound, &stubs(), &proguard())
+            .expect_err("two lists bind the role to two classes");
+        let message = error.to_string();
+        for named in ["com.example.gui.Panel", "hooks.toml"] {
+            assert!(message.contains(named), "{message}");
+        }
+    }
+
+    /// A bound class with no member binding is a different defect from a role
+    /// nothing binds, and the two say so differently.
+    #[test]
+    fn a_member_role_on_a_class_only_another_list_binds_names_that_list() {
+        let bound = roles_over(&seeds(), &[("Ticker", "com.example.util.Held")], &[]);
+
+        let held = member_name("Ticker", "tick", &bound, &stubs(), &proguard())
+            .expect_err("only stubs.toml binds member roles");
+        assert!(
+            held.to_string()
+                .contains("reflection.toml binds a class to that role"),
+            "{held}"
+        );
+
+        let unbound = member_name("Unbound", "tick", &bound, &stubs(), &proguard())
+            .expect_err("no list binds the role at all");
+        assert!(
+            unbound.to_string().contains("none of this version's"),
+            "{unbound}"
+        );
     }
 }

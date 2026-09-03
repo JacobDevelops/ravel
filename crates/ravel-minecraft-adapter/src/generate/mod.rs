@@ -22,6 +22,7 @@ mod jar;
 mod mapping;
 mod render;
 mod resolve;
+mod roles;
 mod screen;
 mod stubs;
 
@@ -430,7 +431,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
     let screens = screen::render(
         &root.join(SCREEN_TEMPLATES),
         &pinned.adapter,
-        &pinned.seeds,
+        &roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory),
         &stubbed,
         &mapping,
     )?;

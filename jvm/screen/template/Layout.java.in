@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 {{import Font}}
 {{import FormattedText}}
+{{import Style}}
 
 /**
  * The measurements Ravel's row-budgeted screens are laid out against.
@@ -59,12 +60,15 @@ final class Layout {
     /**
      * One string as the lines it draws at the width it is drawn at.
      *
-     * <p>The game's font does the splitting, because a screen that counted
-     * characters would be right only for scripts whose glyphs happen to be one
-     * width. The split runs against the text a box has room for rather than
-     * against the box, because a bordered box spends {@link #TEXT_INSET} of its
-     * width on its own border and a line that fits the border does not fit the
-     * text.
+     * <p>The game's own splitter does the splitting, because a screen that
+     * counted characters would be right only for scripts whose glyphs happen to
+     * be one width. It is reached through the font rather than asked of the font,
+     * because the font's own split answers glyph instructions under one pinned
+     * version and readable text under the other, and a screen cannot read a line
+     * back out of the first. The split runs against the text a box has room for
+     * rather than against the box, because a bordered box spends
+     * {@link #TEXT_INSET} of its width on its own border and a line that fits the
+     * border does not fit the text.
      *
      * @param font the window's font, which is what measures a glyph
      * @param text the string to draw
@@ -72,10 +76,13 @@ final class Layout {
      */
     static List<String> wrap({{Font}} font, String text) {
         List<String> lines = new ArrayList<>();
-        for (Object piece :
-                font.{{Font#splitIgnoringLanguage}}(
-                        {{FormattedText}}.{{FormattedText#of}}(text), WIDGET_WIDTH - TEXT_INSET)) {
-            lines.add((({{FormattedText}}) piece).{{FormattedText#getString}}());
+        for ({{FormattedText}} line :
+                font.{{Font#getSplitter}}()
+                        .{{StringSplitter#splitLines}}(
+                                text,
+                                WIDGET_WIDTH - TEXT_INSET,
+                                {{Style}}.{{Style#EMPTY}})) {
+            lines.add(line.{{FormattedText#getString}}());
         }
         return lines;
     }

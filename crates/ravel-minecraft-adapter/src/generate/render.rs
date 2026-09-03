@@ -11,7 +11,7 @@ use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
 use super::inputs::{self, Adapter, Inventory, Lookup, Reflection, Spelling};
 use super::mapping::Mapping;
 use super::resolve::Resolved;
-use super::stubs::{Member, Stub};
+use super::stubs::{self, Member, Stub};
 use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY, LIBRARY_PROPERTY};
 
 /// A JVM type a hook argument can carry across the boundary.
@@ -1283,6 +1283,9 @@ pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
                 "\n[[stub.member]]\nname = \"{}\"\ndescriptor = \"{}\"\nflags = {}\nmethod = {}",
                 member.name, member.descriptor, member.flags, member.method
             );
+            if let Some(element) = &member.returns {
+                let _ = writeln!(text, "returns = \"{element}\"");
+            }
         }
     }
     text
@@ -1373,43 +1376,74 @@ pub(super) fn stub_java(
         let modifiers = modifiers(member.flags, stub.is_interface(), member.method);
         let (name, descriptor) =
             mapping.linked_member(&stub.class, &member.name, &member.descriptor);
-        if member.method {
-            let (parameters, returns) = signature(&descriptor).map_err(&unsupported)?;
-            let declared = parameters
-                .iter()
-                .enumerate()
-                .map(|(index, parameter)| format!("{parameter} argument{index}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            if member.name == "<init>" {
-                let chained = chained_super(stub, mapping).map_err(&unsupported)?;
-                let _ = writeln!(
-                    text,
-                    "\n    {modifiers}{simple}({declared}) {{\n{chained}    }}"
-                );
-            } else if returns == "void" {
-                let _ = writeln!(text, "\n    {modifiers}void {name}({declared}) {{\n    }}");
-            } else {
-                // A stub body is never reached: the real class is what the game
-                // loads. Throwing rather than returning a default is what makes
-                // that visible if one ever is.
-                let _ = writeln!(
-                    text,
-                    "\n    {modifiers}{returns} {name}({declared}) {{\n        \
-                     throw new UnsupportedOperationException(\"stub\");\n    }}"
-                );
-            }
+        let rendered = if member.method {
+            stub_method(
+                stub,
+                member,
+                &modifiers,
+                &name,
+                &descriptor,
+                simple,
+                mapping,
+            )
         } else {
-            let _ = writeln!(
-                text,
-                "{}",
-                stub_field(stub, member, &modifiers, &name, &descriptor).map_err(&unsupported)?
-            );
-        }
+            stub_field(stub, member, &modifiers, &name, &descriptor, mapping)
+        };
+        let _ = writeln!(text, "{}", rendered.map_err(&unsupported)?);
     }
 
     let _ = writeln!(text, "}}");
     Ok((format!("{linked}.java"), text))
+}
+
+/// One stub method, as Java source declares it.
+///
+/// # Errors
+///
+/// Returns the detail of a descriptor or a recorded element type that does not
+/// read.
+fn stub_method(
+    stub: &Stub,
+    member: &Member,
+    modifiers: &str,
+    name: &str,
+    descriptor: &str,
+    simple: &str,
+    mapping: &Mapping,
+) -> Result<String, String> {
+    let (parameters, erased) = signature(descriptor)?;
+    // The erased return is what the JVM links and the element type is what a
+    // caller reads back, so a stub declares both: writing the raw type here is
+    // what let a screen compile against a list of something the game never put
+    // in one.
+    let returns = match &member.returns {
+        Some(recorded) => format!("{erased}<{}>", argument(recorded, mapping)?),
+        None => erased,
+    };
+    let declared = parameters
+        .iter()
+        .enumerate()
+        .map(|(index, parameter)| format!("{parameter} argument{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if member.name == "<init>" {
+        let chained = chained_super(stub, mapping)?;
+        return Ok(format!(
+            "\n    {modifiers}{simple}({declared}) {{\n{chained}    }}"
+        ));
+    }
+    if returns == "void" {
+        return Ok(format!(
+            "\n    {modifiers}void {name}({declared}) {{\n    }}"
+        ));
+    }
+    // A stub body is never reached: the real class is what the game loads.
+    // Throwing rather than returning a default is what makes that visible if one
+    // ever is.
+    Ok(format!(
+        "\n    {modifiers}{returns} {name}({declared}) {{\n        \
+         throw new UnsupportedOperationException(\"stub\");\n    }}"
+    ))
 }
 
 /// One stub field, as Java source declares it.
@@ -1429,6 +1463,7 @@ fn stub_field(
     modifiers: &str,
     name: &str,
     descriptor: &str,
+    mapping: &Mapping,
 ) -> Result<String, String> {
     if stub.is_interface() {
         return Err(format!(
@@ -1444,7 +1479,26 @@ fn stub_field(
             member.name, member.descriptor
         ));
     }
+    let kind = match &member.returns {
+        Some(recorded) => format!("{kind}<{}>", argument(recorded, mapping)?),
+        None => kind,
+    };
     Ok(format!("\n    {modifiers}{kind} {name};"))
+}
+
+/// One recorded type argument, as Java source writes it.
+///
+/// # Errors
+///
+/// Returns the detail of a recorded argument that names no class.
+fn argument(recorded: &str, mapping: &Mapping) -> Result<String, String> {
+    let (bound, class) = stubs::argument(recorded)
+        .ok_or_else(|| format!("{recorded} is not a type argument over one class"))?;
+    Ok(format!(
+        "{}{}",
+        bound.java(),
+        source_name(mapping.runtime_class(class))
+    ))
 }
 
 /// The explicit `super(...)` one stub's constructor has to open with.
@@ -2039,6 +2093,7 @@ mod tests {
                     descriptor: (*descriptor).to_owned(),
                     flags: *flags,
                     method: *method,
+                    returns: None,
                 })
                 .collect(),
             super_constructor: None,
@@ -2087,6 +2142,55 @@ mod tests {
                  throw new UnsupportedOperationException(\"stub\");"
             ),
             "a stub body is never reached and says so if it is: {java}"
+        );
+    }
+
+    /// The defect the element type exists for: a stub generated from the erased
+    /// descriptor alone declares a raw list, every element of it is an `Object`,
+    /// and a caller that reads one back compiles against any type it likes.
+    /// Rendering the element is what turns that into a compile error.
+    #[test]
+    fn a_java_util_return_is_declared_over_the_element_the_class_file_records() {
+        let mut splitter = stub(
+            "com/example/text/Splitter",
+            0x0031,
+            &[(
+                "splitLines",
+                "(Ljava/lang/String;)Ljava/util/List;",
+                1,
+                true,
+            )],
+        );
+        splitter.members[0].returns = Some("Lcom/example/text/Line;".to_owned());
+
+        let (_, java) = stub_java(&adapter(), &splitter, &Mapping::Identity).expect("renders");
+
+        assert!(
+            java.contains(
+                "public java.util.List<com.example.text.Line> splitLines(java.lang.String \
+                 argument0)"
+            ),
+            "{java}"
+        );
+    }
+
+    /// A wildcard is the shape the pinned screens' own superclass declares, and
+    /// a stub that dropped the bound would declare a list nothing assignable
+    /// could be read out of.
+    #[test]
+    fn a_wildcard_element_keeps_the_bound_the_class_file_records() {
+        let mut panel = stub(
+            "com/example/gui/Panel",
+            0x0031,
+            &[("children", "()Ljava/util/List;", 1, true)],
+        );
+        panel.members[0].returns = Some("+Lcom/example/gui/Listener;".to_owned());
+
+        let (_, java) = stub_java(&adapter(), &panel, &Mapping::Identity).expect("renders");
+
+        assert!(
+            java.contains("public java.util.List<? extends com.example.gui.Listener> children()"),
+            "{java}"
         );
     }
 

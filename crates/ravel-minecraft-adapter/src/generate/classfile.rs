@@ -34,6 +34,9 @@ pub(super) const ACC_ABSTRACT: u16 = 0x0400;
 /// Access flag marking a member the compiler invented.
 const ACC_SYNTHETIC: u16 = 0x1000;
 
+/// The attribute a class file records an unerased declaration under.
+const SIGNATURE: &str = "Signature";
+
 /// Anything that stops a class file from being read.
 #[derive(Debug)]
 pub(super) struct ClassFileError(String);
@@ -55,6 +58,13 @@ pub(super) struct Member {
     pub(super) flags: u16,
     /// Whether this member is a method rather than a field.
     pub(super) method: bool,
+    /// The `Signature` attribute, where the class file records one.
+    ///
+    /// A descriptor is erased and a signature is not, so this is the only place
+    /// a class file says what a returned collection holds. Absent for every
+    /// member whose declaration uses no type variable and no type argument,
+    /// which is most of them.
+    pub(super) signature: Option<String>,
 }
 
 impl Member {
@@ -110,12 +120,13 @@ pub(super) fn members(bytes: &[u8]) -> Result<Vec<Member>, ClassFileError> {
             let flags = reader.u16()?;
             let name = pool.string(&mut reader)?;
             let descriptor = pool.string(&mut reader)?;
-            skip_attributes(&mut reader)?;
+            let signature = attributes(&pool, &mut reader)?;
             members.push(Member {
                 name,
                 descriptor,
                 flags,
                 method,
+                signature,
             });
         }
     }
@@ -241,14 +252,31 @@ fn constant_width(tag: u8) -> Result<usize, ClassFileError> {
     }
 }
 
-fn skip_attributes(reader: &mut Reader<'_>) -> Result<(), ClassFileError> {
+/// Walks one member's attribute table, answering its `Signature` where it has
+/// one.
+///
+/// Every other attribute is skipped by length, as they all were before a stub
+/// needed to know what a returned collection holds.
+fn attributes(pool: &Pool, reader: &mut Reader<'_>) -> Result<Option<String>, ClassFileError> {
     let count = reader.u16()?;
+    let mut signature = None;
     for _ in 0..count {
-        reader.skip(2)?; // name index
-        let length = reader.u32()?;
-        reader.skip(usize::try_from(length).unwrap_or(usize::MAX))?;
+        let name = pool.string(reader)?;
+        let length = usize::try_from(reader.u32()?).unwrap_or(usize::MAX);
+        if name == SIGNATURE {
+            // A `Signature` attribute is one pool index and nothing else, so one
+            // of any other length is malformed rather than something to skip.
+            if length != 2 {
+                return Err(ClassFileError(format!(
+                    "a Signature attribute is {length} bytes rather than two"
+                )));
+            }
+            signature = Some(pool.string(reader)?);
+        } else {
+            reader.skip(length)?;
+        }
     }
-    Ok(())
+    Ok(signature)
 }
 
 struct Reader<'bytes> {
@@ -427,6 +455,72 @@ mod tests {
             !read[0].is_visible(),
             "the fixture declares the method package-private"
         );
+    }
+
+    /// The smallest class file whose one method carries a `Signature`, between
+    /// two attributes that are not one.
+    fn one_signed_method_class(signature_length: u32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(MAGIC.to_be_bytes());
+        bytes.extend(0_u16.to_be_bytes()); // minor
+        bytes.extend(69_u16.to_be_bytes()); // major
+        bytes.extend(6_u16.to_be_bytes()); // constant pool count: entries 1 to 5
+        for text in [
+            "hook",
+            "()Ljava/util/List;",
+            "Unrelated",
+            "Signature",
+            "()Ljava/util/List<Lsome/Line;>;",
+        ] {
+            bytes.push(TAG_UTF8);
+            bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
+            bytes.extend(text.as_bytes());
+        }
+        for value in [0_u16, 0, 0, 0, 0] {
+            // flags, this class, no superclass, no interfaces, no fields
+            bytes.extend(value.to_be_bytes());
+        }
+        bytes.extend(1_u16.to_be_bytes()); // one method
+        bytes.extend(1_u16.to_be_bytes()); // ACC_PUBLIC
+        bytes.extend(1_u16.to_be_bytes()); // name index
+        bytes.extend(2_u16.to_be_bytes()); // descriptor index
+        bytes.extend(3_u16.to_be_bytes()); // three attributes
+        bytes.extend(3_u16.to_be_bytes()); // one named something else and four
+        bytes.extend(4_u32.to_be_bytes()); // bytes wide, so a walk that skipped
+        bytes.extend(0_u32.to_be_bytes()); // by anything but its length desyncs
+        bytes.extend(4_u16.to_be_bytes()); // the Signature attribute
+        bytes.extend(signature_length.to_be_bytes());
+        bytes.extend(5_u16.to_be_bytes());
+        let padding = usize::try_from(signature_length)
+            .expect("short")
+            .saturating_sub(2);
+        bytes.extend(std::iter::repeat_n(0_u8, padding));
+        bytes.extend(3_u16.to_be_bytes()); // and a last one two bytes wide like
+        bytes.extend(2_u32.to_be_bytes()); // a signature, whose payload would
+        bytes.extend(1_u16.to_be_bytes()); // read back as "hook"
+        bytes.extend(0_u16.to_be_bytes()); // class attributes
+        bytes
+    }
+
+    #[test]
+    fn a_signature_is_found_past_an_attribute_that_is_not_one() {
+        let read = members(&one_signed_method_class(2)).expect("the fixture should parse");
+
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].name, "hook");
+        assert_eq!(
+            read[0].signature.as_deref(),
+            Some("()Ljava/util/List<Lsome/Line;>;"),
+            "the walk names each attribute through the pool and keeps only the signature"
+        );
+    }
+
+    #[test]
+    fn a_signature_attribute_of_another_width_is_refused_rather_than_skipped() {
+        let error =
+            members(&one_signed_method_class(3)).expect_err("a three-byte signature is malformed");
+
+        assert!(error.to_string().contains("rather than two"), "{error}");
     }
 
     #[test]

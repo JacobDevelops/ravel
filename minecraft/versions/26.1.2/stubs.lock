@@ -72,12 +72,46 @@ flags = 1
 method = true
 
 [[stub]]
+class = "net/minecraft/client/StringSplitter"
+flags = 33
+
+[[stub.member]]
+name = "splitLines"
+descriptor = "(Ljava/lang/String;ILnet/minecraft/network/chat/Style;)Ljava/util/List;"
+flags = 1
+method = true
+returns = "Lnet/minecraft/network/chat/FormattedText;"
+
+[[stub.member]]
+name = "splitLines"
+descriptor = "(Ljava/lang/String;ILnet/minecraft/network/chat/Style;ZLnet/minecraft/client/StringSplitter$LinePosConsumer;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "splitLines"
+descriptor = "(Lnet/minecraft/network/chat/FormattedText;ILnet/minecraft/network/chat/Style;)Ljava/util/List;"
+flags = 1
+method = true
+returns = "Lnet/minecraft/network/chat/FormattedText;"
+
+[[stub.member]]
+name = "splitLines"
+descriptor = "(Lnet/minecraft/network/chat/FormattedText;ILnet/minecraft/network/chat/Style;Ljava/util/function/BiConsumer;)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/StringSplitter$LinePosConsumer"
+flags = 1537
+
+[[stub]]
 class = "net/minecraft/client/gui/Font"
 flags = 33
 
 [[stub.member]]
-name = "splitIgnoringLanguage"
-descriptor = "(Lnet/minecraft/network/chat/FormattedText;I)Ljava/util/List;"
+name = "getSplitter"
+descriptor = "()Lnet/minecraft/client/StringSplitter;"
 flags = 1
 method = true
 
@@ -363,18 +397,6 @@ descriptor = "()Ljava/lang/String;"
 flags = 1
 method = true
 
-[[stub.member]]
-name = "of"
-descriptor = "(Ljava/lang/String;)Lnet/minecraft/network/chat/FormattedText;"
-flags = 9
-method = true
-
-[[stub.member]]
-name = "of"
-descriptor = "(Ljava/lang/String;Lnet/minecraft/network/chat/Style;)Lnet/minecraft/network/chat/FormattedText;"
-flags = 9
-method = true
-
 [[stub]]
 class = "net/minecraft/network/chat/MutableComponent"
 flags = 49
@@ -383,6 +405,12 @@ implements = ["net/minecraft/network/chat/Component", "net/minecraft/network/cha
 [[stub]]
 class = "net/minecraft/network/chat/Style"
 flags = 49
+
+[[stub.member]]
+name = "EMPTY"
+descriptor = "Lnet/minecraft/network/chat/Style;"
+flags = 25
+method = false
 
 [[stub]]
 class = "net/minecraft/resources/Identifier"

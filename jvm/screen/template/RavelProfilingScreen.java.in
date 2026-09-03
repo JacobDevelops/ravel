@@ -55,9 +55,9 @@ import java.util.List;
  * the cursor, so the beginning of a long line is scrolled out of sight. The
  * accuracy statement below is the longest line here and it is the one that must
  * be read, which makes splitting a correctness fix rather than a cosmetic one.
- * The game's font does the splitting — {@code splitIgnoringLanguage} measures
- * glyphs and breaks on words — because a screen that counted characters instead
- * would be right only for scripts whose glyphs happen to be one width.
+ * The game's own splitter does the splitting — it measures glyphs and breaks on
+ * words — because a screen that counted characters instead would be right only
+ * for scripts whose glyphs happen to be one width.
  *
  * <p><b>Known limit: no scrolling.</b> The same limit
  * {@link RavelModsScreen} records, for the same reason and with the same

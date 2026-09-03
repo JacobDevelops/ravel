@@ -535,7 +535,7 @@ fn member_name(
                     seed.class
                 ))
             })?;
-            if parameters.len() != wanted {
+            if !wanted.matches(&parameters) {
                 continue;
             }
         }
@@ -607,6 +607,8 @@ com.example.gui.Panel -> a:
     void draw(int) -> b
     void resize() -> c
     void resize(int) -> d
+    void wrap(int) -> e
+    void wrap(long) -> f
 com.example.text.Label -> a$b:
     com.example.text.Label of(java.lang.String) -> e
 com.example.util.Held -> com.example.util.Held:
@@ -624,6 +626,7 @@ com.example.util.Held -> com.example.util.Held:
             descriptor: descriptor.to_owned(),
             flags: 1,
             method: true,
+            returns: None,
         }
     }
 
@@ -677,11 +680,14 @@ com.example.util.Held -> com.example.util.Held:
                         descriptor: "I".to_owned(),
                         flags: 1,
                         method: false,
+                        returns: None,
                     },
                     method("draw", "()V"),
                     method("draw", "(I)V"),
                     method("resize", "()V"),
                     method("resize", "(I)V"),
+                    method("wrap", "(I)V"),
+                    method("wrap", "(J)V"),
                 ],
                 super_constructor: None,
             },
@@ -993,7 +999,7 @@ com.example.util.Held -> com.example.util.Held:
     /// `resize` is the pair that matters: the invented mapping links `resize()`
     /// as `c` and `resize(int)` as `d`, which is the shape an obfuscated version
     /// produces and the whole reason a count exists.
-    fn seeds_binding(member_role: &str, parameters: Option<usize>) -> inputs::Seeds {
+    fn seeds_binding(member_role: &str, parameters: Option<inputs::Overload>) -> inputs::Seeds {
         let mut seeds = seeds();
         seeds.stubs[0].members = vec![SeedMember::Bound(inputs::BoundMember {
             role: member_role.to_owned(),
@@ -1008,14 +1014,14 @@ com.example.util.Held -> com.example.util.Held:
     /// other method rather than failing.
     #[test]
     fn a_parameter_count_picks_the_overload_it_names() {
-        let none = seeds_binding("scale", Some(0));
+        let none = seeds_binding("scale", Some(inputs::Overload::Count(0)));
         assert_eq!(
             member_name("Surface", "scale", &none, &stubs(), &proguard())
                 .expect("resize() is the zero-argument overload"),
             "c"
         );
 
-        let one = seeds_binding("scale", Some(1));
+        let one = seeds_binding("scale", Some(inputs::Overload::Count(1)));
         assert_eq!(
             member_name("Surface", "scale", &one, &stubs(), &proguard())
                 .expect("resize(int) is the one-argument overload"),
@@ -1023,11 +1029,57 @@ com.example.util.Held -> com.example.util.Held:
         );
     }
 
+    /// A seed list binding one member role to an overload of `wrap`.
+    ///
+    /// `wrap` is the pair a count cannot separate: both overloads take one
+    /// parameter and the invented mapping links them as `e` and `f`, which is
+    /// the shape that reached a screen as a list of the wrong thing.
+    fn seeds_wrapping(parameters: Option<inputs::Overload>) -> inputs::Seeds {
+        let mut seeds = seeds();
+        seeds.stubs[0].members = vec![SeedMember::Bound(inputs::BoundMember {
+            role: "split".to_owned(),
+            member: "wrap".to_owned(),
+            parameters,
+        })];
+        seeds
+    }
+
+    /// The declared types name the overload a count names both of and neither.
+    #[test]
+    fn declared_parameter_types_pick_an_overload_a_count_cannot() {
+        let ambiguous = seeds_wrapping(Some(inputs::Overload::Count(1)));
+        let error = member_name("Surface", "split", &ambiguous, &stubs(), &proguard())
+            .expect_err("one parameter each, and two linked names");
+        assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
+
+        for (declared, linked) in [("int", "e"), ("long", "f")] {
+            let seeds = seeds_wrapping(Some(inputs::Overload::Types(vec![declared.to_owned()])));
+            assert_eq!(
+                member_name("Surface", "split", &seeds, &stubs(), &proguard())
+                    .expect("the declared type names one overload"),
+                linked
+            );
+        }
+    }
+
+    /// Types that separate nothing are refused for the reason a count that
+    /// separates nothing is: a binding naming no member is a defect, not a
+    /// licence to fall back to the whole overload set.
+    #[test]
+    fn declared_parameter_types_matching_no_overload_are_refused() {
+        let seeds = seeds_wrapping(Some(inputs::Overload::Types(vec!["boolean".to_owned()])));
+
+        let error = member_name("Surface", "split", &seeds, &stubs(), &proguard())
+            .expect_err("the panel declares no boolean wrap");
+
+        assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
+    }
+
     /// A count that separates nothing is a binding that names no member, and is
     /// refused rather than falling back to the whole overload set.
     #[test]
     fn a_parameter_count_matching_no_overload_is_refused() {
-        let seeds = seeds_binding("scale", Some(2));
+        let seeds = seeds_binding("scale", Some(inputs::Overload::Count(2)));
 
         let error = member_name("Surface", "scale", &seeds, &stubs(), &proguard())
             .expect_err("the panel declares no two-argument resize");
@@ -1058,8 +1110,12 @@ com.example.util.Held -> com.example.util.Held:
             .expect_err("an ambiguous seed is a defect whether or not a template names it");
 
         assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
-        every_seeded_member_resolves(&seeds_binding("scale", Some(0)), &stubs(), &proguard())
-            .expect("a bound overload resolves");
+        every_seeded_member_resolves(
+            &seeds_binding("scale", Some(inputs::Overload::Count(0))),
+            &stubs(),
+            &proguard(),
+        )
+        .expect("a bound overload resolves");
     }
 
     #[test]

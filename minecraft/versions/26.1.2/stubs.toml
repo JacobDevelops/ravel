@@ -116,18 +116,40 @@ members = ["<init>", "getValue", "setValue", "setEditable", "setMaxLength"]
 # what makes a long row readable at all, and it is the font's job: the game
 # measures glyphs, and a screen that counted characters instead would break on
 # every script whose glyphs are not one width.
+#
+# The font does not split; it holds the splitter that does, and that indirection
+# is the seam the screens go through. `Font` renamed and retyped its own split
+# between the two pinned versions and `StringSplitter` did neither, so a screen
+# that asked the font directly asked a different question of each.
 role = "Font"
 class = "net.minecraft.client.gui.Font"
-members = ["splitIgnoringLanguage"]
+members = ["getSplitter"]
 
 [[stub]]
-# What splitting takes and answers. `of` wraps one string, `getString` reads one
-# split line back out. Seeded rather than reusing `Component` because the split
-# answers this type, and a screen that had to name `Component` on the way back
-# would be asserting an edge between the two that only the jar can state.
+# What actually splits. `splitLines` answers the lines one string draws as, each
+# one still text a caller can read back, which is what the font's own split stops
+# being under the older pinned version: there it answers a sequence of glyph
+# instructions instead, and a screen reading a line back out of one gets a type
+# the compiler had no way to check.
+role = "StringSplitter"
+class = "net.minecraft.client.StringSplitter"
+members = ["splitLines"]
+
+[[stub]]
+# The style a split runs under. `splitLines` takes one and the screens have no
+# style of their own to give it, so they give it the empty one the game declares.
+role = "Style"
+class = "net.minecraft.network.chat.Style"
+members = ["EMPTY"]
+
+[[stub]]
+# What a split line is. `getString` reads one back out. Seeded rather than
+# reusing `Component` because the split answers this type, and a screen that had
+# to name `Component` on the way back would be asserting an edge between the two
+# that only the jar can state.
 role = "FormattedText"
 class = "net.minecraft.network.chat.FormattedText"
-members = ["of", "getString"]
+members = ["getString"]
 
 [[stub]]
 # What a saved-data owner is registered as. Seeded for its constructor rather

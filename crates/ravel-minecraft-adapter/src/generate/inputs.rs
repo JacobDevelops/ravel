@@ -150,13 +150,39 @@ pub(super) enum SeedMember {
     Bound(BoundMember),
 }
 
+/// Which overload of one name a role means.
+///
+/// A count where a count separates them, which is the ordinary case, and the
+/// declared types where it does not: a version can overload one name on two
+/// three-parameter shapes and link the two under different names, and then a
+/// count names both and neither.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub(super) enum Overload {
+    /// How many parameters the descriptor declares.
+    Count(usize),
+    /// The reviewed types the descriptor declares, in order, as Java source
+    /// writes them.
+    Types(Vec<String>),
+}
+
+impl Overload {
+    /// Whether one descriptor's parameters are the ones this names.
+    pub(super) fn matches(&self, parameters: &[String]) -> bool {
+        match self {
+            Self::Count(count) => parameters.len() == *count,
+            Self::Types(types) => types.as_slice() == parameters,
+        }
+    }
+}
+
 /// A member role bound to the name one version's class declares.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct BoundMember {
     pub(super) role: String,
     pub(super) member: String,
-    /// How many parameters the overload this role means takes.
+    /// Which overload of that name this role means.
     ///
     /// Absent for every member whose overloads link under one name, which is all
     /// of them under an unobfuscated version and most under any other. It is
@@ -165,10 +191,14 @@ pub(super) struct BoundMember {
     /// different names, so a reference to one is not a reference to the other
     /// and the seed list is what says which the screen means.
     ///
-    /// A count rather than a descriptor, and the distinction is the rule this
-    /// file already keeps: a descriptor is a transcription of the jar, which the
-    /// generated stubs exist to avoid, and it would have to be rewritten in the
-    /// linked name space besides.
+    /// A count rather than a descriptor wherever a count is enough, and the
+    /// distinction is the rule this file already keeps: a descriptor is a
+    /// transcription of the jar, which the generated stubs exist to avoid, and
+    /// it would have to be rewritten in the linked name space besides. Where a
+    /// count separates nothing the parameter types are written instead. Those
+    /// are still the reviewed names this file already writes for a class, and
+    /// they are matched against the reviewed descriptor, so neither objection
+    /// applies to them.
     ///
     /// It counts the parameters the *descriptor* declares, which is usually what
     /// a reader counts at the call site and is not always: the constructor of a
@@ -179,7 +209,7 @@ pub(super) struct BoundMember {
     /// does not separate is still refused rather than picked between, and a
     /// count that separates nothing is refused rather than ignored.
     #[serde(default)]
-    pub(super) parameters: Option<usize>,
+    pub(super) parameters: Option<Overload>,
 }
 
 impl SeedMember {
@@ -199,11 +229,11 @@ impl SeedMember {
         }
     }
 
-    /// How many parameters the overload this role means takes, where it says.
-    pub(super) const fn parameters(&self) -> Option<usize> {
+    /// Which overload this role means, where the binding says.
+    pub(super) const fn parameters(&self) -> Option<&Overload> {
         match self {
             Self::Same(_) => None,
-            Self::Bound(bound) => bound.parameters,
+            Self::Bound(bound) => bound.parameters.as_ref(),
         }
     }
 }

@@ -40,6 +40,21 @@ pub(super) struct Member {
     pub(super) flags: u16,
     /// Whether the member is a method rather than a field.
     pub(super) method: bool,
+    /// What this member's `java.util` return holds, in reviewed names.
+    ///
+    /// The erased descriptor above is what the JVM links and says nothing about
+    /// a collection's contents, so a stub generated from it alone declares a raw
+    /// `List` and every element of it is an `Object`. A screen that read one
+    /// element back out then compiled against a type the game never returns, and
+    /// the mismatch reached a player as a cast that always throws.
+    ///
+    /// Carried only where the erased return is a `java.util` type, which is
+    /// where a caller reads an element back. Rendering every generic a class
+    /// file records would mean rendering the whole signature grammar, including
+    /// declarations no stub here has a use for, and this is the shape the defect
+    /// arrived in.
+    #[serde(default)]
+    pub(super) returns: Option<String>,
 }
 
 /// One generated stub class.
@@ -127,16 +142,23 @@ pub(super) fn from_jar(
         // them, and the seed list is in the reviewed name space. Both halves
         // cross here, once, so nothing below can compare one name space against
         // the other or emit a stub that is half of each.
-        let declared = read_members(archives, mapping, &class)?
+        let read = read_members(archives, mapping, &class)?;
+        let declared = read
             .iter()
             .filter(|member| member.is_visible())
-            .map(|member| Member {
-                name: mapping
-                    .mojang_member(&class, &member.name, &member.descriptor)
-                    .to_owned(),
-                descriptor: mapping.mojang_descriptor(&member.descriptor),
-                flags: member.flags,
-                method: member.method,
+            .map(|member| {
+                (
+                    member,
+                    Member {
+                        name: mapping
+                            .mojang_member(&class, &member.name, &member.descriptor)
+                            .to_owned(),
+                        descriptor: mapping.mojang_descriptor(&member.descriptor),
+                        flags: member.flags,
+                        method: member.method,
+                        returns: None,
+                    },
+                )
             })
             .collect::<Vec<_>>();
         let mut selected = Vec::new();
@@ -144,7 +166,7 @@ pub(super) fn from_jar(
             let name = seeded.member();
             let matched = declared
                 .iter()
-                .filter(|member| member.name == name)
+                .filter(|(_, member)| member.name == name)
                 .collect::<Vec<_>>();
             if matched.is_empty() {
                 return Err(GenerateError::Unresolved(format!(
@@ -155,9 +177,15 @@ pub(super) fn from_jar(
             // Every overload is stubbed. Picking one would mean writing its
             // descriptor into the seed list, which is the transcription this
             // generator exists to avoid.
-            for member in matched {
+            for (read, member) in matched {
+                let mut member = member.clone();
+                member.returns = element_of(&seed.class, read, &member.descriptor, mapping)?;
                 referenced.extend(names_in(&member.descriptor));
-                selected.push(member.clone());
+
+                if let Some((_, element)) = member.returns.as_deref().and_then(argument) {
+                    referenced.extend(names_in(&format!("L{element};")));
+                }
+                selected.push(member);
             }
         }
         selected.sort_by(|left, right| {
@@ -197,6 +225,124 @@ pub(super) fn from_jar(
     }
     chain_constructors(&mut stubs);
     Ok(stubs)
+}
+
+/// What one member's `java.util` return holds, in reviewed names.
+///
+/// A descriptor is erased, so it is the class file's `Signature` attribute that
+/// says a split answers lines of text rather than lines of anything. Only the
+/// one shape a stub can render is read: a `java.util` type carrying a single
+/// class as its type argument. Anything else with a `java.util` return is
+/// refused rather than emitted raw, because a raw collection is the silence
+/// this exists to end and a generator that fell back to one would restore it.
+///
+/// # Errors
+///
+/// Returns an error when a member's `java.util` return records no type argument
+/// or carries ones this cannot render.
+fn element_of(
+    class: &str,
+    member: &classfile::Member,
+    descriptor: &str,
+    mapping: &Mapping,
+) -> Result<Option<String>, GenerateError> {
+    let returns = if member.method {
+        descriptor
+            .rsplit_once(')')
+            .map_or(descriptor, |(_, after)| after)
+    } else {
+        descriptor
+    };
+    let Some(erased) = returns
+        .strip_prefix('L')
+        .and_then(|name| name.strip_suffix(';'))
+        .filter(|name| name.starts_with("java/util/"))
+    else {
+        return Ok(None);
+    };
+    // A declaration recording no type argument for a `java.util` return is raw,
+    // and a jar stripped of its `Signature` attributes makes every one of them
+    // so. Emitting that raw is the silence this exists to end.
+    let recorded = member
+        .signature
+        .as_deref()
+        .map(|signature| {
+            signature
+                .rsplit_once(')')
+                .map_or(signature, |(_, after)| after)
+        })
+        .filter(|tail| *tail != returns);
+    let (bound, element) = recorded
+        .and_then(|tail| {
+            tail.strip_prefix(&format!("L{erased}<"))
+                .and_then(|rest| rest.strip_suffix(">;"))
+        })
+        .and_then(argument)
+        .ok_or_else(|| {
+            GenerateError::Unsupported(format!(
+                "{class} declares {} as {}, which is not a java.util type over one class",
+                member.name,
+                recorded.unwrap_or(returns)
+            ))
+        })?;
+    Ok(Some(format!(
+        "{}L{};",
+        bound.recorded(),
+        mapping.mojang_class(element)
+    )))
+}
+
+/// How a recorded type argument bounds the class it names.
+///
+/// Closed so that a bound cannot be added and then dropped: every rendering of
+/// one matches on this and stops compiling when a variant appears.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Bound {
+    /// The class itself.
+    Exact,
+    /// Anything assignable to the class.
+    Extends,
+    /// Anything the class is assignable to.
+    Super,
+}
+
+impl Bound {
+    /// How a class file's signature writes this bound.
+    pub(super) const fn recorded(self) -> &'static str {
+        match self {
+            Self::Exact => "",
+            Self::Extends => "+",
+            Self::Super => "-",
+        }
+    }
+
+    /// How Java source writes this bound, ahead of the class it applies to.
+    pub(super) const fn java(self) -> &'static str {
+        match self {
+            Self::Exact => "",
+            Self::Extends => "? extends ",
+            Self::Super => "? super ",
+        }
+    }
+}
+
+/// The wildcard bound and the class one recorded type argument names.
+///
+/// A signature writes an unbounded argument as the class alone, `? extends` as a
+/// leading `+`, and `? super` as a leading `-`. Anything else — a type variable,
+/// a nested argument, an inner class — answers `None`, which is what makes a
+/// shape a stub cannot render a refusal rather than a raw declaration.
+pub(super) fn argument(recorded: &str) -> Option<(Bound, &str)> {
+    let (bound, rest) = recorded.strip_prefix('+').map_or_else(
+        || {
+            recorded
+                .strip_prefix('-')
+                .map_or((Bound::Exact, recorded), |rest| (Bound::Super, rest))
+        },
+        |rest| (Bound::Extends, rest),
+    );
+    let class = rest.strip_prefix('L')?.strip_suffix(';')?;
+    (!class.contains(['<', '>', ';', '.'])).then_some((bound, class))
 }
 
 /// Records, for each stub, the superclass constructor its own has to call.
@@ -475,11 +621,142 @@ pub(super) fn names_in(descriptor: &str) -> Vec<String> {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::super::classfile::ACC_PUBLIC;
+    use super::super::classfile::{self, ACC_PUBLIC};
     use super::super::inputs::{self, MappingSource, PinnedVersion, SeedMember, Seeds};
     use super::super::jar::fixture;
     use super::super::mapping::Mapping;
-    use super::{Lock, Stub, from_jar, from_lock, names_in};
+    use super::{
+        Bound, GenerateError, Lock, Stub, argument, element_of, from_jar, from_lock, names_in,
+    };
+
+    fn declared(descriptor: &str, signature: Option<&str>) -> classfile::Member {
+        classfile::Member {
+            name: "splitLines".to_owned(),
+            descriptor: descriptor.to_owned(),
+            flags: ACC_PUBLIC,
+            method: true,
+            signature: signature.map(str::to_owned),
+        }
+    }
+
+    /// The two answers, on the one member shape the defect arrived in: a return
+    /// that is not a collection says nothing, and a collection the class file
+    /// records an argument for carries it.
+    #[test]
+    fn an_element_type_is_read_only_where_the_class_file_records_one() {
+        let plain = declared("(Ljava/lang/String;)Ljava/lang/String;", None);
+        assert_eq!(
+            element_of(
+                "com.example.Splitter",
+                &plain,
+                &plain.descriptor,
+                &Mapping::Identity
+            )
+            .expect("a return that is not a collection is not refused"),
+            None
+        );
+
+        let generic = declared(
+            "(Ljava/lang/String;)Ljava/util/List;",
+            Some("(Ljava/lang/String;)Ljava/util/List<Lcom/example/Line;>;"),
+        );
+        assert_eq!(
+            element_of(
+                "com.example.Splitter",
+                &generic,
+                &generic.descriptor,
+                &Mapping::Identity
+            )
+            .expect("the recorded argument is read"),
+            Some("Lcom/example/Line;".to_owned())
+        );
+    }
+
+    /// A jar whose `Signature` attributes were stripped declares every returned
+    /// collection raw, which is the shape the crash came in, so it is refused
+    /// rather than stubbed as a list of anything.
+    #[test]
+    fn a_collection_return_recording_no_element_type_is_refused() {
+        for signature in [None, Some("(Ljava/lang/String;)Ljava/util/List;")] {
+            let raw = declared("(Ljava/lang/String;)Ljava/util/List;", signature);
+
+            let error = element_of(
+                "com.example.Splitter",
+                &raw,
+                &raw.descriptor,
+                &Mapping::Identity,
+            )
+            .expect_err("a raw collection must not be emitted");
+
+            assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
+            assert!(error.to_string().contains("splitLines"), "{error}");
+        }
+    }
+
+    /// The element class is read out of the jar and so arrives linked, which is
+    /// the name space a stub never writes.
+    #[test]
+    fn an_element_class_is_translated_out_of_the_linked_name_space() {
+        let mapping = Mapping::read(
+            MappingSource::OfficialProguardMappings,
+            "com.example.Line -> c:\n",
+        )
+        .expect("the invented mapping should parse");
+        let linked = declared("()Ljava/util/List;", Some("()Ljava/util/List<Lc;>;"));
+
+        assert_eq!(
+            element_of(
+                "com.example.Splitter",
+                &linked,
+                &linked.descriptor,
+                &mapping
+            )
+            .expect("the recorded argument is read"),
+            Some("Lcom/example/Line;".to_owned()),
+            "a stub declaring a list of `c` names a class no reviewed source can"
+        );
+    }
+
+    /// The two shapes a signature writes that a stub cannot render: a type
+    /// variable names no class at all, and a second argument leaves a name that
+    /// is not one.
+    #[test]
+    fn a_type_variable_or_a_second_argument_names_no_single_class() {
+        assert_eq!(argument("TT;"), None);
+        assert_eq!(argument("Ljava/lang/String;Lcom/example/Line;"), None);
+        assert_eq!(
+            argument("Lcom/example/Line;"),
+            Some((Bound::Exact, "com/example/Line"))
+        );
+        assert_eq!(
+            argument("+Lcom/example/Line;"),
+            Some((Bound::Extends, "com/example/Line"))
+        );
+        assert_eq!(
+            argument("-Lcom/example/Line;"),
+            Some((Bound::Super, "com/example/Line"))
+        );
+    }
+
+    /// A collection over something no stub can write down is refused rather than
+    /// declared raw, because a raw declaration is the silence this ends.
+    #[test]
+    fn a_collection_over_a_shape_no_stub_can_render_is_refused() {
+        let nested = declared(
+            "()Ljava/util/List;",
+            Some("()Ljava/util/List<Ljava/util/List<Lcom/example/Line;>;>;"),
+        );
+
+        let error = element_of(
+            "com.example.Splitter",
+            &nested,
+            &nested.descriptor,
+            &Mapping::Identity,
+        )
+        .expect_err("a list of lists is not one class");
+
+        assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
+    }
 
     fn pinned() -> PinnedVersion {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -671,31 +948,58 @@ mod tests {
     }
 
     /// The smallest class file declaring some public methods and nothing above.
-    fn class_of(methods: &[(&str, &str)]) -> Vec<u8> {
+    ///
+    /// A method given a signature carries it as its one attribute, which is how
+    /// a class file records what a returned collection holds.
+    fn class_of(methods: &[(&str, &str, Option<&str>)]) -> Vec<u8> {
+        let mut strings: Vec<&str> = Vec::new();
+        for &(name, descriptor, signature) in methods {
+            strings.push(name);
+            strings.push(descriptor);
+            if let Some(recorded) = signature {
+                if !strings.contains(&"Signature") {
+                    strings.push("Signature");
+                }
+                strings.push(recorded);
+            }
+        }
+        let index = |text: &str| {
+            let at = strings
+                .iter()
+                .position(|held| *held == text)
+                .expect("every string a member names is interned");
+            u16::try_from(at + 1).expect("a short pool")
+        };
+
         let mut bytes = Vec::new();
         bytes.extend(0xCAFE_BABE_u32.to_be_bytes());
         bytes.extend(0_u16.to_be_bytes()); // minor
         bytes.extend(69_u16.to_be_bytes()); // major
-        let pool = u16::try_from(methods.len() * 2 + 1).expect("a short pool");
+        let pool = u16::try_from(strings.len() + 1).expect("a short pool");
         bytes.extend(pool.to_be_bytes());
-        for (name, descriptor) in methods {
-            for text in [name, descriptor] {
-                bytes.push(1); // TAG_UTF8
-                bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
-                bytes.extend(text.as_bytes());
-            }
+        for text in &strings {
+            bytes.push(1); // TAG_UTF8
+            bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
+            bytes.extend(text.as_bytes());
         }
         for value in [0_u16, 0, 0, 0, 0] {
             // flags, this class, no superclass, no interfaces, no fields
             bytes.extend(value.to_be_bytes());
         }
         bytes.extend(u16::try_from(methods.len()).expect("short").to_be_bytes());
-        for index in 0..methods.len() {
-            let name = u16::try_from(index * 2 + 1).expect("short");
+        for &(name, descriptor, signature) in methods {
             bytes.extend(ACC_PUBLIC.to_be_bytes());
-            bytes.extend(name.to_be_bytes());
-            bytes.extend((name + 1).to_be_bytes());
-            bytes.extend(0_u16.to_be_bytes()); // method attributes
+            bytes.extend(index(name).to_be_bytes());
+            bytes.extend(index(descriptor).to_be_bytes());
+            match signature {
+                Some(recorded) => {
+                    bytes.extend(1_u16.to_be_bytes()); // one method attribute
+                    bytes.extend(index("Signature").to_be_bytes());
+                    bytes.extend(2_u32.to_be_bytes());
+                    bytes.extend(index(recorded).to_be_bytes());
+                }
+                None => bytes.extend(0_u16.to_be_bytes()),
+            }
         }
         bytes.extend(0_u16.to_be_bytes()); // class attributes
         bytes
@@ -731,7 +1035,10 @@ mod tests {
         (
             seeds,
             mapping,
-            fixture::stored("a.class", &class_of(&[("aT_", "()V"), ("b", "(Lb;)V")])),
+            fixture::stored(
+                "a.class",
+                &class_of(&[("aT_", "()V", None), ("b", "(Lb;)V", None)]),
+            ),
             fixture::stored("b.class", &class_of(&[])),
         )
     }
@@ -763,6 +1070,49 @@ mod tests {
             stubs.iter().any(|stub| stub.class == "com/example/Widget"),
             "the kept descriptor is in the reviewed name space, so the closure \
              it names is too"
+        );
+    }
+
+    /// The element type names a class no seed does, and a stub declaring a list
+    /// of a class it cannot write down does not compile.
+    #[test]
+    fn the_class_an_element_type_names_is_stubbed_although_no_seed_names_it() {
+        let seeds: Seeds = toml::from_str(
+            "schemaVersion = 1\n\
+             minecraft = \"0.0.0-test\"\n\
+             [[stub]]\n\
+             role = \"Screen\"\n\
+             class = \"com.example.Splitter\"\n\
+             members = [\"split\"]\n",
+        )
+        .expect("the invented seed list should parse");
+        let splitter = fixture::parse(fixture::stored(
+            "com/example/Splitter.class",
+            &class_of(&[(
+                "split",
+                "()Ljava/util/List;",
+                Some("()Ljava/util/List<Lcom/example/Line;>;"),
+            )]),
+        ))
+        .expect("a synthetic archive");
+        let line = fixture::parse(fixture::stored("com/example/Line.class", &class_of(&[])))
+            .expect("a synthetic archive");
+
+        let stubs = from_jar(&[&splitter, &line], &seeds, &Mapping::Identity)
+            .expect("both classes are in the jars");
+
+        let seeded = stubs
+            .iter()
+            .find(|stub| stub.class == "com/example/Splitter")
+            .expect("the seeded class is stubbed");
+        assert_eq!(
+            seeded.members[0].returns.as_deref(),
+            Some("Lcom/example/Line;")
+        );
+        assert!(
+            stubs.iter().any(|stub| stub.class == "com/example/Line"),
+            "the element class is named by no descriptor, so only the element \
+             type pulls it into the stubbed set"
         );
     }
 

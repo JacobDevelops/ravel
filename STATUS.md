@@ -351,7 +351,16 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   notices (wire version 3), the mods screen draws each above the rows as `[needs attention] ...`,
   wrapped with the game's own splitter across a measured row budget so Profiling and Done stay on
   screen, and its summary counts them. `AlreadyOffered` stays silent: the player turned the pack
-  off. Harness-proven at three window sizes by mutation; not yet seen in a client.
+  off. Harness-proven at three window sizes by mutation. Launch 19 (2026-09-03) crashed the client
+  on it: the shared wrap helper's font role maps to a 1.21.1 member whose list holds character
+  sequences, not text, and the stub's erased return type let the cast compile. Profiling crashes
+  the same way on a plain launch. The plain mods screen passed. Fixed: the wrap now goes through
+  `StringSplitter.splitLines`, whose real return type is text on both versions, and the stub
+  generator carries a collection member's element type from the class file's signature, so the
+  crashing mapping is now a compile error under `ravel-verify-java` wherever the 1.21.1 mapping is
+  present. Launch 20 (2026-09-03) closed both crashes: the notice draws and Profiling draws. But at the game's GUI
+  scale the mods screen has six rows, so the notice shows one line of seven and the settings entry is cut, both
+  counted in the summary. The screen needs a scrolling list; the row budget is a stopgap.
 
 - `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
   being true this session for all three adapters. Amending closed evidence is its own ceremony.

@@ -10,10 +10,21 @@ use ravel_save::{
     MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataError,
     SavedDataPlan, SavedDataVersion,
 };
+use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use serde::{Deserialize, Serialize};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "saved_data";
+
+/// The settings document packaged beside this mod.
+///
+/// Its one setting belongs to the integrated server, which is the side that owns
+/// a world. A client or a dedicated server resolves nothing from it, so no
+/// settings screen on either is offered for this mod.
+pub const DECLARATION: &str = include_str!("../configuration.json");
+
+/// The key this mod reads its one setting under.
+const WAYPOINT_LIMIT: &str = "waypoints.limit";
 
 /// Every version of its data this build can read, lowest first.
 ///
@@ -80,6 +91,8 @@ pub struct SavedDataMod {
     id: ModId,
     entered: Vec<LifecycleState>,
     state: SavedState,
+    // Absent until the host states one, which is what an unconfigured mod knows.
+    waypoint_limit: Option<usize>,
 }
 
 impl SavedDataMod {
@@ -96,7 +109,14 @@ impl SavedDataMod {
             id: MOD_ID.parse().expect("`MOD_ID` is a legal mod id"),
             entered: Vec::new(),
             state: SavedState::default(),
+            waypoint_limit: None,
         }
+    }
+
+    /// Returns how many waypoints the settings in force let a world keep.
+    #[must_use]
+    pub const fn waypoint_limit(&self) -> Option<usize> {
+        self.waypoint_limit
     }
 
     /// Returns what this mod declares about the data it owns.
@@ -222,6 +242,9 @@ impl SavedDataMod {
         self.state.waypoints.push(waypoint.to_owned());
         self.state.waypoints.sort();
         self.state.waypoints.dedup();
+        if let Some(limit) = self.waypoint_limit {
+            self.state.waypoints.truncate(limit);
+        }
     }
 
     /// Returns what this mod would write, and the version it writes it under.
@@ -270,6 +293,32 @@ impl HostMod for SavedDataMod {
 
     fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
         Some(self.declaration())
+    }
+
+    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
+        ConfigurationDeclaration::parse(DECLARATION).ok()
+    }
+
+    /// Takes the waypoint limit the resolved settings put in force.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HostError::Refused`] when this mod's own setting key stops
+    /// being a legal one.
+    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
+        let refuse = |detail: String| HostError::Refused {
+            mod_id: self.id.clone(),
+            state: LifecycleState::Constructed,
+            detail,
+        };
+        let key = WAYPOINT_LIMIT
+            .parse()
+            .map_err(|_| refuse(format!("`{WAYPOINT_LIMIT}` is not a legal setting key")))?;
+        self.waypoint_limit = resolved
+            .value(&key)
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|limit| usize::try_from(limit).ok());
+        Ok(())
     }
 
     /// Declares the step into every version above the oldest.
@@ -342,12 +391,13 @@ impl HostMod for SavedDataMod {
 mod tests {
     use std::num::NonZero;
 
-    use ravel_core::{LifecycleState, ModId};
+    use ravel_core::{LifecycleState, ModId, Side};
     use ravel_host_api::HostMod;
     use ravel_save::{SavedDataEnvelope, SavedDataPlan, SavedDataVersion};
+    use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
     use serde_json::json;
 
-    use super::{MOD_ID, SavedDataMod, SavedState, VERSIONS};
+    use super::{DECLARATION, MOD_ID, SavedDataMod, SavedState, VERSIONS};
 
     fn version(raw: u32) -> SavedDataVersion {
         NonZero::new(raw).expect("a non-zero version")
@@ -563,6 +613,41 @@ mod tests {
             &before,
             "a refused payload changed the state this mod was holding"
         );
+    }
+
+    #[test]
+    fn the_settings_this_mod_declares_belong_to_the_side_that_owns_a_world() {
+        let declaration = ConfigurationDeclaration::parse(DECLARATION)
+            .expect("the packaged declaration is valid");
+
+        assert_eq!(declaration.owner.as_str(), MOD_ID);
+        for setting in &declaration.settings {
+            assert!(
+                setting.side.applies_to(Side::IntegratedServer),
+                "`{}` is offered somewhere a world is not open",
+                setting.key
+            );
+            for elsewhere in [Side::Client, Side::DedicatedServer] {
+                assert!(!setting.side.applies_to(elsewhere), "{}", elsewhere.name());
+            }
+        }
+    }
+
+    #[test]
+    fn a_world_keeps_only_as_many_waypoints_as_the_settings_in_force_allow() {
+        let declaration = ConfigurationDeclaration::parse(DECLARATION)
+            .expect("the packaged declaration is valid");
+        let resolved = LayeredConfiguration::resolve(declaration, None, None)
+            .expect("the author defaults resolve");
+        let mut host = SavedDataMod::new();
+        host.configure(&resolved).expect("its own settings");
+        let limit = host.waypoint_limit().expect("the host stated a limit");
+
+        for waypoint in 0..limit + 2 {
+            host.visit(&format!("waypoint {waypoint:02}"));
+        }
+
+        assert_eq!(host.state().waypoints.len(), limit);
     }
 
     #[test]

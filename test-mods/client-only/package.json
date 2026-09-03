@@ -13,6 +13,9 @@
   "sides": [
     "client"
   ],
+  "configurationSchemas": [
+    "configuration.json"
+  ],
   "authors": [
     {
       "name": "Ravel"
@@ -28,7 +31,11 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "3a3fdfb725121f63bb79082fccb5d4bcace87b0d8f3769663b8e0dcab6294f3c"
+        "sha256": "1c8ff3899dfc7d3b8a409d78ba74fa12f28b1d7f2f3f4e258af7781726662da3"
+      },
+      {
+        "path": "configuration.json",
+        "sha256": "8d9c752ec967e588efb21cb148108fff3ab924f23989209accbaa6019492a480"
       }
     ]
   },

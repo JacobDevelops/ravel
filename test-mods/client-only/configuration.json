@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "owner": "client_only",
+  "version": 1,
+  "settings": [
+    {
+      "key": "overlay.enabled",
+      "title": "Draw the overlay",
+      "description": "Whether a packet is allowed to redraw the client-only overlay.",
+      "valueSchema": { "type": "boolean" },
+      "default": true,
+      "side": "client",
+      "restartRequired": false
+    }
+  ]
+}

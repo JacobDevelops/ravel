@@ -62,7 +62,10 @@ import java.util.List;
  * rather than the last. A set larger than {@link #MAX_ROWS} rows draws the first
  * {@code MAX_ROWS} and a line saying how many were not drawn, with actionable
  * entries ordered first so the ones a player has to act on are never the ones
- * cut. Seeding a scroll widget is the fix when a real set outgrows this.
+ * cut. The settings entries below the rows are capped the same way at
+ * {@link #MAX_SETTINGS}, so a set with dozens of configurable mods cannot push
+ * Profiling and Done past the bottom either. Seeding a scroll widget is the fix
+ * when a real set outgrows this.
  *
  * <p>Every widget here is one the game builds without this class drawing
  * anything, for the reason {@link RavelSettingsScreen} records at length:
@@ -84,6 +87,9 @@ public final class RavelModsScreen extends {{Screen}} {
 
     /** How many rows fit before the screen would draw past its own bottom. */
     private static final int MAX_ROWS = 12;
+
+    /** How many settings entries fit under the rows without pushing Profiling and Done off. */
+    private static final int MAX_SETTINGS = 4;
 
     /** The mod set as it stood when this screen opened. */
     private final List<Entry> entries = new ArrayList<>();
@@ -155,17 +161,32 @@ public final class RavelModsScreen extends {{Screen}} {
             y += ROW;
         }
 
-        {{Screen#addRenderableWidget}}(
-                {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Configuration Settings"), new {{Button$OnPress}}() {
-                            @Override
-                            public void {{Button$OnPress#onPress}}({{Button}} pressed) {
-                                {{Minecraft}}.{{Minecraft#getInstance}}()
-                                        .{{Minecraft#setScreen}}(RavelMenu.openSettings("configuration"));
-                            }
-                        })
-                        .{{Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
-                        .{{Button$Builder#build}}());
-        y += ROW;
+        List<Entry> offered = configurable();
+        for (int index = 0; index < offered.size() && index < MAX_SETTINGS; index++) {
+            final String owner = offered.get(index).modId;
+            {{Screen#addRenderableWidget}}(
+                    {{Button}}.{{Button#builder}}(
+                                    {{Component}}.{{Component#literal}}("Settings: " + owner),
+                                    new {{Button$OnPress}}() {
+                                        @Override
+                                        public void {{Button$OnPress#onPress}}({{Button}} pressed) {
+                                            {{Minecraft}}.{{Minecraft#getInstance}}()
+                                                    .{{Minecraft#setScreen}}(RavelMenu.openSettings(owner));
+                                        }
+                                    })
+                            .{{Button$Builder#bounds}}(centre(), y, WIDGET_WIDTH, WIDGET_HEIGHT)
+                            .{{Button$Builder#build}}());
+            y += ROW;
+        }
+        int unoffered = offered.size() - Math.min(offered.size(), MAX_SETTINGS);
+        if (unoffered > 0) {
+            {{Screen#addRenderableWidget}}(
+                    label(
+                            plural(unoffered, "more settings screen", "more settings screens")
+                                    + " not shown",
+                            y));
+            y += ROW;
+        }
         {{Screen#addRenderableWidget}}(
                 {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Profiling"), new {{Button$OnPress}}() {
                             @Override
@@ -208,6 +229,24 @@ public final class RavelModsScreen extends {{Screen}} {
             }
         }
         return sorted;
+    }
+
+    /**
+     * The mods a settings screen has something to draw for, in load order.
+     *
+     * <p>Capped like {@link #ordered()} and for the same reason: without
+     * scrolling, an entry drawn past the bottom takes Profiling and Done with it.
+     * Load order rather than the actionable-first order above, because a settings
+     * entry is not a diagnostic and a player looks for it by name.
+     */
+    private List<Entry> configurable() {
+        List<Entry> offered = new ArrayList<>();
+        for (Entry entry : entries) {
+            if (entry.configurable) {
+                offered.add(entry);
+            }
+        }
+        return offered;
     }
 
     /** The line above the list, saying what the player is looking at. */
@@ -255,7 +294,7 @@ public final class RavelModsScreen extends {{Screen}} {
         }
         Wire wire = new Wire(payload);
         String version = wire.field();
-        if (version == null || !version.equals(Wire.VERSION)) {
+        if (version == null || !version.equals(Wire.MODS_VERSION)) {
             return false;
         }
         String reportedSide = wire.field();
@@ -292,6 +331,7 @@ public final class RavelModsScreen extends {{Screen}} {
         String requirement = "";
         boolean loadsHere;
         boolean actionable;
+        boolean configurable;
         boolean failed;
         String kind = "";
         String surfaceKind = "";
@@ -310,6 +350,7 @@ public final class RavelModsScreen extends {{Screen}} {
             entry.requirement = wire.field();
             String here = wire.field();
             String act = wire.field();
+            String configurable = wire.field();
             int failures = wire.count();
             if (entry.position < 0
                     || entry.modId == null
@@ -317,11 +358,13 @@ public final class RavelModsScreen extends {{Screen}} {
                     || entry.requirement == null
                     || here == null
                     || act == null
+                    || configurable == null
                     || failures < 0) {
                 return null;
             }
             entry.loadsHere = here.equals("true");
             entry.actionable = act.equals("true");
+            entry.configurable = configurable.equals("true");
             if (failures == 0) {
                 return entry;
             }

@@ -183,24 +183,25 @@ fn production_composition_reads_pack_and_player_files_and_drives_the_real_mod() 
         mods.iter().any(|host| host.id() == &owner),
         "the production composition did not drive the configuration mod"
     );
-    // Only the configuration mod owns configuration, however many mods compose.
-    assert_eq!(configurations.len(), 1);
+    // Found by identity for the reason above: how many members own settings is
+    // the composed host's to assert, and this test is about one of them.
+    let resolved = configurations
+        .iter()
+        .find(|resolved| resolved.owner() == &owner)
+        .expect("the configuration mod's settings resolved");
+    assert_eq!(resolved.value(&key("client.enabled")), Some(&json!(false)));
     assert_eq!(
-        configurations[0].value(&key("client.enabled")),
-        Some(&json!(false))
-    );
-    assert_eq!(
-        configurations[0].value(&key("integrated.mob_limit")),
+        resolved.value(&key("integrated.mob_limit")),
         Some(&json!(40)),
         "the selected pack's locked value wins"
     );
     assert_eq!(
-        configurations[0].value(&key("dedicated.motd")),
+        resolved.value(&key("dedicated.motd")),
         Some(&json!("Pack")),
         "the selected pack supplies the required value"
     );
     assert_eq!(
-        configurations[0].value(&key("common.profile")),
+        resolved.value(&key("common.profile")),
         Some(&json!("verbose"))
     );
 }

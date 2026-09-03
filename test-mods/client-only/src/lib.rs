@@ -38,15 +38,22 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
+use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::network::{
     Direction, Packet, PacketContract, PacketDelivery, PacketId, PacketReader, PacketWriter,
     WireError,
 };
 use ravel_sdk::sides::{ClientOnly, Side};
-use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
+use ravel_sdk::{Declared, JsonValue, LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "client_only";
+
+/// The settings document packaged beside this mod.
+pub const DECLARATION: &str = include_str!("../configuration.json");
+
+/// The key this mod reads its one setting under.
+const ENABLED: &str = "overlay.enabled";
 
 /// The version both ends of `client_only:overlay` speak.
 pub const OVERLAY_VERSION: u32 = 2;
@@ -171,6 +178,8 @@ pub struct ClientOnlyMod {
     side: Side,
     overlays: ClientOnly<Overlays>,
     log: WorkLog,
+    // Absent until the host states one, which is what an unconfigured mod knows.
+    enabled: Option<bool>,
 }
 
 impl ClientOnlyMod {
@@ -195,7 +204,14 @@ impl ClientOnlyMod {
                 Overlays::default()
             }),
             log: Arc::clone(log),
+            enabled: None,
         }
+    }
+
+    /// Returns whether the settings in force let a packet redraw the overlay.
+    #[must_use]
+    pub const fn overlay_enabled(&self) -> Option<bool> {
+        self.enabled
     }
 
     /// Returns the side this mod was composed for.
@@ -249,6 +265,37 @@ impl Mod for ClientOnlyMod {
         Ok(())
     }
 
+    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
+        ConfigurationDeclaration::parse(DECLARATION).ok()
+    }
+
+    /// Takes the switch the resolved settings put in force.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModError::Refused`] when the setting this mod declared did not
+    /// resolve to the boolean it declared.
+    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
+        let refuse = |detail: String| ModError::Refused {
+            mod_id: Self::declared_id().clone(),
+            state: LifecycleState::Constructed,
+            detail,
+        };
+        let key = ENABLED
+            .parse()
+            .map_err(|_| refuse(format!("`{ENABLED}` is not a legal setting key")))?;
+        let enabled = resolved
+            .value(&key)
+            .and_then(JsonValue::as_bool)
+            .ok_or_else(|| {
+                refuse(format!(
+                    "`{ENABLED}` resolved to something that is not a switch"
+                ))
+            })?;
+        self.enabled = Some(enabled);
+        Ok(())
+    }
+
     /// Redraws the overlay from one packet.
     ///
     /// Both refusals are reachable and neither is this mod's own check: the
@@ -270,6 +317,7 @@ impl Mod for ClientOnlyMod {
             })?;
 
         let side = self.side;
+        let enabled = self.enabled != Some(false);
         let log = Arc::clone(&self.log);
         let overlays = self
             .overlays
@@ -280,6 +328,9 @@ impl Mod for ClientOnlyMod {
                 detail: wrong.to_string(),
             })?;
 
+        if !enabled {
+            return Ok(());
+        }
         overlays.drawn = overlay.lines().to_vec();
         log.lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -296,13 +347,20 @@ mod tests {
     use ravel_sdk::sides::{Side, SideSet};
     use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId};
 
+    use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
+
     use super::{
-        BUILT_THE_OVERLAY, ClientOnlyMod, MOD_ID, OVERLAY_VERSION, Overlay, REDREW_THE_OVERLAY,
-        overlay_id, work_log,
+        BUILT_THE_OVERLAY, ClientOnlyMod, DECLARATION, MOD_ID, OVERLAY_VERSION, Overlay,
+        REDREW_THE_OVERLAY, overlay_id, work_log,
     };
 
     fn arriving(payload: Vec<u8>, side: Side) -> PacketDelivery {
         PacketDelivery::new(overlay_id(), Direction::ToClient, side, payload)
+    }
+
+    /// This mod's own declaration with the switch an author could have shipped off.
+    fn switched_off() -> String {
+        DECLARATION.replace("\"default\": true", "\"default\": false")
     }
 
     fn overlay() -> Overlay {
@@ -438,6 +496,44 @@ mod tests {
                 side.name()
             );
         }
+    }
+
+    #[test]
+    fn a_redraw_happens_only_while_the_settings_in_force_allow_it() {
+        for (declaration, switched_on) in [(DECLARATION.to_owned(), true), (switched_off(), false)]
+        {
+            let resolved = LayeredConfiguration::resolve(
+                ConfigurationDeclaration::parse(&declaration)
+                    .expect("the declaration under test is valid"),
+                None,
+                None,
+            )
+            .expect("the author defaults resolve");
+            let log = work_log();
+            let mut host = ClientOnlyMod::new(Side::Client, &log);
+            host.configure(&resolved).expect("its own settings");
+            assert_eq!(host.overlay_enabled(), Some(switched_on));
+
+            host.receive_packet(&arriving(encode(&overlay()), Side::Client))
+                .expect("its own contract on its own side");
+
+            assert_eq!(
+                host.drawn().expect("the client holds them").is_empty(),
+                !switched_on
+            );
+        }
+    }
+
+    #[test]
+    fn the_declaration_this_mod_ships_is_owned_by_this_mod() {
+        let log = work_log();
+        let host = ClientOnlyMod::new(Side::Client, &log);
+
+        let declared = host
+            .configuration_declaration()
+            .expect("this mod declares settings");
+
+        assert_eq!(&declared.owner, ClientOnlyMod::declared_id());
     }
 
     #[test]

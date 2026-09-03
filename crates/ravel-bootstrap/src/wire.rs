@@ -27,6 +27,15 @@ use std::fmt::Write as _;
 /// never agreed to, so a payload that does not open with this is refused whole.
 pub(crate) const VERSION: &str = "1";
 
+/// The mod-list payload's own contract, moved when a row gained a field.
+///
+/// Separate from [`VERSION`] because the screen jar and this library are copied
+/// into an instance one at a time and `jvm/README.md` records that nothing checks
+/// they travelled together. An older screen reading a longer row takes the new
+/// flag for the failure count that follows it, so the mod list carries a version
+/// only it moves and the settings and profiling payloads keep theirs.
+pub(crate) const MODS_VERSION: &str = "2";
+
 /// Writes one field, prefixed by the length the other side reads it with.
 pub(crate) fn field(out: &mut String, value: &str) {
     let _ = write!(out, "{}:{value}", value.encode_utf16().count());

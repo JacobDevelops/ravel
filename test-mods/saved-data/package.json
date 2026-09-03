@@ -14,6 +14,9 @@
     "client",
     "dedicated-server"
   ],
+  "configurationSchemas": [
+    "configuration.json"
+  ],
   "savedDataVersions": [
     1,
     2,
@@ -34,7 +37,11 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "97754bcd6900657552e697f62d06bc2a42914629cbc46bdb9d9e25347de1792e"
+        "sha256": "56c635225e5ba72278c645f274e0847389b0a5ad5120f1fcefaf676db4f2aeaf"
+      },
+      {
+        "path": "configuration.json",
+        "sha256": "f0202351ee08180cb1b31bd9e3f6aace5467260123040f5ed99a64aa9509704f"
       }
     ]
   },

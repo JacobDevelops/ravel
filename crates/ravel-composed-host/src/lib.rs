@@ -130,7 +130,7 @@ pub fn ravel_initialize<'local>(mut env: EnvUnowned<'local>, _class: JClass<'loc
 
 #[cfg(test)]
 mod tests {
-    use ravel_config::{ValueDocument, file};
+    use ravel_config::{LayeredConfiguration, ValueDocument, file};
     use ravel_core::{LifecycleState, ModId, Side};
     use ravel_loader::DiscoveryRefused;
     use serde_json::json;
@@ -158,6 +158,17 @@ mod tests {
 
     fn saved_owner() -> ModId {
         "saved_data".parse().expect("the tracked mod id is valid")
+    }
+
+    /// One owner's resolved settings, which are no longer the only ones.
+    fn settings_of<'a>(
+        configurations: &'a [LayeredConfiguration],
+        owner: &ModId,
+    ) -> &'a LayeredConfiguration {
+        configurations
+            .iter()
+            .find(|resolved| resolved.owner() == owner)
+            .expect("this owner declares settings")
     }
 
     fn registries_owner() -> ModId {
@@ -270,10 +281,14 @@ mod tests {
             assert!(driven.contains(&&id), "{id}");
         }
 
-        // Only the configuration mod declares settings, so the resolved
-        // configurations stay one however many mods the composition holds.
-        assert_eq!(configurations.len(), 1);
-        assert_eq!(configurations[0].owner(), &owner());
+        // Load order, and only the members that declare settings. The
+        // server-only member is parked here, so its declaration is not read at
+        // all; `saved_data` is read and holds nothing a client screen may show.
+        let configured: Vec<&ModId> = configurations
+            .iter()
+            .map(LayeredConfiguration::owner)
+            .collect();
+        assert_eq!(configured, [&client_owner(), &owner(), &saved_owner()]);
     }
 
     /// The manifests are the authority, so nothing may quietly disagree with them.
@@ -461,7 +476,7 @@ mod tests {
 
         let (_, _, configurations, _) =
             compose(&game, Side::Client).expect("the selected pack values should resolve");
-        let resolved = &configurations[0];
+        let resolved = settings_of(&configurations, &owner());
 
         assert_eq!(
             resolved.value(&"client.enabled".parse().expect("a setting key")),
@@ -505,11 +520,13 @@ mod tests {
             compose(&game, Side::Client).expect("the player values should resolve");
 
         assert_eq!(
-            configurations[0].value(&"client.enabled".parse().expect("a setting key")),
+            settings_of(&configurations, &owner())
+                .value(&"client.enabled".parse().expect("a setting key")),
             Some(&json!(false))
         );
         assert_eq!(
-            configurations[0].value(&"common.profile".parse().expect("a setting key")),
+            settings_of(&configurations, &owner())
+                .value(&"common.profile".parse().expect("a setting key")),
             Some(&json!("verbose"))
         );
     }

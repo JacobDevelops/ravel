@@ -30,10 +30,18 @@ public final class TitleMenuMain {
             if (widget instanceof Button entry) {
                 String label = entry.message().text();
                 System.out.println("entry=" + label);
-                if (label.equals("Configuration Settings")) {
+                if (label.startsWith("Settings: ")) {
                     entry.press();
-                    System.out.println("settings="
-                            + Minecraft.getInstance().screen().getClass().getName());
+                    Screen settings = Minecraft.getInstance().screen();
+                    System.out.println("settings=" + settings.getClass().getName());
+                    // Reflection because the screen jar is loaded by Ravel's own
+                    // loader, which this class's does not see.
+                    Method owner = settings.getClass().getMethod("owner");
+                    System.out.println("settingsOwner=" + owner.invoke(settings));
+                    Method settingsInit = settings.getClass().getDeclaredMethod("init");
+                    settingsInit.setAccessible(true);
+                    settingsInit.invoke(settings);
+                    System.out.println("settingsRows=" + (settings.widgets().size() - 1));
                     Minecraft.getInstance().setScreen(mods);
                 } else if (label.equals("Profiling")) {
                     entry.press();

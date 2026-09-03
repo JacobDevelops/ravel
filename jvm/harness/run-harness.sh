@@ -884,7 +884,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:default:true
-mods=1:16:client1:01:51:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:registries7:running8:required4:true5:false1:01:410:saved_data7:running8:required4:true5:false1:01:511:server_only8:resolved8:required5:false5:false1:0
+mods=1:26:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code
 [ravel] rewritten targets: net.minecraft.util.StringUtil=4'
 expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
@@ -990,7 +990,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=verbose:player:false
-mods=1:16:client1:01:51:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:registries7:running8:required4:true5:false1:01:410:saved_data7:running8:required4:true5:false1:01:511:server_only8:resolved8:required5:false5:false1:0
+mods=1:26:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 
 printf '%s\n' "$relaunch_observed"
@@ -1159,7 +1159,7 @@ saved=1:0
 invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting holds a boolean, not a string
 clientAfter=false:player:false
 commonAfter=quiet:player:true
-mods=1:16:client1:01:51:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:registries7:running8:required4:true5:false1:01:410:saved_data7:running8:required4:true5:false1:01:511:server_only8:resolved8:required5:false5:false1:0
+mods=1:26:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:0
 [ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
 
 printf '%s\n' "$ui_relaunch_observed"
@@ -1188,14 +1188,20 @@ buttons=1
 label=Ravel Mods
 buttonY=130
 screen=dev.ravel.jvm.screen.RavelModsScreen
-modWidgets=9
-entry=Configuration Settings
+modWidgets=10
+entry=Settings: client_only
 settings=dev.ravel.jvm.screen.RavelSettingsScreen
+settingsOwner=client_only
+settingsRows=1
+entry=Settings: configuration
+settings=dev.ravel.jvm.screen.RavelSettingsScreen
+settingsOwner=configuration
+settingsRows=2
 entry=Profiling
 profiling=dev.ravel.jvm.screen.RavelProfilingScreen
 entry=gui.done
-[ravel] rewrote 3 classes and 4 methods; 7 hook invocations reached native code'
-menu_expected_diagnostic='[ravel] rewrote 3 classes and 4 methods; 7 hook invocations reached native code'
+[ravel] rewrote 3 classes and 4 methods; 11 hook invocations reached native code'
+menu_expected_diagnostic='[ravel] rewrote 3 classes and 4 methods; 11 hook invocations reached native code'
 
 printf '%s\n' "$menu_observed"
 while IFS= read -r line; do
@@ -1236,8 +1242,8 @@ javac -Xlint:all -Werror -d "$side/dedicated" \
 	"$root/jvm/harness/net/minecraft/SharedConstants.java"
 javac -Xlint:all -Werror -cp "$jar" -d "$side/classes" "$root/jvm/harness/SideMain.java"
 
-side_expected='client=mods=1:16:client1:01:51:111:client_only7:running8:required4:true5:false1:01:213:configuration7:running8:required4:true5:false1:01:310:registries7:running8:required4:true5:false1:01:410:saved_data7:running8:required4:true5:false1:01:511:server_only8:resolved8:required5:false5:false1:0
-dedicated=mods=1:116:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false1:01:210:registries7:running8:required4:true5:false1:01:310:saved_data7:running8:required4:true5:false1:01:411:server_only7:running8:required4:true5:false1:01:511:client_only8:resolved8:required5:false5:false1:0'
+side_expected='client=mods=1:26:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:0
+dedicated=mods=1:216:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false4:true1:01:210:registries7:running8:required4:true5:false5:false1:01:310:saved_data7:running8:required4:true5:false5:false1:01:411:server_only7:running8:required4:true5:false5:false1:01:511:client_only8:resolved8:required5:false5:false5:false1:0'
 side_observed=""
 for case in client dedicated; do
 	case_stdout="$side/$case-stdout"

@@ -35,17 +35,18 @@
 //! launcher tokens and filesystem paths `SPEC.md` §9.1 forbids, so the detail
 //! runs through [`Redactor`] here and the payload carries only what came back.
 
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use jni::objects::{JClass, JString};
 use jni::{Env, EnvUnowned};
-use ravel_core::{DiagnosticMessage, FailureAttribution, FailureSurface, Side};
+use ravel_core::{DiagnosticMessage, FailureAttribution, FailureSurface, ModId, Side};
 use ravel_loader::{ModEntry, Requirement};
 use ravel_observability::Redactor;
 
 use crate::guard::HookError;
 use crate::runtime::LoaderRuntime;
-use crate::wire::{VERSION, count, field, flag};
+use crate::wire::{MODS_VERSION, count, field, flag};
 
 /// The installed runtime, or nothing before one is installed.
 ///
@@ -75,9 +76,12 @@ fn lock() -> std::sync::MutexGuard<'static, Option<Arc<LoaderRuntime>>> {
 /// Returns nothing before a set is installed, which is a launch that has not got
 /// far enough to have a mod list rather than a failure.
 fn document() -> Option<String> {
+    // Asked before the runtime is taken, so the two stores' locks are never held
+    // at once and `settings.rs`'s opening claim stays true.
+    let configurable = crate::settings::configurable();
     // Take the runtime out of the store and let the store's lock go before the
     // surface is built. The screen holds nothing.
-    document_of(lock().clone().as_deref())
+    document_of(lock().clone().as_deref(), &configurable)
 }
 
 /// The mod list a screen reads from one runtime, or nothing without one.
@@ -86,22 +90,22 @@ fn document() -> Option<String> {
 /// rather than the state of the process's own store. A test that had to empty
 /// that store to see the case would be asserting against every other test in
 /// the process, and the plain runner shares one.
-fn document_of(runtime: Option<&LoaderRuntime>) -> Option<String> {
-    Some(runtime?.mod_document())
+fn document_of(runtime: Option<&LoaderRuntime>, configurable: &BTreeSet<ModId>) -> Option<String> {
+    Some(runtime?.mod_document(configurable))
 }
 
 impl LoaderRuntime {
     /// The whole mod list this runtime holds, as one payload.
-    pub(crate) fn mod_document(&self) -> String {
+    pub(crate) fn mod_document(&self, configurable: &BTreeSet<ModId>) -> String {
         let surface = self.surface();
 
         let mut out = String::new();
-        field(&mut out, VERSION);
+        field(&mut out, MODS_VERSION);
         field(&mut out, side_name(surface.side()));
         count(&mut out, surface.actionable().count());
         count(&mut out, surface.entries().len());
         for (index, entry) in surface.entries().iter().enumerate() {
-            row(&mut out, index, entry);
+            row(&mut out, index, entry, configurable.contains(&entry.mod_id));
         }
         out
     }
@@ -117,13 +121,14 @@ impl LoaderRuntime {
 /// Every row carries one, not only the ones a screen might move. A player
 /// comparing two rows needs both numbers, and numbering some would read as those
 /// being the special ones.
-fn row(out: &mut String, index: usize, entry: &ModEntry) {
+fn row(out: &mut String, index: usize, entry: &ModEntry, configurable: bool) {
     count(out, index + 1);
     field(out, entry.mod_id.as_str());
     field(out, entry.state.name());
     field(out, requirement_name(entry.requirement));
     flag(out, entry.loads_here);
     flag(out, entry.is_actionable());
+    flag(out, configurable);
     match &entry.failure {
         // A count rather than a flag, so the screen reads the block the same way
         // it reads every other repeated group on this wire.
@@ -236,6 +241,8 @@ mod tests {
     use ravel_host_api::HostMod;
     use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 
+    use std::collections::BTreeSet;
+
     use super::document_of;
     use crate::runtime::LoaderRuntime;
 
@@ -263,6 +270,11 @@ mod tests {
 
     fn mod_id(name: &str) -> ModId {
         name.parse().expect("a valid mod id")
+    }
+
+    /// The owners a screen could open, as a test states them.
+    fn configurable(names: &[&str]) -> BTreeSet<ModId> {
+        names.iter().copied().map(mod_id).collect()
     }
 
     fn entry(name: &str, requirement: Requirement) -> LifecycleEntry {
@@ -306,7 +318,7 @@ mod tests {
 
     #[test]
     fn a_screen_opened_before_a_set_is_installed_reads_nothing() {
-        assert_eq!(document_of(None), None);
+        assert_eq!(document_of(None, &configurable(&[])), None);
     }
 
     #[test]
@@ -316,9 +328,9 @@ mod tests {
             entry("second_mod", Requirement::Optional),
         ]));
 
-        let read = fields(&runtime.mod_document());
+        let read = fields(&runtime.mod_document(&configurable(&[])));
 
-        assert_eq!(read[0], "1", "the wire version opens the payload");
+        assert_eq!(read[0], "2", "the mod list's own version opens the payload");
         assert_eq!(read[1], "client");
         assert_eq!(read[2], "0", "a valid graph asks the player to do nothing");
         assert_eq!(read[3], "2");
@@ -328,10 +340,14 @@ mod tests {
         assert_eq!(read[7], "required");
         assert_eq!(read[8], "true", "it loads on the side the set runs on");
         assert_eq!(read[9], "false", "nothing failed, so nothing is actionable");
-        assert_eq!(read[10], "0", "and no failure block follows");
-        assert_eq!(read[11], "2", "and the next row states the next position");
-        assert_eq!(read[12], "second_mod");
-        assert_eq!(read[14], "optional");
+        assert_eq!(
+            read[10], "false",
+            "it declares no settings a screen can open"
+        );
+        assert_eq!(read[11], "0", "and no failure block follows");
+        assert_eq!(read[12], "2", "and the next row states the next position");
+        assert_eq!(read[13], "second_mod");
+        assert_eq!(read[15], "optional");
     }
 
     #[test]
@@ -342,11 +358,11 @@ mod tests {
             entry("third_mod", Requirement::Required),
         ]));
 
-        let read = fields(&runtime.mod_document());
+        let read = fields(&runtime.mod_document(&configurable(&[])));
 
-        // Seven fields per unfailed row, after the four the payload opens with.
-        let positions: Vec<&str> = (0..3).map(|row| read[4 + row * 7].as_str()).collect();
-        let names: Vec<&str> = (0..3).map(|row| read[5 + row * 7].as_str()).collect();
+        // Eight fields per unfailed row, after the four the payload opens with.
+        let positions: Vec<&str> = (0..3).map(|row| read[4 + row * 8].as_str()).collect();
+        let names: Vec<&str> = (0..3).map(|row| read[5 + row * 8].as_str()).collect();
 
         assert_eq!(positions, ["1", "2", "3"], "every row is numbered");
         assert_eq!(
@@ -363,7 +379,10 @@ mod tests {
             entry("second_mod", Requirement::Required),
         ]));
 
-        assert_eq!(runtime.mod_document(), runtime.mod_document());
+        assert_eq!(
+            runtime.mod_document(&configurable(&[])),
+            runtime.mod_document(&configurable(&[]))
+        );
     }
 
     #[test]
@@ -378,19 +397,19 @@ mod tests {
         )
         .expect("a mod the machine holds can fail");
 
-        let read = fields(&running(plan).mod_document());
+        let read = fields(&running(plan).mod_document(&configurable(&[])));
 
         assert_eq!(read[2], "1", "one entry asks the player to act");
         assert_eq!(read[9], "true");
-        assert_eq!(read[10], "1", "a failure block follows");
-        assert_eq!(read[11], FailureKind::DependencyCycle.name());
-        assert_eq!(read[12], "hook");
-        assert_eq!(read[13], "client.tick");
-        assert_eq!(read[14], LifecycleState::Constructed.name());
-        assert_eq!(read[15], "1.2.3");
-        assert_eq!(read[16], "2", "the chain crosses in order");
-        assert_eq!(read[17], "base_mod");
-        assert_eq!(read[18], "broken_mod");
+        assert_eq!(read[11], "1", "a failure block follows");
+        assert_eq!(read[12], FailureKind::DependencyCycle.name());
+        assert_eq!(read[13], "hook");
+        assert_eq!(read[14], "client.tick");
+        assert_eq!(read[15], LifecycleState::Constructed.name());
+        assert_eq!(read[16], "1.2.3");
+        assert_eq!(read[17], "2", "the chain crosses in order");
+        assert_eq!(read[18], "base_mod");
+        assert_eq!(read[19], "broken_mod");
     }
 
     #[test]
@@ -402,12 +421,12 @@ mod tests {
         )
         .expect("a mod the machine holds can fail");
 
-        let read = fields(&running(plan).mod_document());
+        let read = fields(&running(plan).mod_document(&configurable(&[])));
 
         assert_eq!(read[2], "0", "the plan tolerates its absence");
         assert_eq!(read[9], "false", "so it is reportable and not actionable");
-        assert_eq!(read[10], "1", "but it is still reported");
-        assert_eq!(read[11], "", "a failure outside the graph names no kind");
+        assert_eq!(read[11], "1", "but it is still reported");
+        assert_eq!(read[12], "", "a failure outside the graph names no kind");
     }
 
     #[test]
@@ -420,7 +439,7 @@ mod tests {
         plan.fail(&mod_id("broken_mod"), broken)
             .expect("a mod the machine holds can fail");
 
-        let detail = fields(&running(plan).mod_document())
+        let detail = fields(&running(plan).mod_document(&configurable(&[])))
             .last()
             .expect("the detail closes the failure block")
             .clone();
@@ -431,9 +450,24 @@ mod tests {
     }
 
     #[test]
+    fn a_row_says_whether_the_screen_has_settings_to_open_for_it() {
+        let runtime = running(machine(vec![
+            entry("base_mod", Requirement::Required),
+            entry("second_mod", Requirement::Required),
+        ]));
+
+        let read = fields(&runtime.mod_document(&configurable(&["second_mod"])));
+
+        assert_eq!(read[5], "base_mod");
+        assert_eq!(read[10], "false", "it declares nothing this side can show");
+        assert_eq!(read[13], "second_mod");
+        assert_eq!(read[18], "true", "and this one does");
+    }
+
+    #[test]
     fn the_screen_reads_the_set_as_it_stands_rather_than_as_it_launched() {
         let runtime = running(machine(vec![entry("broken_mod", Requirement::Required)]));
-        let before = fields(&runtime.mod_document());
+        let before = fields(&runtime.mod_document(&configurable(&[])));
         assert_eq!(before[9], "false");
 
         // Fail the mod after the screen has already read the set once.
@@ -442,7 +476,7 @@ mod tests {
             attribution(LifecycleState::Loaded, Some(FailureKind::SideMismatch)),
         );
 
-        let after = fields(&runtime.mod_document());
+        let after = fields(&runtime.mod_document(&configurable(&[])));
         assert_eq!(after[9], "true", "the second open sees the failure");
     }
 }

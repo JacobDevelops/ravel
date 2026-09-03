@@ -23,6 +23,18 @@ final class Wire {
     /** The contract this screen is written against. */
     static final String VERSION = "1";
 
+    /**
+     * The mod list's own contract, moved when a row gained a field.
+     *
+     * <p>Separate from {@link #VERSION} because this jar and the native library
+     * are copied into an instance one at a time and {@code jvm/README.md} records
+     * that nothing checks they travelled together. A screen from before the field
+     * reads the new flag as the failure count that follows it, so the mod list
+     * carries a version only it moves and the settings and profiling payloads
+     * keep theirs.
+     */
+    static final String MODS_VERSION = "2";
+
     private final String text;
     private int at;
 

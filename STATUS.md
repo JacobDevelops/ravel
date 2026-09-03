@@ -335,9 +335,17 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   `Found new data pack ... loading it automatically` line launches 13 and 14 printed is gone.
   Launch 17 repeated it on the revised seam and added Re-Create, the already-selected path. The
   new-world path is proven; the replaced-tree reload and the refusal report are harness-proven only.
-- The settings screen draws no rows for `stateful-mod`'s declared `journal.capacity` setting
-  (launch 14). Settings flow from the declaration through the host into the screen's sibling; find
-  where the row list goes empty. Provable in the harness; the on-screen check waits on a client.
+- The settings screen drew no rows for `stateful-mod`'s declared `journal.capacity` setting
+  (launch 14) because the mods screen's one settings button named the `configuration` test mod by
+  literal, and the harness fixture holds a mod of that name, so it passed by accident. The mod
+  surface now says per row whether a settings screen has anything to draw, the screen offers one
+  `Settings: <mod>` entry per such mod, and the title-menu harness asserts the opened screen has
+  rows. Entries cap at four with the rows' "not shown" line; neither cap line fires in the harness,
+  whose set has two configurable mods. The label is an English literal like Profiling's: there is
+  no lang file in the repository, and the argument-taking `translatable` overload cannot be seeded
+  because the stub seeder binds one role per member name. Launch 18 (2026-09-03) saw it on screen:
+  one `Settings: stateful` entry, none for content or minimal, and the settings screen drawing
+  `Journal capacity: 16` as a slider. The cap and its line stand on unit tests only.
 - The pre-world pack notice never reaches a surface (launch 14, both `AlreadyOffered` by design and
   `Unreadable`). Decide where it belongs (the mods screen's attention list is the existing surface)
   and wire it.

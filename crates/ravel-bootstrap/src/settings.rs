@@ -49,7 +49,7 @@
 //! Data, in both directions, and nothing else. There is no handle in the payload
 //! and no game object on either side of it, so ADG-4 has nothing to say here.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, PoisonError};
@@ -192,6 +192,15 @@ impl Reader {
     }
 }
 
+/// The owners a settings screen on this side has rows to draw for.
+///
+/// A mod whose every setting belongs to another side is absent rather than
+/// listed: `settings_on` would answer with nothing, and offering a screen that
+/// opens empty is the failure this answer exists to prevent.
+pub(crate) fn configurable() -> BTreeSet<ModId> {
+    lock().as_ref().map(Store::configurable).unwrap_or_default()
+}
+
 /// Renders one owner's settings as the document the screen draws from.
 ///
 /// Returns `None` for an owner this process has no configuration for, which is
@@ -203,6 +212,15 @@ fn document(owner: &str) -> Option<String> {
 }
 
 impl Store {
+    /// The owners with at least one setting this side may show.
+    fn configurable(&self) -> BTreeSet<ModId> {
+        self.configurations
+            .iter()
+            .filter(|(_, configuration)| !configuration.settings_on(self.side).is_empty())
+            .map(|(owner, _)| owner.clone())
+            .collect()
+    }
+
     /// Renders one owner's settings, as [`document`] does for the installed store.
     fn document(&self, owner: &str) -> Option<String> {
         let owner = owner.parse::<ModId>().ok()?;
@@ -771,6 +789,43 @@ mod tests {
         }
         assert!(reader.finished(), "the answer ends where its fields do");
         refused
+    }
+
+    #[test]
+    fn an_owner_with_nothing_to_show_on_this_side_is_not_offered_a_screen() {
+        let here = LayeredConfiguration::resolve(declaration(), None, None)
+            .expect("the layers should resolve");
+        let elsewhere = LayeredConfiguration::resolve(
+            ConfigurationDeclaration::parse(
+                r#"{
+                  "schemaVersion": 1,
+                  "owner": "server_mod",
+                  "version": 1,
+                  "settings": [
+                    {
+                      "key": "server.motd",
+                      "valueSchema": { "type": "string" },
+                      "default": "hello",
+                      "side": "dedicated-server",
+                      "restartRequired": false
+                    }
+                  ]
+                }"#,
+            )
+            .expect("the test declaration should parse"),
+            None,
+            None,
+        )
+        .expect("the layers should resolve");
+        let store = Store::new(Side::Client, vec![here, elsewhere], None);
+
+        let offered: Vec<String> = store
+            .configurable()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+
+        assert_eq!(offered, ["example_mod"]);
     }
 
     #[test]

@@ -145,63 +145,50 @@ final class Screens {
     }
 
     /**
-     * Builds the settings screen for one mod, loading its class on first use.
+     * Builds the settings screen for one mod.
      *
-     * <p>This is the lazy half, and it is lazy on purpose. The screen extends
-     * {@code net.minecraft.client.gui.screens.Screen}, so defining it loads
-     * {@code Screen}; doing that from {@code premain} would pull the game's
-     * screen stack in before the client bootstraps. Calling this from a hook
-     * means {@code Screen} is already loaded by the time it matters.
-     *
-     * <p>Reflection rather than a direct reference, because this class is in the
-     * agent jar and ADG-1 requires that jar to declare no game type — and
-     * {@code RavelSettingsScreen}'s supertype is one. The screen is loaded
-     * through Ravel's own loader, whose parent is the system class loader, so
-     * the superclass resolves against the real {@code Screen} rather than a
-     * second copy while the screen itself lands in a runtime package the game's
-     * signed jar has no claim on.
+     * <p>ADG-6's mechanism: the screen loads lazily, out of the optional jar,
+     * through reflection, because ADG-1 forbids this jar naming its supertype.
+     * The parent is the screen to close back to, typed {@code Object} for the
+     * same reason.
      *
      * @param owner the canonical mod id whose settings to show
-     * @return the screen as an {@code Object} for the caller to hand to the
-     *     game, or {@code null} if there is no screen jar or it could not be
-     *     used
-     */
-    static Object open(String owner) {
-        return build(ScreenNames.RAVEL_SETTINGS_SCREEN, owner);
-    }
-
-    /**
-     * Builds the mod list and dependency diagnostics screen.
-     *
-     * <p>M3-W5's screen is ADG-6's mechanism rather than a second one, and that
-     * holds here too: it loads the same lazy way, out of the same jar, through
-     * the same reflection, for the same ADG-1 reason.
-     *
+     * @param parent the screen to return to on close
      * @return the screen as an {@code Object} for the caller to hand to the
      *     game, or {@code null} if there is no screen jar or it could not be used
      */
-    static Object openMods() {
-        return build(ScreenNames.RAVEL_MODS_SCREEN, null);
+    static Object openSettings(String owner, Object parent) {
+        return build(ScreenNames.RAVEL_SETTINGS_SCREEN,
+                new Class<?>[] {String.class, Object.class}, owner, parent);
     }
 
     /**
      * Builds the opt-in profiling report screen.
      *
-     * <p>M3-W6's report is ADG-6's mechanism a third time, so it loads the same
-     * lazy way, out of the same jar, through the same reflection, for the same
-     * ADG-1 reason.
+     * @param parent the screen to return to on close
+     * @return the screen as an {@code Object} for the caller to hand to the
+     *     game, or {@code null} if there is no screen jar or it could not be used
+     */
+    static Object openProfiling(Object parent) {
+        return build(ScreenNames.RAVEL_PROFILING_SCREEN, new Class<?>[] {Object.class}, parent);
+    }
+
+    /**
+     * Builds the mod list and dependency diagnostics screen.
+     *
+     * <p>ADG-6's mechanism again, for the same ADG-1 reason.
      *
      * @return the screen as an {@code Object} for the caller to hand to the
      *     game, or {@code null} if there is no screen jar or it could not be used
      */
-    static Object openProfiling() {
-        return build(ScreenNames.RAVEL_PROFILING_SCREEN, null);
+    static Object openMods() {
+        return build(ScreenNames.RAVEL_MODS_SCREEN, new Class<?>[0]);
     }
 
     /**
      * Builds the screen a refused world load leaves the player on.
      *
-     * <p>ADG-6's mechanism a fourth time, and the one screen whose absence is
+     * <p>ADG-6's mechanism again, and the one screen whose absence is
      * not the end of the story: {@link Persistence} has already refused the
      * world by the time it asks for this, so a {@code null} here costs the
      * player the explanation and not the protection.
@@ -212,7 +199,7 @@ final class Screens {
      *     game, or {@code null} if there is no screen jar or it could not be used
      */
     static Object openWorldRefused(String diagnostic) {
-        return build(ScreenNames.RAVEL_WORLD_REFUSED_SCREEN, diagnostic);
+        return build(ScreenNames.RAVEL_WORLD_REFUSED_SCREEN, new Class<?>[] {String.class}, diagnostic);
     }
 
     /** Adds Ravel's entry to the title screen through the optional screen jar. */
@@ -245,19 +232,15 @@ final class Screens {
      * screen's supertype is one.
      *
      * @param name the screen class to load
-     * @param owner the mod id to open it for, or {@code null} for a screen that
-     *     takes none
+     * @param types the parameter types of the {@code open} to call
+     * @param arguments what to call it with
      */
-    private static Object build(String name, String owner) {
+    private static Object build(String name, Class<?>[] types, Object... arguments) {
         if (!isInstalled()) {
             return null;
         }
         try {
-            Class<?> screen = load(name);
-            if (owner == null) {
-                return screen.getMethod("open").invoke(null);
-            }
-            return screen.getMethod("open", String.class).invoke(null, owner);
+            return load(name).getMethod("open", types).invoke(null, arguments);
         } catch (InvocationTargetException failed) {
             diagnoseFailure(name, failed.getCause() == null ? failed : failed.getCause());
             return null;

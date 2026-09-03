@@ -3,6 +3,7 @@
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
 import java.util.List;
+{{import Minecraft}}
 {{import AbstractSliderButton}}
 {{import Button}}
 // The binary name is the type's name here. The pinned version reaches every
@@ -81,9 +82,13 @@ public final class RavelSettingsScreen extends {{Screen}} {
     /** What the last save refused, kept so a player can be told. */
     private String refused = "";
 
-    private RavelSettingsScreen(String owner) {
+    /** The screen to return to on close, or {@code null} to leave that to the game. */
+    private final {{Screen}} parent;
+
+    private RavelSettingsScreen(String owner, {{Screen}} parent) {
         super({{Component}}.{{Component#translatable}}("ravel.config.title"));
         this.owner = owner;
+        this.parent = parent;
         rows.addAll(read(Hook.ravelSettingsDocument(owner)));
     }
 
@@ -98,7 +103,19 @@ public final class RavelSettingsScreen extends {{Screen}} {
      * @return a screen the caller hands to the game
      */
     public static {{Screen}} open(String owner) {
-        return new RavelSettingsScreen(owner);
+        return new RavelSettingsScreen(owner, null);
+    }
+
+    /**
+     * Builds the screen for one owner, closing back to the screen it was opened from.
+     *
+     * @param owner the canonical mod id whose settings to show
+     * @param parent the screen to return to, as the {@code Object} the agent jar
+     *     can pass
+     * @return a screen the caller hands to the game
+     */
+    public static {{Screen}} open(String owner, Object parent) {
+        return new RavelSettingsScreen(owner, ({{Screen}}) parent);
     }
 
     /** The mod whose settings this screen shows. */
@@ -173,7 +190,9 @@ public final class RavelSettingsScreen extends {{Screen}} {
      * <p>Only changed rows travel, which is what ADG-6 means by saving handing
      * back the settings that changed. The answer names every value the owning mod
      * refused and why, so a player is told rather than finding the old value the
-     * next time they open the screen.
+     * next time they open the screen. Closing returns to the screen this one was
+     * opened from when it was given one; the game's own close would put a
+     * player at the title, two screens from where they were.
      */
     @Override
     public void {{Screen#onClose}}() {
@@ -192,7 +211,11 @@ public final class RavelSettingsScreen extends {{Screen}} {
             Wire.write(edits, row.value);
         }
         refused = describe(Hook.ravelSaveSettings(edits.toString()));
-        super.{{Screen#onClose}}();
+        if (parent == null) {
+            super.{{Screen#onClose}}();
+        } else {
+            {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(parent);
+        }
     }
 
     /** Turns a save answer into one line a player can be shown. */

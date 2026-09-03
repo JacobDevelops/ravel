@@ -268,7 +268,7 @@ public final class RavelModsScreen extends RavelScrolling {
                 {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Profiling"), new {{Button$OnPress}}() {
                             @Override
                             public void {{Button$OnPress#onPress}}({{Button}} pressed) {
-                                {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(RavelMenu.openProfiling());
+                                {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(RavelMenu.openProfiling(RavelModsScreen.this));
                             }
                         })
                         .{{Button$Builder#bounds}}(centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
@@ -534,7 +534,7 @@ public final class RavelModsScreen extends RavelScrolling {
                             @Override
                             public void {{Button$OnPress#onPress}}({{Button}} pressed) {
                                 {{Minecraft}}.{{Minecraft#getInstance}}()
-                                        .{{Minecraft#setScreen}}(RavelMenu.openSettings(named));
+                                        .{{Minecraft#setScreen}}(RavelMenu.openSettings(named, RavelModsScreen.this));
                             }
                         })
                 .{{Button$Builder#bounds}}(centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)

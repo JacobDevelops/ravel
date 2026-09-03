@@ -92,11 +92,18 @@ public final class TitleMenuMain {
                     settingsInit.setAccessible(true);
                     settingsInit.invoke(settings);
                     System.out.println("settingsRows=" + (settings.widgets().size() - 1));
+                    System.out.println("settingsDone=" + closes(settings)
+                            + " saves=" + Class.forName("dev.ravel.jvm.Hook")
+                                    .getMethod("ravelSettingsCrossings").invoke(null));
                     Minecraft.getInstance().setScreen(mods);
                 } else if (label.equals("Profiling")) {
                     entry.press();
-                    System.out.println("profiling="
-                            + Minecraft.getInstance().screen().getClass().getName());
+                    Screen profiling = Minecraft.getInstance().screen();
+                    System.out.println("profiling=" + profiling.getClass().getName());
+                    Method profilingInit = profiling.getClass().getDeclaredMethod("init");
+                    profilingInit.setAccessible(true);
+                    profilingInit.invoke(profiling);
+                    System.out.println("profilingDone=" + closes(profiling));
                     Minecraft.getInstance().setScreen(mods);
                 }
             }
@@ -251,6 +258,23 @@ public final class TitleMenuMain {
 
         offset.setInt(mods, 0);
         rebuild(mods);
+    }
+
+    /**
+     * Presses a child screen's Done and names what is on screen afterwards.
+     *
+     * <p>Both child screens are opened from the mods screen, so closing has to put
+     * a mods screen back rather than the game's own nothing, which is the title.
+     * The crossing counted is {@code setScreen}, a hooked seam; the settings
+     * save reaches native code too but only seam hooks pass through the guard
+     * that counts, so the settings run reports it separately.
+     */
+    private static String closes(Screen child) throws ReflectiveOperationException {
+        long before = invocations();
+        button(child, "gui.done").press();
+        Screen after = Minecraft.getInstance().screen();
+        return (after == null ? "null" : after.getClass().getName())
+                + " crossed=" + (invocations() - before);
     }
 
     /** Presses one key and says whether the screen used it. */

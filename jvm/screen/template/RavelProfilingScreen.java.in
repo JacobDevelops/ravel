@@ -3,6 +3,7 @@
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
 import java.util.List;
+{{import Minecraft}}
 {{import Button}}
 // The binary name is the type's name here, for the reason RavelSettingsScreen
 // records: the pinned version reaches every interactive widget through a nested
@@ -110,8 +111,12 @@ public final class RavelProfilingScreen extends {{Screen}} {
     /** Whether the payload read at all. */
     private boolean read;
 
-    private RavelProfilingScreen() {
+    /** The screen to return to on close, or {@code null} to leave that to the game. */
+    private final {{Screen}} parent;
+
+    private RavelProfilingScreen({{Screen}} parent) {
         super({{Component}}.{{Component#translatable}}("ravel.profiling.title"));
+        this.parent = parent;
     }
 
     /**
@@ -124,7 +129,18 @@ public final class RavelProfilingScreen extends {{Screen}} {
      * @return a screen the caller hands to the game
      */
     public static {{Screen}} open() {
-        return new RavelProfilingScreen();
+        return new RavelProfilingScreen(null);
+    }
+
+    /**
+     * Builds the screen, closing back to the screen it was opened from.
+     *
+     * @param parent the screen to return to, as the {@code Object} the agent jar
+     *     can pass
+     * @return a screen the caller hands to the game
+     */
+    public static {{Screen}} open(Object parent) {
+        return new RavelProfilingScreen(({{Screen}}) parent);
     }
 
     /** The mods this report covers, costliest first. */
@@ -210,6 +226,21 @@ public final class RavelProfilingScreen extends {{Screen}} {
                         })
                         .{{Button$Builder#bounds}}(centre(), y + Layout.ROW, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
                         .{{Button$Builder#build}}());
+    }
+
+    /**
+     * Returns to the screen this one was opened from, when it was given one.
+     *
+     * <p>The game's own close has no parent and puts a player back at the title,
+     * two screens away from the one they were reading.
+     */
+    @Override
+    public void {{Screen#onClose}}() {
+        if (parent == null) {
+            super.{{Screen#onClose}}();
+        } else {
+            {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(parent);
+        }
     }
 
     /**

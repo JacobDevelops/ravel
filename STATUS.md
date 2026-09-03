@@ -364,7 +364,12 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   settings entries are one list the wheel moves a window over, nothing is cut, and the summary says which rows
   are on screen. Harness-proven by five runs over four window sizes: three walk the list end to end with
   the wheel and with the keyboard, and the two whose window either holds the whole list or holds no row at
-  all refuse to move at all. Unproven on a launch: no client has scrolled it.
+  all refuse to move at all. Launch 21 (2026-09-04) saw it: the notice draws whole across six rows, the
+  wheel and all four keys scroll, a notch past the end changes nothing, and Done keeps its focus across a
+  page. The same launch found that Done on the settings and profiling screens returned to the title, not to
+  the mods screen: neither child screen took a parent, so the game's own close landed a player two screens
+  from where they were. Both now take the screen that opened them and close back to it, and the
+  title-menu harness presses each Done and names the screen that comes back. Unseen in a client.
 
 - `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
   being true this session for all three adapters. Amending closed evidence is its own ceremony.

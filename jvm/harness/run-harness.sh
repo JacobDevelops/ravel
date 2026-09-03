@@ -1214,12 +1214,15 @@ entry=Settings: client_only
 settings=dev.ravel.jvm.screen.RavelSettingsScreen
 settingsOwner=client_only
 settingsRows=1
+settingsDone=dev.ravel.jvm.screen.RavelModsScreen crossed=1 saves=1:1
 entry=Settings: configuration
 settings=dev.ravel.jvm.screen.RavelSettingsScreen
 settingsOwner=configuration
 settingsRows=2
+settingsDone=dev.ravel.jvm.screen.RavelModsScreen crossed=1 saves=2:2
 entry=Profiling
 profiling=dev.ravel.jvm.screen.RavelProfilingScreen
+profilingDone=dev.ravel.jvm.screen.RavelModsScreen crossed=1
 entry=gui.done
 hostile=negativeNotices:false
 hostile=shortNoticeBlock:false
@@ -1233,8 +1236,8 @@ failedRow=true a required registry claim was refused at registry
 failedRow=true worldgen/biome via brokenmod -> otherpack: the claim
 failedRow=true was already held by another mod and this one asked
 failedRow=true for it again, so neither could be registered
-[ravel] rewrote 3 classes and 4 methods; 15 hook invocations reached native code'
-menu_expected_diagnostic='[ravel] rewrote 3 classes and 4 methods; 15 hook invocations reached native code'
+[ravel] rewrote 3 classes and 4 methods; 19 hook invocations reached native code'
+menu_expected_diagnostic='[ravel] rewrote 3 classes and 4 methods; 19 hook invocations reached native code'
 
 printf '%s\n' "$menu_observed"
 while IFS= read -r line; do

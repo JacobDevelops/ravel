@@ -24,7 +24,7 @@ public final class RavelMenu {
         {{Button}} button = {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Ravel Mods"), new {{Button$OnPress}}() {
                     @Override
                     public void {{Button$OnPress#onPress}}({{Button}} pressed) {
-                        {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(open("openMods", null));
+                        {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(openMods());
                     }
                 })
                 .{{Button$Builder#bounds}}((title.{{Screen#width}} - BUTTON_WIDTH) / 2, bottom + spacing, BUTTON_WIDTH, BUTTON_HEIGHT)
@@ -32,23 +32,34 @@ public final class RavelMenu {
         add(title, button);
     }
 
-    static {{Screen}} openSettings(String owner) {
-        return open("open", owner);
+    private static {{Screen}} openMods() {
+        return open("openMods", new Class<?>[0]);
     }
 
-    static {{Screen}} openProfiling() {
-        return open("openProfiling", null);
+    /** One mod's settings screen closing back to {@code parent}, or {@code null} if it could not be built. */
+    static {{Screen}} openSettings(String owner, {{Screen}} parent) {
+        return open("openSettings", new Class<?>[] {String.class, Object.class}, owner, parent);
     }
 
-    private static {{Screen}} open(String name, String owner) {
+    /** The profiling screen, closing back to {@code parent}, or {@code null} if it could not be built. */
+    static {{Screen}} openProfiling({{Screen}} parent) {
+        return open("openProfiling", new Class<?>[] {Object.class}, parent);
+    }
+
+    /**
+     * Asks the agent jar for a screen.
+     *
+     * <p>The agent's builder contains every failure a screen class can raise
+     * on load and answers {@code null} with a diagnostic, so a screen that
+     * cannot be built costs the player the click and not the client.
+     */
+    private static {{Screen}} open(String name, Class<?>[] types, Object... arguments) {
         try {
             Class<?> screens = Class.forName(
                     "dev.ravel.jvm.Screens", true, ClassLoader.getSystemClassLoader());
-            Method open = owner == null
-                    ? screens.getDeclaredMethod(name)
-                    : screens.getDeclaredMethod(name, String.class);
+            Method open = screens.getDeclaredMethod(name, types);
             open.setAccessible(true);
-            return ({{Screen}}) (owner == null ? open.invoke(null) : open.invoke(null, owner));
+            return ({{Screen}}) open.invoke(null, arguments);
         } catch (InvocationTargetException failed) {
             Throwable cause = failed.getCause() == null ? failed : failed.getCause();
             throw new IllegalStateException("the Ravel screen could not be opened", cause);

@@ -25,7 +25,8 @@ minecraft = "1.21.1"
 [[stub]]
 # The screen's superclass. `<init>` is the constructor it calls through, `init`
 # is the method it overrides to build its widgets, `addRenderableWidget` is how
-# each one is added, and `onClose` is what the done button calls. `font`, `width`
+# each one is added, `rebuildWidgets` is what a scrolled screen lays itself out
+# again with, and `onClose` is what the done button calls. `font`, `width`
 # and `height` are the fields a widget is positioned and measured against.
 role = "Screen"
 class = "net.minecraft.client.gui.screens.Screen"
@@ -35,6 +36,8 @@ members = [
   "<init>",
   { role = "init", member = "init", parameters = 0 },
   "addRenderableWidget",
+  "rebuildWidgets",
+  "keyPressed",
   "onClose",
   "font",
   "width",
@@ -60,12 +63,25 @@ members = [
 ]
 
 [[stub]]
-# What `addRenderableWidget` takes. It is seeded with no member because nothing
-# calls one: it is here so the widget classes below declare it as a supertype and
-# are assignable to that parameter, which is the erased type the jar declares.
+# What `addRenderableWidget` takes: the widget classes below declare it as a
+# supertype and are assignable to that parameter, which is the erased type the jar
+# declares. `mouseScrolled` is declared here rather than on `Screen`, and it is
+# the wheel the mods screen moves its window with.
 role = "GuiEventListener"
 class = "net.minecraft.client.gui.components.events.GuiEventListener"
-members = []
+members = ["mouseScrolled"]
+
+[[stub]]
+# Where a screen's focus lives. `rebuildWidgets` clears the focus and sets the
+# initial one, so a screen that lays itself out under a keystroke loses whatever
+# the player was on unless it puts the focus back. `getFocused` is what reads it
+# before the layout and `setFocused` is what restores it after. Both are declared
+# by this class rather than by `Screen`, which is why the role is here: the stub
+# tree takes the nearest stubbed ancestor, and without this entry the screen jar
+# would compile against a `Screen` that declares neither.
+role = "AbstractContainerEventHandler"
+class = "net.minecraft.client.gui.components.events.AbstractContainerEventHandler"
+members = ["getFocused", "setFocused"]
 
 [[stub]]
 # The base every widget below extends, and the class that carries the
@@ -104,6 +120,20 @@ class = "net.minecraft.client.gui.components.AbstractSliderButton"
 members = ["<init>", "value", "updateMessage", "applyValue"]
 
 [[stub]]
+# One line of text, drawn and not editable. The mods screen's rows were uneditable
+# `EditBox` widgets, which draw a caret and a focus border and swallow a click on
+# a row nothing can be typed into; this takes no input at all and has no border,
+# so it draws its text against its whole width. The constructor is the only member
+# named, and that is a constraint rather than a preference: one pinned version
+# centres the text inside the widget and offers `alignLeft`, the other draws at
+# the widget's left edge and declares no alignment member in any spelling. There
+# is no member both carry, so the screen aligns by sizing the box to the text it
+# holds and `Font#width` is what measures it.
+role = "StringWidget"
+class = "net.minecraft.client.gui.components.StringWidget"
+members = ["<init>"]
+
+[[stub]]
 # Everything a slider or a choice cannot constrain is typed into one of these.
 role = "EditBox"
 class = "net.minecraft.client.gui.components.EditBox"
@@ -122,9 +152,20 @@ members = ["<init>", "getValue", "setValue", "setEditable", "setMaxLength"]
 # is the seam the screens go through. `Font` renamed and retyped its own split
 # between the two pinned versions and `StringSplitter` did neither, so a screen
 # that asked the font directly asked a different question of each.
+#
+# `width` is the second: a row is left-aligned by being drawn in a box the width
+# of its own text, because the two pinned versions share no alignment member at
+# all. The overload is named by its declared parameter, because the class
+# overloads `width` on three one-argument shapes and a count would name all
+# three.
 role = "Font"
 class = "net.minecraft.client.gui.Font"
-members = ["getSplitter"]
+members = [
+  "getSplitter",
+  { role = "width", member = "width", parameters = [
+    "java.lang.String",
+  ] },
+]
 
 [[stub]]
 # What actually splits. `splitLines` answers the lines one string draws as, each

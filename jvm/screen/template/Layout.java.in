@@ -7,11 +7,13 @@ import java.util.List;
 {{import Style}}
 
 /**
- * The measurements Ravel's row-budgeted screens are laid out against.
+ * The measurements Ravel's screens of drawn text rows are laid out against.
  *
- * <p>{@link RavelModsScreen} and {@link RavelProfilingScreen} both divide a
- * measured window into rows of drawn text, and both did it against their own
- * copy of the same four numbers and the same two calculations. Two copies of a
+ * <p>{@link RavelProfilingScreen} divides a measured window into rows and draws
+ * what fits, while {@link RavelModsScreen} scrolls a window of the same measured
+ * rows over a longer list. The two spend the window differently and measure it
+ * the same way, and both did that against their own copy of the same four
+ * numbers and the same two calculations. Two copies of a
  * width is two chances for one screen's wrap to be measured against a box the
  * other screen's rows are drawn in, and the mismatch would show as a row that
  * silently loses its tail rather than as anything a compiler could catch. So
@@ -36,7 +38,7 @@ final class Layout {
     static final int WIDGET_HEIGHT = 20;
 
     /** What a bordered text box's own border takes from the text inside it. */
-    private static final int TEXT_INSET = 8;
+    static final int TEXT_INSET = 8;
 
     private Layout() {}
 
@@ -68,19 +70,22 @@ final class Layout {
      * back out of the first. The split runs against the text a box has room for
      * rather than against the box, because a bordered box spends
      * {@link #TEXT_INSET} of its width on its own border and a line that fits the
-     * border does not fit the text.
+     * border does not fit the text. Which of the two a caller draws in is the
+     * caller's to say, because the screens no longer agree: a bordered box spends
+     * that inset and an unbordered text widget spends nothing.
      *
      * @param font the window's font, which is what measures a glyph
      * @param text the string to draw
+     * @param width the width the text itself has, not the widget carrying it
      * @return the lines, in order
      */
-    static List<String> wrap({{Font}} font, String text) {
+    static List<String> wrap({{Font}} font, String text, int width) {
         List<String> lines = new ArrayList<>();
         for ({{FormattedText}} line :
                 font.{{Font#getSplitter}}()
                         .{{StringSplitter#splitLines}}(
                                 text,
-                                WIDGET_WIDTH - TEXT_INSET,
+                                width,
                                 {{Style}}.{{Style#EMPTY}})) {
             lines.add(line.{{FormattedText#getString}}());
         }

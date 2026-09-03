@@ -826,12 +826,16 @@ mod tests {
                 .clone()
         };
 
-        // Six types sit above `Screen` in the jar and one of them is stubbed, so
-        // the stub declares that one and drops the other five. The edge is not
-        // decoration: it is what makes a screen assignable where the game asks
-        // for a listener.
+        // Several types sit above `Screen` in the jar and two of them are stubbed,
+        // so the stub declares those two and drops the rest. Neither edge is
+        // decoration: the interface is what makes a screen assignable where the
+        // game asks for a listener, and the class is where the focus a scrolled
+        // screen has to restore is held.
         let screen = stub("net/minecraft/client/gui/screens/Screen");
-        assert_eq!(screen.extends, None);
+        assert_eq!(
+            screen.extends.as_deref(),
+            Some("net/minecraft/client/gui/components/events/AbstractContainerEventHandler")
+        );
         assert_eq!(
             screen.implements,
             ["net/minecraft/client/gui/components/events/GuiEventListener"]

@@ -7962,7 +7962,10 @@ const SWEPT_SCOPE: &str =
 const VERSION_CLASS_EXCUSES: [(&str, &[&str], &str); 3] = [
     (
         "crates/ravel-minecraft-adapter/src/generate/mod.rs",
-        &["net/minecraft/client/gui/screens/Screen"],
+        &[
+            "net/minecraft/client/gui/components/events/AbstractContainerEventHandler",
+            "net/minecraft/client/gui/screens/Screen",
+        ],
         "generates from the tracked pinned inputs and asserts on the stub tree \
          they produce, so it names what they name",
     ),
@@ -7976,6 +7979,7 @@ const VERSION_CLASS_EXCUSES: [(&str, &[&str], &str); 3] = [
         "crates/ravel-minecraft-adapter/src/generate/stubs.rs",
         &[
             "net/minecraft/client/gui/components/AbstractSliderButton",
+            "net/minecraft/client/gui/components/events/AbstractContainerEventHandler",
             "net/minecraft/client/gui/components/AbstractWidget",
             "net/minecraft/client/gui/components/Button",
             "net/minecraft/client/gui/components/EditBox",

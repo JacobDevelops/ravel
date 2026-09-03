@@ -340,8 +340,8 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   literal, and the harness fixture holds a mod of that name, so it passed by accident. The mod
   surface now says per row whether a settings screen has anything to draw, the screen offers one
   `Settings: <mod>` entry per such mod, and the title-menu harness asserts the opened screen has
-  rows. Entries cap at four with the rows' "not shown" line; neither cap line fires in the harness,
-  whose set has two configurable mods. The label is an English literal like Profiling's: there is
+  rows. The entries are rows of the scrolling list below, so none is ever cut. The label is an
+  English literal like Profiling's: there is
   no lang file in the repository, and the argument-taking `translatable` overload cannot be seeded
   because the stub seeder binds one role per member name. Launch 18 (2026-09-03) saw it on screen:
   one `Settings: stateful` entry, none for content or minimal, and the settings screen drawing
@@ -359,8 +359,12 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   generator carries a collection member's element type from the class file's signature, so the
   crashing mapping is now a compile error under `ravel-verify-java` wherever the 1.21.1 mapping is
   present. Launch 20 (2026-09-03) closed both crashes: the notice draws and Profiling draws. But at the game's GUI
-  scale the mods screen has six rows, so the notice shows one line of seven and the settings entry is cut, both
-  counted in the summary. The screen needs a scrolling list; the row budget is a stopgap.
+  scale the mods screen has six rows, so the notice showed one line of seven and the settings entry was cut,
+  both counted in the summary. The row budget is now a scrolling list: the notice lines, the mod rows and the
+  settings entries are one list the wheel moves a window over, nothing is cut, and the summary says which rows
+  are on screen. Harness-proven by five runs over four window sizes: three walk the list end to end with
+  the wheel and with the keyboard, and the two whose window either holds the whole list or holds no row at
+  all refuse to move at all. Unproven on a launch: no client has scrolled it.
 
 - `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
   being true this session for all three adapters. Amending closed evidence is its own ceremony.

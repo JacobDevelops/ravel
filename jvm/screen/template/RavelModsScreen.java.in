@@ -2,15 +2,16 @@
 
 import dev.ravel.jvm.Hook;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 {{import Minecraft}}
 {{import Button}}
 // The binary name is the type's name here, for the reason RavelSettingsScreen
 // records: the pinned version reaches every interactive widget through a nested
 // type and the stubs carry the binary name the JVM links on.
 {{import Button$OnPress}}
-{{import EditBox}}
+{{import StringWidget}}
 {{import Screen}}
 {{import Component}}
 
@@ -26,9 +27,15 @@ import java.util.List;
  * length-prefixed framing, the same widget vocabulary, and no drawing outside
  * this class.
  *
- * <p><b>One crossing, not two.</b> A mod list is read and never written, so the
- * session makes a single call: {@code Hook.ravelModSurface} in {@link #init}.
- * Nothing crosses per row and nothing per frame.
+ * <p><b>One crossing, not two, and scrolling does not add a third.</b> A mod
+ * list is read and never written, so the session makes a single call:
+ * {@code Hook.ravelModSurface} in {@link #init}. Scrolling re-enters {@code init}
+ * through {@link #rebuildWidgets}, so the read is guarded by {@link #loaded} and
+ * happens once per instance however far a player scrolls. Nothing crosses per
+ * row and nothing per frame. {@link #loaded} is set from the read rather than
+ * before it, so a payload that was refused is read again on the next layout: a
+ * refusal latched for the life of the instance would keep the screen saying the
+ * list could not be read after the reason it could not had gone.
  *
  * <p><b>The sentence is composed here.</b> A failure arrives as attribution —
  * kind, surface, dependency chain, the state it failed in, the detail — rather
@@ -53,63 +60,63 @@ import java.util.List;
  * with no row of their own. The summary counts them, because that line is what a
  * player reads before deciding nothing is wrong. Each is split across as many
  * rows as its text needs: a notice says what happened <i>and</i> what can be
- * done about it, and an {@link EditBox} given more text than it has width draws
- * only the tail, so a notice on one row is a notice whose remedy is scrolled out
- * of sight.
+ * done about it, and a row given more text than it has width shows only part of
+ * it, so a notice on one row is a notice whose remedy is out of sight.
+ *
+ * <p><b>Everything below the summary is one scrolling list.</b> The notice
+ * lines, the mod rows and the settings entries are flattened into {@link #rows}
+ * in that order, and the window draws the slice of it starting at
+ * {@link #scroll}. That replaces a row budget divided between the three groups,
+ * which was the design launch 20 met: at the game's own GUI scale this screen
+ * has about six rows, and dividing them showed one line of a seven-line notice
+ * and cut the settings entry. Nothing is cut now — a row a window has no space
+ * for is a row a player scrolls to — and the summary says which slice is on
+ * screen so that a player knows there is more.
  *
  * <p><b>Rows are drawn actionable-first, and every row states its load
  * position.</b> The two go together and the second is what makes the first safe.
  * The model stays in resolved load order — that is what {@code surface.rs}
- * promises and nothing here changes it — but with a row cap, drawing in strict
- * order means a large set cuts off exactly the failures this screen exists to
- * show, and a diagnostic screen that can hide the diagnostic has failed at its
- * only job. Grouping is still deterministic: the same set always draws the same
- * screen. The position is numbered on every row, not only on moved ones, so a
- * player reads the load order from the numbers rather than inferring it from
- * where a row happens to sit. Without the numbers this reordering would not be
- * defensible.
+ * promises and nothing here changes it — but the rows a player has to act on are
+ * the rows the screen exists to show, so they are the ones it opens on rather
+ * than the ones a player has to scroll for. Grouping is still deterministic: the
+ * same set always draws the same screen. The position is numbered on every row,
+ * not only on moved ones, so a player reads the load order from the numbers
+ * rather than inferring it from where a row happens to sit. Without the numbers
+ * this reordering would not be defensible.
  *
- * <p><b>Known limit: no scrolling, so the window is divided rather than spent in
- * order.</b> A scroll container in the pinned version is another nested builder
- * and another stub seed, and this is the first pass rather than the last. So the
- * rows the window has, less the summary, are divided: every group with anything
- * to draw is guaranteed {@link #NOTICE_FLOOR}, {@link #MOD_FLOOR} or
- * {@link #SETTINGS_FLOOR} rows including its own "not shown" line, and what is
- * left over goes to the notices, then the rows, then the settings. No group can
- * take another's floor, and nothing is cut without being counted: a group that
- * kept a row says how many it cut, and the summary says it for every group that
- * did not, including a group the window left with no row at all. Actionable
- * entries are ordered first, so the rows a player has to act on are never cut,
- * and no window makes this offer more than {@link #MAX_ROWS} rows or
- * {@link #MAX_SETTINGS} settings entries. Seeding a scroll widget is the fix
- * when a real set outgrows this.
+ * <p><b>The wheel is not the only way down the list.</b> Up and Down move it by
+ * a row and the page keys by a window, which is what a player without a wheel
+ * has. The keystroke arrives through {@link RavelScrolling}, whose only reason
+ * to exist is that the two pinned versions declare {@code keyPressed} with
+ * different parameters. A key this screen does not use goes to the game, so
+ * escape still closes the screen and tab still moves the focus.
+ *
+ * <p><b>A layout puts the focus back where it was.</b> The game's
+ * {@code rebuildWidgets} clears the focus and sets the initial one, so a player
+ * who tabbed to a settings entry and then pressed Down would have been moved off
+ * it by the very layout that scrolled. This screen reads the focused widget
+ * before the layout and focuses it again afterwards: a settings entry whenever
+ * the window it lands on still draws one, Profiling and Done always.
  *
  * <p>Every widget here is one the game builds without this class drawing
  * anything, for the reason {@link RavelSettingsScreen} records at length:
  * {@code AbstractButton} declares {@code extractContents} and implementing it
- * would be drawing, which is the one thing ADG-6 forbids. Rows are uneditable
- * text fields, which is the same choice a pack-fixed settings row makes and
- * needs no seed this repository does not already have.
+ * would be drawing, which is the one thing ADG-6 forbids. A text row is a
+ * {@code StringWidget}, which is the game's own read-only label: it takes no
+ * input, so it draws no caret and no focus border and swallows no click, which
+ * an uneditable text field did all three of.
  */
-public final class RavelModsScreen extends {{Screen}} {
-
-    /** The most mod rows this screen offers to draw, however tall the window is. */
-    private static final int MAX_ROWS = 12;
-
-    /** The most settings entries it offers, for the same reason. */
-    private static final int MAX_SETTINGS = 4;
-
-    /** The rows a non-empty notice block is guaranteed, one of them its own line. */
-    private static final int NOTICE_FLOOR = 2;
-
-    /** The rows the mod list is guaranteed, one of them its own line. */
-    private static final int MOD_FLOOR = 3;
-
-    /** The rows the settings entries are guaranteed, one of them their own line. */
-    private static final int SETTINGS_FLOOR = 2;
+public final class RavelModsScreen extends RavelScrolling {
 
     /** What marks a line as one a player has to act on. */
     private static final String ATTENTION = "[needs attention] ";
+
+    // The key codes the game reports, which are the window system's own and not
+    // the game's, so they are the same number under every version Ravel pins.
+    private static final int KEY_UP = 265;
+    private static final int KEY_DOWN = 264;
+    private static final int KEY_PAGE_UP = 266;
+    private static final int KEY_PAGE_DOWN = 267;
 
     /** The mod set as it stood when this screen opened. */
     private final List<Entry> entries = new ArrayList<>();
@@ -117,14 +124,29 @@ public final class RavelModsScreen extends {{Screen}} {
     /** What the launch told the player without refusing them, as it stood then. */
     private final List<String> notices = new ArrayList<>();
 
-    /** The rows those notices were split into, as this screen last drew them. */
+    /** Every row those notices were split into, whether the window draws it or not. */
     private final List<String> noticeRows = new ArrayList<>();
+
+    /** Everything below the summary, in the one order it is scrolled through. */
+    private final List<Row> rows = new ArrayList<>();
+
+    /** The settings entry this screen last drew for each mod that has one. */
+    private final Map<String, {{Button}}> drawnSettings = new LinkedHashMap<>();
+
+    /** Which row of {@link #rows} the window starts at. */
+    private int scroll;
+
+    /** The Profiling and Done buttons this screen last drew, in that order. */
+    private final List<{{Button}}> below = new ArrayList<>();
 
     /** How many entries the loader says a player has to act on. */
     private int actionable;
 
     /** The side the set is running on, as the loader reported it. */
     private String side = "";
+
+    /** Whether the surface has been read, which happens once per instance. */
+    private boolean loaded;
 
     /** Whether the payload read at all. */
     private boolean read;
@@ -161,117 +183,88 @@ public final class RavelModsScreen extends {{Screen}} {
         return List.copyOf(notices);
     }
 
-    /** The rows those notices were split into, as this screen drew them. */
+    /**
+     * Every row those notices were split into, drawn or scrolled past.
+     *
+     * <p>The whole split rather than the part on screen, which is what a caller
+     * needs to tell a drawn notice line apart from a drawn mod line: the window
+     * is a slice of one list and a line's group is not readable from where it
+     * sits. What is on screen is {@link #rowLabels} and the offset.
+     */
     public List<String> noticeRows() {
         return List.copyOf(noticeRows);
     }
 
+    /** Every row below the summary, drawn or scrolled past, as its label reads. */
+    public List<String> rowLabels() {
+        List<String> labels = new ArrayList<>();
+        for (Row row : rows) {
+            labels.add(row.label());
+        }
+        return labels;
+    }
+
     /**
-     * Reads the mod set once and builds one row per mod.
+     * Reads the mod set once and lays the window out over the rows it built.
      *
      * <p>A payload that does not read leaves the list empty and says so rather
      * than drawing part of one. Half a mod list is worse than none: it looks
      * like the set is smaller than it is, which is the opposite of a diagnostic.
+     *
+     * <p>{@link #rebuildWidgets} re-enters this method for every scrolled row,
+     * so the read is behind {@link #loaded} and the rows are rebuilt from what it
+     * already holds. Reading again would put a second crossing on a keystroke.
      */
     @Override
     protected void {{Screen#init}}() {
         super.{{Screen#init}}();
-        entries.clear();
-        notices.clear();
-        noticeRows.clear();
-        read = parse(Hook.ravelModSurface());
+        if (!loaded) {
+            read = parse(Hook.ravelModSurface());
+            loaded = read;
+        }
 
-        List<String> lines = new ArrayList<>();
-        List<Integer> owners = new ArrayList<>();
-        for (int index = 0; index < notices.size(); index++) {
-            for (String line : Layout.wrap({{Screen#font}}, ATTENTION + notices.get(index))) {
-                lines.add(line);
-                owners.add(index);
+        rows.clear();
+        noticeRows.clear();
+        drawnSettings.clear();
+        below.clear();
+        for (String notice : notices) {
+            for (String line : Layout.wrap({{Screen#font}}, ATTENTION + notice, Layout.WIDGET_WIDTH)) {
+                noticeRows.add(line);
+                rows.add(Row.line(line));
             }
         }
-        List<Entry> drawn = ordered();
-        List<Entry> offered = configurable();
-        int[] noticeSizes = ones(lines.size());
-        int[] modSizes = new int[Math.min(drawn.size(), MAX_ROWS)];
-        for (int index = 0; index < modSizes.length; index++) {
-            modSizes[index] = drawn.get(index).lines().size();
+        for (Entry entry : ordered()) {
+            for (String line : entry.lines()) {
+                for (String wrapped : Layout.wrap({{Screen#font}}, line, Layout.WIDGET_WIDTH)) {
+                    rows.add(Row.line(wrapped));
+                }
+            }
         }
-        int[] settingSizes = ones(Math.min(offered.size(), MAX_SETTINGS));
-        boolean moreMods = drawn.size() > modSizes.length;
-        boolean moreSettings = offered.size() > settingSizes.length;
-
-        int[] given =
-                share(
-                        rows() - 1,
-                        new int[] {
-                            demand(noticeSizes, false),
-                            demand(modSizes, moreMods),
-                            demand(settingSizes, moreSettings),
-                        });
-        // A single row goes to the notice's own first line rather than to a line
-        // saying the notice was cut, because the summary already says that.
-        int noticesDrawn =
-                given[0] == 1 && !lines.isEmpty() ? 1 : fitting(noticeSizes, given[0], false);
-        int modsDrawn = fitting(modSizes, given[1], moreMods);
-        int settingsDrawn = fitting(settingSizes, given[2], moreSettings);
-        noticeRows.addAll(lines.subList(0, noticesDrawn));
-
-        int modRows = 0;
-        for (int index = 0; index < modsDrawn; index++) {
-            modRows += modSizes[index];
+        for (Entry entry : configurable()) {
+            rows.add(Row.settings(entry.modId));
         }
-        int noticeRoom = given[0] - noticesDrawn;
-        int modRoom = given[1] - modRows;
-        int settingRoom = given[2] - settingsDrawn;
+
+        int shown = shown();
+        // A window that grew can show rows the old offset put past the end, so
+        // the offset is bounded on every layout and not only on a scroll.
+        scroll = bound(scroll, shown);
 
         int y = Layout.TOP;
-        {{Screen#addRenderableWidget}}(
-                label(
-                        summary(
-                                noticesDrawn == 0 ? 0 : owners.get(noticesDrawn - 1) + 1,
-                                silent(drawn.size() - modsDrawn, modRoom),
-                                silent(offered.size() - settingsDrawn, settingRoom)),
-                        y));
+        {{Screen#addRenderableWidget}}(label(summary(), y));
         y += Layout.ROW;
-
-        for (String line : noticeRows) {
-            {{Screen#addRenderableWidget}}(label(line, y));
-            y += Layout.ROW;
-        }
-        y = cut(lines.size() - noticesDrawn, noticeRoom, "more notice line", "more notice lines", y);
-
-        for (int index = 0; index < modsDrawn; index++) {
-            for (String line : drawn.get(index).lines()) {
-                {{Screen#addRenderableWidget}}(label(line, y));
-                y += Layout.ROW;
+        for (int index = scroll; index < scroll + shown; index++) {
+            Row row = rows.get(index);
+            if (row.owner == null) {
+                {{Screen#addRenderableWidget}}(label(row.text, y));
+            } else {
+                {{Button}} entry = settings(row.owner, y);
+                drawnSettings.put(row.owner, entry);
+                {{Screen#addRenderableWidget}}(entry);
             }
-        }
-        y = cut(drawn.size() - modsDrawn, modRoom, "more mod", "more mods", y);
-
-        for (int index = 0; index < settingsDrawn; index++) {
-            final String owner = offered.get(index).modId;
-            {{Screen#addRenderableWidget}}(
-                    {{Button}}.{{Button#builder}}(
-                                    {{Component}}.{{Component#literal}}("Settings: " + owner),
-                                    new {{Button$OnPress}}() {
-                                        @Override
-                                        public void {{Button$OnPress#onPress}}({{Button}} pressed) {
-                                            {{Minecraft}}.{{Minecraft#getInstance}}()
-                                                    .{{Minecraft#setScreen}}(RavelMenu.openSettings(owner));
-                                        }
-                                    })
-                            .{{Button$Builder#bounds}}(centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
-                            .{{Button$Builder#build}}());
             y += Layout.ROW;
         }
-        y =
-                cut(
-                        offered.size() - settingsDrawn,
-                        settingRoom,
-                        "more settings screen",
-                        "more settings screens",
-                        y);
-        {{Screen#addRenderableWidget}}(
+
+        below.add(
                 {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Profiling"), new {{Button$OnPress}}() {
                             @Override
                             public void {{Button$OnPress#onPress}}({{Button}} pressed) {
@@ -281,7 +274,7 @@ public final class RavelModsScreen extends {{Screen}} {
                         .{{Button$Builder#bounds}}(centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
                         .{{Button$Builder#build}}());
         y += Layout.ROW;
-        {{Screen#addRenderableWidget}}(
+        below.add(
                 {{Button}}.{{Button#builder}}({{Component}}.{{Component#translatable}}("gui.done"), new {{Button$OnPress}}() {
                             @Override
                             public void {{Button$OnPress#onPress}}({{Button}} pressed) {
@@ -290,145 +283,136 @@ public final class RavelModsScreen extends {{Screen}} {
                         })
                         .{{Button$Builder#bounds}}(centre(), y + Layout.ROW, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
                         .{{Button$Builder#build}}());
-    }
-
-    /**
-     * How many rows this window has between the title and the two buttons.
-     *
-     * <p>Two rows are reserved below the list: Profiling and Done. Subtracting
-     * them here is what keeps them on screen whatever is drawn above them.
-     * {@link Layout#rows} measures the rest.
-     *
-     * @return at least one row, however small the window claims to be
-     */
-    private int rows() {
-        return Layout.rows({{Screen#height}}, 2);
-    }
-
-    /**
-     * How the window's rows are divided between the three groups.
-     *
-     * <p>Every group that has something to draw takes its floor first, in
-     * priority order, and only what is left of the budget after all three is
-     * handed out — again in priority order, and only to a group that got a floor.
-     * Spending the budget in one pass instead is what let a seven-line notice
-     * leave a window with no mod row on it at all: a group that draws first and
-     * takes what it wants starves whatever draws after it, and a mod list with no
-     * mods is not a mod list.
-     *
-     * <p>A window too small for even the floors gives each group what is left
-     * when its turn comes, which can be nothing. A group with no rows cannot
-     * draw its own "not shown" line, so {@link #summary} names every such group
-     * — a screen that had to cut a whole group says so rather than quietly
-     * showing less than it counted. A group left exactly one row spends it on
-     * content, because the summary is already carrying the count.
-     *
-     * @param budget the rows below the summary
-     * @param want what each group needs to draw everything it has
-     * @return the rows each group may spend
-     */
-    private static int[] share(int budget, int[] want) {
-        int[] floors = {NOTICE_FLOOR, MOD_FLOOR, SETTINGS_FLOOR};
-        int[] given = new int[want.length];
-        for (int group = 0; group < want.length; group++) {
-            given[group] = Math.max(0, Math.min(Math.min(want[group], floors[group]), budget));
-            budget -= given[group];
+        for ({{Button}} button : below) {
+            {{Screen#addRenderableWidget}}(button);
         }
-        for (int group = 0; group < want.length; group++) {
-            if (given[group] == 0) {
-                continue;
+    }
+
+    /**
+     * Moves the window by one row a notch and draws it again.
+     *
+     * <p>A notch with no vertical component is not this screen's: a sideways
+     * wheel would otherwise lay the whole screen out to move nothing and then
+     * claim the event, which is a layout a player asked for nothing by.
+     *
+     * @return whether this screen used the event
+     */
+    @Override
+    public boolean {{GuiEventListener#mouseScrolled}}(double mouseX, double mouseY, double scrollX, double scrollY) {
+        return move(-(int) Math.signum(scrollY));
+    }
+
+    /**
+     * Moves the window for one key, or leaves it where it is.
+     *
+     * <p>A page is the window, so the key that follows a page ends where the eye
+     * left off. Every other key is the game's.
+     *
+     * @param key the key code the game reported
+     * @return whether the key moved the window
+     */
+    @Override
+    boolean scrolled(int key) {
+        if (key == KEY_UP) {
+            return move(-1);
+        }
+        if (key == KEY_DOWN) {
+            return move(1);
+        }
+        if (key == KEY_PAGE_UP) {
+            return move(-Math.max(1, shown()));
+        }
+        if (key == KEY_PAGE_DOWN) {
+            return move(Math.max(1, shown()));
+        }
+        return false;
+    }
+
+    /**
+     * Moves the offset by rows and draws the screen again.
+     *
+     * <p>Refused when the whole list is already on screen, so that a window with
+     * nothing to scroll leaves the event to whatever the game does with it rather
+     * than swallowing it to do nothing. Refused too when the window has room for
+     * no row at all: there is nothing to look at, so moving the offset would only
+     * leave a taller window opening part of the way down a list a player never
+     * scrolled, and so is a notch past either end: the window is already where
+     * that notch would put it, and laying it out again would be a layout a
+     * player asked for nothing by. {@link #init} bounds the offset as well,
+     * because a window that changed size has to be bounded on a layout no wheel
+     * caused.
+     *
+     * @param by how many rows to move, positive being further down the list
+     * @return whether the window moved
+     */
+    private boolean move(int by) {
+        int shown = shown();
+        if (by == 0 || shown <= 0 || rows.size() <= shown) {
+            return false;
+        }
+        int to = bound(scroll + by, shown);
+        if (to == scroll) {
+            return false;
+        }
+        scroll = to;
+        relayout();
+        return true;
+    }
+
+    /**
+     * The offset the list has room for nearest {@code offset}.
+     *
+     * <p>The bound is the last row rather than the last window, because a window
+     * with no room for a row at all has no last window and would otherwise park
+     * the offset past the whole list.
+     */
+    private int bound(int offset, int shown) {
+        return Math.max(0, Math.min(offset, rows.size() - Math.max(shown, 1)));
+    }
+
+    /**
+     * Lays the screen out again and puts the focus back where it was.
+     *
+     * <p>The game's own layout clears the focus and sets the initial one, which
+     * on a screen scrolled by the keyboard would move a player off the entry they
+     * were on every time they pressed a key. An entry is found again by the mod
+     * it opens rather than by where it sat, because the window it lands in is a
+     * different slice of the list; Profiling and Done are found by which of the
+     * two they are, because every layout draws both.
+     */
+    private void relayout() {
+        String owner = focusedOwner();
+        int held = below.indexOf({{AbstractContainerEventHandler#getFocused}}());
+        {{Screen#rebuildWidgets}}();
+        {{Button}} again = owner != null ? drawnSettings.get(owner) : held < 0 ? null : below.get(held);
+        if (again != null) {
+            {{AbstractContainerEventHandler#setFocused}}(again);
+        }
+    }
+
+    /** The mod whose settings entry holds the focus, or {@code null} if none does. */
+    private String focusedOwner() {
+        Object focused = {{AbstractContainerEventHandler#getFocused}}();
+        for (Map.Entry<String, {{Button}}> drawn : drawnSettings.entrySet()) {
+            if (drawn.getValue() == focused) {
+                return drawn.getKey();
             }
-            int extra = Math.min(want[group] - given[group], budget);
-            given[group] += extra;
-            budget -= extra;
         }
-        return given;
+        return null;
     }
 
     /**
-     * How many rows a group needs to draw everything it has.
+     * How many rows of the list this window draws.
      *
-     * @param sizes the rows each of its units draws
-     * @param beyond whether it holds units these sizes do not cover
-     * @return the rows, including one for a "not shown" line it already knows it
-     *     needs
+     * <p>The rows the window has, less the one the summary takes, and never more
+     * than the list holds. Two more rows are reserved below the list for
+     * Profiling and Done, which is what keeps them on screen whatever is drawn
+     * above them. {@link Layout#rows} measures the rest.
+     *
+     * @return how many rows of {@link #rows} are on screen, which can be none
      */
-    private static int demand(int[] sizes, boolean beyond) {
-        int rows = beyond ? 1 : 0;
-        for (int size : sizes) {
-            rows += size;
-        }
-        return rows;
-    }
-
-    /**
-     * How many of a group's units fit in the rows it was given.
-     *
-     * <p>A unit is only drawn when the row its "not shown" line would need is
-     * still free after it, which is what makes that line unconditional: a group
-     * that cut anything always has the row to say so. The last unit is the
-     * exception, because a group with nothing left over has nothing to say.
-     *
-     * @param sizes the rows each unit draws
-     * @param share the rows the group was given
-     * @param beyond whether it holds units these sizes do not cover
-     * @return how many units to draw, from the front
-     */
-    private static int fitting(int[] sizes, int share, boolean beyond) {
-        int used = 0;
-        int count = 0;
-        for (int index = 0; index < sizes.length; index++) {
-            int held = index + 1 == sizes.length && !beyond ? 0 : 1;
-            if (used + sizes[index] + held > share) {
-                break;
-            }
-            used += sizes[index];
-            count++;
-        }
-        return count;
-    }
-
-    /**
-     * Draws a group's "not shown" line, if it cut anything and has the row.
-     *
-     * <p>The room is what is left of the group's share after its drawn units, not
-     * the share itself: a group given one row and spending it on content has
-     * nowhere to put this line, and {@link #summary} carries the count instead.
-     *
-     * @param undrawn how many units were not drawn
-     * @param room the rows left over from the group's share
-     * @param one the noun for one of them
-     * @param many the noun for several
-     * @param y where the line would sit
-     * @return where the next widget sits
-     */
-    private int cut(int undrawn, int room, String one, String many, int y) {
-        if (undrawn <= 0 || room <= 0) {
-            return y;
-        }
-        {{Screen#addRenderableWidget}}(label(plural(undrawn, one, many) + " not shown", y));
-        return y + Layout.ROW;
-    }
-
-    /**
-     * How many of a group's undrawn units nothing below the summary will mention.
-     *
-     * <p>Zero when the group kept a row for its own "not shown" line, because two
-     * lines saying the same thing read as two different cuts.
-     *
-     * @param undrawn how many units were not drawn
-     * @param room the rows left over from the group's share
-     * @return what the summary has to say itself
-     */
-    private static int silent(int undrawn, int room) {
-        return room > 0 ? 0 : Math.max(0, undrawn);
-    }
-
-    /** One row per unit, which is what a group of single-line units draws. */
-    private static int[] ones(int units) {
-        int[] sizes = new int[units];
-        Arrays.fill(sizes, 1);
-        return sizes;
+    private int shown() {
+        return Math.min(rows.size(), Math.max(0, Layout.rows({{Screen#height}}, 2) - 1));
     }
 
     /**
@@ -436,8 +420,8 @@ public final class RavelModsScreen extends {{Screen}} {
      *
      * <p>Load order is what the row asks the list to be in, and it still is
      * within each group. Putting the entries a player has to act on at the top is
-     * what stops the no-scrolling limit above cutting off exactly the rows the
-     * screen exists to show.
+     * what makes them the rows the screen opens on rather than rows a player has
+     * to find.
      */
     private List<Entry> ordered() {
         List<Entry> sorted = new ArrayList<>();
@@ -457,10 +441,8 @@ public final class RavelModsScreen extends {{Screen}} {
     /**
      * The mods a settings screen has something to draw for, in load order.
      *
-     * <p>Capped like {@link #ordered()} and for the same reason: without
-     * scrolling, an entry drawn past the bottom takes Profiling and Done with it.
-     * Load order rather than the actionable-first order above, because a settings
-     * entry is not a diagnostic and a player looks for it by name.
+     * <p>Load order rather than the actionable-first order above, because a
+     * settings entry is not a diagnostic and a player looks for it by name.
      */
     private List<Entry> configurable() {
         List<Entry> offered = new ArrayList<>();
@@ -475,33 +457,21 @@ public final class RavelModsScreen extends {{Screen}} {
     /**
      * The line above the list, saying what the player is looking at.
      *
-     * <p>The count includes a notice as well as a failed mod, and it is followed
-     * by what is not on the screen below it. A player who reads that three things
-     * need attention and finds two on the screen has been told the screen is
-     * complete, which is the one thing this line must never say when it is not.
+     * <p>The count includes a notice as well as a failed mod. It is followed by
+     * which part of the list is on screen, whenever that is not all of it: a
+     * player who reads that three things need attention and sees two rows has
+     * been told the screen is complete, which is the one thing this line must
+     * never say when it is not. Where a row budget used to report what it had cut
+     * for good, this reports where a player is in a list nothing was cut from.
      *
-     * <p>All three groups are named here and not only the notices. A window too
-     * small for every floor gives some group nothing at all, and a group with no
-     * row has no way to say it was cut — so this line says it for them, and a
-     * group that kept the row says it itself. An installed-nothing launch still
-     * counts its notices, because a launch can have something to tell a player
-     * about with no mod to hang it on.
+     * <p>The clause is {@code rows 1-8 of 14} rather than a sentence because this
+     * line is one row and can outgrow it. The window this screen opens at draws
+     * about fifty characters, a longer wording pushed the clause off the end, and
+     * a position a player cannot read is worse than none.
      *
-     * <p><b>Known limit: this line is one row and can outgrow it.</b> A window
-     * that cut two groups needs a clause for each, and the widest text a row of
-     * this screen renders whole is about fifty characters — so on the smallest
-     * windows the box draws its tail and the mod count scrolls out of sight. The
-     * counts are the half worth keeping, because they are the half nothing else
-     * on the screen says. A wrapped summary is the fix, and it needs rows those
-     * windows do not have, so it waits for the scroll container the class note
-     * above already names.
-     *
-     * @param told how many notices are drawn below this line
-     * @param mods how many mod rows nothing below this line will mention
-     * @param settings how many settings entries nothing below it will mention
      * @return the line
      */
-    private String summary(int told, int mods, int settings) {
+    private String summary() {
         if (!read) {
             return "The mod list could not be read.";
         }
@@ -516,27 +486,59 @@ public final class RavelModsScreen extends {{Screen}} {
         } else {
             line.append(", ").append(plural(attention, "needs", "need")).append(" attention");
         }
-        unshown(line, notices.size() - told, "notice", "notices");
-        unshown(line, mods, "mod", "mods");
-        unshown(line, settings, "settings", "settings");
+        int shown = shown();
+        if (shown == 0 && !rows.isEmpty()) {
+            line.append(", no room for ").append(plural(rows.size(), "row", "rows"));
+        } else if (shown < rows.size()) {
+            line.append(", rows ")
+                    .append(scroll + 1)
+                    .append('-')
+                    .append(scroll + shown)
+                    .append(" of ")
+                    .append(rows.size());
+        }
         return line.toString();
     }
 
-    /** Appends one group's "not shown" clause, when it has anything to report. */
-    private static void unshown(StringBuilder line, int count, String one, String many) {
-        if (count > 0) {
-            line.append(", ").append(plural(count, one, many)).append(" not shown");
-        }
+    /**
+     * One line of text, which is how this screen shows a row.
+     *
+     * <p>The game's read-only label rather than an uneditable text field. The
+     * field was the choice while every row was one, and it costs a caret, a focus
+     * border and a swallowed click on a row a player cannot type in — all three
+     * of which launch 20 saw on screen. This widget takes no input at all, and it
+     * draws its text against its whole width rather than inside a border, which
+     * is why {@link Layout#wrap} is asked for the full width here.
+     *
+     * <p>The box is the width of the text it holds rather than the width of the
+     * column, and that is what left-aligns the row. One pinned version centres a
+     * label inside its box and the other draws it at the box's left edge, and
+     * they share no member that says which — so a box the text exactly fills has
+     * nothing left to centre and both versions draw the same row. The column's
+     * width is still the bound, because a line wider than the column is a line
+     * {@link Layout#wrap} should have split and the box must not grow past what
+     * the screen has room for.
+     */
+    private {{StringWidget}} label(String text, int y) {
+        int box = Math.min({{Screen#font}}.{{Font#width}}(text), Layout.WIDGET_WIDTH);
+        return new {{StringWidget}}(
+                centre(), y, box, Layout.WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text), {{Screen#font}});
     }
 
-    /** One uneditable text field, which is how this screen shows a line. */
-    private {{EditBox}} label(String text, int y) {
-        {{EditBox}} box =
-                new {{EditBox}}({{Screen#font}}, centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text));
-        box.{{EditBox#setMaxLength}}(1024);
-        box.{{EditBox#setValue}}(text);
-        box.{{EditBox#setEditable}}(false);
-        return box;
+    /** The entry that opens one mod's settings screen. */
+    private {{Button}} settings(String owner, int y) {
+        final String named = owner;
+        return {{Button}}.{{Button#builder}}(
+                        {{Component}}.{{Component#literal}}("Settings: " + named),
+                        new {{Button$OnPress}}() {
+                            @Override
+                            public void {{Button$OnPress#onPress}}({{Button}} pressed) {
+                                {{Minecraft}}.{{Minecraft#getInstance}}()
+                                        .{{Minecraft#setScreen}}(RavelMenu.openSettings(named));
+                            }
+                        })
+                .{{Button$Builder#bounds}}(centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT)
+                .{{Button$Builder#build}}();
     }
 
     private int centre() {
@@ -546,6 +548,40 @@ public final class RavelModsScreen extends {{Screen}} {
     /** A count and the word that agrees with it. */
     private static String plural(int count, String one, String many) {
         return count + " " + (count == 1 ? one : many);
+    }
+
+    /**
+     * One row below the summary.
+     *
+     * <p>A row is a line of text or the settings entry for one mod, and the two
+     * are one list rather than two because the window that scrolls over them
+     * spans both.
+     */
+    private static final class Row {
+
+        /** The text this row draws, or {@code null} if it is a settings entry. */
+        private final String text;
+
+        /** The mod this row opens the settings of, or {@code null} if it is text. */
+        private final String owner;
+
+        private Row(String text, String owner) {
+            this.text = text;
+            this.owner = owner;
+        }
+
+        static Row line(String text) {
+            return new Row(text, null);
+        }
+
+        static Row settings(String owner) {
+            return new Row(null, owner);
+        }
+
+        /** What this row reads as, which is what a settings entry is labelled. */
+        String label() {
+            return owner == null ? text : "Settings: " + owner;
+        }
     }
 
     /**

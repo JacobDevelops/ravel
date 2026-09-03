@@ -59,6 +59,8 @@ public final class LoadScreens {
 
         ClassLoader system = LoadScreens.class.getClassLoader();
         ClassLoader loader = Screens.loader(screenJar, system);
+        List<String> declared =
+                List.of(arguments).subList(3, arguments.length);
         List<String> loaded = new ArrayList<>();
         for (int at = 3; at < arguments.length; at++) {
             String name = arguments[at];
@@ -76,11 +78,22 @@ public final class LoadScreens {
                         + " rather than by Ravel's own loader, so it lands in the runtime "
                         + "package a signed game jar has already claimed");
             }
+            // A screen may extend another class the screen jar carries — the
+            // keyboard half of a scrolling screen is one, because the versions
+            // declare the key event differently and only a per-version source can
+            // answer that. What the jar must never carry is a copy of a game
+            // class, so the chain is walked to the first class this loader did
+            // not define, and every Ravel-owned class on the way has to be one
+            // this version's names record.
             Class<?> supertype = screen.getSuperclass();
-            if (supertype != null && supertype.getClassLoader() == loader) {
-                throw new IllegalStateException(name + " resolved its supertype "
-                        + supertype.getName() + " to a second copy inside the screen jar "
-                        + "rather than to the game's own");
+            while (supertype != null && supertype.getClassLoader() == loader) {
+                if (!declared.contains(supertype.getName())) {
+                    throw new IllegalStateException(name + " resolved its supertype "
+                            + supertype.getName() + " to a class inside the screen jar that this "
+                            + "version's names do not record, so it is a second copy of a game "
+                            + "class rather than one of Ravel's own");
+                }
+                supertype = supertype.getSuperclass();
             }
             loaded.add(name);
         }

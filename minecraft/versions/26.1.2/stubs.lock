@@ -115,6 +115,24 @@ descriptor = "()Lnet/minecraft/client/StringSplitter;"
 flags = 1
 method = true
 
+[[stub.member]]
+name = "width"
+descriptor = "(Ljava/lang/String;)I"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "width"
+descriptor = "(Lnet/minecraft/network/chat/FormattedText;)I"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "width"
+descriptor = "(Lnet/minecraft/util/FormattedCharSequence;)I"
+flags = 1
+method = true
+
 [[stub]]
 class = "net/minecraft/client/gui/components/AbstractSliderButton"
 flags = 1057
@@ -243,12 +261,60 @@ flags = 1
 method = true
 
 [[stub]]
+class = "net/minecraft/client/gui/components/StringWidget"
+flags = 33
+extends = "net/minecraft/client/gui/components/AbstractWidget"
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(IIIILnet/minecraft/network/chat/Component;Lnet/minecraft/client/gui/Font;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(IILnet/minecraft/network/chat/Component;Lnet/minecraft/client/gui/Font;)V"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "<init>"
+descriptor = "(Lnet/minecraft/network/chat/Component;Lnet/minecraft/client/gui/Font;)V"
+flags = 1
+method = true
+
+[[stub]]
+class = "net/minecraft/client/gui/components/events/AbstractContainerEventHandler"
+flags = 1057
+implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
+
+[[stub.member]]
+name = "getFocused"
+descriptor = "()Lnet/minecraft/client/gui/components/events/GuiEventListener;"
+flags = 1
+method = true
+
+[[stub.member]]
+name = "setFocused"
+descriptor = "(Lnet/minecraft/client/gui/components/events/GuiEventListener;)V"
+flags = 1
+method = true
+
+[[stub]]
 class = "net/minecraft/client/gui/components/events/GuiEventListener"
 flags = 1537
+
+[[stub.member]]
+name = "mouseScrolled"
+descriptor = "(DDDD)Z"
+flags = 1
+method = true
 
 [[stub]]
 class = "net/minecraft/client/gui/screens/Screen"
 flags = 1057
+extends = "net/minecraft/client/gui/components/events/AbstractContainerEventHandler"
 implements = ["net/minecraft/client/gui/components/events/GuiEventListener"]
 
 [[stub.member]]
@@ -294,9 +360,21 @@ flags = 17
 method = true
 
 [[stub.member]]
+name = "keyPressed"
+descriptor = "(Lnet/minecraft/client/input/KeyEvent;)Z"
+flags = 1
+method = true
+
+[[stub.member]]
 name = "onClose"
 descriptor = "()V"
 flags = 1
+method = true
+
+[[stub.member]]
+name = "rebuildWidgets"
+descriptor = "()V"
+flags = 4
 method = true
 
 [[stub.member]]
@@ -304,6 +382,16 @@ name = "width"
 descriptor = "I"
 flags = 1
 method = false
+
+[[stub]]
+class = "net/minecraft/client/input/KeyEvent"
+flags = 49
+
+[[stub.member]]
+name = "key"
+descriptor = "()I"
+flags = 1
+method = true
 
 [[stub]]
 class = "net/minecraft/core/DefaultedRegistry"
@@ -441,6 +529,10 @@ name = "BASE64_STRING"
 descriptor = "Lcom/mojang/serialization/Codec;"
 flags = 25
 method = false
+
+[[stub]]
+class = "net/minecraft/util/FormattedCharSequence"
+flags = 1537
 
 [[stub]]
 class = "net/minecraft/util/datafix/DataFixTypes"

@@ -1192,6 +1192,7 @@ screen=dev.ravel.jvm.screen.RavelModsScreen
 modWidgets=10
 notices=0
 within=true
+aligned=true
 noticeRows=0
 summary=true 5 mods on client, none needing attention
 row=true 1. client_only — running
@@ -1199,6 +1200,16 @@ row=true 2. configuration — running
 row=true 3. registries — running
 row=true 4. saved_data — running
 row=true 5. server_only — resolved (not on this side)
+sideways=false held=true layouts=0
+scrollable=false rows=7 shown=7 held=true hooks=0
+keyDown=false at=0
+keyPageDown=false at=0
+keyPageUp=false at=0
+keyUp=false at=0
+keyOther=false at=0
+keyEscape=true at=0
+focusDone=false kept=true
+focusMoved=false drawn=true kept=true
 entry=Settings: client_only
 settings=dev.ravel.jvm.screen.RavelSettingsScreen
 settingsOwner=client_only
@@ -1215,8 +1226,15 @@ hostile=shortNoticeBlock:false
 hostile=wellFormed:true
 emptyRead=true
 emptySummary=No mods are installed, 1 needs attention
-[ravel] rewrote 3 classes and 4 methods; 11 hook invocations reached native code'
-menu_expected_diagnostic='[ravel] rewrote 3 classes and 4 methods; 11 hook invocations reached native code'
+failedRead=true
+failedSummary=true 1 mod on client, 1 needs attention
+failedRow=true 1. brokenmod 2.1.0 — failed  [needs attention]
+failedRow=true a required registry claim was refused at registry
+failedRow=true worldgen/biome via brokenmod -> otherpack: the claim
+failedRow=true was already held by another mod and this one asked
+failedRow=true for it again, so neither could be registered
+[ravel] rewrote 3 classes and 4 methods; 15 hook invocations reached native code'
+menu_expected_diagnostic='[ravel] rewrote 3 classes and 4 methods; 15 hook invocations reached native code'
 
 printf '%s\n' "$menu_observed"
 while IFS= read -r line; do
@@ -1240,8 +1258,10 @@ fi
 # The same screen on an instance whose `resourcePacks` line is not a list. Ravel
 # writes the pack, leaves that line exactly as it is, and cannot switch the pack
 # on — so every model the mods registered draws as a placeholder and this notice
-# is the only thing that says why. It reaches the summary and a drawn row here,
-# which is the surface launch 14 found it never reached.
+# is the only thing that says why. It reaches the summary and drawn rows here,
+# which is the surface launch 14 found it never reached, and all seven of its
+# lines are on the screen where launch 20 saw one: the window opens on the first
+# eight rows of fourteen and `walk` below scrolls to the rest.
 notice_work="$root/target/ravel-jvm/harness-notice"
 rm -rf "$notice_work"
 cp -r "$work" "$notice_work"
@@ -1255,22 +1275,50 @@ notice_stderr="$notice_work/notice-stderr"
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
 	-cp . TitleMenuMain 400x300 >"$notice_stdout" 2>"$notice_stderr")
-notice_observed="$(grep -E '^(modWidgets|notices|within|summary|noticeRows?|row|entry)=' "$notice_stdout")"
+notice_observed="$(grep -E '^(modWidgets|notices|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$notice_stdout")"
 notice_expected='modWidgets=11
 notices=1
 within=true
-noticeRows=2
-summary=true 5 mods on client, 1 needs attention
+aligned=true
+noticeRows=7
+summary=true 5 mods on client, 1 needs attention, rows 1-8 of 14
 noticeRow=true [needs attention] Ravel wrote the resource pack its
 noticeRow=true mods supply and could not switch it on, because the
-row=true 5 more notice lines not shown
+noticeRow=true `resourcePacks` list in `options.txt` is not a list
+noticeRow=true of pack names and was left exactly as it is. It
+noticeRow=true starts `oops`. Repairing or deleting that line lets
+noticeRow=true the next launch switch the pack on. Turn `ravel` on
+noticeRow=true under Options, Resource Packs to use them now.
 row=true 1. client_only — running
-row=true 2. configuration — running
-row=true 3 more mods not shown
-entry=Settings: client_only
-entry=Settings: configuration
+sideways=false held=true layouts=0
+walkSummary=true 5 mods on client, 1 needs attention, rows 1-8 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 2-9 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 3-10 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 4-11 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 5-12 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 6-13 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 7-14 of 14
+walkRows=14 shown=8 positions=7
+walkOrder=true slices=true held=true stable=true
+walkTrailing=true within=true fits=true aligned=true
+walkLayouts=14 perLayout=true
+keyDown=true at=1
+keyPageDown=true at=6
+keyPageUp=true at=0
+keyUp=false at=0
+keyOther=false at=0
+keyEscape=true at=0
+focusDone=true kept=true
+focusMoved=true drawn=true kept=true
 entry=Profiling
-entry=gui.done'
+entry=gui.done
+failedRead=true
+failedSummary=true 1 mod on client, 1 needs attention
+failedRow=true 1. brokenmod 2.1.0 — failed  [needs attention]
+failedRow=true a required registry claim was refused at registry
+failedRow=true worldgen/biome via brokenmod -> otherpack: the claim
+failedRow=true was already held by another mod and this one asked
+failedRow=true for it again, so neither could be registered'
 
 printf '%s\n' "$notice_observed"
 while IFS= read -r line; do
@@ -1285,11 +1333,11 @@ if [ "$notice_observed" != "$notice_expected" ]; then
 fi
 
 # The same instance in the window a 1920x1080 display gives this screen at the
-# GUI scale the game picks for it. Three more rows than the run above, and every
-# one of them goes to the notice: the mod rows and the settings entries already
-# hold their floors and the remainder is the notice's first claim. What must not
-# change between the two sizes is that both groups are still on the screen, each
-# cut group still says how much it cut, and Profiling and Done are still inside
+# GUI scale the game picks for it. Three more rows than the run above, and the
+# list is the same fourteen rows seen through a taller window: the same rows in
+# the same order, three fewer stops to reach the end of them. What must not
+# change between the two sizes is that every row is still reachable, the summary
+# still says which of them is on screen, and Profiling and Done are still inside
 # the window.
 sized_stdout="$notice_work/sized-stdout"
 sized_stderr="$notice_work/sized-stderr"
@@ -1298,24 +1346,49 @@ sized_stderr="$notice_work/sized-stderr"
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
 	-cp . TitleMenuMain 640x360 >"$sized_stdout" 2>"$sized_stderr")
-sized_observed="$(grep -E '^(modWidgets|within|summary|noticeRows?|row|entry)=' "$sized_stdout")"
+sized_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$sized_stdout")"
 sized_expected='modWidgets=14
 within=true
-noticeRows=5
-summary=true 5 mods on client, 1 needs attention
+aligned=true
+noticeRows=7
+summary=true 5 mods on client, 1 needs attention, rows 1-11 of 14
 noticeRow=true [needs attention] Ravel wrote the resource pack its
 noticeRow=true mods supply and could not switch it on, because the
 noticeRow=true `resourcePacks` list in `options.txt` is not a list
 noticeRow=true of pack names and was left exactly as it is. It
 noticeRow=true starts `oops`. Repairing or deleting that line lets
-row=true 2 more notice lines not shown
+noticeRow=true the next launch switch the pack on. Turn `ravel` on
+noticeRow=true under Options, Resource Packs to use them now.
 row=true 1. client_only — running
 row=true 2. configuration — running
-row=true 3 more mods not shown
-entry=Settings: client_only
-entry=Settings: configuration
+row=true 3. registries — running
+row=true 4. saved_data — running
+sideways=false held=true layouts=0
+walkSummary=true 5 mods on client, 1 needs attention, rows 1-11 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 2-12 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 3-13 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 4-14 of 14
+walkRows=14 shown=11 positions=4
+walkOrder=true slices=true held=true stable=true
+walkTrailing=true within=true fits=true aligned=true
+walkLayouts=8 perLayout=true
+keyDown=true at=1
+keyPageDown=true at=3
+keyPageUp=true at=0
+keyUp=false at=0
+keyOther=false at=0
+keyEscape=true at=0
+focusDone=true kept=true
+focusMoved=true drawn=true kept=true
 entry=Profiling
-entry=gui.done'
+entry=gui.done
+failedRead=true
+failedSummary=true 1 mod on client, 1 needs attention
+failedRow=true 1. brokenmod 2.1.0 — failed  [needs attention]
+failedRow=true a required registry claim was refused at registry
+failedRow=true worldgen/biome via brokenmod -> otherpack: the claim
+failedRow=true was already held by another mod and this one asked
+failedRow=true for it again, so neither could be registered'
 
 printf '%s\n' "$sized_observed"
 while IFS= read -r line; do
@@ -1329,20 +1402,20 @@ if [ "$sized_observed" != "$sized_expected" ]; then
 	exit 1
 fi
 
-# The window too small for any group's floor, which is where a division can lie.
-# One row below the summary is one line, and the screen spends it on the notice's
-# first line rather than on a line saying seven were cut — the summary is already
-# carrying that count, and a row spent restating it is a row that showed nothing.
-# The mod rows and the settings entries are gone at this size and the summary is
-# what says so, because a group with no row cannot say it itself. Every group the
-# window dropped is named on that line: a screen that showed less than it counted
-# and said nothing is the one thing this size must never produce.
+# The window with one row below the summary, which is where a list this size is
+# either scrollable or useless. Nothing is dropped at this size and nothing is
+# counted as dropped: all fourteen rows are reached one at a time, in the same
+# order the taller windows draw them, and the summary says which one is on
+# screen. This is the size the old row budget could say least about — it had two
+# groups to report as cut and no room to report them, so the summary itself was
+# drawn clipped — and the position clause is short enough to fit where those
+# clauses were not.
 #
-# `summary=false` is recorded rather than fixed. Two dropped groups need a clause
-# each and this font renders about fifty characters in a row of this screen, so
-# the box draws its tail and the mod count scrolls out of sight. The counts are
-# what nothing else on the screen says, so they are the half kept; wrapping the
-# line needs rows a window this size does not have.
+# It is also what a page means when a window has one row: `keyPageDown` moves by
+# one, and the focus a settings entry held does not survive a notch, because the
+# window it lands on draws a different row. That is `drawn=false kept=false`, and
+# the two agreeing is the assertion — the focus comes back where the entry
+# survived and nowhere else.
 tiny_stdout="$notice_work/tiny-stdout"
 tiny_stderr="$notice_work/tiny-stderr"
 (cd "$notice_work" && java \
@@ -1350,14 +1423,45 @@ tiny_stderr="$notice_work/tiny-stderr"
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
 	-cp . TitleMenuMain 400x140 >"$tiny_stdout" 2>"$tiny_stderr")
-tiny_observed="$(grep -E '^(modWidgets|within|summary|noticeRows?|row|entry)=' "$tiny_stdout")"
+tiny_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$tiny_stdout")"
 tiny_expected='modWidgets=4
 within=true
-noticeRows=1
-summary=false 5 mods on client, 1 needs attention, 5 mods not shown, 2 settings not shown
+aligned=true
+noticeRows=7
+summary=true 5 mods on client, 1 needs attention, rows 1-1 of 14
 noticeRow=true [needs attention] Ravel wrote the resource pack its
+sideways=false held=true layouts=0
+walkSummary=true 5 mods on client, 1 needs attention, rows 1-1 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 2-2 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 3-3 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 4-4 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 5-5 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 6-6 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 7-7 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 8-8 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 9-9 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 10-10 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 11-11 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 12-12 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 13-13 of 14
+walkSummary=true 5 mods on client, 1 needs attention, rows 14-14 of 14
+walkRows=14 shown=1 positions=14
+walkOrder=true slices=true held=true stable=true
+walkTrailing=true within=true fits=true aligned=true
+walkLayouts=28 perLayout=true
+keyDown=true at=1
+keyPageDown=true at=2
+keyPageUp=true at=1
+keyUp=true at=0
+keyOther=false at=0
+keyEscape=true at=0
+focusDone=true kept=true
+focusMoved=true drawn=false kept=false
 entry=Profiling
-entry=gui.done'
+entry=gui.done
+failedRead=true
+failedSummary=true 1 mod on client, 1 needs attention, rows 1-1 of 5
+failedRow=true 1. brokenmod 2.1.0 — failed  [needs attention]'
 
 printf '%s\n' "$tiny_observed"
 while IFS= read -r line; do
@@ -1366,8 +1470,62 @@ done <"$tiny_stderr"
 
 if [ "$tiny_observed" != "$tiny_expected" ]; then
 	echo >&2
-	echo "a window with no room for the notice did not say so; expected:" >&2
+	echo "a one-row window did not reach every row of the list; expected:" >&2
 	printf '%s\n' "$tiny_expected" >&2
+	exit 1
+fi
+
+# The window with no room for a row at all. `Layout.rows` bottoms out at one row
+# and the summary takes it, so the list has none on screen — and this is the size
+# where a screen that counted notches anyway does its damage: the offset walks to
+# the end of a list nobody scrolled, and the next window tall enough to draw a row
+# opens part of the way down it. So nothing moves here. The wheel and all four
+# keys are refused, the offset is where it started, and the summary says there is
+# no room rather than claiming a slice.
+#
+# `aligned=false` here is the summary and not a row. It is the one line this
+# screen never splits, it is wider than the column at this width, and a line
+# wider than the box it is drawn in is drawn from a different offset by the
+# version that centres. `summary=false` on the line above says the same thing:
+# what is misaligned is exactly what is clipped, and every row this screen draws
+# at all is both whole and aligned.
+noroom_stdout="$notice_work/noroom-stdout"
+noroom_stderr="$notice_work/noroom-stderr"
+(cd "$notice_work" && java \
+	-javaagent:"$notice_work/agent/ravel-agent.jar" \
+	-Dravel.host="$host" \
+	-Dstdout.encoding=UTF-8 \
+	-cp . TitleMenuMain 400x118 >"$noroom_stdout" 2>"$noroom_stderr")
+noroom_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$noroom_stdout")"
+noroom_expected='modWidgets=3
+within=true
+aligned=false
+noticeRows=7
+summary=false 5 mods on client, 1 needs attention, no room for 14 rows
+sideways=false held=true layouts=0
+scrollable=false rows=14 shown=0 held=true hooks=0
+keyDown=false at=0
+keyPageDown=false at=0
+keyPageUp=false at=0
+keyUp=false at=0
+keyOther=false at=0
+keyEscape=true at=0
+focusDone=false kept=true
+focusHeld=none
+entry=Profiling
+entry=gui.done
+failedRead=true
+failedSummary=false 1 mod on client, 1 needs attention, no room for 5 rows'
+
+printf '%s\n' "$noroom_observed"
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$noroom_stderr"
+
+if [ "$noroom_observed" != "$noroom_expected" ]; then
+	echo >&2
+	echo "a window with room for no row did not refuse to move; expected:" >&2
+	printf '%s\n' "$noroom_expected" >&2
 	exit 1
 fi
 

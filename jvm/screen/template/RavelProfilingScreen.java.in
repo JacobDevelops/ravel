@@ -59,9 +59,10 @@ import java.util.List;
  * words — because a screen that counted characters instead would be right only
  * for scripts whose glyphs happen to be one width.
  *
- * <p><b>Known limit: no scrolling.</b> The same limit
- * {@link RavelModsScreen} records, for the same reason and with the same
- * remedy. Mods arrive costliest first, so a set larger than {@link #MAX_ROWS}
+ * <p><b>Known limit: no scrolling.</b> This screen still divides a measured
+ * window rather than scrolling one, which is what {@link RavelModsScreen} stopped
+ * doing; seeding the scroll it now uses is the remedy here too. Mods arrive
+ * costliest first, so a set larger than {@link #MAX_ROWS}
  * loses the rows a player was least likely to be looking for. Splitting spends
  * rows and a player's GUI scale decides how many the window has, so that trade
  * is now made against a measured budget rather than a fixed count: {@link #rows}
@@ -266,7 +267,7 @@ public final class RavelProfilingScreen extends {{Screen}} {
     private List<String> wrap(List<String> texts) {
         List<String> lines = new ArrayList<>();
         for (String text : texts) {
-            lines.addAll(Layout.wrap({{Screen#font}}, text));
+            lines.addAll(Layout.wrap({{Screen#font}}, text, Layout.WIDGET_WIDTH - Layout.TEXT_INSET));
         }
         return lines;
     }

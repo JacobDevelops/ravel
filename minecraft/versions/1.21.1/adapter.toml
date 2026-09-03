@@ -74,8 +74,8 @@ bytes = 19480
 
 [inputs.stubSeeds]
 path = "minecraft/versions/1.21.1/stubs.toml"
-sha256 = "d707e2a6e692766e90d1ff9748c801e8348a12074cf6d88cbc8458d7963eb700"
-bytes = 11143
+sha256 = "745a0006d98685df4bfbcd35a9236994bcc1bd9769285f51af40dd0ae49a9e58"
+bytes = 13250
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/1.21.1/reflection.toml"
@@ -93,5 +93,5 @@ bytes = 7088
 
 [inputs.stubsLock]
 path = "minecraft/versions/1.21.1/stubs.lock"
-sha256 = "a57b2e8499790d9679582c0037fda0deddf732455b074c1e671d89ac096cd24f"
-bytes = 13144
+sha256 = "a5c50ea3e3ed2f38727b0da239f0c0029fc9b360fc38f49a46d5a6561751899e"
+bytes = 15009

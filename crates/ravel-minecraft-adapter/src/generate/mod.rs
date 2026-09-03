@@ -809,8 +809,11 @@ mod tests {
         );
         assert!(stub.contains("class Screen"), "{stub}");
         assert!(
-            !stub.contains("extends net.minecraft.client.gui.components"),
-            "nothing above Screen is stubbed, so the stub declares nothing above it: {stub}"
+            stub.contains(
+                "extends net.minecraft.client.gui.components.events.AbstractContainerEventHandler"
+            ),
+            "the focus a scrolled screen restores is declared above Screen, so the stub has to \
+             reach it: {stub}"
         );
 
         let bindings = std::fs::read_to_string(&generated.bindings).expect("readable");

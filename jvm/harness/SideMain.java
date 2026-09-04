@@ -1,12 +1,17 @@
-// Prints the mod set premain installed, and nothing else.
+// Prints the mod set the entry point installed, and nothing else.
 //
-// The class path this runs on is the whole test: Ravel reads the running side by
-// asking the JVM which Minecraft classes it can load, so a run whose class path
-// carries the client's entry point is a client and one that carries only the
-// class every distribution has is a dedicated server. What the surface then says
-// about each mod is the side declaration deciding, on the side it was told.
+// Which entry point loaded is the whole test: Ravel names the running side from
+// the first distribution entry point the transformer sees, so a case entered at
+// the client's is a client and one entered at the dedicated server's is a
+// server. What the surface then says about each mod is the side declaration
+// deciding, on the side it was told.
+//
+// A case that loads neither names no side and installs nothing, and the crossing
+// answers nothing rather than a set composed for a guess. That is a different
+// line, because a set is what `mods=` means.
 public final class SideMain {
     public static void main(String[] args) {
-        System.out.println("mods=" + dev.ravel.jvm.Hook.ravelModSurface());
+        String surface = dev.ravel.jvm.Hook.ravelModSurface();
+        System.out.println(surface == null ? "uninstalled" : "mods=" + surface);
     }
 }

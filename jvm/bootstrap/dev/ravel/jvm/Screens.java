@@ -3,7 +3,6 @@ package dev.ravel.jvm;
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.jar.JarFile;
@@ -24,7 +23,7 @@ import java.util.jar.JarFile;
  * the last one.
  *
  * <p>The jar is found beside the agent's own jar rather than named in an
- * argument, so {@link Agent#premain} keeps rejecting arguments and there is
+ * argument, so {@link Boot#premain} keeps rejecting arguments and there is
  * still nothing to configure.
  *
  * <p><b>A child loader rather than the system one.</b> The jar was appended with
@@ -38,16 +37,18 @@ import java.util.jar.JarFile;
  * package name together, so a loader of Ravel's own puts the screens in a
  * package of their own and the certificate check has nothing to compare.
  *
- * <p>The parent is the system loader, so a screen still resolves its game
- * supertype to the class the game itself loaded rather than to a second copy.
- * That the game's classes are on that loader is not a guess:
- * {@code evidence/m3/class-loader-identity.json} measured the loader of a
- * rewritten {@code net.minecraft} class to be the same object as
- * {@code ClassLoader.getSystemClassLoader()}.
+ * <p>The parent is {@link Agent#gameLoader()}, the loader that defined the entry
+ * point, so a screen still resolves its game supertype to the class the game
+ * itself loaded rather than to a second copy. On the client that loader is the
+ * system loader, which {@code evidence/m3/class-loader-identity.json} measured;
+ * on the published dedicated server it is a child of the platform loader and
+ * the system loader holds no game class at all, so parenting to the system
+ * loader there fails every game supertype with {@code ClassNotFoundException}.
  *
- * <p>Constructing the loader is not defining. This runs at {@code premain} and
- * loads no class, so no game class is forced to load before the client
- * bootstraps. Defining a screen is lazy and belongs to whatever hook first needs
+ * <p>Constructing the loader is not defining. This runs the moment the
+ * transformer sees the distribution entry point, which is where the running side
+ * first exists, and it loads no class — so no game class is forced to load
+ * before the client bootstraps. Defining a screen is lazy and belongs to whatever hook first needs
  * it, because a {@code Screen} subclass cannot be defined without loading
  * {@code Screen} itself.
  */
@@ -84,7 +85,7 @@ final class Screens {
      */
     static void install() {
         if (screens != null) {
-            // Called once, from `premain`. A second call would replace a loader
+            // Called once, from `Agent.entered`. A second call would replace a loader
             // that holds an open jar, and nothing would ever close the first: the
             // classes it defined stay reachable and so does the file handle. It
             // is a diagnostic rather than a close, because a loader whose classes
@@ -103,7 +104,7 @@ final class Screens {
             return;
         }
         try (JarFile opened = new JarFile(jar)) {
-            screens = loader(opened.getName(), ClassLoader.getSystemClassLoader());
+            screens = loader(opened.getName(), Agent.gameLoader());
         } catch (java.io.IOException unreadable) {
             screens = null;
             diagnose(SCREEN_JAR + " is unreadable or invalid ("
@@ -119,9 +120,9 @@ final class Screens {
      * A check that models the mechanism proves nothing about the mechanism.
      *
      * <p>The parent is a parameter for the same reason. A launch hands it the
-     * system loader, which is where the game is; the check hands it a loader
-     * holding a signed jar, which is the condition that made the launch fail and
-     * which nothing on a build machine has otherwise.
+     * entry point's defining loader, which is where the game is; the check hands
+     * it a loader holding a signed jar, which is the condition that made the
+     * launch fail and which nothing on a build machine has otherwise.
      *
      * @param path the screen jar to read
      * @param parent where a class this loader does not hold is looked for
@@ -260,22 +261,20 @@ final class Screens {
     }
 
     /**
-     * Resolves {@code name} beside the jar this class was loaded from.
+     * Resolves {@code name} beside the agent jar.
      *
-     * @return the file, or {@code null} if this class did not come from a jar on
-     *     disk, which is what happens when the agent runs from a directory
+     * <p>Asked of {@link Agent} rather than of this class's own code source: the
+     * agent jar is on the bootstrap loader's search path, and a class the
+     * bootstrap loader defined has no code source to ask.
+     *
+     * @return the file, or {@code null} if nothing recorded where the agent jar is
      */
     private static File beside(String name) {
-        try {
-            var source = Screens.class.getProtectionDomain().getCodeSource();
-            if (source == null) {
-                return null;
-            }
-            File self = new File(source.getLocation().toURI());
-            File parent = self.getParentFile();
-            return parent == null ? null : new File(parent, name);
-        } catch (URISyntaxException | IllegalArgumentException notAFile) {
+        File self = Agent.jar();
+        if (self == null) {
             return null;
         }
+        File parent = self.getParentFile();
+        return parent == null ? null : new File(parent, name);
     }
 }

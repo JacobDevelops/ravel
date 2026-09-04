@@ -114,18 +114,23 @@ pub fn compose(game_directory: &std::path::Path, side: Side) -> Result<Compositi
     ravel_host_runtime::compose(game_directory, side, members(side))
 }
 
-fn initialize(env: &mut jni::Env<'_>) -> Result<(), LaunchError> {
-    // The side the members are built for is the side the runtime will compose
-    // them on, so it is asked once, here, and handed to both.
-    let side = ravel_host_runtime::side(env)?;
-    run(env, members(side))
-}
-
 /// Starts the player-local statically composed set before game methods run.
+///
+/// The side arrives as the code the agent named it by, because the agent is
+/// where the fact exists: it is the first distribution entry point the
+/// transformer sees, and this is the crossing that moment makes.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelInitialize")]
-pub fn ravel_initialize<'local>(mut env: EnvUnowned<'local>, _class: JClass<'local>) {
-    env.with_env(initialize)
-        .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+pub fn ravel_initialize<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    side: jni::sys::jint,
+) {
+    env.with_env(|_env| {
+        // The side the members are built for is the side the runtime will
+        // compose them on, so it is read once, here, and handed to both.
+        run(side, members(ravel_host_runtime::side(side)?))
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 
 #[cfg(test)]

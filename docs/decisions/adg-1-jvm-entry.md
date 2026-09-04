@@ -7,8 +7,9 @@ delegating pair, and amended by [ADG-7](adg-7-world-persistence.md) before M3-W4
 to admit one receiver-aware Java-adapter mode, amended again while scoping
 the second version directory to record that a second Minecraft version reaches
 none of this, and amended once more when the game names those adapters resolve
-stopped being literals in a shared source and started being generated. The
-amendments are recorded below
+stopped being literals in a shared source and started being generated, and
+amended once more when a real dedicated server showed that the running side
+cannot be named at `premain` at all. The amendments are recorded below
 and each consequence they correct is marked where it appears. Nothing about the
 entry mechanism changed. It needs no `SPEC.md` §3.3 amendment and no unsafe
 exception: the premise that an exported symbol cannot be encapsulated turned out
@@ -231,11 +232,15 @@ generator declares every reference parameter as `java.lang.Object` precisely so
 that generated `Hook.java` declares no game type and still compiles without the
 client jar. Neither artifact is free of game *names*: `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-three adapters between them resolve twenty-five classes by name at one tracked version and
-twenty-six classes by name at the other — all of which the invariant
+three adapters, the transformer and the agent between them resolve twenty-seven
+classes by name at one tracked version and
+twenty-eight classes by name at the other — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
 on the class path. The two versions differ by one because one of them answers a
-sound request with a type of its own and the other answers nothing at all. A class
+sound request with a type of its own and the other answers nothing at all. Two of
+the twenty-seven are the distribution entry points the agent names the running
+side from, and they are compared against a class the JVM is loading rather than
+resolved to call anything on. A class
 an adapter reaches only inside a descriptor is declared beside the ones it reaches
 by constant, and several of these are: the harness's stand-in has to declare the
 very type the agent jar passes inside a lookup, so a type named only there is
@@ -619,6 +624,97 @@ is declared where it exists and nowhere else. That is the difference the figure
 above records, and the check behind that figure asks for one count per distinct
 surface size rather than one count, so a record that stated a single number would
 fail rather than pass over the version it left out.
+
+## Amendment: initialisation runs at the first entry point, not at `premain`
+
+Amended when Ravel was first attached to a real 1.21.1 dedicated server. This
+amendment moves one call and changes nothing else: the entry mechanism is still
+one `-javaagent`, one `System.loadLibrary`, one `dev.ravel.jvm.Hook` and one
+exported symbol per hook, and `premain` still installs the transformer before any
+game class is loaded.
+
+What moved is `Hook.ravelInitialize`, which composes and installs the mod set.
+It ran from `premain`, and it cannot: every rule below it is a rule about a side,
+and nothing at `premain` says which side the process is. The command line reaches
+the process with no program arguments, the only property the game sets at startup
+is `java.awt.headless`, and the question this repository used to ask instead —
+what classes can this JVM load — answers wrongly on the artefact Mojang actually
+publishes. The published server jar is a bundler: at `premain` the only class on
+any loader is the bundler's own, and the server's real jars are extracted and
+loaded afterwards under a loader of its making. Both probed classes miss, the
+launch refused, and the server died.
+
+So the side is named where the fact first exists. The transformer is shown every
+class in every loader before it initialises, and the first of the two
+distribution entry points to arrive there — `net.minecraft.client.main.Main` or
+`net.minecraft.server.Main`, both generated into `GameNames` from each version's
+`reflection.toml` and both re-derived from the pinned mapping on every build that
+can read one — says which distribution this process was started from.
+
+Naming the side there is not the same as initialising there, and the difference
+was measured rather than assumed: **a class loaded from inside a transformer
+never reaches that transformer.** The JVM suppresses the class-file load hook for
+the thread already inside one, so initialising from the transformation would have
+left every class Ravel's own startup touched unrewritten — which is exactly what
+the initialisation-order harness section refused. Instead the transformer
+prepends one call to the entry point's own `main`, using the same rewrite it
+performs on every hook target, and `ravelInitialize` runs from there with the
+named side as its argument. That is one instruction before the game's first
+statement, on the game's own thread, with the transformer live. `Screens.install`
+runs with it so the two keep the order they had.
+
+Those two rewrites are not counted with the hook targets and do not enter the
+installed-prologue set. Those counters answer for what the reviewed inventory
+pins; this one is Ravel starting itself. An entry point that carries the name and
+not the method is recorded as a transformation failure rather than passed over,
+because a Ravel that is installed and inert is the fail-open answer this record
+keeps refusing.
+
+A process that enters neither is a process that is not the game: a launcher, a
+bundler that has not extracted yet, a test harness. It names no side, installs
+nothing, refuses nothing, and says so in the line the agent already prints at
+shutdown. Every crossing into the runtime already answers nothing until a set is
+installed, so a crossing made before a side is named needs no guard of its own.
+
+### The prologue has to be able to reach Ravel, and Ravel has to be able to reach the game
+
+Amended again after that same server ran. Naming the side from the entry point
+put a call to `dev.ravel.jvm.Agent` inside a game class, and on the published
+server that call cannot link. The bundler builds the loader the game runs under
+as `new URLClassLoader(urls, getClass().getClassLoader().getParent())` — the
+parent is the platform loader, so the system class path, which is where
+`-javaagent` puts the agent jar, is on no parent chain the game can see. The
+prologue threw `NoClassDefFoundError: dev/ravel/jvm/Agent` and the server died.
+
+So the agent jar is appended to the bootstrap loader's search path, with
+`Instrumentation.appendToBootstrapClassLoaderSearch`, before any Ravel class
+other than the one the JVM had to define to get there. Bootstrap is every
+loader's furthest parent, including a loader parented to the platform one, so
+after the append every loader in the process delegates to a single copy of every
+Ravel class. That single copy is the point rather than a side effect: two copies
+would hold two transformers, two hook tables, and two answers to what side this
+launch is. The `Premain-Class` is a separate class that touches nothing else and
+reaches `Agent` by asking the bootstrap loader for it by name, because the JVM
+defines the `Premain-Class` itself, through the system loader, before the append
+can happen — anything it named first would be defined there and stay there.
+
+The reverse direction is the same fact read the other way. Ravel's adapters
+resolve game classes by name, and until this amendment they named the system
+loader to resolve them through, on the strength of the client measurement in
+`evidence/m3/class-loader-identity.json`. On the bundled server the system loader
+holds no game class at all, and both world persistence and content registration
+answered `ClassNotFoundException`. Every such lookup now goes through the loader
+that defined the entry point, which the prologue passes across with the side it
+names, and which the screen jar's own loader takes as its parent. On the client
+that loader is the system loader and nothing about the client changes.
+
+Two consequences are worth recording. A class the bootstrap loader defined has no
+`CodeSource`, so the agent can no longer ask where its own jar is; the premain
+class reads that before the append and hands it on, and it is what
+`ravel-screen.jar` is still found beside. And appending to the boot class path
+turns the JVM's shared class archive off, which the JVM reports on stderr once
+per launch. That is cosmetic, it is what the JVM would do anyway, and there is
+no version of this mechanism without it.
 
 ## Limits of this evidence
 

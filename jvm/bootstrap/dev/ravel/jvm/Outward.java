@@ -157,30 +157,25 @@ final class Outward {
     /** Plays one declared sound through the running client's sound manager. */
     private static void play(String owner, String entry, float pitch)
             throws ReflectiveOperationException {
-        Class<?> minecraft = game(MINECRAFT);
+        Class<?> minecraft = Members.game(MINECRAFT);
         Object client = Members.method(minecraft, GameMembers.MINECRAFT_GET_INSTANCE)
                 .invoke(null);
         if (client == null) {
             throw new IllegalStateException("no client is running");
         }
         Object identifier = Members.method(
-                game(IDENTIFIER), GameMembers.IDENTIFIER_FROM_NAMESPACE_AND_PATH)
+                Members.game(IDENTIFIER), GameMembers.IDENTIFIER_FROM_NAMESPACE_AND_PATH)
                 .invoke(null, owner, entry);
         Object event = Members.method(
-                game(SOUND_EVENT), GameMembers.SOUND_EVENT_CREATE_VARIABLE_RANGE_EVENT)
+                Members.game(SOUND_EVENT), GameMembers.SOUND_EVENT_CREATE_VARIABLE_RANGE_EVENT)
                 .invoke(null, identifier);
         Object sound = Members.method(
-                game(SIMPLE_SOUND_INSTANCE), GameMembers.SIMPLE_SOUND_INSTANCE_FOR_UI)
+                Members.game(SIMPLE_SOUND_INSTANCE), GameMembers.SIMPLE_SOUND_INSTANCE_FOR_UI)
                 .invoke(null, event, pitch);
         Object manager = Members.method(minecraft, GameMembers.MINECRAFT_GET_SOUND_MANAGER)
                 .invoke(client);
-        Members.method(game(SOUND_MANAGER), GameMembers.SOUND_MANAGER_PLAY)
+        Members.method(Members.game(SOUND_MANAGER), GameMembers.SOUND_MANAGER_PLAY)
                 .invoke(manager, sound);
-    }
-
-    /** One game class, resolved through the loader the game itself is on. */
-    private static Class<?> game(String name) throws ReflectiveOperationException {
-        return Class.forName(name, true, ClassLoader.getSystemClassLoader());
     }
 
     /** The type that stopped an action, unwrapped past the reflection layer. */

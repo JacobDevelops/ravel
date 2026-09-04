@@ -48,7 +48,7 @@ mkdir -p "$classes"
 mapfile -d '' sources < <(find "$root/jvm/bootstrap" "$generated" -name '*.java' -print0 | sort -z)
 javac --release "$release" -Xlint:all -Werror -d "$classes" "${sources[@]}"
 
-printf 'Premain-Class: dev.ravel.jvm.Agent\nCan-Retransform-Classes: false\n' >"$manifest"
+printf 'Premain-Class: dev.ravel.jvm.Boot\nCan-Retransform-Classes: false\n' >"$manifest"
 
 # Entries are passed explicitly and in sorted order, because `jar -C dir .` walks
 # the directory in whatever order the filesystem reports.

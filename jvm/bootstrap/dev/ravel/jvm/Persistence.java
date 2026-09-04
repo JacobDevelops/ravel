@@ -200,7 +200,7 @@ final class Persistence {
      */
     private static boolean saveSeamInstalled() {
         try {
-            game(SERVER);
+            Members.game(SERVER);
         } catch (ReflectiveOperationException | LinkageError absent) {
             return false;
         }
@@ -223,14 +223,15 @@ final class Persistence {
         Object root = Members.method(
                 access.getClass(), GameMembers.LEVEL_STORAGE_ACCESS_GET_LEVEL_PATH)
                 .invoke(access, constant(LEVEL_RESOURCE, GameMembers.LEVEL_RESOURCE_ROOT));
-        Object fixer = Members.method(game(DATA_FIXERS), GameMembers.DATA_FIXERS_GET_DATA_FIXER)
+        Object fixer = Members.method(
+                        Members.game(DATA_FIXERS), GameMembers.DATA_FIXERS_GET_DATA_FIXER)
                 .invoke(null);
         Object layers = Members.method(stem.getClass(), GameMembers.WORLD_STEM_REGISTRIES)
                 .invoke(stem);
         Object registries = Members.method(
                 layers.getClass(), GameMembers.REGISTRY_LAYERS_COMPOSITE_ACCESS).invoke(layers);
 
-        Class<?> storage = game(STORAGE);
+        Class<?> storage = Members.game(STORAGE);
         Object opened = Members.constructor(storage, GameMembers.STORAGE_NEW)
                 .newInstance(folder(data, root), fixer, registries);
         Object stored;
@@ -278,7 +279,7 @@ final class Persistence {
             return false;
         }
         try {
-            Class<?> client = game(GameNames.MINECRAFT);
+            Class<?> client = Members.game(GameNames.MINECRAFT);
             Object instance = Members.method(client, GameMembers.MINECRAFT_GET_INSTANCE)
                     .invoke(null);
             Members.method(client, GameMembers.MINECRAFT_SET_SCREEN).invoke(instance, screen);
@@ -393,12 +394,7 @@ final class Persistence {
 
     /** Reads one static constant the reviewed surface names. */
     private static Object constant(String owner, String member) throws ReflectiveOperationException {
-        return Members.field(game(owner), member).get(null);
-    }
-
-    /** One game class, resolved through the loader the game itself is on. */
-    private static Class<?> game(String name) throws ReflectiveOperationException {
-        return Class.forName(name, true, ClassLoader.getSystemClassLoader());
+        return Members.field(Members.game(owner), member).get(null);
     }
 
     /**

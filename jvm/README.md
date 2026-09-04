@@ -9,9 +9,9 @@ Java, and [ADG-1's amendment](../docs/decisions/adg-1-jvm-entry.md) settles that
 the screen is a separate artefact rather than something the agent jar grows: a
 screen names game types, and the agent jar deliberately compiles without the
 client jar. M3-W3 answered how it reaches a loader that resolves those types —
-the agent appends the screen jar to the system class loader's search path through
-the `Instrumentation` it already holds, and that loader is the one that loads the
-game, which ADG-1's second amendment measured rather than assumed.
+the agent opens the screen jar under a `URLClassLoader` of its own whose parent
+is the loader that defined the distribution entry point, which is where the game
+is.
 
 - `bootstrap/` — the premain agent's tracked sources: the entry point, the class
   transformer, and the record the generator fills. Package `dev.ravel.jvm`.
@@ -76,13 +76,17 @@ A host `ravel-cli host build` produced sits at
 `<instance>/ravel/host/libravel_bootstrap.so`, and that is the path a launch
 names. Ravel is still switched off by removing the `-javaagent` argument.
 
-`ravel-screen.jar` has to sit in the same directory as the agent jar. The agent
-takes no arguments, so it finds the screen jar by resolving that name beside the
-jar it was itself loaded from, and both are built into `target/ravel-jvm/`. Copy
-one to an instance without the other and the launch prints `ravel-screen.jar is
-missing or not a regular file beside the agent jar`, then runs with no settings
-screen, no mod list and no world persistence. The derivation is exact; what is
-fragile is that nothing checks the two jars travelled together.
+`ravel-screen.jar` has to sit in the same directory as the agent jar, on a
+dedicated server as much as on a client. The agent takes no arguments, so it
+finds the screen jar by resolving that name beside the jar it was itself loaded
+from, and both are built into `target/ravel-jvm/`. Copy one to an instance
+without the other and the launch prints `ravel-screen.jar is missing or not a
+regular file beside the agent jar`, then runs with no settings screen, no mod
+list, no world persistence and no registered content. A server draws no screen
+and still needs the jar: the class that registers a mod's blocks and items is the
+screen jar's sibling half, and a server without it prints `content registration
+has no component to register through`. The derivation is exact; what is fragile
+is that nothing checks the two jars travelled together.
 
 The agent takes no arguments; what it rewrites comes from the generated class it
 ships with. The library is named rather than searched: the generated `Hook`
@@ -376,7 +380,7 @@ fields are not call targets and never appear here.
 ### Who loads the library, and from which class loader
 
 The generated `Hook` class loads it, from its own static initializer, and the
-agent forces that initializer to run from `premain`.
+agent forces that initializer to run as it starts.
 
 JNI binds a loaded library to the class loader that loaded the class whose code
 called `System.load`, and resolves a native method only against that
@@ -389,20 +393,31 @@ call in the declaring class's own initializer makes the loading loader and the
 declaring loader the same one by construction rather than by convention, so the
 failure mode cannot be reached by accident.
 
-Two consequences follow, and both hold for the pinned game:
+Two consequences follow, and both hold for both published distributions:
 
-- The agent jar is appended to the system class path by the JVM before `premain`
-  runs, so `Hook` is loaded by the system class loader and the library binds
-  there.
+- `dev.ravel.jvm.Boot` appends the agent jar to the *bootstrap* loader's search
+  path before it names any other Ravel class, so `Hook` is defined by the
+  bootstrap loader and the library binds there. The system class path the JVM put
+  the jar on is not enough: Mojang's server jar is a bundler that runs the game
+  under `new URLClassLoader(urls, getClass().getClassLoader().getParent())`,
+  whose parent is the platform loader, and the first real dedicated server died
+  with `NoClassDefFoundError: dev/ravel/jvm/Agent` on the prologue for exactly
+  that reason. Bootstrap is every loader's furthest parent, so after the append
+  there is one copy of every Ravel class and every loader delegates to it.
 - The rewritten call site resolves `dev.ravel.jvm.Hook` through the loader that
-  loaded the *rewritten* class, and for the pinned launch that is the same loader
-  again, so it finds that same copy. No delegation is involved:
+  loaded the *rewritten* class, which delegates to bootstrap and finds that one
+  copy. On the client that loader is also the system one:
   [`evidence/m3/class-loader-identity.json`](../evidence/m3/class-loader-identity.json)
   measured a rewritten `net.minecraft` class and `ClassLoader.getSystemClassLoader()`
-  to be one object, `jdk.internal.loader.ClassLoaders$AppClassLoader`, whose only
-  parents are the platform and bootstrap loaders. A launcher that isolates the
-  game behind a non-delegating loader would break this, and that is a
-  compatibility requirement rather than a bug to work around.
+  to be one object, `jdk.internal.loader.ClassLoaders$AppClassLoader`. On the
+  bundled server it is not, and no game class is on the system loader at all —
+  which is why every game name an adapter resolves goes through `Members.game`
+  and the loader that defined the entry point, and never through the system one.
+
+Appending to the bootstrap search turns the JVM's shared class archive off, and
+the JVM says so once per launch on stderr. That is cosmetic and unavoidable; the
+harness passes `-Xshare:off` so its exact-output cases do not each carry the
+notice.
 
 Loading eagerly from `premain` rather than lazily at the first hook is
 deliberate: an absent or unloadable library then fails at startup, where it is

@@ -330,7 +330,7 @@ final class Content {
      * else changed, so Ravel does not do it either.
      */
     private static void mapStates(Object block) throws ReflectiveOperationException {
-        Class<?> blocks = game(BLOCK);
+        Class<?> blocks = Members.game(BLOCK);
         Object definition = Members.method(blocks, GameMembers.BLOCK_GET_STATE_DEFINITION)
                 .invoke(block);
         Object mapper = Members.field(blocks, GameMembers.BLOCK_BLOCK_STATE_REGISTRY).get(null);
@@ -342,11 +342,6 @@ final class Content {
             Members.method(state.getClass(), GameMembers.BLOCK_STATE_BASE_INIT_CACHE)
                     .invoke(state);
         }
-    }
-
-    /** One game class, resolved through the loader the game itself is on. */
-    private static Class<?> game(String name) throws ReflectiveOperationException {
-        return Class.forName(name, true, ClassLoader.getSystemClassLoader());
     }
 
     /**

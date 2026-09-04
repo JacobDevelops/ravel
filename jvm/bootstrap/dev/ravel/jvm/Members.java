@@ -34,6 +34,22 @@ final class Members {
     }
 
     /**
+     * One game class, resolved through the loader the game itself is on.
+     *
+     * <p>The one place in the agent jar a game name becomes a class. Which
+     * loader that is was the second half of what the first real dedicated server
+     * found: the client's game is on the system loader, and the published
+     * server's is only inside the child loader its bundler builds, so a lookup
+     * that named the system loader answered {@code ClassNotFoundException} for
+     * every class the world persistence and content adapters reach.
+     *
+     * @param name the class as this version's names spell it
+     */
+    static Class<?> game(String name) throws ReflectiveOperationException {
+        return Class.forName(name, true, Agent.gameLoader());
+    }
+
+    /**
      * The method one generated constant names, on the class or any supertype.
      *
      * @param owner where to start looking, usually a receiver's own class

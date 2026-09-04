@@ -1372,6 +1372,32 @@ mod tests {
             .expect("the crate lives under crates/<name>")
     }
 
+    /// Every Java source the agent jar is built from, concatenated.
+    ///
+    /// Read rather than listed: a source added under `jvm/bootstrap` is compiled
+    /// into the jar, so a list here would be a second inventory of that tree and
+    /// would go stale silently.
+    fn bootstrap_sources(root: &Path) -> String {
+        fn walk(directory: &Path, read: &mut String) {
+            let mut entries: Vec<_> = std::fs::read_dir(directory)
+                .expect("the agent jar's source tree is readable")
+                .map(|entry| entry.expect("a readable directory entry").path())
+                .collect();
+            entries.sort();
+            for entry in entries {
+                if entry.is_dir() {
+                    walk(&entry, read);
+                } else if entry.extension().is_some_and(|suffix| suffix == "java") {
+                    read.push_str(&std::fs::read_to_string(&entry).expect("a readable source"));
+                }
+            }
+        }
+
+        let mut read = String::new();
+        walk(&root.join("jvm/bootstrap"), &mut read);
+        read
+    }
+
     /// `majorVersion` is not a name only `javaVersion` uses, and the scan used
     /// to take the first one in the file. A manifest carrying one earlier hands
     /// the release check a number from somewhere else under the right name.
@@ -1460,10 +1486,13 @@ mod tests {
             // never moves.
             //
             // A class the agent jar names and calls nothing on is the exception
-            // the floor has to make room for: a parameter or return type inside
-            // a descriptor is reached by name and has no member to declare. It
-            // earns its place by being named in one, which is what is asked
-            // instead of a member.
+            // the floor has to make room for, and there are two ways to be one.
+            // A parameter or return type inside a descriptor is reached by name
+            // and has no member to declare, so it earns its place by being named
+            // in one. An entry point is reached by name too and is not in any
+            // descriptor — it is compared against a class the JVM is loading —
+            // so it earns its place by the agent jar naming its role constant.
+            // Both are asked for instead of a member; neither is a free pass.
             let descriptors = pinned
                 .surface
                 .classes
@@ -1471,15 +1500,18 @@ mod tests {
                 .flat_map(|reflected| &reflected.members)
                 .filter_map(|member| member.descriptor.as_deref())
                 .collect::<Vec<_>>();
+            let agent = bootstrap_sources(root);
             for reflected in &pinned.surface.classes {
                 if reflected.members.is_empty() {
                     let named = format!("L{};", reflected.class.replace('.', "/"));
+                    let resolved = format!("GameNames.{}", reflected.name);
                     assert!(
                         descriptors
                             .iter()
-                            .any(|descriptor| descriptor.contains(&named)),
-                        "{} is reflected, declares no member the agent jar reaches, and no \
-                         member's descriptor names it either",
+                            .any(|descriptor| descriptor.contains(&named))
+                            || agent.contains(&resolved),
+                        "{} is reflected, declares no member the agent jar reaches, and is \
+                         named by neither a member's descriptor nor the agent jar itself",
                         reflected.class
                     );
                 }

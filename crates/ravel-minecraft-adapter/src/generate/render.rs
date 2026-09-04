@@ -983,8 +983,18 @@ pub(super) fn screen_names(adapter: &Adapter, names: &[(String, String)]) -> Str
 /// gives Ravel one exported symbol surface and it is this class: a screen or a
 /// world adapter with natives of its own would be a second one.
 fn written_declarations() -> &'static str {
-    "    /** Constructs, configures, drives, and installs the statically composed mod set. */\n\
-         \x20   public static native void ravelInitialize();\n\n\
+    "    /**\n\
+         \x20    * Constructs, configures, drives, and installs the composed mod set.\n\
+         \x20    *\n\
+         \x20    * <p>Called once, from the moment the transformer sees the first\n\
+         \x20    * distribution entry point, which is where the running side first\n\
+         \x20    * exists as a fact. A premain class-path probe cannot answer it: the\n\
+         \x20    * published server jar is a bundler and its real jars are not on any\n\
+         \x20    * loader yet.\n\
+         \x20    *\n\
+         \x20    * @param side the code {@code dev.ravel.jvm.Agent} named the side by\n\
+         \x20    */\n\
+         \x20   public static native void ravelInitialize(int side);\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\

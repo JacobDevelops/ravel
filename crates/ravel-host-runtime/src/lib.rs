@@ -62,7 +62,7 @@ use ravel_resolve::{ResolutionError, resolve};
 /// depends on rather than reaching past it into `ravel-bootstrap`.
 pub use ravel_bootstrap_runtime::environment;
 
-/// Asks the JVM this process is inside which distribution it was started from.
+/// Reads the side the agent named out of the code it reported.
 ///
 /// A host needs the answer before it can build its members, because a member's
 /// value may itself be side-dependent, so this is the one question a host asks
@@ -70,10 +70,10 @@ pub use ravel_bootstrap_runtime::environment;
 ///
 /// # Errors
 ///
-/// Returns [`LaunchError::Side`] when the JVM cannot say, which installs
+/// Returns [`LaunchError::Side`] for a code no host knows, which installs
 /// nothing rather than composing a set for a guessed side.
-pub fn side(env: &mut jni::Env<'_>) -> Result<Side, LaunchError> {
-    running_side(env).map_err(LaunchError::Side)
+pub fn side(code: i32) -> Result<Side, LaunchError> {
+    running_side(code).map_err(LaunchError::Side)
 }
 
 /// One member of a composed set: the package it ships as, and its value.
@@ -259,7 +259,7 @@ fn admit(side: Side, members: Vec<Member>) -> Result<Admitted, LaunchError> {
     Ok(composed)
 }
 
-/// Composes and installs a host's members inside the JVM this process is.
+/// Composes and installs a host's members for the side the agent named.
 ///
 /// This is the body of every host's JNI entry point. A host declares the symbol
 /// the JVM calls; what happens behind it is this, so the compiled-in host and a
@@ -267,15 +267,15 @@ fn admit(side: Side, members: Vec<Member>) -> Result<Admitted, LaunchError> {
 ///
 /// # Errors
 ///
-/// Returns an error when the launch directory cannot be named, when the JVM
-/// cannot say which side it is, when [`compose`] refuses, or when the driven
-/// runtime cannot be installed.
-pub fn initialize(env: &mut jni::Env<'_>, members: Vec<Member>) -> Result<(), LaunchError> {
+/// Returns an error when the launch directory cannot be named, when the reported
+/// code names no side, when [`compose`] refuses, or when the driven runtime
+/// cannot be installed.
+pub fn initialize(code: i32, members: Vec<Member>) -> Result<(), LaunchError> {
     let game_directory = std::env::current_dir().map_err(LaunchError::CurrentDirectory)?;
-    // Asked of the JVM this launch is inside rather than written here. Every rule
-    // below depends on it, so a launch that cannot name its side installs nothing
+    // Read from what the agent named rather than written here. Every rule below
+    // depends on it, so a launch that cannot name its side installs nothing
     // instead of composing a set for a side it guessed.
-    let side = side(env)?;
+    let side = side(code)?;
     let (machine, mods, configurations, resources) = compose(&game_directory, side, members)?;
     // Before the runtime is installed, because a pack the game reads late is a
     // pack it does not read: the client builds its pack list while it starts, and
@@ -406,7 +406,7 @@ pub enum LaunchError {
     Jvm(jni::errors::Error),
     /// The process could not name its launch directory.
     CurrentDirectory(std::io::Error),
-    /// The JVM could not say which side this process is.
+    /// The code the agent reported names no side this host knows.
     Side(SideError),
     /// The pack's settings layer could not be read.
     PackFile(file::FileError),

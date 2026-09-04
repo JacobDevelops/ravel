@@ -45,9 +45,15 @@ import java.util.concurrent.atomic.AtomicReference;
  * host method when it is true. The opt-in arrives as generated data on
  * {@link HookTarget}, so nothing written here can widen the set, and only a void
  * target may carry it, so the early return invents no value.
+ *
+ * <p>It is also where the running side is named. Every class in every loader
+ * reaches this method before it initialises, so the first distribution entry
+ * point to arrive is the earliest point in the process at which the side is a
+ * fact at all — see {@link Agent#sideOf}.
  */
 public final class Transformer implements ClassFileTransformer {
 
+    private static final ClassDesc AGENT = ClassDesc.of("dev.ravel.jvm.Agent");
     private static final ClassDesc HOOK = ClassDesc.of("dev.ravel.jvm.Hook");
     private static final ClassDesc TRANSFORMER = ClassDesc.of("dev.ravel.jvm.Transformer");
     private static final MethodTypeDesc TITLE_MENU =
@@ -64,6 +70,18 @@ public final class Transformer implements ClassFileTransformer {
             MethodTypeDesc.ofDescriptor("(Ljava/lang/Object;)V");
     private static final MethodTypeDesc REGISTER_CONTENT = MethodTypeDesc.ofDescriptor("()V");
     private static final MethodTypeDesc PERFORM_OUTWARD = MethodTypeDesc.ofDescriptor("()V");
+
+    /** What every distribution entry point declares, and what Ravel prepends to. */
+    private static final String ENTRY_MEMBER = "main";
+
+    /** What the failure report says of an entry point whose class lacks the method. */
+    private static final String MISSING_ENTRY_METHOD = "missing entry method";
+
+    private static final MethodTypeDesc ENTRY_DESCRIPTOR =
+            MethodTypeDesc.ofDescriptor("([Ljava/lang/String;)V");
+
+    private static final MethodTypeDesc ENTERED =
+            MethodTypeDesc.ofDescriptor("(ILjava/lang/Class;)V");
 
     private final Map<String, List<HookTarget>> byClass;
     private final AtomicInteger transformedClasses = new AtomicInteger();
@@ -299,9 +317,22 @@ public final class Transformer implements ClassFileTransformer {
         if (internalName == null) {
             return null;
         }
+        // Before the target lookup, because an entry point is not a hook target
+        // and this is the only place in the process that sees every class in
+        // every loader before it initialises.
+        int side = Agent.sideOf(internalName);
+        byte[] entered = null;
+        if (side != Agent.UNNAMED) {
+            Agent.sawEntryPoint(internalName);
+            entered = enterAt(side, internalName, loader, classfile);
+            // And on to the hook lookup with the prologue in place, rather than
+            // back. An entry point is not usually a hook target, but a version
+            // whose inventory named one there would have had it silently dropped.
+            classfile = entered;
+        }
         List<HookTarget> targets = byClass.get(internalName);
         if (targets == null) {
-            return null;
+            return entered;
         }
         // Recorded before the rewrite rather than after, so a rewrite that
         // throws still leaves the identity of the loader that asked for it.
@@ -339,7 +370,7 @@ public final class Transformer implements ClassFileTransformer {
                 String failureType = failure.getClass().getName();
                 failedByClass.put(dottedName, failureType);
                 Agent.diagnose("failed to transform " + dottedName + " (" + failureType + ")");
-                return null;
+                return entered;
             }
             if (prepend.matched()) {
                 matched.add(target.hookMethod());
@@ -360,6 +391,53 @@ public final class Transformer implements ClassFileTransformer {
             rewrittenByClass.put(internalName.replace('/', '.'), classMethods);
         }
         return rewritten;
+    }
+
+    /**
+     * Prepends Ravel's initialisation to a distribution entry point's {@code main}.
+     *
+     * <p>The side is known here — this class is one of the two entry points —
+     * but initialising here is not possible: a class loaded from inside a
+     * transformer never reaches the transformer, so every class Ravel's own
+     * startup touched would go past unrewritten, which is the defect the
+     * initialisation-order harness exists to catch. So the moment is moved into
+     * the entry point itself, one instruction before its first statement and
+     * still before any game code.
+     *
+     * <p>These two rewrites are not counted with the hook targets and do not
+     * enter the installed-prologue set. Those count what the reviewed inventory
+     * pins, and this is Ravel starting itself.
+     *
+     * @return the rewritten class, or the original bytes when the rewrite failed
+     */
+    private byte[] enterAt(int side, String internalName, ClassLoader loader, byte[] classfile) {
+        ClassLoader resources = loader == null ? ClassLoader.getSystemClassLoader() : loader;
+        ClassFile context = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
+                ClassHierarchyResolver.ofResourceParsing(resources)));
+        EnterTransform prologue =
+                new EnterTransform(side, ClassDesc.ofInternalName(internalName));
+        try {
+            byte[] rewritten = context.transformClass(
+                    context.parse(classfile),
+                    ClassTransform.transformingMethods(
+                            model -> model.methodName().equalsString(ENTRY_MEMBER)
+                                    && model.methodType().equalsString(
+                                            ENTRY_DESCRIPTOR.descriptorString()),
+                            MethodTransform.transformingCode(prologue)));
+            if (!prologue.injected) {
+                // Recorded rather than passed over. A class carrying the entry
+                // point's name and not its method leaves Ravel installed and
+                // inert, and nothing else in the process would say why. The
+                // value is a reason of Ravel's own, not the name of an error the
+                // JVM threw, so the report cannot be read as a linkage failure.
+                failedByClass.put(internalName.replace('/', '.'), MISSING_ENTRY_METHOD);
+                return classfile;
+            }
+            return rewritten;
+        } catch (Throwable failure) {
+            failedByClass.put(internalName.replace('/', '.'), failure.getClass().getName());
+            return classfile;
+        }
     }
 
     /**
@@ -440,6 +518,32 @@ public final class Transformer implements ClassFileTransformer {
 
     private static boolean isTitleMenu(HookTarget target) {
         return target.hookMethod().equals("screenTitleMenuOptions");
+    }
+
+    /** Calls {@link Agent#entered} once, before the entry point's own first statement. */
+    private static final class EnterTransform implements CodeTransform {
+        private final int side;
+        private final ClassDesc entryPoint;
+        private boolean injected;
+
+        private EnterTransform(int side, ClassDesc entryPoint) {
+            this.side = side;
+            this.entryPoint = entryPoint;
+        }
+
+        @Override
+        public void accept(CodeBuilder builder, CodeElement element) {
+            if (!injected) {
+                injected = true;
+                builder.loadConstant(side);
+                // The entry point's own class constant, which resolves in the
+                // loader that defined it. That loader is where the game is, and
+                // on the published server it is not the system one.
+                builder.loadConstant(entryPoint);
+                builder.invokestatic(AGENT, "entered", ENTERED);
+            }
+            builder.with(element);
+        }
     }
 
     private static final class PrependTransform implements CodeTransform {

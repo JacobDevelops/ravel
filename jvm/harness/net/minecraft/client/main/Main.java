@@ -1,19 +1,30 @@
 package net.minecraft.client.main;
 
+import dev.ravel.jvm.harness.Entry;
+
 /**
  * Stands in for the client distribution's entry point.
  *
- * <p>Ravel reads the running side by asking the JVM whether it can load this
- * class: the client distribution carries {@code net/minecraft/client/**} and the
- * dedicated server distribution does not. Only the name matters, so this is
- * empty — the probe loads the class and never calls anything on it.
+ * <p>Ravel names the running side from the first distribution entry point the
+ * transformer is shown, and this is the client's. Loading it is therefore the
+ * whole of what makes a harness case a client, which is why every case that
+ * expects a mod set enters here and names its driver as an argument.
  *
- * <p>Every harness case that runs premain therefore needs this on its class path
- * or Ravel refuses to name a side. That is the point: the case that leaves it out
- * is what proves the side is read rather than assumed.
+ * <p>The name is what matters and nothing is called on it, so a case that leaves
+ * it out of its class path is what proves the side is read rather than assumed.
  */
 public final class Main {
 
     private Main() {
+    }
+
+    /**
+     * Runs the driver this case named.
+     *
+     * @param arguments the driver's binary name, then the driver's own arguments
+     * @throws Throwable whatever the driver threw
+     */
+    public static void main(String[] arguments) throws Throwable {
+        Entry.run(arguments);
     }
 }

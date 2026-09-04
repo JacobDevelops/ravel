@@ -105,12 +105,43 @@ remapper="$work/remap"
 mkdir -p "$remapper"
 javac -Xlint:all -Werror -d "$remapper" "$root/jvm/harness/remap/Remap.java"
 remap() {
-	java -cp "$remapper" Remap "$aliases" "$@"
+	"${jvm[@]}" -cp "$remapper" Remap "$aliases" "$@"
+}
+
+# The two distribution entry points, and the dispatcher they run a case's driver
+# through.
+#
+# Ravel names the running side from the first of these the transformer sees, so
+# a case that expects a mod set enters at one of them and names its driver as an
+# argument, exactly as a launch of the game enters at the game's own entry point.
+# Both are unobfuscated under every tracked version, so they are written once
+# rather than generated; the `side` section reads the generated names back and
+# fails if that ever stops being true.
+entry_sources=(
+	"$root/jvm/harness/dev/ravel/jvm/harness/Entry.java"
+	"$root/jvm/harness/net/minecraft/client/main/Main.java"
+	"$root/jvm/harness/net/minecraft/server/Main.java"
+)
+client_entry="net.minecraft.client.main.Main"
+server_entry="net.minecraft.server.Main"
+entry_points() {
+	javac -Xlint:all -Werror -d "$1" "${entry_sources[@]}"
 }
 
 # Every section this run reached, for the record the gate reads. A section is
 # added after it passes, never before, so the file says what was proved rather
 # than what was attempted.
+# How every case below starts a JVM.
+#
+# The shared class archive is turned off rather than left to the JVM. Ravel's
+# agent appends its own jar to the bootstrap loader's search path, which is what
+# puts one copy of its classes in front of every loader in the process; the JVM
+# cannot share an archive across an appended boot class path and turns sharing
+# off itself, saying so on stderr once per launch. Every case here compares a
+# run's stderr exactly, so this says up front what the JVM would have done
+# anyway rather than writing a notice about it into every expectation.
+jvm=(java -Xshare:off)
+
 sections_record="$root/target/ravel-jvm/harness-sections.txt"
 : >"$sections_record"
 sections_ran=""
@@ -125,18 +156,25 @@ section_ran() {
 # landed on, and this is what those lines are compared against — read from the
 # class the agent jar opens them through rather than written down here.
 generated_screens="$root/target/ravel-jvm/generated/dev/ravel/jvm/ScreenNames.java"
-screen_name() {
+generated_names="$root/target/ravel-jvm/generated/dev/ravel/jvm/GameNames.java"
+# One generated constant's value, out of whichever generated class declares it.
+# Written once because two readers want it: the drivers below open a screen and
+# the `side` section enters an entry point, and both are names only this version
+# can say.
+linked_name() {
 	local found
-	found="$(awk -v want="$1" '$0 ~ ("static final String " want " =") {
+	found="$(awk -v want="$2" '$0 ~ ("static final String " want " =") {
 		match($0, /"[^"]*"/)
 		print substr($0, RSTART + 1, RLENGTH - 2)
-	}' "$generated_screens")"
+	}' "$1")"
 	if [ -z "$found" ]; then
-		echo "$generated_screens names no $1, so nothing says what this version calls" >&2
-		echo "the screen the drivers below open" >&2
+		echo "$1 names no $2, so nothing says what this version calls it" >&2
 		exit 1
 	fi
 	printf '%s' "$found"
+}
+screen_name() {
+	linked_name "$generated_screens" "$1"
 }
 mods_screen="$(screen_name RAVEL_MODS_SCREEN)"
 settings_screen="$(screen_name RAVEL_SETTINGS_SCREEN)"
@@ -147,11 +185,9 @@ profiling_screen="$(screen_name RAVEL_PROFILING_SCREEN)"
 # `Hook` under the reviewed names, so the class they are matched against is
 # written under those names too and neither side is version data.
 javac -d "$work" "$root/jvm/harness/net/minecraft/util/StringUtil.java"
-# The side marker, which every case that runs premain needs: Ravel reads the
-# running side by asking the JVM for this name, and the name is spelled in Rust
-# rather than generated, so it is the same string at every version. It is
-# compiled into both trees below because both run premain.
-javac -d "$work" "$root/jvm/harness/net/minecraft/client/main/Main.java"
+# The entry points, which every case that expects a mod set enters at. They are
+# compiled into both trees below because both run one.
+entry_points "$work"
 
 # The tree the settings and screen sections run in: the generated stand-in game,
 # the drivers that exercise it, and the side marker beside them. Kept apart from
@@ -162,7 +198,7 @@ javac -d "$work" "$root/jvm/harness/net/minecraft/client/main/Main.java"
 ui="$work/ui"
 mkdir -p "$ui"
 javac -Xlint:all -Werror -d "$ui" "${standin_sources[@]}" "${libraries[@]}"
-javac -d "$ui" "$root/jvm/harness/net/minecraft/client/main/Main.java"
+entry_points "$ui"
 # `Main` needs the agent jar on its compile class path only for the mid-run
 # `Agent.transformedClasses()` call. A real launch never compiles against it.
 javac -Xlint:all -Werror -cp "$ui:$jar" -d "$ui" "$standin_drivers/Main.java"
@@ -202,7 +238,7 @@ javac -cp "$work:$order/classes:$order/agent-classes" -d "$order/classes" \
 	"$root/jvm/harness/InitializationOrderMain.java" \
 	"$root/jvm/harness/HierarchyResolutionMain.java" \
 	"$root/jvm/harness/RefusalMain.java"
-printf 'Premain-Class: dev.ravel.jvm.Agent\nCan-Retransform-Classes: false\n' >"$order/agent.manifest"
+printf 'Premain-Class: dev.ravel.jvm.Boot\nCan-Retransform-Classes: false\n' >"$order/agent.manifest"
 mapfile -d '' order_compiled < <(cd "$order/agent-classes" && find . -name '*.class' -print0 | sort -z)
 order_entries=()
 for class in "${order_compiled[@]}"; do
@@ -212,9 +248,9 @@ jar --create --file "$order_agent" --manifest "$order/agent.manifest" \
 	--date 1980-01-01T00:00:02Z "${order_entries[@]}"
 order_stdout="$order/stdout"
 order_stderr="$order/stderr"
-(cd "$order/classes" && java \
+(cd "$order/classes" && "${jvm[@]}" \
 	-javaagent:"$order_agent" \
-	-cp ".:$work" InitializationOrderMain >"$order_stdout" 2>"$order_stderr")
+	-cp ".:$work" "$client_entry" InitializationOrderMain >"$order_stdout" 2>"$order_stderr")
 order_observed="$(<"$order_stdout")"
 order_diagnostic="$(grep '^\[ravel\]' "$order_stderr")"
 order_expected='allowed=true
@@ -248,10 +284,10 @@ fi
 
 hierarchy_stdout="$order/hierarchy-stdout"
 hierarchy_stderr="$order/hierarchy-stderr"
-(cd "$order/classes" && java \
+(cd "$order/classes" && "${jvm[@]}" \
 	-javaagent:"$order_agent" \
 	-Dravel.test.transform.hierarchy=true \
-	-cp ".:$work" HierarchyResolutionMain >"$hierarchy_stdout" 2>"$hierarchy_stderr")
+	-cp ".:$work" "$client_entry" HierarchyResolutionMain >"$hierarchy_stdout" 2>"$hierarchy_stderr")
 hierarchy_observed="$(<"$hierarchy_stdout")"
 hierarchy_diagnostic="$(grep '^\[ravel\]' "$hierarchy_stderr")"
 hierarchy_expected='before=1 methods=1
@@ -285,11 +321,11 @@ fi
 for verdict in true false; do
 	refusal_stdout="$order/refusal-$verdict-stdout"
 	refusal_stderr="$order/refusal-$verdict-stderr"
-	(cd "$order/classes" && java \
+	(cd "$order/classes" && "${jvm[@]}" \
 		-javaagent:"$order_agent" \
 		-Dravel.test.transform.refusal=true \
 		-Dravel.test.refusal.verdict="$verdict" \
-		-cp ".:$work" RefusalMain >"$refusal_stdout" 2>"$refusal_stderr")
+		-cp ".:$work" "$client_entry" RefusalMain >"$refusal_stdout" 2>"$refusal_stderr")
 	refusal_observed="$(<"$refusal_stdout")"
 	if [ "$verdict" = true ]; then
 		refusal_bodies=0
@@ -328,17 +364,18 @@ members="$work/members"
 mkdir -p "$members/classes"
 mapfile -d '' member_sources < <(find "$root/jvm/harness/members" -name '*.java' -print0 | sort -z)
 javac -Xlint:all -Werror -d "$members/classes" "${member_sources[@]}"
+entry_points "$members/classes"
 # `MembersMain` needs the agent classes only to read the rewrite marker and the
 # stand-in hook's counter. A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$members/classes:$order/agent-classes" -d "$members/classes" \
 	"$root/jvm/harness/MembersMain.java"
 members_stdout="$members/stdout"
 members_stderr="$members/stderr"
-(cd "$members/classes" && java \
+(cd "$members/classes" && "${jvm[@]}" \
 	-javaagent:"$order_agent" \
 	-Dravel.test.transform.members=true \
 	-Dravel.report.targets=true \
-	-cp . MembersMain >"$members_stdout" 2>"$members_stderr")
+	-cp . "$client_entry" MembersMain >"$members_stdout" 2>"$members_stderr")
 members_observed="$(<"$members_stdout")"
 members_diagnostic="$(grep '^\[ravel\]' "$members_stderr")"
 members_expected='input.smooth-last-amount net.minecraft.util.SmoothDouble.lastAmount:D value=0.5 rewrote=true
@@ -450,6 +487,7 @@ persist_agent="$persist/agent/ravel-agent.jar"
 persist_screen="$persist/agent/ravel-screen.jar"
 mkdir -p "$persist/classes" "$persist/sibling" "$(dirname "$persist_agent")"
 javac -Xlint:all -Werror -d "$persist/classes" "${standin_sources[@]}" "${libraries[@]}"
+entry_points "$persist/classes"
 # `PersistenceMain` needs the agent classes only to read the stand-in hook's
 # counters. A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$persist/classes:$order/agent-classes" -d "$persist/classes" \
@@ -482,7 +520,7 @@ persistence_run() {
 	persistence_lifecycles=$((persistence_lifecycles + 1))
 	local out="$persist/$label-stdout"
 	local err="$persist/$label-stderr"
-	(cd "$persist/classes" && java \
+	(cd "$persist/classes" && "${jvm[@]}" \
 		-javaagent:"$persist_agent" \
 		"${persist_seams[@]}" \
 		-Dravel.test.transform.persistence=true \
@@ -490,7 +528,7 @@ persistence_run() {
 		-Dravel.test.persistence.open="$open" \
 		-Dravel.test.persistence.save="$save" \
 		-Dravel.test.persistence.stored="$stored" \
-		-cp . PersistenceMain >"$out" 2>"$err")
+		-cp . "$client_entry" PersistenceMain >"$out" 2>"$err")
 	local observed
 	observed="$(<"$out")"
 	printf '%s\n' "$observed"
@@ -553,7 +591,7 @@ screen_run() {
 	local label="$1" staging="$2" expected="$3" expected_diagnostic="${4:-}"
 	local out="$persist/$label-stdout"
 	local err="$persist/$label-stderr"
-	(cd "$persist/classes" && java \
+	(cd "$persist/classes" && "${jvm[@]}" \
 		-javaagent:"$persist_agent" \
 		"${persist_seams[@]}" \
 		-Dravel.test.transform.persistence=true \
@@ -563,7 +601,7 @@ screen_run() {
 		-Dravel.test.persistence.stored= \
 		-Dravel.test.persistence.staging="$staging" \
 		-Dravel.test.persistence.screenOnly=true \
-		-cp . PersistenceMain >"$out" 2>"$err")
+		-cp . "$client_entry" PersistenceMain >"$out" 2>"$err")
 	local observed
 	observed="$(<"$out")"
 	printf '%s\n' "$observed"
@@ -641,7 +679,7 @@ persistence_lifecycles=$((persistence_lifecycles + 1))
 absent_out="$persist/absent-sibling-stdout"
 absent_err="$persist/absent-sibling-stderr"
 absent_status=0
-(cd "$persist/classes" && java \
+(cd "$persist/classes" && "${jvm[@]}" \
 	-javaagent:"$persist_agent" \
 	"${persist_seams[@]}" \
 	-Dravel.test.transform.persistence=true \
@@ -649,7 +687,7 @@ absent_status=0
 	-Dravel.test.persistence.open=empty \
 	-Dravel.test.persistence.save=unchanged \
 	-Dravel.test.persistence.stored= \
-	-cp . PersistenceMain >"$absent_out" 2>"$absent_err") || absent_status=$?
+	-cp . "$client_entry" PersistenceMain >"$absent_out" 2>"$absent_err") || absent_status=$?
 if [ "$absent_status" -eq 0 ]; then
 	echo >&2
 	echo "a refusal with no screen to show returned instead of throwing, which is the launch that hangs on the loading screen holding the world lock" >&2
@@ -726,6 +764,7 @@ content_agent="$content/agent/ravel-agent.jar"
 content_screen="$content/agent/ravel-screen.jar"
 mkdir -p "$content/classes" "$content/sibling" "$(dirname "$content_agent")"
 javac -Xlint:all -Werror -d "$content/classes" "${standin_sources[@]}" "${libraries[@]}"
+entry_points "$content/classes"
 # `ContentMain` needs the agent classes only to read the stand-in hook's counter.
 # A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$content/classes:$order/agent-classes" -d "$content/classes" \
@@ -794,18 +833,33 @@ override)
 	;;
 esac
 
+# The bundler's own shape, compiled apart from everything it must not see.
+# `Bundled` is the only class on the class path of the run below, so the game,
+# the entry points and the driver are reachable only through the child loader it
+# builds — which is how the published server jar loads all three.
+mkdir -p "$content/launcher"
+javac -Xlint:all -Werror -d "$content/launcher" "$root/jvm/harness/Bundled.java"
+
 # Each run is one initialization: the registries freeze once, and what they hold
 # afterwards is the whole answer.
+#
+# `launcher` says how the entry point is reached: empty puts the game on the
+# class path and enters it directly, `bundled` puts nothing but the launcher
+# there and lets it define the game under a child of the platform loader.
 content_run() {
-	local label="$1" admitted="$2" expected="$3"
+	local label="$1" admitted="$2" expected="$3" launcher="${4:-}"
 	local out="$content/$label-stdout"
 	local err="$content/$label-stderr"
-	(cd "$content/classes" && java \
+	local entry=(-cp . "$client_entry" ContentMain)
+	if [ -n "$launcher" ]; then
+		entry=(-cp "$content/launcher" Bundled "$content/classes" "$client_entry" ContentMain)
+	fi
+	(cd "$content/classes" && "${jvm[@]}" \
 		-javaagent:"$content_agent" \
 		"${content_seams[@]}" \
 		-Dravel.test.transform.content=true \
 		-Dravel.test.content.admitted="$admitted" \
-		-cp . ContentMain >"$out" 2>"$err")
+		"${entry[@]}" >"$out" 2>"$err")
 	local observed
 	observed="$(<"$out")"
 	printf '%s\n' "$observed"
@@ -837,6 +891,29 @@ item=example_mod:ingot->$(described Item '' item example_mod:ingot 16/true)
 states=2 cached=2
 hooks=2
 [ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code"
+
+# The same registration, reached the way the published dedicated server reaches
+# its entry point: a child `URLClassLoader` whose parent is the platform loader,
+# holding the game and the entry point, with nothing but the launcher on the
+# class path. Two things are provable only here. Ravel's own classes are reached
+# at all, which needs the agent jar on the bootstrap loader's search path,
+# because the system class path the `-javaagent` was appended to is not on this
+# loader's parent chain. And every game name the adapter resolves — the block
+# class, and the sibling artifact's supertypes through the screen loader's parent
+# — resolves in the loader that defined the entry point, because the system
+# loader holds no game class in this process at all.
+#
+# The expectation is the `admitted` case's, unchanged and deliberately so: what
+# this case varies is the loader and nothing else, so any difference is the
+# loader's.
+content_run bundled \
+	'block:example_mod:copper:50.0:1200.0:true:false,item:example_mod:ingot:16:true' \
+	"block=example_mod:copper->$(described Block '' block example_mod:copper 50.0/1200.0/true/false)
+item=example_mod:ingot->$(described Item '' item example_mod:ingot 16/true)
+states=2 cached=2
+hooks=2
+[ravel] rewrote 1 classes and 1 methods; 2 hook invocations reached native code" \
+	bundled
 
 # A block and an item under one identifier, which is how a mod declares a block
 # you can hold. The item has to be the block's placing item and be built from the
@@ -952,6 +1029,7 @@ mkdir -p "$outward/classes" "$(dirname "$outward_agent")"
 # sound seam and the registration seam name the same identifier class, and two
 # trees would let one of them drift.
 javac -Xlint:all -Werror -d "$outward/classes" "${standin_sources[@]}" "${libraries[@]}"
+entry_points "$outward/classes"
 # `OutwardMain` needs the agent classes only to read the stand-in hook's counter.
 # A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$outward/classes:$order/agent-classes" -d "$outward/classes" \
@@ -964,12 +1042,12 @@ outward_run() {
 	local label="$1" actions="$2" expected="$3"
 	local out="$outward/$label-stdout"
 	local err="$outward/$label-stderr"
-	(cd "$outward/classes" && java \
+	(cd "$outward/classes" && "${jvm[@]}" \
 		-javaagent:"$outward_agent" \
 		"${outward_seams[@]}" \
 		-Dravel.test.transform.outward=true \
 		-Dravel.test.outward.actions="$actions" \
-		-cp . OutwardMain >"$out" 2>"$err")
+		-cp . "$client_entry" OutwardMain >"$out" 2>"$err")
 	local observed
 	observed="$(<"$out")"
 	printf '%s\n' "$observed"
@@ -1050,10 +1128,10 @@ section_ran outward
 
 failure_stdout="$order/failure-stdout"
 failure_stderr="$order/failure-stderr"
-(cd "$order/classes" && java \
+(cd "$order/classes" && "${jvm[@]}" \
 	-javaagent:"$order_agent" \
 	-Dravel.test.transform.failure=true \
-	-cp ".:$work" InitializationOrderMain >"$failure_stdout" 2>"$failure_stderr")
+	-cp ".:$work" "$client_entry" InitializationOrderMain >"$failure_stdout" 2>"$failure_stderr")
 failure_observed="$(<"$failure_stdout")"
 failure_diagnostic="$(grep '^\[ravel\]' "$failure_stderr")"
 failure_expected='allowed=true
@@ -1098,10 +1176,10 @@ refuse_load() {
 	refusal_what="$1"
 	refusal_stderr="$work/load-$2-stderr"
 	shift 2
-	if (cd "$work" && java \
+	if (cd "$work" && "${jvm[@]}" \
 		-javaagent:"$agent" \
 		"$@" \
-		-cp "$ui" Main >/dev/null 2>"$refusal_stderr"); then
+		-cp "$ui" "$client_entry" Main >/dev/null 2>"$refusal_stderr"); then
 		echo >&2
 		echo "a launch whose $refusal_what started anyway" >&2
 		exit 1
@@ -1146,11 +1224,11 @@ settings_target="${settings_target//\//.}"
 # by construction rather than by luck.
 stdout="$work/stdout"
 stderr="$work/stderr"
-(cd "$work" && java \
+(cd "$work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
 	-Dravel.report.targets=true \
-	-cp "$ui" Main >"$stdout" 2>"$stderr")
+	-cp "$ui" "$client_entry" Main >"$stdout" 2>"$stderr")
 observed="$(<"$stdout")"
 diagnostic="$(grep '^\[ravel\]' "$stderr")"
 
@@ -1225,10 +1303,10 @@ fi
 
 missing_stdout="$work/missing-stdout"
 missing_stderr="$work/missing-stderr"
-(cd "$work" && java \
+(cd "$work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp "$ui" TitleMenuMissingMain >"$missing_stdout" 2>"$missing_stderr")
+	-cp "$ui" "$client_entry" TitleMenuMissingMain >"$missing_stdout" 2>"$missing_stderr")
 missing_observed="$(<"$missing_stdout")"
 missing_diagnostic="$(grep '^\[ravel\]' "$missing_stderr")"
 missing_expected='result='"$menu_unhooked"'
@@ -1257,10 +1335,10 @@ fi
 printf 'not a jar\n' >"$(dirname "$agent")/ravel-screen.jar"
 invalid_stdout="$work/invalid-stdout"
 invalid_stderr="$work/invalid-stderr"
-(cd "$work" && java \
+(cd "$work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp "$ui" TitleMenuMissingMain >"$invalid_stdout" 2>"$invalid_stderr")
+	-cp "$ui" "$client_entry" TitleMenuMissingMain >"$invalid_stdout" 2>"$invalid_stderr")
 rm "$(dirname "$agent")/ravel-screen.jar"
 invalid_observed="$(<"$invalid_stdout")"
 invalid_diagnostic="$(grep '^\[ravel\]' "$invalid_stderr")"
@@ -1287,10 +1365,10 @@ fi
 
 relaunch_stdout="$work/relaunch-stdout"
 relaunch_stderr="$work/relaunch-stderr"
-(cd "$work" && java \
+(cd "$work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp "$ui" Main >"$relaunch_stdout" 2>"$relaunch_stderr")
+	-cp "$ui" "$client_entry" Main >"$relaunch_stdout" 2>"$relaunch_stderr")
 relaunch_observed="$(<"$relaunch_stdout")"
 relaunch_diagnostic="$(grep '^\[ravel\]' "$relaunch_stderr")"
 relaunch_expected='filtered=a
@@ -1335,10 +1413,10 @@ cp "$screen" "$(dirname "$agent")/ravel-screen.jar"
 
 settings_stdout="$work/settings-stdout"
 settings_stderr="$work/settings-stderr"
-(cd "$work" && java \
+(cd "$work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp "$ui:$screen" SettingsScreenMain >"$settings_stdout" 2>"$settings_stderr")
+	-cp "$ui:$screen" "$client_entry" SettingsScreenMain >"$settings_stdout" 2>"$settings_stderr")
 settings_observed="$(<"$settings_stdout")"
 settings_expected='owner=configuration
 refused=
@@ -1362,10 +1440,10 @@ mkdir "$refusal_work"
 printf 'version:1\n' >"$refusal_work/options.txt"
 refusal_stdout="$work/refusal-stdout"
 refusal_stderr="$work/refusal-stderr"
-(cd "$refusal_work" && java \
+(cd "$refusal_work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp "$ui:$screen" SettingsScreenMain refuse-save >"$refusal_stdout" 2>"$refusal_stderr")
+	-cp "$ui:$screen" "$client_entry" SettingsScreenMain refuse-save >"$refusal_stdout" 2>"$refusal_stderr")
 refusal_observed="$(<"$refusal_stdout")"
 refusal_expected='owner=configuration
 refusedPresent=true
@@ -1394,10 +1472,10 @@ fi
 # split across.
 profiling_stdout="$work/profiling-stdout"
 profiling_stderr="$work/profiling-stderr"
-(cd "$work" && java \
+(cd "$work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp "$ui:$screen" ProfilingScreenMain >"$profiling_stdout" 2>"$profiling_stderr")
+	-cp "$ui:$screen" "$client_entry" ProfilingScreenMain >"$profiling_stdout" 2>"$profiling_stderr")
 profiling_observed="$(<"$profiling_stdout")"
 # `rows` climbs with the window because the report gives its spare rows away in
 # a fixed order, so the number is what says the priority ladder still holds: the
@@ -1432,11 +1510,11 @@ fi
 # rows, and `ticks` is the count that must still be absent beside them.
 driven_stdout="$work/profiling-driven-stdout"
 driven_stderr="$work/profiling-driven-stderr"
-(cd "$work" && java \
+(cd "$work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
 	-Dravel.profiling=true \
-	-cp "$ui:$screen" ProfilingScreenMain driven >"$driven_stdout" 2>"$driven_stderr")
+	-cp "$ui:$screen" "$client_entry" ProfilingScreenMain driven >"$driven_stdout" 2>"$driven_stderr")
 driven_observed="$(<"$driven_stdout")"
 # The two smallest windows spend every row on the summary and the statement, so
 # they draw no mod row to read a count off; that is the documented row budget
@@ -1462,10 +1540,10 @@ fi
 
 ui_relaunch_stdout="$work/ui-relaunch-stdout"
 ui_relaunch_stderr="$work/ui-relaunch-stderr"
-(cd "$work" && java \
+(cd "$work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp "$ui" Main >"$ui_relaunch_stdout" 2>"$ui_relaunch_stderr")
+	-cp "$ui" "$client_entry" Main >"$ui_relaunch_stdout" 2>"$ui_relaunch_stderr")
 ui_relaunch_observed="$(<"$ui_relaunch_stdout")"
 ui_relaunch_expected='filtered=a
 b
@@ -1495,11 +1573,11 @@ fi
 
 menu_stdout="$work/menu-stdout"
 menu_stderr="$work/menu-stderr"
-(cd "$work" && java \
+(cd "$work" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp "$ui" TitleMenuMain >"$menu_stdout" 2>"$menu_stderr")
+	-cp "$ui" "$client_entry" TitleMenuMain >"$menu_stdout" 2>"$menu_stderr")
 menu_observed="$(<"$menu_stdout")"
 menu_diagnostic="$(grep '^\[ravel\]' "$menu_stdout")"
 
@@ -1592,11 +1670,11 @@ rm -f "$notice_work/ravel/seeded-packs"
 printf 'version:1\nresourcePacks:oops\n' >"$notice_work/options.txt"
 notice_stdout="$notice_work/notice-stdout"
 notice_stderr="$notice_work/notice-stderr"
-(cd "$notice_work" && java \
+(cd "$notice_work" && "${jvm[@]}" \
 	-javaagent:"$notice_work/agent/ravel-agent.jar" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp "$notice_work/ui" TitleMenuMain 400x300 >"$notice_stdout" 2>"$notice_stderr")
+	-cp "$notice_work/ui" "$client_entry" TitleMenuMain 400x300 >"$notice_stdout" 2>"$notice_stderr")
 notice_observed="$(grep -E '^(modWidgets|notices|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$notice_stdout")"
 notice_expected='modWidgets=11
 notices=1
@@ -1663,11 +1741,11 @@ fi
 # the window.
 sized_stdout="$notice_work/sized-stdout"
 sized_stderr="$notice_work/sized-stderr"
-(cd "$notice_work" && java \
+(cd "$notice_work" && "${jvm[@]}" \
 	-javaagent:"$notice_work/agent/ravel-agent.jar" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp "$notice_work/ui" TitleMenuMain 640x360 >"$sized_stdout" 2>"$sized_stderr")
+	-cp "$notice_work/ui" "$client_entry" TitleMenuMain 640x360 >"$sized_stdout" 2>"$sized_stderr")
 sized_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$sized_stdout")"
 sized_expected='modWidgets=14
 within=true
@@ -1740,11 +1818,11 @@ fi
 # survived and nowhere else.
 tiny_stdout="$notice_work/tiny-stdout"
 tiny_stderr="$notice_work/tiny-stderr"
-(cd "$notice_work" && java \
+(cd "$notice_work" && "${jvm[@]}" \
 	-javaagent:"$notice_work/agent/ravel-agent.jar" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp "$notice_work/ui" TitleMenuMain 400x140 >"$tiny_stdout" 2>"$tiny_stderr")
+	-cp "$notice_work/ui" "$client_entry" TitleMenuMain 400x140 >"$tiny_stdout" 2>"$tiny_stderr")
 tiny_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$tiny_stdout")"
 tiny_expected='modWidgets=4
 within=true
@@ -1813,11 +1891,11 @@ fi
 # at all is both whole and aligned.
 noroom_stdout="$notice_work/noroom-stdout"
 noroom_stderr="$notice_work/noroom-stderr"
-(cd "$notice_work" && java \
+(cd "$notice_work" && "${jvm[@]}" \
 	-javaagent:"$notice_work/agent/ravel-agent.jar" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp "$notice_work/ui" TitleMenuMain 400x118 >"$noroom_stdout" 2>"$noroom_stderr")
+	-cp "$notice_work/ui" "$client_entry" TitleMenuMain 400x118 >"$noroom_stdout" 2>"$noroom_stderr")
 noroom_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$noroom_stdout")"
 noroom_expected='modWidgets=3
 within=true
@@ -1853,26 +1931,49 @@ fi
 
 section_ran screens
 
-# The running side, read from the JVM rather than assumed.
+# The running side, named from the entry point the process was started at.
 #
-# Ravel asks premain's own JVM which Minecraft classes it can load:
-# `net/minecraft/client/main/Main` is in the client distribution and not the
-# dedicated server one, and `net/minecraft/SharedConstants` is in both. Every run
-# above put the first on its class path, which is why they are clients. These
-# three vary exactly that and nothing else, so what changes in the answer is the
-# class path and not the code.
+# Nothing at premain says which distribution a process is. The command line
+# carries no program arguments, the only property the game sets is
+# `java.awt.headless`, and asking what the JVM can load answers wrongly on the
+# published server jar, which is a bundler: at premain its real jars are on no
+# loader yet. What does say it is the class the process entered at, and the
+# transformer sees every class before it initialises.
+#
+# So the three cases below vary the entry point and nothing else. The first two
+# run against one tree holding both entry points, so what decides the answer is
+# which one the JVM was pointed at rather than which one was reachable. The third
+# holds neither.
 #
 # Two of them also carry the composed set's side rule end to end: `client_only`
 # runs on the client and is parked on the dedicated server, `server_only` does the
 # opposite, and both are decided by the `sides` list each mod ships.
+#
+# The two names are read back out of the generated `GameNames` rather than
+# trusted: they are unobfuscated under every tracked version, and a version that
+# renamed one would leave the stand-ins standing in for nothing.
+for pair in "CLIENT_ENTRY_POINT:$client_entry" "SERVER_ENTRY_POINT:$server_entry"; do
+	generated="$(linked_name "$generated_names" "${pair%%:*}")"
+	if [ "$generated" != "${pair#*:}" ]; then
+		echo >&2
+		echo "this version links ${pair%%:*} as $generated, and the stand-in the cases" >&2
+		echo "below enter at is written as ${pair#*:}, so no case enters an entry point" >&2
+		exit 1
+	fi
+done
 
 side="$work/side"
-mkdir -p "$side/client" "$side/dedicated" "$side/undeterminable"
-javac -Xlint:all -Werror -d "$side/client" \
-	"$root/jvm/harness/net/minecraft/client/main/Main.java"
-javac -Xlint:all -Werror -d "$side/dedicated" \
-	"$root/jvm/harness/net/minecraft/SharedConstants.java"
-javac -Xlint:all -Werror -cp "$jar" -d "$side/classes" "$root/jvm/harness/SideMain.java"
+# A directory per case rather than one shared between them. Ravel writes a
+# resource pack into the working directory it is run in, so two cases sharing one
+# would have the second read what the first left, and the notice the first case
+# asserts is the notice an instance with no `options.txt` yet produces.
+mkdir -p "$side/client" "$side/dedicated" "$side/none" "$side/classes" "$side/no-entry-method"
+entry_points "$side/client"
+entry_points "$side/dedicated"
+javac -Xlint:all -Werror -cp "$jar" -d "$side/classes" "$root/jvm/harness/SideMain.java" \
+	"$root/jvm/harness/LoadEntryMain.java"
+javac -Xlint:all -Werror -d "$side/no-entry-method" \
+	"$root/jvm/harness/no-entry-method/net/minecraft/server/Main.java"
 
 side_expected='client=mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:1238:Ravel wrote the resource pack its mods supply and could not switch it on, because this instance has no `options.txt` yet. It will be switched on the next time the game starts. Turn `ravel` on under Options, Resource Packs to use them now.
 dedicated=mods=1:316:dedicated-server1:01:51:113:configuration7:running8:required4:true5:false4:true1:01:210:registries7:running8:required4:true5:false5:false1:01:310:saved_data7:running8:required4:true5:false5:false1:01:411:server_only7:running8:required4:true5:false5:false1:01:511:client_only8:resolved8:required5:false5:false5:false1:01:0'
@@ -1880,10 +1981,15 @@ side_observed=""
 for case in client dedicated; do
 	case_stdout="$side/$case-stdout"
 	case_stderr="$side/$case-stderr"
-	(cd "$side/$case" && java \
+	if [ "$case" = client ]; then
+		case_entry="$client_entry"
+	else
+		case_entry="$server_entry"
+	fi
+	(cd "$side/$case" && "${jvm[@]}" \
 		-javaagent:"$agent" \
 		-Dravel.host="$host" \
-		-cp ".:$side/classes" SideMain >"$case_stdout" 2>"$case_stderr")
+		-cp ".:$side/classes" "$case_entry" SideMain >"$case_stdout" 2>"$case_stderr")
 	side_observed="$side_observed$case=$(head -n 1 "$case_stdout")"$'\n'
 	while IFS= read -r line; do
 		printf '%s\n' "$line" >&2
@@ -1895,7 +2001,7 @@ printf '%s\n' "$side_observed"
 
 if [ "$side_observed" != "$side_expected" ]; then
 	echo >&2
-	echo "the side the JVM was asked for did not decide what ran; expected:" >&2
+	echo "the entry point the process was started at did not decide what ran; expected:" >&2
 	printf '%s\n' "$side_expected" >&2
 	exit 1
 fi
@@ -1929,42 +2035,82 @@ if grep -qF 'resource pack its mods supply' "$side/dedicated-stdout"; then
 	exit 1
 fi
 
-# The missing input. A JVM that can load neither class is one Ravel cannot place,
-# and the launch fails there rather than composing a set for a guessed side.
-undeterminable_stdout="$side/undeterminable-stdout"
-undeterminable_stderr="$side/undeterminable-stderr"
-set +e
-(cd "$side/undeterminable" && java \
+# An entry point that carries the name and not the method. The transformer sees
+# the class it names the side from, finds no `main([Ljava/lang/String;)V` to
+# prepend to, and records the miss — and the prologue therefore never runs, so no
+# side is named and nothing is installed. Ravel is present and inert, which is
+# indistinguishable from a working launch in everything except the two lines
+# below: one says which entry point loaded without entering, and one says why.
+no_method_stdout="$side/no-entry-method-stdout"
+no_method_stderr="$side/no-entry-method-stderr"
+(cd "$side/no-entry-method" && "${jvm[@]}" \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp ".:$side/classes" SideMain >"$undeterminable_stdout" 2>"$undeterminable_stderr")
-undeterminable_status=$?
-set -e
+	-cp ".:$side/classes" LoadEntryMain "$server_entry" \
+	>"$no_method_stdout" 2>"$no_method_stderr")
 
 while IFS= read -r line; do
 	printf '%s\n' "$line" >&2
-done <"$undeterminable_stderr"
+done <"$no_method_stderr"
 
-if [ "$undeterminable_status" -eq 0 ]; then
+no_method_expected="loaded=$server_entry
+[ravel] rewrote 0 classes and 0 methods; 0 hook invocations reached native code
+[ravel] the distribution entry point $server_entry loaded and Ravel's prologue did not run, so no side was named and no mod set was installed
+[ravel] failed to transform 1 classes
+[ravel] failed target: $server_entry=missing entry method"
+no_method_observed="$(<"$no_method_stdout")"
+printf '%s\n' "$no_method_observed"
+if [ "$no_method_observed" != "$no_method_expected" ]; then
 	echo >&2
-	echo "a JVM holding no Minecraft at all still started a mod set" >&2
+	echo "an entry point Ravel could not enter was not reported as one; expected:" >&2
+	printf '%s\n' "$no_method_expected" >&2
 	exit 1
 fi
 
-for named in "net/minecraft/client/main/Main" "net/minecraft/SharedConstants"; do
-	if ! grep -q "$named" "$undeterminable_stderr"; then
-		echo >&2
-		echo "the refusal did not name \`$named\` as a class it could not load" >&2
-		exit 1
-	fi
-done
+# The process that is not the game. A JVM that enters neither distribution's
+# entry point names no side, and nothing has gone wrong in it: a launcher, a
+# bundler that has not extracted its server yet, this harness itself. So it
+# installs nothing, exits as it would have without Ravel, and says at shutdown
+# that it did — and the crossing a driver makes before any side is named answers
+# nothing rather than a set composed for a guess.
+none_stdout="$side/none-stdout"
+none_stderr="$side/none-stderr"
+none_status=0
+(cd "$side/none" && "${jvm[@]}" \
+	-javaagent:"$agent" \
+	-Dravel.host="$host" \
+	-cp ".:$side/classes" SideMain >"$none_stdout" 2>"$none_stderr") || none_status=$?
 
-# The JVM prints its own abort on standard output, so what is checked is that
-# no mod surface is among it: `SideMain` never ran.
-if grep -q '^mods=' "$undeterminable_stdout"; then
+while IFS= read -r line; do
+	printf '%s\n' "$line" >&2
+done <"$none_stderr"
+
+if [ "$none_status" -ne 0 ]; then
 	echo >&2
-	echo "a launch that cannot name its side still produced a mod surface:" >&2
-	grep '^mods=' "$undeterminable_stdout" >&2
+	echo "a JVM that is not the game was refused rather than left alone" >&2
+	cat "$none_stdout" >&2
+	exit 1
+fi
+
+if [ "$(head -n 1 "$none_stdout")" != uninstalled ]; then
+	echo >&2
+	echo "a crossing made before any side was named did not answer nothing:" >&2
+	head -n 1 "$none_stdout" >&2
+	exit 1
+fi
+
+if grep -q '^mods=' "$none_stdout"; then
+	echo >&2
+	echo "a launch that named no side still produced a mod surface:" >&2
+	grep '^mods=' "$none_stdout" >&2
+	exit 1
+fi
+
+none_reported='[ravel] no distribution entry point loaded, so no side was named and no mod set was installed'
+if ! grep -qF "$none_reported" "$none_stdout"; then
+	echo >&2
+	echo "the shutdown report did not say why this launch installed nothing; expected:" >&2
+	printf '%s\n' "$none_reported" >&2
 	exit 1
 fi
 

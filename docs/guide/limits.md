@@ -48,26 +48,39 @@ inherit one: `rand.workspace = true` builds nowhere but in a workspace that
 declares `rand`.
 
 **A launch reads its side, but only as far as the distribution it started from.**
-`initialize` no longer asserts a side. It asks its own JVM which Minecraft
-classes it can load: `net/minecraft/client/main/Main` is in the client
-distribution and not in the dedicated server one, and a process that can load
-neither that nor `net/minecraft/SharedConstants` refuses to start a mod set at
-all rather than guessing. So a client launch is a client and a dedicated server
-launch is a dedicated server, and the `sides` list your package ships decides
-which of the two your mod runs on.
+`initialize` no longer asserts a side, and it no longer runs at `premain` either.
+The agent's transformer is shown every class before it initialises, and the first
+of the two distribution entry points to arrive — `net/minecraft/client/main/Main`
+or `net/minecraft/server/Main` — is the answer. The mod set is then composed from
+a prologue prepended to that entry point's own `main`, one instruction before the
+game's first statement. So a client launch is a client and a dedicated server launch is a
+dedicated server, and the `sides` list your package ships decides which of the two
+your mod runs on.
 
 Two things that follow are worth planning around. **An integrated server is never
 answered.** It is a server inside a client process rather than a distribution, so
-nothing on a class path can name it: a single-player launch is composed as
-`Side::Client`, and a mod that declares `integrated-server` and not `client` is
-parked there. Declare both if your mod should run in single-player.
+no entry point can name it: a single-player launch is composed as `Side::Client`,
+and a mod that declares `integrated-server` and not `client` is parked there.
+Declare both if your mod should run in single-player.
 
-**And no dedicated server launch has happened.** That the server distribution
-carries `SharedConstants` and not the client's entry point is Mojang's split, not
-something this repository has measured — no server jar is a pinned input and none
-may be tracked. The JVM harness runs the whole path on a class path built to look
-like each distribution, which proves the side is read and that it decides what
-loads; it is not a launched server.
+**And a process that enters neither entry point installs nothing.** That is not a
+refusal — a launcher, a bundler that has not yet extracted the server it ships,
+or a test JVM is not the game — but it means Ravel is inert in any process that
+never reaches one of those two classes, and the only thing that says so is a line
+in the agent's shutdown report.
+
+**No dedicated server launch has yet started a mod set.** A real one is what
+found the premain probe this replaced: the published server jar is a bundler, so
+at `premain` nothing about the class path names a side at all. It found two more
+things with it. That bundler runs the game under a class loader whose parent is
+the platform loader, so the agent jar the JVM put on the system class path is
+invisible to every game class — Ravel now appends its jar to the bootstrap
+loader's search path instead, which every loader delegates to. And the game
+classes Ravel looks up by name are only inside that bundled loader, so every
+lookup goes through the loader that defined the entry point rather than through
+the system one. The JVM harness enters each distribution's own entry point, and
+one case enters it under a loader of the bundler's shape; that is not a launched
+server.
 
 **A mod cannot send a packet.** You can declare a `PacketContract`, implement
 `Packet`, encode a value, decode it back, and prove every refusal in your own

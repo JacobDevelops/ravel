@@ -234,7 +234,10 @@ public final class Hook {
     public static void ravelEnableProfiling(String value) {
     }
 
-    public static void ravelInitialize() {
+    // Takes the side the agent named it by and ignores it: what these sections
+    // measure is when the class this forces is loaded, not which distribution
+    // loaded it. The side rule itself is driven against the real host.
+    public static void ravelInitialize(int side) {
         String className;
         if (Boolean.getBoolean("ravel.test.transform.hierarchy")) {
             className = "dev.ravel.jvm.hierarchy.HierarchySource";
@@ -252,8 +255,11 @@ public final class Hook {
             className = "net.minecraft.util.StringUtil";
         }
         try {
-            Class.forName(className, true, ClassLoader.getSystemClassLoader());
-        } catch (ClassNotFoundException absent) {
+            // Through `Members`, which is where the agent jar turns a game name
+            // into a class. A stand-in that named a loader of its own would pass
+            // in the one case the launch it stands in for fails.
+            Members.game(className);
+        } catch (ReflectiveOperationException absent) {
             throw new IllegalStateException(absent);
         }
     }

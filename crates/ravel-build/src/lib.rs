@@ -353,13 +353,20 @@ fn host_source(members: &[PlannedMember]) -> String {
          }}\n\
          \n\
          /// Starts the installed mod set before game methods run.\n\
+         ///\n\
+         /// The side arrives as the code the agent named it by, because the agent\n\
+         /// is where the fact exists: it is the first distribution entry point the\n\
+         /// transformer sees.\n\
          #[jni::jni_mangle(\"dev.ravel.jvm.Hook\", \"ravelInitialize\")]\n\
-         pub fn ravel_initialize<'local>(mut env: EnvUnowned<'local>, _class: JClass<'local>) {{\n\
-         \x20   env.with_env(|env| {{\n\
-         \x20       // Asked before the members are built, because a member may be\n\
+         pub fn ravel_initialize<'local>(\n\
+         \x20   mut env: EnvUnowned<'local>,\n\
+         \x20   _class: JClass<'local>,\n\
+         \x20   side: jni::sys::jint,\n\
+         ) {{\n\
+         \x20   env.with_env(|_env| {{\n\
+         \x20       // Read before the members are built, because a member may be\n\
          \x20       // built differently on each side.\n\
-         \x20       let side = ravel_host_runtime::side(env)?;\n\
-         \x20       initialize(env, members(side))\n\
+         \x20       initialize(side, members(ravel_host_runtime::side(side)?))\n\
          \x20   }})\n\
          \x20   .resolve::<jni::errors::ThrowRuntimeExAndDefault>();\n\
          }}\n"

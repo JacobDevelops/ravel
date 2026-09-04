@@ -231,13 +231,15 @@ generator declares every reference parameter as `java.lang.Object` precisely so
 that generated `Hook.java` declares no game type and still compiles without the
 client jar. Neither artifact is free of game *names*: `Hook.java`'s
 target table carries the internal name of every class it transforms, and the
-three adapters between them resolve twenty-two classes by name at one tracked version and
-twenty-three classes by name at the other — all of which the invariant
+three adapters between them resolve twenty-five classes by name at one tracked version and
+twenty-six classes by name at the other — all of which the invariant
 below permits, because a string is not a compile-time reference and needs nothing
 on the class path. The two versions differ by one because one of them answers a
-sound request with a type of its own and the other answers nothing at all, and a
-class an adapter reaches only inside a descriptor is declared beside the ones it
-reaches by constant. Those names are generated rather than written, and so is
+sound request with a type of its own and the other answers nothing at all. A class
+an adapter reaches only inside a descriptor is declared beside the ones it reaches
+by constant, and several of these are: the harness's stand-in has to declare the
+very type the agent jar passes inside a lookup, so a type named only there is
+still a name this repository has to be able to write down. Those names are generated rather than written, and so is
 every member the adapters reach on them; the amendment below records why and what
 carries them.
 A screen extends `net.minecraft.client.gui.screens.Screen` and cannot be compiled

@@ -138,6 +138,25 @@ name = "registries"
 descriptor = "()Lnet/minecraft/core/LayeredRegistryAccess;"
 
 [[reflected]]
+# What a storage decodes its stored objects against. Named here for its linked
+# name alone: the agent jar passes it inside the descriptor it looks the storage
+# constructor up by, and the harness's stand-in has to declare that same type or
+# declare a different constructor. This version's stub seeds bind the same class
+# under a role of their own, because the screen jar names it in a signature it
+# compiles.
+name = "HOLDER_LOOKUP_PROVIDER"
+class = "net.minecraft.core.HolderLookup$Provider"
+runtime = "jo$a"
+
+[[reflected]]
+# What the layered registries composite down to, named here for the reason above
+# and one more: it is what the adapter hands that constructor, so a stand-in that
+# left the two unrelated would throw at a launch rather than here.
+name = "REGISTRY_ACCESS_FROZEN"
+class = "net.minecraft.core.RegistryAccess$Frozen"
+runtime = "ka$b"
+
+[[reflected]]
 name = "REGISTRY_LAYERS"
 class = "net.minecraft.core.LayeredRegistryAccess"
 runtime = "jt"
@@ -311,6 +330,15 @@ descriptor = "()Ljava/util/Collection;"
 # from the reader.
 name = "setSelected"
 descriptor = "(Ljava/util/Collection;)V"
+
+[[reflected]]
+# The pack configuration the screen's members carry, named here for its linked
+# name alone: the agent jar passes it inside two of the descriptors above, and
+# the harness's stand-in has to declare that same type or declare different
+# members.
+name = "WORLD_DATA_CONFIGURATION"
+class = "net.minecraft.world.level.WorldDataConfiguration"
+runtime = "ddr"
 
 [[reflected]]
 name = "WORLD_CREATION_UI_STATE"

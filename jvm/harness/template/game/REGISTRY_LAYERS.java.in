@@ -1,0 +1,13 @@
+{{package}}
+
+{{import REGISTRY_ACCESS_FROZEN}}
+
+/** The layered registries a storage is constructed against. */
+public final class {{REGISTRY_LAYERS}} {
+
+    private final {{REGISTRY_ACCESS_FROZEN}} composite = new {{REGISTRY_ACCESS_FROZEN}}();
+
+    public {{REGISTRY_ACCESS_FROZEN}} {{REGISTRY_LAYERS#compositeAccess}}() {
+        return composite;
+    }
+}

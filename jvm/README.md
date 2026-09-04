@@ -32,10 +32,11 @@ game, which ADG-1's second amendment measured rather than assumed.
 - `build/build-screen.sh` — builds the screen jar from those generated sources.
 - `harness/` — a stub class and a `main` that run the whole path against a real
   JVM without the game. See [Proving it without the game](#proving-it-without-the-game).
-- `harness/template/` — the shared half of the stand-in game and the drivers that
-  exercise it, one template per class, rendered per version into
-  `target/ravel-jvm/generated-harness/`. The per-version half lives with the rest
-  of a version's data, under `minecraft/versions/<version>/harness/`. See
+- `harness/template/` — the shared half of the stand-in game, the drivers that
+  exercise it and the stand-in half of the sibling artifact, one template per
+  class, rendered per version into `target/ravel-jvm/generated-harness/`. The
+  per-version half lives with the rest of a version's data, under
+  `minecraft/versions/<version>/harness/`. See
   [Generating the stand-in game](#generating-the-stand-in-game).
 
 The generated `Hook` class is not tracked, and neither are the generated screen
@@ -134,8 +135,10 @@ runs `premain` at all.
 The reader that renders the screen templates renders the harness's stand-in game
 too, and for the reason one step further in: a stand-in exists to be resolved
 against a generated name, so under an obfuscated version it has to *be* that name.
-`jvm/harness/template/` holds two trees and the same `{{…}}` placeholders the
-screen templates use.
+`jvm/harness/template/` holds three trees and the same `{{…}}` placeholders the
+screen templates use. Each renders into a directory of its own below the
+generated root, because the run script sweeps a tree whole rather than naming the
+files it wants.
 
 - `template/game/` — one template per stand-in game class, **named after the role
   whose class it declares**: `BLOCK.java.in` declares whatever this version binds
@@ -146,11 +149,18 @@ screen templates use.
 - `template/driver/` — Ravel's own `main` classes. They keep the name their
   template gives them and are drawn in the unnamed package under every version,
   because a command line names them.
+- `template/sibling/` — the stand-in half of the sibling artifact, which the
+  persistence section builds a `ravel-screen.jar` out of. These are rendered
+  exactly the way the real screens are, name and package alike, because the agent
+  jar opens both through the constants `ScreenNames` carries; what differs is that
+  they compile against the stand-in game rather than against the stubs, and stand
+  in for the codec stack the harness has no game to encode against.
 
 What a version renders instead of a shared template lives under
-`minecraft/versions/<version>/harness/game/` and `.../harness/driver/`, because a
-source only one version renders is that version's data and a version's data is
-kept in one place. Such a template replaces the shared one of its own name and,
+`minecraft/versions/<version>/harness/game/`, `.../harness/driver/` and
+`.../harness/sibling/` — one directory per shared tree, and all three are read —
+because a source only one version renders is that version's data and a version's
+data is kept in one place. Such a template replaces the shared one of its own name and,
 unlike the screen tree, may also carry a template no shared one replaces: a
 stand-in only one version has is what a version whose game gained a class means,
 while a screen only one version draws is one the agent jar cannot open under the
@@ -160,6 +170,18 @@ every tree at once, because the stand-in game exists for the screen jar's
 generated sources to compile against and the source reaching for a stand-in is
 often not in the stand-in's own tree.
 
+An override is whole-file: a template renders one class, and Java has no way to
+write down half of one. So an override re-declares every member of its class,
+the ones that differ and the ones that do not, and a later edit to the shared
+template reaches only the versions that do not override it. That is the cost of
+the mechanism and it is accepted with eyes open: the storage stand-in and the
+sibling world data are shared under one version's shape and overridden in full
+by the other, and each override's class comment names the member that made it
+one. Where no version's shape is a reasonable shared one — the stand-in client,
+whose world-load seam takes the optional rule overrides under one tracked version
+and none under the other — no shared template exists and every version writes
+the class in full.
+
 Signatures are hand-written Java and only names are substituted. A stand-in
 declares the member the agent jar looks up, so the descriptor javac writes has to
 be the one this version links — which it is by construction, because every game
@@ -167,9 +189,10 @@ type in a signature is a role and renders as that version's name. Deriving a
 signature from an erased descriptor instead would put an unchecked cast in every
 body and `-Xlint:all -Werror` would refuse it.
 
-Guava is the one name a template spells: it is a library beside the game rather
-than part of it, no published mapping renames it, and
-`harness/guava/com/google/common/collect/ImmutableList.java` stands in for it once.
+Guava and DataFixerUpper are the names a template spells: they are libraries
+beside the game rather than part of it, no published mapping renames them, and
+`harness/guava/` and `harness/datafixers/` stand in for the three types the
+templates name once each.
 
 ### What each version proves, and what it does not
 
@@ -185,16 +208,25 @@ what they compare is version data, so they run at every tracked version and no
 version may declare its way out of one. A version that stopped running one of
 them did not meet an obstacle; something broke.
 
-The **content and outward sections** compare a generated name against a stand-in
-too, and run at every version because that stand-in is generated from the same
-version data the name is. Their stand-in game is `template/game/`'s, so the two
-names are one string by construction rather than by luck, and the obfuscated case
-is the one they read rather than the one they skip.
+The **content, outward and persistence sections** compare a generated name against
+a stand-in too, and their stand-in game is `template/game/`'s: it is generated from
+the same version data the name is, so the two names are one string by construction
+rather than by luck, and the obfuscated case is the one they read rather than the
+one they skip. The first two run at every version.
 
-The **remaining reflective and screen sections** — persistence, the settings
-round trip and the screens — compare a *generated* name against a stand-in that is
-still hand-written. `GameNames` and `GameMembers` carry the names each version
-links, and those are the Mojang names only under a version that does not
+The persistence section runs wherever a stand-in for it can be written down at
+all, which is not the same question. A version that obfuscates leaves a handful of
+classes in `net.minecraft` because they carry `@DontObfuscate` and moves the rest
+into the unnamed package, and Java has no syntax for naming a class outside every
+package from inside one. The save seam's receiver is one of the classes left
+behind, and the two members the adapter reaches on it are typed by classes that
+moved, so that version renders no stand-in for it. `run-harness.sh` asks the
+generated tree whether it has one, by the name the generated hook table gives the
+save seam, rather than being told.
+
+The **settings and screen sections** compare a *generated* name against a stand-in
+that is still hand-written. `GameNames` and `GameMembers` carry the names each
+version links, and those are the Mojang names only under a version that does not
 obfuscate. Where the two differ, the adapter asks for `m` while the stand-in
 declares `getUiState`, and the section would be measuring the mismatch rather than
 the adapter. `run-harness.sh` decides which case it is by reading the generated
@@ -204,8 +236,11 @@ linked name in its value, so no version is named in the script.
 A section a version does not run has to say so in that version's `adapter.toml`,
 under `[harness.notRun]`, with a reason naming the work package that closes it.
 `cargo xtask verify gate-versions` refuses an undeclared absence, and refuses a
-declaration that outlived its reason. Closing the remaining three means giving
-their stand-ins the same treatment the content and outward ones got.
+declaration that outlived its reason. Closing the settings and screen sections
+means giving their stand-ins the same treatment the content, outward and
+persistence ones got; closing persistence at a version whose name spaces are split
+means emitting that version's stand-in game as class files rather than as Java,
+because no Java source can be written for it.
 
 **What no version of this harness proves** is `Members` against real obfuscated
 class files. That class walks a class's supertypes and rebuilds erased descriptors

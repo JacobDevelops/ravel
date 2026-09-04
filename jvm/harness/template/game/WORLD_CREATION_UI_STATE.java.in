@@ -1,0 +1,21 @@
+{{package}}
+
+{{import WORLD_CREATION_CONTEXT}}
+
+/** The screen's own state, which is where its settings live. */
+public final class {{WORLD_CREATION_UI_STATE}} {
+
+    private {{WORLD_CREATION_CONTEXT}} settings;
+
+    public {{WORLD_CREATION_UI_STATE}}({{WORLD_CREATION_CONTEXT}} settings) {
+        this.settings = settings;
+    }
+
+    public {{WORLD_CREATION_CONTEXT}} {{WORLD_CREATION_UI_STATE#getSettings}}() {
+        return settings;
+    }
+
+    public void setSettings({{WORLD_CREATION_CONTEXT}} replacement) {
+        settings = replacement;
+    }
+}

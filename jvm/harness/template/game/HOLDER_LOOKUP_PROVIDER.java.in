@@ -1,0 +1,5 @@
+{{package}}
+
+/** What a storage decodes its stored objects against. */
+public interface {{HOLDER_LOOKUP_PROVIDER}} {
+}

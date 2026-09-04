@@ -1,0 +1,10 @@
+{{package}}
+
+/**
+ * The typed key this version's storage is addressed by.
+ *
+ * <p>A version's own stand-in rather than a shared one, because 1.21.1 has no
+ * such class at all: it names a saved datum with a factory and a plain string.
+ */
+public final class {{SavedDataType}} {
+}

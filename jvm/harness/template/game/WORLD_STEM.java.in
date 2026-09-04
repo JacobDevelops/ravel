@@ -1,0 +1,24 @@
+{{package}}
+
+{{import REGISTRY_LAYERS}}
+
+/** The loaded world, carrying the two members the adapter uses. */
+public final class {{WORLD_STEM}} implements AutoCloseable {
+
+    private final {{REGISTRY_LAYERS}} registries = new {{REGISTRY_LAYERS}}();
+    private boolean closed;
+
+    public {{REGISTRY_LAYERS}} {{WORLD_STEM#registries}}() {
+        return registries;
+    }
+
+    /** Whether a refusal closed the stem it was handed. */
+    public boolean isClosed() {
+        return closed;
+    }
+
+    @Override
+    public void close() {
+        closed = true;
+    }
+}

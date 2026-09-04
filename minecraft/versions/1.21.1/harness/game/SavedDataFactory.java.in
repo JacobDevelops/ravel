@@ -1,0 +1,10 @@
+{{package}}
+
+/**
+ * The factory this version's storage is asked for a stored object with.
+ *
+ * <p>A version's own stand-in rather than a shared one, because 26.1.2 has no
+ * such class at all: it carries the name and the codec inside one typed key.
+ */
+public final class {{SavedDataFactory}} {
+}

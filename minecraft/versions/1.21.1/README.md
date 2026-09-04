@@ -24,13 +24,24 @@ content and outward adapters reach is declared in `reflection.toml`, checked
 against this version's jar, and generated into `GameMembers` as the name and
 descriptor the JVM links.
 
-`harness/` holds the three JVM-harness templates this version renders instead of
+`harness/` holds the seven JVM-harness templates this version renders instead of
 the shared ones, and each is a shape difference rather than a rename. This
 version's block and item properties builders carry no id setter in any spelling —
 a block is named by the identifier it is registered under and by nothing it
 carries — so `harness/game/BlockBehaviour$Properties.java.in` and
 `harness/game/Item$Properties.java.in` stamp no registry key and refuse the
 absence of none. `harness/game/SOUND_MANAGER.java.in` answers a play request with
-nothing, where the other tracked version answers with a type of its own. A role
-binding answers a rename; it does not answer a call one version makes and the
-other does not have.
+nothing, where the other tracked version answers with a type of its own.
+
+The persistence half is four more. `harness/game/STORAGE.java.in` and
+`harness/sibling/RavelWorldData.java.in` want the world's data directory as a
+`File`, ask for a stored datum with a factory and a string beside it, and hand a
+replacement that string and the object, where the other version carries all three
+inside one typed key; `harness/game/SavedDataFactory.java.in` is that factory,
+which the other version's game does not have at all.
+`harness/game/MINECRAFT.java.in` declares a world load that takes no optional rule
+overrides, where the other version's takes them, so the two seams differ in their
+argument vector.
+
+A role binding answers a rename; it does not answer a call one version makes and
+the other does not have.

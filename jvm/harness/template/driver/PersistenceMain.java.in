@@ -1,0 +1,161 @@
+{{package}}
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Stream;
+{{import CREATE_WORLD_SCREEN}}
+{{import LEVEL_STORAGE_ACCESS}}
+{{import MINECRAFT}}
+{{import PACK_REPOSITORY}}
+{{import SERVER}}
+{{import STORAGE}}
+{{import WORLD_STEM}}
+{{import world.create-pack-repository}}
+
+/**
+ * Drives ADG-7's two world persistence seams against the stand-in game.
+ *
+ * <p>The sequence is the one a world being created runs, which is the sequence
+ * that used to go wrong. The screen builds its widgets and loads its data; the
+ * screen's staging directory is copied into the new world; the world's pack
+ * repository is built over that directory; and only then is the world loaded. No
+ * world-open step appears here, because a fresh level reaches none of them, and
+ * no second data load appears either, because creating a world runs none.
+ *
+ * <p>What this proves: that a refused open never runs the body it precedes and
+ * releases the world lock and the stem it was handed, that only a replacement
+ * answer reaches the storage and reaches it once, that vanilla saving runs
+ * whatever Ravel answers, that the mods' pack is in the load the created world
+ * inherits, and that it is on disk in time for that world's repository. What it
+ * does not prove: anything about the real client, which needs a launch.
+ */
+public final class PersistenceMain {
+
+    private PersistenceMain() {
+    }
+
+    public static void main(String[] args) throws IOException {
+        {{STORAGE}}.seed(
+                System.getProperty("ravel.test.persistence.stored", "").isEmpty()
+                        ? null
+                        : System.getProperty("ravel.test.persistence.stored").getBytes());
+
+        // A world and a staging directory nothing has written into yet, so what
+        // the steps below find is what this run put there. Runs share a working
+        // directory, and one that inherited the previous run's pack would pass
+        // without proving anything.
+        emptyTree(Path.of("world"));
+        emptyTree(STAGING);
+
+        // A world being created from one that already had the pack starts here:
+        // the screen's staging directory is seeded from that world, so the pack
+        // is on disk and the configuration the screen holds already names it
+        // before Ravel has run at all. The id is the game's own composition of
+        // the directory's name, which is why this side of the seam spells it.
+        List<String> enabled = List.of("vanilla");
+        if (RESTAGED.contains(STAGING_ANSWER)) {
+            Path pack = STAGING.resolve("ravel");
+            Files.createDirectories(pack);
+            // What that earlier world's pack held. The screen's opening load
+            // reads it, so a run whose staged answer says the files changed has
+            // something to have changed from.
+            Files.writeString(pack.resolve(dev.ravel.jvm.Hook.PACK_FILE), SEEDED_CONTENTS);
+            enabled = List.of("vanilla", "file/ravel");
+        }
+
+        // The screen, twice. Building widgets is what the game runs again every
+        // time the screen is shown, including after the load staging asks for, so
+        // the second call is the loop guard's own case: one staged write and one
+        // data load however many times this runs.
+        {{CREATE_WORLD_SCREEN}} screen = new {{CREATE_WORLD_SCREEN}}(STAGING, enabled);
+        screen.{{screen.create-world-init#init}}();
+        screen.{{screen.create-world-init#init}}();
+        System.out.println("staged=" + where(dev.ravel.jvm.Hook.stagedDirectory())
+                + " stagedWrites=" + dev.ravel.jvm.Hook.stagedWrites()
+                + " screenLoads=" + screen.loads()
+                + " loaded=" + screen.loaded());
+        if (Boolean.getBoolean("ravel.test.persistence.screenOnly")) {
+            // The screen's own cases end here. What follows is a world lifecycle
+            // that says nothing about them, and running one would count as one.
+            return;
+        }
+
+        {{LEVEL_STORAGE_ACCESS}} access = new {{LEVEL_STORAGE_ACCESS}}("world");
+        {{WORLD_STEM}} stem = new {{WORLD_STEM}}();
+
+        // Creating the world copies the staging directory's contents into it,
+        // which is where a staged pack has to end up for the world to keep it.
+        screen.copyInto(Path.of("world", "datapacks"));
+
+        // The repository step, as a world being created runs it: the access
+        // exists, no world has loaded, and the packs the session gets are the
+        // ones this call finds on disk.
+        {{PACK_REPOSITORY}} packs =
+                {{world.create-pack-repository}}.{{world.create-pack-repository#createPackRepository}}(access);
+        System.out.println("datapack=" + dev.ravel.jvm.Hook.datapackWorld()
+                + " loadsAtWrite=" + {{MINECRAFT}}.loads()
+                + " available=" + {{world.create-pack-repository}}.available());
+
+        {{MINECRAFT}}.{{MINECRAFT#getInstance}}().openWorld(access, packs, stem);
+        System.out.println("loads=" + {{MINECRAFT}}.loads()
+                + " accessClosed=" + access.isClosed()
+                + " stemClosed=" + stem.isClosed()
+                + " crossed=" + dev.ravel.jvm.Hook.openCrossings()
+                + " read=" + dev.ravel.jvm.Hook.openAggregate());
+
+        new {{SERVER}}().{{world.save-persistence#saveAllChunks}}(false, false, false);
+        System.out.println("saves=" + {{SERVER}}.saves()
+                + " writes=" + {{STORAGE}}.writes()
+                + " written=" + {{STORAGE}}.written());
+    }
+
+    /**
+     * Where the stand-in screen stages packs.
+     *
+     * <p>Absolute because the game's own is: it makes a temporary directory, and
+     * the native side is handed whatever the screen spells. A relative one would
+     * also be a path the production write refuses, which is a rule this harness
+     * does not reach and should not quietly contradict.
+     */
+    private static final Path STAGING = Path.of("staging").toAbsolutePath();
+
+    /** Which answer the staging crossing gives, which is one run's whole subject. */
+    private static final String STAGING_ANSWER =
+            System.getProperty("ravel.test.persistence.staging", "written");
+
+    /** The answers that describe a screen whose pack is already there and on. */
+    private static final List<String> RESTAGED = List.of("unchanged", "replaced");
+
+    /** What the pack on disk holds before Ravel runs, which a replacement changes. */
+    private static final String SEEDED_CONTENTS = "old";
+
+    /**
+     * Which directory the staging crossing named.
+     *
+     * <p>Reported as a place rather than as a path because the path is this
+     * machine's. What the case is about is whether the pack went where the
+     * screen's own load would read it, and that is a comparison rather than a
+     * string.
+     */
+    private static String where(String directory) {
+        if (directory.isEmpty()) {
+            return "none";
+        }
+        return STAGING.equals(Path.of(directory)) ? "screen" : "elsewhere";
+    }
+
+    /** Removes whatever a previous run left in one tree. */
+    private static void emptyTree(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (Stream<Path> tree = Files.walk(root)) {
+            for (Path entry : tree.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(entry);
+            }
+        }
+    }
+}

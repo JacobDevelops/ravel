@@ -1,0 +1,17 @@
+{{package}}
+
+{{import WORLD_DATA_CONFIGURATION}}
+
+/** The settings a create-world screen holds. */
+public final class {{WORLD_CREATION_CONTEXT}} {
+
+    private final {{WORLD_DATA_CONFIGURATION}} dataConfiguration;
+
+    public {{WORLD_CREATION_CONTEXT}}({{WORLD_DATA_CONFIGURATION}} dataConfiguration) {
+        this.dataConfiguration = dataConfiguration;
+    }
+
+    public {{WORLD_DATA_CONFIGURATION}} {{WORLD_CREATION_CONTEXT#dataConfiguration}}() {
+        return dataConfiguration;
+    }
+}

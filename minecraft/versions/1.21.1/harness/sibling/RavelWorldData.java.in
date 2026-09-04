@@ -1,0 +1,45 @@
+{{package}}
+
+{{import SavedData}}
+{{import SavedDataFactory}}
+
+/**
+ * Stands in for the sibling artifact's stored-data class, for a version that
+ * addresses a stored datum by name.
+ *
+ * <p>A per-version source rather than a role binding, for the reason the real
+ * one has one: this version wants the world's data directory as a {@code File},
+ * asks for a datum with a factory and a string beside it, and hands a
+ * replacement the string and the object.
+ */
+public final class RavelWorldData {
+
+    private RavelWorldData() {
+    }
+
+    /** What the stored object is called inside the world's data folder. */
+    private static final String NAME = "ravel_mods";
+
+    /** The registration Minecraft would read and write Ravel's object through. */
+    private static final {{SavedDataFactory}} FACTORY = new {{SavedDataFactory}}();
+
+    /** Where this version's storage keeps a world's saved data. */
+    public static Object folder(java.nio.file.Path data) {
+        return data.toFile();
+    }
+
+    /** What this version's storage is asked for a stored object with. */
+    public static Object[] lookup() {
+        return new Object[] {FACTORY, NAME};
+    }
+
+    /** What this version's storage is handed a replacement with. */
+    public static Object[] replacement(byte[] aggregate) {
+        return new Object[] {NAME, new {{SavedData}}(aggregate)};
+    }
+
+    /** The stored aggregate, or {@code null} when there is no Ravel object. */
+    public static byte[] bytes(Object stored) {
+        return stored instanceof {{SavedData}} held ? held.aggregate() : null;
+    }
+}

@@ -191,6 +191,9 @@ const HARNESS_STAND_IN_TEMPLATES: &str = "jvm/harness/template/game";
 /// Where the harness's own driver classes are templated, relative to the root.
 const HARNESS_DRIVER_TEMPLATES: &str = "jvm/harness/template/driver";
 
+/// Where the harness's stand-in halves of the sibling artifact are templated.
+const HARNESS_SIBLING_TEMPLATES: &str = "jvm/harness/template/sibling";
+
 /// Where a version keeps the harness templates it cannot share, inside its own
 /// version directory: a source only one version renders is that version's data.
 const HARNESS_OVERRIDES: &str = "harness";
@@ -453,13 +456,28 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
     // the defect it catches is a seed that names no member, which is a fact
     // about the version and not about who happened to reference it.
     screen::every_seeded_member_resolves(&roles, &stubbed, &mapping)?;
-    let [screens, stand_ins, drivers] = sources(root, pinned, &roles, &stubbed, &mapping)?;
-    let harness_origins = harness_origins(&[("game", &stand_ins), ("driver", &drivers)]);
+    let [screens, stand_ins, drivers, siblings] =
+        sources(root, pinned, &roles, &stubbed, &mapping)?;
+    // The three harness trees keep their own names below the generated root, so
+    // a sweep over one of them is a directory rather than a list of the files
+    // the other two happen to hold.
+    let harness = [
+        ("game", stand_ins),
+        ("driver", drivers),
+        ("sibling", siblings),
+    ];
+    let harness_origins = harness_origins(&harness);
     let mut templates = screens.templates;
-    templates.extend(stand_ins.templates);
-    templates.extend(drivers.templates);
-    let mut harness_java = stand_ins.java;
-    harness_java.extend(drivers.java);
+    let mut harness_java = Vec::new();
+    for (tree, sources) in harness {
+        templates.extend(sources.templates);
+        harness_java.extend(
+            sources
+                .java
+                .into_iter()
+                .map(|(path, java)| (format!("{tree}/{path}"), java)),
+        );
+    }
     Ok(Rendered {
         bindings: render::bindings(&pinned.adapter, &pinned.inventory, &resolved),
         exports: render::exports(&shapes),
@@ -487,7 +505,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
 /// generated source: a literal that moves then selects the weaker expectation
 /// and nothing says so. The tree each name came from is part of the key, so two
 /// trees that bind one name cannot answer for each other.
-fn harness_origins(trees: &[(&str, &screen::Sources)]) -> String {
+fn harness_origins(trees: &[(&str, screen::Sources)]) -> String {
     let mut lines = BTreeSet::new();
     for (tree, sources) in trees {
         for (name, overridden) in &sources.origins {
@@ -498,20 +516,21 @@ fn harness_origins(trees: &[(&str, &screen::Sources)]) -> String {
     lines.into_iter().collect()
 }
 
-/// Renders the three template trees this version feeds, in one place.
+/// Renders the four template trees this version feeds, in one place.
 ///
-/// The screen jar's own sources come first, then the harness's stand-in game and
-/// the drivers that exercise it. Every one of them resolves against the same
-/// role table, and the version-only half of all three is checked together,
-/// because a stand-in is reached by the screen jar's generated sources as often
-/// as by anything in its own tree.
+/// The screen jar's own sources come first, then the harness's stand-in game,
+/// the drivers that exercise it, and the stand-in halves of the sibling artifact
+/// those drivers run against. Every one of them resolves against the same role
+/// table, and the version-only half of all four is checked together, because a
+/// stand-in is reached by the screen jar's generated sources as often as by
+/// anything in its own tree.
 fn sources(
     root: &Path,
     pinned: &inputs::PinnedVersion,
     roles: &roles::Roles,
     stubs: &[stubs::Stub],
     mapping: &mapping::Mapping,
-) -> Result<[screen::Sources; 3], GenerateError> {
+) -> Result<[screen::Sources; 4], GenerateError> {
     let harness = pinned.directory.join(HARNESS_OVERRIDES);
     let screens = root.join(SCREEN_TEMPLATES);
     let trees = [
@@ -531,6 +550,18 @@ fn sources(
             shared: &root.join(HARNESS_DRIVER_TEMPLATES),
             overrides: harness.join("driver"),
             purpose: screen::Purpose::Driver,
+        },
+        // The sibling artifact's stand-in half is rendered the way the real one
+        // is, because the agent jar opens both by the constants it holds: the
+        // same name, the same package, and the unnamed package under a version
+        // that puts the game there. Nothing stubs the roles it names — it
+        // compiles against the stand-in game beside it — but every role it names
+        // is one the screen jar's own sources name too, so asking for the stub
+        // costs it nothing and the two halves cannot drift apart.
+        screen::Tree {
+            shared: &root.join(HARNESS_SIBLING_TEMPLATES),
+            overrides: harness.join("sibling"),
+            purpose: screen::Purpose::Screen,
         },
     ];
     let mut rendered = Vec::with_capacity(trees.len());
@@ -812,6 +843,7 @@ mod tests {
         for (tree, name) in [
             (super::SCREEN_TEMPLATES, "Drawn"),
             (super::HARNESS_DRIVER_TEMPLATES, "Driven"),
+            (super::HARNESS_SIBLING_TEMPLATES, "Sided"),
         ] {
             let directory = root.join(tree);
             std::fs::create_dir_all(&directory)
@@ -864,6 +896,39 @@ mod tests {
             )
             .expect("the staged template should be writable");
         }
+    }
+
+    /// The harness's three trees land under three directories of their own.
+    ///
+    /// The run script sweeps each of them whole rather than naming the files it
+    /// wants, so a stand-in that landed beside a driver would be compiled by the
+    /// section that runs the driver and a driver that landed beside the stand-ins
+    /// would be compiled into the game. That is the property the layout buys, and
+    /// it is invisible in any one rendered source.
+    #[test]
+    fn each_harness_tree_lands_under_its_own_name() {
+        let (root, _) = staged("harness-trees");
+        let out = output("harness-trees-out");
+
+        let generated = run(&root, &out, None).expect("the staged root generates");
+
+        let trees: BTreeSet<OsString> = std::fs::read_dir(&generated.harness)
+            .expect("the harness root should be listable")
+            .flatten()
+            .filter(|entry| entry.path().is_dir())
+            .map(|entry| entry.file_name())
+            .collect();
+
+        assert_eq!(
+            trees,
+            ["driver", "game", "sibling"]
+                .into_iter()
+                .map(OsString::from)
+                .collect::<BTreeSet<_>>()
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
     }
 
     #[test]
@@ -935,6 +1000,7 @@ mod tests {
             ),
             (super::HARNESS_STAND_IN_TEMPLATES, overrides.join("game")),
             (super::HARNESS_DRIVER_TEMPLATES, overrides.join("driver")),
+            (super::HARNESS_SIBLING_TEMPLATES, overrides.join("sibling")),
         ] {
             let held: BTreeSet<OsString> = [root.join(tree), held_by_the_version]
                 .iter()

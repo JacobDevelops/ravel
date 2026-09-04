@@ -306,8 +306,8 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   requires the linked class file to declare it. What no gate has run is the `Members` lookup at
   runtime, its superclass walk and erased-descriptor construction, against an obfuscated class file;
   only a real jar proves that, which the headless client run and the planned server harness are for.
-  The sections that do run per version, and the five that wait on the stand-in game generated per
-  version from templates, sixty-one files, are recorded in the work-package bullet below.
+  The sections that do run per version, and the two that still wait on a stand-in game generated per
+  version from templates, are recorded in the work-package bullets below.
 - The headless real-client proof under Xvfb stalled at the launcher, not the game. Prism 11 refuses
   to launch any instance unless a Microsoft account that owns the game is signed in, even with an
   Offline account present and an isolated approot, so the offline route needs either that account
@@ -392,24 +392,31 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
 - ADG-3's re-pin of the agent jar's reflective surface is owned by no work package.
 - The JVM harness runs at every tracked version and `ravel:verify-gate-versions` holds it there. Both
   versions run nine sections — initialization, hierarchy, refusal, members, side, transformation, load,
-  content and outward. The last two joined them when their stand-in game stopped being hand-written
-  under Mojang names: it is rendered per version from `jvm/harness/template/` into
-  `target/ravel-jvm/generated-harness/`, so the name the adapter resolves and the name the stand-in
-  declares are one string by construction, and the obfuscated case is the one those sections read rather
-  than the one they skip. `javap -p` on 1.21.1's block stand-in reads `public dtd l()` and
-  `public static final js q`, which is what `GameMembers` says that version links. 1.21.1 declares the
-  other three not run under `[harness.notRun]` in its own `adapter.toml`: persistence, screens and
-  settings each match a generated name against a stand-in still written under a Mojang name, so they
-  would measure the mismatch rather than the adapter, and the work package that closes them is the one
-  that closed these two. Mutations proved the check, each exiting 1: an undeclared absence, a
-  declaration for a section that ran, a declaration for a required section, a declaration for a section
-  whose stand-in is now generated, a reason naming no work package, a section name in the record the
-  harness does not have, and a version named with `;` after it. An empty reason is refused one layer
-  earlier, where `adapter.toml` is parsed.
-- The persistence stand-in's `copyInto` returns early when nothing staged a pack, as the game does. It
-  is unreachable at 26.1.2, where every run stages one, and load-bearing at 1.21.1, where the staging
-  seam raises `NoSuchMethodException`: without it the stand-in dies on a missing directory and hides the
-  refusal that is the measurement.
+  content and outward. 26.1.2 runs three more, and persistence is now among them from templates: the
+  stand-in game, the drivers and the stand-in half of the sibling artifact are rendered per version from
+  `jvm/harness/template/` into `target/ravel-jvm/generated-harness/{game,driver,sibling}/`, so the name
+  the adapter resolves and the name the stand-in declares are one string by construction. `javap -p` on
+  1.21.1's block stand-in reads `public dtd l()` and `public static final js q`, which is what
+  `GameMembers` says that version links. The stand-in create-world screen no longer guards its copy on
+  the staging directory existing, because every run that reaches the copy staged something, so a
+  lifecycle case whose staging crossing refuses needs that guard written back before it can be written.
+- Persistence still does not run at 1.21.1, and the reason changed rather than went away. Its stand-ins
+  are generated now and every one of them renders there except the class the save seam is declared on.
+  1.21.1 keeps 26 `@DontObfuscate` classes in `net.minecraft` and moves the rest into the unnamed
+  package, `MinecraftServer` is one of the 26, and the two members the adapter reaches on it are typed
+  by classes that moved. Java has no syntax for naming a class outside every package from inside one, so
+  that stand-in cannot be written as Java at all: the measured failure is
+  `net.minecraft.server.MinecraftServer: cannot find symbol aqu, erd`. `SERVER.java.in` is 26.1.2's own
+  template, `run-harness.sh` asks the generated tree whether it holds the save seam's receiver rather
+  than being told, and 1.21.1's `adapter.toml` declares the section with that reason. Closing it needs
+  the stand-in game emitted as class files where a version's name spaces are split, which is a work
+  package nobody has opened.
+- 1.21.1 still declares screens and settings not run, for the reason it always did: both match a
+  generated name against a stand-in still written under a Mojang name. Mutations proved the check, each
+  exiting 1: an undeclared absence, a declaration for a section that ran, a declaration for a required
+  section, a declaration for a section whose stand-in is now generated, a reason naming no work package,
+  a section name in the record the harness does not have, and a version named with `;` after it. An
+  empty reason is refused one layer earlier, where `adapter.toml` is parsed.
 
 ## Standing decisions
 

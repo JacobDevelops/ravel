@@ -1,0 +1,69 @@
+{{package}}
+
+import com.mojang.datafixers.DataFixer;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+{{import HOLDER_LOOKUP_PROVIDER}}
+{{import SavedData}}
+{{import SavedDataFactory}}
+
+/**
+ * The pinned storage, for a version that addresses a stored datum by name.
+ *
+ * <p>A per-version source rather than a role binding: this version wants the
+ * world's data directory as a {@code File}, asks for a datum with a factory and
+ * a string beside it, and hands a replacement the string and the object. No
+ * renaming turns any of those into 26.1.2's single typed key.
+ *
+ * <p>The counters are static for the reason the shared source states: ADG-7's
+ * two crossings reach two different storages, and what the harness has to prove
+ * is about the pair.
+ */
+public final class {{STORAGE}} implements AutoCloseable {
+
+    /** What a read finds, seeded by the harness for a world that holds data. */
+    private static byte[] stored;
+
+    private static int writes;
+    private static byte[] written;
+
+    /**
+     * The stand-in's own, so a class that hangs a storage off itself does not
+     * have to spell the constructor this version's adapter looks up.
+     */
+    public {{STORAGE}}() {
+    }
+
+    public {{STORAGE}}(File directory, DataFixer fixer, {{HOLDER_LOOKUP_PROVIDER}} registries) {
+    }
+
+    /** Seeds the aggregate a world already holds, or {@code null} for a world that holds none. */
+    public static void seed(byte[] aggregate) {
+        stored = aggregate;
+        writes = 0;
+        written = null;
+    }
+
+    /** How many times the adapter wrote a replacement. */
+    public static int writes() {
+        return writes;
+    }
+
+    /** The replacement bytes as text, or empty when nothing was written. */
+    public static String written() {
+        return written == null ? "" : new String(written, StandardCharsets.UTF_8);
+    }
+
+    public {{SavedData}} {{STORAGE#get}}({{SavedDataFactory}} factory, String name) {
+        return stored == null ? null : new {{SavedData}}(stored);
+    }
+
+    public void {{STORAGE#set}}(String name, {{SavedData}} data) {
+        writes++;
+        written = data.aggregate();
+    }
+
+    @Override
+    public void close() {
+    }
+}

@@ -4583,18 +4583,20 @@ const REQUIRED_SECTIONS: [&str; 9] = [
 
 /// The harness sections a version may declare it does not run.
 ///
-/// Each of these matches a generated name against a stand-in that is still
+/// Two of these match a generated name against a stand-in that is still
 /// hand-written under a Mojang name, and the two are the same string only under
-/// a version that links its Mojang names. Two resolve the name reflectively; the
-/// third drives the shipped agent jar, whose transformer looks its targets up in
-/// the generated inventory. That is a property of the version rather than a
-/// fault, so it is declarable — but only in writing, naming the work package, in
-/// the version's own data.
+/// a version that links its Mojang names. The third has its stand-ins generated
+/// and meets a limit of the Java language instead: a version that leaves part of
+/// its game in a package and obfuscates the rest into the unnamed package can
+/// have no stand-in for the packaged half, because nothing inside a package can
+/// name a class outside every package. Either is a property of the version
+/// rather than a fault, so it is declarable — but only in writing, naming the
+/// work package, in the version's own data.
 ///
-/// A section leaves this list when its stand-in is generated per version rather
-/// than written down, which is what the content and outward sections did: the
-/// stand-in then carries the linked name by construction and no version has an
-/// obstacle left to declare.
+/// A section leaves this list when every version can run it, which is what the
+/// content and outward sections did when their stand-in game stopped being
+/// hand-written: the stand-in then carries the linked name by construction and no
+/// version has an obstacle left to declare.
 const DECLARABLE_SECTIONS: [&str; 3] = ["persistence", "screens", "settings"];
 
 /// What a declared absence has to name beside the obstacle.

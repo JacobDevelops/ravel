@@ -1,0 +1,42 @@
+{{package}}
+
+import java.nio.file.Path;
+{{import LEVEL_RESOURCE}}
+{{import SERVER_LEVEL}}
+
+/**
+ * The saving server, which reports whether its own body still ran.
+ *
+ * <p>This version's own stand-in rather than a shared one, and the reason is the
+ * Java language rather than the game. This version leaves a handful of classes
+ * in {@code net.minecraft} and obfuscates the rest into the unnamed package, and
+ * a class inside a package cannot name one outside every package — there is no
+ * syntax for it. The two members below are typed by classes a version that
+ * obfuscates moves out of reach, so a version whose game is split across the two
+ * name spaces has no stand-in for this class that javac will read. The harness
+ * asks the generated tree whether it has one rather than being told.
+ */
+public final class {{SERVER}} {
+
+    private static int saves;
+
+    private final {{SERVER_LEVEL}} overworld = new {{SERVER_LEVEL}}();
+
+    /** How many times the vanilla save body ran, which a Ravel failure must never reduce. */
+    public static int saves() {
+        return saves;
+    }
+
+    public Path {{SERVER#getWorldPath}}({{LEVEL_RESOURCE}} resource) {
+        return Path.of("world", resource.id());
+    }
+
+    public {{SERVER_LEVEL}} {{SERVER#overworld}}() {
+        return overworld;
+    }
+
+    public boolean {{world.save-persistence#saveAllChunks}}(boolean quiet, boolean flush, boolean forced) {
+        saves++;
+        return true;
+    }
+}

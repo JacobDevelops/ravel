@@ -153,9 +153,7 @@ public final class Hook {
     }
 
     /**
-     * ADG-7's two seams, with the exact internal names, members and descriptors
-     * the pinned inventory carries. The adapter is injected by matching those, so
-     * a stand-in that differed anywhere would not be hooked.
+     * ADG-7's four seams, read out of the generated hook table.
      *
      * <p>{@code ravel.test.persistence.saveSeamMissing} keeps the open seam and
      * drops the save seam, which is the one arrangement that makes
@@ -163,100 +161,71 @@ public final class Hook {
      * present and loads, its transformation matches no method, and the
      * installed-prologue marker stays empty. That is the hole ADG-7's rejected
      * alternative leaves open, and without this case its false branch never runs.
+     *
+     * <p>The pack and staging seams are in both sets below, because the case the
+     * save seam is missing from is about the save marker and says nothing about
+     * either: dropping them there would make that case silently stop covering
+     * them.
      */
     private static HookTarget[] persistenceTargets() {
-        HookTarget open = new HookTarget(
-                "net/minecraft/client/Minecraft",
-                "doWorldLoad",
-                "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;"
-                        + "Lnet/minecraft/server/packs/repository/PackRepository;"
-                        + "Lnet/minecraft/server/WorldStem;Ljava/util/Optional;Z)V",
-                false,
-                "worldOpenPersistence",
-                "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;"
-                        + "Ljava/lang/Object;Z)Z",
-                true);
-        // The seam a world's own data pack is written at, which the game reaches
-        // before it has a repository to read that world's packs with. It is in
-        // both sets below, because the case the save seam is missing from is
-        // about the save marker and says nothing about the pack: dropping this
-        // one there would make that case silently stop covering it.
-        HookTarget packRepository = new HookTarget(
-                "net/minecraft/server/packs/repository/ServerPacksSource",
-                "createPackRepository",
-                "(Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;)"
-                        + "Lnet/minecraft/server/packs/repository/PackRepository;",
-                true,
-                "worldCreatePackRepository",
-                "(Ljava/lang/Object;)V",
-                false);
-        // The seam a world being created has its data staged at. In both sets
-        // for the same reason the pack seam is: the missing-save case is about
-        // the save marker and says nothing about staging.
-        HookTarget createWorld = new HookTarget(
-                "net/minecraft/client/gui/screens/worldselection/CreateWorldScreen",
-                "init",
-                "()V",
-                false,
-                "screenCreateWorldInit",
-                "()V",
-                false);
+        HookTarget open = linkedTarget("worldOpenPersistence");
+        HookTarget packRepository = linkedTarget("worldCreatePackRepository");
+        HookTarget createWorld = linkedTarget("screenCreateWorldInit");
         if (Boolean.getBoolean("ravel.test.persistence.saveSeamMissing")) {
             return new HookTarget[] {open, packRepository, createWorld};
         }
         return new HookTarget[] {
-            open,
-            packRepository,
-            createWorld,
-            new HookTarget(
-                    "net/minecraft/server/MinecraftServer",
-                    "saveAllChunks",
-                    "(ZZZ)Z",
-                    false,
-                    "worldSavePersistence",
-                    "(ZZZ)V",
-                    false),
+            open, packRepository, createWorld, linkedTarget("worldSavePersistence"),
         };
     }
 
     /**
-     * The seam this run was told to transform, as this version links it.
+     * One entry of the generated hook table, as this version links it.
      *
-     * <p>The two sections that use it run against a stand-in game generated per
-     * version, so the class and the member they name are this version's rather
-     * than the reviewed ones. This class stands in for the native library and
-     * not for the inventory, so the harness reads the seam out of the generated
-     * hook table and hands it in here rather than letting a stand-in spell one
-     * version's names.
+     * <p>Every section that uses it runs against a stand-in game generated per
+     * version, so the class, the member and the prologue's own descriptor are
+     * this version's rather than the reviewed ones. This class stands in for the
+     * native library and not for the inventory, so the harness reads the whole
+     * entry out of the generated table and hands it in here rather than letting a
+     * stand-in spell one version's names.
      *
-     * <p>The prologue below is Ravel's own name on Ravel's own class, so it is
-     * the same word under every version and is written rather than handed in.
+     * <p>The prologue is Ravel's own name on Ravel's own class, so it is the same
+     * word under every version and is what an entry is asked for by.
      */
     private static HookTarget linkedTarget(String prologue) {
-        String named = System.getProperty("ravel.test.target");
-        if (named == null) {
+        String[] parts = seam(prologue).split(":");
+        if (parts.length != ENTRY_FIELDS) {
             throw new IllegalStateException(
-                    prologue + " transforms a seam and this run named none");
-        }
-        String[] parts = named.split(":");
-        if (parts.length != 4) {
-            throw new IllegalStateException(
-                    "a seam is a class, a member, a descriptor and whether it is static: "
-                            + named);
+                    "a hook table entry is a class, a member, a descriptor, whether it is static, "
+                            + "a prologue, its descriptor and whether it refuses: "
+                            + seam(prologue));
         }
         return new HookTarget(
                 parts[0],
                 parts[1],
                 parts[2],
                 Boolean.parseBoolean(parts[3]),
-                prologue,
-                "()V",
-                false);
+                parts[4],
+                parts[5],
+                Boolean.parseBoolean(parts[6]));
     }
 
-    /** The binary name of the class this run's seam is declared on. */
-    private static String linkedTargetClass() {
-        return System.getProperty("ravel.test.target", "").split(":")[0].replace('/', '.');
+    /** How many fields the generated table writes for one entry. */
+    private static final int ENTRY_FIELDS = 7;
+
+    /** The table entry this run named for one prologue. */
+    private static String seam(String prologue) {
+        String named = System.getProperty("ravel.test.target." + prologue);
+        if (named == null) {
+            throw new IllegalStateException(
+                    prologue + " transforms a seam and this run named none");
+        }
+        return named;
+    }
+
+    /** The binary name of the class one seam is declared on. */
+    private static String linkedTargetClass(String prologue) {
+        return seam(prologue).split(":")[0].replace('/', '.');
     }
 
     public static void initialize() {
@@ -272,10 +241,11 @@ public final class Hook {
         } else if (Boolean.getBoolean("ravel.test.transform.refusal")) {
             className = "dev.ravel.jvm.refusal.RefusalTarget";
         } else if (Boolean.getBoolean("ravel.test.transform.persistence")) {
-            className = "net.minecraft.client.Minecraft";
-        } else if (Boolean.getBoolean("ravel.test.transform.content")
-                || Boolean.getBoolean("ravel.test.transform.outward")) {
-            className = linkedTargetClass();
+            className = linkedTargetClass("worldOpenPersistence");
+        } else if (Boolean.getBoolean("ravel.test.transform.content")) {
+            className = linkedTargetClass("registryBuiltInFreeze");
+        } else if (Boolean.getBoolean("ravel.test.transform.outward")) {
+            className = linkedTargetClass("clientTick");
         } else if (Boolean.getBoolean("ravel.test.transform.members")) {
             className = "net.minecraft.util.SmoothDouble";
         } else {
@@ -410,6 +380,7 @@ public final class Hook {
         return Boolean.getBoolean("ravel.test.refusal.verdict");
     }
 
+    /** Only the version that runs persistence links this; a differing vector is a second overload. */
     public static boolean worldOpenPersistence(
             Object access, Object packs, Object stem, Object gameRules, boolean newWorld) {
         invocations++;

@@ -1,0 +1,13 @@
+{{package}}
+
+{{import HOLDER_LOOKUP_PROVIDER}}
+
+/**
+ * What the layered registries composite down to.
+ *
+ * <p>The supertype is the point. The storage constructor takes a lookup provider
+ * and the layered access hands it this, so a stand-in that left the two unrelated
+ * would let the constructor be found here and throw at a launch.
+ */
+public final class {{REGISTRY_ACCESS_FROZEN}} implements {{HOLDER_LOOKUP_PROVIDER}} {
+}

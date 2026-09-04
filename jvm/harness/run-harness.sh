@@ -28,9 +28,13 @@ agent="$work/agent/ravel-agent.jar"
 # is what lets a section resolving a generated name run under a version that
 # renames it.
 standins="$root/target/ravel-jvm/generated-harness"
-# Guava is a library beside the game rather than part of it, so no published
-# mapping renames it and its stand-in is written once rather than generated.
-guava="$root/jvm/harness/guava/com/google/common/collect/ImmutableList.java"
+# The three trees the generator renders, kept apart below the generated root the
+# way their templates are: the stand-in game, Ravel's own drivers, and the
+# stand-in half of the sibling artifact. A sweep over one of them is a directory
+# rather than a list of the files the other two happen to hold.
+standin_game="$standins/game"
+standin_drivers="$standins/driver"
+standin_sibling="$standins/sibling"
 
 if [ ! -f "$jar" ]; then
 	echo "the agent jar is missing; run:" >&2
@@ -47,11 +51,20 @@ if [ ! -f "$library/libravel_bootstrap.so" ]; then
 	echo "  cargo build -p ravel-composed-host --release" >&2
 	exit 1
 fi
-if [ ! -d "$standins" ]; then
+if [ ! -d "$standins" ] || [ ! -d "$standin_game" ]; then
 	echo "the generated stand-in game is missing; run:" >&2
 	echo "  cargo build -p ravel-minecraft-adapter" >&2
 	exit 1
 fi
+
+# One game and one set of libraries, swept once: the persistence, content and
+# outward sections all compile them, and three sweeps would let one of them
+# drift. Guava and DataFixerUpper are libraries beside the game rather than part
+# of it, so no published mapping renames them and their stand-ins are written
+# once rather than generated.
+mapfile -d '' standin_sources < <(find "$standin_game" -name '*.java' -print0 | sort -z)
+mapfile -d '' libraries < <(find "$root/jvm/harness/guava" "$root/jvm/harness/datafixers" \
+	-name '*.java' -print0 | sort -z)
 
 rm -rf "$work"
 mkdir -p "$(dirname "$agent")"
@@ -80,10 +93,10 @@ cp "$jar" "$agent"
 # `GameNames` and `GameMembers` carry the names this version links and those are
 # the Mojang names only under a version that does not obfuscate. Where they
 # differ, the adapter asks for `m` and the stand-in declares `getUiState`, and
-# the section would be testing the mismatch rather than the adapter. The content
-# and outward sections stopped asking when their stand-in game moved to
-# `jvm/harness/template/`: it is generated per version, so the two names are the
-# same string by construction.
+# the section would be testing the mismatch rather than the adapter. The content,
+# outward and persistence sections stopped asking when their stand-in game moved
+# to `jvm/harness/template/`: it is generated per version, so the two names are
+# the same string by construction.
 #
 # The generated class says which case this is without being asked: every role it
 # renders carries the Mojang name in its comment and the linked name in its
@@ -373,36 +386,98 @@ fi
 
 section_ran members
 
-# The reflective sections whose stand-ins are still hand-written under Mojang
-# names. Under a version that links its Mojang names the two are the same string
-# and the section tests the adapter; under one that does not, the adapter asks
-# for `m` where the stand-in declares `getUiState`, and the section would be
-# measuring the mismatch. The version's own `adapter.toml` is what records that
-# and names the work package.
-if resolves_generated_names; then
-# ADG-7's world persistence seams and the two data pack seams, against a
-# stand-in game. The adapter is
-# reflective and reaches the sibling artifact by name, so a stand-in with the
-# pinned names and descriptors exercises the real control flow: what is stood in
-# for is the game, not Ravel.
+# One entry of the generated hook table, read by Ravel's own prologue name — the
+# one word in an entry that no version renames. The harness's stand-in `Hook`
+# stands in for the native library and not for the inventory, so every seam it
+# installs has to be this version's rather than a name written down here, and so
+# has the prologue's own descriptor: the rewritten call site links on it, and the
+# two tracked versions' open seam takes a different number of arguments. The
+# table is written seven lines to an entry, class first and prologue fifth, so an
+# entry is the four lines before the prologue and the two after it.
+generated_hook="$root/target/ravel-jvm/generated/dev/ravel/jvm/Hook.java"
+hook_seam() {
+	awk -v prologue="$1" '
+		{ line[NR] = $0 }
+		$0 ~ ("^[[:space:]]*\"" prologue "\",$") { at = NR }
+		END {
+			if (at == 0) { exit 1 }
+			for (field = at - 4; field <= at + 2; field++) {
+				value = line[field]
+				sub(/^[[:space:]]+/, "", value)
+				sub(/\),$/, "", value)
+				sub(/,$/, "", value)
+				gsub(/^"|"$/, "", value)
+				printf "%s%s", (field > at - 4 ? ":" : ""), value
+			}
+			print ""
+		}
+	' "$generated_hook"
+}
+
+# Fills the named array with the `-D` arguments the stand-in `Hook` reads one
+# section's seams back through. A prologue the table does not name stops the run
+# rather than being left out, because a section short of a seam transforms less
+# than it says it does and passes while doing it — which is why this writes into
+# an array rather than printing one, where the refusal would leave a subshell and
+# nothing else.
+install_seams() {
+	local -n into="$1"
+	shift
+	into=()
+	local prologue entry
+	for prologue in "$@"; do
+		if ! entry="$(hook_seam "$prologue")"; then
+			echo "the generated hook table names no $prologue seam, so this section" >&2
+			echo "would transform a class this version does not link" >&2
+			exit 1
+		fi
+		into+=("-Dravel.test.target.$prologue=$entry")
+	done
+}
+
+install_seams persist_seams \
+	worldOpenPersistence worldSavePersistence worldCreatePackRepository screenCreateWorldInit
+
+# Whether this version's stand-in game carries the class the save seam is
+# declared on, which is what says the whole section can be written at all.
+#
+# The obstacle is the Java language rather than the game. A version that
+# obfuscates leaves a handful of classes in `net.minecraft` and moves the rest
+# into the unnamed package, and a class inside a package cannot name one outside
+# every package — javac has no syntax for it. The save seam's receiver is one of
+# the classes left behind, and the two members the adapter reaches on it are
+# typed by classes that moved, so that version renders no stand-in for it and the
+# section has no receiver to save through. Asked of the generated tree rather
+# than written down, so a version that gains one starts running here without
+# anything being edited, and a version that loses one stops.
+persistence_receiver="$(hook_seam worldSavePersistence)"
+persistence_receiver="${persistence_receiver%%:*}"
+persistence_receiver_source="$standin_game/$persistence_receiver.java"
+if [ -f "$persistence_receiver_source" ]; then
+
+# ADG-7's world persistence seams and the two data pack seams, against the
+# generated stand-in game. The adapter is reflective and reaches the sibling
+# artifact by name, so a stand-in carrying the names this version links exercises
+# the real control flow: what is stood in for is the game, not Ravel. It runs at
+# every version because the stand-ins are generated from the same data the names
+# the adapter resolves are, so the obfuscated case is the one this section reads
+# rather than the one it skips.
 persist="$work/persistence"
 persist_agent="$persist/agent/ravel-agent.jar"
 persist_screen="$persist/agent/ravel-screen.jar"
 mkdir -p "$persist/classes" "$persist/sibling" "$(dirname "$persist_agent")"
-mapfile -d '' persist_sources < <(find "$root/jvm/harness/persistence" -name '*.java' -print0 | sort -z)
-javac -Xlint:all -Werror -d "$persist/classes" "${persist_sources[@]}"
+javac -Xlint:all -Werror -d "$persist/classes" "${standin_sources[@]}" "${libraries[@]}"
 # `PersistenceMain` needs the agent classes only to read the stand-in hook's
 # counters. A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$persist/classes:$order/agent-classes" -d "$persist/classes" \
-	"$root/jvm/harness/PersistenceMain.java"
+	"$standin_drivers/PersistenceMain.java"
 # Against the stand-in game, because the sibling is the compiled half of the
-# seam and its argument vectors are the game's own types.
-javac -Xlint:all -Werror -cp "$persist/classes" -d "$persist/sibling" \
-	"$root/jvm/harness/sibling/dev/ravel/jvm/screen/RavelWorldData.java" \
-	"$root/jvm/harness/sibling/dev/ravel/jvm/screen/RavelWorldRefusedScreen.java"
-jar --create --file "$persist_screen" --date 1980-01-01T00:00:02Z \
-	-C "$persist/sibling" dev/ravel/jvm/screen/RavelWorldData.class \
-	-C "$persist/sibling" dev/ravel/jvm/screen/RavelWorldRefusedScreen.class
+# seam and its argument vectors are the game's own types. It is generated beside
+# the real one and into the same package, because the agent jar opens both by the
+# constant `ScreenNames` carries.
+mapfile -d '' sibling_sources < <(find "$standin_sibling" -name '*.java' -print0 | sort -z)
+javac -Xlint:all -Werror -cp "$persist/classes" -d "$persist/sibling" "${sibling_sources[@]}"
+jar --create --file "$persist_screen" --date 1980-01-01T00:00:02Z -C "$persist/sibling" .
 cp "$order_agent" "$persist_agent"
 
 # How many world lifecycles this section runs, declared in one place so
@@ -423,6 +498,7 @@ persistence_run() {
 	local err="$persist/$label-stderr"
 	(cd "$persist/classes" && java \
 		-javaagent:"$persist_agent" \
+		"${persist_seams[@]}" \
 		-Dravel.test.transform.persistence=true \
 		-Dravel.test.persistence.saveSeamMissing="$save_seam" \
 		-Dravel.test.persistence.open="$open" \
@@ -493,6 +569,7 @@ screen_run() {
 	local err="$persist/$label-stderr"
 	(cd "$persist/classes" && java \
 		-javaagent:"$persist_agent" \
+		"${persist_seams[@]}" \
 		-Dravel.test.transform.persistence=true \
 		-Dravel.test.persistence.saveSeamMissing=false \
 		-Dravel.test.persistence.open=empty \
@@ -580,6 +657,7 @@ absent_err="$persist/absent-sibling-stderr"
 absent_status=0
 (cd "$persist/classes" && java \
 	-javaagent:"$persist_agent" \
+	"${persist_seams[@]}" \
 	-Dravel.test.transform.persistence=true \
 	-Dravel.test.persistence.saveSeamMissing=false \
 	-Dravel.test.persistence.open=empty \
@@ -646,28 +724,17 @@ if [ "$persistence_lifecycles" -ne "$persistence_lifecycles_declared" ]; then
 fi
 
 section_ran persistence
+else
+	# Said rather than silent, because the absence and a section that broke look
+	# the same from outside: this is the one section a version may be short of a
+	# stand-in for, and a run that skipped it without naming what it looked for
+	# reads as a run that passed it. What keeps the skip honest is elsewhere —
+	# `cargo xtask verify gate-versions` refuses a version whose `adapter.toml`
+	# does not declare this section not run — so this line is the reader's half.
+	echo "the persistence section is not run here: the generated hook table declares the" >&2
+	echo "save seam on $persistence_receiver, and this version's stand-in game holds no" >&2
+	echo "$persistence_receiver_source to save through" >&2
 fi
-
-# The seam a section transforms, read out of the generated hook table by Ravel's
-# own prologue name — the one word in an entry that no version renames. The
-# harness's stand-in `Hook` stands in for the native library and not for the
-# inventory, so the target it installs has to be this version's rather than a
-# name written down here. The table is written seven lines to an entry, class
-# first and prologue fifth, so the four lines before the prologue are the seam.
-generated_hook="$root/target/ravel-jvm/generated/dev/ravel/jvm/Hook.java"
-hook_seam() {
-	awk -v prologue="$1" '
-		{ fifth = fourth; fourth = third; third = second; second = first; first = $0 }
-		first ~ ("^[[:space:]]*\"" prologue "\",$") {
-			gsub(/^[[:space:]]*"?|"?,$/, "", fifth)
-			gsub(/^[[:space:]]*"?|"?,$/, "", fourth)
-			gsub(/^[[:space:]]*"?|"?,$/, "", third)
-			gsub(/^[[:space:]]*|,$/, "", second)
-			print fifth ":" fourth ":" third ":" second
-			exit
-		}
-	' "$generated_hook"
-}
 
 # The content-registration seam, against the generated stand-in game. The adapter
 # is reflective and reads the admitted set across its own crossing, so a stand-in
@@ -683,13 +750,11 @@ content="$work/content"
 content_agent="$content/agent/ravel-agent.jar"
 content_screen="$content/agent/ravel-screen.jar"
 mkdir -p "$content/classes" "$content/sibling" "$(dirname "$content_agent")"
-mapfile -d '' content_sources < <(find "$standins" -name '*.java' \
-	! -name 'ContentMain.java' ! -name 'OutwardMain.java' -print0 | sort -z)
-javac -Xlint:all -Werror -d "$content/classes" "${content_sources[@]}" "$guava"
+javac -Xlint:all -Werror -d "$content/classes" "${standin_sources[@]}" "${libraries[@]}"
 # `ContentMain` needs the agent classes only to read the stand-in hook's counter.
 # A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$content/classes:$order/agent-classes" -d "$content/classes" \
-	"$standins/ContentMain.java"
+	"$standin_drivers/ContentMain.java"
 # The registration itself lives in the sibling artifact, because the two tracked
 # versions build a block differently rather than name it differently, so this
 # section needs the sibling jar the persistence section already needed. What is
@@ -705,12 +770,7 @@ fi
 javac -Xlint:all -Werror -cp "$content/classes" -d "$content/sibling" "$content_sibling"
 jar --create --file "$content_screen" --date 1980-01-01T00:00:02Z -C "$content/sibling" .
 cp "$order_agent" "$content_agent"
-content_seam="$(hook_seam registryBuiltInFreeze)"
-if [ -z "$content_seam" ]; then
-	echo "the generated hook table names no registry-freeze seam, so this section" >&2
-	echo "would transform a class this version does not link" >&2
-	exit 1
-fi
+install_seams content_seams registryBuiltInFreeze
 
 # What a registered block or item prints back, which is version data rather than
 # one answer asserted over every version. A version whose properties builders
@@ -765,8 +825,8 @@ content_run() {
 	local err="$content/$label-stderr"
 	(cd "$content/classes" && java \
 		-javaagent:"$content_agent" \
+		"${content_seams[@]}" \
 		-Dravel.test.transform.content=true \
-		-Dravel.test.target="$content_seam" \
 		-Dravel.test.content.admitted="$admitted" \
 		-cp . ContentMain >"$out" 2>"$err")
 	local observed
@@ -914,18 +974,13 @@ mkdir -p "$outward/classes" "$(dirname "$outward_agent")"
 # The same stand-in game as the content section, because it is one game: the
 # sound seam and the registration seam name the same identifier class, and two
 # trees would let one of them drift.
-javac -Xlint:all -Werror -d "$outward/classes" "${content_sources[@]}" "$guava"
+javac -Xlint:all -Werror -d "$outward/classes" "${standin_sources[@]}" "${libraries[@]}"
 # `OutwardMain` needs the agent classes only to read the stand-in hook's counter.
 # A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$outward/classes:$order/agent-classes" -d "$outward/classes" \
-	"$standins/OutwardMain.java"
+	"$standin_drivers/OutwardMain.java"
 cp "$order_agent" "$outward_agent"
-outward_seam="$(hook_seam clientTick)"
-if [ -z "$outward_seam" ]; then
-	echo "the generated hook table names no client-tick seam, so this section" >&2
-	echo "would transform a class this version does not link" >&2
-	exit 1
-fi
+install_seams outward_seams clientTick
 
 outward_run() {
 	local label="$1" actions="$2" expected="$3"
@@ -933,8 +988,8 @@ outward_run() {
 	local err="$outward/$label-stderr"
 	(cd "$outward/classes" && java \
 		-javaagent:"$outward_agent" \
+		"${outward_seams[@]}" \
 		-Dravel.test.transform.outward=true \
-		-Dravel.test.target="$outward_seam" \
 		-Dravel.test.outward.actions="$actions" \
 		-cp . OutwardMain >"$out" 2>"$err")
 	local observed

@@ -1,0 +1,49 @@
+{{package}}
+
+{{import SavedData}}
+{{import SavedDataType}}
+
+/**
+ * Stands in for the sibling artifact's stored-data class.
+ *
+ * <p>The real one extends a game type and carries a codec, and the agent jar
+ * reaches it by name through reflection, which is exactly why a stand-in proves
+ * the control flow: the same entry points under the same names, without a codec
+ * stack the harness has no game to encode against. That the real class compiles
+ * against the pinned stubs is what {@code jvm/build/build-screen.sh} proves, and
+ * it is a different claim from this one.
+ *
+ * <p>It is rendered where the real one is rendered, because the agent jar opens
+ * both by the same constant, and it is compiled into a jar named
+ * {@code ravel-screen.jar} beside the harness agent, so a run without that jar
+ * is a run with the sibling artifact genuinely absent rather than one with a
+ * flag set.
+ */
+public final class RavelWorldData {
+
+    private RavelWorldData() {
+    }
+
+    /** The registration Minecraft would read and write Ravel's object through. */
+    private static final {{SavedDataType}} TYPE = new {{SavedDataType}}();
+
+    /** Where this version's storage keeps a world's saved data. */
+    public static Object folder(java.nio.file.Path data) {
+        return data;
+    }
+
+    /** What this version's storage is asked for a stored object with. */
+    public static Object[] lookup() {
+        return new Object[] {TYPE};
+    }
+
+    /** What this version's storage is handed a replacement with. */
+    public static Object[] replacement(byte[] aggregate) {
+        return new Object[] {TYPE, new {{SavedData}}(aggregate)};
+    }
+
+    /** The stored aggregate, or {@code null} when there is no Ravel object. */
+    public static byte[] bytes(Object stored) {
+        return stored instanceof {{SavedData}} held ? held.aggregate() : null;
+    }
+}

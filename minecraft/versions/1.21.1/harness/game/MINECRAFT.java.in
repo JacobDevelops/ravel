@@ -1,0 +1,75 @@
+{{package}}
+
+{{import LEVEL_STORAGE_ACCESS}}
+{{import PACK_REPOSITORY}}
+{{import Screen}}
+{{import SOUND_MANAGER}}
+{{import WORLD_STEM}}
+
+/**
+ * The running client, as much of it as the outward and persistence adapters
+ * reach.
+ *
+ * <p>The tick and the world load below are the seams the reviewed inventory
+ * pins and carry the descriptors it pins, so the transformer's prologue lands on
+ * the same methods here as in a launch. Neither body does anything but count
+ * itself, which is what makes the two questions answerable: an action that was
+ * performed can only have come from the prologue, and a refused world load is
+ * one where the load body never ran.
+ *
+ * <p>Every version owns this class rather than sharing one, because the world
+ * load's argument vector is version data — this one's takes no rule overrides
+ * and the other's takes the optional ones a world is created with — and a class
+ * is declared once or not at all. The members around it are the same at both,
+ * and that is the cost of the language having no way to write down half a class.
+ */
+public final class {{MINECRAFT}} {
+
+    private static final {{MINECRAFT}} INSTANCE = new {{MINECRAFT}}();
+    private final {{SOUND_MANAGER}} sounds = new {{SOUND_MANAGER}}();
+
+    private static int loads;
+
+    private {{MINECRAFT}}() {
+    }
+
+    public static {{MINECRAFT}} {{MINECRAFT#getInstance}}() {
+        return INSTANCE;
+    }
+
+    public {{SOUND_MANAGER}} {{MINECRAFT#getSoundManager}}() {
+        return sounds;
+    }
+
+    public void {{client.tick#tick}}() {
+    }
+
+    /** How many times the world-load body ran. */
+    public static int loads() {
+        return loads;
+    }
+
+    public void {{MINECRAFT#setScreen}}({{Screen}} screen) {
+    }
+
+    public void {{world.open-persistence#doWorldLoad}}(
+            {{LEVEL_STORAGE_ACCESS}} access,
+            {{PACK_REPOSITORY}} packs,
+            {{WORLD_STEM}} stem,
+            boolean newWorld) {
+        loads++;
+    }
+
+    /**
+     * Opens a world through the seam above, with the arguments this version's
+     * seam declares.
+     *
+     * <p>The stand-in's own, so the driver that runs a world lifecycle is one
+     * source across every version: the two tracked ones disagree about the seam's
+     * argument vector, and that disagreement belongs to the game rather than to
+     * the driver.
+     */
+    public void openWorld({{LEVEL_STORAGE_ACCESS}} access, {{PACK_REPOSITORY}} packs, {{WORLD_STEM}} stem) {
+        {{world.open-persistence#doWorldLoad}}(access, packs, stem, false);
+    }
+}

@@ -1,0 +1,17 @@
+{{package}}
+
+import com.mojang.datafixers.DataFixer;
+
+/** The game's fixer holder, which the adapter only passes along. */
+public final class {{DATA_FIXERS}} {
+
+    private static final DataFixer FIXER = new DataFixer() {
+    };
+
+    private {{DATA_FIXERS}}() {
+    }
+
+    public static DataFixer {{DATA_FIXERS#getDataFixer}}() {
+        return FIXER;
+    }
+}

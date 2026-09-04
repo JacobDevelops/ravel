@@ -306,8 +306,7 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   requires the linked class file to declare it. What no gate has run is the `Members` lookup at
   runtime, its superclass walk and erased-descriptor construction, against an obfuscated class file;
   only a real jar proves that, which the headless client run and the planned server harness are for.
-  The sections that run per version, and the one a version may still declare away, are recorded in the
-  work-package bullets below.
+  The sections that run per version are recorded in the work-package bullets below.
 - The headless real-client proof under Xvfb stalled at the launcher, not the game. Prism 11 refuses
   to launch any instance unless a Microsoft account that owns the game is signed in, even with an
   Offline account present and an isolated approot, so the offline route needs either that account
@@ -393,7 +392,8 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
 - The JVM harness runs at every tracked version and `ravel:verify-gate-versions` holds it there. Both
   versions now run all twelve sections — initialization, hierarchy, refusal, members, side,
   transformation, load, persistence, content, outward, settings and screens — so every
-  `[harness.notRun]` table is empty and no version declares its way out of anything. All of it comes
+  `[harness.notRun]` table is retired and no version can declare its way out of anything: the gate
+  requires all twelve of a version, and `verify scaffold` refuses the table in any `adapter.toml`. All of it comes
   from templates: the stand-in game, the drivers and the stand-in half of the sibling artifact are
   rendered per version from `jvm/harness/template/` into
   `target/ravel-jvm/generated-harness/{game,driver,sibling}/`, so the name
@@ -418,8 +418,8 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
   in `SERVER.java.in` makes the pass name the class file and the pool entry and stop.
 - 1.21.1's world-load seam takes no optional rule overrides where 26.1.2's does, so the stand-in `Hook`
   carries `worldOpenPersistence` twice. The section could not have reached that until it ran there.
-- Screens and settings now run at 1.21.1 too. `DECLARABLE_SECTIONS` still holds persistence and no
-  version declares it, which is a set with nothing left in it to excuse. The eighteen screen and text stand-ins and the
+- Screens and settings now run at 1.21.1 too, which left the declarable set with nothing in it to
+  excuse and retired it. The eighteen screen and text stand-ins and the
   chat-target one are templates now, and so are the five drivers; 1.21.1 writes `Screen` and the title
   menu in full, because a keystroke reaches a screen there as three numbers and its column builder hands
   nothing back, and 26.1.2 owns `KeyEvent`, the record the other passes instead. Three facts about a
@@ -427,12 +427,11 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
   read from `ScreenNames`, whether the menu hands a row back from `MenuLayout`, and the rewritten class
   from the generated hook table. The name comparison that used to gate these two sections is gone from
   `run-harness.sh` with them. Mutation: a stand-in that stops storing a focus turns
-  `focusDone=true kept=true` into `kept=false` and the run exits 1. The check on the declarations was
-  proved the same way, each mutation exiting 1: an undeclared absence, a declaration for a section that
-  ran, a declaration for a required section, a declaration for either section whose stand-in is now
-  generated, a reason naming no work package, a section name in the record the harness does not have,
-  and a version named with `;` after it. An empty reason is refused one layer earlier, where
-  `adapter.toml` is parsed.
+  `focusDone=true kept=true` into `kept=false` and the run exits 1. The check on the record was proved
+  the same way, each mutation exiting 1: a section missing from a version's line, a section name in the
+  record the harness does not have, and a version named with `;` after it. A `[harness.notRun]` table
+  written back into either version's `adapter.toml` is refused by `verify scaffold`, and a build that
+  selects that version refuses it too, because the adapter inputs deny an unknown field.
 - `net/minecraft/util/StringUtil.java` is the one stand-in still hand-written, and it stays that way on
   purpose: the transformer sections match it against targets hand-written beside it in the stand-in
   `Hook`, so neither side is version data and `transformed=1 methods=4` with five crossings holds

@@ -61,5 +61,5 @@ Java source can name a class outside every package from inside one. So the whole
 stand-in game is written in the unnamed package and `MinecraftServer`, the save
 seam's receiver, is the one class whose written name is not the name this version
 links. `jvm/harness/remap/Remap.java` puts it back in the compiled class files
-before any section runs against them, which is why `[harness.notRun]` is empty
-here and the harness runs all twelve sections at this version.
+before any section runs against them, which is why the harness runs all twelve
+sections at this version and nothing here declares its way out of one.

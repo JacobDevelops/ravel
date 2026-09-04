@@ -76,7 +76,7 @@
       "surface": "scaffold and evidence contract",
       "command": "devenv tasks run ravel:verify-scaffold",
       "exitStatus": 0,
-      "proves": "The repository scaffold holds, the tracked-file policy holds, and every milestone manifest — this one included — is schema-valid, digest-bound, provenance-checked and internally consistent in its arithmetic.",
+      "proves": "The repository scaffold holds, the tracked-file policy holds, and every milestone manifest — this one included — is schema-valid, digest-bound, provenance-checked and internally consistent in its arithmetic. It also refuses the retired [harness.notRun] table in any tracked version's adapter.toml, whatever spelling of it TOML accepts, so an unselected version cannot carry a declaration a build would never look at.",
       "doesNotProve": "Whether any milestone is closed. That is ravel:verify-milestone, and for M4 it exits nonzero by design while the milestone is open."
     },
     {
@@ -118,7 +118,7 @@
       "surface": "per-version gate coverage",
       "command": "devenv tasks run ravel:verify-gate-versions",
       "exitStatus": 0,
-      "proves": "The three gate tasks that loop the tracked versions each recorded an outcome for every one of them and reached at least one, and the harness record names the sections each version ran. A section a version did not run is a violation unless that version's adapter.toml declares it under [harness.notRun] with a reason naming the work package that closes it, and the seven sections that reach the game only through the transformer cannot be declared away at all. A declaration whose section has started running again fails too, so a reason cannot outlive what it excused.",
+      "proves": "The three gate tasks that loop the tracked versions each recorded an outcome for every one of them and reached at least one, and the harness record names the sections each version ran. Every tracked version runs all twelve sections, so a section missing from a version's line is a violation and nothing a version writes can excuse one.",
       "doesNotProve": "That the work behind a line happened. This check reads files the tasks wrote, so a task that wrote its line without doing the work would satisfy it; each line is written after the work for that reason. It also cannot run the tasks, so a stale target/ tree is a stale answer, and the gate orders this after all three."
     },
     {

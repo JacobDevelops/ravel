@@ -283,12 +283,14 @@ their own targets and their own hand-written copy of that class under the
 reviewed names, which is where four methods and five crossings stay pinned
 unmoved.
 
-A section a version does not run has to say so in that version's `adapter.toml`,
-under `[harness.notRun]`, with a reason naming the work package that closes it.
-`cargo xtask verify gate-versions` refuses an undeclared absence, and refuses a
-declaration that outlived its reason. Persistence is the only section still
-declarable and no tracked version declares it: the remap closed the one obstacle
-there was, so every table is empty and both versions run all twelve sections.
+Every tracked version runs all twelve sections, and nothing a version writes can
+excuse one. `cargo xtask verify gate-versions` refuses a section missing from a
+version's line in the harness record. The `[harness.notRun]` table a version once
+declared a section away in is retired, and `cargo xtask verify scaffold` refuses
+it in any tracked version's `adapter.toml`: the remap closed the last obstacle
+there was, so a section that stops running is a break, and one a version turns
+out not to be able to run is a work package in `STATUS.md` and `ROADMAP.md`
+rather than a line somebody can write on their own.
 
 **What no version of this harness proves** is `Members` against real obfuscated
 class files. That class walks a class's supertypes and rebuilds erased descriptors

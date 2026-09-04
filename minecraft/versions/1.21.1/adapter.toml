@@ -65,29 +65,6 @@ path = "tests/fixtures/local/tooling/minecraft-1.21.1/version.json"
 sha256 = "06ba60da1f8c6fe469bed1b348a064648bfdda57fc2fb56920e3f177f844fdfd"
 upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa605a432494e736db3/1.21.1.json"
 
-# What the JVM harness does not run for this version, and what would close it.
-#
-# Nothing, and the table is empty because of it. The harness stands in for the
-# game rather than loading it, its stand-in classes are generated per version
-# from `jvm/harness/template/`, and every section either supplies its own targets
-# or resolves a generated name against a stand-in generated from this same data.
-#
-# The last obstacle was the Java language rather than the game. This version keeps
-# 26 classes in `net.minecraft` because they carry `@DontObfuscate` and moves the
-# rest into the unnamed package, and no Java source can name a class outside every
-# package from inside one, so the stand-in game is written in the unnamed package
-# whole. That left the save seam's receiver compiling under a name the adapter does
-# not resolve. It is closed in the class files instead: the generator records each
-# pair it moved in `aliases.txt` and `jvm/harness/remap/Remap.java` rewrites the
-# constant pool of every compiled stand-in before a section runs against it, so
-# `net.minecraft.server.MinecraftServer` is the name the persistence section meets.
-#
-# The table stays because the distinction it draws is the one that matters: an
-# absence with no line here fails the gate, and so does a line whose section has
-# started running again.
-
-[harness.notRun]
-
 # The three hashes below pin the reviewed files beside this one.
 
 [inputs.hookInventory]

@@ -1687,8 +1687,8 @@ pub(super) fn java_type(descriptor: &str) -> Result<(String, &str), String> {
 #[cfg(test)]
 mod tests {
     use super::super::inputs::{
-        Adapter, Harness, Hook, Input, Inputs, Inventory, Kind, MappingSource, PackFormat,
-        Reflected, Reflection, Spelling,
+        Adapter, Hook, Input, Inputs, Inventory, Kind, MappingSource, PackFormat, Reflected,
+        Reflection, Spelling,
     };
     use super::super::resolve::Resolved;
     use super::super::stubs::{Member as StubMember, Stub};
@@ -1723,7 +1723,6 @@ mod tests {
                 data_minor: 0,
                 spelling: Spelling::PackFormat,
             },
-            harness: Harness::default(),
             inputs: Inputs {
                 client_jar: unpinned(),
                 client_mappings: None,

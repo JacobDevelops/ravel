@@ -430,38 +430,7 @@ pub(super) struct Adapter {
     /// `version.json`, so it is declared for the machines that hold no jar and
     /// re-derived from the jar wherever one is present.
     pub(super) pack_format: PackFormat,
-    /// What the JVM harness cannot run for this version, and what closes it.
-    ///
-    /// Absent is the ordinary case and means the harness runs every section. A
-    /// version that declares something here is saying a section is not run and
-    /// naming the work package that would change that, which is the only way the
-    /// gate accepts an absent section: an undeclared one is indistinguishable
-    /// from a harness that quietly stopped covering a version.
-    #[serde(default)]
-    pub(super) harness: Harness,
     pub(super) inputs: Inputs,
-}
-
-/// The harness sections one version does not run, each with its reason.
-///
-/// This is version data rather than a list in the harness because the reason is
-/// about the version: the harness stands in for the game under Mojang names, and
-/// a version whose linked names are its Mojang names can run every section while
-/// an obfuscated one cannot. Writing that in the harness would assert one
-/// version's answer over all of them, which is the defect the reflective surface
-/// was moved here to fix.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct Harness {
-    /// Each section this version does not run, against why and what closes it.
-    ///
-    /// A section absent from the record and absent from here is a harness that
-    /// stopped covering a version, which is the failure this table exists to
-    /// tell apart from a section nobody can run yet. So the value is not a flag:
-    /// it is the sentence a reader needs, and the gate requires it to name the
-    /// work package rather than only the obstacle.
-    #[serde(default, rename = "notRun")]
-    pub(super) not_run: std::collections::BTreeMap<String, String>,
 }
 
 /// The pack formats one Minecraft version declares, and how it spells them.
@@ -559,20 +528,6 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
             "the version directory is named {name} but its adapter inputs pin {}",
             adapter.minecraft
         )));
-    }
-    // A harness section this version says it does not run has to say why, here,
-    // where the claim is. Whether the reason is a good one and whether the
-    // section really was skipped are the gate's to judge — it reads the run's own
-    // record and this file cannot — but an empty reason is not a judgement call,
-    // and refusing it where the file is parsed keeps a blank line from reaching
-    // the reader who needs it most.
-    for (section, reason) in &adapter.harness.not_run {
-        if reason.trim().is_empty() {
-            return Err(GenerateError::Drift(format!(
-                "{name} declares the {section} harness section is not run and gives no reason, \
-                 so nothing says what would change it"
-            )));
-        }
     }
     // The inventory is verified here rather than beside the jar, because it is
     // tracked and therefore present on every machine: a build that falls back to

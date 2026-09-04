@@ -113,6 +113,15 @@ const LOCK_STALE: std::time::Duration = std::time::Duration::from_mins(5);
 /// deleting what the other is reading. That is not hypothetical: the crate's own
 /// tests generate from the tracked inputs concurrently, and the first sweep made
 /// them fail on an artefact another test had just written.
+///
+/// It serialises generations against each other and nothing else. The build
+/// scripts under `jvm/` read the same trees without taking it, and what keeps
+/// them off a half-swept tree is the task order that runs them after a
+/// generation, not this file.
+///
+/// [`LOCK_STALE`] therefore bounds one stretch of held time rather than a whole
+/// generation: the lock is re-dated once the trees are written, so a waiter only
+/// reads it as abandoned if the caller's own read of the artefacts outlasts that.
 struct OutputLock {
     path: PathBuf,
 }
@@ -157,6 +166,45 @@ impl OutputLock {
             }
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
+    }
+
+    /// Re-dates the lock, so the age a waiter measures starts from here.
+    ///
+    /// The existing file is re-dated rather than recreated: a lock a waiter has
+    /// already removed as stale and replaced with its own must not be truncated
+    /// out from under that waiter, so its absence is an error here.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the lock file is gone or cannot be re-dated.
+    fn refresh(&self) -> Result<(), GenerateError> {
+        std::fs::File::options()
+            .write(true)
+            .open(&self.path)
+            .and_then(|file| file.set_modified(std::time::SystemTime::now()))
+            .map_err(|error| {
+                GenerateError::Input(format!(
+                    "{} could not be re-dated: {error}",
+                    self.path.display()
+                ))
+            })
+    }
+
+    /// Refuses unless this is the lock covering `root`'s output trees.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the lock belongs to some other root, whose holder
+    /// guards nothing a sweep of this one would delete.
+    fn guards(&self, root: &Path) -> Result<(), GenerateError> {
+        if self.path == root.join(OUTPUT_LOCK) {
+            return Ok(());
+        }
+        Err(GenerateError::Input(format!(
+            "{} does not guard the trees under {}",
+            self.path.display(),
+            root.display()
+        )))
     }
 }
 
@@ -263,7 +311,7 @@ struct Rendered {
 }
 
 /// What one generation produced.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Generated {
     /// Files whose change has to re-run the generator.
     pub watched: Vec<PathBuf>,
@@ -350,12 +398,41 @@ pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), Gener
 
 /// Generates every artefact of the pinned version into `out`.
 ///
+/// The `java`, `stubs`, `screens` and `harness` paths this returns point into
+/// trees the next generation sweeps, and this call has released the lock that
+/// held them still, so opening one afterwards races that sweep. Use
+/// [`run_and_inspect`] to read a generated file; this entry is for a build
+/// script, which hands the paths to a compiler it sequences itself.
+///
 /// # Errors
 ///
 /// Returns an error when an input is missing, has drifted from the hash the
 /// adapter inputs pin, does not resolve to exactly one member of the declared
 /// shape, or resolves to a shape no hook can carry.
 pub fn run(root: &Path, out: &Path, selected: Option<&str>) -> Result<Generated, GenerateError> {
+    run_and_inspect(root, out, selected, Generated::clone)
+}
+
+/// Generates every artefact of the pinned version, and reads it back under the
+/// same lock that wrote it.
+///
+/// The trees under `target/ravel-jvm` are shared and swept before they are
+/// refilled, so an artefact opened after [`run`] has returned is one another
+/// generation may already have deleted. `inspect` runs while the output lock is
+/// still held, which is what keeps another generation's sweep off the artefacts
+/// it reads.
+///
+/// # Errors
+///
+/// Returns an error when an input is missing, has drifted from the hash the
+/// adapter inputs pin, does not resolve to exactly one member of the declared
+/// shape, or resolves to a shape no hook can carry.
+pub fn run_and_inspect<T>(
+    root: &Path,
+    out: &Path,
+    selected: Option<&str>,
+    inspect: impl FnOnce(&Generated) -> T,
+) -> Result<T, GenerateError> {
     let pinned = inputs::pinned(root, selected)?;
     let first = compose(root, &pinned)?;
     // ADG-3 requires generation to be reproducible, and the cheapest evidence of
@@ -366,7 +443,12 @@ pub fn run(root: &Path, out: &Path, selected: Option<&str>) -> Result<Generated,
             "generating twice produced different bytes".to_owned(),
         ));
     }
-    write(root, out, &pinned, &first)
+    let held = OutputLock::take(root)?;
+    let generated = write(root, out, &pinned, &first, &held)?;
+    held.refresh()?;
+    let inspected = inspect(&generated);
+    drop(held);
+    Ok(inspected)
 }
 
 /// Resolves the pinned version and renders every artefact from it.
@@ -586,10 +668,12 @@ fn write(
     out: &Path,
     pinned: &inputs::PinnedVersion,
     rendered: &Rendered,
+    // The caller's lock, because whoever reads the trees back must hold what the sweep held.
+    held: &OutputLock,
 ) -> Result<Generated, GenerateError> {
+    held.guards(root)?;
     let java_directory = root.join(JAVA_OUTPUT);
     let stub_directory = root.join(STUB_OUTPUT);
-    let _held = OutputLock::take(root)?;
 
     // Every output tree is emptied before it is written, because a build emits one
     // version and these paths are shared by every version. A per-file overwrite
@@ -772,7 +856,10 @@ mod tests {
     use std::fmt::Write as _;
     use std::path::{Path, PathBuf};
 
-    use super::{GenerateError, LIBRARY_PROPERTY, SELECTION, inputs, run, selection};
+    use super::{
+        GenerateError, LIBRARY_PROPERTY, LOCK_STALE, OUTPUT_LOCK, OutputLock, SELECTION, inputs,
+        run, run_and_inspect, selection,
+    };
 
     fn repository_root() -> &'static Path {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -911,7 +998,6 @@ mod tests {
         let out = output("harness-trees-out");
 
         let generated = run(&root, &out, None).expect("the staged root generates");
-
         let trees: BTreeSet<OsString> = std::fs::read_dir(&generated.harness)
             .expect("the harness root should be listable")
             .flatten()
@@ -929,6 +1015,71 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// The output lock spans the caller's read, not just the write.
+    ///
+    /// That span is the whole reason `run_and_inspect` exists over [`run`], and
+    /// it is the one thing no other test can see: every assertion they make about
+    /// a generated file passes whether the lock was dropped before the read or
+    /// after it.
+    #[test]
+    fn the_output_lock_is_held_across_the_inspection_and_released_after() {
+        let (root, _) = staged("held-lock");
+        let out = output("held-lock-out");
+        let lock = root.join(OUTPUT_LOCK);
+
+        run_and_inspect(&root, &out, None, |_| {
+            assert!(
+                lock.is_file(),
+                "the trees may not be sweepable while the closure reads them"
+            );
+        })
+        .expect("the staged root generates");
+
+        assert!(
+            !lock.exists(),
+            "the lock is the caller's for the call and no longer"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn refreshing_the_lock_re_dates_the_held_file_and_refuses_a_missing_one() {
+        let root = output("lock-refresh");
+        let held = OutputLock::take(&root).expect("a fresh root has no holder");
+        let path = root.join(OUTPUT_LOCK);
+        let long_ago = std::time::SystemTime::now() - LOCK_STALE * 2;
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .and_then(|file| file.set_modified(long_ago))
+            .expect("the lock can be aged");
+
+        held.refresh().expect("a held lock re-dates");
+        let age = std::fs::metadata(&path)
+            .and_then(|meta| meta.modified())
+            .map(|modified| modified.elapsed().unwrap_or_default())
+            .expect("the lock has a modification time");
+        assert!(
+            age < LOCK_STALE,
+            "the lock reads as held again, not abandoned: {age:?}"
+        );
+
+        std::fs::remove_file(&path).expect("a waiter can remove a stale lock");
+        let error = held
+            .refresh()
+            .expect_err("a lock another holder replaced is not recreated");
+        assert!(
+            error.to_string().contains("could not be re-dated"),
+            "{error}"
+        );
+        assert!(!path.exists(), "nothing recreated the file");
+
+        std::mem::forget(held);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -1058,71 +1209,84 @@ mod tests {
         })
         .adapter
         .minecraft;
-        let generated = run(repository_root(), &out, Some(&version))
-            .expect("the tracked inputs should generate");
+        run_and_inspect(repository_root(), &out, Some(&version), |generated| {
+            assert!(generated.bindings.is_file());
+            assert!(generated.exports.is_file());
+            assert!(generated.java.is_file());
+            assert_eq!(generated.sha256.len(), 64);
+            assert_eq!(
+                generated.watched.len(),
+                9 + tracked_templates(repository_root(), &version)
+            );
 
-        assert!(generated.bindings.is_file());
-        assert!(generated.exports.is_file());
-        assert!(generated.java.is_file());
-        assert_eq!(generated.sha256.len(), 64);
-        assert_eq!(
-            generated.watched.len(),
-            9 + tracked_templates(repository_root(), &version)
-        );
+            // The screens are generated in the name space the version links, and the
+            // pinned version links the reviewed names, so they land where ADG-6 put
+            // them and the agent jar's generated names say so.
+            let screen = generated
+                .screens
+                .join("dev/ravel/jvm/screen/RavelSettingsScreen.java");
+            let drawn = std::fs::read_to_string(&screen).expect("the screen should be generated");
+            assert!(drawn.contains("package dev.ravel.jvm.screen;"), "{drawn}");
+            assert!(drawn.contains("extends Screen"), "{drawn}");
+            assert!(
+                !drawn.contains("{{"),
+                "every placeholder is rendered: {drawn}"
+            );
 
-        // The screens are generated in the name space the version links, and the
-        // pinned version links the reviewed names, so they land where ADG-6 put
-        // them and the agent jar's generated names say so.
-        let screen = generated
-            .screens
-            .join("dev/ravel/jvm/screen/RavelSettingsScreen.java");
-        let drawn = std::fs::read_to_string(&screen).expect("the screen should be generated");
-        assert!(drawn.contains("package dev.ravel.jvm.screen;"), "{drawn}");
-        assert!(drawn.contains("extends Screen"), "{drawn}");
-        assert!(
-            !drawn.contains("{{"),
-            "every placeholder is rendered: {drawn}"
-        );
-
-        let names = generated.java.with_file_name("ScreenNames.java");
-        let declared = std::fs::read_to_string(&names).expect("the screen names should be written");
-        assert!(
-            declared.contains(
-                "static final String RAVEL_SETTINGS_SCREEN = \
+            let names = generated.java.with_file_name("ScreenNames.java");
+            let declared =
+                std::fs::read_to_string(&names).expect("the screen names should be written");
+            assert!(
+                declared.contains(
+                    "static final String RAVEL_SETTINGS_SCREEN = \
                  \"dev.ravel.jvm.screen.RavelSettingsScreen\";"
-            ),
-            "{declared}"
-        );
+                ),
+                "{declared}"
+            );
 
-        let screen = generated
-            .stubs
-            .join("net/minecraft/client/gui/screens/Screen.java");
-        let stub = std::fs::read_to_string(&screen).expect("the seeded class should be stubbed");
-        assert!(
-            stub.contains("package net.minecraft.client.gui.screens;"),
-            "{stub}"
-        );
-        assert!(stub.contains("class Screen"), "{stub}");
-        assert!(
-            stub.contains(
-                "extends net.minecraft.client.gui.components.events.AbstractContainerEventHandler"
-            ),
-            "the focus a scrolled screen restores is declared above Screen, so the stub has to \
-             reach it: {stub}"
-        );
+            let screen = generated
+                .stubs
+                .join("net/minecraft/client/gui/screens/Screen.java");
+            let stub =
+                std::fs::read_to_string(&screen).expect("the seeded class should be stubbed");
+            assert!(
+                stub.contains("package net.minecraft.client.gui.screens;"),
+                "{stub}"
+            );
+            assert!(stub.contains("class Screen"), "{stub}");
+            assert!(
+                stub.contains(
+                    "extends \
+                     net.minecraft.client.gui.components.events.AbstractContainerEventHandler"
+                ),
+                "the focus a scrolled screen restores is declared above Screen, so the stub has \
+                 to reach it: {stub}"
+            );
 
-        let bindings = std::fs::read_to_string(&generated.bindings).expect("readable");
-        assert!(bindings.contains("pub static TARGETS"));
-        assert!(bindings.contains("HookKind::InstanceField"));
+            let bindings = std::fs::read_to_string(&generated.bindings).expect("readable");
+            assert!(bindings.contains("pub static TARGETS"));
+            assert!(bindings.contains("HookKind::InstanceField"));
 
-        let exports = std::fs::read_to_string(&generated.exports).expect("readable");
-        assert!(exports.contains("jni_mangle"));
-        assert!(
-            !exports.contains("lastAmount"),
-            "a field is not a call target and gets no export"
-        );
+            let exports = std::fs::read_to_string(&generated.exports).expect("readable");
+            assert!(exports.contains("jni_mangle"));
+            assert!(
+                !exports.contains("lastAmount"),
+                "a field is not a call target and gets no export"
+            );
 
-        let java = std::fs::read_to_string(&generated.java).expect("readable");
+            every_declared_crossing(&generated.java);
+        })
+        .expect("the tracked inputs should generate");
+
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// Every crossing the generated hook class declares, and nothing but them.
+    ///
+    /// Its own function because the artefact test is otherwise long enough to
+    /// hide it, and this list is the one ADG-1 keeps to a single symbol surface.
+    fn every_declared_crossing(generated_java: &Path) {
+        let java = std::fs::read_to_string(generated_java).expect("readable");
         // ADG-5's amendment: the library is loaded from a file a `-D` property
         // names, and a launch that names none refuses before anything else runs
         // rather than searching a path the launcher owns.
@@ -1151,7 +1315,7 @@ mod tests {
         // is a payload Java never reads.
         assert!(java.contains(
             "public static native String ravelOpenWorldPersistence(\n            \
-             byte[] aggregate, String identity, boolean freshWorld);"
+         byte[] aggregate, String identity, boolean freshWorld);"
         ));
         assert!(
             java.contains(
@@ -1170,8 +1334,6 @@ mod tests {
         // The id the staged pack is selected by, which Java asks for rather than
         // spelling: the directory it is composed from is the native side's.
         assert!(java.contains("public static native String ravelPackId();"));
-
-        let _ = std::fs::remove_dir_all(&out);
     }
 
     /// Where the synthetic second version's data lives.
@@ -1275,7 +1437,6 @@ mod tests {
         for (wanted, other) in [(&tracked, &synthetic), (&synthetic, &tracked)] {
             let out = output(&format!("selected-out-{wanted}"));
             let generated = run(&root, &out, Some(wanted)).expect("the named version generates");
-
             for artefact in [&generated.bindings, &generated.java] {
                 let text = std::fs::read_to_string(artefact).expect("readable");
                 assert!(
@@ -1461,7 +1622,6 @@ mod tests {
         let out = output("second-version-out");
 
         let generated = run(&root, &out, None).expect("a second version's data should generate");
-
         let tracked = inputs::tracked_versions(repository_root());
         assert!(
             !tracked.contains(&version),
@@ -1951,33 +2111,33 @@ mod tests {
         let pinned =
             inputs::tracked_version_where(root, |adapter| !adapter.mapping_source.needs_mappings());
 
-        let generated = run(root, &out, Some(&pinned.adapter.minecraft))
-            .expect("the tracked inputs should generate");
-
-        let names = generated
-            .java
-            .parent()
-            .expect("the generated Java has a directory")
-            .join("GameNames.java");
-        let source = std::fs::read_to_string(&names).expect("the class should be generated");
-        assert!(source.contains("final class GameNames {"), "{source}");
-        assert!(
-            !source.contains("native"),
-            "GameNames declares no native method, so ADG-1 keeps one symbol surface: {source}"
-        );
-        // Both names of every declared role, in one place a reviewer reads and
-        // the JVM links out of. Read from the surface rather than written here,
-        // so no source in this crate spells a game class name.
-        for reflected in &pinned.surface.classes {
+        run_and_inspect(root, &out, Some(&pinned.adapter.minecraft), |generated| {
+            let names = generated
+                .java
+                .parent()
+                .expect("the generated Java has a directory")
+                .join("GameNames.java");
+            let source = std::fs::read_to_string(&names).expect("the class should be generated");
+            assert!(source.contains("final class GameNames {"), "{source}");
             assert!(
-                source.contains(&format!(
-                    "    /** {}. */\n    static final String {} = \"{}\";",
-                    reflected.class, reflected.name, reflected.runtime
-                )),
-                "{} is not carried as a pair: {source}",
-                reflected.name
+                !source.contains("native"),
+                "GameNames declares no native method, so ADG-1 keeps one symbol surface: {source}"
             );
-        }
+            // Both names of every declared role, in one place a reviewer reads and
+            // the JVM links out of. Read from the surface rather than written here,
+            // so no source in this crate spells a game class name.
+            for reflected in &pinned.surface.classes {
+                assert!(
+                    source.contains(&format!(
+                        "    /** {}. */\n    static final String {} = \"{}\";",
+                        reflected.class, reflected.name, reflected.runtime
+                    )),
+                    "{} is not carried as a pair: {source}",
+                    reflected.name
+                );
+            }
+        })
+        .expect("the tracked inputs should generate");
 
         let _ = std::fs::remove_dir_all(&out);
     }
@@ -2000,35 +2160,35 @@ mod tests {
         let pinned =
             inputs::tracked_version_where(root, |adapter| !adapter.mapping_source.needs_mappings());
 
-        let generated = run(root, &out, Some(&pinned.adapter.minecraft))
-            .expect("the tracked inputs should generate");
+        run_and_inspect(root, &out, Some(&pinned.adapter.minecraft), |generated| {
+            // Where the screen landed, read off the tree rather than written here:
+            // its path below the screen root is its package, and the two together
+            // are the name a driver has to spell.
+            let mut screens = Vec::new();
+            collect_java(&generated.screens, &generated.screens, &mut screens);
+            let settings = screens
+                .iter()
+                .find(|name| name.ends_with("RavelSettingsScreen"))
+                .expect("the screen tree draws a settings screen");
 
-        // Where the screen landed, read off the tree rather than written here:
-        // its path below the screen root is its package, and the two together
-        // are the name a driver has to spell.
-        let mut screens = Vec::new();
-        collect_java(&generated.screens, &generated.screens, &mut screens);
-        let settings = screens
-            .iter()
-            .find(|name| name.ends_with("RavelSettingsScreen"))
-            .expect("the screen tree draws a settings screen");
+            let driver = std::fs::read_to_string(
+                generated
+                    .harness
+                    .join("driver")
+                    .join("SettingsScreenMain.java"),
+            )
+            .expect("the settings driver should be generated");
 
-        let driver = std::fs::read_to_string(
-            generated
-                .harness
-                .join("driver")
-                .join("SettingsScreenMain.java"),
-        )
-        .expect("the settings driver should be generated");
-
-        assert!(
-            driver.contains(&format!("{settings}.open(")),
-            "the driver has to open the screen where it was drawn, not {settings}: {driver}"
-        );
-        assert!(
-            !driver.contains(&format!("import {settings};")),
-            "a driver is in the unnamed package and imports nothing: {driver}"
-        );
+            assert!(
+                driver.contains(&format!("{settings}.open(")),
+                "the driver has to open the screen where it was drawn, not {settings}: {driver}"
+            );
+            assert!(
+                !driver.contains(&format!("import {settings};")),
+                "a driver is in the unnamed package and imports nothing: {driver}"
+            );
+        })
+        .expect("the tracked inputs should generate");
 
         let _ = std::fs::remove_dir_all(&out);
     }

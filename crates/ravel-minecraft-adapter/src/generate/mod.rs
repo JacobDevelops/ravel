@@ -306,6 +306,8 @@ struct Rendered {
     harness_java: Vec<(String, String)>,
     /// Which tree rendered each harness source, for the harness to read back.
     harness_origins: String,
+    /// Each name a stand-in was written under and the name it stands in for.
+    harness_aliases: String,
     /// The templates those screens were rendered from.
     templates: Vec<PathBuf>,
 }
@@ -549,6 +551,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         ("sibling", siblings),
     ];
     let harness_origins = harness_origins(&harness);
+    let harness_aliases = harness_aliases(&harness);
     let mut templates = screens.templates;
     let mut harness_java = Vec::new();
     for (tree, sources) in harness {
@@ -576,6 +579,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         screen_java: screens.java,
         harness_java,
         harness_origins,
+        harness_aliases,
         templates,
     })
 }
@@ -598,6 +602,21 @@ fn harness_origins(trees: &[(&str, screen::Sources)]) -> String {
     lines.into_iter().collect()
 }
 
+/// What puts the linked names back into the classes the harness compiled.
+///
+/// Written even where it is empty, and that is the point: a reader that took an
+/// absent file for an unsplit version could not tell one from a generator that
+/// never ran, and the two want opposite answers.
+fn harness_aliases(trees: &[(&str, screen::Sources)]) -> String {
+    let mut lines = BTreeSet::new();
+    for (_, sources) in trees {
+        for (written, linked) in &sources.aliases {
+            lines.insert(format!("{written}={linked}\n"));
+        }
+    }
+    lines.into_iter().collect()
+}
+
 /// Renders the four template trees this version feeds, in one place.
 ///
 /// The screen jar's own sources come first, then the harness's stand-in game,
@@ -615,35 +634,47 @@ fn sources(
 ) -> Result<[screen::Sources; 4], GenerateError> {
     let harness = pinned.directory.join(HARNESS_OVERRIDES);
     let screens = root.join(SCREEN_TEMPLATES);
+    let stand_ins = screen::Tree {
+        shared: &root.join(HARNESS_STAND_IN_TEMPLATES),
+        overrides: harness.join("game"),
+        purpose: screen::Purpose::StandIn,
+        stand_ins: true,
+    };
+    // One answer for every tree, read from the stand-in game: the harness
+    // compiles three of them together, and the fourth publishes the constants
+    // the agent jar opens the sibling by, so a tree that reached its own answer
+    // would name a class under a name nothing beside it carries.
+    let name_space = screen::name_space(&stand_ins, roles, mapping)?;
     let trees = [
         // The screen jar's own sources, whose per-version half predates the
-        // layout below and still sits beside the shared tree.
+        // layout below and still sits beside the shared tree. It compiles
+        // against the generated stubs rather than beside the stand-ins, so the
+        // game classes it names are the ones the version links.
         screen::Tree {
             shared: &screens,
             overrides: screens.join(&pinned.adapter.minecraft),
             purpose: screen::Purpose::Screen,
+            stand_ins: false,
         },
-        screen::Tree {
-            shared: &root.join(HARNESS_STAND_IN_TEMPLATES),
-            overrides: harness.join("game"),
-            purpose: screen::Purpose::StandIn,
-        },
+        stand_ins,
         screen::Tree {
             shared: &root.join(HARNESS_DRIVER_TEMPLATES),
             overrides: harness.join("driver"),
             purpose: screen::Purpose::Driver,
+            stand_ins: true,
         },
         // The sibling artifact's stand-in half is rendered the way the real one
         // is, because the agent jar opens both by the constants it holds: the
         // same name, the same package, and the unnamed package under a version
-        // that puts the game there. Nothing stubs the roles it names — it
-        // compiles against the stand-in game beside it — but every role it names
-        // is one the screen jar's own sources name too, so asking for the stub
-        // costs it nothing and the two halves cannot drift apart.
+        // that leaves nothing in one. It compiles against the stand-in game
+        // beside it, but every role it names is one the screen jar's own sources
+        // name too, so asking for the stub costs it nothing and the two halves
+        // cannot drift apart.
         screen::Tree {
             shared: &root.join(HARNESS_SIBLING_TEMPLATES),
             overrides: harness.join("sibling"),
             purpose: screen::Purpose::Screen,
+            stand_ins: true,
         },
     ];
     let mut rendered = Vec::with_capacity(trees.len());
@@ -654,6 +685,7 @@ fn sources(
             roles,
             stubs,
             mapping,
+            name_space,
         )?);
     }
     screen::every_added_template_is_reached(&rendered.iter().collect::<Vec<_>>())?;
@@ -727,6 +759,7 @@ fn write(
     let agent_release = java_directory.join("agent-release.txt");
     let screen_names = java_directory.join("ScreenNames.java");
     let harness_origins = harness_directory.join("overrides.txt");
+    let harness_aliases = harness_directory.join("aliases.txt");
     let mut digest = String::new();
     for (path, content) in [
         (&bindings, &rendered.bindings),
@@ -739,19 +772,16 @@ fn write(
         (&agent_release, &rendered.agent_release),
         (&screen_names, &rendered.screen_names_java),
         (&harness_origins, &rendered.harness_origins),
+        (&harness_aliases, &rendered.harness_aliases),
     ] {
-        write_atomically(path, content)?;
-        digest.push_str(&inputs::sha256(content.as_bytes()));
-        digest.push('\0');
+        place(path, content, &mut digest)?;
     }
     for (relative, content) in &rendered.stub_java {
         let path = stub_directory.join(relative);
         if let Some(parent) = path.parent() {
             create(parent)?;
         }
-        write_atomically(&path, content)?;
-        digest.push_str(&inputs::sha256(content.as_bytes()));
-        digest.push('\0');
+        place(&path, content, &mut digest)?;
     }
     for (directory, sources) in [
         (&screen_directory, &rendered.screen_java),
@@ -762,9 +792,7 @@ fn write(
             if let Some(parent) = path.parent() {
                 create(parent)?;
             }
-            write_atomically(&path, content)?;
-            digest.push_str(&inputs::sha256(content.as_bytes()));
-            digest.push('\0');
+            place(&path, content, &mut digest)?;
         }
     }
 
@@ -836,6 +864,17 @@ fn create(directory: &Path) -> Result<(), GenerateError> {
     fs::create_dir_all(directory).map_err(|error| {
         GenerateError::Input(format!("cannot create {}: {error}", directory.display()))
     })
+}
+
+/// Writes one generated file and folds its bytes into the digest.
+///
+/// The two travel together because a file written without being folded in is a
+/// byte the recorded digest does not cover, and nothing downstream could tell.
+fn place(path: &Path, content: &str, digest: &mut String) -> Result<(), GenerateError> {
+    write_atomically(path, content)?;
+    digest.push_str(&inputs::sha256(content.as_bytes()));
+    digest.push('\0');
+    Ok(())
 }
 
 /// Writes through a temporary name, so a generator that dies half way leaves
@@ -1015,6 +1054,115 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// The harness is told which names it was written under, whether or not any
+    /// of them moved.
+    ///
+    /// The empty case is the one worth a test: a reader that took an absent file
+    /// for "nothing moved" would read a generator that never ran as a clean
+    /// stand-in game, and the run script decides whether to run a section on it.
+    #[test]
+    fn the_generated_harness_records_the_names_it_was_written_under() {
+        let (root, _) = staged("harness-aliases");
+        let out = output("harness-aliases-out");
+
+        let generated = run(&root, &out, None).expect("the staged root generates");
+        let aliases = std::fs::read_to_string(generated.harness.join("aliases.txt"))
+            .expect("the harness root should carry an alias record");
+
+        assert!(
+            aliases.is_empty(),
+            "a version that leaves its whole game in packages moves nothing: {aliases}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// A version whose stand-in game spans both name spaces writes the whole of
+    /// it in the unnamed package and records the classes that moved.
+    ///
+    /// The tracked versions this fixture is copied from leave their game in
+    /// packages, so the split is made here: one more role, bound to a class
+    /// outside every package, which is what an obfuscated version does to all
+    /// but a handful of its classes. It is bound through `reflection.toml`
+    /// rather than the stub seeds because the seeds are resolved against a
+    /// pinned lock derived from a jar, and no jar carries this class.
+    #[test]
+    fn a_split_stand_in_game_is_written_bare_and_says_which_names_moved() {
+        let (root, directory) = staged("harness-split");
+        let out = output("harness-split-out");
+        let bare = "BARE";
+        let reflection = directory.join("reflection.toml");
+        let mut surface =
+            std::fs::read_to_string(&reflection).expect("the staged surface should be readable");
+        let _ = write!(
+            surface,
+            "\n[[reflected]]\nname = \"{bare}\"\nclass = \"{bare}\"\nruntime = \"{bare}\"\n"
+        );
+        std::fs::write(&reflection, &surface).expect("the staged surface should be writable");
+        repin(&directory, "[inputs.reflectiveSurface]", surface.as_bytes());
+        let overrides = directory.join(super::HARNESS_OVERRIDES);
+        std::fs::write(
+            overrides.join("game").join(format!("{bare}.java.in")),
+            format!("{{{{package}}}}\npublic final class {{{{{bare}}}}} {{\n}}\n"),
+        )
+        .expect("the staged template should be writable");
+        let driver = overrides.join("driver").join("Driven.java.in");
+        let reaching = std::fs::read_to_string(&driver).expect("the staged driver is readable");
+        let body = reaching
+            .strip_suffix("}\n")
+            .expect("the staged driver ends with its own brace");
+        std::fs::write(&driver, format!("{body}\x20   {{{{{bare}}}}} bare;\n}}\n"))
+            .expect("the staged driver should be writable");
+
+        let generated = run(&root, &out, None).expect("the staged root generates");
+        let aliases = std::fs::read_to_string(generated.harness.join("aliases.txt"))
+            .expect("the harness root should carry an alias record");
+
+        let lines: Vec<_> = aliases.lines().collect();
+        assert!(!lines.is_empty(), "a split version aliases what it moved");
+        for line in &lines {
+            let (written, linked) = line.split_once('=').expect("a written and a linked name");
+            assert_ne!(written, linked, "{line}");
+            assert!(!written.contains('/'), "{line}");
+            assert!(linked.contains('/'), "{line}");
+            let source = generated
+                .harness
+                .join("game")
+                .join(format!("{written}.java"));
+            let java = std::fs::read_to_string(&source).expect("the moved class is written bare");
+            assert!(
+                !java.lines().any(|line| line.starts_with("package ")),
+                "{java}"
+            );
+            assert!(java.contains(&format!("class {written} ")), "{java}");
+        }
+        // The class the version already left outside every package is written
+        // where it links and aliases nothing, which is the half a record of only
+        // the moved names would not show.
+        assert!(
+            generated
+                .harness
+                .join("game")
+                .join(format!("{bare}.java"))
+                .is_file(),
+            "the unmoved half is written under its own name"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// Re-pins one staged adapter input against the bytes just written.
+    fn repin(directory: &Path, table: &str, bytes: &[u8]) {
+        let path = directory.join("adapter.toml");
+        let document = std::fs::read_to_string(&path).expect("readable");
+        let rewritten =
+            inputs::replace_pin(&document, table, &inputs::sha256(bytes), bytes.len() as u64)
+                .expect("the staged inputs pin that table");
+        std::fs::write(&path, rewritten).expect("writable");
     }
 
     /// The output lock spans the caller's read, not just the write.

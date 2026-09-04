@@ -113,6 +113,9 @@ struct Version<'a> {
     mapping: &'a Mapping,
     /// The linked internal name of every role the templates reference.
     linked: &'a BTreeMap<String, String>,
+    /// Whether a game class this tree names is spelled by the name the
+    /// stand-in beside it was written under rather than by the one it links.
+    aliased: bool,
     /// The package Ravel's own screens are drawn in, where this version leaves
     /// one. A driver names them by the whole name rather than importing it,
     /// because the name a driver spells has to be legal from the unnamed
@@ -130,6 +133,26 @@ pub(super) struct Tree<'a> {
     pub(super) overrides: PathBuf,
     /// What the tree renders.
     pub(super) purpose: Purpose,
+    /// Whether this tree is compiled beside the stand-in game rather than
+    /// against the stub tree, which is what says whether a game class it names
+    /// is spelled the way the stand-ins were written or the way they link.
+    pub(super) stand_ins: bool,
+}
+
+/// Where one version's linked names fall, answered once for every tree it
+/// renders.
+///
+/// One answer rather than four, because the four are read together: the name the
+/// agent jar publishes for a screen is the name the sibling half compiled beside
+/// the stand-ins has to have been written under, and a tree that reached its own
+/// answer from its own roles would publish one and write the other.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct NameSpace {
+    /// Whether Ravel's own classes are written in the unnamed package.
+    unnamed: bool,
+    /// Whether the game spans the unnamed package and named ones at once, which
+    /// is what makes a stand-in's written name differ from the name it links.
+    split: bool,
 }
 
 /// Everything one version's sources from one template tree come to.
@@ -150,6 +173,9 @@ pub(super) struct Sources {
     referenced: BTreeSet<String>,
     /// Each template this version added rather than replaced, with its role.
     added: Vec<(String, PathBuf)>,
+    /// Each stand-in whose written name is not its linked one, as the name it
+    /// is written under and the name it stands in for.
+    pub(super) aliases: Vec<(String, String)>,
 }
 
 /// Renders every tracked template into the name space the version links.
@@ -165,6 +191,7 @@ pub(super) fn render(
     roles: &Roles,
     stubs: &[Stub],
     mapping: &Mapping,
+    name_space: NameSpace,
 ) -> Result<Sources, GenerateError> {
     let purpose = tree.purpose;
     let Templates {
@@ -223,7 +250,13 @@ pub(super) fn render(
     // in packages they stay where ADG-6 put them, which is why an unobfuscated
     // version generates the sources it already had. A driver is launched by the
     // name a command line spells, so it has no package to lose under either.
-    let unnamed = linked.values().any(|name| render::split(name).0.is_none());
+    // Which of the two it is comes from the stand-in game rather than from this
+    // tree's own roles, because the four trees are read together: a tree whose
+    // roles happened to all be packaged would otherwise draw a screen in a
+    // package that the tree beside it, and the constant the agent jar opens it
+    // by, spell bare.
+    let NameSpace { unnamed, split } = name_space;
+    every_name_is_nameable(tree, &linked, unnamed)?;
     let screens = (!unnamed).then_some(SCREEN_PACKAGE);
     let owned = match purpose {
         Purpose::Screen => screens.map(str::to_owned),
@@ -237,18 +270,24 @@ pub(super) fn render(
         stubs,
         mapping,
         linked: &linked,
+        aliased: split && tree.stand_ins,
         screens,
     };
     let mut java = Vec::with_capacity(read.len());
     let mut names = Vec::with_capacity(read.len());
+    let mut aliases = Vec::new();
     for template in &read {
         // A stand-in is placed and named by the class it declares; Ravel's own
         // sources are placed and named by the template that renders them.
         let (package, simple, relative) = if purpose == Purpose::StandIn {
-            let declared = linked
+            let linked_name = linked
                 .get(&template.name)
                 .ok_or_else(|| unresolved_role(template, &template.name))?;
-            let (package, simple) = render::split(declared);
+            let declared = render::alias(linked_name, version.aliased);
+            if &declared != linked_name {
+                aliases.push((declared.clone(), linked_name.clone()));
+            }
+            let (package, simple) = render::split(&declared);
             (package, simple.to_owned(), format!("{declared}.java"))
         } else {
             let relative = match &owned {
@@ -278,6 +317,7 @@ pub(super) fn render(
         origins,
         referenced,
         added,
+        aliases,
     })
 }
 
@@ -323,6 +363,35 @@ fn unresolved_role(template: &Template, role: &str) -> GenerateError {
         template,
         GenerateError::Unresolved(format!("no linked name was resolved for the role {role}")),
     )
+}
+
+/// Refuses a tree that reaches past the stand-in game's name space.
+///
+/// The one answer every tree renders under comes from the stand-in game, and
+/// this is the case it does not cover: a version whose game is in packages puts
+/// Ravel's own sources in one too, and a source in a package can name nothing
+/// outside every package. Said here, where the tree that asked is still in hand,
+/// rather than by javac a compilation later.
+///
+/// # Errors
+///
+/// Returns an error naming the first such class.
+fn every_name_is_nameable(
+    tree: &Tree<'_>,
+    linked: &BTreeMap<String, String>,
+    unnamed: bool,
+) -> Result<(), GenerateError> {
+    let outside = (!unnamed)
+        .then(|| linked.values().find(|name| render::split(name).0.is_none()))
+        .flatten();
+    match outside {
+        Some(outside) => Err(GenerateError::Unsupported(format!(
+            "{} names {outside}, which this version links outside every package, while its \
+             stand-in game is in packages and Ravel's own sources here are too",
+            tree.shared.display()
+        ))),
+        None => Ok(()),
+    }
 }
 
 /// One template's failure, said with the template that carries it.
@@ -535,6 +604,38 @@ struct Template {
     placeholders: Vec<Placeholder>,
 }
 
+/// Reads that answer off the stand-in game, which is the tree that holds it.
+///
+/// The stand-in game is asked rather than each tree in turn because it is the
+/// game: what the other three name is a subset of it, and the harness compiles
+/// all three in one javac invocation, so one class has to have one name across
+/// them. Every refusal here is one [`render`] would reach on the same template,
+/// said the same way, because it reads the templates the same way.
+///
+/// # Errors
+///
+/// Returns an error when a template is unreadable or not named after the Java
+/// source it renders, or when nothing binds the role it is named after.
+pub(super) fn name_space(
+    tree: &Tree<'_>,
+    roles: &Roles,
+    mapping: &Mapping,
+) -> Result<NameSpace, GenerateError> {
+    let mut linked = Vec::new();
+    for path in templates(tree)?.rendered {
+        let template = template(&path)?;
+        let class = roles
+            .class(&template.name)
+            .map_err(|error| in_template(&template, error))?;
+        linked.push(mapping.runtime_class(&class).to_owned());
+    }
+    let names = || linked.iter().map(String::as_str);
+    Ok(NameSpace {
+        unnamed: names().any(|name| render::split(name).0.is_none()),
+        split: render::name_space_is_split(names()),
+    })
+}
+
 /// Reads one template and everything its placeholders ask for.
 fn template(path: &Path) -> Result<Template, GenerateError> {
     let text = fs::read_to_string(path).map_err(|error| {
@@ -715,7 +816,7 @@ fn resolve(
         // nothing: the language refuses the import and the simple name is the
         // whole name.
         Placeholder::Import(class) => {
-            let linked = name(class)?;
+            let linked = render::alias(&name(class)?, version.aliased);
             Ok(match render::split(&linked).0 {
                 Some(_) => format!("import {};", render::source_name(&linked)),
                 None => String::new(),
@@ -888,8 +989,27 @@ mod tests {
             shared,
             overrides: shared.join(version),
             purpose,
+            stand_ins: purpose != Purpose::Screen,
         }
     }
+
+    /// A version that leaves its whole game in packages.
+    const PACKAGED: NameSpace = NameSpace {
+        unnamed: false,
+        split: false,
+    };
+
+    /// One that leaves none of it in one, which is the ordinary obfuscated case.
+    const UNNAMED: NameSpace = NameSpace {
+        unnamed: true,
+        split: false,
+    };
+
+    /// One that does both at once, which is the case an alias exists for.
+    const SPLIT: NameSpace = NameSpace {
+        unnamed: true,
+        split: true,
+    };
 
     use std::fmt::Write as _;
 
@@ -1180,6 +1300,7 @@ com.example.util.Held -> com.example.util.Held:
                 &roles(&pinned.seeds),
                 &stubs,
                 &mapping,
+                UNNAMED,
             )
             .expect("the tracked templates should render against an obfuscated mapping");
 
@@ -1252,6 +1373,7 @@ com.example.util.Held -> com.example.util.Held:
                 &roles(&pinned.seeds),
                 &stubs,
                 &mapping,
+                UNNAMED,
             )
             .expect("the tracked templates should render");
 
@@ -1663,6 +1785,7 @@ com.example.util.Held -> com.example.util.Held:
             &roles(&seeds()),
             &stubs(),
             &proguard(),
+            PACKAGED,
         )
         .expect("the seeds bind the role the template is named after");
 
@@ -1689,6 +1812,7 @@ com.example.util.Held -> com.example.util.Held:
             &roles(&seeds()),
             &stubs(),
             &proguard(),
+            UNNAMED,
         )
         .expect("the seeds bind the role the template is named after");
 
@@ -1696,6 +1820,247 @@ com.example.util.Held -> com.example.util.Held:
         assert_eq!(relative, "a.java");
         assert!(!source.starts_with("package "), "{source}");
         assert!(source.contains("public class a {"), "{source}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Where a version's name space is split, every stand-in is written in the
+    /// unnamed package and the ones whose class was not says so.
+    ///
+    /// Both halves are asked of one render, because what a split version needs
+    /// is not two right answers but one name space: a generator that moved the
+    /// packaged class and left the unnamed one where it was would pass a test
+    /// that only looked at the class it moved.
+    #[test]
+    fn a_split_name_space_is_written_in_the_one_package_both_halves_can_be_named_from() {
+        let root = staged_tree(
+            "split-declaring",
+            "Clock.java.in",
+            "{{package}}\npublic class {{Clock}} {\n}\n",
+        );
+        std::fs::write(
+            root.join("Surface.java.in"),
+            "{{package}}\npublic class {{Surface}} {\n}\n",
+        )
+        .expect("the second template should be written");
+
+        let rendered = render(
+            &tree(&root, "0.0.0-none", Purpose::StandIn),
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            SPLIT,
+        )
+        .expect("the seeds bind both roles");
+
+        let written = rendered.java.iter().map(|(path, _)| path.as_str());
+        assert_eq!(written.collect::<Vec<_>>(), ["Held.java", "a.java"]);
+        for (_, source) in &rendered.java {
+            assert!(!source.starts_with("package "), "{source}");
+        }
+        assert_eq!(
+            rendered.aliases,
+            [("Held".to_owned(), "com/example/util/Held".to_owned())]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A version whose game is in one name space already is written where its
+    /// classes link, and records no alias at all.
+    #[test]
+    fn an_unsplit_name_space_is_written_where_its_classes_link_and_aliases_nothing() {
+        let root = staged_tree(
+            "unsplit-declaring",
+            "Clock.java.in",
+            "{{package}}\npublic class {{Clock}} {\n}\n",
+        );
+
+        let rendered = render(
+            &tree(&root, "0.0.0-none", Purpose::StandIn),
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            PACKAGED,
+        )
+        .expect("the seeds bind the role the template is named after");
+
+        assert_eq!(rendered.java[0].0, "com/example/util/Held.java");
+        assert!(rendered.aliases.is_empty(), "{:?}", rendered.aliases);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A source naming a class the split moved names it the way the unnamed
+    /// package is named: bare, and imported by nothing.
+    ///
+    /// The screen Ravel draws is in the same line, and it is the control: its
+    /// name is Ravel's own rather than the game's, so nothing about a split
+    /// game may rewrite it.
+    #[test]
+    fn a_reference_to_a_moved_class_loses_its_import_and_a_ravel_screen_keeps_its_name() {
+        let root = staged_tree(
+            "split-driver",
+            "Driven.java.in",
+            "{{package}}\n{{import Clock}}\npublic class Driven {\n    {{Clock}} held;\n    \
+             {{ravel RavelSettingsScreen}} screen;\n}\n",
+        );
+
+        let rendered = render(
+            &tree(&root, "0.0.0-none", Purpose::Driver),
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            SPLIT,
+        )
+        .expect("a driver names roles like anything else");
+
+        let (_, source) = &rendered.java[0];
+        assert!(!source.contains("import "), "{source}");
+        assert!(source.contains("    Held held;"), "{source}");
+        assert!(
+            source.contains("    RavelSettingsScreen screen;"),
+            "{source}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The name the agent jar publishes for a screen is the name the half
+    /// compiled beside the stand-ins was written under.
+    ///
+    /// The two are rendered from one name space rather than from their own
+    /// roles, and that is the whole point: the screen jar's sources name a class
+    /// this version leaves in a package, so a tree that answered from what it
+    /// held would draw the screen in a package and publish that name, while the
+    /// sibling beside the stand-ins drew the same class bare. The agent jar
+    /// opens one name.
+    #[test]
+    fn the_published_screen_name_is_the_one_the_half_beside_the_stand_ins_was_written_under() {
+        let root = staged_screen("split-published", TICKING);
+        let bound = roles_over(&seeds(), &[("Ticker", "com.example.util.Held")], &[]);
+        let sibling = Tree {
+            shared: &root,
+            overrides: root.join("0.0.0-none"),
+            purpose: Purpose::Screen,
+            stand_ins: true,
+        };
+
+        let screens = render(
+            &tree(&root, "0.0.0-none", Purpose::Screen),
+            &adapter(),
+            &bound,
+            &stubs(),
+            &proguard(),
+            SPLIT,
+        )
+        .expect("the screen jar renders against the stubs");
+        let siblings = render(&sibling, &adapter(), &bound, &stubs(), &proguard(), SPLIT)
+            .expect("the sibling half renders against the stand-ins");
+
+        assert_eq!(screens.names, siblings.names);
+        assert_eq!(screens.java[0].0, siblings.java[0].0);
+        // What the two halves may differ in is the game class they spell, and
+        // they have to: the screen jar compiles against the stub tree, which
+        // carries the linked name, and the sibling against the stand-in written
+        // beside it.
+        assert!(
+            screens.java[0].1.contains("import com.example.util.Held;"),
+            "{}",
+            screens.java[0].1
+        );
+        assert!(
+            !siblings.java[0].1.contains("import "),
+            "{}",
+            siblings.java[0].1
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A tree reaching past the stand-in game to a class outside every package,
+    /// under a version whose game is in packages, is refused here.
+    ///
+    /// It is the one case one name space for every tree does not cover, and the
+    /// refusal is what keeps the answer safe to share: javac would reach it too,
+    /// a compilation later and without the template in hand.
+    #[test]
+    fn a_packaged_version_naming_a_class_outside_every_package_is_refused() {
+        let root = staged_screen(
+            "packaged-outside",
+            "{{package}}\n{{import Surface}}\nclass Shared { {{Surface}} held; }\n",
+        );
+
+        let Err(error) = render(
+            &tree(&root, "0.0.0-none", Purpose::Screen),
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            PACKAGED,
+        ) else {
+            panic!("a source in a package cannot name a class outside every package");
+        };
+
+        assert!(matches!(error, GenerateError::Unsupported(_)), "{error}");
+        let message = error.to_string();
+        assert!(message.contains('a'), "{message}");
+        assert!(message.contains("outside every package"), "{message}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The one answer is read off the stand-in game, and a stand-in game that
+    /// spans both name spaces says so.
+    #[test]
+    fn the_stand_in_game_is_what_says_whether_the_name_space_is_split() {
+        let root = staged_tree(
+            "asked-split",
+            "Clock.java.in",
+            "{{package}}\npublic class {{Clock}} {\n}\n",
+        );
+        let one = name_space(
+            &tree(&root, "0.0.0-none", Purpose::StandIn),
+            &roles(&seeds()),
+            &proguard(),
+        )
+        .expect("the seeds bind the role the template is named after");
+        assert!(!one.split && !one.unnamed);
+
+        std::fs::write(
+            root.join("Surface.java.in"),
+            "{{package}}\npublic class {{Surface}} {\n}\n",
+        )
+        .expect("the second template should be written");
+        let both = name_space(
+            &tree(&root, "0.0.0-none", Purpose::StandIn),
+            &roles(&seeds()),
+            &proguard(),
+        )
+        .expect("the seeds bind both roles");
+        assert!(both.split && both.unnamed);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Asking that question first does not cost the reader the diagnostic that
+    /// names the file: a template named after a role nothing binds is refused
+    /// with its own path, whichever of the two reaches it.
+    #[test]
+    fn a_stand_in_naming_a_role_nothing_binds_is_refused_with_its_file_before_anything_renders() {
+        let root = staged_tree(
+            "asked-unbound",
+            "Unbound.java.in",
+            "{{package}}\npublic class {{Unbound}} {\n}\n",
+        );
+
+        let error = name_space(
+            &tree(&root, "0.0.0-none", Purpose::StandIn),
+            &roles(&seeds()),
+            &proguard(),
+        )
+        .expect_err("no admission list binds the role the template is named after");
+
+        let message = error.to_string();
+        assert!(message.contains("Unbound.java.in"), "{message}");
+        assert!(message.contains("Unbound"), "{message}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1715,6 +2080,7 @@ com.example.util.Held -> com.example.util.Held:
             &roles(&seeds()),
             &stubs(),
             &proguard(),
+            PACKAGED,
         )
         .expect("a driver names roles like anything else");
 
@@ -1747,6 +2113,7 @@ com.example.util.Held -> com.example.util.Held:
             &roles(&seeds()),
             &stubs(),
             &proguard(),
+            UNNAMED,
         )
         .expect("the seeds bind the role the driver names");
 
@@ -1776,6 +2143,7 @@ com.example.util.Held -> com.example.util.Held:
             &roles(&seeds()),
             &stubs(),
             &proguard(),
+            PACKAGED,
         ) else {
             panic!("no admission list binds the role the template is named after");
         };
@@ -1843,10 +2211,18 @@ com.example.util.Held -> com.example.util.Held:
             shared: &shared,
             overrides: overrides.clone(),
             purpose: Purpose::StandIn,
+            stand_ins: true,
         };
         let render_game = || {
-            render(&game, &adapter(), &roles(&seeds()), &stubs(), &proguard())
-                .expect("both roles are bound")
+            render(
+                &game,
+                &adapter(),
+                &roles(&seeds()),
+                &stubs(),
+                &proguard(),
+                SPLIT,
+            )
+            .expect("both roles are bound")
         };
 
         let naming = staged_tree(
@@ -1858,9 +2234,17 @@ com.example.util.Held -> com.example.util.Held:
             shared: &naming,
             overrides: naming.join("0.0.0-none"),
             purpose: Purpose::Driver,
+            stand_ins: true,
         };
-        let drivers = render(&driver, &adapter(), &roles(&seeds()), &stubs(), &proguard())
-            .expect("the driver names a bound role");
+        let drivers = render(
+            &driver,
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            SPLIT,
+        )
+        .expect("the driver names a bound role");
         every_added_template_is_reached(&[&render_game(), &drivers])
             .expect("the driver in the other tree reaches the stand-in");
 
@@ -1873,9 +2257,17 @@ com.example.util.Held -> com.example.util.Held:
             shared: &silent,
             overrides: silent.join("0.0.0-none"),
             purpose: Purpose::Driver,
+            stand_ins: true,
         };
-        let quiet = render(&quiet, &adapter(), &roles(&seeds()), &stubs(), &proguard())
-            .expect("a driver may name nothing");
+        let quiet = render(
+            &quiet,
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            SPLIT,
+        )
+        .expect("a driver may name nothing");
 
         let Err(error) = every_added_template_is_reached(&[&render_game(), &quiet]) else {
             panic!("nothing this version renders names the added stand-in");
@@ -1941,6 +2333,7 @@ com.example.util.Held -> com.example.util.Held:
             &bound,
             &stubs(),
             &proguard(),
+            PACKAGED,
         )
         .expect("reflection.toml binds the role the template names");
 
@@ -1961,6 +2354,7 @@ com.example.util.Held -> com.example.util.Held:
             &bound,
             &stubs(),
             &proguard(),
+            PACKAGED,
         )
         .expect("hooks.toml binds the role the template names");
 
@@ -1985,6 +2379,7 @@ com.example.util.Held -> com.example.util.Held:
             &bound,
             &stubs(),
             &proguard(),
+            PACKAGED,
         ) else {
             panic!("two lists bind the role to two classes");
         };

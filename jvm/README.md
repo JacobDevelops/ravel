@@ -160,6 +160,31 @@ files it wants.
   they compile against the stand-in game rather than against the stubs, and stand
   in for the codec stack the harness has no game to encode against.
 
+A version that obfuscates need not put its whole game in one place: it may leave
+a handful of classes in `net.minecraft` and move the rest out of every package,
+and a class inside a package cannot name one outside every package, because Java
+has no syntax for it. A stand-in game split that way cannot be written down at
+all. So where a version's stand-in roles span both, every one of them is written
+in the unnamed package — the one name space both halves can be spelled in, and
+the one all but a handful of the classes are already in — and the pairs whose
+written name is not the name the version links are recorded in
+`generated-harness/aliases.txt`, one `written=linked` line each. The file is
+written whichever way the version falls, so an unsplit version leaves it empty
+rather than absent and a reader can tell a version that needs no alias from a
+generator that never ran. Ravel's own classes follow the same answer, which is
+read off the stand-in game once and rendered under by every tree: the name
+`ScreenNames` publishes for a screen has to be the name the sibling half beside
+the stand-ins was written under, and a tree that decided from its own roles
+would publish one name and write the other.
+
+Until those names are put back, a class an alias moved compiles under a name the
+agent jar's adapters do not resolve. The run script reads `aliases.txt` to decide
+and skips the one section whose seam is declared on a class it names, so a
+version that stops needing the alias starts running that section without
+anything being edited. Nothing else is affected: an alias moves only the handful
+of classes the version leaves in a package, and every other stand-in is written
+under the name it links.
+
 What a version renders instead of a shared template lives under
 `minecraft/versions/<version>/harness/game/`, `.../harness/driver/` and
 `.../harness/sibling/` — one directory per shared tree, and all three are read —

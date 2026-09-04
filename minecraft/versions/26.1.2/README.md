@@ -7,7 +7,7 @@ hook data is intentionally absent.
 This version carries 39 reviewed hooks and records 0 non-goals. Both counts are
 checked against `hooks.toml` by the scaffold contract.
 
-`harness/` holds the eight JVM-harness templates only this version renders.
+`harness/` holds the seven JVM-harness templates only this version renders.
 `harness/game/Registries.java.in` and `harness/game/ResourceKey.java.in` are the
 root key and the key type this version's properties builders demand before a
 block or an item exists; `harness/game/SOUND_PLAY_RESULT.java.in` is what a play
@@ -24,19 +24,10 @@ class: this version's world-load seam takes the optional rule overrides a world
 is created with and the other's takes none, and a class is declared once or not
 at all.
 
-`harness/game/SERVER.java.in` is here for a different reason, and the reason is
-the Java language rather than the game. Both versions have this class. This one
-leaves its whole game in packages, so a stand-in for the saving server can name
-the level and the resource constant its two reflected members are typed by; the
-other splits its game between `net.minecraft` and the unnamed package, and
-nothing inside a package can name a class outside every package. That version
-renders no stand-in for it, and its `adapter.toml` records the persistence section
-as one it does not run.
-
 `harness/game/chat.filter-text.java.in` is a shape difference of the same kind:
 this version's hook table pins a fourth target on the chat text class, the
 character filter, which the other version's does not, so the settings stand-in
 here carries four members where the shared template carries three.
 
-Each of the eight has to be reached by something this version renders, or the
+Each of the seven has to be reached by something this version renders, or the
 generator refuses it as an override that outlived the template it shadowed.

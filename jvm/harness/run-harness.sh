@@ -412,22 +412,33 @@ install_seams() {
 install_seams persist_seams \
 	worldOpenPersistence worldSavePersistence worldCreatePackRepository screenCreateWorldInit
 
-# Whether this version's stand-in game carries the class the save seam is
-# declared on, which is what says the whole section can be written at all.
+# Whether the save seam's receiver compiles under the name the adapter resolves
+# it by, which is what says the whole section can be run at all.
 #
 # The obstacle is the Java language rather than the game. A version that
 # obfuscates leaves a handful of classes in `net.minecraft` and moves the rest
 # into the unnamed package, and a class inside a package cannot name one outside
-# every package — javac has no syntax for it. The save seam's receiver is one of
-# the classes left behind, and the two members the adapter reaches on it are
-# typed by classes that moved, so that version renders no stand-in for it and the
-# section has no receiver to save through. Asked of the generated tree rather
-# than written down, so a version that gains one starts running here without
-# anything being edited, and a version that loses one stops.
+# every package — javac has no syntax for it. The generator answers that by
+# writing the whole stand-in game in the unnamed package, which is the one name
+# space both halves can be spelled in, and records in `aliases.txt` every class
+# it moved to get there, as `written=linked`. The adapter looks its receiver up
+# by the linked name, so a receiver that appears there is one this section has no
+# way to save through until the packages are put back. Every other class is
+# written under the name it links, so an alias somewhere else costs this section
+# nothing. Asked of the generated tree rather than written down, so a version
+# that stops needing the alias starts running here without anything being edited.
 persistence_receiver="$(hook_seam worldSavePersistence)"
 persistence_receiver="${persistence_receiver%%:*}"
-persistence_receiver_source="$standin_game/$persistence_receiver.java"
-if [ -f "$persistence_receiver_source" ]; then
+aliases="$standins/aliases.txt"
+if [ ! -f "$aliases" ]; then
+	echo "the generated stand-in game names no aliases.txt, so nothing says which names" >&2
+	echo "it was written under; run:" >&2
+	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	exit 1
+fi
+persistence_receiver_written="$(awk -F= -v linked="$persistence_receiver" \
+	'$2 == linked { print $1 }' "$aliases")"
+if [ -z "$persistence_receiver_written" ]; then
 
 # ADG-7's world persistence seams and the two data pack seams, against the
 # generated stand-in game. The adapter is reflective and reaches the sibling
@@ -700,14 +711,16 @@ fi
 section_ran persistence
 else
 	# Said rather than silent, because the absence and a section that broke look
-	# the same from outside: this is the one section a version may be short of a
-	# stand-in for, and a run that skipped it without naming what it looked for
-	# reads as a run that passed it. What keeps the skip honest is elsewhere —
-	# `cargo xtask verify gate-versions` refuses a version whose `adapter.toml`
-	# does not declare this section not run — so this line is the reader's half.
+	# the same from outside: this is the one section a version may be unable to
+	# name its receiver in, and a run that skipped it without naming what it
+	# looked for reads as a run that passed it. What keeps the skip honest is
+	# elsewhere — `cargo xtask verify gate-versions` refuses a version whose
+	# `adapter.toml` does not declare this section not run — so this line is the
+	# reader's half.
 	echo "the persistence section is not run here: the generated hook table declares the" >&2
-	echo "save seam on $persistence_receiver, and this version's stand-in game holds no" >&2
-	echo "$persistence_receiver_source to save through" >&2
+	echo "save seam on $persistence_receiver, and this version's stand-in game is written in" >&2
+	echo "one name space, so $standin_game/$persistence_receiver_written.java stands in for it" >&2
+	echo "under a name the adapter does not resolve" >&2
 fi
 
 # The content-registration seam, against the generated stand-in game. The adapter

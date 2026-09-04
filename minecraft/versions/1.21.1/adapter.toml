@@ -95,7 +95,7 @@ upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa60
 # and so does a line whose section has started running again.
 
 [harness.notRun]
-persistence = "this version splits its game between `net.minecraft` and the unnamed package, and Java cannot name a class outside every package from inside one, so the save seam's receiver has no stand-in a compiler will read; work package: emit the stand-in game as class files rather than as Java where a version's name spaces are split"
+persistence = "this version splits its game between `net.minecraft` and the unnamed package, and Java cannot name a class outside every package from inside one, so its stand-in game is written in the unnamed package whole and the save seam's receiver compiles under a name the adapter does not resolve; work package: emit the stand-in game as class files rather than as Java where a version's name spaces are split"
 
 # The three hashes below pin the reviewed files beside this one.
 

@@ -1584,6 +1584,43 @@ pub(super) fn split(class: &str) -> (Option<String>, &str) {
         })
 }
 
+/// Whether these linked names span the unnamed package and named ones at once.
+pub(super) fn name_space_is_split<'a>(classes: impl IntoIterator<Item = &'a str>) -> bool {
+    let (mut named, mut unnamed) = (false, false);
+    for class in classes {
+        if split(class).0.is_none() {
+            unnamed = true;
+        } else {
+            named = true;
+        }
+    }
+    named && unnamed
+}
+
+/// The internal name a source declares and names one linked class by.
+///
+/// Java source inside a package cannot name a class outside every package — the
+/// language has no syntax for it — so a version that splits its game across the
+/// two has no source form for the packaged half at all. Where it is split, every
+/// class is written in the unnamed package instead, which is the only name space
+/// both halves can be spelled in and leaves javac one name per class. The
+/// package is put back into the compiled class files afterwards, so what the JVM
+/// links is still the linked name.
+///
+/// The alias runs this way round rather than lifting the unnamed half into a
+/// package of Ravel's own because the packaged half is the small one: an
+/// obfuscated version leaves a handful of classes named and moves the rest out
+/// of every package, so writing them all as the majority already is renames the
+/// fewest classes and leaves the harness's compiled names the ones the adapter
+/// resolves for all but those few.
+pub(super) fn alias(class: &str, split_name_space: bool) -> String {
+    if split_name_space {
+        split(class).1.to_owned()
+    } else {
+        class.to_owned()
+    }
+}
+
 /// An internal class name as Java source writes it.
 pub(super) fn source_name(class: &str) -> String {
     class.replace('/', ".")
@@ -1650,13 +1687,14 @@ pub(super) fn java_type(descriptor: &str) -> Result<(String, &str), String> {
 #[cfg(test)]
 mod tests {
     use super::super::inputs::{
-        Adapter, Harness, Hook, Input, Inputs, Inventory, Kind, MappingSource, PackFormat, Spelling,
+        Adapter, Harness, Hook, Input, Inputs, Inventory, Kind, MappingSource, PackFormat,
+        Reflected, Reflection, Spelling,
     };
     use super::super::resolve::Resolved;
     use super::super::stubs::{Member as StubMember, Stub};
     use super::{
-        JavaType, bindings, constant_name, exports, hook_java, java_name, parameters, rust_name,
-        shapes,
+        JavaType, alias, bindings, constant_name, exports, game_names, hook_java, java_name,
+        name_space_is_split, parameters, rust_name, shapes,
     };
     use super::{Mapping, java_type, signature, stub_java, stub_lock};
 
@@ -1698,6 +1736,58 @@ mod tests {
                 stubs_lock: unpinned(),
             },
         }
+    }
+
+    /// The alias moves a class only where the two name spaces meet, and moves
+    /// it to the one the other half is already in.
+    #[test]
+    fn a_split_name_space_writes_every_class_where_the_unnamed_half_already_is() {
+        assert!(name_space_is_split(["a", "com/example/Held"]));
+        assert!(!name_space_is_split(["a", "b"]));
+        assert!(!name_space_is_split([
+            "com/example/Held",
+            "com/example/Kept"
+        ]));
+
+        assert_eq!(alias("com/example/Held", true), "Held");
+        assert_eq!(alias("a", true), "a");
+        assert_eq!(alias("com/example/Held", false), "com/example/Held");
+    }
+
+    /// What the agent resolves is the name the version links, whatever name the
+    /// stand-in beside it was written under.
+    ///
+    /// The two are one string under every version the harness can run, and a
+    /// generator that aliased this one would make the harness agree with itself
+    /// and with nothing the game loads.
+    #[test]
+    fn the_names_the_adapters_resolve_are_the_linked_ones_under_a_split_name_space() {
+        let surface = Reflection {
+            schema_version: 1,
+            minecraft: String::from("0.0.0"),
+            classes: vec![
+                Reflected {
+                    name: String::from("SERVER"),
+                    class: String::from("com.example.server.Held"),
+                    runtime: String::from("com/example/server/Held"),
+                    members: Vec::new(),
+                },
+                Reflected {
+                    name: String::from("SURFACE"),
+                    class: String::from("com.example.gui.Panel"),
+                    runtime: String::from("a"),
+                    members: Vec::new(),
+                },
+            ],
+        };
+
+        let java = game_names(&adapter(), &surface);
+
+        assert!(
+            java.contains("SERVER = \"com/example/server/Held\";"),
+            "{java}"
+        );
+        assert!(java.contains("SURFACE = \"a\";"), "{java}");
     }
 
     /// An inventory and its resolution, from entries written the same way the

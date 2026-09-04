@@ -1,15 +1,16 @@
-import dev.ravel.jvm.screen.RavelProfilingScreen;
+{{package}}
+
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.events.GuiEventListener;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
+{{import Button}}
+{{import EditBox}}
+{{import GuiEventListener}}
+{{import Minecraft}}
+{{import Screen}}
 
 /**
  * Builds the profiling screen at the window sizes a player's GUI scale produces
@@ -56,7 +57,7 @@ public final class ProfilingScreenMain {
      * GUI scale divides the monitor down to. 320x240 is the smallest the game
      * guarantees, and 480x270 is what auto scale gives a 1080p monitor.
      */
-    private static final int[][] SIZES = {{320, 240}, {480, 270}, {640, 360}, {960, 540}};
+    private static final int[][] SIZES = { {320, 240}, {480, 270}, {640, 360}, {960, 540} };
 
     /**
      * The sizes the driven run reports, which is {@link #SIZES} without 640x360.
@@ -70,7 +71,7 @@ public final class ProfilingScreenMain {
      * before the table and the largest draws the whole set, so both are decided by
      * the budget rather than by a timing; only this one sits on the boundary.
      */
-    private static final int[][] DRIVEN_SIZES = {{320, 240}, {480, 270}, {960, 540}};
+    private static final int[][] DRIVEN_SIZES = { {320, 240}, {480, 270}, {960, 540} };
 
     /** How many ticks the driven run shows the mod set. */
     private static final int TICKS = 4;
@@ -90,31 +91,31 @@ public final class ProfilingScreenMain {
             // report is of this run rather than an empty one that happens to
             // draw.
             for (int tick = 0; tick < TICKS; tick++) {
-                Minecraft.getInstance().tick();
+                {{Minecraft}}.{{Minecraft#getInstance}}().{{client.tick#tick}}();
             }
         }
 
-        Method init = RavelProfilingScreen.class.getDeclaredMethod("init");
+        Method init = {{ravel RavelProfilingScreen}}.class.getDeclaredMethod("{{Screen#init}}");
         init.setAccessible(true);
 
         // One screen per size. The stand-in screen keeps every widget it is ever
         // given, so a second `init` on the same one would be read as a longer
         // report rather than as a second layout of the same one.
         for (int[] size : driven ? DRIVEN_SIZES : SIZES) {
-            Screen screen = RavelProfilingScreen.open();
-            screen.width = size[0];
-            screen.height = size[1];
+            {{Screen}} screen = {{ravel RavelProfilingScreen}}.open();
+            screen.{{Screen#width}} = size[0];
+            screen.{{Screen#height}} = size[1];
             init.invoke(screen);
 
             List<String> lines = new ArrayList<>();
             boolean fits = true;
             int bottom = 0;
-            for (GuiEventListener widget : screen.widgets()) {
-                if (widget instanceof EditBox box) {
-                    lines.add(box.getValue());
+            for ({{GuiEventListener}} widget : screen.widgets()) {
+                if (widget instanceof {{EditBox}} box) {
+                    lines.add(box.{{EditBox#getValue}}());
                     fits &= box.fits();
                     bottom = Math.max(bottom, box.y() + box.height());
-                } else if (widget instanceof Button button) {
+                } else if (widget instanceof {{Button}} button) {
                     bottom = Math.max(bottom, button.y() + button.height());
                 }
             }
@@ -125,14 +126,14 @@ public final class ProfilingScreenMain {
             if (driven) {
                 System.out.println("driven=" + size[0] + "x" + size[1]
                         + " fits=" + fits
-                        + " within=" + (bottom <= screen.height)
+                        + " within=" + (bottom <= screen.{{Screen#height}})
                         + " ticks=" + (claimsTicks(lines) ? "claimed" : "none")
                         + " entered=" + calls(lines));
             } else {
                 System.out.println("size=" + size[0] + "x" + size[1]
                         + " rows=" + lines.size()
                         + " fits=" + fits
-                        + " within=" + (bottom <= screen.height)
+                        + " within=" + (bottom <= screen.{{Screen#height}})
                         + " caveat=" + (caveat(lines).equals(CAVEAT) ? "whole" : "truncated")
                         + " ticks=" + (claimsTicks(lines) ? "claimed" : "none")
                         + " named=" + named(lines));

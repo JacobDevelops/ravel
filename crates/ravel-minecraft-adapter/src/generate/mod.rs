@@ -1982,6 +1982,78 @@ mod tests {
         let _ = std::fs::remove_dir_all(&out);
     }
 
+    /// A driver names Ravel's own screen by the whole name, wherever it landed.
+    ///
+    /// The screens move with the game: a screen extends a game class, so a
+    /// version that draws the game in the unnamed package draws them there too.
+    /// A driver is in the unnamed package under every version, so it can import
+    /// nothing and has to spell whatever name this version gave the screen. What
+    /// is asserted is that the two agree — the name the driver spells is the
+    /// binary name the screen tree actually wrote — which is invisible in the
+    /// driver's own text, because the template says only which screen it means.
+    #[test]
+    fn a_driver_spells_ravels_screen_where_this_version_drew_it() {
+        let out = output("driver-screen-name");
+        let root = repository_root();
+        // The version whose class files are the mapping, for the reason the
+        // test above states: any other needs restricted local material.
+        let pinned =
+            inputs::tracked_version_where(root, |adapter| !adapter.mapping_source.needs_mappings());
+
+        let generated = run(root, &out, Some(&pinned.adapter.minecraft))
+            .expect("the tracked inputs should generate");
+
+        // Where the screen landed, read off the tree rather than written here:
+        // its path below the screen root is its package, and the two together
+        // are the name a driver has to spell.
+        let mut screens = Vec::new();
+        collect_java(&generated.screens, &generated.screens, &mut screens);
+        let settings = screens
+            .iter()
+            .find(|name| name.ends_with("RavelSettingsScreen"))
+            .expect("the screen tree draws a settings screen");
+
+        let driver = std::fs::read_to_string(
+            generated
+                .harness
+                .join("driver")
+                .join("SettingsScreenMain.java"),
+        )
+        .expect("the settings driver should be generated");
+
+        assert!(
+            driver.contains(&format!("{settings}.open(")),
+            "the driver has to open the screen where it was drawn, not {settings}: {driver}"
+        );
+        assert!(
+            !driver.contains(&format!("import {settings};")),
+            "a driver is in the unnamed package and imports nothing: {driver}"
+        );
+
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// Every generated Java source below one root, as the binary name it holds.
+    fn collect_java(root: &Path, directory: &Path, found: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_java(root, &path, found);
+            } else if path.extension().and_then(|end| end.to_str()) == Some("java") {
+                let relative = path.strip_prefix(root).unwrap_or(&path);
+                found.push(
+                    relative
+                        .with_extension("")
+                        .to_string_lossy()
+                        .replace(std::path::MAIN_SEPARATOR, "."),
+                );
+            }
+        }
+    }
+
     #[test]
     fn a_client_mapping_that_no_longer_hashes_to_its_pin_is_refused_before_its_text_is_read() {
         let root = repository_root();

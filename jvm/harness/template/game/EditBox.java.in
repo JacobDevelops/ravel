@@ -1,16 +1,19 @@
-package net.minecraft.client.gui.components;
+{{package}}
 
-import net.minecraft.client.gui.Font;
-import net.minecraft.network.chat.Component;
+{{import AbstractWidget}}
+{{import Component}}
+{{import Font}}
 
-public final class EditBox extends AbstractWidget {
-    private final Font font;
+/** Everything a slider or a choice cannot constrain is typed into one of these. */
+public final class {{EditBox}} extends {{AbstractWidget}} {
+
+    private final {{Font}} font;
     private final int y;
     private final int width;
     private final int height;
     private String value = "";
 
-    public EditBox(Font font, int x, int y, int width, int height, Component message) {
+    public {{EditBox}}({{Font}} font, int x, int y, int width, int height, {{Component}} message) {
         super(message);
         this.font = font;
         this.y = y;
@@ -18,18 +21,18 @@ public final class EditBox extends AbstractWidget {
         this.height = height;
     }
 
-    public String getValue() {
+    public String {{EditBox#getValue}}() {
         return value;
     }
 
-    public void setValue(String value) {
+    public void {{EditBox#setValue}}(String value) {
         this.value = value;
     }
 
-    public void setEditable(boolean editable) {
+    public void {{EditBox#setEditable}}(boolean editable) {
     }
 
-    public void setMaxLength(int maximum) {
+    public void {{EditBox#setMaxLength}}(int maximum) {
     }
 
     /**
@@ -37,13 +40,13 @@ public final class EditBox extends AbstractWidget {
      * border. The pinned class computes it the same way for a bordered box, and
      * every box this harness builds is one.
      */
-    public int getInnerWidth() {
+    public int innerWidth() {
         return width - 8;
     }
 
     /** Whether the value would render whole rather than scrolled to its tail. */
     public boolean fits() {
-        return font.width(value) <= getInnerWidth();
+        return font.{{Font#width}}(value) <= innerWidth();
     }
 
     public int y() {

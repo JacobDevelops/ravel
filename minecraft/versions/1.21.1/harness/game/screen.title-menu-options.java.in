@@ -1,0 +1,23 @@
+{{package}}
+
+{{import Component}}
+{{import Screen}}
+
+/**
+ * The title menu, and the column builder Ravel's own row is placed against.
+ *
+ * <p>This version's builder hands nothing back, which is the whole reason the
+ * class is written here rather than shared: a column that returns no row says
+ * nothing about what is free below it, and where Ravel's row goes is declared
+ * in this version's own inventory instead. The body adds nothing to the screen,
+ * so a button on it can only have come from the prologue.
+ */
+public final class {{screen.title-menu-options}} extends {{Screen}} {
+
+    public {{screen.title-menu-options}}() {
+        super({{Component}}.{{Component#literal}}("title"));
+    }
+
+    private void {{screen.title-menu-options#createNormalMenuOptions}}(int top, int spacing) {
+    }
+}

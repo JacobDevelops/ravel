@@ -150,9 +150,10 @@ const ROOT_FILES: &[&str] = &[
     "jvm/bootstrap/dev/ravel/jvm/Transformer.java",
     "jvm/build/build-agent.sh",
     "jvm/build/build-screen.sh",
-    "jvm/harness/Main.java",
     "jvm/harness/net/minecraft/util/StringUtil.java",
     "jvm/harness/run-harness.sh",
+    "jvm/harness/template/driver/Main.java.in",
+    "jvm/harness/template/game/Screen.java.in",
     "jvm/screen/template/RavelModsScreen.java.in",
     "jvm/screen/template/RavelSettingsScreen.java.in",
     "jvm/screen/template/Wire.java.in",
@@ -4558,18 +4559,21 @@ const HARNESS_RECORD: &str = "target/ravel-jvm/harness-versions.txt";
 
 /// The harness sections every version must run, with no declaration accepted.
 ///
-/// None of these resolves a generated name against a stand-in. Six reach the
-/// game only through the transformer, and the harness supplies the targets as
-/// well as the stand-in classes, so neither side of what they compare is version
-/// data; the seventh drives the agent's two refusals to load a library nothing
-/// names, which mention no game class at all. A version that stopped running one
-/// of these did not meet an obstacle; something broke. That is why no reason
-/// excuses them.
+/// Six reach the game only through the transformer, and the harness supplies the
+/// targets as well as the stand-in classes, so neither side of what they compare
+/// is version data. One drives the agent's two refusals to load a library
+/// nothing names, which mention no game class at all. The other four do resolve
+/// a generated name against a stand-in, and are here because that stand-in is
+/// generated from the same version data the name is: the two are one string by
+/// construction rather than by luck, so the obfuscated case is the one they read
+/// rather than the one they skip. A version that stopped running any of these
+/// did not meet an obstacle; something broke. That is why no reason excuses
+/// them.
 ///
 /// Written down rather than derived from the record, because a record is what
 /// the check is holding to account: deriving the required set from the file
 /// being checked would make any file its own answer.
-const REQUIRED_SECTIONS: [&str; 9] = [
+const REQUIRED_SECTIONS: [&str; 11] = [
     "content",
     "hierarchy",
     "initialization",
@@ -4577,27 +4581,27 @@ const REQUIRED_SECTIONS: [&str; 9] = [
     "members",
     "outward",
     "refusal",
+    "screens",
+    "settings",
     "side",
     "transformation",
 ];
 
 /// The harness sections a version may declare it does not run.
 ///
-/// Two of these match a generated name against a stand-in that is still
-/// hand-written under a Mojang name, and the two are the same string only under
-/// a version that links its Mojang names. The third has its stand-ins generated
-/// and meets a limit of the Java language instead: a version that leaves part of
-/// its game in a package and obfuscates the rest into the unnamed package can
-/// have no stand-in for the packaged half, because nothing inside a package can
-/// name a class outside every package. Either is a property of the version
-/// rather than a fault, so it is declarable — but only in writing, naming the
-/// work package, in the version's own data.
+/// The one left meets a limit of the Java language rather than a naming
+/// mismatch: a version that leaves part of its game in a package and obfuscates
+/// the rest into the unnamed package can have no stand-in for the packaged half,
+/// because nothing inside a package can name a class outside every package. That
+/// is a property of the version rather than a fault, so it is declarable — but
+/// only in writing, naming the work package, in the version's own data.
 ///
 /// A section leaves this list when every version can run it, which is what the
 /// content and outward sections did when their stand-in game stopped being
-/// hand-written: the stand-in then carries the linked name by construction and no
-/// version has an obstacle left to declare.
-const DECLARABLE_SECTIONS: [&str; 3] = ["persistence", "screens", "settings"];
+/// hand-written, and what the screens and settings sections did when the rest of
+/// that game followed: the stand-in then carries the linked name by construction
+/// and no version has an obstacle left to declare.
+const DECLARABLE_SECTIONS: [&str; 1] = ["persistence"];
 
 /// What a declared absence has to name beside the obstacle.
 ///
@@ -4722,8 +4726,10 @@ fn verify_harness_sections(root: &Path, versions: &[String], violations: &mut Ve
             if declared.contains_key(section) {
                 violations.push(format!(
                     "minecraft/versions/{version}/adapter.toml declares the {section} section is \
-                     not run, and that section resolves no generated name against a stand-in; \
-                     nothing about a version can excuse it, so this declares away a break"
+                     not run, and that section runs under every version: it either supplies its \
+                     own targets or resolves them against a stand-in rendered from this \
+                     version's own data; nothing about a version can excuse it, so this declares \
+                     away a break"
                 ));
             } else if !ran.contains(&section) {
                 violations.push(format!(
@@ -8346,6 +8352,7 @@ const VERSION_CLASS_EXCUSES: [(&str, &[&str], &str); 3] = [
             "net/minecraft/client/gui/screens/Screen",
             "net/minecraft/network/chat/Component",
             "net/minecraft/network/chat/FormattedText",
+            "net/minecraft/network/chat/MutableComponent",
         ],
         "asserts which supertype edges the pinned jar's own stub set keeps and \
          which it drops, and an edge is a fact about those classes",
@@ -13434,7 +13441,7 @@ mod tests {
             &[("26.1.2", "")],
             &format!(
                 "ran: Minecraft 26.1.2 sections={}\n",
-                EVERY_SECTION.replace("screens,", "")
+                EVERY_SECTION.replace("persistence,", "")
             ),
         );
 
@@ -13442,7 +13449,7 @@ mod tests {
 
         assert!(
             violations.iter().any(|violation| {
-                violation.contains("did not run the screens section")
+                violation.contains("did not run the persistence section")
                     && violation.contains("declares no reason")
             }),
             "violations:\n{}",
@@ -13457,7 +13464,7 @@ mod tests {
             "gate-versions-outlived",
             &[(
                 "26.1.2",
-                "[harness.notRun]\nscreens = \"stand-ins; work package: templates\"\n",
+                "[harness.notRun]\npersistence = \"a split name space; work package: class files\"\n",
             )],
             &format!("ran: Minecraft 26.1.2 sections={EVERY_SECTION}\n"),
         );
@@ -13472,6 +13479,21 @@ mod tests {
             violations.join("\n")
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The whole refusal a required section's declaration earns.
+    ///
+    /// Asserted entire rather than by its tail, because every violation this
+    /// check writes ends the same way: a reason that went stale would keep
+    /// passing a suffix, which is how the last one survived four sections
+    /// growing out of it.
+    fn declares_away_a_break(section: &str) -> String {
+        format!(
+            "minecraft/versions/26.1.2/adapter.toml declares the {section} section is not run, \
+             and that section runs under every version: it either supplies its own targets or \
+             resolves them against a stand-in rendered from this version's own data; nothing \
+             about a version can excuse it, so this declares away a break"
+        )
     }
 
     #[test]
@@ -13491,9 +13513,7 @@ mod tests {
         let violations = verify_gate_versions(&root);
 
         assert!(
-            violations
-                .iter()
-                .any(|violation| violation.ends_with("so this declares away a break")),
+            violations.contains(&declares_away_a_break("members")),
             "violations:\n{}",
             violations.join("\n")
         );
@@ -13520,13 +13540,42 @@ mod tests {
         let violations = verify_gate_versions(&root);
 
         assert!(
-            violations
-                .iter()
-                .any(|violation| violation.ends_with("so this declares away a break")),
+            violations.contains(&declares_away_a_break("content")),
             "violations:\n{}",
             violations.join("\n")
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    /// The screens and settings sections left the declarable list when the rest
+    /// of the stand-in game became generated, so a version that declares either
+    /// away now declares away a break rather than an obstacle.
+    #[test]
+    fn a_declaration_for_a_generated_screen_section_is_a_violation() {
+        for section in ["screens", "settings"] {
+            let root = gate_versions_root(
+                &format!("gate-versions-generated-{section}"),
+                &[(
+                    "26.1.2",
+                    &format!(
+                        "[harness.notRun]\n{section} = \"stand-ins; work package: templates\"\n"
+                    ),
+                )],
+                &format!(
+                    "ran: Minecraft 26.1.2 sections={}\n",
+                    EVERY_SECTION.replace(&format!("{section},"), "")
+                ),
+            );
+
+            let violations = verify_gate_versions(&root);
+
+            assert!(
+                violations.contains(&declares_away_a_break(section)),
+                "violations:\n{}",
+                violations.join("\n")
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
     }
 
     #[test]
@@ -13535,11 +13584,11 @@ mod tests {
             "gate-versions-no-work-package",
             &[(
                 "26.1.2",
-                "[harness.notRun]\nscreens = \"the stand-ins carry empty bodies\"\n",
+                "[harness.notRun]\npersistence = \"the save seam has no receiver here\"\n",
             )],
             &format!(
                 "ran: Minecraft 26.1.2 sections={}\n",
-                EVERY_SECTION.replace("screens,", "")
+                EVERY_SECTION.replace("persistence,", "")
             ),
         );
 

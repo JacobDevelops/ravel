@@ -1,0 +1,23 @@
+{{package}}
+
+{{import Component}}
+{{import GuiEventListener}}
+
+/** The base every widget extends, and the class that carries the widget edge. */
+public class {{AbstractWidget}} implements {{GuiEventListener}} {
+
+    private {{Component}} message;
+
+    protected {{AbstractWidget}}({{Component}} message) {
+        this.message = message;
+    }
+
+    public void {{AbstractWidget#setMessage}}({{Component}} message) {
+        this.message = message;
+    }
+
+    /** The label this widget draws, which a driver reads a row back out of. */
+    public {{Component}} message() {
+        return message;
+    }
+}

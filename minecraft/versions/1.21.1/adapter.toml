@@ -68,37 +68,22 @@ upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa60
 # What the JVM harness does not run for this version, and what would close it.
 #
 # The harness stands in for the game rather than loading it, and its stand-in
-# classes are written under Mojang names wherever they are still hand-written. A
-# section that names no generated class or member runs here unchanged, because
-# the harness supplies the targets as well as the classes and neither is version
-# data. The content and outward sections run here too, because their stand-in
-# game is generated per version from `jvm/harness/template/` and carries the
-# names this version links.
+# classes are generated per version from `jvm/harness/template/`, so they carry
+# the names this version links. A section that names no generated class or member
+# runs here because the harness supplies the targets as well as the classes and
+# neither is version data; a section that resolves a generated name against one
+# of those stand-ins runs here because the two are generated from the same data
+# and are one string by construction.
 #
-# Two of the three below match a name this repository generated against a stand-in
-# that is still hand-written. `GameMembers` says `m:()Lftl;` here where the
-# stand-in declares `getUiState`, so their drivers meet a stand-in that is not
-# this version's game.
-#
-# The third is a different obstacle and a harder one. Persistence's stand-ins are
-# generated per version now, and everything the section needs is rendered here
-# except the class the save seam is declared on. This version keeps 26 classes in
-# `net.minecraft` because they carry `@DontObfuscate` and moves the rest into the
-# unnamed package, and `MinecraftServer` is one of the 26 while the two members
-# the adapter reaches on it are typed by classes that moved. Java has no syntax
-# for naming an unnamed-package class from inside a package, so that stand-in
-# cannot be written as Java at all and this version renders none. The harness asks
-# the generated tree whether it has one rather than being told.
-#
-# Each was measured on its own rather than inferred from the one before it. The
-# run stops at its first failure, so measuring them by running the harness once
-# would have measured only the earliest; instead each section was run here with
-# the ones ahead of it removed, and the failure recorded below is the one that
-# section produced. The recorded failures are: `net.minecraft.server.MinecraftServer`
-# cannot find `aqu` or `erd` for persistence; the screen drivers do not compile,
-# because the generated screens extend `fod` where the stand-in declares `Screen`;
-# and the shipped agent jar rewrites none of the stand-in for settings, which the
-# section reads as `transformed=0`.
+# One obstacle is left and it is the language rather than the game. This version
+# keeps 26 classes in `net.minecraft` because they carry `@DontObfuscate` and
+# moves the rest into the unnamed package, and `MinecraftServer` is one of the 26
+# while the two members the adapter reaches on it are typed by classes that
+# moved. Java has no syntax for naming an unnamed-package class from inside a
+# package, so that stand-in cannot be written as Java at all and this version
+# renders none. The harness asks the generated tree whether it has one rather
+# than being told, and the recorded failure is `net.minecraft.server.MinecraftServer`
+# not finding `aqu` or `erd`.
 #
 # What that does not mean is that the adapters are wrong. The generator resolves
 # every declared member through this version's mapping and requires the linked
@@ -111,8 +96,6 @@ upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa60
 
 [harness.notRun]
 persistence = "this version splits its game between `net.minecraft` and the unnamed package, and Java cannot name a class outside every package from inside one, so the save seam's receiver has no stand-in a compiler will read; work package: emit the stand-in game as class files rather than as Java where a version's name spaces are split"
-screens = "the screen sections need stand-ins that behave and this version's generated stubs carry its linked names with empty bodies, so their drivers do not compile; work package: generate the stand-in screens and their widget vocabulary per version from templates"
-settings = "the settings round trip drives the shipped agent jar, whose transformer looks its targets up in this version's generated inventory, so the Mojang-named stand-in is not rewritten and the recorded counts describe another version; work package: generate the stand-in screens and their widget vocabulary per version from templates"
 
 # The three hashes below pin the reviewed files beside this one.
 
@@ -123,8 +106,8 @@ bytes = 19480
 
 [inputs.stubSeeds]
 path = "minecraft/versions/1.21.1/stubs.toml"
-sha256 = "745a0006d98685df4bfbcd35a9236994bcc1bd9769285f51af40dd0ae49a9e58"
-bytes = 13250
+sha256 = "1a17c289740622846bb5cd51644fd832be89904a6701e66d80539e2829cb5d8e"
+bytes = 13637
 
 [inputs.reflectiveSurface]
 path = "minecraft/versions/1.21.1/reflection.toml"

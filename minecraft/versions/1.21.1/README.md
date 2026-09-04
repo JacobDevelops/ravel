@@ -24,7 +24,7 @@ content and outward adapters reach is declared in `reflection.toml`, checked
 against this version's jar, and generated into `GameMembers` as the name and
 descriptor the JVM links.
 
-`harness/` holds the seven JVM-harness templates this version renders instead of
+`harness/` holds the nine JVM-harness templates this version renders instead of
 the shared ones, and each is a shape difference rather than a rename. This
 version's block and item properties builders carry no id setter in any spelling —
 a block is named by the identifier it is registered under and by nothing it
@@ -42,6 +42,15 @@ which the other version's game does not have at all.
 `harness/game/MINECRAFT.java.in` declares a world load that takes no optional rule
 overrides, where the other version's takes them, so the two seams differ in their
 argument vector.
+
+The screen half is two, and both are the same disagreement seen twice. A
+keystroke reaches a screen here as three numbers and reaches the other version's
+as one record, so `harness/game/Screen.java.in` writes the whole screen out to
+declare its keyboard override with three parameters. And this version's title
+menu hands its column builder's caller nothing back where the other hands back
+the row below the column, so `harness/game/screen.title-menu-options.java.in`
+declares that builder returning void and this version's `hooks.toml` declares
+where Ravel's own row goes instead.
 
 A role binding answers a rename; it does not answer a call one version makes and
 the other does not have.

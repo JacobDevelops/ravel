@@ -1,32 +1,33 @@
+{{package}}
+
 import dev.ravel.jvm.Hook;
-import dev.ravel.jvm.screen.RavelSettingsScreen;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.events.GuiEventListener;
-import net.minecraft.client.gui.screens.Screen;
+{{import Button}}
+{{import GuiEventListener}}
+{{import Screen}}
 
 public final class SettingsScreenMain {
     public static void main(String[] args) throws Exception {
         boolean refuseSave = args.length == 1 && "refuse-save".equals(args[0]);
-        Screen opened = RavelSettingsScreen.open("configuration");
-        RavelSettingsScreen screen = (RavelSettingsScreen) opened;
-        Method init = RavelSettingsScreen.class.getDeclaredMethod("init");
+        {{Screen}} opened = {{ravel RavelSettingsScreen}}.open("configuration");
+        {{ravel RavelSettingsScreen}} screen = ({{ravel RavelSettingsScreen}}) opened;
+        Method init = {{ravel RavelSettingsScreen}}.class.getDeclaredMethod("{{Screen#init}}");
         init.setAccessible(true);
 
         init.invoke(screen);
-        List<GuiEventListener> first = screen.widgets();
-        ((Button) first.get(first.size() - 3)).press();
+        List<{{GuiEventListener}}> first = screen.widgets();
+        (({{Button}}) first.get(first.size() - 3)).press();
 
         init.invoke(screen);
-        List<GuiEventListener> resized = screen.widgets();
-        ((Button) resized.get(resized.size() - 2)).press();
+        List<{{GuiEventListener}}> resized = screen.widgets();
+        (({{Button}}) resized.get(resized.size() - 2)).press();
         if (refuseSave) {
             Files.writeString(Path.of("config"), "blocked");
         }
-        screen.onClose();
+        screen.{{Screen#onClose}}();
 
         System.out.println("owner=" + screen.owner());
         if (refuseSave) {

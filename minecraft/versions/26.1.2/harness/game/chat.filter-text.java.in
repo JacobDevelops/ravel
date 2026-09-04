@@ -1,0 +1,39 @@
+{{package}}
+
+/**
+ * The chat text the reviewed inventory pins call targets on.
+ *
+ * <p>This version's own, because its hook table declares one member more on this
+ * class than the shared template carries and a template cannot render a member
+ * only some versions bind. Everything else here is the shared file.
+ *
+ * <p>Leaving one out is not a smaller stand-in but an untested hook: the
+ * settings section counts the methods the transformer rewrote against the
+ * generated table, so a missing member is a target nothing drives and the count
+ * is what says so.
+ *
+ * <p>The delegating overload is what makes descriptor matching testable: same
+ * name, different descriptor, so a transformer that matched on name alone would
+ * rewrite the wrong one and the invocation count would give it away.
+ */
+public final class {{chat.filter-text}} {
+
+    private {{chat.filter-text}}() {
+    }
+
+    public static boolean {{chat.allowed-character#isAllowedChatCharacter}}(int codePoint) {
+        return codePoint != '\n';
+    }
+
+    public static String {{chat.filter-text#filterText}}(String text, boolean keepNewlines) {
+        return keepNewlines ? text : text.replace("\n", "");
+    }
+
+    public static String {{chat.filter-text-simple#filterText}}(String text) {
+        return {{chat.filter-text#filterText}}(text, false);
+    }
+
+    public static boolean {{player.name-valid#isValidPlayerName}}(String name) {
+        return !name.isEmpty();
+    }
+}

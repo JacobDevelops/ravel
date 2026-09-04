@@ -1,0 +1,29 @@
+{{package}}
+
+{{import Button}}
+{{import Button$OnPress}}
+{{import Component}}
+
+/** What a button is reached through, which is why it is a stand-in of its own. */
+public final class {{Button$Builder}} {
+
+    private final {{Component}} message;
+    private final {{Button$OnPress}} onPress;
+    private int y;
+    private int height;
+
+    {{Button$Builder}}({{Component}} message, {{Button$OnPress}} onPress) {
+        this.message = message;
+        this.onPress = onPress;
+    }
+
+    public {{Button$Builder}} {{Button$Builder#bounds}}(int x, int y, int width, int height) {
+        this.y = y;
+        this.height = height;
+        return this;
+    }
+
+    public {{Button}} {{Button$Builder#build}}() {
+        return new {{Button}}(message, onPress, y, height);
+    }
+}

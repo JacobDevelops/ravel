@@ -30,8 +30,9 @@ game, which ADG-1's second amendment measured rather than assumed.
   the game is in the unnamed package, so the screens are generated there too and
   `ScreenNames` tells the agent jar where they went.
 - `build/build-screen.sh` — builds the screen jar from those generated sources.
-- `harness/` — a stub class and a `main` that run the whole path against a real
-  JVM without the game. See [Proving it without the game](#proving-it-without-the-game).
+- `harness/` — the stand-ins the transformer sections supply themselves, and the
+  side markers, which run the whole path against a real JVM without the game. See
+  [Proving it without the game](#proving-it-without-the-game).
 - `harness/template/` — the shared half of the stand-in game, the drivers that
   exercise it and the stand-in half of the sibling artifact, one template per
   class, rendered per version into `target/ravel-jvm/generated-harness/`. The
@@ -148,7 +149,10 @@ files it wants.
   top-level one whose name carries the `$` its binary name has.
 - `template/driver/` — Ravel's own `main` classes. They keep the name their
   template gives them and are drawn in the unnamed package under every version,
-  because a command line names them.
+  because a command line names them. A driver that opens one of Ravel's own
+  screens writes `{{ravel RavelSettingsScreen}}` for it rather than importing
+  one: the screens move with the game, an unnamed-package class can be imported
+  by nothing, and the whole name is legal to spell under either case.
 - `template/sibling/` — the stand-in half of the sibling artifact, which the
   persistence section builds a `ravel-screen.jar` out of. These are rendered
   exactly the way the real screens are, name and package alike, because the agent
@@ -208,11 +212,23 @@ what they compare is version data, so they run at every tracked version and no
 version may declare its way out of one. A version that stopped running one of
 them did not meet an obstacle; something broke.
 
-The **content, outward and persistence sections** compare a generated name against
-a stand-in too, and their stand-in game is `template/game/`'s: it is generated from
-the same version data the name is, so the two names are one string by construction
-rather than by luck, and the obfuscated case is the one they read rather than the
-one they skip. The first two run at every version.
+Every other section — content, outward, settings, screens and persistence —
+compares a generated name against a stand-in, and their stand-in game is
+`template/game/`'s: it is generated from the same version data the name is, so the
+two names are one string by construction rather than by luck, and the obfuscated
+case is the one they read rather than the one they skip. All but the last run at
+every version.
+
+The settings and screen sections were the last to join them, and what they needed
+was more than a name to coincide: they press buttons and read widget lists that
+survive a re-init, so they need stand-ins that behave rather than the generated
+stubs' empty bodies. Three things about a version reach their recorded output and
+none is written in the script. Where this version drew Ravel's own screens is read
+from `ScreenNames`, because a screen extends a game class and goes where that
+class is. Whether the title menu's column builder hands a row back is read from
+`MenuLayout`, because a version whose builder returns void declares Ravel's row
+instead of deriving it. And the class the settings round trip rewrites is read
+from the generated hook table, by the seam it names.
 
 The persistence section runs wherever a stand-in for it can be written down at
 all, which is not the same question. A version that obfuscates leaves a handful of
@@ -224,23 +240,22 @@ moved, so that version renders no stand-in for it. `run-harness.sh` asks the
 generated tree whether it has one, by the name the generated hook table gives the
 save seam, rather than being told.
 
-The **settings and screen sections** compare a *generated* name against a stand-in
-that is still hand-written. `GameNames` and `GameMembers` carry the names each
-version links, and those are the Mojang names only under a version that does not
-obfuscate. Where the two differ, the adapter asks for `m` while the stand-in
-declares `getUiState`, and the section would be measuring the mismatch rather than
-the adapter. `run-harness.sh` decides which case it is by reading the generated
-class itself, where every role carries the Mojang name in its comment and the
-linked name in its value, so no version is named in the script.
+The settings section's stand-in carries every member the version's own hook
+table declares on the class its targets sit on: the shared template holds the
+members both tracked versions pin, and a version that pins more overrides it in
+full. The section's expected method count is read from that same generated table,
+so it is version data and says so, while the transformer sections keep supplying
+their own targets and their own hand-written copy of that class under the
+reviewed names, which is where four methods and five crossings stay pinned
+unmoved.
 
 A section a version does not run has to say so in that version's `adapter.toml`,
 under `[harness.notRun]`, with a reason naming the work package that closes it.
 `cargo xtask verify gate-versions` refuses an undeclared absence, and refuses a
-declaration that outlived its reason. Closing the settings and screen sections
-means giving their stand-ins the same treatment the content, outward and
-persistence ones got; closing persistence at a version whose name spaces are split
-means emitting that version's stand-in game as class files rather than as Java,
-because no Java source can be written for it.
+declaration that outlived its reason. Only persistence is declarable now, and
+closing it at a version whose name spaces are split means emitting that version's
+stand-in game as class files rather than as Java, because no Java source can be
+written for it.
 
 **What no version of this harness proves** is `Members` against real obfuscated
 class files. That class walks a class's supertypes and rebuilds erased descriptors
@@ -269,6 +284,14 @@ is copied, and `minecraft/versions/*/hooks.toml` and `mappings.lock` already
 track the same strings. The transformer declares no game type — it compares
 target classes against internal names it holds as string literals — so nothing
 here needs the client.
+
+It stays hand-written where the rest of the stand-in game did not, and that is
+the point of it: the transformer sections match it against targets that are
+hand-written too, in the stand-in `Hook` under `harness/initialization/`, so
+neither side of the comparison is version data and the arithmetic below holds
+unchanged at every version. The settings section is the one that drives the
+shipped agent jar, and it meets a generated stand-in for the same class instead,
+on a class path of its own.
 
 The script refuses any output but this one:
 

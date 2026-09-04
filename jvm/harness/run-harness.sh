@@ -83,73 +83,6 @@ cat >"$work/ravel/config/configuration.json" <<'EOF'
 EOF
 cp "$jar" "$agent"
 
-# Which sections this run can prove, decided from the generated names rather
-# than from a version written down here.
-#
-# A section that reaches the game only through the transformer never asks: the
-# harness supplies the targets as well as the classes, so neither side of what it
-# compares is version data. A section that resolves a *generated* name asks only
-# where its stand-in is still hand-written under a Mojang name, because
-# `GameNames` and `GameMembers` carry the names this version links and those are
-# the Mojang names only under a version that does not obfuscate. Where they
-# differ, the adapter asks for `m` and the stand-in declares `getUiState`, and
-# the section would be testing the mismatch rather than the adapter. The content,
-# outward and persistence sections stopped asking when their stand-in game moved
-# to `jvm/harness/template/`: it is generated per version, so the two names are
-# the same string by construction.
-#
-# The generated class says which case this is without being asked: every role it
-# renders carries the Mojang name in its comment and the linked name in its
-# value, so the two agreeing everywhere *is* the condition. Reading it there
-# keeps this script from naming a version, which is what let one version's answer
-# be asserted over all of them before.
-generated_names="$root/target/ravel-jvm/generated/dev/ravel/jvm/GameNames.java"
-generated_members="$root/target/ravel-jvm/generated/dev/ravel/jvm/GameMembers.java"
-for generated in "$generated_names" "$generated_members"; do
-	if [ ! -f "$generated" ]; then
-		echo "$generated is absent, so nothing says which names this version links" >&2
-		exit 1
-	fi
-done
-# Both files, because the sections below resolve members as well as classes, and
-# a version can obfuscate one name space without the other. `GameMembers` renders
-# `name:descriptor` under a `Class#member` comment, so each side is cut at its
-# own separator before the two are compared.
-#
-# 0 says the two name spaces agree, 1 that they differ, 2 that nothing was
-# compared — which is not "they match" but "this decided nothing", and a
-# generator that stopped emitting roles would otherwise buy every section here.
-name_comparison=0
-awk '
-	/^[[:space:]]*\/\*\* / {
-		mojang = $2
-		sub(/\.$/, "", mojang)
-		at = index(mojang, "#")
-		if (at > 0) { mojang = substr(mojang, at + 1) }
-		next
-	}
-	/static final String/ {
-		if (mojang != "" && match($0, /"[^"]*"/) > 0) {
-			runtime = substr($0, RSTART + 1, RLENGTH - 2)
-			at = index(runtime, ":")
-			if (at > 0) { runtime = substr(runtime, 1, at - 1) }
-			compared++
-			if (mojang != runtime) { differs = 1 }
-			mojang = ""
-		}
-	}
-	END { exit compared == 0 ? 2 : (differs ? 1 : 0) }
-' "$generated_names" "$generated_members" || name_comparison=$?
-case "$name_comparison" in
-0) linked_names_are_mojang=true ;;
-1) linked_names_are_mojang=false ;;
-*)
-	echo "$generated_names and $generated_members carry no role to compare, so nothing says" >&2
-	echo "which names this version links" >&2
-	exit 1
-	;;
-esac
-
 # Every section this run reached, for the record the gate reads. A section is
 # added after it passes, never before, so the file says what was proved rather
 # than what was attempted.
@@ -161,34 +94,59 @@ section_ran() {
 	printf '%s' "$sections_ran" >"$sections_record"
 }
 
-# Whether a section that compares a generated name against a stand-in can run.
-resolves_generated_names() {
-	[ "$linked_names_are_mojang" = true ]
+# What this version calls Ravel's own screens. A screen extends a game class, so
+# it is generated into the name space that class is in, and under an obfuscated
+# version that is the unnamed package. The drivers below print the class they
+# landed on, and this is what those lines are compared against — read from the
+# class the agent jar opens them through rather than written down here.
+generated_screens="$root/target/ravel-jvm/generated/dev/ravel/jvm/ScreenNames.java"
+screen_name() {
+	local found
+	found="$(awk -v want="$1" '$0 ~ ("static final String " want " =") {
+		match($0, /"[^"]*"/)
+		print substr($0, RSTART + 1, RLENGTH - 2)
+	}' "$generated_screens")"
+	if [ -z "$found" ]; then
+		echo "$generated_screens names no $1, so nothing says what this version calls" >&2
+		echo "the screen the drivers below open" >&2
+		exit 1
+	fi
+	printf '%s' "$found"
 }
+mods_screen="$(screen_name RAVEL_MODS_SCREEN)"
+settings_screen="$(screen_name RAVEL_SETTINGS_SCREEN)"
+profiling_screen="$(screen_name RAVEL_PROFILING_SCREEN)"
 
+# The transformer sections' own stand-in, which is Ravel's test data on both
+# sides: their targets are hand-written in `harness/initialization`'s stand-in
+# `Hook` under the reviewed names, so the class they are matched against is
+# written under those names too and neither side is version data.
 javac -d "$work" "$root/jvm/harness/net/minecraft/util/StringUtil.java"
-# The side marker, compiled outside the screen guard because every case that runs
-# premain needs it: Ravel reads the running side by asking the JVM for this name,
-# and the name is spelled in Rust rather than generated, so it is the same string
-# at every version.
+# The side marker, which every case that runs premain needs: Ravel reads the
+# running side by asking the JVM for this name, and the name is spelled in Rust
+# rather than generated, so it is the same string at every version. It is
+# compiled into both trees below because both run premain.
 javac -d "$work" "$root/jvm/harness/net/minecraft/client/main/Main.java"
+
+# The tree the settings and screen sections run in: the generated stand-in game,
+# the drivers that exercise it, and the side marker beside them. Kept apart from
+# `$work` because the two carry the same class under an unobfuscated version —
+# the transformer sections' stand-in above is written under the reviewed name,
+# and this one under the name this version links — and a class is one file on a
+# class path or it is whichever came first.
+ui="$work/ui"
+mkdir -p "$ui"
+javac -Xlint:all -Werror -d "$ui" "${standin_sources[@]}" "${libraries[@]}"
+javac -d "$ui" "$root/jvm/harness/net/minecraft/client/main/Main.java"
 # `Main` needs the agent jar on its compile class path only for the mid-run
 # `Agent.transformedClasses()` call. A real launch never compiles against it.
-javac -cp "$work:$jar" -d "$work" "$root/jvm/harness/Main.java"
-# Compiled inside the screen guard rather than beside it: a driver that names
-# a generated screen cannot compile where that screen is in another package,
-# and a section that is not going to run has no reason to try.
-if resolves_generated_names; then
-mapfile -d '' screen_stubs < <(find "$root/jvm/harness/net/minecraft/client" \
-	"$root/jvm/harness/net/minecraft/network" -name '*.java' -print0 | sort -z)
-javac -cp "$work" -d "$work" "${screen_stubs[@]}"
-javac -cp "$work" -d "$work" \
-	"$root/jvm/harness/TitleMenuMain.java" \
-	"$root/jvm/harness/TitleMenuMissingMain.java"
-javac -cp "$work:$jar:$screen" -d "$work" \
-	"$root/jvm/harness/SettingsScreenMain.java" \
-	"$root/jvm/harness/ProfilingScreenMain.java"
-fi
+javac -Xlint:all -Werror -cp "$ui:$jar" -d "$ui" "$standin_drivers/Main.java"
+javac -Xlint:all -Werror -cp "$ui" -d "$ui" \
+	"$standin_drivers/TitleMenuMain.java" \
+	"$standin_drivers/TitleMenuMissingMain.java"
+javac -Xlint:all -Werror -cp "$ui:$jar:$screen" -d "$ui" \
+	"$standin_drivers/SettingsScreenMain.java" \
+	"$standin_drivers/ProfilingScreenMain.java"
 
 order="$work/initialization-order"
 order_agent="$order/agent/ravel-agent.jar"
@@ -411,6 +369,22 @@ hook_seam() {
 			}
 			print ""
 		}
+	' "$generated_hook"
+}
+
+# How many of the generated table's targets sit on one class, by its internal
+# name. The table is the version's own hook inventory rendered, so this is how
+# many methods the transformer rewrites when that class goes past — which is
+# what a section asserting a count has to read rather than write down.
+hook_targets_on() {
+	awk -v class="$1" '
+		/new HookTarget\($/ {
+			getline
+			sub(/^[[:space:]]*"/, "")
+			sub(/",$/, "")
+			if ($0 == class) { count++ }
+		}
+		END { print count + 0 }
 	' "$generated_hook"
 }
 
@@ -1123,7 +1097,7 @@ refuse_load() {
 	if (cd "$work" && java \
 		-javaagent:"$agent" \
 		"$@" \
-		-cp . Main >/dev/null 2>"$refusal_stderr"); then
+		-cp "$ui" Main >/dev/null 2>"$refusal_stderr"); then
 		echo >&2
 		echo "a launch whose $refusal_what started anyway" >&2
 		exit 1
@@ -1145,29 +1119,42 @@ refuse_load 'library property names no file' missing -Dravel.host="$work/no-such
 
 section_ran load
 
+# The class the settings round trip's targets sit on, and how many of them this
+# version pins there. Both are read from the generated table rather than written
+# down, and the count is what makes the arithmetic below version-honest: the
+# stand-in for that class carries every member the table declares on it, so the
+# number the transformer rewrites is the number the table names. A stand-in
+# missing one rewrites fewer than the table pins and the comparison fails, which
+# is the direction a missing hook target has to fail in.
+#
+# Routed through `install_seams` so a version whose table names no such seam gets
+# that function's refusal rather than a bare nonzero exit from a subshell.
+install_seams settings_seams chatFilterText
+settings_target="${settings_seams[0]#-Dravel.test.target.chatFilterText=}"
+settings_target="${settings_target%%:*}"
+settings_methods="$(hook_targets_on "$settings_target")"
+settings_target="${settings_target//\//.}"
+
 # The settings round trip, which drives the shipped agent jar rather than one the
-# harness assembles, so the targets it rewrites are the generated ones and the
-# stand-in they are matched against is written under a Mojang name. Where the two
-# name spaces differ nothing is rewritten and the recorded counts describe
-# another version, so the section is not run and the version's own `adapter.toml`
-# says so.
-if resolves_generated_names; then
+# harness assembles, so the targets it rewrites are the generated ones. It runs
+# at every version because the stand-in they are matched against is generated
+# from the same version data those targets are, so the two names are one string
+# by construction rather than by luck.
 stdout="$work/stdout"
 stderr="$work/stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
 	-Dravel.report.targets=true \
-	-cp . Main >"$stdout" 2>"$stderr")
+	-cp "$ui" Main >"$stdout" 2>"$stderr")
 observed="$(<"$stdout")"
 diagnostic="$(grep '^\[ravel\]' "$stderr")"
 
-expected='allowed=true
-filtered=a
+expected='filtered=a
 b
 simple=ab
 valid=true
-transformed=1 methods=4
+transformed=1 methods='"$settings_methods"'
 client=false:pack:false
 common=quiet:default:false
 saved=1:0
@@ -1175,8 +1162,8 @@ invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting 
 clientAfter=false:player:false
 commonAfter=quiet:default:true
 mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
-[ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code
-[ravel] rewritten targets: net.minecraft.util.StringUtil=4'
+[ravel] rewrote 1 classes and '"$settings_methods"' methods; 4 hook invocations reached native code
+[ravel] rewritten targets: '"$settings_target"'='"$settings_methods"''
 expected_diagnostic='[ravel] ravel-screen.jar is missing or not a regular file beside the agent jar'
 
 printf '%s\n' "$observed"
@@ -1203,15 +1190,44 @@ section_ran settings
 # The two screen-jar routes below drive `TitleMenuMissingMain`, which is compiled
 # against this version's generated screen stubs, so they belong to the screens
 # section and are recorded with it rather than with the settings round trip.
+# Where this version's title menu puts Ravel's own row, and whether its column
+# builder hands one back at all. A column that returns its own row says what is
+# free below it, and the prologue hands back the row it moved down to; one that
+# returns void says nothing, and the version's own inventory declares the row
+# instead. `MenuLayout` is generated from that inventory, so reading it here is
+# what keeps the three numbers below from being one version's asserted over both.
+# `DERIVED` is the sentinel that class declares for the first case, and it is
+# read by name rather than by its value for the reason the class states: a row
+# may legally be negative, so no ordinary number could stand for "there is one".
+generated_layout="$root/target/ravel-jvm/generated/dev/ravel/jvm/MenuLayout.java"
+menu_row="$(awk '/static final int RAVEL_ROW/ { sub(/^[^=]*= */, ""); sub(/;.*$/, ""); print }' \
+	"$generated_layout")"
+if [ -z "$menu_row" ]; then
+	echo "$generated_layout declares no row, so nothing says where this version's" >&2
+	echo "menu puts Ravel's own" >&2
+	exit 1
+fi
+if [ "$menu_row" = DERIVED ]; then
+	# The harness hands the column a top of 100 and a spacing of 10, so the column
+	# ends at 120 and the prologue hands back the row below the one it added.
+	menu_unhooked=120
+	menu_hooked=130
+	menu_button=130
+else
+	menu_unhooked=null
+	menu_hooked=null
+	menu_button=$((100 + menu_row))
+fi
+
 missing_stdout="$work/missing-stdout"
 missing_stderr="$work/missing-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp . TitleMenuMissingMain >"$missing_stdout" 2>"$missing_stderr")
+	-cp "$ui" TitleMenuMissingMain >"$missing_stdout" 2>"$missing_stderr")
 missing_observed="$(<"$missing_stdout")"
 missing_diagnostic="$(grep '^\[ravel\]' "$missing_stderr")"
-missing_expected='result=120
+missing_expected='result='"$menu_unhooked"'
 buttons=0
 [ravel] rewrote 2 classes and 2 methods; 1 hook invocations reached native code'
 
@@ -1240,7 +1256,7 @@ invalid_stderr="$work/invalid-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp . TitleMenuMissingMain >"$invalid_stdout" 2>"$invalid_stderr")
+	-cp "$ui" TitleMenuMissingMain >"$invalid_stdout" 2>"$invalid_stderr")
 rm "$(dirname "$agent")/ravel-screen.jar"
 invalid_observed="$(<"$invalid_stdout")"
 invalid_diagnostic="$(grep '^\[ravel\]' "$invalid_stderr")"
@@ -1270,15 +1286,14 @@ relaunch_stderr="$work/relaunch-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp . Main >"$relaunch_stdout" 2>"$relaunch_stderr")
+	-cp "$ui" Main >"$relaunch_stdout" 2>"$relaunch_stderr")
 relaunch_observed="$(<"$relaunch_stdout")"
 relaunch_diagnostic="$(grep '^\[ravel\]' "$relaunch_stderr")"
-relaunch_expected='allowed=true
-filtered=a
+relaunch_expected='filtered=a
 b
 simple=ab
 valid=true
-transformed=1 methods=4
+transformed=1 methods='"$settings_methods"'
 client=false:player:false
 common=verbose:player:false
 saved=1:0
@@ -1286,7 +1301,7 @@ invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting 
 clientAfter=false:player:false
 commonAfter=verbose:player:false
 mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
-[ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
+[ravel] rewrote 1 classes and '"$settings_methods"' methods; 4 hook invocations reached native code'
 
 printf '%s\n' "$relaunch_observed"
 while IFS= read -r line; do
@@ -1307,14 +1322,11 @@ if [ "$relaunch_diagnostic" != "$expected_diagnostic" ]; then
 	exit 1
 fi
 
-fi
-
 # The screen sections, which need more than a name to coincide: they press
 # buttons and read widget lists that survive a re-init, so they need stand-ins
-# that behave, and this version's generated stubs carry its linked names with
-# empty bodies. Where the two name spaces differ the sections are not run, and
-# the version's own `adapter.toml` is what says so and names the work package.
-if resolves_generated_names; then
+# that behave rather than the generated stubs' empty bodies. Those stand-ins are
+# generated too, from the same version data the screens they carry are, so these
+# sections run wherever the screen jar itself can be built.
 cp "$screen" "$(dirname "$agent")/ravel-screen.jar"
 
 settings_stdout="$work/settings-stdout"
@@ -1322,7 +1334,7 @@ settings_stderr="$work/settings-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp ".:$screen" SettingsScreenMain >"$settings_stdout" 2>"$settings_stderr")
+	-cp "$ui:$screen" SettingsScreenMain >"$settings_stdout" 2>"$settings_stderr")
 settings_observed="$(<"$settings_stdout")"
 settings_expected='owner=configuration
 refused=
@@ -1349,7 +1361,7 @@ refusal_stderr="$work/refusal-stderr"
 (cd "$refusal_work" && java \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp "$work:$screen" SettingsScreenMain refuse-save >"$refusal_stdout" 2>"$refusal_stderr")
+	-cp "$ui:$screen" SettingsScreenMain refuse-save >"$refusal_stdout" 2>"$refusal_stderr")
 refusal_observed="$(<"$refusal_stdout")"
 refusal_expected='owner=configuration
 refusedPresent=true
@@ -1381,7 +1393,7 @@ profiling_stderr="$work/profiling-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp ".:$screen" ProfilingScreenMain >"$profiling_stdout" 2>"$profiling_stderr")
+	-cp "$ui:$screen" ProfilingScreenMain >"$profiling_stdout" 2>"$profiling_stderr")
 profiling_observed="$(<"$profiling_stdout")"
 # `rows` climbs with the window because the report gives its spare rows away in
 # a fixed order, so the number is what says the priority ladder still holds: the
@@ -1420,7 +1432,7 @@ driven_stderr="$work/profiling-driven-stderr"
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
 	-Dravel.profiling=true \
-	-cp ".:$screen" ProfilingScreenMain driven >"$driven_stdout" 2>"$driven_stderr")
+	-cp "$ui:$screen" ProfilingScreenMain driven >"$driven_stdout" 2>"$driven_stderr")
 driven_observed="$(<"$driven_stdout")"
 # The two smallest windows spend every row on the summary and the statement, so
 # they draw no mod row to read a count off; that is the documented row budget
@@ -1430,7 +1442,7 @@ driven_observed="$(<"$driven_stdout")"
 driven_expected='driven=320x240 fits=true within=true ticks=none entered=none
 driven=480x270 fits=true within=true ticks=none entered=none
 driven=960x540 fits=true within=true ticks=none entered=0,4,4,4,4
-[ravel] rewrote 2 classes and 3 methods; 7 hook invocations reached native code'
+[ravel] rewrote 2 classes and 4 methods; 7 hook invocations reached native code'
 
 printf '%s\n' "$driven_observed"
 while IFS= read -r line; do
@@ -1449,14 +1461,13 @@ ui_relaunch_stderr="$work/ui-relaunch-stderr"
 (cd "$work" && java \
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
-	-cp . Main >"$ui_relaunch_stdout" 2>"$ui_relaunch_stderr")
+	-cp "$ui" Main >"$ui_relaunch_stdout" 2>"$ui_relaunch_stderr")
 ui_relaunch_observed="$(<"$ui_relaunch_stdout")"
-ui_relaunch_expected='allowed=true
-filtered=a
+ui_relaunch_expected='filtered=a
 b
 simple=ab
 valid=true
-transformed=1 methods=4
+transformed=1 methods='"$settings_methods"'
 client=true:player:false
 common=quiet:player:false
 saved=1:0
@@ -1464,7 +1475,7 @@ invalid=1:114:client.enabled78:`client.enabled` was left unchanged: the setting 
 clientAfter=false:player:false
 commonAfter=quiet:player:true
 mods=1:36:client1:01:51:111:client_only7:running8:required4:true5:false4:true1:01:213:configuration7:running8:required4:true5:false4:true1:01:310:registries7:running8:required4:true5:false5:false1:01:410:saved_data7:running8:required4:true5:false5:false1:01:511:server_only8:resolved8:required5:false5:false5:false1:01:0
-[ravel] rewrote 1 classes and 4 methods; 5 hook invocations reached native code'
+[ravel] rewrote 1 classes and '"$settings_methods"' methods; 4 hook invocations reached native code'
 
 printf '%s\n' "$ui_relaunch_observed"
 while IFS= read -r line; do
@@ -1484,15 +1495,15 @@ menu_stderr="$work/menu-stderr"
 	-javaagent:"$agent" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp . TitleMenuMain >"$menu_stdout" 2>"$menu_stderr")
+	-cp "$ui" TitleMenuMain >"$menu_stdout" 2>"$menu_stderr")
 menu_observed="$(<"$menu_stdout")"
 menu_diagnostic="$(grep '^\[ravel\]' "$menu_stdout")"
 
-menu_expected='result=130
+menu_expected='result='"$menu_hooked"'
 buttons=1
 label=Ravel Mods
-buttonY=130
-screen=dev.ravel.jvm.screen.RavelModsScreen
+buttonY='"$menu_button"'
+screen='"$mods_screen"'
 modWidgets=10
 notices=0
 within=true
@@ -1515,18 +1526,18 @@ keyEscape=true at=0
 focusDone=false kept=true
 focusMoved=false drawn=true kept=true
 entry=Settings: client_only
-settings=dev.ravel.jvm.screen.RavelSettingsScreen
+settings='"$settings_screen"'
 settingsOwner=client_only
 settingsRows=1
-settingsDone=dev.ravel.jvm.screen.RavelModsScreen crossed=1 saves=1:1
+settingsDone='"$mods_screen"' crossed=1 saves=1:1
 entry=Settings: configuration
-settings=dev.ravel.jvm.screen.RavelSettingsScreen
+settings='"$settings_screen"'
 settingsOwner=configuration
 settingsRows=2
-settingsDone=dev.ravel.jvm.screen.RavelModsScreen crossed=1 saves=2:2
+settingsDone='"$mods_screen"' crossed=1 saves=2:2
 entry=Profiling
-profiling=dev.ravel.jvm.screen.RavelProfilingScreen
-profilingDone=dev.ravel.jvm.screen.RavelModsScreen crossed=1
+profiling='"$profiling_screen"'
+profilingDone='"$mods_screen"' crossed=1
 entry=gui.done
 hostile=negativeNotices:false
 hostile=shortNoticeBlock:false
@@ -1540,8 +1551,8 @@ failedRow=true a required registry claim was refused at registry
 failedRow=true worldgen/biome via brokenmod -> otherpack: the claim
 failedRow=true was already held by another mod and this one asked
 failedRow=true for it again, so neither could be registered
-[ravel] rewrote 3 classes and 4 methods; 19 hook invocations reached native code'
-menu_expected_diagnostic='[ravel] rewrote 3 classes and 4 methods; 19 hook invocations reached native code'
+[ravel] rewrote 3 classes and 5 methods; 19 hook invocations reached native code'
+menu_expected_diagnostic='[ravel] rewrote 3 classes and 5 methods; 19 hook invocations reached native code'
 
 printf '%s\n' "$menu_observed"
 while IFS= read -r line; do
@@ -1581,7 +1592,7 @@ notice_stderr="$notice_work/notice-stderr"
 	-javaagent:"$notice_work/agent/ravel-agent.jar" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp . TitleMenuMain 400x300 >"$notice_stdout" 2>"$notice_stderr")
+	-cp "$notice_work/ui" TitleMenuMain 400x300 >"$notice_stdout" 2>"$notice_stderr")
 notice_observed="$(grep -E '^(modWidgets|notices|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$notice_stdout")"
 notice_expected='modWidgets=11
 notices=1
@@ -1652,7 +1663,7 @@ sized_stderr="$notice_work/sized-stderr"
 	-javaagent:"$notice_work/agent/ravel-agent.jar" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp . TitleMenuMain 640x360 >"$sized_stdout" 2>"$sized_stderr")
+	-cp "$notice_work/ui" TitleMenuMain 640x360 >"$sized_stdout" 2>"$sized_stderr")
 sized_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$sized_stdout")"
 sized_expected='modWidgets=14
 within=true
@@ -1729,7 +1740,7 @@ tiny_stderr="$notice_work/tiny-stderr"
 	-javaagent:"$notice_work/agent/ravel-agent.jar" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp . TitleMenuMain 400x140 >"$tiny_stdout" 2>"$tiny_stderr")
+	-cp "$notice_work/ui" TitleMenuMain 400x140 >"$tiny_stdout" 2>"$tiny_stderr")
 tiny_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$tiny_stdout")"
 tiny_expected='modWidgets=4
 within=true
@@ -1802,7 +1813,7 @@ noroom_stderr="$notice_work/noroom-stderr"
 	-javaagent:"$notice_work/agent/ravel-agent.jar" \
 	-Dravel.host="$host" \
 	-Dstdout.encoding=UTF-8 \
-	-cp . TitleMenuMain 400x118 >"$noroom_stdout" 2>"$noroom_stderr")
+	-cp "$notice_work/ui" TitleMenuMain 400x118 >"$noroom_stdout" 2>"$noroom_stderr")
 noroom_observed="$(grep -E '^(modWidgets|within|aligned|summary|noticeRows?|row|entry|scrollable|sideways|key|focus|failed|walk)' "$noroom_stdout")"
 noroom_expected='modWidgets=3
 within=true
@@ -1837,7 +1848,6 @@ if [ "$noroom_observed" != "$noroom_expected" ]; then
 fi
 
 section_ran screens
-fi
 
 # The running side, read from the JVM rather than assumed.
 #

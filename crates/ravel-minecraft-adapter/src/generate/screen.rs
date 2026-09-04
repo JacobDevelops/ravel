@@ -113,6 +113,11 @@ struct Version<'a> {
     mapping: &'a Mapping,
     /// The linked internal name of every role the templates reference.
     linked: &'a BTreeMap<String, String>,
+    /// The package Ravel's own screens are drawn in, where this version leaves
+    /// one. A driver names them by the whole name rather than importing it,
+    /// because the name a driver spells has to be legal from the unnamed
+    /// package under both cases.
+    screens: Option<&'a str>,
 }
 
 /// One template tree, and where this version keeps the sources it cannot share.
@@ -219,8 +224,9 @@ pub(super) fn render(
     // version generates the sources it already had. A driver is launched by the
     // name a command line spells, so it has no package to lose under either.
     let unnamed = linked.values().any(|name| render::split(name).0.is_none());
+    let screens = (!unnamed).then_some(SCREEN_PACKAGE);
     let owned = match purpose {
-        Purpose::Screen if !unnamed => Some(SCREEN_PACKAGE.to_owned()),
+        Purpose::Screen => screens.map(str::to_owned),
         _ => None,
     };
 
@@ -231,6 +237,7 @@ pub(super) fn render(
         stubs,
         mapping,
         linked: &linked,
+        screens,
     };
     let mut java = Vec::with_capacity(read.len());
     let mut names = Vec::with_capacity(read.len());
@@ -477,6 +484,10 @@ enum Placeholder {
     Class(String),
     /// A reference to one member of one reviewed game class.
     Member(String, String),
+    /// The whole name of one class Ravel itself draws, which moves with the
+    /// game: a version that leaves the game in packages leaves Ravel's screens
+    /// in theirs, and one that does not draws them in the unnamed package too.
+    Ravel(String),
 }
 
 impl Placeholder {
@@ -492,6 +503,13 @@ impl Placeholder {
         }
         if let Some(role) = body.strip_prefix("import ") {
             return Ok(Self::Import(role.trim().to_owned()));
+        }
+        if let Some(name) = body.strip_prefix("ravel ") {
+            let name = name.trim();
+            if name.is_empty() || name.contains(char::is_whitespace) {
+                return Err(format!("{{{{{body}}}}} names no class Ravel draws"));
+            }
+            return Ok(Self::Ravel(name.to_owned()));
         }
         if body.is_empty() || body.contains(char::is_whitespace) {
             return Err(format!(
@@ -710,6 +728,10 @@ fn resolve(
         Placeholder::Member(role, member) => {
             member_name(role, member, version.roles, version.stubs, version.mapping)
         }
+        Placeholder::Ravel(name) => Ok(match version.screens {
+            Some(package) => format!("{package}.{name}"),
+            None => name.clone(),
+        }),
     }
 }
 
@@ -1318,6 +1340,15 @@ com.example.util.Held -> com.example.util.Held:
             Placeholder::read("import Surface").expect("a placeholder body"),
             Placeholder::Import("Surface".to_owned())
         );
+        assert_eq!(
+            Placeholder::read("ravel RavelSettingsScreen").expect("a placeholder body"),
+            Placeholder::Ravel("RavelSettingsScreen".to_owned())
+        );
+        // A body that names nothing and one that names two things are both
+        // refused, because either would render as a class name the compiler
+        // then fails to find rather than as the refusal the template earned.
+        assert!(Placeholder::read("ravel ").is_err());
+        assert!(Placeholder::read("ravel Two Names").is_err());
     }
 
     /// The property the whole indirection exists for: what a template renders is
@@ -1691,6 +1722,40 @@ com.example.util.Held -> com.example.util.Held:
         assert_eq!(relative, "Driven.java");
         assert!(!source.starts_with("package "), "{source}");
         assert!(source.contains("import com.example.util.Held;"), "{source}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A version that leaves no game class in a package leaves Ravel's screens
+    /// out of one too, so a source naming one writes the bare name.
+    ///
+    /// The whole name is what the packaged case renders, and it is the one the
+    /// language refuses here: a class outside every package can be named by no
+    /// qualified form at all, so a generator that always qualified would emit a
+    /// driver that never compiles under an obfuscated version.
+    #[test]
+    fn a_screen_ravel_draws_is_named_bare_where_the_game_has_no_package() {
+        let root = staged_tree(
+            "driver-unnamed-screen",
+            "Driven.java.in",
+            "{{package}}\n{{import Surface}}\npublic class Driven {\n    {{Surface}} held;\n    \
+             {{ravel RavelSettingsScreen}} screen;\n}\n",
+        );
+
+        let rendered = render(
+            &tree(&root, "0.0.0-none", Purpose::Driver),
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+        )
+        .expect("the seeds bind the role the driver names");
+
+        let (_, source) = &rendered.java[0];
+        assert!(
+            source.contains("    RavelSettingsScreen screen;"),
+            "{source}"
+        );
+        assert!(!source.contains(SCREEN_PACKAGE), "{source}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

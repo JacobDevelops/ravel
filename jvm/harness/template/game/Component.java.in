@@ -1,0 +1,18 @@
+{{package}}
+
+{{import MutableComponent}}
+
+/** The screen's title and every widget label cross as one of these. */
+public interface {{Component}} {
+
+    static {{MutableComponent}} {{Component#literal}}(String text) {
+        return new {{MutableComponent}}(text);
+    }
+
+    static {{MutableComponent}} {{Component#translatable}}(String key) {
+        return new {{MutableComponent}}(key);
+    }
+
+    /** What the label reads, which is what a driver compares a row against. */
+    String text();
+}

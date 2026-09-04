@@ -1,18 +1,112 @@
 {{package}}
 
-/**
- * The screen type a refusal is shown as.
- *
- * <p>It carries the diagnostic so a run can be read back: what the harness has
- * to prove about a refusal is that the player was told, and a screen that held
- * nothing would let a refusal that showed a blank one pass.
- */
-public class {{Screen}} {
+import java.util.ArrayList;
+import java.util.List;
+{{import AbstractContainerEventHandler}}
+{{import Component}}
+{{import Font}}
+{{import GuiEventListener}}
+{{import KeyEvent}}
 
+/**
+ * The screen every Ravel screen extends, and the type a refusal is shown as.
+ *
+ * <p>It holds the widgets it is given and the diagnostic a refusal carries. The
+ * second is what the persistence section reads a refused world load back out
+ * of: what has to be proved there is that the player was told, and a screen that
+ * held nothing would let a refusal that showed a blank one pass.
+ *
+ * <p>The keyboard override is why the older tracked version writes this class in
+ * full rather than sharing it: that version passes the three numbers a keystroke
+ * carries as three arguments where this one passes the record below, and that is
+ * a retype rather than a rename.
+ */
+public class {{Screen}} extends {{AbstractContainerEventHandler}} {
+
+    public int {{Screen#width}} = 400;
+    public int {{Screen#height}} = 300;
+    protected final {{Font}} {{Screen#font}} = new {{Font}}();
+    private final List<{{GuiEventListener}}> widgets = new ArrayList<>();
     private final String diagnostic;
 
+    protected {{Screen}}({{Component}} title) {
+        this.diagnostic = null;
+    }
+
+    /** The refusal this screen was opened to show, which has no title to take. */
     public {{Screen}}(String diagnostic) {
         this.diagnostic = diagnostic;
+    }
+
+    protected void {{Screen#init}}() {
+    }
+
+    protected {{GuiEventListener}} {{Screen#addRenderableWidget}}({{GuiEventListener}} widget) {
+        widgets.add(widget);
+        return widget;
+    }
+
+    protected void clearWidgets() {
+        widgets.clear();
+    }
+
+    public void clearFocus() {
+        {{AbstractContainerEventHandler#setFocused}}(null);
+    }
+
+    /**
+     * Focuses the first widget drawn, where the pinned class focuses the first
+     * one a forward tab reaches and only when the last input was a keyboard.
+     *
+     * <p>The condition is dropped on purpose: a stand-in that only sometimes took
+     * the focus away would only sometimes catch a screen that fails to put it
+     * back.
+     */
+    protected void setInitialFocus() {
+        {{AbstractContainerEventHandler#setFocused}}(widgets.isEmpty() ? null : widgets.get(0));
+    }
+
+    /**
+     * Lays the screen out again: clear the widgets, clear the focus, init, then
+     * set the initial focus.
+     *
+     * <p>The pinned class clears and inits; whether it also sets the initial
+     * focus on a rebuild is not something this repository can read. The stand-in
+     * takes the focus away either way, which is the more hostile of the two.
+     */
+    protected void {{Screen#rebuildWidgets}}() {
+        clearWidgets();
+        clearFocus();
+        {{Screen#init}}();
+        setInitialFocus();
+    }
+
+    public List<{{GuiEventListener}}> widgets() {
+        return List.copyOf(widgets);
+    }
+
+    /** Escape closes the screen and is used, as the pinned class has it. */
+    public boolean {{Screen#keyPressed}}({{KeyEvent}} event) {
+        if (event.{{KeyEvent#key}}() == 256) {
+            {{Screen#onClose}}();
+            return true;
+        }
+        return false;
+    }
+
+    public void {{Screen#onClose}}() {
+    }
+
+    /**
+     * Presses one key and says whether the screen used it.
+     *
+     * <p>The stand-in's own, so the driver that walks a window with the keyboard
+     * is one source across every version: the two tracked ones disagree about
+     * what a keystroke is handed as, and that disagreement belongs to the game
+     * rather than to the driver.
+     */
+    public boolean press(int key) {
+        return {{Screen#keyPressed}}(new {{KeyEvent}}(key, 0, 0));
     }
 
     @Override

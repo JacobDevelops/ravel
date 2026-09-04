@@ -1,11 +1,13 @@
+{{package}}
+
 import java.lang.reflect.Method;
-import net.minecraft.client.gui.screens.TitleScreen;
+{{import screen.title-menu-options}}
 
 public final class TitleMenuMissingMain {
     public static void main(String[] args) throws ReflectiveOperationException {
-        TitleScreen title = new TitleScreen();
-        Method menu = TitleScreen.class.getDeclaredMethod(
-                "createNormalMenuOptions", int.class, int.class);
+        {{screen.title-menu-options}} title = new {{screen.title-menu-options}}();
+        Method menu = {{screen.title-menu-options}}.class.getDeclaredMethod(
+                "{{screen.title-menu-options#createNormalMenuOptions}}", int.class, int.class);
         menu.setAccessible(true);
 
         System.out.println("result=" + menu.invoke(title, 100, 10));

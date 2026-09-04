@@ -1,14 +1,11 @@
-package net.minecraft.client.gui.components;
+{{package}}
 
-import net.minecraft.client.gui.Font;
-import net.minecraft.network.chat.Component;
+{{import AbstractWidget}}
+{{import Component}}
+{{import Font}}
 
 /**
- * A stand-in for the game's read-only text label.
- *
- * <p>It takes no input, so unlike the {@link EditBox} the rows used to be drawn
- * in there is no caret, no focus border and no click target. It has no border
- * either, which is why the text it measures against is its whole width.
+ * The read-only text label, which takes no input and draws no border.
  *
  * <p>It centres its text, which is what the pinned version that offers an
  * alignment member does by default. The other draws at the left edge and offers
@@ -17,15 +14,15 @@ import net.minecraft.network.chat.Component;
  * what makes that a testable claim: a row whose box is wider than its text draws
  * its text somewhere other than the box's left edge, and {@link #textX} is where.
  */
-public final class StringWidget extends AbstractWidget {
+public final class {{StringWidget}} extends {{AbstractWidget}} {
 
-    private final Font font;
+    private final {{Font}} font;
     private final int x;
     private final int y;
     private final int width;
     private final int height;
 
-    public StringWidget(int x, int y, int width, int height, Component message, Font font) {
+    public {{StringWidget}}(int x, int y, int width, int height, {{Component}} message, {{Font}} font) {
         super(message);
         this.font = font;
         this.x = x;
@@ -41,12 +38,12 @@ public final class StringWidget extends AbstractWidget {
 
     /** Whether that text would render whole rather than clipped. */
     public boolean fits() {
-        return font.width(text()) <= width;
+        return font.{{Font#width}}(text()) <= width;
     }
 
     /** Where the text starts, which is the box's left edge only when it is aligned there. */
     public int textX() {
-        return x + Math.round(0.5F * (width - font.width(text())));
+        return x + Math.round(0.5F * (width - font.{{Font#width}}(text())));
     }
 
     public int x() {

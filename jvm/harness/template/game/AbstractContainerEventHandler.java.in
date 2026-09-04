@@ -1,0 +1,24 @@
+{{package}}
+
+{{import GuiEventListener}}
+
+/**
+ * Where a screen's focus is held.
+ *
+ * <p>A class of its own because it is one in the pinned jars: the screens reach
+ * the two members below through the supertype rather than through the screen,
+ * and a stand-in that declared them on the screen would be a surface the
+ * generated stubs do not have.
+ */
+public abstract class {{AbstractContainerEventHandler}} implements {{GuiEventListener}} {
+
+    private {{GuiEventListener}} focused;
+
+    public {{GuiEventListener}} {{AbstractContainerEventHandler#getFocused}}() {
+        return focused;
+    }
+
+    public void {{AbstractContainerEventHandler#setFocused}}({{GuiEventListener}} focused) {
+        this.focused = focused;
+    }
+}

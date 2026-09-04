@@ -306,8 +306,8 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   requires the linked class file to declare it. What no gate has run is the `Members` lookup at
   runtime, its superclass walk and erased-descriptor construction, against an obfuscated class file;
   only a real jar proves that, which the headless client run and the planned server harness are for.
-  The sections that do run per version, and the two that still wait on a stand-in game generated per
-  version from templates, are recorded in the work-package bullets below.
+  The sections that run per version, and the one a version may still declare away, are recorded in the
+  work-package bullets below.
 - The headless real-client proof under Xvfb stalled at the launcher, not the game. Prism 11 refuses
   to launch any instance unless a Microsoft account that owns the game is signed in, even with an
   Offline account present and an isolated approot, so the offline route needs either that account
@@ -391,10 +391,11 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
 - `profilingTickCounter` — needs a tick boundary wired on the game's tick path.
 - ADG-3's re-pin of the agent jar's reflective surface is owned by no work package.
 - The JVM harness runs at every tracked version and `ravel:verify-gate-versions` holds it there. Both
-  versions run nine sections — initialization, hierarchy, refusal, members, side, transformation, load,
-  content and outward. 26.1.2 runs three more, and persistence is now among them from templates: the
-  stand-in game, the drivers and the stand-in half of the sibling artifact are rendered per version from
-  `jvm/harness/template/` into `target/ravel-jvm/generated-harness/{game,driver,sibling}/`, so the name
+  versions now run eleven sections — initialization, hierarchy, refusal, members, side, transformation,
+  load, content, outward, settings and screens — and 26.1.2 runs persistence as a twelfth. All of it
+  comes from templates: the stand-in game, the drivers and the stand-in half of the sibling artifact are
+  rendered per version from `jvm/harness/template/` into
+  `target/ravel-jvm/generated-harness/{game,driver,sibling}/`, so the name
   the adapter resolves and the name the stand-in declares are one string by construction. `javap -p` on
   1.21.1's block stand-in reads `public dtd l()` and `public static final js q`, which is what
   `GameMembers` says that version links. The stand-in create-world screen no longer guards its copy on
@@ -411,12 +412,27 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
   than being told, and 1.21.1's `adapter.toml` declares the section with that reason. Closing it needs
   the stand-in game emitted as class files where a version's name spaces are split, which is a work
   package nobody has opened.
-- 1.21.1 still declares screens and settings not run, for the reason it always did: both match a
-  generated name against a stand-in still written under a Mojang name. Mutations proved the check, each
-  exiting 1: an undeclared absence, a declaration for a section that ran, a declaration for a required
-  section, a declaration for a section whose stand-in is now generated, a reason naming no work package,
-  a section name in the record the harness does not have, and a version named with `;` after it. An
-  empty reason is refused one layer earlier, where `adapter.toml` is parsed.
+- Screens and settings now run at 1.21.1 too, so persistence is the only section any version may
+  declare away and `DECLARABLE_SECTIONS` holds one name. The eighteen screen and text stand-ins and the
+  chat-target one are templates now, and so are the five drivers; 1.21.1 writes `Screen` and the title
+  menu in full, because a keystroke reaches a screen there as three numbers and its column builder hands
+  nothing back, and 26.1.2 owns `KeyEvent`, the record the other passes instead. Three facts about a
+  version reach the recorded output and none is written in the script: where the screens were drawn is
+  read from `ScreenNames`, whether the menu hands a row back from `MenuLayout`, and the rewritten class
+  from the generated hook table. The name comparison that used to gate these two sections is gone from
+  `run-harness.sh` with them. Mutation: a stand-in that stops storing a focus turns
+  `focusDone=true kept=true` into `kept=false` and the run exits 1. The check on the declarations was
+  proved the same way, each mutation exiting 1: an undeclared absence, a declaration for a section that
+  ran, a declaration for a required section, a declaration for either section whose stand-in is now
+  generated, a reason naming no work package, a section name in the record the harness does not have,
+  and a version named with `;` after it. An empty reason is refused one layer earlier, where
+  `adapter.toml` is parsed.
+- `net/minecraft/util/StringUtil.java` is the one stand-in still hand-written, and it stays that way on
+  purpose: the transformer sections match it against targets hand-written beside it in the stand-in
+  `Hook`, so neither side is version data and `transformed=1 methods=4` with five crossings holds
+  unchanged everywhere. The settings section meets a generated stand-in for the same class on a class
+  path of its own, carrying every member that version's hook table declares on the class (a 26.1.2
+  override adds the fourth), and its expected count is read from that table rather than written.
 
 ## Standing decisions
 

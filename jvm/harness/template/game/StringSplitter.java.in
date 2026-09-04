@@ -1,12 +1,12 @@
-package net.minecraft.client;
+{{package}}
 
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.network.chat.FormattedText;
-import net.minecraft.network.chat.Style;
+{{import FormattedText}}
+{{import Style}}
 
 /**
- * A stand-in for the game's splitter, measuring one width for every glyph.
+ * What actually splits, measuring one width for every glyph.
  *
  * <p>The game's glyphs are not one width and this one's are, which is the whole
  * of what is stood in for. What the harness proves is the screen's half of the
@@ -16,13 +16,13 @@ import net.minecraft.network.chat.Style;
  * this one and fail against the game's, so the assertions are written against
  * what this splitter reports rather than against any character count.
  */
-public final class StringSplitter {
+public final class {{StringSplitter}} {
 
     /** What one character advances, in the units widths are given in. */
     public static final int ADVANCE = 6;
 
     /** What the given text measures. */
-    public int width(String text) {
+    public int measure(String text) {
         return text.length() * ADVANCE;
     }
 
@@ -32,33 +32,37 @@ public final class StringSplitter {
      * <p>A word too long to fit on a line of its own is broken mid-word, as the
      * pinned splitter does, so every line this answers fits the width asked for.
      */
-    public List<FormattedText> splitLines(String text, int maxWidth, Style style) {
-        List<FormattedText> lines = new ArrayList<>();
+    public List<{{FormattedText}}> {{StringSplitter#splitLines}}(String text, int maxWidth, {{Style}} style) {
+        List<{{FormattedText}}> lines = new ArrayList<>();
         StringBuilder line = new StringBuilder();
         for (String word : text.split(" ", -1)) {
             String rest = word;
-            while (width(rest) > maxWidth) {
+            while (measure(rest) > maxWidth) {
                 if (line.length() > 0) {
-                    lines.add(FormattedText.of(line.toString()));
+                    lines.add(text(line.toString()));
                     line.setLength(0);
                 }
                 int fits = Math.max(1, maxWidth / ADVANCE);
-                lines.add(FormattedText.of(rest.substring(0, fits)));
+                lines.add(text(rest.substring(0, fits)));
                 rest = rest.substring(fits);
             }
             String candidate = line.length() == 0 ? rest : line + " " + rest;
-            if (width(candidate) <= maxWidth) {
+            if (measure(candidate) <= maxWidth) {
                 line.setLength(0);
                 line.append(candidate);
             } else {
-                lines.add(FormattedText.of(line.toString()));
+                lines.add(text(line.toString()));
                 line.setLength(0);
                 line.append(rest);
             }
         }
         if (line.length() > 0 || lines.isEmpty()) {
-            lines.add(FormattedText.of(line.toString()));
+            lines.add(text(line.toString()));
         }
         return lines;
+    }
+
+    private static {{FormattedText}} text(String line) {
+        return () -> line;
     }
 }

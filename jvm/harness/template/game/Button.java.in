@@ -1,0 +1,38 @@
+{{package}}
+
+{{import AbstractWidget}}
+{{import Button$Builder}}
+{{import Button$OnPress}}
+{{import Component}}
+
+/** A button, which is what a toggle and a choice both are here. */
+public final class {{Button}} extends {{AbstractWidget}} {
+
+    private final {{Button$OnPress}} onPress;
+    private final int y;
+    private final int height;
+
+    {{Button}}({{Component}} message, {{Button$OnPress}} onPress, int y, int height) {
+        super(message);
+        this.onPress = onPress;
+        this.y = y;
+        this.height = height;
+    }
+
+    public static {{Button$Builder}} {{Button#builder}}({{Component}} message, {{Button$OnPress}} onPress) {
+        return new {{Button$Builder}}(message, onPress);
+    }
+
+    public int y() {
+        return y;
+    }
+
+    public int height() {
+        return height;
+    }
+
+    /** Presses this button, which is what a driver reaches a screen's own code through. */
+    public void press() {
+        onPress.{{Button$OnPress#onPress}}(this);
+    }
+}

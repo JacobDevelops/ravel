@@ -1,29 +1,29 @@
+{{package}}
+
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.StringWidget;
-import net.minecraft.client.gui.components.events.GuiEventListener;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.TitleScreen;
-import net.minecraft.client.input.KeyEvent;
+{{import AbstractContainerEventHandler}}
+{{import Button}}
+{{import GuiEventListener}}
+{{import Minecraft}}
+{{import Screen}}
+{{import StringWidget}}
+{{import screen.title-menu-options}}
 
 public final class TitleMenuMain {
     public static void main(String[] args) throws ReflectiveOperationException {
-        TitleScreen title = new TitleScreen();
-        Method menu = TitleScreen.class.getDeclaredMethod(
-                "createNormalMenuOptions", int.class, int.class);
+        {{screen.title-menu-options}} title = new {{screen.title-menu-options}}();
+        Method menu = {{screen.title-menu-options}}.class.getDeclaredMethod(
+                "{{screen.title-menu-options#createNormalMenuOptions}}", int.class, int.class);
         menu.setAccessible(true);
-        int result = (int) menu.invoke(title, 100, 10);
-
-        System.out.println("result=" + result);
+        System.out.println("result=" + menu.invoke(title, 100, 10));
         System.out.println("buttons=" + title.widgets().size());
-        Button button = (Button) title.widgets().get(0);
+        {{Button}} button = ({{Button}}) title.widgets().get(0);
         System.out.println("label=" + button.message().text());
         System.out.println("buttonY=" + button.y());
         button.press();
-        Screen mods = Minecraft.getInstance().screen();
+        {{Screen}} mods = {{Minecraft}}.{{Minecraft#getInstance}}().screen();
         System.out.println("screen=" + mods.getClass().getName());
 
         // The window this screen is laid out in. A player's GUI scale decides it,
@@ -31,11 +31,11 @@ public final class TitleMenuMain {
         // one rather than taking the stub's default for every run.
         if (args.length > 0) {
             String[] size = args[0].split("x");
-            mods.width = Integer.parseInt(size[0]);
-            mods.height = Integer.parseInt(size[1]);
+            mods.{{Screen#width}} = Integer.parseInt(size[0]);
+            mods.{{Screen#height}} = Integer.parseInt(size[1]);
         }
 
-        Method init = mods.getClass().getDeclaredMethod("init");
+        Method init = mods.getClass().getDeclaredMethod("{{Screen#init}}");
         init.setAccessible(true);
         init.invoke(mods);
         System.out.println("modWidgets=" + mods.widgets().size());
@@ -58,8 +58,8 @@ public final class TitleMenuMain {
         // the list. `walk` below is what proves the rest of the list is reachable;
         // this is what says the window opens on the rows it should.
         boolean summary = true;
-        for (GuiEventListener widget : mods.widgets()) {
-            if (widget instanceof StringWidget line) {
+        for ({{GuiEventListener}} widget : mods.widgets()) {
+            if (widget instanceof {{StringWidget}} line) {
                 if (summary) {
                     System.out.println("summary=" + line.fits() + " " + line.text());
                     summary = false;
@@ -76,35 +76,35 @@ public final class TitleMenuMain {
         walk(mods);
         keys(mods);
 
-        for (GuiEventListener widget : mods.widgets()) {
-            if (widget instanceof Button entry) {
+        for ({{GuiEventListener}} widget : mods.widgets()) {
+            if (widget instanceof {{Button}} entry) {
                 String label = entry.message().text();
                 System.out.println("entry=" + label);
                 if (label.startsWith("Settings: ")) {
                     entry.press();
-                    Screen settings = Minecraft.getInstance().screen();
+                    {{Screen}} settings = {{Minecraft}}.{{Minecraft#getInstance}}().screen();
                     System.out.println("settings=" + settings.getClass().getName());
                     // Reflection because the screen jar is loaded by Ravel's own
                     // loader, which this class's does not see.
                     Method owner = settings.getClass().getMethod("owner");
                     System.out.println("settingsOwner=" + owner.invoke(settings));
-                    Method settingsInit = settings.getClass().getDeclaredMethod("init");
+                    Method settingsInit = settings.getClass().getDeclaredMethod("{{Screen#init}}");
                     settingsInit.setAccessible(true);
                     settingsInit.invoke(settings);
                     System.out.println("settingsRows=" + (settings.widgets().size() - 1));
                     System.out.println("settingsDone=" + closes(settings)
                             + " saves=" + Class.forName("dev.ravel.jvm.Hook")
                                     .getMethod("ravelSettingsCrossings").invoke(null));
-                    Minecraft.getInstance().setScreen(mods);
+                    {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(mods);
                 } else if (label.equals("Profiling")) {
                     entry.press();
-                    Screen profiling = Minecraft.getInstance().screen();
+                    {{Screen}} profiling = {{Minecraft}}.{{Minecraft#getInstance}}().screen();
                     System.out.println("profiling=" + profiling.getClass().getName());
-                    Method profilingInit = profiling.getClass().getDeclaredMethod("init");
+                    Method profilingInit = profiling.getClass().getDeclaredMethod("{{Screen#init}}");
                     profilingInit.setAccessible(true);
                     profilingInit.invoke(profiling);
                     System.out.println("profilingDone=" + closes(profiling));
-                    Minecraft.getInstance().setScreen(mods);
+                    {{Minecraft}}.{{Minecraft#getInstance}}().{{Minecraft#setScreen}}(mods);
                 }
             }
         }
@@ -130,7 +130,7 @@ public final class TitleMenuMain {
         // "No mods are installed." would draw a notice above a line saying
         // nothing needed attention. A fresh screen because `parse` adds to what
         // the instance above already read.
-        Screen empty = (Screen) mods.getClass().getMethod("open").invoke(null);
+        {{Screen}} empty = ({{Screen}}) mods.getClass().getMethod("open").invoke(null);
         Method emptyParse = empty.getClass().getDeclaredMethod("parse", String.class);
         emptyParse.setAccessible(true);
         System.out.println("emptyRead=" + emptyParse.invoke(
@@ -150,9 +150,9 @@ public final class TitleMenuMain {
         // is the longest this screen composes — the kind, the surface it failed
         // at, the chain it was pulled in through and the detail, all on one row
         // — and it is the one a window has to split rather than clip.
-        Screen failing = (Screen) mods.getClass().getMethod("open").invoke(null);
-        failing.width = mods.width;
-        failing.height = mods.height;
+        {{Screen}} failing = ({{Screen}}) mods.getClass().getMethod("open").invoke(null);
+        failing.{{Screen#width}} = mods.{{Screen#width}};
+        failing.{{Screen#height}} = mods.{{Screen#height}};
         Method failingParse = failing.getClass().getDeclaredMethod("parse", String.class);
         failingParse.setAccessible(true);
         System.out.println("failedRead=" + failingParse.invoke(failing, failure()));
@@ -160,12 +160,12 @@ public final class TitleMenuMain {
         // from making the crossing over it.
         set(failing, "read", true);
         set(failing, "loaded", true);
-        Method failingInit = failing.getClass().getDeclaredMethod("init");
+        Method failingInit = failing.getClass().getDeclaredMethod("{{Screen#init}}");
         failingInit.setAccessible(true);
         failingInit.invoke(failing);
         boolean failedSummary = true;
-        for (GuiEventListener widget : failing.widgets()) {
-            if (widget instanceof StringWidget line) {
+        for ({{GuiEventListener}} widget : failing.widgets()) {
+            if (widget instanceof {{StringWidget}} line) {
                 System.out.println((failedSummary ? "failedSummary=" : "failedRow=")
                         + line.fits() + " " + line.text());
                 failedSummary = false;
@@ -211,29 +211,29 @@ public final class TitleMenuMain {
      * <p>The offset is left back at the top, because the sections after this one
      * read the window the run opened on.
      */
-    private static void keys(Screen mods) throws ReflectiveOperationException {
+    private static void keys({{Screen}} mods) throws ReflectiveOperationException {
         java.lang.reflect.Field offset = mods.getClass().getDeclaredField("scroll");
         offset.setAccessible(true);
         offset.setInt(mods, 0);
         rebuild(mods);
 
-        System.out.println("keyDown=" + press(mods, 264) + " at=" + offset.getInt(mods));
-        System.out.println("keyPageDown=" + press(mods, 267) + " at=" + offset.getInt(mods));
-        System.out.println("keyPageUp=" + press(mods, 266) + " at=" + offset.getInt(mods));
-        System.out.println("keyUp=" + press(mods, 265) + " at=" + offset.getInt(mods));
-        System.out.println("keyOther=" + press(mods, 65) + " at=" + offset.getInt(mods));
+        System.out.println("keyDown=" + mods.press(264) + " at=" + offset.getInt(mods));
+        System.out.println("keyPageDown=" + mods.press(267) + " at=" + offset.getInt(mods));
+        System.out.println("keyPageUp=" + mods.press(266) + " at=" + offset.getInt(mods));
+        System.out.println("keyUp=" + mods.press(265) + " at=" + offset.getInt(mods));
+        System.out.println("keyOther=" + mods.press(65) + " at=" + offset.getInt(mods));
         // Escape is the game's: the stand-in closes the screen on it and says
         // so, which is the only way a key this screen leaves alone can be told
         // from a key it swallows.
-        System.out.println("keyEscape=" + press(mods, 256) + " at=" + offset.getInt(mods));
+        System.out.println("keyEscape=" + mods.press(256) + " at=" + offset.getInt(mods));
 
         // Done is drawn by every layout, so the focus it holds has to survive a
         // scroll whatever the window shows.
-        Button done = button(mods, "gui.done");
-        mods.setFocused(done);
-        boolean scrolled = press(mods, 264);
+        {{Button}} done = button(mods, "gui.done");
+        mods.{{AbstractContainerEventHandler#setFocused}}(done);
+        boolean scrolled = mods.press(264);
         System.out.println("focusDone=" + scrolled
-                + " kept=" + (mods.getFocused() == button(mods, "gui.done")));
+                + " kept=" + (mods.{{AbstractContainerEventHandler#getFocused}}() == button(mods, "gui.done")));
         if (scrolled) {
             offset.setInt(mods, 0);
             rebuild(mods);
@@ -244,16 +244,16 @@ public final class TitleMenuMain {
         // naming a row past the end is how the end is named without counting.
         offset.setInt(mods, Integer.MAX_VALUE);
         rebuild(mods);
-        Button entry = settingsEntry(mods, null);
+        {{Button}} entry = settingsEntry(mods, null);
         if (entry == null) {
             System.out.println("focusHeld=none");
         } else {
             String label = entry.message().text();
-            mods.setFocused(entry);
-            boolean moved = press(mods, 265);
-            Button again = settingsEntry(mods, label);
+            mods.{{AbstractContainerEventHandler#setFocused}}(entry);
+            boolean moved = mods.press(265);
+            {{Button}} again = settingsEntry(mods, label);
             System.out.println("focusMoved=" + moved + " drawn=" + (again != null)
-                    + " kept=" + (again != null && mods.getFocused() == again));
+                    + " kept=" + (again != null && mods.{{AbstractContainerEventHandler#getFocused}}() == again));
         }
 
         offset.setInt(mods, 0);
@@ -269,32 +269,27 @@ public final class TitleMenuMain {
      * save reaches native code too but only seam hooks pass through the guard
      * that counts, so the settings run reports it separately.
      */
-    private static String closes(Screen child) throws ReflectiveOperationException {
+    private static String closes({{Screen}} child) throws ReflectiveOperationException {
         long before = invocations();
         button(child, "gui.done").press();
-        Screen after = Minecraft.getInstance().screen();
+        {{Screen}} after = {{Minecraft}}.{{Minecraft#getInstance}}().screen();
         return (after == null ? "null" : after.getClass().getName())
                 + " crossed=" + (invocations() - before);
     }
 
-    /** Presses one key and says whether the screen used it. */
-    private static boolean press(Screen mods, int key) {
-        return mods.keyPressed(new KeyEvent(key, 0, 0));
-    }
-
     /** The settings entry drawn under one label, or the first one drawn for a null label. */
-    private static Button button(Screen mods, String label) {
-        for (GuiEventListener widget : mods.widgets()) {
-            if (widget instanceof Button drawn && drawn.message().text().equals(label)) {
+    private static {{Button}} button({{Screen}} mods, String label) {
+        for ({{GuiEventListener}} widget : mods.widgets()) {
+            if (widget instanceof {{Button}} drawn && drawn.message().text().equals(label)) {
                 return drawn;
             }
         }
         throw new IllegalStateException("no button reads " + label);
     }
 
-    private static Button settingsEntry(Screen mods, String label) {
-        for (GuiEventListener widget : mods.widgets()) {
-            if (widget instanceof Button drawn
+    private static {{Button}} settingsEntry({{Screen}} mods, String label) {
+        for ({{GuiEventListener}} widget : mods.widgets()) {
+            if (widget instanceof {{Button}} drawn
                     && drawn.message().text().startsWith("Settings: ")
                     && (label == null || drawn.message().text().equals(label))) {
                 return drawn;
@@ -304,7 +299,7 @@ public final class TitleMenuMain {
     }
 
     /** Sets one of the screen's own flags, which a fed payload never sets itself. */
-    private static void set(Screen screen, String name, boolean value)
+    private static void set({{Screen}} screen, String name, boolean value)
             throws ReflectiveOperationException {
         java.lang.reflect.Field field = screen.getClass().getDeclaredField(name);
         field.setAccessible(true);
@@ -327,7 +322,7 @@ public final class TitleMenuMain {
      * was before the walk: a screen that read the surface again on every layout
      * would append the set to itself and the rows would grow, which is what the
      * read guard stops. {@code perLayout} says a layout costs exactly one hook
-     * invocation, which is the game's own {@code Screen.init} and not the surface
+     * invocation, which is the game's own {@code {{Screen}}.init} and not the surface
      * read at all — {@code Hook.nativeInvocations} counts rewritten call sites,
      * and the screen surface is an export the transformer never rewrote. So the
      * count cannot see the read, and it is here to catch a new per-layout hook
@@ -338,7 +333,7 @@ public final class TitleMenuMain {
      * construction; the summary is one line that is not, and whether it outgrows
      * a row is a fact about the window rather than a defect in the walk.
      */
-    private static void walk(Screen mods) throws ReflectiveOperationException {
+    private static void walk({{Screen}} mods) throws ReflectiveOperationException {
         List<?> all = (List<?>) mods.getClass().getMethod("rowLabels").invoke(mods);
         java.lang.reflect.Field offset = mods.getClass().getDeclaredField("scroll");
         offset.setAccessible(true);
@@ -349,12 +344,12 @@ public final class TitleMenuMain {
         // hook invocation and this costs none.
         int resting = offset.getInt(mods);
         long quiet = invocations();
-        boolean sideways = mods.mouseScrolled(0.0, 0.0, 1.0, 0.0);
+        boolean sideways = mods.{{GuiEventListener#mouseScrolled}}(0.0, 0.0, 1.0, 0.0);
         System.out.println("sideways=" + sideways
                 + " held=" + (offset.getInt(mods) == resting)
                 + " layouts=" + (invocations() - quiet));
 
-        if (!mods.mouseScrolled(0.0, 0.0, 0.0, -1.0)) {
+        if (!mods.{{GuiEventListener#mouseScrolled}}(0.0, 0.0, 0.0, -1.0)) {
             // Either the whole list is on screen or the window has room for no
             // row at all. Both refuse the wheel, and neither may move the offset:
             // a window too short to draw a row that still counted notches would
@@ -394,7 +389,7 @@ public final class TitleMenuMain {
 
         while (offset.getInt(mods) + shown < all.size()) {
             int from = offset.getInt(mods);
-            mods.mouseScrolled(0.0, 0.0, 0.0, -1.0);
+            mods.{{GuiEventListener#mouseScrolled}}(0.0, 0.0, 0.0, -1.0);
             layouts++;
             positions++;
             List<String> window = drawn(mods);
@@ -420,15 +415,15 @@ public final class TitleMenuMain {
         // A notch past each end, which moves nothing, lays nothing out, and is
         // refused so the game keeps it; then the way back up.
         int end = offset.getInt(mods);
-        boolean held = !mods.mouseScrolled(0.0, 0.0, 0.0, -1.0)
+        boolean held = !mods.{{GuiEventListener#mouseScrolled}}(0.0, 0.0, 0.0, -1.0)
                 && offset.getInt(mods) == end && drawn(mods).equals(all.subList(end, all.size()));
         for (int step = end; step > 0; step--) {
-            mods.mouseScrolled(0.0, 0.0, 0.0, 1.0);
+            mods.{{GuiEventListener#mouseScrolled}}(0.0, 0.0, 0.0, 1.0);
             layouts++;
             int at = offset.getInt(mods);
             held &= at == step - 1 && drawn(mods).equals(all.subList(at, at + shown));
         }
-        held &= !mods.mouseScrolled(0.0, 0.0, 0.0, 1.0)
+        held &= !mods.{{GuiEventListener#mouseScrolled}}(0.0, 0.0, 0.0, 1.0)
                 && offset.getInt(mods) == 0 && drawn(mods).equals(all.subList(0, shown));
 
         List<?> after = (List<?>) mods.getClass().getMethod("rowLabels").invoke(mods);
@@ -442,12 +437,12 @@ public final class TitleMenuMain {
     }
 
     /** The list rows on screen, which is every drawn widget but the summary and the two buttons. */
-    private static List<String> drawn(Screen mods) {
+    private static List<String> drawn({{Screen}} mods) {
         List<String> window = new ArrayList<>();
-        for (GuiEventListener widget : mods.widgets()) {
-            if (widget instanceof StringWidget line) {
+        for ({{GuiEventListener}} widget : mods.widgets()) {
+            if (widget instanceof {{StringWidget}} line) {
                 window.add(line.text());
-            } else if (widget instanceof Button entry) {
+            } else if (widget instanceof {{Button}} entry) {
                 window.add(entry.message().text());
             }
         }
@@ -456,40 +451,40 @@ public final class TitleMenuMain {
     }
 
     /** The summary line and whether it renders whole, which is the first widget drawn. */
-    private static String summary(Screen mods) {
-        StringWidget line = (StringWidget) mods.widgets().get(0);
+    private static String summary({{Screen}} mods) {
+        {{StringWidget}} line = ({{StringWidget}}) mods.widgets().get(0);
         return line.fits() + " " + line.text();
     }
 
     /** Whether Profiling and Done are the last two widgets drawn. */
-    private static boolean trailing(Screen mods) {
-        List<GuiEventListener> widgets = mods.widgets();
+    private static boolean trailing({{Screen}} mods) {
+        List<{{GuiEventListener}}> widgets = mods.widgets();
         int count = widgets.size();
         return count >= 3
-                && widgets.get(count - 2) instanceof Button profiling
+                && widgets.get(count - 2) instanceof {{Button}} profiling
                 && profiling.message().text().equals("Profiling")
-                && widgets.get(count - 1) instanceof Button done
+                && widgets.get(count - 1) instanceof {{Button}} done
                 && done.message().text().equals("gui.done");
     }
 
     /** Whether every drawn widget sits inside the window. */
-    private static boolean within(Screen mods) {
+    private static boolean within({{Screen}} mods) {
         int bottom = 0;
-        for (GuiEventListener widget : mods.widgets()) {
-            if (widget instanceof StringWidget line) {
+        for ({{GuiEventListener}} widget : mods.widgets()) {
+            if (widget instanceof {{StringWidget}} line) {
                 bottom = Math.max(bottom, line.y() + line.height());
-            } else if (widget instanceof Button drawn) {
+            } else if (widget instanceof {{Button}} drawn) {
                 bottom = Math.max(bottom, drawn.y() + drawn.height());
             }
         }
-        return bottom <= mods.height;
+        return bottom <= mods.{{Screen#height}};
     }
 
     /** Whether every drawn row below the summary renders whole rather than clipped. */
-    private static boolean fits(Screen mods) {
-        List<GuiEventListener> widgets = mods.widgets();
+    private static boolean fits({{Screen}} mods) {
+        List<{{GuiEventListener}}> widgets = mods.widgets();
         for (int index = 1; index < widgets.size(); index++) {
-            if (widgets.get(index) instanceof StringWidget line && !line.fits()) {
+            if (widgets.get(index) instanceof {{StringWidget}} line && !line.fits()) {
                 return false;
             }
         }
@@ -497,9 +492,9 @@ public final class TitleMenuMain {
     }
 
     /** Whether every drawn line starts at the left edge of the box drawn in. */
-    private static boolean aligned(Screen mods) {
-        for (GuiEventListener widget : mods.widgets()) {
-            if (widget instanceof StringWidget line && line.textX() != line.x()) {
+    private static boolean aligned({{Screen}} mods) {
+        for ({{GuiEventListener}} widget : mods.widgets()) {
+            if (widget instanceof {{StringWidget}} line && line.textX() != line.x()) {
                 return false;
             }
         }
@@ -507,8 +502,8 @@ public final class TitleMenuMain {
     }
 
     /** Lays the screen out again without going through the wheel. */
-    private static void rebuild(Screen mods) throws ReflectiveOperationException {
-        Method again = Screen.class.getDeclaredMethod("rebuildWidgets");
+    private static void rebuild({{Screen}} mods) throws ReflectiveOperationException {
+        Method again = {{Screen}}.class.getDeclaredMethod("{{Screen#rebuildWidgets}}");
         again.setAccessible(true);
         again.invoke(mods);
     }

@@ -56,8 +56,8 @@ bytes = 17019
 
 [inputs.stubSeeds]
 path = "minecraft/versions/26.1.2/stubs.toml"
-sha256 = "b89d6ac9e5529ed49e80761f42478eb8336cf9058f9d112aa52149522592a355"
-bytes = 13736
+sha256 = "9c3e9a68af140eccb4f1e1b15ebf66a67222aa78cd8b66254b6f5b20997ce2bf"
+bytes = 14123
 
 # The reflective surface is a generator input because the names in it are
 # compiled into the agent jar: `GameNames` is rendered from this file, so an

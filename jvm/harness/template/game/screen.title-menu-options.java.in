@@ -1,0 +1,22 @@
+{{package}}
+
+{{import Component}}
+{{import Screen}}
+
+/**
+ * The title menu, and the column builder Ravel's own row is placed against.
+ *
+ * <p>The builder hands back the row below the column it built, which is what
+ * this version's seam declares and what the adapter reads. The body adds
+ * nothing to the screen, so a button on it can only have come from the prologue.
+ */
+public final class {{screen.title-menu-options}} extends {{Screen}} {
+
+    public {{screen.title-menu-options}}() {
+        super({{Component}}.{{Component#literal}}("title"));
+    }
+
+    private int {{screen.title-menu-options#createNormalMenuOptions}}(int top, int spacing) {
+        return top + 2 * spacing;
+    }
+}

@@ -1,0 +1,12 @@
+{{package}}
+
+/**
+ * The keystroke this version hands a screen.
+ *
+ * <p>Only this version has it. The other passes the same three numbers as three
+ * arguments, which is why the screen's keyboard override and the driver that
+ * presses a key are the sources with a per-version template rather than a
+ * per-version role binding.
+ */
+public record {{KeyEvent}}(int {{KeyEvent#key}}, int scancode, int modifiers) {
+}

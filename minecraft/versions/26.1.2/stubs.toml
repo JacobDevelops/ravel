@@ -54,6 +54,15 @@ class = "net.minecraft.network.chat.Component"
 members = ["translatable", "literal"]
 
 [[stub]]
+# What the two builders above answer. Seeded for its name rather than for a
+# member, because a screen jar compiled against these stubs carries this type in
+# every label it builds and a stand-in answering the interface instead would be
+# resolved against a descriptor no launch has.
+role = "MutableComponent"
+class = "net.minecraft.network.chat.MutableComponent"
+members = []
+
+[[stub]]
 # What `addRenderableWidget` takes: the widget classes below declare it as a
 # supertype and are assignable to that parameter, which is the erased type the jar
 # declares. `mouseScrolled` is declared here rather than on `Screen`, and it is

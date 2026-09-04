@@ -67,35 +67,26 @@ upstream = "https://piston-meta.mojang.com/v1/packages/7d538f57bd7f3d0638755fa60
 
 # What the JVM harness does not run for this version, and what would close it.
 #
-# The harness stands in for the game rather than loading it, and its stand-in
-# classes are generated per version from `jvm/harness/template/`, so they carry
-# the names this version links. A section that names no generated class or member
-# runs here because the harness supplies the targets as well as the classes and
-# neither is version data; a section that resolves a generated name against one
-# of those stand-ins runs here because the two are generated from the same data
-# and are one string by construction.
+# Nothing, and the table is empty because of it. The harness stands in for the
+# game rather than loading it, its stand-in classes are generated per version
+# from `jvm/harness/template/`, and every section either supplies its own targets
+# or resolves a generated name against a stand-in generated from this same data.
 #
-# One obstacle is left and it is the language rather than the game. This version
-# keeps 26 classes in `net.minecraft` because they carry `@DontObfuscate` and
-# moves the rest into the unnamed package, and `MinecraftServer` is one of the 26
-# while the two members the adapter reaches on it are typed by classes that
-# moved. Java has no syntax for naming an unnamed-package class from inside a
-# package, so that stand-in cannot be written as Java at all and this version
-# renders none. The harness asks the generated tree whether it has one rather
-# than being told, and the recorded failure is `net.minecraft.server.MinecraftServer`
-# not finding `aqu` or `erd`.
+# The last obstacle was the Java language rather than the game. This version keeps
+# 26 classes in `net.minecraft` because they carry `@DontObfuscate` and moves the
+# rest into the unnamed package, and no Java source can name a class outside every
+# package from inside one, so the stand-in game is written in the unnamed package
+# whole. That left the save seam's receiver compiling under a name the adapter does
+# not resolve. It is closed in the class files instead: the generator records each
+# pair it moved in `aliases.txt` and `jvm/harness/remap/Remap.java` rewrites the
+# constant pool of every compiled stand-in before a section runs against it, so
+# `net.minecraft.server.MinecraftServer` is the name the persistence section meets.
 #
-# What that does not mean is that the adapters are wrong. The generator resolves
-# every declared member through this version's mapping and requires the linked
-# class file to declare it, so under the real jar these names are the game's own.
-# What is missing is a stand-in that carries them.
-#
-# Declaring it here is what lets the gate tell a section nobody can run yet from
-# a section that quietly stopped being run: an absence with no line here fails,
-# and so does a line whose section has started running again.
+# The table stays because the distinction it draws is the one that matters: an
+# absence with no line here fails the gate, and so does a line whose section has
+# started running again.
 
 [harness.notRun]
-persistence = "this version splits its game between `net.minecraft` and the unnamed package, and Java cannot name a class outside every package from inside one, so its stand-in game is written in the unnamed package whole and the save seam's receiver compiles under a name the adapter does not resolve; work package: emit the stand-in game as class files rather than as Java where a version's name spaces are split"
 
 # The three hashes below pin the reviewed files beside this one.
 

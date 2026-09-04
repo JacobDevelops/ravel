@@ -151,6 +151,7 @@ const ROOT_FILES: &[&str] = &[
     "jvm/build/build-agent.sh",
     "jvm/build/build-screen.sh",
     "jvm/harness/net/minecraft/util/StringUtil.java",
+    "jvm/harness/remap/Remap.java",
     "jvm/harness/run-harness.sh",
     "jvm/harness/template/driver/Main.java.in",
     "jvm/harness/template/game/Screen.java.in",

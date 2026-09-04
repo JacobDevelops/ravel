@@ -380,11 +380,54 @@ public final class Hook {
         return Boolean.getBoolean("ravel.test.refusal.verdict");
     }
 
-    /** Only the version that runs persistence links this; a differing vector is a second overload. */
+    /** The seam under a version whose world load carries the selected data pack list. */
     public static boolean worldOpenPersistence(
             Object access, Object packs, Object stem, Object gameRules, boolean newWorld) {
+        requireOpenArity(5);
         invocations++;
         return false;
+    }
+
+    /** The same seam under a version whose world load takes no rule overrides. */
+    public static boolean worldOpenPersistence(
+            Object access, Object packs, Object stem, boolean newWorld) {
+        requireOpenArity(4);
+        invocations++;
+        return false;
+    }
+
+    /**
+     * Refuses the open seam whose argument count is not the one this version links.
+     *
+     * <p>Both overloads are declared because one source has to compile at every
+     * version, and that is what a rewritten call site of the wrong width would
+     * otherwise resolve against: the section would cross into Java, count the
+     * crossing and never notice it passed a vector the game does not have. The
+     * count is read from the target member's own descriptor rather than from the
+     * prologue's, because the prologue's is what a wrong entry gets wrong and the
+     * transformer pushes the target's parameters whatever the prologue says.
+     */
+    private static void requireOpenArity(int arity) {
+        int declared = arity(seam("worldOpenPersistence").split(":")[2]);
+        if (declared != arity) {
+            throw new IllegalStateException(
+                    "this version's world-open seam declares " + declared
+                            + " parameters and the rewritten call site passed " + arity);
+        }
+    }
+
+    /** How many parameters one method descriptor declares. */
+    private static int arity(String descriptor) {
+        int count = 0;
+        int at = descriptor.indexOf('(') + 1;
+        while (at < descriptor.length() && descriptor.charAt(at) != ')') {
+            while (descriptor.charAt(at) == '[') {
+                at++;
+            }
+            at = descriptor.charAt(at) == 'L' ? descriptor.indexOf(';', at) + 1 : at + 1;
+            count++;
+        }
+        return count;
     }
 
     public static void worldSavePersistence(boolean quiet, boolean flush, boolean forced) {

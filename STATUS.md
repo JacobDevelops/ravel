@@ -391,9 +391,10 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
 - `profilingTickCounter` — needs a tick boundary wired on the game's tick path.
 - ADG-3's re-pin of the agent jar's reflective surface is owned by no work package.
 - The JVM harness runs at every tracked version and `ravel:verify-gate-versions` holds it there. Both
-  versions now run eleven sections — initialization, hierarchy, refusal, members, side, transformation,
-  load, content, outward, settings and screens — and 26.1.2 runs persistence as a twelfth. All of it
-  comes from templates: the stand-in game, the drivers and the stand-in half of the sibling artifact are
+  versions now run all twelve sections — initialization, hierarchy, refusal, members, side,
+  transformation, load, persistence, content, outward, settings and screens — so every
+  `[harness.notRun]` table is empty and no version declares its way out of anything. All of it comes
+  from templates: the stand-in game, the drivers and the stand-in half of the sibling artifact are
   rendered per version from `jvm/harness/template/` into
   `target/ravel-jvm/generated-harness/{game,driver,sibling}/`, so the name
   the adapter resolves and the name the stand-in declares are one string by construction. `javap -p` on
@@ -401,19 +402,24 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
   `GameMembers` says that version links. The stand-in create-world screen no longer guards its copy on
   the staging directory existing, because every run that reaches the copy staged something, so a
   lifecycle case whose staging crossing refuses needs that guard written back before it can be written.
-- Persistence still does not run at 1.21.1, and the reason changed rather than went away. Its stand-ins
-  are generated now and every one of them renders there except the class the save seam is declared on.
-  1.21.1 keeps 26 `@DontObfuscate` classes in `net.minecraft` and moves the rest into the unnamed
-  package, `MinecraftServer` is one of the 26, and the two members the adapter reaches on it are typed
-  by classes that moved. Java has no syntax for naming a class outside every package from inside one, so
-  that stand-in cannot be written as Java at all: the measured failure is
-  `net.minecraft.server.MinecraftServer: cannot find symbol aqu, erd`. `SERVER.java.in` is 26.1.2's own
-  template, `run-harness.sh` asks the generated tree whether it holds the save seam's receiver rather
-  than being told, and 1.21.1's `adapter.toml` declares the section with that reason. Closing it needs
-  the stand-in game emitted as class files where a version's name spaces are split, which is a work
-  package nobody has opened.
-- Screens and settings now run at 1.21.1 too, so persistence is the only section any version may
-  declare away and `DECLARABLE_SECTIONS` holds one name. The eighteen screen and text stand-ins and the
+- Persistence runs at 1.21.1 now, and what closed it was the class file rather than the Java. 1.21.1
+  keeps 26 `@DontObfuscate` classes in `net.minecraft` and moves the rest into the unnamed package,
+  `MinecraftServer` is one of the 26, and the two members the adapter reaches on it are typed by classes
+  that moved, so no Java source can declare it under the name the adapter resolves. The generator writes
+  the whole stand-in game in the unnamed package and records the pair in
+  `generated-harness/aliases.txt`; `jvm/harness/remap/Remap.java` then rewrites the constant pool of
+  every compiled stand-in, which is the only place a class file spells a name, and moves the renamed
+  file to the path its new name gives. `javap -p` on the remapped class reads
+  `public final class net.minecraft.server.MinecraftServer` with `(Lerd;)Ljava/nio/file/Path;`,
+  `()Laqu;` and `(ZZZ)Z`. A name a stand-in spells as a string constant is refused rather than rewritten,
+  because a `GameNames` value and a class name are the same characters. Mutations, each exiting 1:
+  emptying `aliases.txt` after generation leaves the save hook uninstalled and the persistence probe
+  refuses at three rewritten classes instead of four; planting `"MinecraftServer"` as a string constant
+  in `SERVER.java.in` makes the pass name the class file and the pool entry and stop.
+- 1.21.1's world-load seam takes no optional rule overrides where 26.1.2's does, so the stand-in `Hook`
+  carries `worldOpenPersistence` twice. The section could not have reached that until it ran there.
+- Screens and settings now run at 1.21.1 too. `DECLARABLE_SECTIONS` still holds persistence and no
+  version declares it, which is a set with nothing left in it to excuse. The eighteen screen and text stand-ins and the
   chat-target one are templates now, and so are the five drivers; 1.21.1 writes `Screen` and the title
   menu in full, because a keystroke reaches a screen there as three numbers and its column builder hands
   nothing back, and 26.1.2 owns `KeyEvent`, the record the other passes instead. Three facts about a

@@ -54,3 +54,12 @@ where Ravel's own row goes instead.
 
 A role binding answers a rename; it does not answer a call one version makes and
 the other does not have.
+
+This version's name space is split: 26 classes stay in `net.minecraft` because
+they carry `@DontObfuscate` and the rest move into the unnamed package, and no
+Java source can name a class outside every package from inside one. So the whole
+stand-in game is written in the unnamed package and `MinecraftServer`, the save
+seam's receiver, is the one class whose written name is not the name this version
+links. `jvm/harness/remap/Remap.java` puts it back in the compiled class files
+before any section runs against them, which is why `[harness.notRun]` is empty
+here and the harness runs all twelve sections at this version.

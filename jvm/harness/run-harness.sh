@@ -83,6 +83,31 @@ cat >"$work/ravel/config/configuration.json" <<'EOF'
 EOF
 cp "$jar" "$agent"
 
+# What puts the linked names back into the stand-ins a section runs against.
+#
+# A version that keeps a handful of classes in a package and moves the rest into
+# the unnamed package cannot have its stand-in game written as Java at all — a
+# class inside a package has no syntax for naming one outside every package — so
+# the generator writes the whole of that game in the unnamed package and records
+# each pair it moved in `aliases.txt`, as `written=linked`. The adapters resolve
+# the linked name, so every directory a section runs against is passed through
+# this after the last javac that writes into it and before anything reads it
+# back: the pair is a name, and a name in a class file lives only in the constant
+# pool. An unsplit version leaves the file empty and this is a no-op.
+aliases="$standins/aliases.txt"
+if [ ! -f "$aliases" ]; then
+	echo "the generated stand-in game names no aliases.txt, so nothing says which names" >&2
+	echo "it was written under; run:" >&2
+	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	exit 1
+fi
+remapper="$work/remap"
+mkdir -p "$remapper"
+javac -Xlint:all -Werror -d "$remapper" "$root/jvm/harness/remap/Remap.java"
+remap() {
+	java -cp "$remapper" Remap "$aliases" "$@"
+}
+
 # Every section this run reached, for the record the gate reads. A section is
 # added after it passes, never before, so the file says what was proved rather
 # than what was attempted.
@@ -147,6 +172,7 @@ javac -Xlint:all -Werror -cp "$ui" -d "$ui" \
 javac -Xlint:all -Werror -cp "$ui:$jar:$screen" -d "$ui" \
 	"$standin_drivers/SettingsScreenMain.java" \
 	"$standin_drivers/ProfilingScreenMain.java"
+remap "$ui"
 
 order="$work/initialization-order"
 order_agent="$order/agent/ravel-agent.jar"
@@ -412,34 +438,6 @@ install_seams() {
 install_seams persist_seams \
 	worldOpenPersistence worldSavePersistence worldCreatePackRepository screenCreateWorldInit
 
-# Whether the save seam's receiver compiles under the name the adapter resolves
-# it by, which is what says the whole section can be run at all.
-#
-# The obstacle is the Java language rather than the game. A version that
-# obfuscates leaves a handful of classes in `net.minecraft` and moves the rest
-# into the unnamed package, and a class inside a package cannot name one outside
-# every package — javac has no syntax for it. The generator answers that by
-# writing the whole stand-in game in the unnamed package, which is the one name
-# space both halves can be spelled in, and records in `aliases.txt` every class
-# it moved to get there, as `written=linked`. The adapter looks its receiver up
-# by the linked name, so a receiver that appears there is one this section has no
-# way to save through until the packages are put back. Every other class is
-# written under the name it links, so an alias somewhere else costs this section
-# nothing. Asked of the generated tree rather than written down, so a version
-# that stops needing the alias starts running here without anything being edited.
-persistence_receiver="$(hook_seam worldSavePersistence)"
-persistence_receiver="${persistence_receiver%%:*}"
-aliases="$standins/aliases.txt"
-if [ ! -f "$aliases" ]; then
-	echo "the generated stand-in game names no aliases.txt, so nothing says which names" >&2
-	echo "it was written under; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
-	exit 1
-fi
-persistence_receiver_written="$(awk -F= -v linked="$persistence_receiver" \
-	'$2 == linked { print $1 }' "$aliases")"
-if [ -z "$persistence_receiver_written" ]; then
-
 # ADG-7's world persistence seams and the two data pack seams, against the
 # generated stand-in game. The adapter is reflective and reaches the sibling
 # artifact by name, so a stand-in carrying the names this version links exercises
@@ -462,6 +460,9 @@ javac -Xlint:all -Werror -cp "$persist/classes:$order/agent-classes" -d "$persis
 # constant `ScreenNames` carries.
 mapfile -d '' sibling_sources < <(find "$standin_sibling" -name '*.java' -print0 | sort -z)
 javac -Xlint:all -Werror -cp "$persist/classes" -d "$persist/sibling" "${sibling_sources[@]}"
+# Both directories at once and after the sibling, because the sibling half is
+# rendered under the alias like the stand-ins it compiles against.
+remap "$persist/classes" "$persist/sibling"
 jar --create --file "$persist_screen" --date 1980-01-01T00:00:02Z -C "$persist/sibling" .
 cp "$order_agent" "$persist_agent"
 
@@ -709,19 +710,6 @@ if [ "$persistence_lifecycles" -ne "$persistence_lifecycles_declared" ]; then
 fi
 
 section_ran persistence
-else
-	# Said rather than silent, because the absence and a section that broke look
-	# the same from outside: this is the one section a version may be unable to
-	# name its receiver in, and a run that skipped it without naming what it
-	# looked for reads as a run that passed it. What keeps the skip honest is
-	# elsewhere — `cargo xtask verify gate-versions` refuses a version whose
-	# `adapter.toml` does not declare this section not run — so this line is the
-	# reader's half.
-	echo "the persistence section is not run here: the generated hook table declares the" >&2
-	echo "save seam on $persistence_receiver, and this version's stand-in game is written in" >&2
-	echo "one name space, so $standin_game/$persistence_receiver_written.java stands in for it" >&2
-	echo "under a name the adapter does not resolve" >&2
-fi
 
 # The content-registration seam, against the generated stand-in game. The adapter
 # is reflective and reads the admitted set across its own crossing, so a stand-in
@@ -742,6 +730,7 @@ javac -Xlint:all -Werror -d "$content/classes" "${standin_sources[@]}" "${librar
 # A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$content/classes:$order/agent-classes" -d "$content/classes" \
 	"$standin_drivers/ContentMain.java"
+remap "$content/classes"
 # The registration itself lives in the sibling artifact, because the two tracked
 # versions build a block differently rather than name it differently, so this
 # section needs the sibling jar the persistence section already needed. What is
@@ -755,6 +744,7 @@ if [ ! -f "$content_sibling" ]; then
 	exit 1
 fi
 javac -Xlint:all -Werror -cp "$content/classes" -d "$content/sibling" "$content_sibling"
+remap "$content/sibling"
 jar --create --file "$content_screen" --date 1980-01-01T00:00:02Z -C "$content/sibling" .
 cp "$order_agent" "$content_agent"
 install_seams content_seams registryBuiltInFreeze
@@ -966,6 +956,7 @@ javac -Xlint:all -Werror -d "$outward/classes" "${standin_sources[@]}" "${librar
 # A real launch never compiles against them.
 javac -Xlint:all -Werror -cp "$outward/classes:$order/agent-classes" -d "$outward/classes" \
 	"$standin_drivers/OutwardMain.java"
+remap "$outward/classes"
 cp "$order_agent" "$outward_agent"
 install_seams outward_seams clientTick
 

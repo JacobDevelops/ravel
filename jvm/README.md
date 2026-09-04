@@ -33,6 +33,9 @@ game, which ADG-1's second amendment measured rather than assumed.
 - `harness/` — the stand-ins the transformer sections supply themselves, and the
   side markers, which run the whole path against a real JVM without the game. See
   [Proving it without the game](#proving-it-without-the-game).
+- `harness/remap/Remap.java` — puts a split version's linked class names back
+  into the compiled stand-ins, which is the one thing no Java source can be
+  written to do. See [Generating the stand-in game](#generating-the-stand-in-game).
 - `harness/template/` — the shared half of the stand-in game, the drivers that
   exercise it and the stand-in half of the sibling artifact, one template per
   class, rendered per version into `target/ravel-jvm/generated-harness/`. The
@@ -177,13 +180,20 @@ read off the stand-in game once and rendered under by every tree: the name
 the stand-ins was written under, and a tree that decided from its own roles
 would publish one name and write the other.
 
-Until those names are put back, a class an alias moved compiles under a name the
-agent jar's adapters do not resolve. The run script reads `aliases.txt` to decide
-and skips the one section whose seam is declared on a class it names, so a
-version that stops needing the alias starts running that section without
-anything being edited. Nothing else is affected: an alias moves only the handful
-of classes the version leaves in a package, and every other stand-in is written
-under the name it links.
+A class an alias moved compiles under a name the agent jar's adapters do not
+resolve, so the names go back before anything runs against them, and the class
+file is where they can go back: only the constant pool spells a name, and
+everything after it reaches the pool by index. `harness/remap/Remap.java` takes
+`aliases.txt` and a directory of compiled classes, rewrites every pool entry that
+is a written name or carries one as a class token inside a descriptor or a
+signature, copies the rest byte for byte, and moves the renamed class file to the
+path its new name gives. `run-harness.sh` runs it over each tree after the last
+javac that writes into it, which is a no-op where the file is empty. So the
+compiled stand-in every section meets carries the name its version links, whether
+or not that is the name javac could be given, and a name a stand-in spells as a
+string constant rather than as a type is the one thing the pass will not touch:
+it refuses the run instead, because a `GameNames` value and a class name are the
+same characters and only one of them is a name to put back.
 
 What a version renders instead of a shared template lives under
 `minecraft/versions/<version>/harness/game/`, `.../harness/driver/` and
@@ -241,7 +251,7 @@ Every other section — content, outward, settings, screens and persistence —
 compares a generated name against a stand-in, and their stand-in game is
 `template/game/`'s: it is generated from the same version data the name is, so the
 two names are one string by construction rather than by luck, and the obfuscated
-case is the one they read rather than the one they skip. All but the last run at
+case is the one they read rather than the one they skip. All of them run at
 every version.
 
 The settings and screen sections were the last to join them, and what they needed
@@ -255,15 +265,14 @@ class is. Whether the title menu's column builder hands a row back is read from
 instead of deriving it. And the class the settings round trip rewrites is read
 from the generated hook table, by the seam it names.
 
-The persistence section runs wherever a stand-in for it can be written down at
-all, which is not the same question. A version that obfuscates leaves a handful of
-classes in `net.minecraft` because they carry `@DontObfuscate` and moves the rest
-into the unnamed package, and Java has no syntax for naming a class outside every
-package from inside one. The save seam's receiver is one of the classes left
-behind, and the two members the adapter reaches on it are typed by classes that
-moved, so that version renders no stand-in for it. `run-harness.sh` asks the
-generated tree whether it has one, by the name the generated hook table gives the
-save seam, rather than being told.
+The persistence section is the one that stopped being written down as Java. A
+version that obfuscates leaves a handful of classes in `net.minecraft` because
+they carry `@DontObfuscate` and moves the rest into the unnamed package, and Java
+has no syntax for naming a class outside every package from inside one. The save
+seam's receiver is one of the classes left behind, and the two members the adapter
+reaches on it are typed by classes that moved, so no Java source declares it under
+the name the adapter resolves. The remap above closes that in the class files
+instead, and the section runs at every version like the four beside it.
 
 The settings section's stand-in carries every member the version's own hook
 table declares on the class its targets sit on: the shared template holds the
@@ -277,10 +286,9 @@ unmoved.
 A section a version does not run has to say so in that version's `adapter.toml`,
 under `[harness.notRun]`, with a reason naming the work package that closes it.
 `cargo xtask verify gate-versions` refuses an undeclared absence, and refuses a
-declaration that outlived its reason. Only persistence is declarable now, and
-closing it at a version whose name spaces are split means emitting that version's
-stand-in game as class files rather than as Java, because no Java source can be
-written for it.
+declaration that outlived its reason. Persistence is the only section still
+declarable and no tracked version declares it: the remap closed the one obstacle
+there was, so every table is empty and both versions run all twelve sections.
 
 **What no version of this harness proves** is `Members` against real obfuscated
 class files. That class walks a class's supertypes and rebuilds erased descriptors

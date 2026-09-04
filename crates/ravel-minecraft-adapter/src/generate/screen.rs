@@ -256,7 +256,7 @@ pub(super) fn render(
     // package that the tree beside it, and the constant the agent jar opens it
     // by, spell bare.
     let NameSpace { unnamed, split } = name_space;
-    every_name_is_nameable(tree, &linked, unnamed)?;
+    every_name_is_nameable(&read, purpose, &linked, unnamed)?;
     let screens = (!unnamed).then_some(SCREEN_PACKAGE);
     let owned = match purpose {
         Purpose::Screen => screens.map(str::to_owned),
@@ -365,33 +365,52 @@ fn unresolved_role(template: &Template, role: &str) -> GenerateError {
     )
 }
 
-/// Refuses a tree that reaches past the stand-in game's name space.
+/// Refuses a template that reaches past the stand-in game's name space.
 ///
 /// The one answer every tree renders under comes from the stand-in game, and
 /// this is the case it does not cover: a version whose game is in packages puts
 /// Ravel's own sources in one too, and a source in a package can name nothing
-/// outside every package. Said here, where the tree that asked is still in hand,
-/// rather than by javac a compilation later.
+/// outside every package. Said here, where the template that asked is still in
+/// hand, rather than by javac a compilation later.
 ///
 /// # Errors
 ///
-/// Returns an error naming the first such class.
+/// Returns an error naming the first such class and the template that names it.
 fn every_name_is_nameable(
-    tree: &Tree<'_>,
+    read: &[Template],
+    purpose: Purpose,
     linked: &BTreeMap<String, String>,
     unnamed: bool,
 ) -> Result<(), GenerateError> {
-    let outside = (!unnamed)
-        .then(|| linked.values().find(|name| render::split(name).0.is_none()))
-        .flatten();
-    match outside {
-        Some(outside) => Err(GenerateError::Unsupported(format!(
-            "{} names {outside}, which this version links outside every package, while its \
-             stand-in game is in packages and Ravel's own sources here are too",
-            tree.shared.display()
-        ))),
-        None => Ok(()),
+    if unnamed {
+        return Ok(());
     }
+    for template in read {
+        let declared = (purpose == Purpose::StandIn).then_some(template.name.as_str());
+        let referenced = template
+            .placeholders
+            .iter()
+            .filter_map(|placeholder| match placeholder {
+                Placeholder::Class(role) | Placeholder::Import(role) => Some(role.as_str()),
+                _ => None,
+            });
+        for role in declared.into_iter().chain(referenced) {
+            let Some(outside) = linked
+                .get(role)
+                .filter(|name| render::split(name).0.is_none())
+            else {
+                continue;
+            };
+            return Err(in_template(
+                template,
+                GenerateError::Unsupported(format!(
+                    "names {outside}, which this version links outside every package, while its \
+                     stand-in game is in packages and Ravel's own sources here are too"
+                )),
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// One template's failure, said with the template that carries it.
@@ -2004,6 +2023,7 @@ com.example.util.Held -> com.example.util.Held:
         let message = error.to_string();
         assert!(message.contains('a'), "{message}");
         assert!(message.contains("outside every package"), "{message}");
+        assert!(message.contains("Shared.java.in"), "{message}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

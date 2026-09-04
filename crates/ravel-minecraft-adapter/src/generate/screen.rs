@@ -1244,6 +1244,60 @@ com.example.util.Held -> com.example.util.Held:
         assert!(matches!(error, GenerateError::Unresolved(_)), "{error}");
     }
 
+    /// The provenance header is `run-datafix-byte-preservation.sh`'s interface.
+    ///
+    /// Nothing the generator writes into `target/ravel-jvm` names the game
+    /// version — the fact files beside the Java carry the Java release and the
+    /// agent release — so that measurement reads the version off the first line
+    /// of the screen source it is about to compile. The wording of this header
+    /// is therefore load-bearing outside this crate, and reversing the scrape
+    /// here is what makes a reworded header fail a test rather than a run
+    /// nothing in the gate performs. Both name spaces are checked because the
+    /// header rides on the package declaration under one and stands alone under
+    /// the other.
+    #[test]
+    fn the_datafix_measurement_scrapes_the_header_this_generator_writes() {
+        let root = repository_root();
+        let script =
+            std::fs::read_to_string(root.join("jvm/harness/run-datafix-byte-preservation.sh"))
+                .expect("the measurement script is tracked");
+        let (_, scrape) = script
+            .split_once("sed -n '1s/^.*")
+            .expect("the script scrapes the first line of the generated source");
+        let (prefix, rest) = scrape
+            .split_once("\\(.*\\)")
+            .expect("the scrape captures the version between two literals");
+        let (suffix, _) = rest
+            .split_once(".*$/\\1/p")
+            .expect("the scrape ends by printing the capture");
+        let expected = format!(
+            "{}{}{}",
+            prefix.replace("\\.", "."),
+            adapter().minecraft,
+            suffix.replace("\\.", ".")
+        );
+
+        let shared = staged_screen("provenance-header", "{{package}}\nclass Shared {}\n");
+        for space in [PACKAGED, UNNAMED] {
+            let rendered = render(
+                &tree(&shared, "0.0.0-none", Purpose::Screen),
+                &adapter(),
+                &roles(&seeds()),
+                &stubs(),
+                &proguard(),
+                space,
+            )
+            .expect("the staged template names a bound role");
+            let (_, source) = &rendered.java[0];
+            let first = source.lines().next().expect("a rendered source has a line");
+            assert!(
+                first.contains(&expected),
+                "{first} does not carry {expected}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&shared);
+    }
+
     fn repository_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()

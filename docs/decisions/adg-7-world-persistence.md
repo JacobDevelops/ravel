@@ -2,6 +2,11 @@
 
 Status: accepted before M3-W4. The pinned 26.1.2 seams and fixer were measured;
 the Rust ownership, failure, and size contracts below are selected for Phase C.
+Amended after the saved-data class's constructors went private, to record how the
+fixer measurement reaches production now and what it re-measured. The amendment
+is recorded under "Amendment: the measurement reaches production the way the
+agent jar does" below, and the sentence it corrects is marked where it appears.
+Nothing the measurement concluded changed.
 
 ## Decision
 
@@ -190,7 +195,9 @@ production rather than restated. `jvm/harness/DataFixBytePreservationMain.java`
 compiles `dev.ravel.jvm.screen.RavelWorldData` — the class Minecraft stores —
 against the pinned jar and uses that class's own `SavedDataType`: its codec builds
 the payload, its `dataFixType()` selects the fixer, and its byte accessor reads the
-aggregate back. The wrapping around the payload is the pinned `SavedDataStorage`'s,
+aggregate back. *Corrected by the amendment below: the type and the object come
+from `lookup()` and `replacement(byte[])`, the entry points the agent jar reaches
+this class by, rather than from the class's own private constructors.* The wrapping around the payload is the pinned `SavedDataStorage`'s,
 read from the pinned class files: writing puts the codec's output under `data` in a
 fresh compound and adds `DataVersion`, and reading hands the whole root compound to
 `DataFixTypes.update` and then parses `root.get("data")`. The fixer therefore sees
@@ -240,7 +247,8 @@ placeholders filled in, and the digest above is over neither.
 `sha256sum` over those three paths recomputes them. Editing any of the three makes
 the reported line a record of a different instrument, and nothing in the repository
 notices: the provenance of this measurement is prose, which is what not being a gate
-costs. The client jar the run linked against is the one
+costs. That is exactly what happened next, and the amendment below is the
+re-measurement rather than a reworded claim. The client jar the run linked against is the one
 `minecraft/versions/26.1.2/adapter.toml` pins by digest, and that pin is checked.
 
 The limit of the evidence is explicit: it covers only 26.1.2's current range and
@@ -429,3 +437,103 @@ records `save.compute-if-absent`, `save.save-and-join` and `save.try-write` as
 non-goals. So 1.21.1's saved-data half is generated and compiled and is not
 driven, and the adapter that would drive it is the unowned re-pin `ROADMAP.md`
 records against ADG-3.
+
+## Amendment: the measurement reaches production the way the agent jar does
+
+The instrument recorded above stopped compiling, and it stopped for a reason worth
+recording rather than patching around. `RavelWorldData.type()` and
+`RavelWorldData.of(byte[])` became private, which is correct: nothing outside that
+class may build either, and every caller that matters goes through the entry points
+`dev.ravel.jvm.Persistence` reaches the class by. The measurement was not one of
+those callers. It called both directly, so it was the one thing holding those two
+members public, and it broke the moment production stopped granting it that.
+
+Re-widening them would have made the measurement's convenience an argument about
+production's surface. It reads through the entry points instead, and it reads
+through each one on the side of the round trip production uses it on.
+`replacement(byte[])` is passed *whole* to the storage's setter, so the codec that
+serialises a real save is the one carried by its first element and the object that
+save writes is its second; the measurement takes both from one call and encodes
+with them. `lookup()` is what the getter is asked with, so the codec a real load
+parses through is the one its sole element carries, and the measurement decodes
+with that. Both arrays are already public, both are already what production uses,
+and taking the type and the object from there makes the measurement a measurement
+of what production hands over rather than of a second construction of it.
+
+Encoding and decoding through two separately built registrations is only one
+measurement if the two are one registration, which `RavelWorldData` does not
+guarantee: it builds the type fresh per call, so the two are never the same object
+and never `equals` — the record's supplier and codec components are new lambdas
+each time. So the run requires it on the components the storage actually acts on:
+the same id, the same `DataFixTypes`, and codecs that encode one probe object to
+the same tag. Anything else stops the run with both registrations printed. Each
+array is also checked for shape rather than cast blindly, so a production change
+that stops handing the storage a single type, or stops carrying an object in the
+replacement, fails loudly at the point the assumption is made. The registration
+refusal was proven by mutating the generated source and observing a non-zero exit,
+not by reading it: giving `lookup()` a codec under a different field key, with the id and
+the fixer left alone, exits 1 naming `probe={aggregate:...}` against
+`probe={mutant:...}`.
+
+The measurement was then re-taken. At change `tyromkyy` it reported:
+
+```text
+datafix-byte-preservation=passed fixer=SAVED_DATA_COMMAND_STORAGE
+shape=data.{aggregate:StringTag} range=1343..4790 versions=3448 payloads=8
+cases=27584
+```
+
+That is byte-identical to the line recorded above, `shape` included, which is the
+field that says the object encoded was the one production stores. So the conclusion
+this record already draws is unchanged, and what changed is the route the
+measurement takes to production, not what it found there.
+
+The anchoring is re-taken with it. The historical table above stays as the record
+of the earlier run; this one is the record of this one. Its third row is the
+tracked template rather than a generated file, because the source the harness
+compiles is generated per version and is not in the tree:
+
+| File | sha256 |
+| --- | --- |
+| `jvm/harness/DataFixBytePreservationMain.java` | `9d66b4cf4cb2a50e943f80606bedc08b247446ce2b030c9b353355b6b53207b7` |
+| `jvm/harness/run-datafix-byte-preservation.sh` | `482718fc4750f55e08e4b525b274adf86c6fcf652ef5e91e5d7cd68bc2dbfe15` |
+| `jvm/screen/template/RavelWorldData.java.in` | `affbb89ac89389231ef898a3bb2a6b802118fd5b5d07cce17fb7052bc2c3bb74` |
+
+### What the script does about a second version
+
+The script used to spell one version in three places: the fixture directory, the
+fixer coordinate it probed a library root with, and nothing at all for the source
+it compiled. It now takes the version from the generated screen source it is about
+to compile, and derives the fixture and the fixer coordinate from it. Reading the
+generator's own output rather than the environment is the rule
+`jvm/build/build-screen.sh` follows, for the reason that applies to both: the
+generated tree is shared and holds one version at a time. What it reads is not the
+same file, because there is none to read. The generator writes small fact files
+beside the Java it generates, but they carry the Java release and the agent
+release; nothing it writes into `target/ravel-jvm` names the game version. So this
+script scrapes the provenance header the generator puts on the first line of every
+generated source. That makes the header's wording an interface, and
+`the_datafix_measurement_scrapes_the_header_this_generator_writes` in
+`crates/ravel-minecraft-adapter/src/generate/screen.rs` holds the two together by
+reversing the script's own scrape against a freshly rendered header under both name
+spaces — so a reworded header fails a test rather than a run nothing in the gate
+performs. It also finds that source
+rather than spelling its path, because a version whose game is in the unnamed
+package puts the screens there too, and a spelled path reports the source missing
+for precisely the version that has one.
+
+What it does not do is measure 1.21.1. The section below states why: that version
+declares no `SavedDataType` under any spelling and registers saved data through a
+factory over `CompoundTag`, so this measurement's whole subject is absent there.
+The script refuses a version that carries its own `jvm/screen/template/<version>/
+RavelWorldData.java.in`, naming that as the reason and exiting non-zero. That
+refusal is the honest result and not a passing one: the fixer question for a
+factory-era version is a different measurement with a different answer, it would
+need the game names an obfuscated jar does not carry, and no work package owns it.
+`ROADMAP.md`'s ADG-3 row is where the unowned 1.21.1 persistence re-pin stays
+visible, and this is part of it.
+
+Being outside the gate is also unchanged and unchanged for the original reason: the
+run needs the restricted client jar and a launcher's library root, and `ravel:verify`
+can assume neither. So nothing noticed that the instrument had stopped compiling
+until someone ran it, which is the cost this record already names.

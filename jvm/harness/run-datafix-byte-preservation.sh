@@ -10,13 +10,56 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-fixture="$root/tests/fixtures/local/tooling/minecraft-26.1.2"
-client="$fixture/client.jar"
-manifest="$fixture/version.json"
+screens="$root/target/ravel-jvm/generated-screen"
 work="$root/target/ravel-jvm/datafix-byte-preservation"
 
+# The source is searched for rather than spelled, because where it lands is a
+# per-version fact: a version with packages puts it under `dev/ravel/jvm/screen`
+# and one whose game is in the unnamed package puts it at the tree root. A
+# spelled path would report the source missing for the second kind, which is the
+# one answer that is never true.
+mapfile -d '' found < <(find "$screens" -name RavelWorldData.java -print0 2>/dev/null | sort -z)
+if [[ ${#found[@]} -ne 1 ]]; then
+    echo "the generated screen tree holds ${#found[@]} RavelWorldData sources, not one; run:" >&2
+    echo "  cargo build -p ravel-minecraft-adapter" >&2
+    exit 1
+fi
+generated_source="${found[0]}"
+
+# Which version this measurement is about is read off the source it is about to
+# compile, not off the environment. Both build scripts beside this one read the
+# generator's own output for the same reason: the generated tree is shared, one
+# version at a time, and a run that took the version from `RAVEL_MINECRAFT_VERSION`
+# would link the jar the caller named against whatever the last build left behind.
+# The provenance rides on the first line either way: on the package declaration
+# under a version with packages, and alone under one whose game is in the unnamed
+# package, so the match is anchored to the line and not to the column.
+version="$(sed -n '1s/^.*Generated from the pinned Minecraft \(.*\) inputs\..*$/\1/p' "$generated_source")"
+if [[ -z "$version" ]]; then
+    echo "$generated_source carries no generated version header; run:" >&2
+    echo "  cargo build -p ravel-minecraft-adapter" >&2
+    exit 1
+fi
+
+# What this measurement encodes through is a codec carried by a `SavedDataType`,
+# and that is an era rather than a spelling: an earlier era registers saved data
+# through a factory over `CompoundTag` and declares no such type under any name.
+# A version that overrides the shared screen template has its own storage contract,
+# so the fixer question for it is a different measurement with its own answer, and
+# ADG-7 records it as unowned rather than answered here. Refusing by the override
+# is what makes that a stated result instead of a compiler error about a name.
+if [[ -f "$root/jvm/screen/template/$version/RavelWorldData.java.in" ]]; then
+    echo "Minecraft $version overrides the shared saved-data template, so it stores through" >&2
+    echo "a contract this codec-era measurement does not describe; see ADG-7." >&2
+    exit 1
+fi
+
+fixture="$root/tests/fixtures/local/tooling/minecraft-$version"
+client="$fixture/client.jar"
+manifest="$fixture/version.json"
+
 if [[ ! -f "$client" || ! -f "$manifest" ]]; then
-    echo "the pinned 26.1.2 client fixture is absent; see tests/fixtures/local/README.md" >&2
+    echo "the pinned $version client fixture is absent; see tests/fixtures/local/README.md" >&2
     exit 1
 fi
 
@@ -30,9 +73,33 @@ library_roots+=(
     "$HOME/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher/libraries"
 )
 
+# The library root is chosen by probing for the fixer's own jar, and which jar
+# that is comes from this version's manifest rather than from a coordinate
+# written here. A hard-coded one would name a single version's fixer while
+# everything around it followed the generated tree, so a root holding another
+# game's libraries would be selected as if it held this one's.
+fixer_path="$(python3 - "$manifest" <<'FIXER'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+for library in manifest["libraries"]:
+    if library.get("name", "").startswith("com.mojang:datafixerupper:"):
+        artifact = library.get("downloads", {}).get("artifact")
+        if artifact is not None:
+            print(artifact["path"])
+            break
+FIXER
+)"
+if [[ -z "$fixer_path" ]]; then
+    echo "$manifest declares no com.mojang:datafixerupper artifact" >&2
+    exit 1
+fi
+
 library_root=""
 for candidate in "${library_roots[@]}"; do
-    if [[ -f "$candidate/com/mojang/datafixerupper/9.0.19/datafixerupper-9.0.19.jar" ]]; then
+    if [[ -f "$candidate/$fixer_path" ]]; then
         library_root="$candidate"
         break
     fi
@@ -85,6 +152,6 @@ mkdir -p "$work"
 # suppressed warning below is that difference — not something the screen build's
 # own `-Xlint:all -Werror` would let through.
 javac -Xlint:all,-rawtypes,-unchecked,-cast -Werror -cp "$classpath" -d "$work" \
-    "$root/target/ravel-jvm/generated-screen/dev/ravel/jvm/screen/RavelWorldData.java" \
+    "$generated_source" \
     "$root/jvm/harness/DataFixBytePreservationMain.java"
 java -cp "$work:$classpath" DataFixBytePreservationMain

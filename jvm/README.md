@@ -299,7 +299,8 @@ the same scenario without being copied into it. Discovery is unchanged: every ma
 every declared digest verified, so a directory that is not a package fails the section rather than being
 skipped. The report's `mods=` count is the launch's own surface, which the host library decides and the
 installed set does not, so it stays what the composed host holds; a caller supplying its own
-`ravel.host` beside its own packages names that host's member count in `RAVEL_HARNESS_COMPOSED_MODS`.
+`ravel.host` beside its own packages names it in `RAVEL_HARNESS_HOST` and that host's member count in
+`RAVEL_HARNESS_COMPOSED_MODS`; the other sections keep launching the compiled host.
 
 Every tracked version runs all thirteen sections, and nothing a version writes can
 excuse one. `cargo xtask verify gate-versions` refuses a section missing from a

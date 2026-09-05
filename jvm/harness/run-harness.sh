@@ -2195,6 +2195,13 @@ for package in "${cluster_packages[@]}"; do
 	cp -r "$package" "$cluster/ravel/mods/$(basename "$package")"
 done
 cluster_mods="${RAVEL_HARNESS_COMPOSED_MODS:-5}"
+# The host the cluster launches is the compiled one unless a caller names its
+# own beside its own packages; the other sections keep the compiled host.
+cluster_host="${RAVEL_HARNESS_HOST:-$host}"
+if [ ! -f "$cluster_host" ]; then
+	echo "no host library to launch the cluster with is at: $cluster_host" >&2
+	exit 1
+fi
 
 javac -Xlint:all -Werror -d "$cluster/classes" "${entry_sources[@]}"
 # `ClusterMain` needs the agent jar on its compile class path for the two
@@ -2213,7 +2220,7 @@ cluster_run() {
 	local status=0
 	(cd "$cluster" && "${jvm[@]}" \
 		-javaagent:"$agent" \
-		-Dravel.host="$host" \
+		-Dravel.host="$cluster_host" \
 		-cp classes "$client_entry" ClusterMain "$half" "$cluster_record" \
 		>"$out" 2>"$err") || status=$?
 	local observed
@@ -2278,7 +2285,7 @@ cluster_mutation_out="$cluster/mutated-stdout"
 cluster_mutation_status=0
 (cd "$cluster" && "${jvm[@]}" \
 	-javaagent:"$agent" \
-	-Dravel.host="$host" \
+	-Dravel.host="$cluster_host" \
 	-cp classes "$client_entry" ClusterMain reload "$cluster_record" \
 	>"$cluster_mutation_out" 2>"$cluster/mutated-stderr") || cluster_mutation_status=$?
 cat "$cluster_mutation_out"

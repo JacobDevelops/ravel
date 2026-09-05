@@ -1,0 +1,419 @@
+{
+  "cluster": {
+    "composedMods": 12,
+    "harnessLogSha256": "8de07ec136ad942653df2fd0cea952fbdef55786d1cfc596ade57e0e103c99a6",
+    "hostFingerprint": "ab2b7c2719efa5be45827b413aad0c883c4fff666144650658fa90f1e51c323e",
+    "hostSha256": "901608a4c4ec0acb0bf297a008c6229871372de39246fb591dbfc77e358a6729",
+    "leaves": [
+      "RVL-002",
+      "RVL-086"
+    ],
+    "prerequisites": [
+      "RVL-042",
+      "RVL-321"
+    ],
+    "scenario": "Two gameplay entries in different owner lanes over a shared runtime entry and a shared library, so M6-W4's fresh play, save, exit and reload run exercises server-owned content and client presentation against one prerequisite pair rather than against a single leaf.",
+    "steps": [
+      {
+        "name": "fresh-play",
+        "observed": "cluster fresh-play=passed mods=12",
+        "result": "pass"
+      },
+      {
+        "name": "save",
+        "observed": "cluster save=passed record=written",
+        "result": "pass"
+      },
+      {
+        "name": "exit",
+        "observed": "cluster exit=passed record=captured",
+        "result": "pass"
+      },
+      {
+        "name": "reload",
+        "observed": "cluster reload=passed mods=12 record=advanced, twice, byte-identical",
+        "result": "pass"
+      },
+      {
+        "name": "mutation",
+        "observed": "cluster reload=failed refusal=the saved-data aggregate is invalid: unknown field",
+        "result": "pass"
+      }
+    ]
+  },
+  "counterparts": [
+    {
+      "declarableOnly": 7,
+      "entry": "RVL-002",
+      "exercised": 33,
+      "id": "rvl_002_counterpart",
+      "observableAreas": 40,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 138
+      }
+    },
+    {
+      "declarableOnly": 6,
+      "entry": "RVL-025",
+      "exercised": 50,
+      "id": "rvl_025_counterpart",
+      "observableAreas": 56,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 211
+      }
+    },
+    {
+      "declarableOnly": 6,
+      "entry": "RVL-042",
+      "exercised": 10,
+      "id": "rvl_042_counterpart",
+      "observableAreas": 16,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 86
+      }
+    },
+    {
+      "declarableOnly": 7,
+      "entry": "RVL-060",
+      "exercised": 60,
+      "id": "rvl_060_counterpart",
+      "observableAreas": 67,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 241
+      }
+    },
+    {
+      "declarableOnly": 10,
+      "entry": "RVL-086",
+      "exercised": 33,
+      "id": "rvl_086_counterpart",
+      "observableAreas": 43,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 151
+      }
+    },
+    {
+      "declarableOnly": 6,
+      "entry": "RVL-120",
+      "exercised": 44,
+      "id": "rvl_120_counterpart",
+      "observableAreas": 50,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 192
+      }
+    },
+    {
+      "declarableOnly": 3,
+      "entry": "RVL-132",
+      "exercised": 44,
+      "id": "rvl_132_counterpart",
+      "observableAreas": 47,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 275
+      }
+    },
+    {
+      "declarableOnly": 5,
+      "entry": "RVL-146",
+      "exercised": 51,
+      "id": "rvl_146_counterpart",
+      "observableAreas": 56,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 147
+      }
+    },
+    {
+      "declarableOnly": 3,
+      "entry": "RVL-180",
+      "exercised": 10,
+      "id": "rvl_180_counterpart",
+      "observableAreas": 13,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "observed",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 70
+      }
+    },
+    {
+      "declarableOnly": 4,
+      "entry": "RVL-210",
+      "exercised": 36,
+      "id": "rvl_210_counterpart",
+      "observableAreas": 40,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 182
+      }
+    },
+    {
+      "declarableOnly": 4,
+      "entry": "RVL-287",
+      "exercised": 27,
+      "id": "rvl_287_counterpart",
+      "observableAreas": 31,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 103
+      }
+    },
+    {
+      "declarableOnly": 4,
+      "entry": "RVL-321",
+      "exercised": 35,
+      "id": "rvl_321_counterpart",
+      "observableAreas": 39,
+      "provenance": {
+        "complete": true
+      },
+      "specification": {
+        "accepted": true,
+        "carriesUpstreamIdentifier": false,
+        "route": "source",
+        "structureReviewed": true
+      },
+      "suites": {
+        "failed": 0,
+        "total": 154
+      }
+    }
+  ],
+  "fixture": {
+    "artifactSet": {
+      "count": 324,
+      "sha256": "11b1079d944dfdc52a82140f21cdc38d44541e59a308d70dcd1887ccd2556342"
+    },
+    "id": "atm10-tts-2.0.2"
+  },
+  "milestone": "M6",
+  "processValidation": {
+    "checklist": "records/counterpart-checklist.md",
+    "evidenceSchema": "checks/counterpart-evidence.schema.json",
+    "secondCounterpart": "rvl_086_counterpart",
+    "template": "records/counterpart-template.md"
+  },
+  "protocol": "m6-counterpart-v1",
+  "result": "pass",
+  "rewriteIntegrity": {
+    "artifactsScanned": 39,
+    "check": "checks/verify-counterparts.sh, run by checks/verify.sh",
+    "enforcing": true,
+    "filesScanned": 238,
+    "identifierSet": "inventory/atm10-tts-2.0.2/surfaces.json and graph.json: mod ids, artifact stems, node ids and display names, minus checks/public-word-collisions.tsv",
+    "lexicon": "checks/counterpart-lexicon.txt",
+    "mutationProof": {
+      "artifactInjection": {
+        "exitStatus": 1,
+        "rule": "U1",
+        "target": "a generated artefact"
+      },
+      "cleanRun": {
+        "exitStatus": 0
+      },
+      "sourceInjection": {
+        "exitStatus": 1,
+        "rule": "U1",
+        "target": "a counterpart source file"
+      }
+    },
+    "specificationViolations": 0,
+    "violations": 0
+  },
+  "totals": {
+    "counterparts": 12,
+    "declarableOnly": 65,
+    "exercised": 433,
+    "observableAreas": 498
+  },
+  "wave": {
+    "entries": [
+      {
+        "dependencies": [
+          "RVL-042",
+          "RVL-321"
+        ],
+        "id": "RVL-002",
+        "reason": "cluster-leaf"
+      },
+      {
+        "dependencies": [
+          "RVL-120"
+        ],
+        "id": "RVL-025",
+        "reason": "foundation-seed"
+      },
+      {
+        "dependencies": [],
+        "id": "RVL-042",
+        "reason": "foundation-closure (required by RVL-321); cluster-closure (required by RVL-002, RVL-086, RVL-321)"
+      },
+      {
+        "dependencies": [],
+        "id": "RVL-060",
+        "reason": "foundation-seed"
+      },
+      {
+        "dependencies": [
+          "RVL-042"
+        ],
+        "id": "RVL-086",
+        "reason": "cluster-leaf"
+      },
+      {
+        "dependencies": [],
+        "id": "RVL-120",
+        "reason": "foundation-seed"
+      },
+      {
+        "dependencies": [
+          "RVL-210"
+        ],
+        "id": "RVL-132",
+        "reason": "foundation-seed"
+      },
+      {
+        "dependencies": [],
+        "id": "RVL-146",
+        "reason": "foundation-seed"
+      },
+      {
+        "dependencies": [],
+        "id": "RVL-180",
+        "reason": "foundation-seed"
+      },
+      {
+        "dependencies": [],
+        "id": "RVL-210",
+        "reason": "foundation-closure (required by RVL-132)"
+      },
+      {
+        "dependencies": [],
+        "id": "RVL-287",
+        "reason": "foundation-seed"
+      },
+      {
+        "dependencies": [
+          "RVL-042"
+        ],
+        "id": "RVL-321",
+        "reason": "foundation-seed; cluster-closure (required by RVL-002)"
+      }
+    ],
+    "frozen": true,
+    "recordedIn": "waves/m6-foundation.json",
+    "rules": {
+      "C1-candidate": "A cluster candidate is a pair of admissible entries in the client-presentation, content-data or integration-runtime lanes that share a dependency, closed over dependencies, with every member admissible.",
+      "C2-choice": "Among candidates, fewest members outside the foundation set wins; then most distinct owner lanes spanned; then lowest summed riskScore over the new members; then lowest leaf ids.",
+      "F1-seed": "A foundation seed is an admissible entry owned by sdk-platform whose rubric foundationValue is 3 or more, which is two or more dependent entries. This rule is exhaustive: every entry in the inventory satisfying it is in the foundation part.",
+      "F2-closure": "Anything a foundation seed depends on joins the foundation part.",
+      "R0-rights": "An entry whose sourceUse is prohibited or unresolved is excluded outright. A counterpart whose rights position is unresolved is not foundation work.",
+      "R1-closure": "Each part is dependency-closed: if an entry is in a part, every id in its dependencies is in that part."
+    }
+  },
+  "workPackage": "M6-W6"
+}

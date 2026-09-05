@@ -17,6 +17,10 @@
       {
         "name": "counterpart-summary.json",
         "sha256": "e9235518a5318d7458d0ce6c8c7ecea2fe23a612ef9b93815bc132bb8fa93ffc"
+      },
+      {
+        "name": "outward-crossing.json",
+        "sha256": "78d4810a349f501c5aa6e816e1fbb481f78e3a7f322dc790785a58ee7aff998f"
       }
     ]
   },
@@ -131,15 +135,15 @@
     "independent": true,
     "record": {
       "name": "review.md",
-      "sha256": "bc7a0dcc8b79a2800b8274f963c2196619570eae1daeaf5cbf4b46fe7bca27f8"
+      "sha256": "95477f980f2f6af1f41c16a47f56a2e92a74aed7304712ea252a62ecc616b34d"
     },
     "result": "pass",
     "reviewer": "independent Claude reviewer (M6-W6, independent of the work under review; the record below is the round history and says what was checked and what was not)"
   },
   "revision": {
-    "changeId": "unpinned",
+    "changeId": "qqotsxnvvupvqktmkytkuvxlunntsrqm",
     "dirty": false,
-    "id": "unpinned"
+    "id": "ffa24813ee2390d0b9ffc76571153d69dcae4a89"
   },
   "risks": [
     {
@@ -167,6 +171,14 @@
     "skipped": 0,
     "total": 1776
   },
+  "unobtainableRevisions": [
+    {
+      "changeId": "pspvmmuztymsnopuomtusyulqkllsmyz",
+      "id": "e6f6d5664d51c62c174504e647ed7c7f7176ecc1",
+      "reason": "The M6-W2 trial ran on a dirty working copy on 2026-08-13 and pinned the commit its change was at that day; the change has since been rewritten and now holds a different tree, so no commit holds what was measured. What a reader can obtain is the change that introduced the record, whose description and diff say what the three candidate crossings were, and the record itself, whose digest this manifest recomputes. The comparison it settled, which of three ways an action reaches the running game, was carried into ROADMAP.md by that same change and is read there rather than by re-running the trial.",
+      "record": "outward-crossing.json"
+    }
+  ],
   "versions": {
     "devenv": "2.2.1",
     "fixture": "ATM10 To the Sky 2.0.2",

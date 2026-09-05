@@ -1,9 +1,9 @@
 {
   "cluster": {
     "composedMods": 12,
-    "harnessLogSha256": "8de07ec136ad942653df2fd0cea952fbdef55786d1cfc596ade57e0e103c99a6",
+    "harnessLogSha256": "bdad5afe9a89c3c0495e4fd551fdac02dabcd8561b32931d3de753d261552c50",
     "hostFingerprint": "ab2b7c2719efa5be45827b413aad0c883c4fff666144650658fa90f1e51c323e",
-    "hostSha256": "901608a4c4ec0acb0bf297a008c6229871372de39246fb591dbfc77e358a6729",
+    "hostSha256": "f6af26669318b4195c9aea14ab3dde11fd7f86f371ee813a1a04c548e8ce6354",
     "leaves": [
       "RVL-002",
       "RVL-086"
@@ -63,11 +63,11 @@
       }
     },
     {
-      "declarableOnly": 6,
+      "declarableOnly": 7,
       "entry": "RVL-025",
       "exercised": 50,
       "id": "rvl_025_counterpart",
-      "observableAreas": 56,
+      "observableAreas": 57,
       "provenance": {
         "complete": true
       },
@@ -83,11 +83,11 @@
       }
     },
     {
-      "declarableOnly": 6,
+      "declarableOnly": 8,
       "entry": "RVL-042",
       "exercised": 10,
       "id": "rvl_042_counterpart",
-      "observableAreas": 16,
+      "observableAreas": 18,
       "provenance": {
         "complete": true
       },
@@ -203,11 +203,11 @@
       }
     },
     {
-      "declarableOnly": 3,
+      "declarableOnly": 6,
       "entry": "RVL-180",
       "exercised": 10,
       "id": "rvl_180_counterpart",
-      "observableAreas": 13,
+      "observableAreas": 16,
       "provenance": {
         "complete": true
       },
@@ -223,11 +223,11 @@
       }
     },
     {
-      "declarableOnly": 4,
+      "declarableOnly": 5,
       "entry": "RVL-210",
       "exercised": 36,
       "id": "rvl_210_counterpart",
-      "observableAreas": 40,
+      "observableAreas": 41,
       "provenance": {
         "complete": true
       },
@@ -243,9 +243,9 @@
       }
     },
     {
-      "declarableOnly": 4,
+      "declarableOnly": 5,
       "entry": "RVL-287",
-      "exercised": 27,
+      "exercised": 26,
       "id": "rvl_287_counterpart",
       "observableAreas": 31,
       "provenance": {
@@ -263,11 +263,11 @@
       }
     },
     {
-      "declarableOnly": 4,
+      "declarableOnly": 5,
       "entry": "RVL-321",
       "exercised": 35,
       "id": "rvl_321_counterpart",
-      "observableAreas": 39,
+      "observableAreas": 40,
       "provenance": {
         "complete": true
       },
@@ -283,6 +283,14 @@
       }
     }
   ],
+  "denominator": {
+    "derivedBy": "checks/verify-notes-rows.sh",
+    "excludedMeans": "the specification excludes the section, marks it not carried, or the package declined to ship it; outside observableAreas because nothing there is left for a later revision to exercise",
+    "excludedRows": 44,
+    "record": "records/m6-notes-row-counts.json",
+    "rows": "every section-table row of each counterpart NOTES.md begins with a published verdict; the check refuses an unpublished verdict and a record that disagrees with its rows",
+    "vocabulary": "checks/counterpart-verdicts.tsv"
+  },
   "fixture": {
     "artifactSet": {
       "count": 324,
@@ -301,7 +309,7 @@
   "result": "pass",
   "rewriteIntegrity": {
     "artifactsScanned": 39,
-    "check": "checks/verify-counterparts.sh, run by checks/verify.sh",
+    "check": "checks/verify-counterparts.sh over the packages and checks/verify-spec-identifiers.sh over the specifications, both run by checks/verify.sh",
     "enforcing": true,
     "filesScanned": 238,
     "identifierSet": "inventory/atm10-tts-2.0.2/surfaces.json and graph.json: mod ids, artifact stems, node ids and display names, minus checks/public-word-collisions.tsv",
@@ -315,6 +323,7 @@
       "cleanRun": {
         "exitStatus": 0
       },
+      "measuredOn": "a copy of the sealed private tree at change mwmkxrkt at commit b1f307395b17, 2026-09-05T07:45:44Z; the clean run closed with: 238 source files and 39 generated artefacts read against 892 upstream identifiers and 87 published names",
       "sourceInjection": {
         "exitStatus": 1,
         "rule": "U1",
@@ -326,9 +335,9 @@
   },
   "totals": {
     "counterparts": 12,
-    "declarableOnly": 65,
-    "exercised": 433,
-    "observableAreas": 498
+    "declarableOnly": 74,
+    "exercised": 432,
+    "observableAreas": 506
   },
   "wave": {
     "entries": [

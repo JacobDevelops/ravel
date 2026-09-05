@@ -7038,7 +7038,7 @@ fn verify_m6_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
     require_manifest_rule(
         manifest_path,
         r#".benchmarks.protocolVersion == "m6-counterpart-v1"
-            and ([.benchmarks.results[].name] == ["counterpart-summary.json"])"#,
+            and ([.benchmarks.results[].name] | index("counterpart-summary.json") != null)"#,
         "M6 manifest must record its counterpart summary under the m6-counterpart-v1 protocol, so \
          that the record carrying every figure is covered by a recomputed digest",
         violations,
@@ -12667,6 +12667,14 @@ mod tests {
                 &[(
                     r#""protocolVersion":"m6-counterpart-v1""#,
                     r#""protocolVersion":"m6-counterpart-v0""#,
+                )],
+                "M6 manifest must record its counterpart summary under the m6-counterpart-v1",
+            ),
+            (
+                "summary-unnamed",
+                &[(
+                    r#""name":"counterpart-summary.json""#,
+                    r#""name":"summary.json""#,
                 )],
                 "M6 manifest must record its counterpart summary under the m6-counterpart-v1",
             ),

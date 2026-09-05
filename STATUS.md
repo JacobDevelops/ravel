@@ -390,10 +390,10 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
 - `profilingTickCounter` — needs a tick boundary wired on the game's tick path.
 - ADG-3's re-pin of the agent jar's reflective surface is owned by no work package.
 - The JVM harness runs at every tracked version and `ravel:verify-gate-versions` holds it there. Both
-  versions now run all twelve sections — initialization, hierarchy, refusal, members, side,
-  transformation, load, persistence, content, outward, settings and screens — so every
+  versions now run all thirteen sections — initialization, hierarchy, refusal, members, side,
+  transformation, load, persistence, content, outward, settings, screens and cluster — so every
   `[harness.notRun]` table is retired and no version can declare its way out of anything: the gate
-  requires all twelve of a version, and `verify scaffold` refuses the table in any `adapter.toml`. All of it comes
+  requires all thirteen of a version, and `verify scaffold` refuses the table in any `adapter.toml`. All of it comes
   from templates: the stand-in game, the drivers and the stand-in half of the sibling artifact are
   rendered per version from `jvm/harness/template/` into
   `target/ravel-jvm/generated-harness/{game,driver,sibling}/`, so the name

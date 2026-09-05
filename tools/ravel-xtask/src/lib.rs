@@ -4603,14 +4603,19 @@ const HARNESS_RECORD: &str = "target/ravel-jvm/harness-versions.txt";
 /// are one string by construction rather than by luck, so the obfuscated case is
 /// the one they read rather than the one they skip. Persistence was the last to
 /// join them, and what closed it was the compiled class file rather than the
-/// Java a version can write. A version that stopped running any of these did not
+/// Java a version can write. The thirteenth names no game class at all: it
+/// installs a package set into a game directory and plays, saves, exits and
+/// reloads one world across separate processes, so what it resolves is a
+/// discovered package and the two persistence crossings rather than a name.
+/// A version that stopped running any of these did not
 /// meet an obstacle; something broke. That is why no reason excuses one, and why
 /// [`RETIRED_HARNESS_TABLE`] is refused rather than read.
 ///
 /// Written down rather than derived from the record, because a record is what
 /// the check is holding to account: deriving the required set from the file
 /// being checked would make any file its own answer.
-const REQUIRED_SECTIONS: [&str; 12] = [
+const REQUIRED_SECTIONS: [&str; 13] = [
+    "cluster",
     "content",
     "hierarchy",
     "initialization",
@@ -13212,8 +13217,8 @@ mod tests {
     }
 
     /// Every section the harness records, which is every section there is.
-    const EVERY_SECTION: &str = "content,hierarchy,initialization,load,members,outward,persistence,\
-                                 refusal,screens,settings,side,transformation";
+    const EVERY_SECTION: &str = "cluster,content,hierarchy,initialization,load,members,outward,\
+                                 persistence,refusal,screens,settings,side,transformation";
 
     /// A root carrying the three per-version gate records and one version each.
     ///

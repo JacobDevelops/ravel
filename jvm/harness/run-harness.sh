@@ -2115,3 +2115,142 @@ if ! grep -qF "$none_reported" "$none_stdout"; then
 fi
 
 section_ran side
+
+# One installed set played, saved, exited and reloaded — M6-W4's cluster
+# scenario, against the shipped agent jar and the real native library.
+#
+# What makes it a launch rather than a fixture is the packages tree: the set is
+# copied into the game directory the way an install writes it, and the launch
+# discovers it there, parses each manifest against the package schema and
+# verifies each declared digest before a mod is admitted. Nothing here names a
+# mod to the runtime, so a package the host was not composed from refuses the
+# launch rather than being quietly dropped, which is the case below that says the
+# directory was read at all.
+#
+# The world round trip crosses at the two persistence exports the game itself
+# calls, so the driver names no game class and is written once rather than
+# generated. It runs as two processes because a world reopened inside the process
+# that wrote it says nothing about what reached the disk: the first plays, saves
+# and exits, and the second is handed the file the first left behind.
+cluster="$work/cluster"
+cluster_record="$cluster/ravel-mods-record"
+mkdir -p "$cluster/classes" "$cluster/ravel/config" "$cluster/ravel/mods"
+printf 'version:1\n' >"$cluster/options.txt"
+cp "$work/ravel/config/configuration.json" "$cluster/ravel/config/configuration.json"
+
+# The installed set, copied whole and unrewritten, which is exactly what
+# installing one is: `ravel-build` copies the directory the mod ships and the
+# digests it declares travel with it. The world-data owner is one of them, so the
+# round trip below is a mod's own state rather than an empty aggregate.
+#
+# Two of the five packages this build is composed from rather than all five,
+# because `test-mods/configuration`, `test-mods/registries` and
+# `test-mods/server-only` each declare a `src/lib.rs` digest their own file no
+# longer hashes to. An installed package whose declared digest does not match is
+# refused, so those three cannot be installed into any instance today; that is a
+# defect in those manifests and not something this section works around by
+# skipping the verification.
+cluster_packages=(client-only saved-data)
+for package in "${cluster_packages[@]}"; do
+	cp -r "$root/test-mods/$package" "$cluster/ravel/mods/$package"
+done
+
+javac -Xlint:all -Werror -d "$cluster/classes" "${entry_sources[@]}"
+# `ClusterMain` needs the agent jar on its compile class path for the two
+# persistence crossings and the mod surface. A real launch never compiles
+# against it; the game declares those calls itself.
+javac -Xlint:all -Werror -cp "$jar" -d "$cluster/classes" \
+	"$root/jvm/harness/cluster/ClusterMain.java"
+
+# Each half is one process. `label` is what fails if it does not produce
+# `expected`, and `status` is the exit it has to end on — nonzero for the halves
+# whose subject is a refusal.
+cluster_run() {
+	local label="$1" half="$2" expected="$3" want_status="${4:-0}"
+	local out="$cluster/$label-stdout"
+	local err="$cluster/$label-stderr"
+	local status=0
+	(cd "$cluster" && "${jvm[@]}" \
+		-javaagent:"$agent" \
+		-Dravel.host="$host" \
+		-cp classes "$client_entry" ClusterMain "$half" "$cluster_record" \
+		>"$out" 2>"$err") || status=$?
+	local observed
+	observed="$(<"$out")"
+	printf '%s\n' "$observed"
+	while IFS= read -r line; do
+		printf '%s\n' "$line" >&2
+	done <"$err"
+	if [ "$status" -ne "$want_status" ]; then
+		echo >&2
+		echo "cluster run '$label' exited $status and the scenario needs $want_status" >&2
+		exit 1
+	fi
+	if [ "$observed" != "$expected" ]; then
+		echo >&2
+		echo "cluster run '$label' did not produce the recorded output; expected:" >&2
+		printf '%s\n' "$expected" >&2
+		exit 1
+	fi
+}
+
+# A first visit: a world nothing has written into, opened with the set installed,
+# saved, and left. The mod count is the launch's own surface, so a package the
+# discovery refused would have failed the launch before this line rather than
+# reduced it.
+cluster_play='[ravel] cluster fresh-play=passed mods=5
+[ravel] cluster save=passed record=written
+[ravel] cluster exit=passed record=captured
+[ravel] rewrote 0 classes and 0 methods; 0 hook invocations reached native code'
+cluster_run fresh-play play "$cluster_play"
+
+# The second visit, in a second process holding nothing but the file the first
+# one left. What it writes has to be a successor of what it read: a visit that
+# ignored the record and initialized fresh state would write the first visit's
+# bytes back unchanged.
+cluster_reload='[ravel] cluster reload=passed mods=5 record=advanced
+[ravel] rewrote 0 classes and 0 methods; 0 hook invocations reached native code'
+cluster_run reload reload "$cluster_reload"
+cp "$cluster_record.reloaded" "$cluster/first-reloaded"
+
+# The same record, read again by a third process. The successor is a function of
+# the record and of nothing else, so the two answers are the same bytes — which
+# is what says the reload read the stored record itself rather than something
+# that happened to be admissible.
+cluster_run reload-again reload "$cluster_reload"
+if ! cmp -s "$cluster/first-reloaded" "$cluster_record.reloaded"; then
+	echo >&2
+	echo "two reloads of one record wrote different aggregates, so what a reload reads is not the record it was handed" >&2
+	exit 1
+fi
+
+# The mutation case, which is the whole reason the three runs above mean
+# anything: one byte of the stored record is flipped and the reload has to refuse
+# the world rather than open it on data nobody can vouch for. What the refusal
+# says depends on which byte moved, so the diagnostic is required to name the
+# step and the record rather than matched word for word.
+cluster_offset=$(( $(stat -c%s "$cluster_record") / 2 ))
+cluster_byte="$(od -An -tu1 -N1 -j "$cluster_offset" "$cluster_record" | tr -d ' ')"
+printf "$(printf '\\x%02x' $(( cluster_byte ^ 1 )))" \
+	| dd of="$cluster_record" bs=1 seek="$cluster_offset" count=1 conv=notrunc status=none
+cluster_mutation_out="$cluster/mutated-stdout"
+cluster_mutation_status=0
+(cd "$cluster" && "${jvm[@]}" \
+	-javaagent:"$agent" \
+	-Dravel.host="$host" \
+	-cp classes "$client_entry" ClusterMain reload "$cluster_record" \
+	>"$cluster_mutation_out" 2>"$cluster/mutated-stderr") || cluster_mutation_status=$?
+cat "$cluster_mutation_out"
+if [ "$cluster_mutation_status" -eq 0 ]; then
+	echo >&2
+	echo "a world whose stored Ravel record had a byte flipped reloaded anyway, so the reload step passes on data nothing checked" >&2
+	exit 1
+fi
+if ! grep -q '^\[ravel\] cluster reload=failed refusal=' "$cluster_mutation_out"; then
+	echo >&2
+	echo "a corrupted record did not fail the reload step by name; it printed:" >&2
+	cat "$cluster_mutation_out" >&2
+	exit 1
+fi
+
+section_ran cluster

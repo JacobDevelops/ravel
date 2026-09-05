@@ -287,7 +287,13 @@ their own targets and their own hand-written copy of that class under the
 reviewed names, which is where four methods and five crossings stay pinned
 unmoved.
 
-Every tracked version runs all twelve sections, and nothing a version writes can
+The thirteenth is the odd one and says so: `cluster` names no game class at all. It copies packages
+into a game directory the way an install writes them, lets the launch discover and verify them there,
+and then plays, saves, exits and reloads one world across separate processes through the two
+persistence crossings the game itself calls. The second visit has to write a successor of the record
+the first left, and a single flipped byte in that record has to refuse the world.
+
+Every tracked version runs all thirteen sections, and nothing a version writes can
 excuse one. `cargo xtask verify gate-versions` refuses a section missing from a
 version's line in the harness record. The `[harness.notRun]` table a version once
 declared a section away in is retired, and `cargo xtask verify scaffold` refuses

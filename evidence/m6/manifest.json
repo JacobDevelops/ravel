@@ -1,0 +1,188 @@
+{
+  "attestations": [
+    {
+      "architecture": "x86_64",
+      "attestedAt": "2026-09-05T00:00:00.000Z",
+      "attestedBy": "Ravel maintainer, counterpart build, cluster run and gate run",
+      "platform": "linux",
+      "statement": "The twelve counterparts were built, tested and checked on this Linux machine inside the private workspace, the host composed from them was driven through the harness cluster scenario here, and the gate run recorded under commands was made in this repository inside the devenv shell. No official game process was started for any of it and none is claimed. The earlier official ATM11 attestation this operator gave for the M0 launch is the standing platform attestation these figures sit under, and the fixture the wave was selected from is the ATM10 To the Sky 2.0.2 pack.",
+      "workloads": [
+        "official-atm11"
+      ]
+    }
+  ],
+  "benchmarks": {
+    "protocolVersion": "m6-counterpart-v1",
+    "results": [
+      {
+        "name": "counterpart-summary.json",
+        "sha256": "e9235518a5318d7458d0ce6c8c7ecea2fe23a612ef9b93815bc132bb8fa93ffc"
+      }
+    ]
+  },
+  "commands": [
+    {
+      "command": "devenv tasks run ravel:verify",
+      "durationMs": 199000,
+      "exitStatus": 0,
+      "logSha256": "4ca2bad8c44ad41d48e222a369881dd6fcc981fdffe6425bc33c5612b8ea4e8f",
+      "startedAt": "2026-09-05T07:46:23.000Z"
+    }
+  ],
+  "deviations": [
+    {
+      "classification": "non-blocking",
+      "summary": "No public gate can falsify a private figure. The twelve packages, their suites, their NOTES tables and the three private checks live in the compatibility workspace this repository refuses to name. The public gate binds the summary to itself arithmetically and this manifest to the summary, and it proves by mutation that moving a part, a total or a carried figure alone fails; it cannot re-run a suite or re-read a table. The private checks were run on the sealed tree and their exit codes and closing lines are what the summary transcribes."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The declarable-only denominator was classified by reading prose. Each NOTES.md section table says in words what the counterpart did with a section; the first classification read 547 rows by one reader under a written rule, one of which was never a section row and four of which were later split, so the tables carry 550 rows and the private gate counts 550. Every row's verdict now begins with a word from a published vocabulary, the private gate derives the three counts per package from the tables and refuses a count that disagrees, and the tracked row-count record is what the summary transcribes. The residual judgement leans one way and is disclosed here: four sections whose note named both an exercised and a declarable-only part were split into two rows rather than counted whole as exercised, and five sections the note calls not reached were counted declarable-only rather than left outside the denominator, both on the reviewer's finding that the first classification had resolved every ambiguity in the flattering direction. Two rows in one package are declarable-only for a naming reason rather than a missing seam."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The process artefacts were written after the counterparts, not before. M6-W5 names a template, a checklist and an evidence schema that a second counterpart follows; the twelve were authored first, under the reader/implementer split and the identifier rules the checklist now states, and the three documents were then written from what that work settled. The second counterpart therefore followed the process rather than the document. The evidence-row schema runs inside the private gate through checks/verify-notes-rows.sh, which the first review round caused to exist; it was not run by anything before that round."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "Two packages were corrected to make the cluster round trip provable, after the twelve were sealed. One declared saved data with no reader, so the host refused the world at registration; the other owned the only per-world counter in the wave and never allocated from it, so a reload that read the record wrote bytes identical to one that ignored it. The second is a behaviour addition, declared in that package's notes. Both are recorded here because a reader of the cluster line should know it did not pass on the first composition."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The structure review and the specification acceptance were made by independent agents, not by a human. Every specification was read by a reviewer that had seen no upstream source, and every counterpart had one independent review round; no human read any specification in full. The provenance records say so per entry. The roadmap places the structure review before an implementer sees the specification; for these twelve it ran after implementation, found a crossed structural noun in eight, and the fix reached both the prose and the code, so the review question was answered but at the cost of a rewrite rather than as its prevention."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The cluster ran in the harness, not in the game. The harness composes the twelve into a host and drives fresh play, save, exit and reload against stand-in classes; it exercises Ravel's own persistence, discovery and composition paths and nothing of the game's. An official client launch with the composed host installed is available under standing authorization and is later carry work, not part of this closure."
+    }
+  ],
+  "environment": {
+    "architecture": "x86_64",
+    "hardwareProfile": "linux-reference-v1",
+    "platform": "linux",
+    "settings": {
+      "counterparts": {
+        "counterparts": 12,
+        "declarableOnly": 74,
+        "exercised": 432,
+        "observableAreas": 506,
+        "waveEntries": 12
+      },
+      "gateStatus": {
+        "M6-W1": {
+          "evidence": "The wave is frozen in the private workspace as a twelve-entry manifest whose every entry carries an admission rule, a dependency list and a rank, and the record here copies each entry with its reason and dependencies verbatim. The gate refuses a counterpart outside the wave and a wave entry without a counterpart, so the two sets are held equal rather than described as equal.",
+          "status": "closed"
+        },
+        "M6-W2": {
+          "evidence": "Five of the six general SDK capabilities M5-W7 proposed shipped publicly with original test mods under test-mods/, each behind the public M4-class gates; ROADMAP.md records the sixth, library provision, as deferred to M7 and now built there. Nothing here depends on private material.",
+          "status": "closed"
+        },
+        "M6-W3": {
+          "evidence": "Twelve behaviour specifications were written from the pinned revisions (eleven source-informed, one black-box from the shipped artifact), the private identifier check reads all of them against the 892 upstream identifiers and exits 0, and twelve individually packaged counterparts were implemented from the prose. Each package compiles, formats, lints and passes its suites; the per-package totals are recorded in the summary and sum to 1950 tests with no failure. Each counterpart had one independent review round whose findings were fixed and proved by mutation.",
+          "status": "closed"
+        },
+        "M6-W4": {
+          "evidence": "A host was composed from all twelve packages by the public build path (ravel-cli host build) at the fingerprint the summary records, and the harness cluster section ran fresh play, save, exit and reload against it: fresh-play=passed mods=12, save=passed record=written, exit=passed record=captured, reload=passed record=advanced twice with byte-identical output, and a one-byte mutation of the stored record refused with a named field. Two packages had to be corrected for that run: one declared saved data it never read back, and one owned the only per-world counter in the wave and never allocated from it, so no visit could be told from an ignoring one. Both corrections are declared in the notes of the packages themselves.",
+          "status": "closed"
+        },
+        "M6-W5": {
+          "evidence": "The counterpart template, checklist and per-row evidence schema exist in the private workspace at the locators the summary names. Every specification was reviewed for structure on 2026-09-05 by a reader that had seen no upstream source, reading the specification first and then the counterpart's module list and public types; eight of the twelve carried a structural noun that had crossed, and each was removed from both the specification and the counterpart. The verdicts are recorded in each entry's provenance record. That the second cluster leaf, rvl_086_counterpart, was authored by a hand other than the first leaf's is a judgement from this session's own history, not a fact either repository records, and it passes the same rewrite-integrity check. The deviations below record that the structure review and the three process artefacts came after the twelve counterparts rather than before them.",
+          "status": "closed"
+        },
+        "M6-W6": {
+          "evidence": "The admitted set is green, provenance is complete for every package, the rewrite-integrity check exits nonzero on both injections and zero on the clean tree, and every counterpart records its declarable-only count. The independent review record is bound below by digest.",
+          "status": "closed"
+        }
+      },
+      "howToReadTheseFigures": "Every figure under counterparts and rewriteIntegrity is derived by the gate from the parts evidence/m6/counterpart-summary.json records, and that record is held to itself by the arithmetic the gate enforces. The parts were produced in the private compatibility workspace: twelve packages, each with its own test suite, a NOTES.md table classifying every specified section as exercised, declarable-only or excluded, and three checks that exit nonzero on a defect. No public gate can re-run a private suite, re-read a NOTES table, or recompute a private digest, so what runs here proves that the record agrees with itself and that this manifest follows from it, and nothing more. The first deviation says the same thing at length because it is the largest single fact about this milestone.",
+      "rewriteIntegrity": {
+        "artifactInjectionExitStatus": 1,
+        "artifactsScanned": 39,
+        "enforcing": true,
+        "filesScanned": 238,
+        "sourceInjectionExitStatus": 1,
+        "violations": 0
+      },
+      "scope": "a frozen twelve-entry foundation wave from the M5 inventory, one accepted behaviour specification per entry, one original Rust counterpart per specification, a composed host of all twelve run through the harness cluster scenario, and a rewrite-integrity check proved by mutation",
+      "whatThisMilestoneDidNotDo": "No official game client or dedicated server was launched with the twelve counterparts installed, and no player has seen any of them work. The cluster scenario ran in the harness against stand-in classes and the shipped agent jar. Every counterpart is a library-tested artefact whose observable areas are recorded as exercised by a process or declarable-only, and the declarable-only figure is the denominator this green sits over, not a defect driven to zero."
+    }
+  },
+  "evidenceKind": "native",
+  "inputs": [
+    {
+      "name": "SPEC.md",
+      "sha256": "49c0916d0829d99ecb33ab4fe10d044bfb96c8ec86cc0d89ea02e0783c5d22b6"
+    },
+    {
+      "name": "ROADMAP.md",
+      "sha256": "3b97b7e25f93e29769a411388f0aa19902b652077a1eaa451345963e88370d9f"
+    },
+    {
+      "name": "schemas/evidence.schema.json",
+      "sha256": "2459e4b8e64f0b974e08653c2cf00183dbe4d28662f099df60d299a3e6fc6d1f"
+    },
+    {
+      "name": "docs/architecture/public-private-boundary.md",
+      "sha256": "8a43d164ccc278660d3b206467382b441a95739461efd5c54699f6006abf3a38"
+    }
+  ],
+  "milestone": "M6",
+  "platformEvidence": [],
+  "review": {
+    "independent": true,
+    "record": {
+      "name": "review.md",
+      "sha256": "bc7a0dcc8b79a2800b8274f963c2196619570eae1daeaf5cbf4b46fe7bca27f8"
+    },
+    "result": "pass",
+    "reviewer": "independent Claude reviewer (M6-W6, independent of the work under review; the record below is the round history and says what was checked and what was not)"
+  },
+  "revision": {
+    "changeId": "unpinned",
+    "dirty": false,
+    "id": "unpinned"
+  },
+  "risks": [
+    {
+      "classification": "non-blocking",
+      "summary": "Rewrite integrity is enforced over names and a transliteration can survive it. The check refuses an upstream identifier in a source file or generated artefact and was proved by mutation, but structure is not a name. The structure review is the defence, it is one reading per document, and its verdicts are judgement recorded as prose."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The exercised figure counts sections a test runs, not sections a player has seen. Exercised means a process in the package runs code for the section and a suite observes it; the harness cluster exercises only persistence, discovery and composition across the twelve. Everything else that is exercised has been exercised by its own tests and by nothing installed in a game."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "Eleven of twelve specifications are source-informed under a rights verdict M5 recorded as a judgement. If a source-use verdict is wrong the error is legal rather than technical and no test here would find it; the mitigation is that every verdict is written down per entry in the private inventory and this record names the route per counterpart."
+    },
+    {
+      "classification": "non-blocking",
+      "summary": "The generated artefacts the check scans are the derived data the packages themselves emit, regenerated by a test, and are the only artefacts that exist. A build output the packages do not yet produce is outside the scan by construction, and M7 packages with real build outputs widen it."
+    }
+  ],
+  "schemaVersion": 1,
+  "tests": {
+    "failed": 0,
+    "lineCoveragePercent": 89.38,
+    "passed": 1776,
+    "skipped": 0,
+    "total": 1776
+  },
+  "versions": {
+    "devenv": "2.2.1",
+    "fixture": "ATM10 To the Sky 2.0.2",
+    "java": "25.0.4",
+    "minecraft": "1.21.1",
+    "neoforge": "21.1.221",
+    "nix": "2.34.8",
+    "prism": "11.0.3",
+    "rust": "1.95.0"
+  },
+  "workPackages": [
+    "M6-W1",
+    "M6-W2",
+    "M6-W3",
+    "M6-W4",
+    "M6-W5",
+    "M6-W6"
+  ]
+}

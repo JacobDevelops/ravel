@@ -64,7 +64,7 @@
    "class": "machinery",
    "holds": "the private gate whose exit status and summary lines every figure above was read from",
    "name": "checks/verify.sh",
-   "sha256": "72c62b67f0bc38f0acaeb21e278bf871d6d7adca8c91257cc982d19f7b3c3848"
+   "sha256": "a92c2cb6d756bfa7bb9190e8e80d85c13ffed6e19c8b2514ad28d3af4abc4715"
   },
   {
    "class": "machinery",
@@ -345,6 +345,22 @@
    "milestone": "M6",
    "reason": "M6-W3 writes its specifications from fetched upstream source trees, and nothing held them to the names those trees declare. checks/verify-spec-identifiers.sh reads the M5 inventory, so the only upstream names it can see are mod ids, node ids, display names and artifact file stems, which it says in its own printed limits. A class, a method, a field, a recipe type, a serialised key or a package segment lifted verbatim out of the upstream tree is in the source and nowhere in the inventory, so no amount of inventory reading finds it, and it could sit in the prose in front of every implementer who read it. checks/verify-spec-source-names.sh reads the source instead: for each specification whose provenance record names a source-code source it extracts the names the pinned fetched tree declares and applies the same two rules the sibling check applies, U1 for a verbatim word-bounded hit and N1 for one that becomes a name under the documented normalization. The fetched tree is not tracked in either repository, so an entry whose tree is absent from a machine prints a loud skip line and is not counted as a pass. Adopting it changes checks/verify.sh, which this record binds, and the count of files under checks/, which this record publishes. It also writes its hand-maintained platform deny-list and its awk name extractor into its own scratch directory with six here-documents, which is six accounted uses of cat and one new row in checks/read-primitives.tsv, and that file is bound here too. docs/decisions/machinery-is-not-material.md decides that a digest over the gate's own scripts and a count over the gate's own files record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry.",
    "workPackage": "M6-W3"
+  },
+  {
+   "entries": [
+    "checks/verify.sh"
+   ],
+   "figures": [
+    {
+     "field": "primitiveScan.filesScanned",
+     "from": 39,
+     "to": 40,
+     "why": "checks/verify-notes-rows.sh joined the directory the scan reads. checks/counterpart-verdicts.tsv joined it too and is named as data rather than scanned as code, which is why one check adds one to this figure and not two"
+    }
+   ],
+   "milestone": "M6",
+   "reason": "M6-W6's first review round found that the denominator M6 publishes \u2014 the exercised, declarable-only and observableAreas figures of evidence/m6/counterpart-summary.json \u2014 was counted from 547 rows that existed only in one session's temporary directory, that 307 of those rows carried free prose rather than a published verdict, and that every genuinely ambiguous row had been resolved in the direction that shrinks the denominator. checks/verify-notes-rows.sh closes that: every section row of every counterpart's NOTES.md now begins with a verdict published in checks/counterpart-verdicts.tsv, the per-package counts are derived from those rows into records/m6-notes-row-counts.json by the check itself, and the check refuses an unpublished verdict, an unparseable row and a record that disagrees with its rows. It also runs checks/counterpart-evidence.schema.json over the public summary's rows, which the same round found rejected every row of the record it describes and which nothing ran. Adopting it changes checks/verify.sh and the count of files under checks/, both of which this record binds. docs/decisions/machinery-is-not-material.md decides that both record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry. The accounted-use figures do not move either: the new check reads through no primitive checks/read-primitive-vocabulary.tsv names.",
+   "workPackage": "M6-W6"
   }
  ],
  "milestone": "M5",
@@ -361,7 +377,7 @@
   "accounted": 15,
   "accountedUses": 95,
   "class": "machinery",
-  "filesScanned": 39,
+  "filesScanned": 40,
   "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions.",
   "occurrenceRows": 37,
   "primitivesDeclared": 27,

@@ -64,7 +64,7 @@
    "class": "machinery",
    "holds": "the private gate whose exit status and summary lines every figure above was read from",
    "name": "checks/verify.sh",
-   "sha256": "86b1ff6ec8eb4320a322cf757cba651b475e2432e8d24c6073d104621e92d3aa"
+   "sha256": "72c62b67f0bc38f0acaeb21e278bf871d6d7adca8c91257cc982d19f7b3c3848"
   },
   {
    "class": "machinery",
@@ -94,7 +94,7 @@
    "class": "machinery",
    "holds": "every accounted occurrence, held congruent with the vocabulary in both directions",
    "name": "checks/read-primitives.tsv",
-   "sha256": "af71d421a7d59670a8cb2282f99d927e9bbf00746c3320ccac10d7333e33ae47"
+   "sha256": "b88dbcc0d43a2cee0722a0316d63b245ac2a83fe6eb9af71ab00da6e5f08c450"
   }
  ],
  "disclosure": {
@@ -316,6 +316,35 @@
    "milestone": "M6",
    "reason": "The entry above this one records the rewrite-integrity gate being dropped at the repository owner's direction, and dropping it left ROADMAP.md:829 unmeetable: M6-W6 closes on the rewrite-integrity check being enforcing rather than advisory, and a check that has been deleted is neither. It is restored here, scoped over mods/ so that it holds the counterpart packages without reaching the workspace's deliberate use of upstream identifiers elsewhere, which is what the removal was really about. Two further edits to bound machinery are rebound in the same entry because they landed in the same span and this record binds them too: checks/verify-reads.sh excludes the build-output and acquisition trees from the sandbox it copies, after the cargo target directory alone filled a root filesystem and killed that check mid-run, and checks/read-primitives.tsv carries the cargo row corrected above. docs/decisions/machinery-is-not-material.md decides that a digest over the gate's own scripts and a count over the gate's own files record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry. One thing this trail does not account for and this entry will not invent: primitiveScan.accountedUses reads 85 at the M6-W4 entry above and stood at 88 when this entry was written, and no amendment records the three between them \u2014 they were written into this record by the ATM10 retarget, change wulksnsyvkkwwxrsuroytzkwmmqtpnxs, whose own message attributes them to the private gate growing a resource-pack reader. That is stated here where a reader meets the figure rather than reconstructed as an entry nobody made.",
    "workPackage": "M6-W6"
+  },
+  {
+   "entries": [
+    "checks/verify.sh",
+    "checks/read-primitives.tsv"
+   ],
+   "figures": [
+    {
+     "field": "primitiveScan.filesScanned",
+     "from": 38,
+     "to": 39,
+     "why": "checks/verify-spec-source-names.sh joined the directory the scan reads. Its hand-written collisions table joined it too and is named as data rather than scanned as code, which is why one check adds one to this figure and not two"
+    },
+    {
+     "field": "primitiveScan.accountedUses",
+     "from": 89,
+     "to": 95,
+     "why": "that check writes its platform deny-list and its name extractor into its own scratch directory with six here-documents, which is six accounted uses of cat"
+    },
+    {
+     "field": "primitiveScan.occurrenceRows",
+     "from": 36,
+     "to": 37,
+     "why": "those six uses are one row in checks/read-primitives.tsv, with the reason beside them"
+    }
+   ],
+   "milestone": "M6",
+   "reason": "M6-W3 writes its specifications from fetched upstream source trees, and nothing held them to the names those trees declare. checks/verify-spec-identifiers.sh reads the M5 inventory, so the only upstream names it can see are mod ids, node ids, display names and artifact file stems, which it says in its own printed limits. A class, a method, a field, a recipe type, a serialised key or a package segment lifted verbatim out of the upstream tree is in the source and nowhere in the inventory, so no amount of inventory reading finds it, and it could sit in the prose in front of every implementer who read it. checks/verify-spec-source-names.sh reads the source instead: for each specification whose provenance record names a source-code source it extracts the names the pinned fetched tree declares and applies the same two rules the sibling check applies, U1 for a verbatim word-bounded hit and N1 for one that becomes a name under the documented normalization. The fetched tree is not tracked in either repository, so an entry whose tree is absent from a machine prints a loud skip line and is not counted as a pass. Adopting it changes checks/verify.sh, which this record binds, and the count of files under checks/, which this record publishes. It also writes its hand-maintained platform deny-list and its awk name extractor into its own scratch directory with six here-documents, which is six accounted uses of cat and one new row in checks/read-primitives.tsv, and that file is bound here too. docs/decisions/machinery-is-not-material.md decides that a digest over the gate's own scripts and a count over the gate's own files record the tree M5 certified rather than an invariant of every later tree, so they are amended here with the reason beside them. No figure about the material moved, and no material digest is touched by this entry.",
+   "workPackage": "M6-W3"
   }
  ],
  "milestone": "M5",
@@ -330,11 +359,11 @@
  "primitiveScan": {
   "aUseIsAnOccurrence": "Two on one line are two. This figure read 74 until round 7, because the scan counted matching lines and the occurrence table beside it had been written from that output, so the two agreed and the row that would have contradicted them was never built. Two lines under checks/ carry two occurrences each; the true figure for the tree round 7 read was 76, and it read 77 at M5's closure because the repair added a reader of its own. It reads 79 now, and the difference is not a correction: M6 adopted a check into that gate and machineryAmendments below records which milestone moved it and why. Every figure in this block is a count of the gate rather than of the inventory, which is why it is amendable at all.",
   "accounted": 15,
-  "accountedUses": 89,
+  "accountedUses": 95,
   "class": "machinery",
-  "filesScanned": 38,
+  "filesScanned": 39,
   "holds": "Every read primitive occurring in what the private gate reaches must be routed through a watched channel or accounted for by name with a reason. The vocabulary is congruent three ways: each declared pattern must match the probe recorded beside it, an accounted primitive that nothing uses is stale and fails, and the occurrence table and the vocabulary must name the same primitives in both directions.",
-  "occurrenceRows": 36,
+  "occurrenceRows": 37,
   "primitivesDeclared": 27,
   "refused": 12,
   "whoReadsTheseFigures": "The private gate holds every figure in this block to the figure it computes, so one that goes stale because that workspace moved fails there rather than ageing quietly here. That is a bind against drift and not a second count: nothing counts the occurrences a second way, and a hand that changes the scan and rewrites this block together passes."

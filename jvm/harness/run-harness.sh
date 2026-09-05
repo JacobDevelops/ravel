@@ -2150,10 +2150,51 @@ cp "$work/ravel/config/configuration.json" "$cluster/ravel/config/configuration.
 # refused, so those three cannot be installed into any instance today; that is a
 # defect in those manifests and not something this section works around by
 # skipping the verification.
-cluster_packages=(client-only saved-data)
+#
+# `RAVEL_HARNESS_PACKAGE_DIRS` names colon-separated absolute package
+# directories to install instead of that pair, so a set living outside this
+# repository can be run through the same scenario without being copied into it.
+# Each one is a package directory of the shape `test-mods/<name>` has and is
+# installed under its own basename. Nothing else about the section changes:
+# discovery still parses every manifest and verifies every declared digest, so a
+# named directory that is not a package fails the launch here rather than being
+# skipped.
+#
+# What the report's `mods=` count says is the launch's own surface, which is the
+# set the host library was composed from and not the set installed beside it. An
+# instance may install fewer than the host holds, and does above; it may not
+# install a package the host has no member for, which is the refusal that says
+# the directory was read. So the expected count travels with the host rather than
+# with `RAVEL_HARNESS_PACKAGE_DIRS`, and a caller supplying its own
+# `ravel.host` alongside its own packages says how many members that host holds
+# in `RAVEL_HARNESS_COMPOSED_MODS`.
+cluster_packages=()
+if [ -n "${RAVEL_HARNESS_PACKAGE_DIRS:-}" ]; then
+	IFS=: read -r -a cluster_packages <<<"$RAVEL_HARNESS_PACKAGE_DIRS"
+else
+	for package in client-only saved-data; do
+		cluster_packages+=("$root/test-mods/$package")
+	done
+fi
+if [ "${#cluster_packages[@]}" -eq 0 ]; then
+	echo "RAVEL_HARNESS_PACKAGE_DIRS named no package directory" >&2
+	exit 1
+fi
 for package in "${cluster_packages[@]}"; do
-	cp -r "$root/test-mods/$package" "$cluster/ravel/mods/$package"
+	case "$package" in
+	/*) ;;
+	*)
+		echo "a package directory to install is named absolutely; this one was not: $package" >&2
+		exit 1
+		;;
+	esac
+	if [ ! -d "$package" ]; then
+		echo "no package directory to install is at: $package" >&2
+		exit 1
+	fi
+	cp -r "$package" "$cluster/ravel/mods/$(basename "$package")"
 done
+cluster_mods="${RAVEL_HARNESS_COMPOSED_MODS:-5}"
 
 javac -Xlint:all -Werror -d "$cluster/classes" "${entry_sources[@]}"
 # `ClusterMain` needs the agent jar on its compile class path for the two
@@ -2198,18 +2239,18 @@ cluster_run() {
 # saved, and left. The mod count is the launch's own surface, so a package the
 # discovery refused would have failed the launch before this line rather than
 # reduced it.
-cluster_play='[ravel] cluster fresh-play=passed mods=5
+cluster_play="[ravel] cluster fresh-play=passed mods=$cluster_mods
 [ravel] cluster save=passed record=written
 [ravel] cluster exit=passed record=captured
-[ravel] rewrote 0 classes and 0 methods; 0 hook invocations reached native code'
+[ravel] rewrote 0 classes and 0 methods; 0 hook invocations reached native code"
 cluster_run fresh-play play "$cluster_play"
 
 # The second visit, in a second process holding nothing but the file the first
 # one left. What it writes has to be a successor of what it read: a visit that
 # ignored the record and initialized fresh state would write the first visit's
 # bytes back unchanged.
-cluster_reload='[ravel] cluster reload=passed mods=5 record=advanced
-[ravel] rewrote 0 classes and 0 methods; 0 hook invocations reached native code'
+cluster_reload="[ravel] cluster reload=passed mods=$cluster_mods record=advanced
+[ravel] rewrote 0 classes and 0 methods; 0 hook invocations reached native code"
 cluster_run reload reload "$cluster_reload"
 cp "$cluster_record.reloaded" "$cluster/first-reloaded"
 

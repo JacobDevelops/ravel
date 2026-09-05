@@ -293,6 +293,14 @@ and then plays, saves, exits and reloads one world across separate processes thr
 persistence crossings the game itself calls. The second visit has to write a successor of the record
 the first left, and a single flipped byte in that record has to refuse the world.
 
+`RAVEL_HARNESS_PACKAGE_DIRS` names colon-separated absolute package directories for that section to
+install instead of the two under `test-mods/`, so a set that lives outside this repository runs through
+the same scenario without being copied into it. Discovery is unchanged: every manifest is parsed and
+every declared digest verified, so a directory that is not a package fails the section rather than being
+skipped. The report's `mods=` count is the launch's own surface, which the host library decides and the
+installed set does not, so it stays what the composed host holds; a caller supplying its own
+`ravel.host` beside its own packages names that host's member count in `RAVEL_HARNESS_COMPOSED_MODS`.
+
 Every tracked version runs all thirteen sections, and nothing a version writes can
 excuse one. `cargo xtask verify gate-versions` refuses a section missing from a
 version's line in the harness record. The `[harness.notRun]` table a version once

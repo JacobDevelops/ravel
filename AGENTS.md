@@ -4,9 +4,8 @@ Ravel is a Minecraft: Java Edition mod loader and SDK for natively compiled Rust
 inside the official game runtime and is not built on Fabric, NeoForge, Forge, or Quilt. It supports more than
 one Minecraft version: a package declares the versions it runs on in `compatibility.minecraft` as an exact
 version or a semver range, and per-version hooks, mappings and stubs live under `minecraft/versions/<version>/`.
-The current target is `1.21.1`, the version the ATM10 To the Sky 2.0.2 proof workload runs on. The only version
-data pinned today is `26.1.2`, which is what every closed milestone measured; `ROADMAP.md`'s open-questions
-table records what a `1.21.1` target still needs.
+The current target is `1.21.1`, the version the ATM10 To the Sky 2.0.2 proof workload runs on.
+Both `1.21.1` and `26.1.2` have pinned version data.
 
 This file is the single source of agent instructions. Codex reads `AGENTS.md`; Claude Code reads it through
 the `CLAUDE.md` symlink. Edit this file only — never fork the two.
@@ -68,8 +67,8 @@ Judge the gate by its exit status, not an individual task's test summary.
   configuration is declared in data and Ravel-owned screens are drawn in Java.
 - `tests/fixtures/local/` is gitignored local material. Never track credentials.
 - Adding or removing a crate or test mod means updating `CRATE_NAMES` or `TEST_MOD_NAMES` in
-  [`tools/ravel-xtask/src/lib.rs`](tools/ravel-xtask/src/lib.rs) and the workspace dependency list in
-  `Cargo.toml`.
+  [`tools/ravel-xtask/src/lib.rs`](tools/ravel-xtask/src/lib.rs) and, if another member depends on it,
+  its `[workspace.dependencies]` entry in `Cargo.toml`.
 
 ## Version control
 
@@ -96,8 +95,6 @@ your first commit in a session; it holds the commands and the review loop.
 
 ## Scope
 
-The repository is at the M1 architecture stage: the decisions are recorded and measured, and most crates are
-still intentionally empty because M2 is what fills them. Implement what the
-current work package asks and nothing beyond it; the roadmap order is a dependency order. Prefer the standard
-library and dependencies already in `Cargo.lock`. A new dependency needs a reason and has to pass
-`cargo deny check` for advisories, licences, bans, and sources.
+Implement what the current work package asks and nothing beyond it; the roadmap order is a dependency
+order. Prefer the standard library and dependencies already in `Cargo.lock`. A new dependency needs a
+reason and has to pass `cargo deny check` for advisories, licences, bans, and sources.

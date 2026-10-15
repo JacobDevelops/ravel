@@ -1,9 +1,8 @@
 # Status
 
-Where the project actually is, as of 2026-09-03. `ROADMAP.md` is the dependency-ordered plan and
-`evidence/` records what each closed milestone measured; this file is the current state of play and the
-honest distance to the goal. It goes stale — trust `cargo make ravel:verify-milestone <id>` over
-anything written here.
+`ROADMAP.md` is the dependency-ordered plan and `evidence/` records what each milestone measured.
+This file summarizes the current state and the distance to the goal. Trust
+`cargo make ravel:verify-milestone <id>` over a written closure claim.
 
 ## The goal
 
@@ -12,478 +11,91 @@ Play All the Mods 10: To the Sky 2.0.2 with a Rust mod loader instead of Java. T
 
 ## Where we are
 
-Ravel targets Minecraft 1.21.1. `minecraft/versions/1.21.1/` exists, carries all seven required files,
-and both its locks are resolved against the real obfuscated client jar. The suite runs once per tracked
-version and passes at both 1.21.1 and 26.1.2 — 1640 tests each.
+Ravel targets Minecraft 1.21.1 and also tracks 26.1.2 to exercise the multi-version machinery.
+Version-specific bindings, hooks and screen sources are generated from each version's pinned inputs.
+The JVM harness runs all thirteen sections at every tracked version; `ravel:verify-gate-versions`
+holds the recorded runs to that set.
 
-**Ravel has run inside a real Minecraft 1.21.1 client.** Four launches on the night of 2026-09-02, all
-muted, all recorded privately under `evidence/private/launch-1.21.1/`. The last one proves, on screen
-and on disk: the agent loads and rewrites 12 classes and 25 methods with no verification, linkage or
-reflection error; content registers 2 of 2 entries; the Ravel Mods entry sits at the top of the title
-column and holds at 1920x1080; the mods list and the settings screen render; a creative superflat world
-opens, plays, saves and re-opens; and `ravel_mods.dat` is written into the world, left alone by an idle
-save, and rewritten after a reopen. The nestmate question is settled by that world opening.
+**Ravel has run inside a real Minecraft 1.21.1 client.** Private launch captures under
+`evidence/private/launch-1.21.1/` prove source-distributed examples compiled into the instance's host,
+loaded through `-Dravel.host`, and listed on the mods screen. A Rust-declared block renders, places,
+drops loot and crafts in a new world's first session, and survives save and reopen. The mods screen
+shows pack notices and per-mod settings entries in a scrolling list; settings and profiling render.
 
-Every one of those was broken at launch 1 and fixed the same night. See "Landed this session".
+The host writes generated assets to `<game>/resourcepacks/ravel/` and data to
+`<world>/datapacks/ravel/`. New-world creation stages and selects the datapack through the game's
+own reload path. The absent-pack and already-selected Re-Create branches have client proof; the
+replaced-tree forced reload and refused-pack-id report have harness and mutation proof only.
+A fresh instance's resource-pack selection is seeded on its second launch, after the game has
+created `options.txt` with its own version line. A player who disables the pack wins.
 
 ## What is not true yet
 
-**TTS's mods do not exist in Rust.** This is the whole remaining project and no decision shortens it.
-The private registry holds 321 crates that compile and pass their tests, but every one has a no-op
-`enter()`, 320 carry `HOST_BLOCKERS` enumerating real mod behaviour as out of scope, and the registry's
-own `mods/ADMISSIBILITY-ANALYSIS.md` records them as inadmissible as counterparts. That is M6 and M7.
-M8–M10 sit behind them.
+**The full TTS pack is not playable through Ravel yet.** M6 records twelve accepted foundation
+counterparts in `evidence/m6/counterpart-summary.json`; that is not full-pack coverage. Completing
+the remaining counterparts and proving the pack still stand between the current loader and the
+goal. Running Ravel's own Rust mods inside a TTS instance is not the same thing as playing TTS.
 
-What is reachable much sooner is Ravel attached to a real 1.21.1 client running *its own* Rust mods
-inside a TTS instance. That is not the same thing as playing TTS, and the difference is roughly the
-whole of M6/M7.
+Installed examples are digest-bound source packages. Refresh an installed copy when changing the
+checkout: an old package can verify and compile correctly while lacking a new declaration.
+Registered items have no creative tab yet; `/give` is how they are obtained. The stateful example
+has no in-game call that changes its journal; the saved-data test mod supplies the visit-count proof.
 
-## Landed this session
+## Open decisions
 
-Newest last. All local, nothing pushed.
+- **How does a player's machine obtain the pinned version inputs?** Both tracked versions pin the
+  client jar under `tests/fixtures/local/`; `1.21.1` also needs Mojang's `client.txt`, while `26.1.2`
+  reads unobfuscated class files. The adapter generates bindings from these untracked local inputs,
+  so a checkout alone cannot build the host on another machine. Options are shipping generated
+  bindings, deriving them from the launcher's jar and the hash-pinned mapping URL where needed,
+  or explicitly staying checkout-only.
+- **Is a Cargo compile inside the launch sequence acceptable?** `evidence/m3/pack-compile.json`
+  records cold and warm pack costs. The stock Prism integration does not own a pre-launch compile
+  step, and a build needs the toolchain and registry dependencies.
+- **Does the composed host survive as a launch path or become a test fixture?** Installed examples
+  now exercise the player path; the composed host is the launch path for the original test mods.
+- **Ravel needs Java 24+** because the transformer uses `java.lang.classfile`. Port it or declare
+  the requirement to players; the 1.21.1 launch uses the pinned Java 25 runtime with
+  `IgnoreJavaCompatibility=true`.
+- **Should registered content have one shared creative tab?** The pending default is one tab keyed
+  `ravel.creative_tab`, with fallback label "Ravel". It needs eight more stub seeds per version and
+  the reworked `26.1.2` creative-tab API.
 
-| Change | Subject |
-| --- | --- |
-| `omqxmqwv` | admit Mojang's published mapping file as a second binding source |
-| `lxouzzut` | make `mappingSource` a generator decision; add the proguard mapping layer |
-| `pxsoorlm` | decide version selection as a build-time choice |
-| `wqtmwuvy` | select the version a build generates against instead of refusing two |
-| `uvquypor` | sweep every version directory instead of naming 26.1.2 |
-| `yntowsum` | generate the agent jar's game names from the reviewed reflective surface |
-| `sstskusv` | resolve game classes through generated names instead of literals |
-| `oqqtuolr` | translate a stub seed's members out of the linked name space |
-| `xsrrmzpo` | generate the screen sources in the name space each version links |
-| `qnxpmmvk` | declare the Minecraft version selection every build entry point reads |
-| `qtuntyxt` | bind screen templates to roles each version's stub seeds resolve |
-| `ssslwxmn` | target 1.21.1, with per-version screen sources where the API differs |
-| `mlkuzwxu` | compile every tracked version's Java and load its screens by name |
-| `sqnnpusy` | derive the transformer's slots and return kinds from each version's hook descriptors |
-| `nnsklvqw` | verify the reflective surface's members against each version's jar and generate their linked names |
-| `woukurwn` | resolve persistence members by generated name and descriptor, with a per-version storage shape |
-| `nyookuop` | resolve the content and outward adapters' game members by generated name and descriptor |
-| `kkozwpno` | define Ravel's screens under a child loader so the signed 1.21.1 client jar cannot refuse them |
-| `krvxxpnv` | register content through a per-version sibling and require each version's sibling to declare the entry points the agent reaches |
-| `rtzsptvx` | generate for each version's declared Java release into emptied output trees |
-| `sropoloq` | end a refused world load by throwing when no screen jar can show the refusal |
-| `mkummmlt` | promote a reopened world's stage before its live checkpoint, and mark every replacement dirty |
-| `rwpuxqxn` | place the title-menu entry from per-version row data where the column returns no row |
-| `tttozorv` | count a world visit on the open the game delivers, not only in tests |
-| `qkzxprrk` | supply the mod-facing dependency set and take the Minecraft version as an argument of the player build |
-| `qtpomxvm` | load the host library from the path `-Dravel.host` names instead of the library path |
-| `zymvypkt` | ship package metadata for every example and prove each installs and compiles |
-| `ppyqqtmn` | refuse a world-open shape the transformer cannot load, anchor the Java release scan, floor members per class, and leave no jar on refusal |
-| `vunwnrmk` | add every registered block's states to the id mapper and initialise their caches |
-| `tqltolny` | refuse a second screen install, mark a truncated refusal, and drop duplicated javadoc params |
-| `omlupokp` | register an item that shares a block's identifier as that block's placing item |
-| `ylkqyoun` | let the host ask a mod for its content declaration |
-| `zvqpomru` | layer every admitted mod's generated resources into one set per launch |
-| `vrxwnwoy` | declare each version's pack formats and pack.mcmeta shape, re-derived from the pinned jar |
-| `polrksos` | write the layered resources as a pack under the instance and the world, seeding the pack id once |
-| `vmyployz` | compile the shipped content example into the generated host and require its files in the written packs |
-| `kltkmyxs` | generate the blockstates, item model and self-drop loot table a declaration does not supply |
-| `zvrqrqwm` | write a world's datapack before the game scans it, from the seam that first holds the storage access |
-| `xwoupqkq` | report every seed outcome, stage the pack and skip an unchanged one, build pack.mcmeta with serde_json |
-| `ukqpxsqs` | map states after recording the block, refuse a payload whole, guard the world path, pin the cache step |
+## Remaining proof and implementation gaps
 
-## The queue is drained
+- The headless real-client route stalled at Prism's account requirement. The direct JVM route and
+  recovery notes live in the evidence skill; that attempt produced no game log.
+- Returning from settings and profiling to the opening mods screen is harness-proven but unseen in
+  a client. The settings cap and its explanatory line also have unit proof only.
+- Signed-jar child-loader checks use probe jars. Runtime-package access can still fail when a member
+  is first resolved rather than when a screen class is defined. The stub tree does not model
+  nestmate access; launch proof, not compilation alone, closes those questions.
+- Seven drifted non-persistence hooks are retargeted but not written.
+- Packet delivery remains unimplemented. M4's recorded launch-discovery and pack-read limits describe
+  its measured tree, not the player path now proven above.
+- M7's `provision` resolves libraries, but no launch builds a `Provision` from composed packages.
+- `profilingCommandCounter` needs a command-claiming mod and a namespaced root typed in a client;
+  `profilingTickCounter` needs a boundary wired on the game's tick path.
+- Closed M3 evidence describes the reflective surface before the later member verification work.
+  Re-pinning that evidence is a separate amendment, not an edit to a historical measurement.
+- A failed save reaches the player only as a log line; player-visible failure reporting remains
+  deferred.
+- Windows validation of the JNI world path used for recursive deletion, including `C:/x`, remains
+  deferred until Windows is supported.
 
-The four items that were paused here all landed, each proven by mutation against the 1.21.1 jar:
+## Standing decisions and development traps
 
-- **Reflective members are verified against the jar.** Every member the surface declares, by descriptor
-  or by arity, must exist on the linked class in the version's client jar with a consistent descriptor.
-  The check runs on `compose` and on `regenerate_locks`, under both versions. Both surfaces now carry
-  members (39 at 1.21.1, 45 at 26.1.2), and the adapter generates `GameMembers` beside `GameNames` so
-  Java reaches a member as a linked name plus linked descriptor rather than a literal.
-- **The transformer reads its shape from the descriptor.** The world-open boolean is the last declared
-  parameter, not slot 5, and the title-menu bridge injects on int or void per the hook's return. A
-  throwaway class-load proof showed the old transformer's `VerifyError` and the new one loading. The
-  scaffold now holds three transformer seams against every tracked version's `hooks.toml` and writes
-  `target/ravel-jvm/transformer-shape.txt` from the versions that held.
-- **Persistence, content and outward resolve members by name and descriptor.** Name-and-arity could
-  never have worked at 1.21.1: `DimensionDataStorage` links `computeIfAbsent` and `set` both as a
-  two-argument `a`. The per-version storage shape lives in `RavelWorldData`'s template override, three
-  entry points, and 1.21.1's storage having no `close` is an `AutoCloseable` cast.
-
-## What the launches taught
-
-- Mojang signs the 1.21.1 client jar and its classes live in the unnamed package, so any unsigned Ravel
-  class defined there by the same loader dies in `checkCerts`. Screens now load under a child loader.
-- Ravel needs a Java 24 or newer runtime whatever the game declares, because the transformer is written
-  on `java.lang.classfile`. 1.21.1 declares 21, so the instance runs the pinned 25 runtime with
-  `IgnoreJavaCompatibility=true`. Porting the transformer off that API, or declaring the runtime
-  requirement to players, is owned by no work package.
-- 1.21.1's `DimensionDataStorage.set` does not mark the replacement dirty and the world write skips a
-  clean `SavedData`, so the first launch's saves were silent no-ops. Ravel marks its own replacement now.
-- The 1.21.1 title screen has no free row below the column at the minimum GUI height; the only slot
-  that fits at every size is above it, which is where the entry now sits.
-- Working saves log nothing. The evidence of a save is the file and its mtime, not a `[ravel]` line.
-- The saved-data test mod never counted a visit outside its own tests, so two sessions stored identical
-  bytes and the read path was unprovable by construction. Launch 5 saw three sessions, three hashes.
-
-## The player path
-
-Discovery from `<instance>/ravel/mods` already ran in every launch and could only refuse; `ravel-cli host
-build` already compiled discovered packages into `<instance>/ravel/host/libravel_bootstrap.so`. What was
-missing were three wires, all landed: the generated workspace supplies the dependency set the test mods
-are written against, the player build takes the Minecraft version as an argument, and the generated
-`Hook` loads the library with `System.load` from the path `-Dravel.host` names, refusing to start when
-it is unset or not a file. No launch stages a native into the launcher's natives directory any more.
-
-Launch 6 proved it: `examples/minimal-mod` copied whole into `<instance>/ravel/mods/minimal/`, its
-shipped digests already correct, compiled by the host build in 7.7 s cold and 0.13 s warm to a
-byte-identical library both times, loaded through the property, and listed as `1 mod on client, none
-needing attention`, with the five compiled-in test mods gone. A world opened and its pause save wrote
-the mod's 89-byte data file. With the property pointed at a missing file the JVM refused to start and
-named the property and the path. The instance has no natives directory and needs none.
-
-All three examples now ship package metadata. `content-mod` and `stateful-mod` have a `package.json`
-and a `provenance.json` of the same shape as `minimal-mod`'s, so any of the three can be copied whole
-into `<instance>/ravel/mods`. `ravel-build`'s compiling test installs every example that carries a
-manifest and requires the host build to succeed, and the scaffold gate checks every example's digests
-rather than only the one.
-
-Launch 7 installed all three: 3 running, content-mod's two entries registered, host built in 8 s cold
-and 0.18 s warm. It also found the content surface half-registered at 1.21.1: a registered block can be
-named by `/give` and `/setblock`, but its states were never added to the block-state id mapper vanilla
-fills during its own bootstrap, so the first `block_update` packet carrying it threw and disconnected
-the session. Registered items are in no creative tab, so the creative search cannot find them. And the
-item renders as the missing-model placeholder, because nothing serves a package's models to the game:
-M4's disclosed pack-read limit, now visible on screen. The state mapper is fixed: the agent walks every
-registered block's states reflectively (Guava's `ImmutableList` is in neither jar, so no stub can name
-it) and adds each to the mapper and initialises its cache, exactly what `Blocks.<clinit>` does. The
-creative tab is deferred: it is expressible at 1.21.1 (the tab registry is read live, so a tab
-registered before the freeze appears) but costs eight stub seeds per version plus 26.1.2's reworked tab
-API verified from scratch, and two decisions: one Ravel tab for all mods or one per mod, and the
-translation key. Default if nobody objects: one tab, key `ravel.creative_tab`, fallback text "Ravel".
-Until then `/give` is how a registered item is obtained. The model is a resource-pack provider per
-version and is owned by no work package.
-
-Launch 8 confirmed the mapper fix (`/setblock`, render, break, save, reopen, no packet failure) and
-found the next layer: right-clicking the registered item places nothing, because Ravel registers the
-block and its item as two independent entries and a plain `Item` has no use-on. Vanilla's placing item
-is a `BlockItem` holding the block. Fixed: an item whose identifier equals a block's in the same mod
-registers as that block's `BlockItem`, blocks register before items, and the stub tree learned to chain
-a stubbed superclass constructor explicitly, which nothing had needed before `BlockItem extends Item`.
-Launch 9 proved it by hand: right-click places the block, the give command names it under the block's
-key, the stack decrements in survival, the block breaks, survives save and reopen, and drops nothing
-because no loot table reaches the game yet, which is the `data/` half of the resource path below.
-
-The missing model is being closed along the plan the resources work recorded: the `Mod` trait gained a
-defaulted `content_declaration`, the loader layers every admitted mod's generated files into one set per
-launch with overrides recorded, the host writes that set's `assets/` half as a real resource pack at
-`<game>/resourcepacks/ravel/` before the runtime installs, seeds `file/ravel` into `options.txt` once
-and records that it did so a player who disables it wins, and writes the `data/` half into
-`<world>/datapacks/ravel/` when a world is admitted. Pack formats are per-version data re-derived from
-the `version.json` inside the pinned jar, and the `pack.mcmeta` shape is checked against a pack the jar
-ships (1.21.1 says `pack_format`, 26.1.2 says `min_format`/`max_format`). An injected `RepositorySource`
-is the successor once a launch measures whether the written pack falls short.
-
-Launch 10 proved the mechanism: `resourcePacks:["file/ravel"]` seeded before the client read it,
-`Reloading ResourceManager: vanilla, file/ravel`, the pack selected in the game's own Resource Packs
-screen, the world datapack written on first open and auto-loaded on the second. And found both packs
-holding only `pack.mcmeta`. The cause was the instance, not the path: it held the copy of
-`content-mod` launch 7 installed, from before the trait method existed, and a source-distributed
-package's digests bind it to itself, so it verified and compiled and declared nothing. The generated
-host's Cargo-running test now installs the shipped example whole and requires the model bytes it holds
-independently to reach the written pack; against the stale shape it fails in twelve seconds. An
-installed copy that drifts from the tree is the operator's to refresh, and no general check can see it.
-
-Launch 11, with the copy refreshed: the resource pack carries the block model and both language files,
-the world datapack carries both tags, and the game says `Gave 5 [Copper Lantern]`. The first thing a
-Ravel mod supplies that the game renders is its name. The model is still the placeholder because a
-block needs three files and the example declares one: a blockstates file and an item model. And it
-drops nothing because no loot table is declared, and the declared recipe was not written. Decision
-taken: Ravel generates the conventional defaults an author does not supply (blockstates, item model,
-self-drop loot table), and an author-supplied file at the same path wins. Built, with two corrections
-the jars forced: a block's loot table lives under `loot_table/blocks/`, the prefix `BlockBehaviour$Properties`
-adds, and both tracked versions already use the singular folder names, so nothing there is per-version.
-What is per-version is how an item finds its model (`models/item/` at 1.21.1, an `items/` definition at
-26.1.2), and rather than teach the version-neutral data crate which is running, both files are written.
-A recipe is the one file an author writes themself: its body shape differs between the versions and no
-generator can be right on both.
-
-**Launch 12: a Rust mod's block is indistinguishable from a vanilla one on screen.** Six asset files
-in the pack, zero model or blockstate warnings in the whole launch, the lantern drawn with its real model
-in the hotbar, in hand and standing lit on the grass; the world datapack carries both tags, the generated
-self-drop loot table and the example's recipe; breaking it in survival drops a Copper Lantern that is
-picked up; eight copper ingots around a torch craft one, and the game raises its own "New Recipes
-Unlocked!" toast. Installed as a source package, compiled into the instance's host in 11.5 s cold.
-
-One ceiling stated where it lives: a fresh instance is seeded on its second launch, because writing an
-`options.txt` without the game's own `version` line would change which migrations it runs. The other
-is closed for every open of an existing world and still open for a new world's first session. The
-datapack is written from the static `ServerPacksSource.createPackRepository`, which every path that
-gives a world a pack repository calls; launch 14 showed that on creation this lands the pack in the
-enabled list on paper only. The Create World screen builds its `ReloadableServerResources` when it
-opens, over a repository with no directory, and `createLevelFromExistingSettings` hands those loaded
-resources through untouched, so the first session runs with no recipe reload, the loot table absent,
-and the selection not written to `level.dat`. The fix feeds the pack into the screen's own
-add-a-datapack flow at `CreateWorldScreen.init`: force its staging directory, write the pack there,
-reload the repository, add the pack to its selection, and run `tryApplyNewDataPacks`, which is the
-reload vanilla pays when a player adds a pack by hand. Launch 15 caught the first cut of that
-skipping the reload and the selection; the harness now fails without them.
-The reload is skipped when no mod supplies data, and when the pack is already selected and unchanged;
-a pack replaced under a selection that already names it is loaded through the screen's own
-`applyNewPackConfig`, which is the load `tryApplyNewDataPacks` guards and would skip. An id the
-repository refuses is reported rather than passed over. The nine reflected members resolve against
-both pinned jars at generation time; the harness drives the whole creation sequence and fails by
-mutation.
-The open-time write stays for a world admitted by another path and leaves an identical tree untouched.
-
-**Launches 15 and 16: the new-world datapack path is proven in a client for the branch a first-time
-launch takes.** Launch 15 showed the create-screen seam writing the pack but leaving it under
-Available: the apply was handed an unreloaded repository with an unchanged selection and did
-nothing. Selecting by hand gave the full first-session proof, so the seam and the pack were right
-and only the selection was missing. The fix reloads and
-selects before applying, the harness fails without it, and launch 16 passed unaided: 1290 then 1291
-recipes at the create screen, `file/ravel` enabled on load and in `level.dat`, give, loot and craft in
-the first session, the reopened world at 1291 with every tree entry byte-identical, clean exit at
-14 classes and 27 methods. The server's own `loading it automatically` line no longer appears.
-That launch took the one branch where the pack was absent and had to be selected. Launch 17 ran the
-revised seam (the native three-state answer, the pack id crossing from the loader crate) on that
-branch again and on Re-Create, where the copied world already selects the pack: one load at 1291,
-nothing forced, no diagnostic, 14 classes and 27 methods at exit. Two branches remain landed, gated
-by harness and mutation, and unseen in a client: the forced reload for a pack replaced under a
-selection that already names it, and the report for an id the repository refuses.
-
-**Launch 14: enabled on paper, vanilla in fact; the unchanged-tree skip and regression hold.** New
-world, first session: `file/ravel (world)` under enabled, `Loaded 1290 recipes`, no server-side
-recipe load, loot table absent on query, the placed lantern broke with no drop. Reopened: 1291 recipes,
-the drop, the recipe unlock. Every pack file kept its mtime across both sessions and the exit. Title
-row, three packages running, clean quit; the rewrite line grew to 13 classes and 26 methods with the
-new seam. Two first observations: the settings screen draws only a Done button although the stateful
-example declares `journal.capacity`, and the pre-world pack notice reaches no surface on either the
-already-offered or the unreadable branch (the mods screen reads "none needing attention").
-
-Launch 8 also proved the screen-less refusal now reaches the game's crash handler
-naming Ravel and the reason, with the session lock released, where launch 2 hung.
-
-**Launch 13 (interrupted): the early datapack write lands, the new world does not enable it.** A new
-superflat world's first session listed `file/ravel (world)` as available and only `vanilla` as
-enabled, and loaded 1290 recipes where launch 12's reopen loaded 1291. The launch was cut short by an
-unrelated crash before the mtime, regression and `resourcePacks:oops` checks ran; the world saved
-cleanly and the client was closed from the title. Those three checks move to launch 14.
-
-`stateful-mod` writes its journal only through a record call nothing in a launch makes, so its saved
-data was rewritten across sessions but never changed. The example cannot change state from inside a
-game; the saved-data test mod, which counts visits, is what launch 5 proved with.
-
-## Reviews
-
-Two independent reviews ran overnight. The first, over the launch fixes, found twelve non-blocking
-items; eleven are fixed and the twelfth (a save failure reaching the player only as a log line) is a
-documented decision left standing. The second, over the resource path, found eleven and called four
-blocking: a state-mapping failure reported as an unregistered block, silent `Seeded` outcomes when
-`options.txt` cannot be seeded, the raw world path from JNI driving a recursive delete unvalidated, and
-a partial refusal of a payload with an unknown kind that the comment calls whole. All eleven except the
-Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows is.
-
-## Questions only Jacob can answer
-
-- **How does a player's machine obtain the pinned version inputs?** Both tracked versions pin the client
-  jar and Mojang's `client.txt` under `tests/fixtures/local/` and the adapter's build script generates
-  the binding from them, so a host build on any other machine cannot run. Candidates: ship the generated
-  binding as source; derive it on the player's machine from the jar their launcher already holds plus
-  a `client.txt` fetched from the URL `adapter.toml` already pins at a hash; or stay checkout-only and
-  say so. This is the largest unknown on the way to anyone but this machine running Ravel.
-- **Is a Cargo compile inside the launch sequence acceptable?** About 32 s cold and 1.6 s warm for a
-  256-mod pack per `evidence/m3/pack-compile.json`, needing network for the registry and a toolchain on
-  `PATH`. The stock Prism integration adds two arguments to one instance and owns no launcher
-  setting, so a `PreLaunchCommand` would change that integration or need a different trigger.
-- **Does the composed host survive?** It is the only thing exercising five test mods in a real launch.
-  Relegating it to a test fixture trades that for installed examples unless the test mods become
-  installable, which the widened workspace now makes possible.
-- **Ravel needs a Java 24+ runtime** because the transformer is written on `java.lang.classfile`. Port
-  it, or declare the requirement to players.
-
-## Next
-
-- The JVM harness ran only at 26.1.2 until the per-version loop landed: the old task environment
-  dropped an exported `RAVEL_MINECRAFT_VERSION`, so `ravel:verify-jvm` had always taken the default.
-  Run directly at 1.21.1, the screen drivers failed to compile because the generated screens lived in
-  the obfuscated package while the harness sources named them by Mojang name. Linked names themselves are
-  covered: the generator resolves every declared reflected member through each version's mapping and
-  requires the linked class file to declare it. What no gate has run is the `Members` lookup at
-  runtime, its superclass walk and erased-descriptor construction, against an obfuscated class file;
-  only a real jar proves that, which the headless client run and the planned server harness are for.
-  The sections that run per version are recorded in the work-package bullets below.
-- The headless real-client proof under Xvfb stalled at the launcher, not the game. Prism 11 refuses
-  to launch any instance unless a Microsoft account that owns the game is signed in, even with an
-  Offline account present and an isolated approot, so the offline route needs either that account
-  (not authorized) or a direct JVM launch from the recorded wrapper command that skips Prism. The
-  script, its test and the recovery notes are sealed in the evidence skill; the run wrote no game
-  log.
-- Launch 15 (2026-09-03, real client) showed the create-screen seam fires and writes the pack but
-  never selects it: `Datapack.stage` hands `tryApplyNewDataPacks` the same repository it got from
-  `getDataPackSelectionSettings`, unreloaded and with an unchanged selected set, so the apply is a
-  no-op and `ravel` sits under Available. Selecting it by hand gave the full first-session proof:
-  1291 recipes, give, loot and craft of the copper lantern, `level.dat` enabled `file/ravel`, world
-  tree written once. The fix reloads the repository after the write, adds `file/ravel` to its
-  selection, then applies; the harness fails without it. Launch 16 (2026-09-03, real client) passed
-  every assertion on the unaided path: 1290 then 1291 recipes at the create screen with nothing
-  selected by hand, `file/ravel` enabled on load and in `level.dat`, give, loot and craft in the
-  first session, the reopened world at 1291 with the tree byte-identical, clean exit. The
-  `Found new data pack ... loading it automatically` line launches 13 and 14 printed is gone.
-  Launch 17 repeated it on the revised seam and added Re-Create, the already-selected path. The
-  new-world path is proven; the replaced-tree reload and the refusal report are harness-proven only.
-- The settings screen drew no rows for `stateful-mod`'s declared `journal.capacity` setting
-  (launch 14) because the mods screen's one settings button named the `configuration` test mod by
-  literal, and the harness fixture holds a mod of that name, so it passed by accident. The mod
-  surface now says per row whether a settings screen has anything to draw, the screen offers one
-  `Settings: <mod>` entry per such mod, and the title-menu harness asserts the opened screen has
-  rows. The entries are rows of the scrolling list below, so none is ever cut. The label is an
-  English literal like Profiling's: there is
-  no lang file in the repository, and the argument-taking `translatable` overload cannot be seeded
-  because the stub seeder binds one role per member name. Launch 18 (2026-09-03) saw it on screen:
-  one `Settings: stateful` entry, none for content or minimal, and the settings screen drawing
-  `Journal capacity: 16` as a slider. The cap and its line stand on unit tests only.
-- The pre-world pack notice never reached a surface (launch 14): the host recorded it into the
-  pre-world report and nothing read that report's notices back. The mods payload now carries the
-  notices (wire version 3), the mods screen draws each above the rows as `[needs attention] ...`,
-  wrapped with the game's own splitter across a measured row budget so Profiling and Done stay on
-  screen, and its summary counts them. `AlreadyOffered` stays silent: the player turned the pack
-  off. Harness-proven at three window sizes by mutation. Launch 19 (2026-09-03) crashed the client
-  on it: the shared wrap helper's font role maps to a 1.21.1 member whose list holds character
-  sequences, not text, and the stub's erased return type let the cast compile. Profiling crashes
-  the same way on a plain launch. The plain mods screen passed. Fixed: the wrap now goes through
-  `StringSplitter.splitLines`, whose real return type is text on both versions, and the stub
-  generator carries a collection member's element type from the class file's signature, so the
-  crashing mapping is now a compile error under `ravel:verify-java` wherever the 1.21.1 mapping is
-  present. Launch 20 (2026-09-03) closed both crashes: the notice draws and Profiling draws. But at the game's GUI
-  scale the mods screen has six rows, so the notice showed one line of seven and the settings entry was cut,
-  both counted in the summary. The row budget is now a scrolling list: the notice lines, the mod rows and the
-  settings entries are one list the wheel moves a window over, nothing is cut, and the summary says which rows
-  are on screen. Harness-proven by five runs over four window sizes: three walk the list end to end with
-  the wheel and with the keyboard, and the two whose window either holds the whole list or holds no row at
-  all refuse to move at all. Launch 21 (2026-09-04) saw it: the notice draws whole across six rows, the
-  wheel and all four keys scroll, a notch past the end changes nothing, and Done keeps its focus across a
-  page. The same launch found that Done on the settings and profiling screens returned to the title, not to
-  the mods screen: neither child screen took a parent, so the game's own close landed a player two screens
-  from where they were. Both now take the screen that opened them and close back to it, and the
-  title-menu harness presses each Done and names the screen that comes back. Unseen in a client.
-
-- `evidence/m3/manifest.json` describes the reflective surface as reaching no members, which stopped
-  being true this session for all three adapters. Amending closed evidence is its own ceremony.
-
-## Launch-only remainders
-
-Two things no gate can reach, to watch for on screen. Both are also recorded in
-`evidence/m4/linux-process-matrix.json`, beside the check that does not cover them.
-
-- The stub tree models no nestmate access, so a flat `eql$a` standing in for nested `SavedData$Factory`
-  can compile and fail at link. The agent jar no longer touches the factory directly; the sibling's
-  compiled reference is the one place left. The JVM checks nest membership only for private access
-  and the factory is a public record, so the reading is that it links, but that is reasoning, not
-  evidence.
-- The classloader check now builds the loader the agent builds, requires each screen to be defined by it,
-  and reproduces the signed-jar certificate failure both ways over probe jars it signs itself. What it
-  still cannot reach is that an access a different runtime package forbids is raised when the member is
-  resolved, not when the class is defined, so a screen that loads there can still fail on the first click.
-
-## Known open, beyond the above
-
-- Seven drifted non-persistence hooks retargeted but not written.
-- M4's three disclosed limits: no package discovery in a launch, no packet delivery, no pack read back.
-- M7's `provision` resolves libraries, but no launch builds a `Provision` from the packages it composed.
-- `profilingCommandCounter` — needs a command-claiming mod in the composed host and a namespaced root
-  typed in a live client. Small.
-- `profilingTickCounter` — needs a tick boundary wired on the game's tick path.
-- Re-pinning the agent jar's reflective surface is owned by no work package.
-- The JVM harness runs at every tracked version and `ravel:verify-gate-versions` holds it there. Both
-  versions now run all thirteen sections — initialization, hierarchy, refusal, members, side,
-  transformation, load, persistence, content, outward, settings, screens and cluster — so every
-  `[harness.notRun]` table is retired and no version can declare its way out of anything: the gate
-  requires all thirteen of a version, and `verify scaffold` refuses the table in any `adapter.toml`. All of it comes
-  from templates: the stand-in game, the drivers and the stand-in half of the sibling artifact are
-  rendered per version from `jvm/harness/template/` into
-  `target/ravel-jvm/generated-harness/{game,driver,sibling}/`, so the name
-  the adapter resolves and the name the stand-in declares are one string by construction. `javap -p` on
-  1.21.1's block stand-in reads `public dtd l()` and `public static final js q`, which is what
-  `GameMembers` says that version links. The stand-in create-world screen no longer guards its copy on
-  the staging directory existing, because every run that reaches the copy staged something, so a
-  lifecycle case whose staging crossing refuses needs that guard written back before it can be written.
-- Persistence runs at 1.21.1 now, and what closed it was the class file rather than the Java. 1.21.1
-  keeps 26 `@DontObfuscate` classes in `net.minecraft` and moves the rest into the unnamed package,
-  `MinecraftServer` is one of the 26, and the two members the adapter reaches on it are typed by classes
-  that moved, so no Java source can declare it under the name the adapter resolves. The generator writes
-  the whole stand-in game in the unnamed package and records the pair in
-  `generated-harness/aliases.txt`; `jvm/harness/remap/Remap.java` then rewrites the constant pool of
-  every compiled stand-in, which is the only place a class file spells a name, and moves the renamed
-  file to the path its new name gives. `javap -p` on the remapped class reads
-  `public final class net.minecraft.server.MinecraftServer` with `(Lerd;)Ljava/nio/file/Path;`,
-  `()Laqu;` and `(ZZZ)Z`. A name a stand-in spells as a string constant is refused rather than rewritten,
-  because a `GameNames` value and a class name are the same characters. Mutations, each exiting 1:
-  emptying `aliases.txt` after generation leaves the save hook uninstalled and the persistence probe
-  refuses at three rewritten classes instead of four; planting `"MinecraftServer"` as a string constant
-  in `SERVER.java.in` makes the pass name the class file and the pool entry and stop.
-- 1.21.1's world-load seam takes no optional rule overrides where 26.1.2's does, so the stand-in `Hook`
-  carries `worldOpenPersistence` twice. The section could not have reached that until it ran there.
-- Screens and settings now run at 1.21.1 too, which left the declarable set with nothing in it to
-  excuse and retired it. The eighteen screen and text stand-ins and the
-  chat-target one are templates now, and so are the five drivers; 1.21.1 writes `Screen` and the title
-  menu in full, because a keystroke reaches a screen there as three numbers and its column builder hands
-  nothing back, and 26.1.2 owns `KeyEvent`, the record the other passes instead. Three facts about a
-  version reach the recorded output and none is written in the script: where the screens were drawn is
-  read from `ScreenNames`, whether the menu hands a row back from `MenuLayout`, and the rewritten class
-  from the generated hook table. The name comparison that used to gate these two sections is gone from
-  `run-harness.sh` with them. Mutation: a stand-in that stops storing a focus turns
-  `focusDone=true kept=true` into `kept=false` and the run exits 1. The check on the record was proved
-  the same way, each mutation exiting 1: a section missing from a version's line, a section name in the
-  record the harness does not have, and a version named with `;` after it. A `[harness.notRun]` table
-  written back into either version's `adapter.toml` is refused by `verify scaffold`, and a build that
-  selects that version refuses it too, because the adapter inputs deny an unknown field.
-- `net/minecraft/util/StringUtil.java` is the one stand-in still hand-written, and it stays that way on
-  purpose: the transformer sections match it against targets hand-written beside it in the stand-in
-  `Hook`, so neither side is version data and `transformed=1 methods=4` with five crossings holds
-  unchanged everywhere. The settings section meets a generated stand-in for the same class on a class
-  path of its own, carrying every member that version's hook table declares on the class (a 26.1.2
-  override adds the fourth), and its expected count is read from that table rather than written.
-
-## Standing decisions
-
-- Screen sources are generated, not hand-written.
-- Version selection is a build-time choice, declared per entry point, no default.
-- Per-version sources only where the API genuinely differs; role indirection for renames.
-- Ravel has never been released, so there are no compat contracts. Breaking changes are fine where they
-  are the cleaner design.
-- 26.1.2 stays tracked for now — it is the only thing proving the multi-version machinery against two
-  real versions. Dropping it is cheap once 1.21.1 plays.
-
-## The recurring defect class
-
-Worth knowing before writing any check here. Nearly every defect found this session was a check that
-existed on one path and not the other, or that fired only when something downstream happened to reach
-it. The largest was the gate reporting exit 0 for weeks while pinned to 26.1.2, so nothing ever built
-the version the work targeted. Identity mapping at an unobfuscated version hides this whole class.
-
-Prefer the check that runs regardless of which path, which machine, and whether anything downstream
-reaches it. And prove a check by mutation: break its input and require a nonzero exit. A check nobody
-has seen fail is not a check.
-
-The old task runner hid stdout and stderr for successful tasks. cargo-make prints task output,
-but a terminal message alone is still not durable evidence. Write the fact to a file and fail
-outright when nothing was verifiable.
-
-Write that record when the work *succeeds*, never when it starts. `ravel-test` recorded
-`tested: <version>` before running the suite, so a run that died on its first version would have left a
-file claiming that version was tested — a record naming a version nothing proved. The same shape, one
-layer down.
-
-## Traps that cost real time
-
-- The old shell environment silently replaced an inherited `RAVEL_MINECRAFT_VERSION`, so a
-  "successful" 1.21.1 build could actually build 26.1.2. With mise activated, select the build directly:
-  `RAVEL_MINECRAFT_VERSION=1.21.1 cargo build`. Without activation, put the override inside the child:
-  `mise exec -- bash -c 'RAVEL_MINECRAFT_VERSION=1.21.1 cargo build'`; prefixing `mise exec` itself
-  still lets its configured default replace the inherited value.
-- Generating 1.21.1 needs its published mapping, not just its jars — `generate::run` reads `client.txt`
-  on every build under a translating source, lock path included. That file is untracked local material,
-  so 1.21.1 is skipped on every machine but this one. Both new checks record the skip rather than
-  passing quietly.
-- Adding a sub-task to `ravel:verify` requires a matching row in
-  `evidence/m4/linux-process-matrix.json` with its digest re-pinned in `evidence/m4/manifest.json`.
-  `verify_m4_process_matrix` reconciles both directions and the scaffold refuses otherwise. That is the
-  amendment path a closed milestone was designed for, not a violation of it.
-- Squash into the nearest change that owns a file, never past a descendant that also touches it. A
-  file-granular squash into an ancestor replays the diff onto that ancestor's copy, and the context may
-  not exist there. jj marks the change conflicted rather than losing work; `jj op restore` recovers.
+- Screen sources are generated. Version selection is a build-time choice declared per entry point.
+  Per-version sources handle genuine API differences; role indirection handles renames.
+- Ravel has never been released, so there is no installed compatibility contract to preserve.
+- Set a version override inside mise's child process when not using an activated shell:
+  `mise exec -- bash -c 'RAVEL_MINECRAFT_VERSION=1.21.1 cargo build'`. An override on `mise exec`
+  itself can be replaced by mise's configured default.
+- Translating bindings need the published mapping as well as the jars. Missing untracked local inputs
+  must be recorded as a skip, not reported as a version that passed.
+- Check every path, including obfuscated versions, and prove a check by mutation. Write a durable
+  success record after the work succeeds, never before it starts.
+- Adding a sub-task to `ravel:verify` requires reconciling
+  `evidence/m4/linux-process-matrix.json` and its manifest digest through the evidence amendment path.
+- Squash into the nearest change that owns a file, not past a descendant that also touches it; see
+  [the stacked-change workflow](docs/jj-stacked-changes.md).

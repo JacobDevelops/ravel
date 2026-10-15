@@ -376,7 +376,7 @@ impl Commands {
                 declaration.name.clone(),
                 (element, declaration.codec.clone()),
             ),
-            _ => None,
+            (Shape::FireAndForget | Shape::WithResult, _) | (Shape::WithList, None) => None,
         };
         let table = match side {
             Where::Server => &mut self.server,

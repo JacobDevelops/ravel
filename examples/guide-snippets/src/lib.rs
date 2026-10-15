@@ -100,8 +100,8 @@ pub mod content {
             claim_all(&Self::declaration(), registrar)
         }
 
-        fn content_declaration(&self) -> Option<ContentDeclaration> {
-            Some(Self::declaration())
+        fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+            Ok(Some(Self::declaration()))
         }
     }
 }
@@ -218,12 +218,20 @@ pub mod state {
             Ok(())
         }
 
-        fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-            SavedDataDeclaration::new(Self::declared_id().clone(), [v(1), v(2)]).ok()
+        fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+            SavedDataDeclaration::new(Self::declared_id().clone(), [v(1), v(2)])
+                .map(Some)
+                .map_err(|error| ModError::Refused {
+                    mod_id: self.id().clone(),
+                    state: LifecycleState::Constructed,
+                    detail: error.to_string(),
+                })
         }
 
-        fn saved_data_migrations(&self) -> Option<MigrationChain> {
-            Some(MigrationChain::new(Self::declared_id().clone()).reaching(v(2), to_two))
+        fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
+            Ok(Some(
+                MigrationChain::new(Self::declared_id().clone()).reaching(v(2), to_two),
+            ))
         }
 
         fn open_saved_data(
@@ -238,7 +246,7 @@ pub mod state {
             // The payload is at whatever version the world stored, so the chain
             // crosses the steps the plan names before anything is read.
             let current = self
-                .saved_data_migrations()
+                .saved_data_migrations()?
                 .expect("this mod declares a chain")
                 .apply(plan, envelope.payload())
                 .map_err(|failed| ModError::Refused {
@@ -286,21 +294,18 @@ pub mod settings {
 
     #[declare_mod(id = "copper_lanterns")]
     impl Mod for CopperLanterns {
-        fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-            // `configuration_declaration` can only answer `Some` or `None`, so a
-            // typo in the document becomes `None`, which reads as "declares no
-            // settings": `configure` is never called and the mod runs on its own
-            // defaults in silence. Refusing here makes that loud.
-            ConfigurationDeclaration::parse(SETTINGS).map_err(|error| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state,
-                detail: error.to_string(),
-            })?;
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-            ConfigurationDeclaration::parse(SETTINGS).ok()
+        fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+            ConfigurationDeclaration::parse(SETTINGS)
+                .map(Some)
+                .map_err(|error| ModError::Refused {
+                    mod_id: self.id().clone(),
+                    state: LifecycleState::Constructed,
+                    detail: error.to_string(),
+                })
         }
 
         fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -415,14 +420,19 @@ pub mod optional_service {
             Ok(())
         }
 
-        fn service_declaration(&self) -> Option<ServiceDeclaration> {
+        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
             ServiceDeclaration::with_optional(
                 Self::declared_id().clone(),
                 [],            // what you answer
                 [],            // what you need
                 [landmarks()], // what you use if something answers it
             )
-            .ok()
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
         }
 
         fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
@@ -541,9 +551,11 @@ mod tests {
         let mut state = crate::state::CopperLanterns::default();
         let declaration = state
             .saved_data_declaration()
+            .expect("valid saved-data declaration")
             .expect("this mod owns world data");
         state
             .saved_data_migrations()
+            .expect("valid saved-data migrations")
             .expect("and declares a chain")
             .covers(&declaration)
             .expect("every version above the oldest has a step");
@@ -572,6 +584,7 @@ mod tests {
         let mut state = crate::state::CopperLanterns::default();
         let declaration = state
             .saved_data_declaration()
+            .expect("valid saved-data declaration")
             .expect("this mod owns world data");
         let plan = SavedDataPlan::open(&declaration, None).expect("absence initializes");
         state
@@ -589,9 +602,10 @@ mod tests {
         let mut settings = crate::settings::CopperLanterns::default();
         settings
             .enter(LifecycleState::Loaded)
-            .expect("the settings document this mod ships parses");
+            .expect("the settings mod accepts the loaded state");
         let declaration = settings
             .configuration_declaration()
+            .expect("valid configuration declaration")
             .expect("the document parses");
         let resolved =
             LayeredConfiguration::resolve(declaration, None, None).expect("nothing overrides");
@@ -636,6 +650,7 @@ mod tests {
         let compass = crate::optional_service::Compass::default();
         let declaration = compass
             .service_declaration()
+            .expect("valid service declaration")
             .expect("the snippet declares one service");
         // The guide's claim: this mod never stops a set from loading.
         assert_eq!(declaration.requires().count(), 0);

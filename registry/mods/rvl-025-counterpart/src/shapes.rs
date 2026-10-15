@@ -74,7 +74,7 @@ impl ShapedRecipe {
 }
 
 /// A stored crafting pattern and the result it produces.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Pattern {
     positions: Vec<Option<Stack>>,
 }
@@ -158,9 +158,9 @@ impl Pattern {
             .iter()
             .take(INPUTS)
             .enumerate()
-            .all(|(index, slot)| match slot {
-                None => true,
-                Some(stack) => stack.is_empty() || inside.contains(&index),
+            .all(|(index, slot)| {
+                slot.as_ref()
+                    .is_none_or(|stack| stack.is_empty() || inside.contains(&index))
             })
     }
 

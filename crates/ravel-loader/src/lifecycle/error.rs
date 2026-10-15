@@ -113,29 +113,16 @@ impl fmt::Display for LifecycleError {
             Self::UnknownMod { mod_id } => {
                 write!(formatter, "the load plan holds no mod `{mod_id}`")
             }
-            Self::IllegalTransition { mod_id, from, to } => write!(
-                formatter,
-                "`{mod_id}` cannot move from `{}` to `{}`",
-                from.name(),
-                to.name()
-            ),
+            Self::IllegalTransition { mod_id, from, to } => {
+                fmt_illegal_transition(formatter, mod_id, *from, *to)
+            }
             Self::AttributionRequired => formatter.write_str(
                 "a move to `failed` carries structured attribution, so it is recorded by `fail`",
             ),
-            Self::Halted { mod_id, from, to } => write!(
-                formatter,
-                "the set failed after mutating the world, so `{mod_id}` cannot move from `{}` to \
-                 `{}`; only stopping remains",
-                from.name(),
-                to.name()
-            ),
-            Self::SideMismatch { mod_id, from, side } => write!(
-                formatter,
-                "`{mod_id}` does not declare the `{}` side, so its code never loads here and it \
-                 stays `{}`",
-                side.name(),
-                from.name()
-            ),
+            Self::Halted { mod_id, from, to } => fmt_halted(formatter, mod_id, *from, *to),
+            Self::SideMismatch { mod_id, from, side } => {
+                fmt_side_mismatch(formatter, mod_id, *from, *side)
+            }
             Self::RegistrationBarrierOpen { mod_id, blocking } => write!(
                 formatter,
                 "`{mod_id}` cannot start running until the set has registered, and `{blocking}` \
@@ -189,6 +176,50 @@ impl fmt::Display for LifecycleError {
     }
 }
 
+fn fmt_illegal_transition(
+    formatter: &mut fmt::Formatter<'_>,
+    mod_id: &ModId,
+    from: LifecycleState,
+    to: LifecycleState,
+) -> fmt::Result {
+    write!(
+        formatter,
+        "`{mod_id}` cannot move from `{}` to `{}`",
+        from.name(),
+        to.name()
+    )
+}
+
+fn fmt_halted(
+    formatter: &mut fmt::Formatter<'_>,
+    mod_id: &ModId,
+    from: LifecycleState,
+    to: LifecycleState,
+) -> fmt::Result {
+    write!(
+        formatter,
+        "the set failed after mutating the world, so `{mod_id}` cannot move from `{}` to \
+         `{}`; only stopping remains",
+        from.name(),
+        to.name()
+    )
+}
+
+fn fmt_side_mismatch(
+    formatter: &mut fmt::Formatter<'_>,
+    mod_id: &ModId,
+    from: LifecycleState,
+    side: Side,
+) -> fmt::Result {
+    write!(
+        formatter,
+        "`{mod_id}` does not declare the `{}` side, so its code never loads here and it \
+         stays `{}`",
+        side.name(),
+        from.name()
+    )
+}
+
 impl std::error::Error for LifecycleError {}
 
 impl StructuredFailure for LifecycleError {
@@ -197,7 +228,17 @@ impl StructuredFailure for LifecycleError {
             Self::DuplicateIdentity { .. } => Some(FailureKind::DuplicateIdentity),
             Self::SideMismatch { .. } => Some(FailureKind::SideMismatch),
             Self::ConflictingRegistryClaim { .. } => Some(FailureKind::ConflictingRegistryClaim),
-            _ => None,
+            Self::UnknownMod { .. }
+            | Self::IllegalTransition { .. }
+            | Self::AttributionRequired
+            | Self::Halted { .. }
+            | Self::RegistrationBarrierOpen { .. }
+            | Self::RegistrationBarrierClosed { .. }
+            | Self::RegistrationWindow { .. }
+            | Self::MismatchedContentBehaviour { .. }
+            | Self::WorldAccessBlocked { .. }
+            | Self::WorldAccessHalted { .. }
+            | Self::PartialStateRefused { .. } => None,
         }
     }
 

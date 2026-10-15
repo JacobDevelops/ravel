@@ -275,8 +275,8 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.as_ref().ok().cloned()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        self.declaration.clone().map(Some)
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
@@ -286,8 +286,8 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        self.configuration.as_ref().ok().cloned()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        self.configuration.clone().map(Some)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -453,19 +453,16 @@ mod tests {
             .register(&mut registrar)
             .expect("the accepting registrar refuses nothing");
         assert_eq!(registrar.claimed().len(), census::BLOCKS + census::ITEMS);
-        for kind in CLAIMED_KINDS {
+        for (kind, expected) in [
+            (ContentKind::Block, census::BLOCKS),
+            (ContentKind::Item, census::ITEMS),
+        ] {
             let claimed = registrar
                 .claimed()
                 .iter()
                 .filter(|key| key.kind() == kind)
                 .count();
-            assert_eq!(
-                claimed,
-                match kind {
-                    ContentKind::Block => census::BLOCKS,
-                    _ => census::ITEMS,
-                }
-            );
+            assert_eq!(claimed, expected);
         }
         assert!(
             registrar
@@ -582,8 +579,18 @@ mod tests {
     #[test]
     fn the_entry_declares_both_its_content_and_its_settings() {
         let entry = Entry::new();
-        assert!(entry.content_declaration().is_some());
-        assert!(entry.configuration_declaration().is_some());
+        assert!(
+            entry
+                .content_declaration()
+                .expect("valid content")
+                .is_some()
+        );
+        assert!(
+            entry
+                .configuration_declaration()
+                .expect("valid configuration")
+                .is_some()
+        );
     }
 
     #[test]
@@ -633,7 +640,10 @@ mod tests {
         assert_eq!(entry.crops(), crops.as_slice());
         assert_eq!(
             data::OWNS_PERSISTED_STATE,
-            entry.saved_data_declaration().is_some(),
+            entry
+                .saved_data_declaration()
+                .expect("valid saved data declaration")
+                .is_some(),
             "an entry that owns no world data declares none"
         );
     }
@@ -641,7 +651,12 @@ mod tests {
     #[test]
     fn this_entry_owns_no_saved_data_and_writes_no_envelope() {
         let entry = Entry::new();
-        assert!(entry.saved_data_declaration().is_none());
+        assert!(
+            entry
+                .saved_data_declaration()
+                .expect("valid saved data declaration")
+                .is_none()
+        );
         assert!(
             entry
                 .save_saved_data()

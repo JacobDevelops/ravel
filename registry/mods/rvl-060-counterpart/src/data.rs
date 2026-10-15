@@ -25,6 +25,8 @@
 
 use std::collections::BTreeMap;
 
+use num_traits::ToPrimitive;
+
 /// One node of a stored-data tree.
 ///
 /// The three array kinds are separate from the general list because §7.4's list
@@ -46,7 +48,7 @@ pub enum Tag {
     /// A text value.
     Text(String),
     /// A general list.
-    List(Vec<Tag>),
+    List(Vec<Self>),
     /// An array of bytes.
     ByteArray(Vec<i8>),
     /// An array of thirty-two-bit numbers.
@@ -54,7 +56,7 @@ pub enum Tag {
     /// An array of sixty-four-bit numbers.
     LongArray(Vec<i64>),
     /// A map from name to tag.
-    Compound(BTreeMap<String, Tag>),
+    Compound(BTreeMap<String, Self>),
 }
 
 impl Tag {
@@ -102,10 +104,15 @@ impl Tag {
             Self::Byte(value) => Some(f64::from(value)),
             Self::Short(value) => Some(f64::from(value)),
             Self::Int(value) => Some(f64::from(value)),
-            Self::Long(value) => Some(num_traits::cast::AsPrimitive::<f64>::as_(value)),
+            Self::Long(value) => Some(value.to_f64().expect("i64 values fit the f64 range")),
             Self::Float(value) => Some(f64::from(value)),
             Self::Double(value) => Some(value),
-            _ => None,
+            Self::Text(_)
+            | Self::List(_)
+            | Self::ByteArray(_)
+            | Self::IntArray(_)
+            | Self::LongArray(_)
+            | Self::Compound(_) => None,
         }
     }
 
@@ -126,7 +133,14 @@ impl Tag {
             Self::ByteArray(items) => Some(items.iter().copied().map(Self::Byte).collect()),
             Self::IntArray(items) => Some(items.iter().copied().map(Self::Int).collect()),
             Self::LongArray(items) => Some(items.iter().copied().map(Self::Long).collect()),
-            _ => None,
+            Self::Byte(_)
+            | Self::Short(_)
+            | Self::Int(_)
+            | Self::Long(_)
+            | Self::Float(_)
+            | Self::Double(_)
+            | Self::Text(_)
+            | Self::Compound(_) => None,
         }
     }
 
@@ -143,7 +157,13 @@ impl Tag {
             Self::ByteArray(items) => items.is_empty(),
             Self::IntArray(items) => items.is_empty(),
             Self::LongArray(items) => items.is_empty(),
-            _ => false,
+            Self::Byte(_)
+            | Self::Short(_)
+            | Self::Int(_)
+            | Self::Long(_)
+            | Self::Float(_)
+            | Self::Double(_)
+            | Self::Text(_) => false,
         }
     }
 }

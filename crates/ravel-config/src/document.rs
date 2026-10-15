@@ -83,7 +83,9 @@ impl DocumentError {
     fn from_json(error: &serde_json::Error) -> Self {
         match error.classify() {
             serde_json::error::Category::Data => Self::Schema(error.to_string()),
-            _ => Self::Syntax(error.to_string()),
+            serde_json::error::Category::Io
+            | serde_json::error::Category::Syntax
+            | serde_json::error::Category::Eof => Self::Syntax(error.to_string()),
         }
     }
 }

@@ -335,7 +335,7 @@ impl Aggregation {
         resolution
     }
 
-    fn reserve(&mut self, tag: &TagId) -> Result<(), GroupingError> {
+    fn reserve(&self, tag: &TagId) -> Result<(), GroupingError> {
         if self.members.contains_key(tag) || self.references.contains_key(tag) {
             return Ok(());
         }

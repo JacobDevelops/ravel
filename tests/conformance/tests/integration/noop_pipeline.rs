@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ravel_core::{LifecycleState, Side};
-use ravel_host_api::HostMod;
 use ravel_package::{NonEmptyText, PackageManifest};
 use ravel_test_mod_noop::NoopMod;
 use ravel_testkit::{DiscoveredPackage, Host, PipelineRun, executed_states, run, run_order};
@@ -63,13 +62,8 @@ fn host() -> Host {
 
 fn run_on(side: Side) -> (PipelineRun, NoopMod) {
     let mut noop = NoopMod::new();
-    let completed = run(
-        &[package()],
-        &host(),
-        side,
-        &mut [&mut noop as &mut dyn HostMod],
-    )
-    .expect("the no-op package should complete the pipeline");
+    let completed = run(&[package()], &host(), side, &mut [&mut noop])
+        .expect("the no-op package should complete the pipeline");
     (completed, noop)
 }
 
@@ -79,17 +73,6 @@ fn names(states: &[LifecycleState]) -> Vec<&'static str> {
 
 fn record() -> Value {
     let manifest = manifest();
-    let source_files: Vec<Value> = manifest
-        .source
-        .files
-        .iter()
-        .map(|source| {
-            json!({
-                "path": source.path.as_str(),
-                "sha256": source.sha256.to_string(),
-            })
-        })
-        .collect();
 
     let runs: Vec<Value> = Side::ALL
         .into_iter()
@@ -141,7 +124,7 @@ fn record() -> Value {
                     .map(NonEmptyText::as_str)
                     .collect::<Vec<_>>(),
             },
-            "sourceFiles": source_files,
+            "sourceFiles": record_source_files(&manifest),
             "provenance": {
                 "file": manifest.provenance.record.file_name(),
                 "sha256": manifest.provenance.sha256.to_string(),
@@ -161,6 +144,20 @@ fn record() -> Value {
         "modExecutesIn": names(&executed_states()),
         "runs": runs,
     })
+}
+
+fn record_source_files(manifest: &PackageManifest) -> Vec<Value> {
+    manifest
+        .source
+        .files
+        .iter()
+        .map(|source| {
+            json!({
+                "path": source.path.as_str(),
+                "sha256": source.sha256.to_string(),
+            })
+        })
+        .collect()
 }
 
 fn rendered(record: &Value) -> String {

@@ -149,7 +149,7 @@ impl Sha256Digest {
                 return Err(Sha256Error::Character { character, index });
             };
             let shift = if index % 2 == 0 { 4 } else { 0 };
-            bytes[index / 2] |= value << shift;
+            bytes[index.div_euclid(2)] |= value << shift;
         }
         Ok(Self(bytes))
     }

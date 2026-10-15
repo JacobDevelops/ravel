@@ -189,6 +189,26 @@ fn no_mod_code_runs_before_validation_and_dependency_resolution() {
     }
 }
 
+fn constructed_registry_set() -> LifecycleMachine {
+    let mut machine = LifecycleMachine::new(
+        Side::Client,
+        vec![
+            entry("first_mod", &[Side::Client], Requirement::Required),
+            entry("second_mod", &[Side::Client], Requirement::Required),
+        ],
+    )
+    .expect("two mods are a valid plan");
+    for state in [
+        LifecycleState::Validated,
+        LifecycleState::Resolved,
+        LifecycleState::Loaded,
+        LifecycleState::Constructed,
+    ] {
+        machine.advance_all(state).expect("the set advances");
+    }
+    machine
+}
+
 /// The second invariant: registry identifiers become immutable after the
 /// registration barrier.
 ///
@@ -198,24 +218,8 @@ fn no_mod_code_runs_before_validation_and_dependency_resolution() {
 /// identifiers, and this fails when it can.
 #[test]
 fn registry_identifiers_become_immutable_after_the_registration_barrier() {
-    let mut machine = LifecycleMachine::new(
-        Side::Client,
-        vec![
-            entry("first_mod", &[Side::Client], Requirement::Required),
-            entry("second_mod", &[Side::Client], Requirement::Required),
-        ],
-    )
-    .expect("two mods are a valid plan");
+    let mut machine = constructed_registry_set();
     let names = ["first_mod", "second_mod"];
-
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-    ] {
-        machine.advance_all(state).expect("the set advances");
-    }
     assert!(!machine.registration_barrier_closed());
     machine
         .claim_registry_identifier(&id("first_mod"), "first_mod:block")
@@ -561,8 +565,10 @@ fn failure_after_world_mutation_cannot_silently_continue_or_save_partial_state()
             mod_id: id("first_mod")
         })
     );
+}
 
-    // A failure before any mutation leaves the set free to stop normally.
+#[test]
+fn failure_before_world_mutation_allows_survivors_to_start_and_save() {
     let mut untouched = LifecycleMachine::new(
         Side::IntegratedServer,
         vec![

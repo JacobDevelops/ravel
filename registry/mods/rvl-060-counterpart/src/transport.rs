@@ -95,7 +95,7 @@ impl WideValues {
     /// Returns how many logical values this holds.
     #[must_use]
     pub const fn len(&self) -> usize {
-        self.halves.len() / 2
+        self.halves.len().div_euclid(2)
     }
 
     /// Returns whether this holds no value at all.
@@ -120,8 +120,9 @@ impl WideValues {
     /// size.
     pub fn set(&mut self, index: usize, value: i32) -> Result<(), StoreError> {
         let (high, low) = self.slots(index)?;
-        self.halves[high] = (value >> 16) as i16;
-        self.halves[low] = (value & 0xFFFF) as i16;
+        let [a, b, c, d] = value.to_be_bytes();
+        self.halves[high] = i16::from_be_bytes([a, b]);
+        self.halves[low] = i16::from_be_bytes([c, d]);
         Ok(())
     }
 

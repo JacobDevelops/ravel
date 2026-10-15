@@ -321,15 +321,24 @@ mod tests {
         // tool this package built and drove is still storing nothing, and only a
         // dependent's call to `select` changes that.
         let tool = Tool::new();
-        let _ = tool.use_on(
-            Mode::Selecting,
-            false,
-            true,
-            "counterpart:deep",
-            (0, 0, 0),
-            true,
+        assert_eq!(
+            tool.use_on(
+                Mode::Selecting,
+                false,
+                true,
+                "counterpart:deep",
+                (0, 0, 0),
+                true,
+            ),
+            Used::Nothing
         );
-        let _ = tool.switch(Mode::Selecting);
+        assert_eq!(
+            tool.switch(Mode::Selecting),
+            Used::Switched {
+                into: Mode::Plain,
+                carried: None,
+            }
+        );
         assert_eq!(tool.stored(), None);
     }
 }

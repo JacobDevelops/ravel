@@ -82,7 +82,7 @@ impl ItemData {
 /// player or to every player on a reload. A client-side tag update rebuilds
 /// nothing, so a single-player world relies on the same payload path a
 /// dedicated one does.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Cache {
     accepts: BTreeMap<String, Vec<String>>,
     materials: BTreeSet<String>,
@@ -154,7 +154,7 @@ impl Cache {
 /// The colours a data pack declares for items.
 ///
 /// Cleared and rebuilt on each reload, and consulted with a fallback to white.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Colours {
     declared: BTreeMap<String, u32>,
 }
@@ -407,7 +407,9 @@ mod tests {
         match ingredient {
             Ingredient::Entry(entry) => vec![entry.clone()],
             Ingredient::Tag(_) => vec!["a:tagged".to_owned()],
-            _ => Vec::new(),
+            Ingredient::TillingTool
+            | Ingredient::ChargedContainer
+            | Ingredient::CropComponent { .. } => Vec::new(),
         }
     }
 
@@ -525,10 +527,7 @@ mod tests {
             assert_eq!(held.version(), CHANNEL_VERSION);
             assert_eq!(held.id().owner().as_str(), crate::MOD_ID);
         }
-        let directions: Vec<Direction> = contracts
-            .iter()
-            .map(ravel_sdk::network::PacketContract::direction)
-            .collect();
+        let directions: Vec<Direction> = contracts.iter().map(PacketContract::direction).collect();
         assert_eq!(
             directions,
             [

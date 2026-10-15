@@ -124,13 +124,15 @@ impl SavedDataPlan {
         declaration: &SavedDataDeclaration,
         stored: Option<SavedDataVersion>,
     ) -> Result<Self, SavedDataError> {
-        match stored {
-            Some(stored) => Self::resolve(declaration, stored),
-            None => Ok(Self {
-                owner: declaration.owner.clone(),
-                steps: Vec::new(),
-            }),
-        }
+        stored.map_or_else(
+            || {
+                Ok(Self {
+                    owner: declaration.owner.clone(),
+                    steps: Vec::new(),
+                })
+            },
+            |stored| Self::resolve(declaration, stored),
+        )
     }
     /// Returns the mod whose data this plan is for.
     #[must_use]
@@ -160,7 +162,7 @@ pub struct RequiredPackage {
 }
 
 /// One owner's entry inside the aggregate.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SavedDataEnvelope {
     schema_version: u8,
@@ -226,7 +228,7 @@ impl SavedDataEnvelope {
 }
 
 /// The one canonical multi-owner value stored by Minecraft.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SavedDataAggregate {
     format_version: u8,

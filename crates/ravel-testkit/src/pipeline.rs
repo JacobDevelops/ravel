@@ -43,7 +43,7 @@ impl DiscoveredPackage {
         }
     }
 
-    /// Reads a package whose manifest sits at `root/`[`Self::MANIFEST_FILE`].
+    /// Reads a package whose root contains [`Self::MANIFEST_FILE`].
     ///
     /// # Errors
     ///
@@ -295,7 +295,7 @@ impl fmt::Display for PipelineError {
 impl std::error::Error for PipelineError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.stage()
-            .map(|failure| failure as &dyn std::error::Error)
+            .map(|failure| -> &dyn std::error::Error { failure })
     }
 }
 

@@ -15,7 +15,7 @@ fn repository_root() -> &'static Path {
         .expect("xtask must remain under tools/ravel-xtask")
 }
 
-fn fixture(name: &str) -> std::path::PathBuf {
+fn fixture(name: &str) -> PathBuf {
     repository_root()
         .join("tests/fixtures/public/evidence")
         .join(name)

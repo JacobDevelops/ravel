@@ -108,7 +108,7 @@ pub const TRIGGER_HOOKS: [&str; 3] = ["screen_opened", "item_crafted", "first_it
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
-    declaration: Option<ContentDeclaration>,
+    declaration: Result<ContentDeclaration, ModError>,
     settings: Settings,
     framework: Framework,
     declarations: Declarations,
@@ -135,7 +135,7 @@ impl Entry {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            declaration: Self::declaration().ok(),
+            declaration: Self::declaration(),
             settings: Settings::default(),
             framework: settings::own_framework(),
             declarations: declarations::own_declarations(),
@@ -368,35 +368,40 @@ impl Mod for Entry {
         match state {
             LifecycleState::Constructed => {
                 settings::declaration().map_err(|error| Self::packaging(&error))?;
-                self.declaration.as_ref().ok_or_else(|| {
-                    Self::packaging("the packaged content declaration is not well formed")
-                })?;
+                self.declaration.as_ref().map_err(Clone::clone)?;
             }
             LifecycleState::Running => {
                 self.framework.resolve();
                 self.load_complete = true;
             }
-            _ => {}
+            LifecycleState::Discovered
+            | LifecycleState::Validated
+            | LifecycleState::Resolved
+            | LifecycleState::Loaded
+            | LifecycleState::Registered
+            | LifecycleState::Stopping
+            | LifecycleState::Stopped
+            | LifecycleState::Failed => {}
         }
         self.entered.push(state);
         Ok(())
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.clone()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        self.declaration.clone().map(Some)
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().ok_or_else(|| {
-            Self::packaging("the packaged content declaration is not well formed")
-        })?;
+        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
         claim_all(declaration, registrar)?;
         self.capabilities.bake();
         Ok(())
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        settings::declaration().ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        settings::declaration()
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -444,9 +449,11 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        let service = Self::producer_service().ok()?;
-        ServiceDeclaration::new(Self::declared_id().clone(), [service], []).ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        let service = Self::producer_service()?;
+        ServiceDeclaration::new(Self::declared_id().clone(), [service], [])
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -457,8 +464,10 @@ impl Mod for Entry {
         Ok(ServiceResponse::new(self.contribute(&request.arguments)))
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        SavedDataDeclaration::new(Self::declared_id().clone(), [DATA_VERSION]).ok()
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        SavedDataDeclaration::new(Self::declared_id().clone(), [DATA_VERSION])
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
@@ -586,17 +595,33 @@ mod tests {
     #[test]
     fn the_entry_declares_its_content_its_settings_its_service_and_its_saved_data() {
         let entry = Entry::new();
-        assert!(entry.content_declaration().is_some());
-        assert!(entry.configuration_declaration().is_some());
+        assert!(
+            entry
+                .content_declaration()
+                .expect("valid content")
+                .is_some()
+        );
+        assert!(
+            entry
+                .configuration_declaration()
+                .expect("valid configuration")
+                .is_some()
+        );
         assert_eq!(
             entry
                 .service_declaration()
+                .expect("the service declaration is valid")
                 .expect("the producer service")
                 .provides()
                 .count(),
             1
         );
-        assert!(entry.saved_data_declaration().is_some());
+        assert!(
+            entry
+                .saved_data_declaration()
+                .expect("valid saved data")
+                .is_some()
+        );
     }
 
     #[test]
@@ -711,6 +736,7 @@ mod tests {
         let plan = SavedDataPlan::open(
             &reopened
                 .saved_data_declaration()
+                .expect("the saved data declaration is valid")
                 .expect("the entry declares its saved data"),
             Some(saved.data_version()),
         )
@@ -727,6 +753,7 @@ mod tests {
         let fresh = SavedDataPlan::open(
             &first
                 .saved_data_declaration()
+                .expect("the saved data declaration is valid")
                 .expect("the entry declares its saved data"),
             None,
         )
@@ -744,6 +771,7 @@ mod tests {
         let again = SavedDataPlan::open(
             &second
                 .saved_data_declaration()
+                .expect("the saved data declaration is valid")
                 .expect("the entry declares its saved data"),
             Some(stored.data_version()),
         )
@@ -857,6 +885,7 @@ mod tests {
         let plan = SavedDataPlan::open(
             &entry
                 .saved_data_declaration()
+                .expect("the saved data declaration is valid")
                 .expect("the entry declares its saved data"),
             None,
         )
@@ -880,6 +909,7 @@ mod tests {
         let plan = SavedDataPlan::open(
             &entry
                 .saved_data_declaration()
+                .expect("the saved data declaration is valid")
                 .expect("the entry declares its saved data"),
             Some(saved.data_version()),
         )

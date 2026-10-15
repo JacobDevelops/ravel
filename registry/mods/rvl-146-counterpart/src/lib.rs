@@ -452,8 +452,8 @@ impl Mod for Shared {
         claim_all(self.collection.run().declaration(), registrar)
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        Some(self.collection.run().declaration().clone())
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        Ok(Some(self.collection.run().declaration().clone()))
     }
 
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
@@ -468,8 +468,14 @@ impl Mod for Shared {
         Ok(())
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        Memory::declaration(Self::owner()).ok()
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        Memory::declaration(Self::owner())
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: Self::owner(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
@@ -566,8 +572,8 @@ mod tests {
         }
     }
 
-    fn recipe(path: &str) -> ravel_sdk::content::ContentId {
-        ravel_sdk::content::ContentId::new(Shared::owner(), path).expect("a legal content path")
+    fn recipe(path: &str) -> ContentId {
+        ContentId::new(Shared::owner(), path).expect("a legal content path")
     }
 
     fn key(x: i32) -> Key {
@@ -613,6 +619,7 @@ mod tests {
         assert_eq!(
             shared
                 .content_declaration()
+                .expect("valid content")
                 .expect("a declaration")
                 .entries()
                 .len(),
@@ -768,6 +775,7 @@ mod tests {
         let mut opened = Shared::new(Side::IntegratedServer);
         let declaration = opened
             .saved_data_declaration()
+            .expect("valid saved data")
             .expect("this library declares its data");
         let plan = SavedDataPlan::open(&declaration, Some(Memory::version()))
             .expect("a world at the current version");
@@ -801,7 +809,10 @@ mod tests {
         );
 
         let mut shared = Shared::new(Side::IntegratedServer);
-        let declaration = shared.saved_data_declaration().expect("declared");
+        let declaration = shared
+            .saved_data_declaration()
+            .expect("valid saved data")
+            .expect("declared");
         let plan = SavedDataPlan::open(&declaration, Some(Memory::version())).expect("a plan");
         shared
             .open_saved_data(Some(&envelope), &plan)
@@ -813,7 +824,10 @@ mod tests {
     #[test]
     fn a_fresh_world_holds_no_memory_and_is_not_a_failure() {
         let mut shared = Shared::new(Side::IntegratedServer);
-        let declaration = shared.saved_data_declaration().expect("declared");
+        let declaration = shared
+            .saved_data_declaration()
+            .expect("valid saved data")
+            .expect("declared");
         let plan = SavedDataPlan::open(&declaration, None).expect("a fresh world");
         shared
             .open_saved_data(None, &plan)
@@ -935,6 +949,7 @@ mod tests {
         let mut opened = Shared::new(Side::IntegratedServer);
         let declaration = opened
             .saved_data_declaration()
+            .expect("valid saved data")
             .expect("this library declares its data");
         let plan = SavedDataPlan::open(&declaration, Some(Memory::version()))
             .expect("a world at the current version");

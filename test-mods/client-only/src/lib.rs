@@ -246,8 +246,14 @@ impl Mod for ClientOnlyMod {
         Ok(())
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        ConfigurationDeclaration::parse(DECLARATION).ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        ConfigurationDeclaration::parse(DECLARATION)
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     /// Takes the switch the resolved settings put in force.
@@ -384,7 +390,7 @@ mod tests {
                 assert!(host.has_overlay());
                 assert_eq!(
                     host.drawn().expect("the client holds them"),
-                    [] as [String; 0]
+                    Vec::<String>::new()
                 );
             }
             assert_eq!(host.side(), side);
@@ -515,6 +521,7 @@ mod tests {
 
         let declared = host
             .configuration_declaration()
+            .expect("valid configuration declaration")
             .expect("this mod declares settings");
 
         assert_eq!(&declared.owner, ClientOnlyMod::declared_id());
@@ -535,7 +542,7 @@ mod tests {
             assert_eq!(host.work_done(), [BUILT_THE_OVERLAY]);
             assert_eq!(
                 host.drawn().expect("the client holds them"),
-                [] as [String; 0]
+                Vec::<String>::new()
             );
         }
     }

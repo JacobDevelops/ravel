@@ -72,7 +72,7 @@ pub const PLAIN_FORM: &str = "rvl_025_counterpart:carrier";
 pub const FORM_COMPONENT: &str = "carrier_form";
 
 /// A carrier's contents and which of them is presented.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Carrier {
     slots: Vec<Option<Stack>>,
     selected: usize,

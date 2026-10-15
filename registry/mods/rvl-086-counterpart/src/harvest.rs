@@ -34,7 +34,7 @@ pub enum Hand {
 }
 
 /// What a harvest produced.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Harvested {
     /// The stacks that reach the world, the withheld seed already taken out.
     pub drops: Vec<Stack>,
@@ -47,7 +47,7 @@ pub struct Harvested {
 }
 
 /// What the click landed on.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Clicked {
     /// Whether it is mature.
     pub mature: bool,

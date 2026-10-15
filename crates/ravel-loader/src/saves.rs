@@ -31,7 +31,13 @@ pub fn open_saved_data(
         if !loads_here(machine, host.id()) {
             continue;
         }
-        let Some(declaration) = host.saved_data_declaration() else {
+        let Some(declaration) =
+            host.saved_data_declaration()
+                .map_err(|source| SaveRefused::Owner {
+                    mod_id: host.id().clone(),
+                    source,
+                })?
+        else {
             continue;
         };
         if declaration.owner() != host.id() {
@@ -40,7 +46,13 @@ pub fn open_saved_data(
                 owner: declaration.owner().clone(),
             });
         }
-        if let Some(chain) = host.saved_data_migrations() {
+        if let Some(chain) = host
+            .saved_data_migrations()
+            .map_err(|source| SaveRefused::Owner {
+                mod_id: host.id().clone(),
+                source,
+            })?
+        {
             chain.covers(&declaration).map_err(SaveRefused::Data)?;
             chains.push(chain);
         } else if declaration.versions().count() > 1 {
@@ -65,11 +77,14 @@ pub fn open_saved_data(
         let Some(host) = mods.iter_mut().find(|host| host.id() == &mod_id) else {
             continue;
         };
-        let Some(declaration) = host.saved_data_declaration() else {
+        let Some(declaration) = declarations
+            .iter()
+            .find(|declaration| declaration.owner() == &mod_id)
+        else {
             continue;
         };
         let envelope = aggregate.envelope(&mod_id);
-        let plan = SavedDataPlan::open(&declaration, envelope.map(SavedDataEnvelope::data_version))
+        let plan = SavedDataPlan::open(declaration, envelope.map(SavedDataEnvelope::data_version))
             .map_err(SaveRefused::Data)?;
         host.open_saved_data(envelope, &plan)
             .map_err(|source| SaveRefused::Owner {
@@ -209,6 +224,7 @@ mod tests {
         read: Option<Value>,
         refuses: bool,
         declares_as: Option<ModId>,
+        refuses_migrations: bool,
     }
 
     impl Storing {
@@ -224,6 +240,7 @@ mod tests {
                 read: None,
                 refuses: false,
                 declares_as: None,
+                refuses_migrations: false,
             }
         }
 
@@ -257,13 +274,25 @@ mod tests {
             Ok(())
         }
 
-        fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
+        fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, HostError> {
             let owner = self.declares_as.clone().unwrap_or_else(|| self.id.clone());
-            SavedDataDeclaration::new(owner, self.versions.iter().copied()).ok()
+            SavedDataDeclaration::new(owner, self.versions.iter().copied())
+                .map(Some)
+                .map_err(|source| HostError::Refused {
+                    mod_id: self.id.clone(),
+                    state: LifecycleState::Registered,
+                    detail: source.to_string(),
+                })
         }
 
-        fn saved_data_migrations(&self) -> Option<MigrationChain> {
-            self.chain.clone()
+        fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, HostError> {
+            if self.refuses_migrations {
+                return Err(HostError::Unsupported {
+                    mod_id: self.id.clone(),
+                    state: LifecycleState::Registered,
+                });
+            }
+            Ok(self.chain.clone())
         }
 
         fn open_saved_data(
@@ -281,6 +310,39 @@ mod tests {
             self.read = envelope.map(|held| held.payload().clone());
             Ok(())
         }
+    }
+
+    #[test]
+    fn invalid_saved_data_declaration_is_not_absent() {
+        let mut host = Storing::new("invalid_mod");
+        host.versions.clear();
+        let machine = machine(vec![entry("invalid_mod", &[Side::DedicatedServer])]);
+        let refusal = open_saved_data(&machine, &mut [&mut host], None, &BTreeMap::new())
+            .expect_err("invalid declarations cannot opt out");
+        assert!(matches!(
+            refusal,
+            SaveRefused::Owner { mod_id, source: HostError::Refused { .. } }
+                if mod_id == id("invalid_mod")
+        ));
+        assert_eq!(host.read, None);
+    }
+
+    #[test]
+    fn saved_data_migrations_refusal_is_not_absence() {
+        let mut host = Storing::new("refusing_mod");
+        host.refuses_migrations = true;
+        let machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
+        assert_eq!(
+            open_saved_data(&machine, &mut [&mut host], None, &BTreeMap::new()),
+            Err(SaveRefused::Owner {
+                mod_id: id("refusing_mod"),
+                source: HostError::Unsupported {
+                    mod_id: id("refusing_mod"),
+                    state: LifecycleState::Registered,
+                },
+            })
+        );
+        assert_eq!(host.read, None);
     }
 
     fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {

@@ -251,7 +251,11 @@ impl std::error::Error for ContentIdError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Namespace { source } => Some(source),
-            _ => None,
+            Self::MissingNamespace
+            | Self::EmptyPath
+            | Self::PathBoundary
+            | Self::PathTraversal
+            | Self::PathCharacter { .. } => None,
         }
     }
 }
@@ -405,7 +409,7 @@ impl Default for BlockBehaviour {
 }
 
 /// Primitive item properties.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct ItemBehaviour {
     /// How many of the item one stack holds.
@@ -530,7 +534,7 @@ mod tests {
         let namespace: ModId = "example_mod".parse().expect("a legal mod id");
         for candidate in ["../elsewhere", "a/../b", "smelting/.."] {
             assert_eq!(
-                ContentId::new(namespace.clone(), candidate).unwrap_err(),
+                ContentId::new(namespace.clone(), candidate).expect_err("reject path traversal"),
                 ContentIdError::PathTraversal,
                 "{candidate}"
             );

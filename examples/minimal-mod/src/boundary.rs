@@ -62,17 +62,23 @@
 //!         })
 //!     }
 //!
-//!     fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
+//!     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
 //!         SavedDataDeclaration::new(
 //!             Self::declared_id().clone(),
 //!             [SavedDataVersion::new(1).expect("1 is not zero")],
 //!         )
-//!         .ok()
+//!         .map(Some)
+//!         .map_err(|error| ModError::Refused {
+//!             mod_id: Self::declared_id().clone(),
+//!             state: LifecycleState::Constructed,
+//!             detail: error.to_string(),
+//!         })
 //!     }
 //! }
 //!
 //! let declaration = Example
 //!     .saved_data_declaration()
+//!     .expect("valid saved-data declaration")
 //!     .expect("the example declares one version");
 //! assert!(SavedDataPlan::open(&declaration, None)
 //!     .expect("a fresh world initializes")

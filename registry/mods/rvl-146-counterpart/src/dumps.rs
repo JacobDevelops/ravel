@@ -36,15 +36,20 @@ fn sample(kind: ArgumentKind) -> Argument {
 fn hex(bytes: &[u8]) -> String {
     let mut rendered = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        let _ = write!(rendered, "{byte:02x}");
+        write!(rendered, "{byte:02x}").expect("writing into a String cannot fail");
     }
     rendered
 }
 
-/// Renders the wire table: what each of the eight argument kinds is called, the
-/// tag it travels as under the placeholder numbering, whether that numbering
-/// reads the tag back as the same kind, and the body a one-argument action
-/// carrying it occupies.
+/// Renders the wire table for the eight argument kinds.
+///
+/// Shows what each kind is called, the tag it travels as under the placeholder
+/// numbering, whether that numbering reads the tag back as the same kind, and
+/// the body a one-argument action carrying it occupies.
+///
+/// # Panics
+///
+/// Panics if formatting into a string fails.
 #[must_use]
 pub fn wire_table() -> String {
     let numbering = TagNumbering::placeholder();
@@ -58,11 +63,12 @@ pub fn wire_table() -> String {
             |refused| (0, format!("refused: {refused}")),
             |bytes| (bytes.len(), hex(bytes)),
         );
-        let _ = writeln!(
+        writeln!(
             rendered,
             "{}\t{tag}\t{reverse}\t{length}\t{encoded}",
             kind.as_str()
-        );
+        )
+        .expect("writing into a String cannot fail");
     }
     rendered
 }
@@ -72,6 +78,10 @@ pub fn wire_table() -> String {
 ///
 /// Both axes are the crate's own exhaustive listings, so the table is the whole
 /// of the admittance relation and not a sample of it.
+///
+/// # Panics
+///
+/// Panics if formatting into a string fails.
 #[must_use]
 pub fn slot_table() -> String {
     let mut rendered = String::from("slot");
@@ -85,7 +95,8 @@ pub fn slot_table() -> String {
             ("exactly", Slot::Exactly(kind)),
             ("optional", Slot::Optional(kind)),
         ] {
-            let _ = write!(rendered, "{form}:{}", kind.as_str());
+            write!(rendered, "{form}:{}", kind.as_str())
+                .expect("writing into a String cannot fail");
             for offered in ArgumentKind::ALL {
                 rendered.push('\t');
                 rendered.push_str(if slot.admits(&sample(offered)) {

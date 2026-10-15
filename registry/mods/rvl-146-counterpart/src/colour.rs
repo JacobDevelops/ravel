@@ -66,7 +66,8 @@ fn channel_byte(value: f32) -> u8 {
     } else if truncated >= 255.0 {
         255
     } else {
-        num_traits::cast::AsPrimitive::<u8>::as_(truncated)
+        num_traits::ToPrimitive::to_u8(&truncated)
+            .expect("an integral channel strictly between zero and 255 fits in a byte")
     }
 }
 
@@ -119,12 +120,8 @@ impl Colour {
     /// integer.
     #[must_use]
     pub fn from_packed(packed: u32) -> Self {
-        Self::from_bytes(
-            ((packed >> 16) & 0xff) as u8,
-            ((packed >> 8) & 0xff) as u8,
-            (packed & 0xff) as u8,
-            ((packed >> 24) & 0xff) as u8,
-        )
+        let [alpha, red, green, blue] = packed.to_be_bytes();
+        Self::from_bytes(red, green, blue, alpha)
     }
 
     /// Returns the red channel as a fraction.

@@ -74,31 +74,7 @@ fn main() -> ExitCode {
         }
         // Emit sanitized evidence on both success and failure.
         [scan, instance, directory] if scan == "scan" && instance == "instance" => {
-            let report = ravel_xtask::scan_instance(Path::new(directory));
-            println!("{}", report.to_json());
-            let mut violations = report
-                .findings
-                .iter()
-                .map(|finding| {
-                    format!(
-                        "{} is present: {} ({})",
-                        finding.loader, finding.marker, finding.kind
-                    )
-                })
-                .collect::<Vec<_>>();
-            violations.extend(
-                report
-                    .obstacles
-                    .iter()
-                    .map(|obstacle| (*obstacle).to_owned()),
-            );
-            if report.mod_archives > 0 {
-                violations.push(format!(
-                    "the game directory holds mod archives ({}), which only another loader reads",
-                    report.mod_archives
-                ));
-            }
-            ("instance scan", violations)
+            ("instance scan", scan_instance(Path::new(directory)))
         }
         _ => {
             eprintln!(
@@ -125,4 +101,32 @@ fn main() -> ExitCode {
         }
         ExitCode::FAILURE
     }
+}
+
+fn scan_instance(directory: &Path) -> Vec<String> {
+    let report = ravel_xtask::scan_instance(directory);
+    println!("{}", report.to_json());
+    let mut violations = report
+        .findings
+        .iter()
+        .map(|finding| {
+            format!(
+                "{} is present: {} ({})",
+                finding.loader, finding.marker, finding.kind
+            )
+        })
+        .collect::<Vec<_>>();
+    violations.extend(
+        report
+            .obstacles
+            .iter()
+            .map(|obstacle| (*obstacle).to_owned()),
+    );
+    if report.mod_archives > 0 {
+        violations.push(format!(
+            "the game directory holds mod archives ({}), which only another loader reads",
+            report.mod_archives
+        ));
+    }
+    violations
 }

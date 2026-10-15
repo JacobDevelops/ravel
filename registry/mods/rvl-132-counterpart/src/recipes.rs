@@ -594,10 +594,11 @@ fn one_of(value: &Stack) -> CandidateSet<Stack> {
     let mut set = CandidateSet::new();
     let under = Flags::slot(Stack::IDENTITY).combine(Flags::slot(Stack::DATA));
     // A fresh set holds nothing, so the one addition is inside the ceiling.
-    let _ = set.add(Candidate {
+    set.add(Candidate {
         value: value.clone(),
         under,
-    });
+    })
+    .expect("a fresh candidate set has room for one value");
     set
 }
 
@@ -1085,7 +1086,7 @@ mod tests {
             &["minecraft:stone"],
             "minecraft:stone_stairs",
         );
-        let world = vec![bricks.clone(), stairs.clone()];
+        let world = vec![bricks, stairs.clone()];
         let recipes = station
             .enumerate(&world, convert, false)
             .expect("a small world");

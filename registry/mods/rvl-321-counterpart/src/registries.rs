@@ -89,7 +89,7 @@ pub fn registered_id(crop: &Crop, role: Role) -> String {
 }
 
 /// A slotted modifier, which registers on full-identifier collision only.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Modifier {
     /// The full identifier.
     pub id: String,
@@ -157,11 +157,11 @@ impl Registries {
     /// what makes an extension's opt-out final.
     pub fn register_crop(&mut self, mut crop: Crop, extension: Derived) -> bool {
         if !self.open {
-            self.refused.push(Refusal::Closed(crop.id.clone()));
+            self.refused.push(Refusal::Closed(crop.id));
             return false;
         }
         if self.crops.iter().any(|held| held.path() == crop.path()) {
-            self.refused.push(Refusal::CropPath(crop.id.clone()));
+            self.refused.push(Refusal::CropPath(crop.id));
             return false;
         }
         crop.derived = crop.derived.narrowed_by(extension);

@@ -338,9 +338,7 @@ impl Surface {
                 .iter()
                 .any(|(_, kind)| kind == &module.data);
         if !known {
-            return Err(SurfaceRefused::UnknownData {
-                data: module.data.clone(),
-            });
+            return Err(SurfaceRefused::UnknownData { data: module.data });
         }
         self.modules.push(module);
         Ok(())
@@ -738,7 +736,7 @@ pub struct Overlay {
 }
 
 /// What a browser push became.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PushedGrid {
     /// The result the browser was showing.
     pub showing: Option<Stack>,

@@ -59,11 +59,11 @@ pub type Composition = (
     Supplied,
 );
 
-/// Admits, configures, and drives a composed mod set for one launch.
+/// Admits and configures a composed set, opening services before any mod starts.
 ///
 /// # Errors
 ///
-/// Returns an error on package discovery, admission, configuration, resource, or lifecycle failure.
+/// Returns an error on package admission, configuration, resources, services, or lifecycle failure.
 pub fn compose(
     game_directory: &Path,
     side: Side,
@@ -72,9 +72,9 @@ pub fn compose(
     account_for_installed(game_directory, &members)?;
 
     let packs = file::read_pack(game_directory).map_err(LaunchError::PackFile)?;
-    let players = player_documents(game_directory, &members)?;
 
     let mut composed = admit(side, members)?;
+    let players = player_documents(game_directory, side, &composed)?;
     let plan = composed.iter().map(|(entry, _)| entry.clone()).collect();
     let machine = LifecycleMachine::new(side, plan).map_err(LaunchError::Lifecycle)?;
     let configurations = {
@@ -88,7 +88,12 @@ pub fn compose(
             .to_vec()
     };
 
-    let (machine, mods) = drive(side, composed).map_err(LaunchError::Drive)?;
+    let (machine, mods) = drive(side, composed).map_err(|error| match error {
+        DriveError::Services(error) => LaunchError::Services(error),
+        error @ (DriveError::Identity { .. } | DriveError::Lifecycle(_) | DriveError::Host(_)) => {
+            LaunchError::Drive(error)
+        }
+    })?;
     // Resource declarations are available only after registration in `drive`.
     let resources = open_resources(&machine, &mods).map_err(LaunchError::Resources)?;
 
@@ -97,11 +102,21 @@ pub fn compose(
 
 fn player_documents(
     game_directory: &Path,
-    members: &[Member],
+    side: Side,
+    members: &[(LifecycleEntry, Box<dyn HostMod>)],
 ) -> Result<BTreeMap<ModId, ValueDocument>, LaunchError> {
     let mut players = BTreeMap::new();
-    for member in members {
-        let Some(declaration) = member.host.configuration_declaration() else {
+    for (entry, host) in members {
+        if !entry.sides.loads_on(side) {
+            continue;
+        }
+        let Some(declaration) = host.configuration_declaration().map_err(|source| {
+            LaunchError::Config(ConfigRefused::Mod {
+                mod_id: host.id().clone(),
+                source,
+            })
+        })?
+        else {
             continue;
         };
         if let Some(document) =
@@ -267,6 +282,8 @@ pub enum LaunchError {
     Config(ConfigRefused),
     /// The set's supplied files could not be layered.
     Resources(ResourceRefused),
+    /// The set's services could not be resolved or consumed.
+    Services(ravel_loader::ServiceRefused),
     /// The set's files could not be written as a pack the game reads.
     Pack(PackError),
     /// The player's settings could not be read or replaced.
@@ -323,6 +340,9 @@ impl fmt::Display for LaunchError {
             Self::Resources(error) => {
                 write!(formatter, "the set's files were not layered: {error}")
             }
+            Self::Services(error) => {
+                write!(formatter, "the set's services were not opened: {error}")
+            }
             Self::Pack(error) => {
                 write!(formatter, "the set's pack was not written: {error}")
             }
@@ -361,6 +381,7 @@ impl std::error::Error for LaunchError {
             Self::Lifecycle(error) => Some(error),
             Self::Config(error) => Some(error),
             Self::Resources(error) => Some(error),
+            Self::Services(error) => Some(error),
             Self::Pack(error) => Some(error),
             Self::Options(error) => Some(error),
             Self::Composition(_) | Self::NotComposed(_) => None,
@@ -397,6 +418,113 @@ mod tests {
                 .push(state);
             Ok(())
         }
+    }
+
+    struct ServiceConsumer {
+        id: ModId,
+        states: Arc<Mutex<Vec<LifecycleState>>>,
+    }
+
+    impl HostMod for ServiceConsumer {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+            self.states
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(state);
+            Ok(())
+        }
+
+        fn service_declaration(
+            &self,
+        ) -> Result<Option<ravel_host_api::ServiceDeclaration>, HostError> {
+            Ok(Some(
+                ravel_host_api::ServiceDeclaration::new(
+                    self.id.clone(),
+                    [],
+                    [ravel_host_api::ServiceId::new(
+                        "absent:clock".parse().expect("a valid service id"),
+                    )],
+                )
+                .expect("a valid service declaration"),
+            ))
+        }
+    }
+
+    #[test]
+    fn missing_services_refuse_launch_before_any_mod_starts() {
+        let (package, id, states) = member("consumer", &["client"]);
+        let game =
+            std::env::temp_dir().join(format!("ravel-services-missing-{}", std::process::id()));
+        std::fs::create_dir_all(&game).expect("create launch directory");
+        let result = super::compose(
+            &game,
+            Side::Client,
+            vec![Member {
+                package,
+                host: Box::new(ServiceConsumer {
+                    id,
+                    states: Arc::clone(&states),
+                }),
+            }],
+        );
+        std::fs::remove_dir_all(game).expect("remove launch directory");
+        assert!(matches!(
+            result,
+            Err(super::LaunchError::Services(
+                ravel_loader::ServiceRefused::NoProvider { .. }
+            ))
+        ));
+        assert!(
+            !steps(&states).contains(&LifecycleState::Running),
+            "service refusal must happen before entering Running"
+        );
+    }
+
+    struct RejectingConfiguration {
+        id: ModId,
+    }
+
+    impl HostMod for RejectingConfiguration {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            Ok(())
+        }
+
+        fn configuration_declaration(
+            &self,
+        ) -> Result<Option<ravel_config::ConfigurationDeclaration>, HostError> {
+            Err(HostError::Unsupported {
+                mod_id: self.id.clone(),
+                state: LifecycleState::Constructed,
+            })
+        }
+    }
+
+    #[test]
+    fn a_wrong_side_mod_cannot_refuse_configuration_on_this_side() {
+        let (package, id, _) = member("client_configuration", &["client"]);
+        let game = std::env::temp_dir().join(format!(
+            "ravel-wrong-side-configuration-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&game).expect("create launch directory");
+        let result = super::compose(
+            &game,
+            Side::DedicatedServer,
+            vec![Member {
+                package,
+                host: Box::new(RejectingConfiguration { id }),
+            }],
+        );
+        std::fs::remove_dir_all(game).expect("remove launch directory");
+        result.expect("wrong-side declaration must not refuse launch");
     }
 
     fn steps(log: &Arc<Mutex<Vec<LifecycleState>>>) -> Vec<LifecycleState> {
@@ -560,7 +688,7 @@ mod tests {
                     host: Box::new(Recording {
                         id: mod_id.clone(),
                         states: Arc::clone(log),
-                    }) as Box<dyn HostMod>,
+                    }),
                 })
                 .collect();
 

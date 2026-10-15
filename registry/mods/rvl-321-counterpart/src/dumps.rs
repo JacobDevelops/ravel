@@ -183,13 +183,14 @@ pub fn machine_document() -> String {
                 upgrade.map_or(bases.operation, |it| it.operation_ticks(bases.operation));
             let usage = upgrade.map_or(bases.usage, |it| it.usage_per_tick(bases.usage));
             let capacity = upgrade.map_or(crate::machines::BASE_CAPACITY, Upgrade::capacity);
-            let _ = writeln!(
+            writeln!(
                 document,
                 "{machine}\t{position}\t{operation}\t{usage}\t{capacity}\t{}\t{}\t{}",
                 sweep.range,
                 sweep.side(),
                 sweep.area()
-            );
+            )
+            .expect("writing to a String cannot fail");
         }
     }
     document
@@ -219,7 +220,7 @@ pub fn world_document() -> String {
             Stage::Raw => "raw",
             Stage::UndergroundOres => "underground_ores",
         };
-        let _ = writeln!(
+        writeln!(
             document,
             "{}\t{}\t{}\t{}\t{}\t{}\t{biomes}\t{stage}\t{}\t{}",
             deposit.name,
@@ -230,7 +231,8 @@ pub fn world_document() -> String {
             deposit.highest,
             deposit.own_feature,
             crate::world::AIR_DISCARD,
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
     document.push('\n');
     document.push_str("bound\tchance\tdraw\tplaced\n");
@@ -241,7 +243,8 @@ pub fn world_document() -> String {
                 Placed::Target => "target",
                 Placed::Rare => "rare",
             };
-            let _ = writeln!(document, "{bound}\t{chance}\t{draw}\t{placed}");
+            writeln!(document, "{bound}\t{chance}\t{draw}\t{placed}")
+                .expect("writing to a String cannot fail");
         }
     }
     document

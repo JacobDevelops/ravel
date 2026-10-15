@@ -105,13 +105,14 @@ pub fn capabilities_document() -> String {
 pub fn network_table() -> String {
     let mut table = String::from("packet\tdirection\tversion\n");
     for contract in network::contracts() {
-        let _ = writeln!(
+        writeln!(
             table,
             "{}\t{}\t{}",
             contract.id(),
             contract.direction(),
             contract.version()
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
     table
 }

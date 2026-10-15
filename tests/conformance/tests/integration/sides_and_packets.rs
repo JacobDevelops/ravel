@@ -228,7 +228,7 @@ fn pipeline_on(side: Side) -> (PipelineRun, WorkLog) {
         &[discovered(CLIENT_ONLY_PACKAGE), discovered(NOOP_PACKAGE)],
         &host(),
         side,
-        &mut [&mut client as &mut dyn Mod, &mut noop],
+        &mut [&mut client, &mut noop],
     )
     .expect("a side-mismatched package is parked, not refused");
     (completed, log)
@@ -500,7 +500,7 @@ fn a_length_prefix_past_the_end_is_refused_with_the_length_it_claimed() {
     assert_eq!(
         decode::<Ping>(&hostile),
         Err(WireError::Truncated {
-            needed: u32::MAX as usize,
+            needed: usize::try_from(u32::MAX).expect("the packet length fits usize"),
             available: 0,
         }),
         "the note's length prefix claims the whole address space and nothing follows it"

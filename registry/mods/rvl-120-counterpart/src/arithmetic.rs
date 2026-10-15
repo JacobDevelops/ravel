@@ -113,8 +113,9 @@ impl Table64 {
     pub const fn derive(polynomial: u64) -> Self {
         let mut entries = [0_u64; 256];
         let mut index = 0_usize;
+        let mut seed = 0_u64;
         while index < 256 {
-            let mut value = (index as u64) << 56;
+            let mut value = seed << 56;
             let mut round = 0_u8;
             while round < 8 {
                 let top = value & (1 << 63) != 0;
@@ -126,6 +127,7 @@ impl Table64 {
             }
             entries[index] = value;
             index += 1;
+            seed += 1;
         }
         Self { entries }
     }
@@ -220,7 +222,10 @@ impl<'table> Check64<'table> {
 
     /// Folds one byte in.
     pub const fn fold_byte(&mut self, byte: u8) {
-        let index = ((self.accumulator >> 56) as u8 ^ byte) as usize;
+        let byte_index = self.accumulator.to_be_bytes()[0] ^ byte;
+        let mut index_bytes = [0; size_of::<usize>()];
+        index_bytes[0] = byte_index;
+        let index = usize::from_le_bytes(index_bytes);
         self.accumulator = (self.accumulator << 8) ^ self.table.entries[index];
     }
 
@@ -271,7 +276,7 @@ pub fn check64_over(table: &Table64, words: &[u32]) -> u64 {
 /// one on exactly the values a correction would change.
 #[must_use]
 pub const fn clamp_energy(amount: i64) -> i32 {
-    if amount > i32::MAX as i64 {
+    if amount > 0x7fff_ffff_i64 {
         i32::MAX
     } else {
         let [a, b, c, d, ..] = amount.to_le_bytes();

@@ -496,7 +496,14 @@ impl std::error::Error for DeclarationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Path { source } => Some(source),
-            _ => None,
+            Self::DuplicateEntry { .. }
+            | Self::TagKind { .. }
+            | Self::DuplicateTagMember { .. }
+            | Self::Locale { .. }
+            | Self::EmptyTranslationKey
+            | Self::DuplicateTranslation { .. }
+            | Self::DuplicateResource { .. }
+            | Self::ProducedPath { .. } => None,
         }
     }
 }
@@ -829,7 +836,7 @@ mod tests {
             .tag(&lanterns, &member)
             .expect("nothing writes it yet");
         let error = tagged_first
-            .resource(generated.clone(), b"{}".to_vec())
+            .resource(generated, b"{}".to_vec())
             .expect_err("the tag already writes it");
         let text = error.to_string();
         assert!(text.contains("one path holds one file"), "{text}");
@@ -906,7 +913,7 @@ mod tests {
         let generated = declaration.generate();
 
         assert_eq!(
-            generated.file(&path).map(crate::GeneratedFile::bytes),
+            generated.file(&path).map(GeneratedFile::bytes),
             Some(mine.as_slice()),
             "the author's bytes, not the generated ones"
         );

@@ -213,7 +213,7 @@ fn refuse(
         .collect();
     let mut driven: Vec<&mut dyn HostMod> = mods
         .iter_mut()
-        .map(|host| host as &mut dyn HostMod)
+        .map(|host| -> &mut dyn HostMod { host })
         .collect();
 
     let error = run(packages, &host(), side, &mut driven)

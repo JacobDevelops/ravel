@@ -160,7 +160,7 @@ mod tests {
         assert_eq!(taken[0].side(), Side::Client);
         assert_eq!(
             audio.take_play_requests(),
-            [] as [ravel_sdk::audio::PlayRequest; 0]
+            Vec::<ravel_sdk::audio::PlayRequest>::new()
         );
     }
 
@@ -174,7 +174,7 @@ mod tests {
 
         assert_eq!(
             audio.take_play_requests(),
-            [] as [ravel_sdk::audio::PlayRequest; 0]
+            Vec::<ravel_sdk::audio::PlayRequest>::new()
         );
     }
 

@@ -224,7 +224,9 @@ mod tests {
 
     fn directory(name: &str) -> PathBuf {
         let at = std::env::temp_dir().join(format!("ravel-options-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&at);
+        if at.exists() {
+            std::fs::remove_dir_all(&at).expect("remove stale temporary directory");
+        }
         std::fs::create_dir_all(&at).expect("a writable temporary directory");
         at
     }
@@ -254,7 +256,7 @@ mod tests {
             settings(&game),
             format!("{SURROUNDING}resourcePacks:[\"file/ravel\"]\nrenderDistance:12\n")
         );
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
@@ -271,7 +273,7 @@ mod tests {
             settings(&game),
             "resourcePacks:[\"file/mine\",\"vanilla\",\"file/ravel\"]\n"
         );
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
@@ -295,7 +297,7 @@ mod tests {
                 .expect("the record should be readable")
                 .contains(pack_id())
         );
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
@@ -312,7 +314,7 @@ mod tests {
             settings(&game),
             format!("{SURROUNDING}resourcePacks:[\"file/ravel\"]\n")
         );
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
@@ -330,7 +332,7 @@ mod tests {
             settings(&game),
             format!("{near}resourcePacks:[\"file/ravel\"]\n")
         );
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
@@ -358,7 +360,7 @@ mod tests {
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
         );
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
@@ -378,7 +380,7 @@ mod tests {
             seed_pack(&game).expect("a readable instance"),
             Seeded::Added
         );
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
@@ -397,7 +399,7 @@ mod tests {
             seed_pack(&game).expect("a readable instance"),
             Seeded::AlreadyOffered
         );
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
@@ -420,7 +422,7 @@ mod tests {
                 "attempt {attempt}: a record that cannot be kept edits nothing"
             );
         }
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     // Probe permissions so the test cannot pass without arranging a refused write.
@@ -454,7 +456,7 @@ mod tests {
 
         std::fs::set_permissions(&ravel, std::fs::Permissions::from_mode(0o755))
             .expect("permissions are settable");
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 
     #[test]
@@ -471,6 +473,6 @@ mod tests {
             settings(&game),
             "fov:0.0\r\nresourcePacks:[\"file/ravel\"]\r\nlang:en_us\r\n"
         );
-        let _ = std::fs::remove_dir_all(game);
+        std::fs::remove_dir_all(game).expect("remove temporary directory");
     }
 }

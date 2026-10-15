@@ -238,16 +238,16 @@ mod tests {
     #[test]
     fn six_crops_are_declared_and_four_of_them_name_one_companion_each() {
         assert_eq!(DECLARED.len(), COUNT);
-        let naming: Vec<&Declared> = DECLARED
+        let naming = DECLARED
             .iter()
             .filter(|declared| declared.declares_companion())
-            .collect();
-        assert_eq!(naming.len(), 4);
-        let unconditional: Vec<&Declared> = DECLARED
+            .count();
+        assert_eq!(naming, 4);
+        let unconditional = DECLARED
             .iter()
             .filter(|declared| !declared.declares_companion())
-            .collect();
-        assert_eq!(unconditional.len(), 2);
+            .count();
+        assert_eq!(unconditional, 2);
     }
 
     #[test]
@@ -410,7 +410,7 @@ mod tests {
         for member in &members {
             assert_eq!(member.split_once(':').map(|split| split.0), Some(companion));
         }
-        let mut distinct = members.clone();
+        let mut distinct = members;
         distinct.sort();
         distinct.dedup();
         assert_eq!(

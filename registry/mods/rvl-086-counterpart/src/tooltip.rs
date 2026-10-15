@@ -208,7 +208,7 @@ mod tests {
         let inventory = vec![Stack::new("example:arrow", 1); MAXIMUM_STACKS + 10];
         assert_eq!(
             usable(None, &inventory, &accepts_arrows),
-            MAXIMUM_STACKS as u64
+            u64::try_from(MAXIMUM_STACKS).expect("the stack ceiling fits in u64")
         );
     }
 }

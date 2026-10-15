@@ -23,11 +23,11 @@
 //!         Ok(())
 //!     }
 //!
-//!     fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+//!     fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
 //!         let mut declared = InterceptionDeclaration::new(Self::declared_id().clone());
 //!         declared.answer_at("block_is_broken");
 //!         // Asked before `ledger_mod`, so what this refuses the ledger never sees.
-//!         Some(declared)
+//!         Ok(Some(declared))
 //!     }
 //!
 //!     fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, ModError> {

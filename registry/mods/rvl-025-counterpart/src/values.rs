@@ -380,13 +380,10 @@ impl Readout {
         if !self.ticks.is_multiple_of(TICK_INTERVAL) {
             return false;
         }
-        match provider {
-            Some(provider) => {
-                provider.advance();
-                true
-            }
-            None => false,
-        }
+        provider.is_some_and(|provider| {
+            provider.advance();
+            true
+        })
     }
 
     /// Collects the values the current mode needs, on the server.
@@ -395,10 +392,7 @@ impl Readout {
     /// and got nothing shows nothing rather than deriving a figure of its own.
     #[must_use]
     pub fn collect(&self, provider: Option<&dyn Provider>) -> Readings {
-        match provider {
-            Some(provider) => provider.collect(self.mode),
-            None => Readings::new(),
-        }
+        provider.map_or_else(Readings::new, |provider| provider.collect(self.mode))
     }
 }
 
@@ -406,7 +400,7 @@ impl Readout {
 ///
 /// A client holds an answer and the moment it arrived, and nothing else. There
 /// is deliberately no way to put a value in here that the server did not send.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Screen {
     answer: Option<(Readings, u64)>,
 }

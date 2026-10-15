@@ -86,7 +86,7 @@ pub enum Rejected {
 }
 
 /// One slot of the container a toggle names.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Slot {
     /// Whether the slot holds an attractor.
     pub attractor: bool,
@@ -97,7 +97,7 @@ pub struct Slot {
 }
 
 /// The container the sender has open, as the server sees it.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Container {
     /// The slots, in the order the container declares them.
     pub slots: Vec<Slot>,
@@ -222,7 +222,7 @@ pub enum Screen {
 }
 
 /// What the client half saw when a player pressed the right mouse button.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Pressed {
     /// The screen the press happened on.
     pub screen: Screen,
@@ -260,7 +260,7 @@ pub struct Pickup {
 }
 
 /// One loose thing the sweep may collect.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Loose {
     /// Where it is.
     pub at: Position,

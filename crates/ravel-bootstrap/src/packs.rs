@@ -30,7 +30,7 @@ pub fn write_world_pack(world: &Path) -> Result<Option<Written>, ravel_loader::P
 /// # Errors
 ///
 /// Returns an error if the pack cannot be written.
-pub fn write_staged_pack(holder: &Path) -> Result<Option<Written>, ravel_loader::PackError> {
+pub(crate) fn write_staged_pack(holder: &Path) -> Result<Option<Written>, ravel_loader::PackError> {
     write_data_pack(holder)
 }
 
@@ -40,13 +40,15 @@ fn write_data_pack(holder: &Path) -> Result<Option<Written>, ravel_loader::PackE
     let Some(supplied) = held.as_ref() else {
         return Ok(None);
     };
-    write_pack(
+    let written = write_pack(
         &holder.join(PACK_DIRECTORY),
         supplied,
         Half::Data,
         &crate::runtime::data_pack_metadata(Half::Data.description()),
     )
-    .map(Some)
+    .map(Some);
+    drop(held);
+    written
 }
 
 #[cfg(test)]
@@ -58,7 +60,9 @@ mod tests {
     fn directory(name: &str) -> PathBuf {
         let at =
             std::env::temp_dir().join(format!("ravel-world-pack-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&at);
+        if at.exists() {
+            std::fs::remove_dir_all(&at).expect("remove the previous test directory");
+        }
         std::fs::create_dir_all(&at).expect("a writable temporary directory");
         at
     }
@@ -72,7 +76,7 @@ mod tests {
 
         assert!(written.is_none());
         assert!(!world.join("datapacks").exists());
-        let _ = std::fs::remove_dir_all(world);
+        std::fs::remove_dir_all(world).expect("remove the test world");
     }
 
     #[test]
@@ -84,6 +88,6 @@ mod tests {
         assert!(written.is_none());
         assert!(!staging.join("ravel").exists());
         assert!(!staging.join("datapacks").exists());
-        let _ = std::fs::remove_dir_all(staging);
+        std::fs::remove_dir_all(staging).expect("remove the staging directory");
     }
 }

@@ -538,7 +538,7 @@ mod tests {
         let scan = scan_instance(&instance);
 
         assert_eq!(scan.findings, []);
-        assert_eq!(scan.obstacles, [] as [&str; 0]);
+        assert_eq!(scan.obstacles, Vec::<&str>::new());
         assert!(scan.conclusive);
         assert!(scan.without_another_loader());
         remove(&root);

@@ -84,7 +84,9 @@ mod tests {
             "ravel-configuration-host-{}-{name}",
             std::process::id()
         ));
-        let _ = std::fs::remove_dir_all(&directory);
+        if directory.exists() {
+            std::fs::remove_dir_all(&directory).expect("remove stale temporary directory");
+        }
         std::fs::create_dir_all(&directory).expect("a writable temporary directory");
         directory
     }

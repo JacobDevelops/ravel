@@ -247,7 +247,7 @@ impl Weight {
             return 0;
         }
         let remaining = self.capacity.saturating_sub(self.used);
-        remaining / self.each
+        remaining.div_euclid(self.each)
     }
 }
 

@@ -54,12 +54,13 @@ pub fn quadrant_table() -> String {
         for second in [false, true] {
             for diagonal in [false, true] {
                 let slot = select(first, second, diagonal);
-                let _ = writeln!(
+                writeln!(
                     rendered,
                     "{first}\t{second}\t{diagonal}\t{}\t{}",
                     slot.declared_name(),
                     slot.slot_number()
-                );
+                )
+                .expect("writing to a String cannot fail");
             }
         }
     }

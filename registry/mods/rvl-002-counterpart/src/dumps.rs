@@ -128,7 +128,7 @@ pub fn fuel_table() -> String {
     for (tier, (item, block)) in
         (1..=fuel::TIERS).zip(fuel::item_series().into_iter().zip(fuel::block_series()))
     {
-        let _ = writeln!(rendered, "{tier}\t{item}\t{block}");
+        writeln!(rendered, "{tier}\t{item}\t{block}").expect("writing to a String cannot fail");
     }
     rendered
 }

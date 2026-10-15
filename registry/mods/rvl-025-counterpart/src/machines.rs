@@ -15,7 +15,7 @@
 //! rather than invented, and `NOTES.md` records it as a reading of §3 with the
 //! citation it replaces.
 
-use num_traits::AsPrimitive;
+use num_traits::ToPrimitive;
 
 use crate::data::Stack;
 use crate::settings::Settings;
@@ -127,8 +127,8 @@ pub fn factor(level: u32, ceiling: i32) -> f32 {
     }
     // Both are below 2^32 and f32 rounds each once, which is the same single
     // rounding the original's own conversion performs.
-    let level: f32 = level.as_();
-    let ceiling: f32 = ceiling.as_();
+    let level = level.to_f32().expect("u32 values fit the f32 range");
+    let ceiling = ceiling.to_f32().expect("u32 values fit the f32 range");
     level / ceiling
 }
 
@@ -139,7 +139,7 @@ pub fn factor(level: u32, ceiling: i32) -> f32 {
 /// configured figure; at a factor of one it is half of it.
 #[must_use]
 pub fn price(configured: i32, factor: f32) -> i32 {
-    let configured_float: f32 = configured.as_();
+    let configured_float = configured.to_f32().expect("i32 values fit the f32 range");
     let scaled = configured_float * (2.0 - factor) / 2.0;
     if !scaled.is_finite() {
         return configured;
@@ -148,11 +148,14 @@ pub fn price(configured: i32, factor: f32) -> i32 {
     if truncated <= 0.0 {
         return 0;
     }
-    let maximum: f32 = i32::MAX.as_();
+    // i32::MAX rounds up to this boundary in single precision.
+    let maximum = 2_147_483_648.0;
     if truncated >= maximum {
         return i32::MAX;
     }
-    truncated.as_()
+    truncated
+        .to_i32()
+        .expect("positive truncated price is below i32::MAX")
 }
 
 /// What one tick of the machine did.
@@ -181,7 +184,7 @@ pub enum Ticked {
 }
 
 /// The machine, as far as its decision rules go.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Machine {
     material: Option<Stack>,
     subject: Option<Stack>,

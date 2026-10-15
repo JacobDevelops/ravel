@@ -30,6 +30,7 @@
 
 use std::collections::BTreeMap;
 
+use num_traits::ToPrimitive;
 use ravel_sdk::JsonValue;
 
 use crate::data::{Kind, Tag};
@@ -391,9 +392,9 @@ pub enum Validator {
     /// Text the pattern matches whole.
     TextPattern(Pattern),
     /// A list matched element for element, in order and at the same length.
-    ListOrdered(Vec<Validator>),
+    ListOrdered(Vec<Self>),
     /// A list every element of which satisfies one validator.
-    ListUniversal(Box<Validator>),
+    ListUniversal(Box<Self>),
     /// A number equal to the expected value at the candidate's own width.
     NumberEquals(f64),
     /// A number inside a range with optional ends.
@@ -405,10 +406,10 @@ pub enum Validator {
     },
     /// A compound whose named keys must be present and match, extra keys
     /// allowed.
-    CompoundPartial(BTreeMap<String, Validator>),
+    CompoundPartial(BTreeMap<String, Self>),
     /// A compound whose named keys must be present and match, and which must
     /// name no key the validator does not.
-    CompoundExact(BTreeMap<String, Validator>),
+    CompoundExact(BTreeMap<String, Self>),
 }
 
 /// How deep a validator document will nest.
@@ -523,34 +524,69 @@ impl Validator {
 fn text(tag: &Tag) -> Option<&str> {
     match tag {
         Tag::Text(value) => Some(value.as_str()),
-        _ => None,
+        Tag::Byte(_)
+        | Tag::Short(_)
+        | Tag::Int(_)
+        | Tag::Long(_)
+        | Tag::Float(_)
+        | Tag::Double(_)
+        | Tag::List(_)
+        | Tag::ByteArray(_)
+        | Tag::IntArray(_)
+        | Tag::LongArray(_)
+        | Tag::Compound(_) => None,
     }
 }
 
 fn compound(tag: &Tag) -> Option<&BTreeMap<String, Tag>> {
     match tag {
         Tag::Compound(entries) => Some(entries),
-        _ => None,
+        Tag::Byte(_)
+        | Tag::Short(_)
+        | Tag::Int(_)
+        | Tag::Long(_)
+        | Tag::Float(_)
+        | Tag::Double(_)
+        | Tag::Text(_)
+        | Tag::List(_)
+        | Tag::ByteArray(_)
+        | Tag::IntArray(_)
+        | Tag::LongArray(_) => None,
     }
 }
 
 fn equal_at_width(expected: f64, candidate: &Tag) -> bool {
+    // Integer-width matching truncates, with the original NaN-zero and saturation rules.
+    let integer = || {
+        expected.trunc().to_i64().unwrap_or_else(|| {
+            if expected.is_nan() {
+                0
+            } else if expected.is_sign_negative() {
+                i64::MIN
+            } else {
+                i64::MAX
+            }
+        })
+    };
     match *candidate {
-        Tag::Byte(value) => i8::try_from(num_traits::cast::AsPrimitive::<i64>::as_(expected))
-            .is_ok_and(|narrow| narrow == value),
-        Tag::Short(value) => i16::try_from(num_traits::cast::AsPrimitive::<i64>::as_(expected))
-            .is_ok_and(|narrow| narrow == value),
-        Tag::Int(value) => i32::try_from(num_traits::cast::AsPrimitive::<i64>::as_(expected))
-            .is_ok_and(|narrow| narrow == value),
-        Tag::Long(value) => {
-            num_traits::cast::AsPrimitive::<i64>::as_(expected) == value && expected.fract() == 0.0
-        }
+        Tag::Byte(value) => i8::try_from(integer()).is_ok_and(|narrow| narrow == value),
+        Tag::Short(value) => i16::try_from(integer()).is_ok_and(|narrow| narrow == value),
+        Tag::Int(value) => i32::try_from(integer()).is_ok_and(|narrow| narrow == value),
+        Tag::Long(value) => integer() == value && expected.fract() == 0.0,
         Tag::Float(value) => {
-            num_traits::cast::AsPrimitive::<f32>::as_(expected).partial_cmp(&value)
+            expected
+                .to_f32()
+                .expect("float narrowing includes infinities and NaN")
+                .partial_cmp(&value)
                 == Some(std::cmp::Ordering::Equal)
         }
         Tag::Double(value) => expected.partial_cmp(&value) == Some(std::cmp::Ordering::Equal),
-        _ => false,
+        Tag::Text(_)
+        | Tag::List(_)
+        | Tag::ByteArray(_)
+        | Tag::IntArray(_)
+        | Tag::LongArray(_)
+        | Tag::Compound(_) => false,
     }
 }
 

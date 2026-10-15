@@ -76,7 +76,7 @@ const SOUND_BYTES: &[u8] = b"the supplied bytes";
 /// The shared library, as the loader drives it.
 #[derive(Debug)]
 pub struct Shared {
-    declaration: Option<ContentDeclaration>,
+    declaration: Result<ContentDeclaration, ModError>,
     flags: FlagTable,
     settings: Settings,
     selection: Option<Selection>,
@@ -99,7 +99,7 @@ impl Shared {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            declaration: Self::declaration().ok(),
+            declaration: Self::declaration(),
             flags: FlagTable::default(),
             settings: Settings::default(),
             selection: None,
@@ -238,8 +238,8 @@ impl Mod for Shared {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.clone()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        self.declaration.clone().map(Some)
     }
 
     fn take_play_requests(&mut self) -> Vec<PlayRequest> {
@@ -247,14 +247,14 @@ impl Mod for Shared {
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().ok_or_else(|| {
-            Self::packaging("the packaged content declaration is not well formed")
-        })?;
+        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
         claim_all(declaration, registrar)
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        settings::declaration().ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        settings::declaration()
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -342,8 +342,18 @@ mod tests {
     #[test]
     fn the_library_declares_both_its_content_and_its_settings() {
         let shared = Shared::new();
-        assert!(shared.content_declaration().is_some());
-        assert!(shared.configuration_declaration().is_some());
+        assert!(
+            shared
+                .content_declaration()
+                .expect("valid content")
+                .is_some()
+        );
+        assert!(
+            shared
+                .configuration_declaration()
+                .expect("valid configuration")
+                .is_some()
+        );
     }
 
     #[test]

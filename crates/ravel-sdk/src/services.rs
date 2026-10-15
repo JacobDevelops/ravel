@@ -29,8 +29,14 @@
 //!         Ok(())
 //!     }
 //!
-//!     fn service_declaration(&self) -> Option<ServiceDeclaration> {
-//!         ServiceDeclaration::new(Self::declared_id().clone(), [prices()], []).ok()
+//!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+//!         ServiceDeclaration::new(Self::declared_id().clone(), [prices()], [])
+//!             .map(Some)
+//!             .map_err(|error| ModError::Refused {
+//!                 mod_id: Self::declared_id().clone(),
+//!                 state: LifecycleState::Constructed,
+//!                 detail: error.to_string(),
+//!             })
 //!     }
 //!
 //!     fn answer_service(
@@ -59,8 +65,14 @@
 //!         Ok(())
 //!     }
 //!
-//!     fn service_declaration(&self) -> Option<ServiceDeclaration> {
-//!         ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()]).ok()
+//!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+//!         ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
+//!             .map(Some)
+//!             .map_err(|error| ModError::Refused {
+//!                 mod_id: Self::declared_id().clone(),
+//!                 state: LifecycleState::Constructed,
+//!                 detail: error.to_string(),
+//!             })
 //!     }
 //!
 //!     fn use_services(
@@ -112,7 +124,7 @@
 //!         Ok(())
 //!     }
 //!
-//!     fn service_declaration(&self) -> Option<ServiceDeclaration> {
+//!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
 //!         // Nothing required, one service used if something answers it.
 //!         ServiceDeclaration::with_optional(
 //!             Self::declared_id().clone(),
@@ -120,7 +132,12 @@
 //!             [],
 //!             [landmarks()],
 //!         )
-//!         .ok()
+//!         .map(Some)
+//!         .map_err(|error| ModError::Refused {
+//!             mod_id: Self::declared_id().clone(),
+//!             state: LifecycleState::Constructed,
+//!             detail: error.to_string(),
+//!         })
 //!     }
 //!
 //!     fn use_services(
@@ -146,6 +163,7 @@
 //!
 //! let declaration = Compass::default()
 //!     .service_declaration()
+//!     .expect("valid service declaration")
 //!     .expect("it declares one service");
 //! assert!(declaration.may_do_without(&landmarks()));
 //! assert_eq!(declaration.requires().count(), 0);

@@ -225,7 +225,7 @@ fn a_mod_that_does_not_declare_this_side_is_absent_from_the_plan() {
     );
     assert_eq!(
         order(&packages, Side::IntegratedServer),
-        [] as [std::string::String; 0]
+        Vec::<String>::new()
     );
 }
 

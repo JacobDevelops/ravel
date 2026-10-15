@@ -88,7 +88,7 @@ pub struct Override {
 }
 
 /// One written entry that was skipped, and why.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Skipped {
     /// The line as it was written.
     pub written: String,
@@ -223,7 +223,7 @@ fn selector(text: &str, default_namespace: &str) -> Result<Expression, Rejected>
         // however it is spelled: `tag:*` names the namespace `tag` rather than a
         // tag, so admitting it on the prefix would admit the shape by spelling.
         Expression::Nothing | Expression::Namespace(_) => Err(Rejected::UnreadableSelector),
-        readable => Ok(readable),
+        readable @ (Expression::Tag(_) | Expression::Entry(_)) => Ok(readable),
     }
 }
 

@@ -303,7 +303,7 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     use ravel_core::{LifecycleState, Side, StructuredFailure};
-    use ravel_package::IntegrityError;
+    use ravel_package::{IntegrityError, PackageManifest};
     use ravel_resolve::resolve;
 
     use super::{Discovered, DiscoveryRefused, MANIFEST_FILE, PACKAGES_DIRECTORY, discover};
@@ -447,10 +447,7 @@ mod tests {
 
         let discovered = discover(&root).expect("no packages is not a failure");
         assert_eq!(discovered.packages(), []);
-        assert_eq!(
-            discovered.manifests(),
-            [] as [ravel_package::PackageManifest; 0]
-        );
+        assert_eq!(discovered.manifests(), Vec::<PackageManifest>::new());
         fs::remove_dir_all(&root).expect("cleanup");
     }
 

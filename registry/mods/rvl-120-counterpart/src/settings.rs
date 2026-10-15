@@ -384,7 +384,7 @@ fn text(resolved: &LayeredConfiguration, key: &str) -> Option<String> {
     resolved
         .value(&key_of(key)?)?
         .as_str()
-        .map(std::borrow::ToOwned::to_owned)
+        .map(ToOwned::to_owned)
 }
 
 #[cfg(test)]
@@ -564,15 +564,9 @@ mod tests {
 
     #[test]
     fn the_document_a_side_resolves_is_the_client_one_only_on_the_client() {
-        assert_eq!(Document::of(ravel_sdk::Side::Client), Document::Client);
-        assert_eq!(
-            Document::of(ravel_sdk::Side::IntegratedServer),
-            Document::Server
-        );
-        assert_eq!(
-            Document::of(ravel_sdk::Side::DedicatedServer),
-            Document::Server
-        );
+        assert_eq!(Document::of(Side::Client), Document::Client);
+        assert_eq!(Document::of(Side::IntegratedServer), Document::Server);
+        assert_eq!(Document::of(Side::DedicatedServer), Document::Server);
     }
 
     #[test]

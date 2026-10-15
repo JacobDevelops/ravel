@@ -125,8 +125,8 @@ pub const CONTRIBUTION_SERVICE: &str = "registries";
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
-    declaration: Option<ContentDeclaration>,
-    configuration: Option<ConfigurationDeclaration>,
+    declaration: Result<ContentDeclaration, ModError>,
+    configuration: Result<ConfigurationDeclaration, ModError>,
     settings: Settings,
     flags: FlagTable,
     registries: Registries,
@@ -156,8 +156,8 @@ impl Entry {
             registries.register_kind(kind);
         }
         Self {
-            declaration: Self::declaration().ok(),
-            configuration: settings::declaration().ok(),
+            declaration: Self::declaration(),
+            configuration: settings::declaration().map_err(|error| Self::packaging(&error)),
             settings: Settings::default(),
             flags: FlagTable::default(),
             registries,
@@ -373,34 +373,24 @@ impl Entry {
 impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         if state == LifecycleState::Constructed {
-            if self.declaration.is_none() {
-                return Err(Self::packaging(
-                    "the packaged content declaration is not well formed",
-                ));
-            }
-            if self.configuration.is_none() {
-                return Err(Self::packaging(
-                    "the packaged configuration declaration is not well formed",
-                ));
-            }
+            self.declaration.as_ref().map_err(Clone::clone)?;
+            self.configuration.as_ref().map_err(Clone::clone)?;
         }
         self.entered.push(state);
         Ok(())
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.clone()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        self.declaration.clone().map(Some)
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().ok_or_else(|| {
-            Self::packaging("the packaged content declaration is not well formed")
-        })?;
+        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
         claim_all(declaration, registrar)
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        self.configuration.clone()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        self.configuration.clone().map(Some)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -423,9 +413,11 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        let service = Self::contribution_service().ok()?;
-        ServiceDeclaration::new(Self::declared_id().clone(), [service], []).ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        let service = Self::contribution_service()?;
+        ServiceDeclaration::new(Self::declared_id().clone(), [service], [])
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -436,8 +428,10 @@ impl Mod for Entry {
         Ok(ServiceResponse::new(self.contribute(&request.arguments)))
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        SavedDataDeclaration::new(Self::declared_id().clone(), [machines::DATA_VERSION]).ok()
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        SavedDataDeclaration::new(Self::declared_id().clone(), [machines::DATA_VERSION])
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
@@ -557,8 +551,18 @@ mod tests {
     #[test]
     fn the_entry_declares_both_its_content_and_its_settings() {
         let entry = Entry::new();
-        assert!(entry.content_declaration().is_some());
-        assert!(entry.configuration_declaration().is_some());
+        assert!(
+            entry
+                .content_declaration()
+                .expect("valid content")
+                .is_some()
+        );
+        assert!(
+            entry
+                .configuration_declaration()
+                .expect("valid configuration")
+                .is_some()
+        );
     }
 
     #[test]
@@ -634,6 +638,7 @@ mod tests {
         let plan = SavedDataPlan::open(
             &reopened
                 .saved_data_declaration()
+                .expect("the saved data declaration is valid")
                 .expect("the entry declares its saved data"),
             Some(saved.data_version()),
         )
@@ -659,6 +664,7 @@ mod tests {
         assert_eq!(
             entry
                 .service_declaration()
+                .expect("the service declaration is valid")
                 .expect("the entry declares the service it answers")
                 .provides()
                 .count(),

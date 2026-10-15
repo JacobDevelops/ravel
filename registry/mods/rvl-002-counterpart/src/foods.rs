@@ -151,7 +151,11 @@ pub fn applied(
 /// seconds are the remainder zero-padded to two digits.
 #[must_use]
 pub fn duration_text(configured_seconds: u32) -> String {
-    format!("{}:{:02}", configured_seconds / 60, configured_seconds % 60)
+    format!(
+        "{}:{:02}",
+        configured_seconds.div_euclid(60),
+        configured_seconds % 60
+    )
 }
 
 #[cfg(test)]
@@ -164,7 +168,8 @@ mod tests {
         let nutrition: Vec<u32> = DECLARED.iter().map(|food| food.nutrition).collect();
         assert_eq!(nutrition, [6, 8, 10, 12, 16, 20]);
         for (index, food) in DECLARED.iter().enumerate() {
-            let expected = 0.3 + 0.1 * f64::from(u32::try_from(index).expect("six rows"));
+            let step = 0.1 * f64::from(u32::try_from(index).expect("six rows"));
+            let expected = 0.3 + step;
             assert!(
                 (food.saturation - expected).abs() < 1e-9,
                 "saturation rises by a tenth throughout"

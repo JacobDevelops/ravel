@@ -191,13 +191,20 @@ impl PoseStack {
         if self.poses.len() >= MAX_DEPTH {
             return Err(StackError::TooDeep(MAX_DEPTH));
         }
-        let composed = self.poses.last().map_or(pose, |below| Pose {
-            offset: (
-                below.offset.0 + pose.offset.0 * below.scale,
-                below.offset.1 + pose.offset.1 * below.scale,
-                below.offset.2 + pose.offset.2 * below.scale,
-            ),
-            scale: below.scale * pose.scale,
+        let composed = self.poses.last().map_or(pose, |below| {
+            let offset = (
+                pose.offset.0 * below.scale,
+                pose.offset.1 * below.scale,
+                pose.offset.2 * below.scale,
+            );
+            Pose {
+                offset: (
+                    below.offset.0 + offset.0,
+                    below.offset.1 + offset.1,
+                    below.offset.2 + offset.2,
+                ),
+                scale: below.scale * pose.scale,
+            }
         });
         self.poses.push(composed);
         Ok(composed)

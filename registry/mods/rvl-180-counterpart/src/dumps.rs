@@ -89,7 +89,7 @@ pub fn grouping_document(aggregation: &Aggregation) -> Result<String, ModError> 
     let mut document = String::from("group\tmember\n");
     for group in grouping::all().map_err(|error| refused(&error))? {
         for member in aggregation.resolve(&group).members {
-            let _ = writeln!(document, "{group}\t{member}");
+            writeln!(document, "{group}\t{member}").expect("writing to a String cannot fail");
         }
     }
     Ok(document)
@@ -117,12 +117,13 @@ pub fn sprites_document() -> Result<String, ModError> {
             "frame"
         };
         let path = sprites::sprite_path(name).map_err(|error| refused(&error))?;
-        let _ = writeln!(
+        writeln!(
             document,
             "{name}\t{group}\t{}\t{}",
             sprites::scales(name),
             path.as_str()
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
     Ok(document)
 }

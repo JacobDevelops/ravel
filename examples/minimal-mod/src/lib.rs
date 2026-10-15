@@ -284,7 +284,12 @@ mod tests {
     #[test]
     fn a_mod_that_owns_no_world_data_declares_none_and_saves_none() {
         let minimal = MinimalMod::new();
-        assert!(minimal.saved_data_declaration().is_none());
+        assert!(
+            minimal
+                .saved_data_declaration()
+                .expect("valid declaration")
+                .is_none()
+        );
         assert!(
             minimal
                 .save_saved_data()

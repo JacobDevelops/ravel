@@ -46,29 +46,7 @@ pub(crate) fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: 
         }
     }
 
-    let repeated = fs::read_dir(root.join("evidence/m1/spikes/adg-3"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|kind| kind == "json"))
-        .any(|path| {
-            jq_matches(
-                &path,
-                r#"(.bindingGeneration.outputSha256 // "") != ""
-                   and .bindingGeneration.repeatedOutputSha256 == .bindingGeneration.outputSha256
-                   and .bindingGeneration.repeatedRunIsIdentical == true"#,
-            )
-            .unwrap_or(false)
-        });
-    if !repeated {
-        violations.push(
-            "M1 closure requires an ADG-3 result recording bindingGeneration outputSha256 and \
-             repeatedOutputSha256 as the same digest, which is the reproducibility half of \
-             M1-W4's Verification clause"
-                .to_owned(),
-        );
-    }
+    verify_m1_manifest_repeated(root, violations);
 
     require_manifest_rule(
         manifest_path,
@@ -89,6 +67,32 @@ pub(crate) fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: 
     if !launched {
         violations.push(
             "M1 closure requires an ADG-5 result recording an observed stock-Prism launch"
+                .to_owned(),
+        );
+    }
+}
+
+fn verify_m1_manifest_repeated(root: &Path, violations: &mut Vec<String>) {
+    let repeated = fs::read_dir(root.join("evidence/m1/spikes/adg-3"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|kind| kind == "json"))
+        .any(|path| {
+            jq_matches(
+                &path,
+                r#"(.bindingGeneration.outputSha256 // "") != ""
+                   and .bindingGeneration.repeatedOutputSha256 == .bindingGeneration.outputSha256
+                   and .bindingGeneration.repeatedRunIsIdentical == true"#,
+            )
+            .unwrap_or(false)
+        });
+    if !repeated {
+        violations.push(
+            "M1 closure requires an ADG-3 result recording bindingGeneration outputSha256 and \
+             repeatedOutputSha256 as the same digest, which is the reproducibility half of \
+             M1-W4's Verification clause"
                 .to_owned(),
         );
     }

@@ -28,8 +28,21 @@ pub use runtime::{
 pub use settings::install as install_settings;
 pub use side::{SideError, side};
 
-/// Generated JNI exports, with one typed symbol per callable hook shape.
+/// JNI exports for native entry points and generated callable hook shapes.
 pub mod exports {
+    pub use crate::content::ravel_admitted_content;
+    #[cfg(test)]
+    pub use crate::guard::tests::generated_export;
+    pub use crate::mods::ravel_mod_surface;
+    pub use crate::persistence::{
+        ravel_open_world_persistence, ravel_pack_id, ravel_save_world_persistence,
+        ravel_write_staged_datapack, ravel_write_world_datapack,
+    };
+    pub use crate::profiling::{ravel_enable_profiling, ravel_profiling_report};
+    pub use crate::report::native_invocations;
+    pub use crate::settings::{
+        ravel_save_settings, ravel_settings_crossings, ravel_settings_document,
+    };
     include!(env!("RAVEL_GENERATED_EXPORTS"));
 }
 

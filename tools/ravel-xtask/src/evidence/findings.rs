@@ -56,12 +56,32 @@ pub(crate) fn verify_finding_anchors(
         .and_then(|number| number.parse::<u32>().ok())
         .is_some_and(|number| number >= FIRST_ANCHORED_MILESTONE);
 
+    verify_finding_anchors_rows(
+        root,
+        &label,
+        &sources,
+        &defined,
+        &findings,
+        anchored_from,
+        violations,
+    );
+}
+
+fn verify_finding_anchors_rows(
+    root: &Path,
+    label: &str,
+    sources: &[String],
+    defined: &BTreeSet<String>,
+    findings: &str,
+    anchored_from: bool,
+    violations: &mut Vec<String>,
+) {
     for finding in findings.lines().filter(|line| !line.trim().is_empty()) {
         let mut fields = finding.split('\t');
         let summary = fields.next().unwrap_or_default();
         let symbol = fields.next().unwrap_or_default();
         let paths = fields.next().unwrap_or_default();
-        let named = named_rust_symbols(summary, &defined);
+        let named = named_rust_symbols(summary, defined);
 
         if symbol.is_empty() {
             if anchored_from && !named.is_empty() {
@@ -95,7 +115,7 @@ pub(crate) fn verify_finding_anchors(
             .split(',')
             .filter(|prefix| !prefix.is_empty())
             .collect::<Vec<_>>();
-        for source in sources_naming(root, &sources, symbol) {
+        for source in sources_naming(root, sources, symbol) {
             if !allowed.iter().any(|prefix| source.starts_with(prefix)) {
                 violations.push(format!(
                     "{label} anchors a finding on {symbol} outside {paths}, and \

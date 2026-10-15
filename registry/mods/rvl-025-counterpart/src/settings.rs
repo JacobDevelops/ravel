@@ -208,16 +208,16 @@ pub fn read_whole(
             }),
         );
     };
-    match i32::try_from(whole) {
-        Ok(value) => (value, None),
-        Err(_) => (
+    i32::try_from(whole).map_or(
+        (
             fallback,
             Some(Unread {
                 setting,
                 why: Why::OutOfRange,
             }),
         ),
-    }
+        |value| (value, None),
+    )
 }
 
 /// One setting that was present and could not be read.

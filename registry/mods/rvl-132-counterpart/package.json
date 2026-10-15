@@ -67,27 +67,27 @@
       },
       {
         "path": "src/data.rs",
-        "sha256": "e6ecc766c01b56d5f3c9156af1d66e96c859a88453732c3758ae979f5993e8be"
+        "sha256": "974d4828183a0be9631c192f7d0b9af4931da19e080aaa651e8223e88d8456df"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "371887f29defdf11eed7a2c3095af661f01758ab5184669a2a1b1bc90099bc71"
+        "sha256": "515d5f76be7dc355f70df7b495de545d4534851439e95dd59b61682514e31c57"
       },
       {
         "path": "src/forms.rs",
-        "sha256": "f4c58d371b86ceee7846a7a57942b2b14567952bb54d40ed092982388297e7d0"
+        "sha256": "145b11f83b154fe4554573eb901fc8a0a67ba198b223f302f21d4b662d0afec2"
       },
       {
         "path": "src/holdings.rs",
-        "sha256": "b37e76d7a6113db228c1ed5a5d94d5eea512d82b323b62d3ac2e49d1cb57aa47"
+        "sha256": "eae047729bf352576033ae9c1ce17b45f1da97b97916ecdab38556600ae4e28d"
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "1f53a11da3f0fa78a7815b47e362302200766c2aff6da60b6400a1a19ba840fd"
+        "sha256": "4bd476e7e160c8fd97ec7fcca987cb1045852e0987f2c7ca5b20ecba21ede33a"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "498f1e7a349caeb4e55579fbbc49a4f048a1a0fd5cf18aa4877fe005b927ff9f"
+        "sha256": "a8c7f86b2e07ecdef03514603fd18b52fe709ad3ef1e9c679c59d4c749bcedae"
       },
       {
         "path": "src/readings.rs",
@@ -95,7 +95,7 @@
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "2378477c9cc943cd28b86c1d4705774cb70eb4ef4d08c3ebe36832f1bc83fbec"
+        "sha256": "2e3b8d13318fd39f4639b165381063667d8887b4f0d82fe9ef9c532117bdd25e"
       },
       {
         "path": "src/settings.rs",
@@ -103,7 +103,7 @@
       },
       {
         "path": "src/storage.rs",
-        "sha256": "5d723d24a7e2376822404f30486c9e00b53558a9fc7cedf971d351fc1a7f8605"
+        "sha256": "046dfa73e1ddafb44a636bad84dc4da45ba6730efd05fff3e46ec38d8d964996"
       }
     ]
   },

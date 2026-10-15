@@ -601,11 +601,24 @@ mod tests {
     fn this_library_declares_no_content_and_no_configuration() {
         let library = Library::new(Side::Client);
         assert!(
-            library.content_declaration().is_none(),
+            library
+                .content_declaration()
+                .expect("valid absent content")
+                .is_none(),
             "it declares no block, item, recipe, tag, loot or world data"
         );
-        assert!(library.configuration_declaration().is_none());
-        assert!(library.saved_data_declaration().is_none());
+        assert!(
+            library
+                .configuration_declaration()
+                .expect("valid absent configuration")
+                .is_none()
+        );
+        assert!(
+            library
+                .saved_data_declaration()
+                .expect("valid absent saved data")
+                .is_none()
+        );
     }
 
     #[test]

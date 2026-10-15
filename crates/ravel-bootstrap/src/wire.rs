@@ -12,7 +12,8 @@ pub(crate) const MODS_VERSION: &str = "3";
 
 /// Writes one field, prefixed by the length the other side reads it with.
 pub(crate) fn field(out: &mut String, value: &str) {
-    let _ = write!(out, "{}:{value}", value.encode_utf16().count());
+    write!(out, "{}:{value}", value.encode_utf16().count())
+        .expect("writing into a String cannot fail");
 }
 
 /// Writes a count, which is a field the other side reads back as a number.

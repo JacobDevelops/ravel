@@ -12,7 +12,9 @@ fn a_world_path_that_names_no_absolute_directory_is_refused() {
 
 fn scratch(name: &str) -> std::path::PathBuf {
     let at = std::env::temp_dir().join(format!("ravel-world-guard-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&at);
+    if at.exists() {
+        std::fs::remove_dir_all(&at).expect("remove the previous test directory");
+    }
     std::fs::create_dir_all(&at).expect("a writable temporary directory");
     at
 }
@@ -90,7 +92,12 @@ struct Held {
     visits: AtomicU32,
     refuses_production: AtomicBool,
     refuses_open: AtomicBool,
+    refuses_interception: AtomicBool,
+    refuses_interception_declaration: AtomicBool,
     opened_with: Mutex<Option<SavedDataPlan>>,
+    error_owner: Mutex<Option<ModId>>,
+    declaration_owner: Mutex<Option<ModId>>,
+    refuses_declaration: AtomicBool,
 }
 
 impl Held {
@@ -117,11 +124,49 @@ impl HostMod for Owning {
         Ok(())
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        Some(
-            SavedDataDeclaration::new(self.id.clone(), [version(1), version(2)])
-                .expect("two versions"),
-        )
+    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, HostError> {
+        if self
+            .held
+            .refuses_interception_declaration
+            .load(Ordering::SeqCst)
+        {
+            return Err(HostError::Unsupported {
+                mod_id: id(OTHER_OWNER),
+                state: LifecycleState::Running,
+            });
+        }
+        let mut declaration = InterceptionDeclaration::new(self.id.clone());
+        declaration.answer_at(Point::WorldIsSaved.as_str());
+        Ok(Some(declaration))
+    }
+
+    fn intercept(&mut self, _occasion: Occasion) -> Result<Outcome, HostError> {
+        if self.held.refuses_interception.load(Ordering::SeqCst) {
+            return Err(HostError::Unsupported {
+                mod_id: id(OTHER_OWNER),
+                state: LifecycleState::Running,
+            });
+        }
+        Ok(Outcome::Proceed)
+    }
+
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, HostError> {
+        if self.held.refuses_declaration.load(Ordering::SeqCst) {
+            return Err(HostError::Unsupported {
+                mod_id: self.id.clone(),
+                state: LifecycleState::Running,
+            });
+        }
+        let owner = self
+            .held
+            .declaration_owner
+            .lock()
+            .expect("test lock")
+            .clone()
+            .unwrap_or_else(|| self.id.clone());
+        Ok(Some(
+            SavedDataDeclaration::new(owner, [version(1), version(2)]).expect("two versions"),
+        ))
     }
 
     fn open_saved_data(
@@ -151,7 +196,13 @@ impl HostMod for Owning {
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, HostError> {
         if self.held.refuses_production.load(Ordering::SeqCst) {
             return Err(HostError::Refused {
-                mod_id: self.id.clone(),
+                mod_id: self
+                    .held
+                    .error_owner
+                    .lock()
+                    .expect("test lock")
+                    .clone()
+                    .unwrap_or_else(|| self.id.clone()),
                 state: LifecycleState::Running,
                 detail: "this mod cannot produce an envelope".to_owned(),
             });
@@ -207,15 +258,23 @@ fn owners_running(
     owners: &[&str],
     report: ravel_observability::PreWorldReport,
 ) -> (LoaderRuntime, Vec<Arc<Held>>) {
+    owners_running_with_requirement(owners, report, Requirement::Required)
+}
+
+fn owners_running_with_requirement(
+    owners: &[&str],
+    report: ravel_observability::PreWorldReport,
+    requirement: Requirement,
+) -> (LoaderRuntime, Vec<Arc<Held>>) {
     let held: Vec<Arc<Held>> = owners.iter().map(|_| Arc::new(Held::default())).collect();
     let hosts: Vec<Box<dyn HostMod>> = owners
         .iter()
         .zip(&held)
-        .map(|(owner, held)| {
+        .map(|(owner, held)| -> Box<dyn HostMod> {
             Box::new(Owning {
                 id: id(owner),
                 held: Arc::clone(held),
-            }) as Box<dyn HostMod>
+            })
         })
         .collect();
     let entries: Vec<LifecycleEntry> = owners
@@ -223,7 +282,7 @@ fn owners_running(
         .map(|owner| LifecycleEntry {
             mod_id: id(owner),
             sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
-            requirement: Requirement::Required,
+            requirement,
             saved_data_versions: BTreeSet::from([version(1), version(2)]),
         })
         .collect();
@@ -262,10 +321,10 @@ impl HostMod for Guarding {
         Ok(())
     }
 
-    fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, HostError> {
         let mut declared = InterceptionDeclaration::new(self.id.clone());
         declared.answer_at(Point::WorldIsSaved.as_str());
-        Some(declared)
+        Ok(Some(declared))
     }
 
     fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, HostError> {
@@ -374,10 +433,10 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
             Ok(())
         }
 
-        fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+        fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, HostError> {
             let mut declared = InterceptionDeclaration::new(self.id.clone());
             declared.answer_at(Point::WorldIsSaved.as_str());
-            Some(declared)
+            Ok(Some(declared))
         }
 
         fn intercept(&mut self, _occasion: Occasion) -> Result<Outcome, HostError> {
@@ -425,10 +484,298 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
     assert!(detail.contains("the guard broke"), "{detail}");
 }
 
+#[test]
+fn an_optional_owner_failed_before_first_open_is_admitted_without_callbacks() {
+    let (source, _) = running();
+    source
+        .stage_world(WorldIdentity::of(FIRST), None, true)
+        .expect("fresh world");
+    let durable = replacement(source.save_world(&WorldIdentity::of(FIRST)));
+    let (runtime, held) = optional_running();
+    runtime
+        .inner
+        .lock()
+        .expect("test lock")
+        .machine
+        .fail(&id(OWNER), attribution())
+        .expect("optional owner fails before opening");
+    held.refuses_declaration.store(true, Ordering::SeqCst);
+    held.refuses_open.store(true, Ordering::SeqCst);
+    runtime
+        .stage_world(WorldIdentity::of(FIRST), Some(&durable), false)
+        .expect("terminal optional owners are admitted from trusted lifecycle metadata");
+    assert_eq!(
+        replacement(runtime.save_world(&WorldIdentity::of(FIRST))),
+        durable
+    );
+}
+
+#[test]
+fn a_foreign_saved_data_declaration_fails_its_producer_without_opening_another_owner() {
+    for foreign in ["absent_owner", OTHER_OWNER] {
+        let (runtime, held, other) = running_pair();
+        *held.declaration_owner.lock().expect("test lock") = Some(id(foreign));
+        assert!(
+            runtime
+                .stage_world(WorldIdentity::of(FIRST), None, true)
+                .is_err()
+        );
+        let inner = runtime
+            .inner
+            .lock()
+            .expect("declaration rejection does not panic");
+        assert_eq!(inner.machine.state(&id(OWNER)), Ok(LifecycleState::Failed));
+        assert_eq!(
+            inner.machine.state(&id(OTHER_OWNER)),
+            Ok(LifecycleState::Running)
+        );
+        drop(inner);
+        assert!(other.opened_with.lock().expect("test lock").is_none());
+    }
+}
+
+#[test]
+fn interception_callback_failure_is_attributed_to_the_asked_owner() {
+    let (runtime, held) = running();
+    runtime
+        .stage_world(WorldIdentity::of(FIRST), None, true)
+        .expect("fresh world");
+    held.refuses_interception.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        runtime.save_world(&WorldIdentity::of(FIRST)),
+        SaveOutcome::Failed(_)
+    ));
+    let inner = runtime.inner.lock().expect("no test poisons the lock");
+    assert_eq!(inner.machine.state(&id(OWNER)), Ok(LifecycleState::Failed));
+    assert_eq!(
+        inner
+            .machine
+            .failure(&id(OWNER))
+            .expect("owner")
+            .expect("failure")
+            .mod_id,
+        Some(id(OWNER))
+    );
+    drop(inner);
+}
+
+fn optional_running() -> (LoaderRuntime, Arc<Held>) {
+    let (runtime, mut held) = owners_running_with_requirement(
+        &[OWNER],
+        crate::runtime::pre_world_report(),
+        Requirement::Optional,
+    );
+    (runtime, held.remove(0))
+}
+
+#[test]
+fn optional_save_failure_preserves_the_last_durable_owner_envelope() {
+    let (runtime, held) = optional_running();
+    runtime
+        .stage_world(WorldIdentity::of(FIRST), None, true)
+        .expect("fresh world");
+    held.visits.store(7, Ordering::SeqCst);
+    let durable = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+    held.refuses_production.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        runtime.save_world(&WorldIdentity::of(FIRST)),
+        SaveOutcome::Failed(_)
+    ));
+    for _ in 0..2 {
+        assert_eq!(
+            runtime.save_world(&WorldIdentity::of(FIRST)),
+            SaveOutcome::Unchanged
+        );
+    }
+    assert_eq!(visits(&durable), 7);
+}
+
+#[test]
+fn failed_optional_owner_never_opens_again_and_preserves_each_worlds_data() {
+    let (runtime, held) = optional_running();
+    runtime
+        .stage_world(WorldIdentity::of(FIRST), None, true)
+        .expect("fresh world");
+    held.visits.store(7, Ordering::SeqCst);
+    let durable = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+    held.refuses_production.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        runtime.save_world(&WorldIdentity::of(FIRST)),
+        SaveOutcome::Failed(_)
+    ));
+    held.refuses_open.store(true, Ordering::SeqCst);
+    runtime
+        .stage_world(WorldIdentity::of(SECOND), Some(&durable), false)
+        .expect("failed optional owner must not open again");
+    assert_eq!(
+        visits(&replacement(runtime.save_world(&WorldIdentity::of(SECOND)))),
+        7
+    );
+}
+
+#[test]
+fn forged_save_error_identity_fails_the_callback_owner_without_panicking() {
+    for forged in ["unknown_owner", OTHER_OWNER] {
+        let (runtime, held, _) = running_pair();
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("fresh world");
+        *held.error_owner.lock().expect("test lock") = Some(id(forged));
+        held.refuses_production.store(true, Ordering::SeqCst);
+        assert!(matches!(
+            runtime.save_world(&WorldIdentity::of(FIRST)),
+            SaveOutcome::Failed(_)
+        ));
+        let inner = runtime.inner.lock().expect("callback errors do not panic");
+        assert_eq!(
+            inner.machine.state(&id(OWNER)).expect("owner"),
+            LifecycleState::Failed
+        );
+        assert_eq!(
+            inner.machine.state(&id(OTHER_OWNER)).expect("other owner"),
+            LifecycleState::Running
+        );
+        assert_eq!(
+            inner
+                .machine
+                .failure(&id(OWNER))
+                .expect("owner")
+                .expect("failure recorded")
+                .mod_id,
+            Some(id(OWNER))
+        );
+        drop(inner);
+    }
+}
+
+#[test]
+fn interception_declaration_errors_fail_the_asking_owner_and_preserve_admission() {
+    for requirement in [Requirement::Required, Requirement::Optional] {
+        let (runtime, held) = owners_running_with_requirement(
+            &[OWNER],
+            crate::runtime::pre_world_report(),
+            requirement,
+        );
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("a new world stages");
+        held[0]
+            .refuses_interception_declaration
+            .store(true, Ordering::SeqCst);
+        assert!(matches!(
+            runtime.save_world(&WorldIdentity::of(FIRST)),
+            SaveOutcome::Failed(_)
+        ));
+        let inner = runtime
+            .inner
+            .lock()
+            .expect("the callback returned an error");
+        assert_eq!(
+            inner.machine.state(&id(OWNER)).expect("known owner"),
+            LifecycleState::Failed
+        );
+        let failure = inner
+            .machine
+            .failure(&id(OWNER))
+            .expect("known owner")
+            .expect("structured declaration failure");
+        assert_eq!(failure.mod_id, Some(id(OWNER)));
+        assert_eq!(failure.state, LifecycleState::Running);
+        assert_eq!(
+            inner.machine.world_access().is_ok(),
+            requirement == Requirement::Optional
+        );
+        drop(inner);
+        let retry = runtime.save_world(&WorldIdentity::of(FIRST));
+        assert_eq!(
+            matches!(retry, SaveOutcome::Failed(_)),
+            requirement == Requirement::Required
+        );
+    }
+}
+
+#[test]
+fn save_callback_errors_fail_the_owner_and_preserve_required_optional_admission() {
+    for requirement in [Requirement::Required, Requirement::Optional] {
+        let held = Arc::new(Held::default());
+        let mut machine = LifecycleMachine::new(
+            Side::Client,
+            vec![LifecycleEntry {
+                mod_id: id(OWNER),
+                sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
+                requirement,
+                saved_data_versions: BTreeSet::from([version(1), version(2)]),
+            }],
+        )
+        .expect("one owner is a legal plan");
+        for state in [
+            LifecycleState::Validated,
+            LifecycleState::Resolved,
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
+        ] {
+            machine.advance_all(state).expect("a legal step");
+        }
+        let runtime = LoaderRuntime::new(
+            machine,
+            vec![Box::new(Owning {
+                id: id(OWNER),
+                held: Arc::clone(&held),
+            })],
+        );
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), None, true)
+            .expect("a new world stages");
+        held.refuses_production.store(true, Ordering::SeqCst);
+        assert!(matches!(
+            runtime.save_world(&WorldIdentity::of(FIRST)),
+            SaveOutcome::Failed(_)
+        ));
+        let inner = runtime
+            .inner
+            .lock()
+            .expect("the callback returned an error");
+        assert_eq!(
+            inner.machine.state(&id(OWNER)).expect("known owner"),
+            LifecycleState::Failed
+        );
+        let failure = inner
+            .machine
+            .failure(&id(OWNER))
+            .expect("known owner")
+            .expect("structured callback failure");
+        assert_eq!(failure.mod_id, Some(id(OWNER)));
+        assert_eq!(failure.state, LifecycleState::Running);
+        assert!(
+            failure
+                .message
+                .text()
+                .contains("cannot produce an envelope")
+        );
+        assert_eq!(
+            inner.machine.world_access().is_ok(),
+            requirement == Requirement::Optional
+        );
+        drop(inner);
+        let retry = runtime.save_world(&WorldIdentity::of(FIRST));
+        assert_eq!(
+            matches!(retry, SaveOutcome::Failed(_)),
+            requirement == Requirement::Required
+        );
+    }
+}
+
 fn replacement(outcome: SaveOutcome) -> Vec<u8> {
     match outcome {
         SaveOutcome::Replacement(bytes) => bytes,
-        other => panic!("this save should have replaced the aggregate: {other:?}"),
+        other @ (SaveOutcome::Unchanged
+        | SaveOutcome::Withheld
+        | SaveOutcome::Failed(_)
+        | SaveOutcome::IdentityMismatch(_)) => {
+            panic!("this save should have replaced the aggregate: {other:?}")
+        }
     }
 }
 
@@ -645,14 +992,16 @@ fn shipped_running() -> LoaderRuntime {
 #[test]
 fn a_launch_that_stages_no_pack_does_not_ask_for_a_reload() {
     let staging = std::env::temp_dir().join(format!("ravel-unstaged-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&staging);
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging).expect("remove the previous staging directory");
+    }
     std::fs::create_dir_all(&staging).expect("a writable temporary directory");
 
     let staged = shipped_running().write_staged_pack(&staging.to_string_lossy());
 
     assert_eq!(staged, StagedPack::Nothing);
     assert!(!staging.join("ravel").exists());
-    let _ = std::fs::remove_dir_all(staging);
+    std::fs::remove_dir_all(staging).expect("remove the staging directory");
 }
 
 fn shipped_visits(bytes: &[u8]) -> u64 {
@@ -806,10 +1155,10 @@ fn a_production_failure_preserves_the_previous_aggregate() {
 
     assert_eq!(visits(&durable), 7);
     held.refuses_production.store(false, Ordering::SeqCst);
-    assert_eq!(
-        visits(&replacement(runtime.save_world(&WorldIdentity::of(FIRST)))),
-        9
-    );
+    assert!(matches!(
+        runtime.save_world(&WorldIdentity::of(FIRST)),
+        SaveOutcome::Failed(_)
+    ));
 }
 
 #[test]
@@ -1072,10 +1421,8 @@ fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
         .stage_world(WorldIdentity::of(FIRST), None, true)
         .expect("a new world stages");
 
-    assert_eq!(
-        runtime.persistence_observations(),
-        [] as [std::string::String; 0]
-    );
+    let empty: [String; 0] = [];
+    assert_eq!(runtime.persistence_observations(), empty);
 }
 
 #[test]
@@ -1183,9 +1530,9 @@ fn every_java_spelling_of_a_staged_answer_is_the_number_rust_gives_it() {
     let standin = read("jvm/harness/initialization/dev/ravel/jvm/Hook.java");
     let generator = read("crates/ravel-minecraft-adapter/src/generate/render.rs");
 
-    let nothing = super::StagedPack::Nothing as i32;
-    let unchanged = super::StagedPack::Unchanged as i32;
-    let written = super::StagedPack::Written as i32;
+    let nothing = i32::from(StagedPack::Nothing);
+    let unchanged = i32::from(StagedPack::Unchanged);
+    let written = i32::from(StagedPack::Written);
 
     assert_eq!(java_int(&adapter, "UNSTAGED"), nothing);
     assert_eq!(java_int(&adapter, "STAGED_ANEW"), written);

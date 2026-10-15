@@ -121,7 +121,7 @@ pub struct Holding {
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entrypoint {
-    declaration: Option<ContentDeclaration>,
+    declaration: Result<ContentDeclaration, ModError>,
     settings: Settings,
     unread: Vec<settings::Unread>,
     surface: Surface,
@@ -149,7 +149,7 @@ impl Entrypoint {
     #[must_use]
     pub fn new(side: Side) -> Self {
         Self {
-            declaration: Self::content().ok(),
+            declaration: Self::content(),
             settings: Settings::default(),
             unread: Vec::new(),
             surface: Surface::new(),
@@ -413,22 +413,7 @@ impl Entrypoint {
                 };
                 Self::service_outcome(self.surface.insert_rule(owner, rule))
             }
-            "read_dimension" => {
-                let identifier = arguments
-                    .get("identifier")
-                    .and_then(JsonValue::as_str)
-                    .unwrap_or_default();
-                match self.surface.read_dimension(identifier) {
-                    Some(report) => json!({
-                        "answered": true,
-                        "owner": report.owner,
-                        "energy": report.energy,
-                        "capacity": report.capacity,
-                        "probes": report.probes,
-                    }),
-                    None => json!({ "answered": true, "present": false }),
-                }
-            }
+            "read_dimension" => self.read_surface_dimension(arguments),
             "register_module" => self.register_surface_module(arguments, owner),
             "register_instruction" => match Self::read_instruction(arguments) {
                 Ok(instruction) => {
@@ -437,35 +422,55 @@ impl Entrypoint {
                 Err(refused) => json!({ "answered": false, "refused": refused }),
             },
             "run" => self.run_surface_instruction(arguments),
-            "publish_dimension" => {
-                let Some(identifier) = arguments.get("identifier").and_then(JsonValue::as_str)
-                else {
-                    return json!({ "answered": false, "refused": "a dimension has no identifier" });
-                };
-                Self::service_outcome(
-                    self.surface.publish_dimension(
-                        identifier,
-                        capabilities::DimensionReport {
-                            owner: owner.to_owned(),
-                            energy: arguments
-                                .get("energy")
-                                .and_then(JsonValue::as_i64)
-                                .unwrap_or_default(),
-                            capacity: arguments
-                                .get("capacity")
-                                .and_then(JsonValue::as_i64)
-                                .unwrap_or_default(),
-                            probes: arguments
-                                .get("probes")
-                                .and_then(JsonValue::as_u64)
-                                .and_then(|probes| u32::try_from(probes).ok())
-                                .unwrap_or_default(),
-                        },
-                    ),
-                )
-            }
+            "publish_dimension" => self.publish_surface_dimension(arguments, owner),
             _ => json!({ "answered": false, "refused": "this entry publishes no such action" }),
         }
+    }
+
+    fn read_surface_dimension(&self, arguments: &JsonValue) -> JsonValue {
+        let identifier = arguments
+            .get("identifier")
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default();
+        self.surface.read_dimension(identifier).map_or_else(
+            || json!({ "answered": true, "present": false }),
+            |report| {
+                json!({
+                    "answered": true,
+                    "owner": report.owner,
+                    "energy": report.energy,
+                    "capacity": report.capacity,
+                    "probes": report.probes,
+                })
+            },
+        )
+    }
+
+    fn publish_surface_dimension(&mut self, arguments: &JsonValue, owner: &str) -> JsonValue {
+        let Some(identifier) = arguments.get("identifier").and_then(JsonValue::as_str) else {
+            return json!({ "answered": false, "refused": "a dimension has no identifier" });
+        };
+        Self::service_outcome(
+            self.surface.publish_dimension(
+                identifier,
+                capabilities::DimensionReport {
+                    owner: owner.to_owned(),
+                    energy: arguments
+                        .get("energy")
+                        .and_then(JsonValue::as_i64)
+                        .unwrap_or_default(),
+                    capacity: arguments
+                        .get("capacity")
+                        .and_then(JsonValue::as_i64)
+                        .unwrap_or_default(),
+                    probes: arguments
+                        .get("probes")
+                        .and_then(JsonValue::as_u64)
+                        .and_then(|probes| u32::try_from(probes).ok())
+                        .unwrap_or_default(),
+                },
+            ),
+        )
     }
 
     fn register_surface_module(&mut self, arguments: &JsonValue, owner: &str) -> JsonValue {
@@ -700,7 +705,12 @@ impl Entrypoint {
         if path == network::CardArguments::contract().id().id().path() {
             let payload: network::CardArguments =
                 delivery.decode().map_err(|error| Self::refused(&error))?;
-            let _ = network::apply_card_arguments(held, &payload);
+            // This packet never updates card state, whether accepted or refused.
+            match network::apply_card_arguments(held, &payload) {
+                network::Applied::Accepted
+                | network::Applied::Discarded
+                | network::Applied::Refused(_) => {}
+            }
             return Ok(());
         }
         if path == network::BrowserPattern::contract().id().id().path() {
@@ -729,50 +739,68 @@ impl Entrypoint {
             return Ok(());
         }
         if path == network::HeldItem::contract().id().id().path() {
-            let payload: network::HeldItem =
-                delivery.decode().map_err(|error| Self::refused(&error))?;
-            if network::apply_held_item(held, held, &payload) != network::Applied::Accepted {
-                return Ok(());
-            }
-            let record = match held {
-                network::Held::Carrier => Record::CarrierContents,
-                _ => Record::MatchRule,
-            };
-            if let Some(written) = payload.sent.components.get(record.as_str())
-                && let Ok(document) = written.parse::<JsonValue>()
-            {
-                match record {
-                    Record::CarrierContents => {
-                        if let Ok(carrier) = Carrier::from_saved(&document) {
-                            self.carrier = carrier;
-                        }
-                    }
-                    _ => {
-                        if let Ok(rule) = MatchRule::from_saved(&document) {
-                            self.rule = rule;
-                        }
-                    }
-                }
-            }
+            self.route_held_item(delivery, held)?;
             return Ok(());
         }
         if path == network::ReadoutAnswer::contract().id().id().path() {
             let payload: network::ReadoutAnswer =
                 delivery.decode().map_err(|error| Self::refused(&error))?;
-            let mut readings = Readings::new();
-            for (name, reading) in &payload.values {
-                readings.declare(name, reading.clone());
-            }
-            let stamp = self.ordering.stamp();
-            self.client_mut()
-                .map_err(|error| Self::refused(&error))?
-                .screen
-                .accept(readings, stamp);
-            return Ok(());
+            return self.accept_readout(&payload);
         }
         Err(Self::refused(
             "this entry declares no contract under that name",
         ))
+    }
+
+    fn accept_readout(&mut self, payload: &network::ReadoutAnswer) -> Result<(), ModError> {
+        let mut readings = Readings::new();
+        for (name, reading) in &payload.values {
+            readings.declare(name, reading.clone());
+        }
+        let stamp = self.ordering.stamp();
+        self.client_mut()
+            .map_err(|error| Self::refused(&error))?
+            .screen
+            .accept(readings, stamp);
+        Ok(())
+    }
+
+    fn route_held_item(
+        &mut self,
+        delivery: &PacketDelivery,
+        held: network::Held,
+    ) -> Result<(), ModError> {
+        let payload: network::HeldItem =
+            delivery.decode().map_err(|error| Self::refused(&error))?;
+        if network::apply_held_item(held, held, &payload) != network::Applied::Accepted {
+            return Ok(());
+        }
+        let record = match held {
+            network::Held::Carrier => Record::CarrierContents,
+            network::Held::PatternCard | network::Held::MatchItem | network::Held::Other => {
+                Record::MatchRule
+            }
+        };
+        if let Some(written) = payload.sent.components.get(record.as_str())
+            && let Ok(document) = written.parse::<JsonValue>()
+        {
+            match record {
+                Record::CarrierContents => {
+                    if let Ok(carrier) = Carrier::from_saved(&document) {
+                        self.carrier = carrier;
+                    }
+                }
+                Record::PatternContents
+                | Record::MatchRule
+                | Record::InfusionProgress
+                | Record::SelectedPosition => {
+                    if let Ok(rule) = MatchRule::from_saved(&document) {
+                        self.rule = rule;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     const fn card_menu_open(&self) -> bool {
@@ -798,19 +826,19 @@ impl Mod for Entrypoint {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.clone()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        self.declaration.clone().map(Some)
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().ok_or_else(|| {
-            Self::packaging("the packaged content declaration is not well formed")
-        })?;
+        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
         claim_all(declaration, registrar)
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        settings::declaration().ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        settings::declaration()
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -857,7 +885,9 @@ impl Mod for Entrypoint {
                     .map_err(|error| Self::refused(&error))?;
                 let holding = match self.holding.kind {
                     network::Held::Carrier => Some(commands::Cyclable::Carrier(&mut self.carrier)),
-                    _ => None,
+                    network::Held::PatternCard
+                    | network::Held::MatchItem
+                    | network::Held::Other => None,
                 };
                 self.cycled = Some(commands::cycle(self.holding.hand, holding, step));
             }
@@ -879,10 +909,12 @@ impl Mod for Entrypoint {
         self.route_packet(delivery)
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        let surface = Self::surface_service().ok()?;
-        let ordering = Self::ordering_service().ok()?;
-        ServiceDeclaration::new(Self::declared_id().clone(), [surface, ordering], []).ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        let surface = Self::surface_service()?;
+        let ordering = Self::ordering_service()?;
+        ServiceDeclaration::new(Self::declared_id().clone(), [surface, ordering], [])
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     /// Answers §16's first two entries, which are the two a dependent needs.
@@ -913,8 +945,10 @@ impl Mod for Entrypoint {
         Err(Self::refused("this entry answers two services"))
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        SavedDataDeclaration::new(Self::declared_id().clone(), [DATA_VERSION]).ok()
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        SavedDataDeclaration::new(Self::declared_id().clone(), [DATA_VERSION])
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     /// Writes the five records of §4 out to the world.
@@ -1015,8 +1049,18 @@ mod tests {
     #[test]
     fn the_entry_declares_both_its_content_and_its_settings() {
         let entry = Entrypoint::new(Side::Client);
-        assert!(entry.content_declaration().is_some());
-        assert!(entry.configuration_declaration().is_some());
+        assert!(
+            entry
+                .content_declaration()
+                .expect("valid content")
+                .is_some()
+        );
+        assert!(
+            entry
+                .configuration_declaration()
+                .expect("valid configuration")
+                .is_some()
+        );
     }
 
     #[test]
@@ -1152,6 +1196,7 @@ mod tests {
 
         let declaration = entry
             .configuration_declaration()
+            .expect("valid configuration")
             .expect("the entry declares settings");
         let resolved = LayeredConfiguration::resolve(declaration, None, None)
             .expect("the shipped defaults resolve");
@@ -1180,10 +1225,11 @@ mod tests {
         let mut entry = Entrypoint::new(Side::DedicatedServer);
         let declaration = entry
             .service_declaration()
+            .expect("valid service declaration")
             .expect("the entry declares what it answers");
         let surface = Entrypoint::surface_service().expect("a legal service name");
         let ordering = Entrypoint::ordering_service().expect("a legal service name");
-        let provided: Vec<&ravel_sdk::services::ServiceId> = declaration.provides().collect();
+        let provided: Vec<&ServiceId> = declaration.provides().collect();
         assert!(provided.contains(&&surface));
         assert!(provided.contains(&&ordering));
 
@@ -1212,7 +1258,7 @@ mod tests {
 
         let answer = entry
             .answer_service(&ServiceRequest::new(
-                ordering.clone(),
+                ordering,
                 json!({
                     "action": "enqueue",
                     "dimension": "counterpart:the_nether",
@@ -1567,6 +1613,7 @@ mod tests {
         let plan = SavedDataPlan::open(
             &reopened
                 .saved_data_declaration()
+                .expect("valid saved data declaration")
                 .expect("the entry declares its saved data"),
             Some(envelope.data_version()),
         )
@@ -1592,6 +1639,7 @@ mod tests {
         let plan = SavedDataPlan::open(
             &entry
                 .saved_data_declaration()
+                .expect("valid saved data declaration")
                 .expect("the entry declares its saved data"),
             None,
         )

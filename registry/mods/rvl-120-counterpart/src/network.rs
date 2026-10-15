@@ -917,7 +917,7 @@ mod tests {
             Err(PayloadRefused::Wire(WireError::Truncated { .. }))
         ));
 
-        let mut trailing = bytes.clone();
+        let mut trailing = bytes;
         trailing.push(0);
         assert!(matches!(
             admit::<ScreenIn>(&trailing),

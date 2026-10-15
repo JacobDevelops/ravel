@@ -122,8 +122,8 @@ impl HostMod for ConfigurationMod {
     }
 
     /// Declares the settings this mod owns.
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        Some(Self::declaration())
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
+        Ok(Some(Self::declaration()))
     }
 
     /// Applies the settings in force for this launch.

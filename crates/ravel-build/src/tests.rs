@@ -132,8 +132,8 @@ fn game() -> String {
 
 static NEXT: AtomicU32 = AtomicU32::new(0);
 
-fn source(template: &str, id: &str) -> String {
-    template.replace("{id}", id)
+fn source(template: &str, mod_id: &str) -> String {
+    template.replace("{id}", mod_id)
 }
 
 fn digest_of(bytes: &[u8]) -> String {
@@ -402,10 +402,11 @@ fn two_packages_building_one_crate_refuse_the_build() {
 fn the_installed_set_is_compiled_into_a_host_that_runs_the_packages_it_names() {
     let cache = std::env::temp_dir().join(format!("ravel-build-cache-{}", std::process::id()));
     let outcome = std::panic::catch_unwind(|| compiling_proof(&cache));
-    let _ = fs::remove_dir_all(&cache);
+    let cleanup = fs::remove_dir_all(&cache);
     if let Err(panic) = outcome {
         std::panic::resume_unwind(panic);
     }
+    cleanup.expect("remove the build cache");
 }
 
 fn compiling_proof(cache: &Path) {
@@ -614,7 +615,7 @@ fn a_version_naming_no_tracked_directory_refuses(
     );
 }
 
-fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
+fn write_driver(instance: &Path) -> PathBuf {
     let driver = instance.join("driver");
     fs::create_dir_all(driver.join("src")).expect("a driver directory is creatable");
     let root = ravel_root();
@@ -637,6 +638,11 @@ fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
     )
     .expect("the driver manifest is writable");
     fs::write(driver.join("src/main.rs"), DRIVER_SOURCE).expect("the driver source is writable");
+    driver
+}
+
+fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
+    let driver = write_driver(instance);
 
     let built = Command::new("cargo")
         .arg("build")

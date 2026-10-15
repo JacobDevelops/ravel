@@ -120,14 +120,16 @@ fn parse_id(attribute: Tokens) -> Result<LitStr> {
         return Err(Error::new(option.path.span(), UNKNOWN_OPTION));
     }
 
-    match option.value {
-        Expr::Lit(ExprLit {
-            lit: Lit::Str(id), ..
-        }) => match id.value().parse::<ModId>() {
-            Ok(_) => Ok(id),
-            Err(error) => Err(Error::new(id.span(), format!("{ILLEGAL_ID}: {error}"))),
-        },
-        other => Err(Error::new(other.span(), ID_NOT_A_STRING)),
+    if let Expr::Lit(ExprLit {
+        lit: Lit::Str(id), ..
+    }) = option.value
+    {
+        id.value()
+            .parse::<ModId>()
+            .map_err(|error| Error::new(id.span(), format!("{ILLEGAL_ID}: {error}")))?;
+        Ok(id)
+    } else {
+        Err(Error::new(option.value.span(), ID_NOT_A_STRING))
     }
 }
 

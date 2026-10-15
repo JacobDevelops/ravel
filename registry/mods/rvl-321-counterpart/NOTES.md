@@ -1,7 +1,7 @@
 # RVL-321 counterpart
 
 An original Rust implementation of `specifications/m6-foundation/RVL-321.md`, written against
-`ravel-sdk` and `rvl-042-counterpart`, with `num-traits` for exact primitive cast semantics. No upstream
+`ravel-sdk` and `rvl-042-counterpart`, with `num-traits` for checked numeric conversions. No upstream
 source was opened, decompiled or read to write it; the specification is the only description of the
 behaviour that was used.
 
@@ -196,9 +196,10 @@ it.
   switches live in `Crop::registration`; optional drops, equipment properties and deposit switches
   are grouped in `Settings::drops`, `Settings::gear` and `Settings::deposits`. Their diagnostic
   `Debug` output retains the original flat field names and order. Each independent boolean
-  retains its original default and configuration key. Float-to-integer conversions use
-  `num-traits::AsPrimitive` to retain truncation, saturation and NaN behaviour; the first-tier
-  produce count uses the equivalent integer ceiling division. Machine payload saving moves the
+  retains its original default and configuration key. Float-to-integer conversions explicitly
+  truncate before checked `num-traits::ToPrimitive` conversion and handle out-of-range and NaN
+  results to preserve saturation; the first-tier produce count uses equivalent integer ceiling
+  division. Machine payload saving moves the
   inventory into the same JSON field rather than cloning it through serialization.
 
 ## Evidence

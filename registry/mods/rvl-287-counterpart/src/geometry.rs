@@ -1320,7 +1320,9 @@ mod tests {
         let neither = SheetFlags::default();
         let quads = connected_pane(face, Sheet::new(neither, false), Neighbours::NONE);
         assert_eq!(quads.len(), 1, "neither flag gives one narrow strip");
-        assert!((quads[0].edges().max_u - quads[0].edges().min_u - 2.0 * PART).abs() < 1e-6);
+        let strip_width = quads[0].edges().max_u - quads[0].edges().min_u;
+        let expected_width = 2.0 * PART;
+        assert!((strip_width - expected_width).abs() < 1e-6);
 
         let own_set = SheetFlags::new([true, false], [false, false]);
         assert_eq!(
@@ -1353,9 +1355,9 @@ mod tests {
     #[test]
     fn the_both_flags_branch_shifts_its_inner_edge_by_a_sixteenth() {
         let face = Face::North;
-        let (first, second) = perpendicular(face).expect("a pair");
+        let directions: [Face; 2] = perpendicular(face).expect("a pair").into();
         let mut flags = SheetFlags::default();
-        for held in [first, second] {
+        for held in directions {
             match held {
                 Face::West => flags.west_east[0] = true,
                 Face::East => flags.west_east[1] = true,

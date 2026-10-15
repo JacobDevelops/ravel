@@ -42,29 +42,7 @@ fn ravel_test_versions_agree_with_the_generator() {
 #[test]
 fn version_specific_crates_and_production_literals_are_rejected() {
     let root = temporary_root("versions");
-    fs::create_dir_all(root.join("minecraft/versions/test-version"))
-        .expect("version directory should be creatable");
-
-    fs::write(
-        root.join("minecraft/versions/test-version/hooks.toml"),
-        "class = \"com.testgame.Thing\"\n\
-         descriptor = \"(Lcom/testgame/Other;Ljava/lang/String;)V\"\n",
-    )
-    .expect("version data should be writable");
-    fs::create_dir_all(root.join("crates/ravel-minecraft-test-version/src"))
-        .expect("crate directory should be creatable");
-    fs::write(
-        root.join("crates/ravel-minecraft-test-version/src/lib.rs"),
-        "const VERSION: &str = \"test-version\";\n",
-    )
-    .expect("test source should be writable");
-    fs::create_dir_all(root.join("crates/ravel-core/src"))
-        .expect("crate directory should be creatable");
-    fs::write(
-        root.join("crates/ravel-core/src/lib.rs"),
-        "// com.testgame.Thing, com/testgame/Other, java/lang/String\n",
-    )
-    .expect("test source should be writable");
+    version_specific_crates_fixture(&root);
     let mut violations = Vec::new();
 
     verify_version_boundary(&root, &mut violations);
@@ -417,4 +395,30 @@ fn retired_declaration_root(root: &Path, declaration: &str) {
     let mut text = fs::read_to_string(&adapter).expect("adapter inputs should be readable");
     text.push_str(declaration);
     fs::write(&adapter, &text).expect("adapter inputs should be writable");
+}
+
+fn version_specific_crates_fixture(root: &Path) {
+    fs::create_dir_all(root.join("minecraft/versions/test-version"))
+        .expect("version directory should be creatable");
+
+    fs::write(
+        root.join("minecraft/versions/test-version/hooks.toml"),
+        "class = \"com.testgame.Thing\"\n\
+         descriptor = \"(Lcom/testgame/Other;Ljava/lang/String;)V\"\n",
+    )
+    .expect("version data should be writable");
+    fs::create_dir_all(root.join("crates/ravel-minecraft-test-version/src"))
+        .expect("crate directory should be creatable");
+    fs::write(
+        root.join("crates/ravel-minecraft-test-version/src/lib.rs"),
+        "const VERSION: &str = \"test-version\";\n",
+    )
+    .expect("test source should be writable");
+    fs::create_dir_all(root.join("crates/ravel-core/src"))
+        .expect("crate directory should be creatable");
+    fs::write(
+        root.join("crates/ravel-core/src/lib.rs"),
+        "// com.testgame.Thing, com/testgame/Other, java/lang/String\n",
+    )
+    .expect("test source should be writable");
 }

@@ -281,28 +281,29 @@ fn a_refusal_at_a_point_ends_the_round_where_it_was_given() {
 // The follower sorts first by id, so only the declared edge puts it after the guard.
 fn round(guarding: bool) -> ravel_sdk::interception::Round {
     struct Follower {
-        id: ravel_sdk::ModId,
-        after: ravel_sdk::ModId,
+        id: ModId,
+        after: ModId,
         asked: bool,
     }
 
-    impl ravel_host_api::HostMod for Follower {
-        fn id(&self) -> &ravel_sdk::ModId {
+    impl HostMod for Follower {
+        fn id(&self) -> &ModId {
             &self.id
         }
 
-        fn enter(&mut self, _: ravel_sdk::LifecycleState) -> Result<(), ravel_sdk::ModError> {
+        fn enter(&mut self, _: LifecycleState) -> Result<(), ravel_sdk::ModError> {
             Ok(())
         }
 
         fn interception_declaration(
             &self,
-        ) -> Option<ravel_sdk::interception::InterceptionDeclaration> {
+        ) -> Result<Option<ravel_sdk::interception::InterceptionDeclaration>, ravel_sdk::ModError>
+        {
             let mut declared =
                 ravel_sdk::interception::InterceptionDeclaration::new(self.id.clone());
             declared.answer_at(POINT.as_str());
             declared.after(&self.after);
-            Some(declared)
+            Ok(Some(declared))
         }
 
         fn intercept(
@@ -324,7 +325,7 @@ fn round(guarding: bool) -> ravel_sdk::interception::Round {
         after: InterceptionMod::declared_id().clone(),
         asked: false,
     };
-    let mut mods: Vec<&mut dyn ravel_host_api::HostMod> = vec![&mut follower, &mut guard];
+    let mut mods: Vec<&mut dyn HostMod> = vec![&mut follower, &mut guard];
     let machine = interception_machine();
 
     let round = ravel_loader::intercept(&machine, &mut mods, POINT).expect("a legal set");
@@ -336,27 +337,24 @@ fn round(guarding: bool) -> ravel_sdk::interception::Round {
     round
 }
 
-fn interception_machine() -> ravel_loader::LifecycleMachine {
+fn interception_machine() -> LifecycleMachine {
     let entries = [InterceptionMod::declared_id().clone(), id("alpha_follower")]
         .into_iter()
-        .map(|mod_id| ravel_loader::LifecycleEntry {
+        .map(|mod_id| LifecycleEntry {
             mod_id,
-            sides: ravel_core::SideSet::new([ravel_sdk::Side::IntegratedServer])
-                .expect("a non-empty side set"),
-            requirement: ravel_loader::Requirement::Required,
-            saved_data_versions: std::collections::BTreeSet::new(),
+            sides: SideSet::new([Side::IntegratedServer]).expect("a non-empty side set"),
+            requirement: Requirement::Required,
+            saved_data_versions: BTreeSet::new(),
         })
         .collect();
-    let mut machine =
-        ravel_loader::LifecycleMachine::new(ravel_sdk::Side::IntegratedServer, entries)
-            .expect("a legal plan");
+    let mut machine = LifecycleMachine::new(Side::IntegratedServer, entries).expect("a legal plan");
     for state in [
-        ravel_sdk::LifecycleState::Validated,
-        ravel_sdk::LifecycleState::Resolved,
-        ravel_sdk::LifecycleState::Loaded,
-        ravel_sdk::LifecycleState::Constructed,
-        ravel_sdk::LifecycleState::Registered,
-        ravel_sdk::LifecycleState::Running,
+        LifecycleState::Validated,
+        LifecycleState::Resolved,
+        LifecycleState::Loaded,
+        LifecycleState::Constructed,
+        LifecycleState::Registered,
+        LifecycleState::Running,
     ] {
         machine.advance_all(state).expect("a legal step");
     }

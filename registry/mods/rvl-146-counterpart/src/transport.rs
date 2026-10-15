@@ -156,7 +156,7 @@ impl fmt::Display for ArgumentKind {
 }
 
 /// One argument, in the eight shapes the wire carries.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Argument {
     /// No value at all.
     Absent,
@@ -422,7 +422,7 @@ impl fmt::Display for ReadRefused {
 impl std::error::Error for ReadRefused {}
 
 /// A named action and the arguments it arrived with.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Action {
     /// The action's name, which a screen or a menu looks up.
     pub name: String,
@@ -546,10 +546,11 @@ impl<'bytes> Reader<'bytes> {
 
     fn opaque(&mut self) -> Result<Vec<u8>, ReadRefused> {
         let length = u32::try_from(self.varint()?).map_err(|_| ReadRefused::Overlong)?;
-        if length as usize > MAX_OPAQUE_BYTES {
+        let length_index = usize::try_from(length).map_err(|_| ReadRefused::Overlong)?;
+        if length_index > MAX_OPAQUE_BYTES {
             return Err(ReadRefused::OpaqueTooLong(length));
         }
-        Ok(self.slice(length as usize)?.to_vec())
+        Ok(self.slice(length_index)?.to_vec())
     }
 
     fn boolean(&mut self) -> Result<bool, ReadRefused> {
@@ -579,7 +580,9 @@ pub fn write(action: &Action, numbering: &TagNumbering) -> Result<Vec<u8>, Write
     }
     let mut bytes = Vec::new();
     let name = action.name.as_bytes();
-    write_varint(&mut bytes, name.len() as u64);
+    let name_length =
+        u64::try_from(name.len()).map_err(|_| WriteRefused::BodyTooLong(name.len()))?;
+    write_varint(&mut bytes, name_length);
     bytes.extend_from_slice(name);
     match action.arguments.as_ref() {
         None => bytes.push(0),
@@ -588,7 +591,9 @@ pub fn write(action: &Action, numbering: &TagNumbering) -> Result<Vec<u8>, Write
                 return Err(WriteRefused::TooManyArguments(arguments.len()));
             }
             bytes.push(1);
-            write_varint(&mut bytes, arguments.len() as u64);
+            let count = u64::try_from(arguments.len())
+                .map_err(|_| WriteRefused::TooManyArguments(arguments.len()))?;
+            write_varint(&mut bytes, count);
             for argument in arguments {
                 bytes.push(numbering.number(argument.kind()));
                 match argument {
@@ -604,14 +609,18 @@ pub fn write(action: &Action, numbering: &TagNumbering) -> Result<Vec<u8>, Write
                         if characters > MAX_TEXT_CHARS {
                             return Err(WriteRefused::TextTooLong(characters));
                         }
-                        write_varint(&mut bytes, value.len() as u64);
+                        let length = u64::try_from(value.len())
+                            .map_err(|_| WriteRefused::TextTooLong(characters))?;
+                        write_varint(&mut bytes, length);
                         bytes.extend_from_slice(value.as_bytes());
                     }
                     Argument::Stack(value) | Argument::Compound(value) => {
                         if value.len() > MAX_OPAQUE_BYTES {
                             return Err(WriteRefused::OpaqueTooLong(value.len()));
                         }
-                        write_varint(&mut bytes, value.len() as u64);
+                        let length = u64::try_from(value.len())
+                            .map_err(|_| WriteRefused::OpaqueTooLong(value.len()))?;
+                        write_varint(&mut bytes, length);
                         bytes.extend_from_slice(value);
                     }
                 }
@@ -642,10 +651,11 @@ pub fn read(bytes: &[u8], numbering: &TagNumbering) -> Result<Action, ReadRefuse
     }
     let arguments = if reader.boolean()? {
         let count = u32::try_from(reader.varint()?).map_err(|_| ReadRefused::Overlong)?;
-        if count as usize > MAX_ARGUMENTS {
+        let count_index = usize::try_from(count).map_err(|_| ReadRefused::Overlong)?;
+        if count_index > MAX_ARGUMENTS {
             return Err(ReadRefused::TooManyArguments(count));
         }
-        let mut arguments = Vec::with_capacity(count as usize);
+        let mut arguments = Vec::with_capacity(count_index);
         for _ in 0..count {
             let tag = reader.byte()?;
             let kind = numbering.kind(tag).ok_or(ReadRefused::UnknownTag(tag))?;

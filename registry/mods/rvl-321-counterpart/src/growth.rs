@@ -36,7 +36,7 @@ pub const AURA_INTERVAL: u32 = 20;
 pub const AURA_PROBABILITY: f64 = 0.5;
 
 /// What the world says about the place a crop is standing in.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Surroundings {
     /// The block directly below the crop.
     pub below: Option<String>,
@@ -163,8 +163,16 @@ pub fn pulse_target(
 /// arithmetic that multiplies first.
 #[must_use]
 pub fn pulse_delay(seconds: u32, draw: f64) -> u32 {
-    let jitter = 0.9 + draw.clamp(0.0, 1.0) * 0.2;
-    let whole = num_traits::cast::AsPrimitive::<u32>::as_(f64::from(seconds) * jitter);
+    let variation = draw.clamp(0.0, 1.0) * 0.2;
+    let jitter = 0.9 + variation;
+    let seconds = (f64::from(seconds) * jitter).trunc();
+    let whole = num_traits::ToPrimitive::to_u32(&seconds).unwrap_or_else(|| {
+        if seconds.is_nan() || seconds < 0.0 {
+            0
+        } else {
+            u32::MAX
+        }
+    });
     whole.saturating_mul(20)
 }
 

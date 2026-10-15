@@ -17,7 +17,7 @@ const fn reacts(state: LifecycleState) -> bool {
 pub enum DispatchRefused {
     /// The set is not in a state that reacts.
     NotReacting {
-        /// The mod whose state was checked first, in resolved order.
+        /// The halting mod, or the first non-reacting audience member in resolved order.
         mod_id: ModId,
         /// The state it is in.
         state: LifecycleState,
@@ -161,14 +161,20 @@ impl Delivery {
 }
 
 impl LifecycleMachine {
-    /// Returns side-compatible recipients of `event`, in resolved order.
+    /// Returns side-compatible recipients, excluding failed optional mods, in resolved order.
     #[must_use]
     pub fn audience(&self, event: GameEvent) -> Vec<ModId> {
         if !event.happens_on(self.side()) {
             return Vec::new();
         }
         self.order()
-            .filter(|mod_id| self.loads_here(mod_id))
+            .filter(|mod_id| {
+                self.entry(mod_id).is_ok_and(|entry| {
+                    entry.sides.loads_on(self.side())
+                        && (entry.requirement == crate::lifecycle::Requirement::Required
+                            || self.loads(mod_id))
+                })
+            })
             .cloned()
             .collect()
     }
@@ -186,7 +192,7 @@ impl LifecycleMachine {
 ///
 /// # Errors
 ///
-/// Returns [`DispatchRefused`] if an audience member is not reacting or was not supplied.
+/// Returns [`DispatchRefused`] if the set is halted or an audience member is not reacting or absent.
 ///
 /// # Panics
 ///
@@ -214,6 +220,12 @@ pub fn broadcast_profiled(
     event: GameEvent,
     profiler: &mut Profiler,
 ) -> Result<Delivery, DispatchRefused> {
+    if let Some(mod_id) = machine.halted_by() {
+        return Err(DispatchRefused::NotReacting {
+            mod_id: mod_id.clone(),
+            state: LifecycleState::Failed,
+        });
+    }
     let audience = machine.audience(event);
     for mod_id in &audience {
         let state = machine.state(mod_id).map_err(|_| DispatchRefused::Absent {
@@ -513,6 +525,106 @@ mod tests {
         machine
     }
 
+    fn failure_attribution(name: &str, message: &str) -> ravel_core::FailureAttribution {
+        ravel_core::FailureAttribution {
+            mod_id: Some(id(name)),
+            version: None,
+            dependency_chain: Vec::new(),
+            state: LifecycleState::Running,
+            kind: None,
+            surface: None,
+            environment: ravel_core::FailureEnvironment {
+                ravel: "0.1.0".parse().expect("valid version"),
+                minecraft: "test".to_owned(),
+                platform: "test".to_owned(),
+                architecture: "test".to_owned(),
+            },
+            message: ravel_observability::redact(message),
+        }
+    }
+
+    #[test]
+    fn failed_required_mod_blocks_healthy_broadcasts() {
+        let mut healthy = Recording::new("healthy_mod");
+        let mut mods: Vec<&mut dyn HostMod> = vec![&mut healthy];
+        let mut machine = running(
+            vec![
+                entry("required_mod", &[Side::Client]),
+                entry("healthy_mod", &[Side::Client]),
+            ],
+            Side::Client,
+            &mut mods,
+        );
+        machine
+            .fail(
+                &id("required_mod"),
+                failure_attribution("required_mod", "required mod failed"),
+            )
+            .expect("a running mod can fail");
+        assert_eq!(
+            broadcast(&machine, &mut mods, GameEvent::ClientTick),
+            Err(DispatchRefused::NotReacting {
+                mod_id: id("required_mod"),
+                state: LifecycleState::Failed,
+            })
+        );
+        assert_eq!(healthy.seen, Vec::<GameEvent>::new());
+    }
+
+    #[test]
+    fn failed_optional_mod_does_not_block_healthy_broadcasts() {
+        let mut healthy = Recording::new("healthy_mod");
+        let mut optional = entry("optional_mod", &[Side::Client]);
+        optional.requirement = Requirement::Optional;
+        let mut mods: Vec<&mut dyn HostMod> = vec![&mut healthy];
+        let mut machine = running(
+            vec![optional, entry("healthy_mod", &[Side::Client])],
+            Side::Client,
+            &mut mods,
+        );
+        machine
+            .fail(
+                &id("optional_mod"),
+                failure_attribution("optional_mod", "optional mod failed"),
+            )
+            .expect("record optional failure");
+        let delivery = broadcast(&machine, &mut mods, GameEvent::ClientTick)
+            .expect("healthy recipients remain available");
+        assert_eq!(delivery.received(), [id("healthy_mod")]);
+        assert_eq!(healthy.seen, [GameEvent::ClientTick]);
+    }
+
+    #[test]
+    fn failed_optional_mod_after_world_mutation_blocks_healthy_broadcasts() {
+        let mut healthy = Recording::new("healthy_mod");
+        let mut optional = entry("optional_mod", &[Side::Client]);
+        optional.requirement = Requirement::Optional;
+        let mut mods: Vec<&mut dyn HostMod> = vec![&mut healthy];
+        let mut machine = running(
+            vec![optional, entry("healthy_mod", &[Side::Client])],
+            Side::Client,
+            &mut mods,
+        );
+        machine
+            .record_world_mutation()
+            .expect("a running set can mutate the world");
+        machine
+            .fail(
+                &id("optional_mod"),
+                failure_attribution("optional_mod", "optional mod failed"),
+            )
+            .expect("record optional failure");
+        let refused = Err(DispatchRefused::NotReacting {
+            mod_id: id("optional_mod"),
+            state: LifecycleState::Failed,
+        });
+        assert_eq!(
+            broadcast(&machine, &mut mods, GameEvent::ClientTick),
+            refused
+        );
+        assert_eq!(healthy.seen, Vec::<GameEvent>::new());
+    }
+
     #[test]
     fn a_broadcast_reaches_every_mod_in_resolved_order() {
         let mut first = Recording::new("first_mod");
@@ -551,10 +663,7 @@ mod tests {
             &mut mods,
         );
 
-        assert_eq!(
-            machine.audience(GameEvent::ClientTick),
-            [] as [ravel_core::ModId; 0]
-        );
+        assert_eq!(machine.audience(GameEvent::ClientTick), Vec::<ModId>::new());
         let delivery =
             broadcast(&machine, &mut mods, GameEvent::ClientTick).expect("an empty audience");
         assert_eq!(delivery.received(), []);
@@ -608,7 +717,7 @@ mod tests {
                 state: LifecycleState::Validated,
             }
         );
-        assert_eq!(only.seen, [] as [ravel_host_api::GameEvent; 0]);
+        assert_eq!(only.seen, Vec::<GameEvent>::new());
         assert_eq!(refused.failure_kind(), None);
         assert!(!refused.quotes_untrusted_text());
     }
@@ -639,7 +748,7 @@ mod tests {
         }
 
         // The third mod is never asked, so it cannot act on a set that failed.
-        assert_eq!(third.seen, [] as [ravel_host_api::GameEvent; 0]);
+        assert_eq!(third.seen, Vec::<GameEvent>::new());
     }
 
     #[test]
@@ -668,7 +777,7 @@ mod tests {
         );
         // The first mod is in the audience and ahead of the missing one, and it
         // still saw nothing: the whole set is checked before anyone reacts.
-        assert_eq!(first.seen, [] as [ravel_host_api::GameEvent; 0]);
+        assert_eq!(first.seen, Vec::<GameEvent>::new());
     }
 
     #[test]
@@ -687,7 +796,7 @@ mod tests {
         );
 
         let invocation = CommandInvocation::new(
-            owned.clone(),
+            owned,
             Side::Client,
             vec!["set".to_owned(), "base".to_owned()],
         );
@@ -696,7 +805,7 @@ mod tests {
         assert!(delivery.is_complete());
 
         assert_eq!(first.ran, [invocation]);
-        assert_eq!(second.ran, [] as [ravel_host_api::CommandInvocation; 0]);
+        assert_eq!(second.ran, Vec::<CommandInvocation>::new());
     }
 
     #[test]
@@ -718,7 +827,7 @@ mod tests {
         .expect_err("nothing claimed it");
         assert_eq!(refused, DispatchRefused::Unclaimed { key: orphan });
         assert!(refused.to_string().contains("no mod claimed"));
-        assert_eq!(only.ran, [] as [ravel_host_api::CommandInvocation; 0]);
+        assert_eq!(only.ran, Vec::<CommandInvocation>::new());
     }
 
     #[test]
@@ -759,7 +868,7 @@ mod tests {
                 state: LifecycleState::Constructed,
             }
         );
-        assert_eq!(only.ran, [] as [ravel_host_api::CommandInvocation; 0]);
+        assert_eq!(only.ran, Vec::<CommandInvocation>::new());
     }
 
     #[test]
@@ -839,10 +948,7 @@ mod tests {
                 },
                 LifecycleState::Stopped,
             ),
-            (
-                DispatchRefused::Unclaimed { key: key.clone() },
-                LifecycleState::Running,
-            ),
+            (DispatchRefused::Unclaimed { key }, LifecycleState::Running),
             (
                 DispatchRefused::OwnerWrongSide {
                     mod_id: id("example_mod"),
@@ -981,7 +1087,7 @@ mod tests {
         assert_eq!(delivered.received(), [id("second_mod")]);
         assert!(delivered.is_complete());
         assert_eq!(second.received, [packet_id("second_mod:ping")]);
-        assert_eq!(first.received, [] as [ravel_network::PacketId; 0]);
+        assert_eq!(first.received, Vec::<PacketId>::new());
     }
 
     #[test]
@@ -1109,7 +1215,7 @@ mod tests {
                 mod_id: id("server_only"),
             })
         );
-        assert_eq!(host.received, [] as [ravel_network::PacketId; 0]);
+        assert_eq!(host.received, Vec::<PacketId>::new());
     }
 
     #[test]
@@ -1154,7 +1260,7 @@ mod tests {
                 state: LifecycleState::Validated,
             })
         );
-        assert_eq!(host.received, [] as [ravel_network::PacketId; 0]);
+        assert_eq!(host.received, Vec::<PacketId>::new());
     }
 
     #[test]

@@ -27,10 +27,7 @@ const EMPTY_OBJECT_DIGEST: &str =
 fn a_recorded_result_digest_is_recomputed_against_the_file() {
     let root = recorded_result_root("records-match", "{}\n", EMPTY_OBJECT_DIGEST);
 
-    assert_eq!(
-        verify_evidence_records(&root),
-        [] as [std::string::String; 0]
-    );
+    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -155,10 +152,7 @@ fn a_review_record_stating_no_verdict_is_reported() {
 fn a_recorded_review_digest_is_recomputed_against_the_tracked_record() {
     let root = recorded_review_root("review-match", PASS_RECORD, "review.md", PASS_RECORD_DIGEST);
 
-    assert_eq!(
-        verify_evidence_records(&root),
-        [] as [std::string::String; 0]
-    );
+    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -213,10 +207,7 @@ fn a_manifest_recording_no_review_record_is_left_to_the_milestone_gate() {
     )
     .expect("manifest should be writable");
 
-    assert_eq!(
-        verify_evidence_records(&root),
-        [] as [std::string::String; 0]
-    );
+    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -240,10 +231,7 @@ fn recorded_baseline_root(label: &str, result: &str, digest: &str) -> PathBuf {
 fn a_recorded_baseline_digest_is_recomputed_against_the_tracked_file() {
     let root = recorded_baseline_root("baseline-match", "{}\n", EMPTY_OBJECT_DIGEST);
 
-    assert_eq!(
-        verify_evidence_records(&root),
-        [] as [std::string::String; 0]
-    );
+    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -421,10 +409,7 @@ fn an_input_digest_is_recomputed_against_the_revision_the_manifest_pins() {
     let (root, revision) = pinned_input_root("inputs-match");
     write_input_manifest(&root, &revision, "input.txt", HELLO_DIGEST);
 
-    assert_eq!(
-        verify_evidence_records(&root),
-        [] as [std::string::String; 0]
-    );
+    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 
@@ -520,10 +505,7 @@ fn a_recorded_run_whose_numbers_agree_is_accepted() {
                 "lineCoveragePercent":85.97}}"#,
     );
 
-    assert_eq!(
-        verify_evidence_records(&root),
-        [] as [std::string::String; 0]
-    );
+    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 

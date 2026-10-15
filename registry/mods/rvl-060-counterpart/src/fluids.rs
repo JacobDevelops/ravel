@@ -81,7 +81,7 @@ pub struct FluidProperties {
 }
 
 /// The fluid's entity interaction attributes.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EntityProperties {
     /// Whether an entity in it drowns.
     pub drowning: bool,
@@ -248,9 +248,7 @@ impl FluidCache {
             self.resolved.insert(fluid.to_owned(), found);
         }
         if self.resolved.contains_key(fluid) {
-            self.resolved
-                .get(fluid)
-                .and_then(std::option::Option::as_ref)
+            self.resolved.get(fluid).and_then(Option::as_ref)
         } else {
             self.registered.get(fluid)
         }

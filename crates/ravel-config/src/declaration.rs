@@ -372,7 +372,9 @@ impl DeclarationError {
     fn from_json(error: &serde_json::Error) -> Self {
         match error.classify() {
             serde_json::error::Category::Data => Self::Schema(error.to_string()),
-            _ => Self::Syntax(error.to_string()),
+            serde_json::error::Category::Io
+            | serde_json::error::Category::Syntax
+            | serde_json::error::Category::Eof => Self::Syntax(error.to_string()),
         }
     }
 }
@@ -548,7 +550,7 @@ mod tests {
             r#"{"schemaVersion": 1, "owner": "example_mod", "version": 0, "settings": []}"#,
             r#"{"schemaVersion": 1, "owner": "example_mod", "version": 1, "settings": [], "extra": 1}"#,
         ] {
-            let error = ConfigurationDeclaration::parse(refused).expect_err("{refused}");
+            let error = ConfigurationDeclaration::parse(refused).expect_err(refused);
             assert!(
                 matches!(error, DeclarationError::Schema(_)),
                 "{refused} gave {error}"

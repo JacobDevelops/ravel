@@ -191,7 +191,7 @@ mod tests {
         let bytes = encode(&Readout::fluid(500, 250, "lava"));
         assert!(decode::<Readout>(&bytes[..bytes.len() - 1]).is_err());
 
-        let mut trailing = bytes.clone();
+        let mut trailing = bytes;
         trailing.push(0);
         assert!(matches!(
             decode::<Readout>(&trailing),

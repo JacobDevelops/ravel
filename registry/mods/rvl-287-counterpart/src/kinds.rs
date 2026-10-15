@@ -261,10 +261,14 @@ impl Model {
             Behaviour::LargeTiled => Textures::Tiled(Box::new(
                 Grid::parse(declared).map_err(ModelError::Textures)?,
             )),
-            other => {
+            Behaviour::ConnectedSheet
+            | Behaviour::ConnectedPane
+            | Behaviour::RotatingColumn
+            | Behaviour::UprightColumn
+            | Behaviour::PaneColumn => {
                 let set =
-                    FlatSlots::parse(declared, &other.slots()).map_err(ModelError::Textures)?;
-                let set = if other.reads_condition() {
+                    FlatSlots::parse(declared, &behaviour.slots()).map_err(ModelError::Textures)?;
+                let set = if behaviour.reads_condition() {
                     set
                 } else {
                     set.with_defaulted_edges()
@@ -405,7 +409,9 @@ impl Model {
             Textures::PerFace(assigned) => assigned.sprite(assigned.index(face, slot)),
             Textures::Tiled(grid) => match slot {
                 Slot::Cell(cell) => grid.at(cell),
-                _ => TextureId::missing(),
+                Slot::Particle | Slot::Quadrant(_) | Slot::Column(_) | Slot::Edge(_) => {
+                    TextureId::missing()
+                }
             },
         }
     }
@@ -620,10 +626,7 @@ impl Registry {
         if variant == Some(INVENTORY_VARIANT) {
             return false;
         }
-        match qualify(path) {
-            None => false,
-            Some(qualified) => !self.directory.contains(&qualified),
-        }
+        qualify(path).is_some_and(|qualified| !self.directory.contains(&qualified))
     }
 
     /// Returns how many identifiers the last reload's directory held.
@@ -706,13 +709,12 @@ mod tests {
     #[test]
     fn the_duplicate_pair_is_registered_rather_than_dropped() {
         let registry = Registry::built_in().expect("well formed");
-        let shared: Vec<&str> = registry
+        let shared = registry
             .names()
             .filter(|name| registry.behaviour(name) == Some(Behaviour::LargeTiled))
-            .collect();
+            .count();
         assert_eq!(
-            shared.len(),
-            2,
+            shared, 2,
             "dropping the duplicate breaks any pack that spells it"
         );
     }
@@ -908,7 +910,10 @@ mod tests {
                     "single": "base:four",
                     "end": "base:five",
                 }),
-                _ => five("base:one"),
+                Behaviour::ConnectedBlock
+                | Behaviour::ConnectedSheet
+                | Behaviour::ConnectedPane
+                | Behaviour::PaneColumn => five("base:one"),
             };
             let declaration = declaring(name, textures);
             let model =
@@ -1002,7 +1007,7 @@ mod tests {
         let vocabulary = vocabulary();
         let own = BlockState::new("base:mat");
         let mut written = surrounded(own.clone(), Face::Up, &own);
-        written.around.insert(Face::Up.normal(), own.clone());
+        written.around.insert(Face::Up.normal(), own);
 
         let groups = Groups::new();
         let carpet = Model::parse(
@@ -1130,11 +1135,10 @@ mod tests {
 
         let panel = BlockState::new("base:panel");
         assert!(
-            !model.condition().expect("a condition").connects(
-                &panel,
-                &panel,
-                &crate::conditions::Groups::new()
-            ),
+            !model
+                .condition()
+                .expect("a condition")
+                .connects(&panel, &panel, &Groups::new()),
             "a malformed condition connects nothing rather than defaulting"
         );
     }

@@ -185,11 +185,11 @@ fn a_count_is_read_against_its_noun_however_it_was_spelled_or_qualified() {
 
     assert_eq!(
         numbers_before("the fourth round of review", &["round"]),
-        [] as [usize; 0]
+        Vec::<usize>::new()
     );
     assert_eq!(
         numbers_before("every round returned FAIL", &["rounds"]),
-        [] as [usize; 0]
+        Vec::<usize>::new()
     );
 }
 
@@ -205,15 +205,15 @@ fn a_count_spelled_above_twenty_is_read_up_to_ninety_nine() {
 
     assert_eq!(
         numbers_before("a hundred rounds", &["rounds"]),
-        [] as [usize; 0]
+        Vec::<usize>::new()
     );
     assert_eq!(
         numbers_before("thirty-thousand-entry rounds", &["rounds"]),
-        [] as [usize; 0]
+        Vec::<usize>::new()
     );
     assert_eq!(
         numbers_before("twenty-eleven rounds", &["rounds"]),
-        [] as [usize; 0]
+        Vec::<usize>::new()
     );
     assert_eq!(numbers_before("twenty one rounds", &["rounds"]), [1]);
 }

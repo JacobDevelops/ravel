@@ -285,7 +285,11 @@ mod tests {
         fn new(name: &str) -> Self {
             let directory = std::env::temp_dir()
                 .join(format!("ravel-xtask-digests-{name}-{}", std::process::id()));
-            let _ = fs::remove_dir_all(&directory);
+            match fs::remove_dir_all(&directory) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("remove stale temporary package: {error}"),
+            }
             fs::create_dir_all(directory.join("src")).expect("a writable temporary directory");
             let package = Self { directory };
             package.write("src/lib.rs", "pub fn load() {}\n");
@@ -309,7 +313,7 @@ mod tests {
 
     impl Drop for Package {
         fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.directory);
+            fs::remove_dir_all(&self.directory).expect("remove temporary package");
         }
     }
 

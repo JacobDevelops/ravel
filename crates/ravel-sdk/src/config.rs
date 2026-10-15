@@ -30,18 +30,18 @@
 //!
 //! #[declare_mod(id = "example")]
 //! impl Mod for Example {
-//!     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-//!         // Refuse malformed declarations rather than reporting no settings.
-//!         ConfigurationDeclaration::parse(SETTINGS).map_err(|error| ModError::Refused {
-//!             mod_id: Self::declared_id().clone(),
-//!             state,
-//!             detail: error.to_string(),
-//!         })?;
+//!     fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
 //!         Ok(())
 //!     }
 //!
-//!     fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-//!         ConfigurationDeclaration::parse(SETTINGS).ok()
+//!     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+//!         ConfigurationDeclaration::parse(SETTINGS)
+//!             .map(Some)
+//!             .map_err(|error| ModError::Refused {
+//!                 mod_id: Self::declared_id().clone(),
+//!                 state: LifecycleState::Constructed,
+//!                 detail: error.to_string(),
+//!             })
 //!     }
 //!
 //!     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -62,7 +62,7 @@
 //! let mut example = Example::default();
 //! example.enter(LifecycleState::Loaded)?;
 //! let declaration = example
-//!     .configuration_declaration()
+//!     .configuration_declaration()?
 //!     .expect("the mod declares settings");
 //! let resolved = LayeredConfiguration::resolve(declaration, None, None)?;
 //! example.configure(&resolved)?;

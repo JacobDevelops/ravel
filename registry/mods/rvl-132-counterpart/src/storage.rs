@@ -32,7 +32,7 @@ pub const MAX_SLOTS: usize = 1024;
 /// specification marks unknown. This package saturates here instead, and
 /// [`narrowed`] reports whether it did, so a caller is told rather than
 /// surprised.
-pub const HOST_CHARGE_CEILING: Amount = i32::MAX as Amount;
+pub const HOST_CHARGE_CEILING: Amount = 0x7fff_ffff;
 
 /// The three object classes an adapter is installed on.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -227,7 +227,9 @@ impl Adapter {
             }
             (Shape::Fluid, Published::Fluid(store)) => Adapted::Fluid(store),
             (Shape::Charge, Published::Charge(host)) => Adapted::Charge(host),
-            _ => Adapted::Absent(Absent::of(self.shape)),
+            (Shape::SlottedItem | Shape::SlotlessItem | Shape::Fluid | Shape::Charge, _) => {
+                Adapted::Absent(Absent::of(self.shape))
+            }
         }
     }
 }
@@ -371,10 +373,9 @@ where
 
     /// Puts an instance in one slot, answering what was there.
     pub fn place(&mut self, slot: usize, value: Option<K::Instance>) -> Option<K::Instance> {
-        match self.slots.get_mut(slot) {
-            Some(held) => core::mem::replace(held, value),
-            None => None,
-        }
+        self.slots
+            .get_mut(slot)
+            .and_then(|held| core::mem::replace(held, value))
     }
 
     /// Everything the shelf holds, in slot order.
@@ -1079,7 +1080,7 @@ mod tests {
                 assert!(installed(shape, class), "{shape:?} on {class:?}");
             }
         }
-        let mut sorted = table.clone();
+        let mut sorted = table;
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), 12);

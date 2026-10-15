@@ -207,7 +207,7 @@ fn to_two(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
 /// assert_eq!(ledger.id().as_str(), "waystone_ledger");
 ///
 /// let declaration = ledger
-///     .configuration_declaration()
+///     .configuration_declaration()?
 ///     .expect("this mod declares settings");
 /// let resolved = LayeredConfiguration::resolve(declaration, None, None)?;
 /// ledger.configure(&resolved)?;
@@ -497,12 +497,18 @@ impl Mod for WaystoneLedger {
     }
 
     /// Hands the host the declaration the claims above came from, model included.
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        Some(Self::declaration())
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        Ok(Some(Self::declaration()))
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        ConfigurationDeclaration::parse(SETTINGS).ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        ConfigurationDeclaration::parse(SETTINGS)
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     /// Reads the settings in force.
@@ -552,12 +558,12 @@ impl Mod for WaystoneLedger {
         Ok(())
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        Some(Self::saved_versions())
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        Ok(Some(Self::saved_versions()))
     }
 
-    fn saved_data_migrations(&self) -> Option<MigrationChain> {
-        Some(Self::migrations())
+    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
+        Ok(Some(Self::migrations()))
     }
 
     /// Crosses the steps the plan names and then reads the ledger.
@@ -737,6 +743,7 @@ mod tests {
         let mut ledger = WaystoneLedger::new(side);
         let declaration = ledger
             .configuration_declaration()
+            .expect("valid configuration declaration")
             .expect("this mod declares settings");
         let resolved =
             LayeredConfiguration::resolve(declaration, None, None).expect("nothing to layer");
@@ -927,6 +934,7 @@ mod tests {
         let mut ledger = WaystoneLedger::new(Side::DedicatedServer);
         let declaration = ledger
             .configuration_declaration()
+            .expect("valid configuration declaration")
             .expect("this mod declares settings");
         let resolved = LayeredConfiguration::resolve(declaration, Some(&pack), None)
             .expect("the pack states declared keys");
@@ -953,6 +961,7 @@ mod tests {
         let mut ledger = WaystoneLedger::new(Side::IntegratedServer);
         let declaration = ledger
             .configuration_declaration()
+            .expect("valid configuration declaration")
             .expect("this mod declares settings");
         let resolved =
             LayeredConfiguration::resolve(declaration, Some(&pack), None).expect("a declared key");
@@ -986,6 +995,7 @@ mod tests {
         let mut strict = WaystoneLedger::new(Side::IntegratedServer);
         let declaration = strict
             .configuration_declaration()
+            .expect("valid configuration declaration")
             .expect("this mod declares settings");
         let resolved =
             LayeredConfiguration::resolve(declaration, Some(&pack), None).expect("a declared key");
@@ -1155,7 +1165,7 @@ mod tests {
             );
         }
 
-        let mut trailing = bytes.clone();
+        let mut trailing = bytes;
         trailing.push(0);
         assert!(matches!(
             decode::<LedgerSummary>(&trailing),

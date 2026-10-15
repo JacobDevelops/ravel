@@ -25,9 +25,10 @@ impl ServiceOrder {
 
 /// Opens services in lexicographically smallest provider-before-consumer order.
 ///
-/// Only mods on the running side participate; directories contain already-started providers.
+/// Only mods on this side participate; directories contain providers whose services were opened earlier.
 /// Present optional services add dependency edges; absent ones do not refuse the set.
 /// A refusal stops opening services, and the caller must not start the set.
+/// The loader calls this after registration and before entering `running`.
 ///
 /// # Errors
 ///
@@ -84,7 +85,13 @@ fn declared(
         if !loads_here {
             continue;
         }
-        let Some(declaration) = host.service_declaration() else {
+        let Some(declaration) =
+            host.service_declaration()
+                .map_err(|source| ServiceRefused::Consumer {
+                    mod_id: host.id().clone(),
+                    source,
+                })?
+        else {
             continue;
         };
         if declaration.owner() != host.id() {
@@ -318,6 +325,7 @@ mod tests {
         answered: Vec<ServiceId>,
         reached: Vec<String>,
         refuses: bool,
+        refuses_declaration: bool,
     }
 
     impl Wired {
@@ -333,6 +341,7 @@ mod tests {
                 answered: Vec::new(),
                 reached: Vec::new(),
                 refuses: false,
+                refuses_declaration: false,
             }
         }
 
@@ -358,8 +367,14 @@ mod tests {
             Ok(())
         }
 
-        fn service_declaration(&self) -> Option<ServiceDeclaration> {
-            Some(self.declaration.clone())
+        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+            if self.refuses_declaration {
+                return Err(HostError::Unsupported {
+                    mod_id: self.id.clone(),
+                    state: LifecycleState::Constructed,
+                });
+            }
+            Ok(Some(self.declaration.clone()))
         }
 
         fn answer_service(
@@ -405,6 +420,24 @@ mod tests {
 
     fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan")
+    }
+
+    #[test]
+    fn service_declaration_refusal_is_not_absence() {
+        let mut host = Wired::new("refusing_mod", &[], &[]);
+        host.refuses_declaration = true;
+        let machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
+        assert_eq!(
+            open_services(&machine, &mut [&mut host]),
+            Err(ServiceRefused::Consumer {
+                mod_id: id("refusing_mod"),
+                source: HostError::Unsupported {
+                    mod_id: id("refusing_mod"),
+                    state: LifecycleState::Constructed,
+                },
+            })
+        );
+        assert_eq!(host.reached, Vec::<String>::new());
     }
 
     #[test]
@@ -538,7 +571,7 @@ mod tests {
             }
         );
         assert!(refusal.to_string().contains("absent:prices"), "{refusal}");
-        assert_eq!(consumer.reached, [] as [std::string::String; 0]);
+        assert_eq!(consumer.reached, Vec::<String>::new());
     }
 
     #[test]
@@ -619,13 +652,15 @@ mod tests {
                 Ok(())
             }
 
-            fn service_declaration(&self) -> Option<ServiceDeclaration> {
-                ServiceDeclaration::new(
-                    self.id.clone(),
-                    Vec::new(),
-                    vec![service("warehouse", "prices")],
-                )
-                .ok()
+            fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+                Ok(Some(
+                    ServiceDeclaration::new(
+                        self.id.clone(),
+                        Vec::new(),
+                        vec![service("warehouse", "prices")],
+                    )
+                    .expect("valid service declaration"),
+                ))
             }
 
             fn use_services(
@@ -733,8 +768,8 @@ mod tests {
             Ok(())
         }
 
-        fn service_declaration(&self) -> Option<ServiceDeclaration> {
-            Some(self.declaration.clone())
+        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+            Ok(Some(self.declaration.clone()))
         }
 
         fn answer_service(
@@ -795,8 +830,8 @@ mod tests {
             Ok(())
         }
 
-        fn service_declaration(&self) -> Option<ServiceDeclaration> {
-            Some(self.declaration.clone())
+        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+            Ok(Some(self.declaration.clone()))
         }
 
         fn answer_service(
@@ -847,7 +882,7 @@ mod tests {
 
         assert_eq!(opened.order(), [id("consumer")]);
         assert_eq!(consumer.absent, [service("absent", "prices")]);
-        assert_eq!(consumer.reached, [] as [std::string::String; 0]);
+        assert_eq!(consumer.reached, Vec::<String>::new());
     }
 
     #[test]

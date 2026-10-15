@@ -108,7 +108,10 @@ pub fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, Fi
         }
     };
 
-    let document = ValueDocument::parse(&text).map_err(FileError::Document)?;
+    let document = ValueDocument::parse(&text).map_err(|source| FileError::Document {
+        path: file.to_owned(),
+        source,
+    })?;
     if &document.owner != owner {
         return Err(FileError::Owner {
             named: owner.to_string(),
@@ -141,7 +144,7 @@ pub fn write(game_directory: &Path, document: &ValueDocument) -> Result<(), File
     text.push('\n');
     stage(&staging, &file, &text).inspect_err(|_| {
         // Cleanup is best-effort; preserve the original write failure.
-        let _ = fs::remove_file(&staging);
+        drop(fs::remove_file(&staging));
     })
 }
 
@@ -160,7 +163,12 @@ pub enum FileError {
     /// The file exists but could not be read, or could not be written.
     Io(String),
     /// The file is not a document this crate accepts.
-    Document(DocumentError),
+    Document {
+        /// The rejected document's location.
+        path: PathBuf,
+        /// The document validation failure.
+        source: DocumentError,
+    },
     /// The file's own name is not a mod id, so it states nobody's values.
     Name {
         /// The file name, which is the whole of what is wrong with it.
@@ -179,7 +187,9 @@ impl fmt::Display for FileError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(detail) => formatter.write_str(detail),
-            Self::Document(error) => write!(formatter, "{error}"),
+            Self::Document { path, source } => {
+                write!(formatter, "cannot parse `{}`: {source}", path.display())
+            }
             Self::Name { file } => write!(
                 formatter,
                 "`{file}` is named for no mod, and a values file is named for its owner"
@@ -192,7 +202,14 @@ impl fmt::Display for FileError {
     }
 }
 
-impl std::error::Error for FileError {}
+impl std::error::Error for FileError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Document { source, .. } => Some(source),
+            Self::Io(_) | Self::Name { .. } | Self::Owner { .. } => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -208,7 +225,11 @@ mod tests {
     fn directory(name: &str) -> std::path::PathBuf {
         let directory =
             std::env::temp_dir().join(format!("ravel-config-file-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&directory);
+        match std::fs::remove_dir_all(&directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("remove stale test directory: {error}"),
+        }
         std::fs::create_dir_all(&directory).expect("a writable temporary directory");
         directory
     }
@@ -290,12 +311,28 @@ mod tests {
     }
 
     #[test]
-    fn a_file_that_is_not_a_document_is_refused_rather_than_treated_as_empty() {
-        let game = directory("malformed");
+    fn configuration_parse_error_retains_path_and_source() {
+        let game = directory("parse-context");
+        let file = path(&game, &owner());
         std::fs::create_dir_all(game.join("config")).expect("a writable config directory");
-        std::fs::write(path(&game, &owner()), "{ not json").expect("the file should be writable");
+        std::fs::write(&file, "{ not json").expect("the file should be writable");
+        let error = read(&game, &owner()).expect_err("malformed configuration must fail");
+        let source = ValueDocument::parse("{ not json").expect_err("malformed document");
+        assert_eq!(
+            error,
+            FileError::Document {
+                path: file.clone(),
+                source: source.clone(),
+            }
+        );
 
-        assert!(matches!(read(&game, &owner()), Err(FileError::Document(_))));
+        assert!(error.to_string().contains(&file.display().to_string()));
+        assert_eq!(
+            std::error::Error::source(&error)
+                .expect("the document error remains the source")
+                .to_string(),
+            source.to_string()
+        );
     }
 
     #[test]

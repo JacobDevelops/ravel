@@ -30,6 +30,7 @@
 
 use std::collections::BTreeMap;
 
+use num_traits::ToPrimitive;
 use ravel_sdk::{JsonValue, Side};
 
 use crate::colour::Colour;
@@ -638,7 +639,11 @@ fn flatten(lines: &JsonValue) -> Result<Vec<f32>, OutlineError> {
             }
             for value in point {
                 let number = value.as_f64().ok_or(OutlineError::BadSegment)?;
-                flat.push(num_traits::cast::AsPrimitive::<f32>::as_(number));
+                flat.push(
+                    number
+                        .to_f32()
+                        .expect("float narrowing includes infinities and NaN"),
+                );
             }
         }
     }

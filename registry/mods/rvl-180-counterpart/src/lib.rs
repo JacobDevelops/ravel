@@ -308,8 +308,8 @@ impl Mod for Shared {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.as_ref().ok().cloned()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        self.declaration.clone().map(Some)
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
@@ -434,6 +434,7 @@ mod tests {
         let shared = Shared::new(Side::DedicatedServer);
         let declaration = shared
             .content_declaration()
+            .expect("the content declaration is valid")
             .expect("the package declares content");
 
         assert_eq!(declaration.tags().count(), TAG_COUNT);
@@ -487,6 +488,7 @@ mod tests {
 
         let declaration = shared
             .content_declaration()
+            .expect("the content declaration is valid")
             .expect("the package declares content");
         assert_eq!(declaration.tag_members(&whole).len(), 17);
         assert_eq!(declaration.tag_members(&part).len(), 2);

@@ -104,12 +104,12 @@ where
 /// # Errors
 ///
 /// Returns an error when the JVM refuses to hand over the characters.
-pub(crate) fn text(env: &mut Env<'_>, value: &JString<'_>) -> Result<String, HookError> {
+pub(crate) fn text(env: &Env<'_>, value: &JString<'_>) -> Result<String, HookError> {
     Ok(value.try_to_string(env)?)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use ravel_minecraft::{HookValue, JavaHandle};
 
     use super::HookError;

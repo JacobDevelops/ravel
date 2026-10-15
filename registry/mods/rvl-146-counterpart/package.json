@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "5e21f02415fc68f7b61115f955c298d30dba781bca847ae364611b85eb106578"
+        "sha256": "4f716f3b5512ae34f1e718e100ec6e230080cdb12a3b6d93b9ee1edd4329b8cc"
       },
       {
         "path": "aliases.json",
@@ -55,11 +55,11 @@
       },
       {
         "path": "src/colour.rs",
-        "sha256": "7cc2ef971def7b311b4d9c43b24e88c1463eda70ec4ff4158fea5e34f74fc874"
+        "sha256": "a0e0ae49b6640ad015bb65cbae68344181092807bfac9e795821595a18733b10"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "b74e014484b62204f3abf7325411d5fb5ba212044715a9a3b53efc918323f79f"
+        "sha256": "95888073cda22f4e3f49191a7c32e7deda62967547d32738ba6f1a951d6265b3"
       },
       {
         "path": "src/highlights.rs",
@@ -67,7 +67,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "2e982d10944735e91cde97a2b8368acd036420747e4075d63505cee4fe456f0d"
+        "sha256": "387bbef8138993506c334c3adc8489bd402d64edcb8770681495fb34490fa8d3"
       },
       {
         "path": "src/menus.rs",
@@ -79,7 +79,7 @@
       },
       {
         "path": "src/quantity.rs",
-        "sha256": "5905f48faeedcc218d1621e47639dcbbcb0640f271148ef74a55d4ec80ee8150"
+        "sha256": "96f8c5a529c7259b1b065154cca3c93d62b9183803a569c72149179bde9e5b97"
       },
       {
         "path": "src/recipes.rs",
@@ -87,19 +87,19 @@
       },
       {
         "path": "src/registration.rs",
-        "sha256": "e03548c487ca9e9a0492f6e6f69c32eda1463aa4d3c9d66bc7a69f2c48fa1947"
+        "sha256": "b363a787358c7c6aab8ee1541d470169abe3cee0cdfd71c15ba73bdb062f4a70"
       },
       {
         "path": "src/shapes.rs",
-        "sha256": "790c74ce8bf5097a6086f2725eb6b3f26e6a4d2baf54f88cf71a1e33bb06391e"
+        "sha256": "475d781d6df919f2a68151d9f9fed9f7f8c52fd285a32b687d34962d8c22d159"
       },
       {
         "path": "src/tools.rs",
-        "sha256": "be3bee861b7dc7bdd857398358a8a04aae83c6eac8b9929d162481474e213e45"
+        "sha256": "fe92e83c43bb507c72bb9896aba0adc78fb14665a921dfe99a608657f233d7a7"
       },
       {
         "path": "src/transport.rs",
-        "sha256": "36285e4ca312b5d9a5ca5252c456c4aae2e39fc3ad128fd84dd8e82a1d5a1a51"
+        "sha256": "2c47b41f646fcf97a816bb0626964fa45aa009100eef62b9cb6c2bc5df110163"
       }
     ]
   },

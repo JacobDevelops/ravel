@@ -203,7 +203,7 @@ impl fmt::Display for ServiceDeclarationError {
 impl std::error::Error for ServiceDeclarationError {}
 
 /// A service call with JSON arguments, independent of the provider's Rust types.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServiceRequest {
     /// The service being called.
     pub id: ServiceId,
@@ -220,7 +220,7 @@ impl ServiceRequest {
 }
 
 /// What a service answered.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServiceResponse(Value);
 
 impl ServiceResponse {
@@ -439,8 +439,8 @@ mod tests {
         let declaration = ServiceDeclaration::with_optional(
             id("consumer"),
             [],
-            std::slice::from_ref(&clock).to_vec(),
-            std::slice::from_ref(&prices).to_vec(),
+            [clock.clone()],
+            [prices.clone()],
         )
         .expect("a legal declaration");
 

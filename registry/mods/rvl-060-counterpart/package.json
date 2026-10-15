@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "b779f2306d1edef9368be6127c711a4c7adb9060a02f46708b701983c3709460"
+        "sha256": "3352e50e30d3bba0857752c66777d568e3d5bb91bf9e9bd415a79615f1869a34"
       },
       {
         "path": "aliases.json",
@@ -55,15 +55,15 @@
       },
       {
         "path": "src/channel.rs",
-        "sha256": "5014c43ddc023f4388373f14b78f1e9da59ba0ad0e9a39bf6d49a9a13461db07"
+        "sha256": "25f917b98da951e1c5165921b1b7513951938bdf1f9c4d0d00efc3331286be22"
       },
       {
         "path": "src/colour.rs",
-        "sha256": "bac14dc5b89ffea24e8d8f3bd701824e17168723f74ae16ae1c7b54208a798b9"
+        "sha256": "a34a2303f4460b883f7e9f26428df609b52468bc62e4bb248f8d6c1388307da6"
       },
       {
         "path": "src/data.rs",
-        "sha256": "669e249acd395165ea10ddd6c2dd1710007e41d9161ce4394ddc7dc8c057fd1c"
+        "sha256": "b3a8b5f38d792342ea1ad6b4763ba9f7f66ce0009a00ad1a9c21fab4e24b44dc"
       },
       {
         "path": "src/declaration.rs",
@@ -71,15 +71,15 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "e652783011161e5123b19608b7f76ab77dea55f4856062d863d0d1dc5e3736fc"
+        "sha256": "9536ebf45849a21293c61cd2270a34f9580a3aa43429fa97f777776948136f8e"
       },
       {
         "path": "src/fluids.rs",
-        "sha256": "b31781d3cd433a5f0e99fbf555beba8fe1c57fa90b1e0776c3cd29902c7d19d7"
+        "sha256": "bd2c1fcb5f8b7f4f90ea4e8035524b4592b6c8ebc8c0e69c05191d275828a148"
       },
       {
         "path": "src/highlights.rs",
-        "sha256": "18cb67021a074678a15c07542faa6438bf4ca576f230500ef7cea68fd80a99a5"
+        "sha256": "d41de9521c62268758562600c1a9d8e19dd039bc330a6f2e481344d24661e51d"
       },
       {
         "path": "src/lib.rs",
@@ -87,27 +87,27 @@
       },
       {
         "path": "src/matching.rs",
-        "sha256": "1a1e85b966a9271af3b4dad08aaa3dca8f127280d0efe3ddc7d71073a4682fc3"
+        "sha256": "9af8ecb9abdc09698c01b020f3db0fdcfe79ee2d595ee35eef82ab79a943796d"
       },
       {
         "path": "src/presentation.rs",
-        "sha256": "876883f22cb2c5c7e08d405675ba8f5449cbb8efe3f6e210a1bac9e13d7ce5c1"
+        "sha256": "69697e945909751e90753a7367d8d23936718a6a1ba6eb0eecc1f2cf3cabbcf7"
       },
       {
         "path": "src/shapes.rs",
-        "sha256": "2ee27e51c883c3a85753b5615d151c6080f0e304e775683a75a670c8407fa59b"
+        "sha256": "bbc836067044f41e950849ca893f1e2d6a6f99eb85567277d4fa7bcc412d797e"
       },
       {
         "path": "src/storage.rs",
-        "sha256": "4204d857ee608a7a7014f24710906c45a956fd8fb8cdfb7fc0d461ad191ef352"
+        "sha256": "f383c77cb536512d735db983eaa230eb0f197f076486a2a5155601da78aae582"
       },
       {
         "path": "src/transport.rs",
-        "sha256": "61524b5f8506b73132168dfc1166a510d910118d77ec2b8e0df1018114f66e27"
+        "sha256": "6e3ca900a265d9243dff9690165a4d588aec0b305be3c45fbc0e866babe12eaa"
       },
       {
         "path": "src/validators.rs",
-        "sha256": "c2277a0867835eab54a693a1e4061fa4268b9146b12b34373df83a808ec99957"
+        "sha256": "b27b7d5d02c87303b58cb0002c8fdaa4299224de71814dcda5a6990f9c12da09"
       }
     ]
   },

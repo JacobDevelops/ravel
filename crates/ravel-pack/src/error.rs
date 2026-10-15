@@ -155,34 +155,19 @@ pub enum ClosureError {
 impl fmt::Display for ClosureError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MemberMissing { member } => write!(
-                formatter,
-                "this pack pins `{member}` and no manifest for it was supplied, so nothing could \
-                 check what it needs"
-            ),
-            Self::UnpinnedPackage { package } => write!(
-                formatter,
-                "`{package}` is installed and this pack pins no version of it; a pack decides its \
-                 own contents"
-            ),
+            Self::MemberMissing { member } => fmt_member_missing(formatter, member),
+            Self::UnpinnedPackage { package } => fmt_unpinned_package(formatter, package),
             Self::PinMismatch {
                 member,
                 pinned,
                 supplied,
-            } => write!(
-                formatter,
-                "this pack pins `{member}` at `{pinned}` and `{supplied}` was supplied"
-            ),
+            } => fmt_pin_mismatch(formatter, member, pinned, supplied),
             Self::Dependency { side, source } => write!(
                 formatter,
                 "this pack does not resolve on `{}`: {source}",
                 side.name()
             ),
-            Self::ContentMissing { member } => write!(
-                formatter,
-                "`{member}` is pinned and declared no content, so nothing could check its registry \
-                 entries; a mod that contributes nothing declares an empty declaration"
-            ),
+            Self::ContentMissing { member } => fmt_content_missing(formatter, member),
             Self::ContentUnpinned { owner } => write!(
                 formatter,
                 "`{owner}` declared content and this pack pins no version of it"
@@ -206,11 +191,7 @@ impl fmt::Display for ClosureError {
                 path,
                 first,
                 second,
-            } => write!(
-                formatter,
-                "`{first}` and `{second}` would both write `{path}`; a pack settles that by \
-                 supplying the file itself"
-            ),
+            } => fmt_path_contested(formatter, path, first, second),
             Self::SuppliedTwice { path } => write!(
                 formatter,
                 "this pack supplies `{path}` twice, and one path holds one file"
@@ -234,11 +215,7 @@ impl fmt::Display for ClosureError {
                 formatter,
                 "`{state}` can never be reached: every route to it needs a step that needs it"
             ),
-            Self::SettingsUndeclared { owner } => write!(
-                formatter,
-                "this pack states settings for `{owner}` and `{owner}` declares none, so nothing \
-                 could say what they mean"
-            ),
+            Self::SettingsUndeclared { owner } => fmt_settings_undeclared(formatter, owner),
             Self::Settings { owner, source } => write!(
                 formatter,
                 "this pack's settings for `{owner}` are ones `{owner}` refuses: {source}"
@@ -252,7 +229,79 @@ impl std::error::Error for ClosureError {
         match self {
             Self::Dependency { source, .. } => Some(source.as_ref()),
             Self::Settings { source, .. } => Some(source),
-            _ => None,
+            Self::MemberMissing { .. }
+            | Self::UnpinnedPackage { .. }
+            | Self::PinMismatch { .. }
+            | Self::ContentMissing { .. }
+            | Self::ContentUnpinned { .. }
+            | Self::ContentTwice { .. }
+            | Self::EntryContested { .. }
+            | Self::TagMember { .. }
+            | Self::Gate { .. }
+            | Self::PathContested { .. }
+            | Self::SuppliedTwice { .. }
+            | Self::ReservedPath { .. }
+            | Self::ResourceMissing { .. }
+            | Self::PrerequisiteMissing { .. }
+            | Self::StateUnreachable { .. }
+            | Self::SettingsUndeclared { .. } => None,
         }
     }
+}
+
+fn fmt_member_missing(formatter: &mut fmt::Formatter<'_>, member: &ModId) -> fmt::Result {
+    write!(
+        formatter,
+        "this pack pins `{member}` and no manifest for it was supplied, so nothing could \
+         check what it needs"
+    )
+}
+
+fn fmt_unpinned_package(formatter: &mut fmt::Formatter<'_>, package: &ModId) -> fmt::Result {
+    write!(
+        formatter,
+        "`{package}` is installed and this pack pins no version of it; a pack decides its \
+         own contents"
+    )
+}
+
+fn fmt_content_missing(formatter: &mut fmt::Formatter<'_>, member: &ModId) -> fmt::Result {
+    write!(
+        formatter,
+        "`{member}` is pinned and declared no content, so nothing could check its registry \
+         entries; a mod that contributes nothing declares an empty declaration"
+    )
+}
+
+fn fmt_path_contested(
+    formatter: &mut fmt::Formatter<'_>,
+    path: &RelativePath,
+    first: &ModId,
+    second: &ModId,
+) -> fmt::Result {
+    write!(
+        formatter,
+        "`{first}` and `{second}` would both write `{path}`; a pack settles that by \
+         supplying the file itself"
+    )
+}
+
+fn fmt_settings_undeclared(formatter: &mut fmt::Formatter<'_>, owner: &ModId) -> fmt::Result {
+    write!(
+        formatter,
+        "this pack states settings for `{owner}` and `{owner}` declares none, so nothing \
+         could say what they mean"
+    )
+}
+
+fn fmt_pin_mismatch(
+    formatter: &mut fmt::Formatter<'_>,
+    member: &ModId,
+    pinned: &Version,
+    supplied: &Version,
+) -> fmt::Result {
+    write!(
+        formatter,
+        "this pack pins `{member}` at `{pinned}` and `{supplied}` was supplied"
+    )
 }

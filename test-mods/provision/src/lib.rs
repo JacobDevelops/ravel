@@ -165,7 +165,7 @@ mod tests {
         );
         assert_eq!(
             provision.providers_of("a_library_nobody_declares"),
-            [] as [&ravel_sdk::ModId; 0]
+            Vec::<&ModId>::new()
         );
     }
 

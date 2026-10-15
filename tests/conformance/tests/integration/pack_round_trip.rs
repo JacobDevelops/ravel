@@ -30,7 +30,9 @@ fn directory(name: &str) -> PathBuf {
         "ravel-pack-round-trip-{}-{name}",
         std::process::id()
     ));
-    let _ = std::fs::remove_dir_all(&directory);
+    if directory.exists() {
+        std::fs::remove_dir_all(&directory).expect("a stale directory is removable");
+    }
     std::fs::create_dir_all(&directory).expect("a writable temporary directory");
     directory
 }
@@ -101,8 +103,8 @@ impl HostMod for Settled {
         Ok(())
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        Some(declaration(self.id.as_str()))
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
+        Ok(Some(declaration(self.id.as_str())))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
@@ -125,7 +127,7 @@ fn members() -> (Vec<Member>, Vec<Applied>) {
             host: Box::new(Settled {
                 id: id(owner),
                 applied: Arc::clone(&record),
-            }) as Box<dyn HostMod>,
+            }),
         });
         applied.push(record);
     }

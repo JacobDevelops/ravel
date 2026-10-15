@@ -169,7 +169,11 @@ fn bound(value: Option<f64>) -> String {
 fn text_of(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
-        other => other.to_string(),
+        other @ (Value::Null
+        | Value::Bool(_)
+        | Value::Number(_)
+        | Value::Array(_)
+        | Value::Object(_)) => other.to_string(),
     }
 }
 
@@ -197,7 +201,7 @@ fn widget(resolved: &ResolvedSetting<'_>) -> &'static str {
         {
             "slider"
         }
-        _ => "text",
+        Some(ValueKind::Integer | ValueKind::Number | ValueKind::String) | None => "text",
     }
 }
 

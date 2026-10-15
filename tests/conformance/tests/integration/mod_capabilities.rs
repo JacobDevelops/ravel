@@ -215,10 +215,7 @@ fn a_client_tick_reaches_nobody_on_a_dedicated_server_and_a_server_tick_reaches_
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut commands, &mut events, &mut resources];
     let machine = running(three_mod_plan(), Side::DedicatedServer, &mut mods);
 
-    assert_eq!(
-        machine.audience(GameEvent::ClientTick),
-        [] as [ravel_core::ModId; 0]
-    );
+    assert_eq!(machine.audience(GameEvent::ClientTick), Vec::<ModId>::new());
     let ignored = broadcast(&machine, &mut mods, GameEvent::ClientTick).expect("an empty audience");
     assert_eq!(ignored.received(), []);
 
@@ -565,7 +562,7 @@ fn calls_for(pack_size: usize, ticks: usize) -> usize {
         .collect();
     let mut mods: Vec<&mut dyn HostMod> = hosts
         .iter_mut()
-        .map(|host| host as &mut dyn HostMod)
+        .map(|host| -> &mut dyn HostMod { host })
         .collect();
 
     let plan = names

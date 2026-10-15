@@ -245,7 +245,7 @@ fn reported_codes(label: &str, source: &str) -> BTreeSet<String> {
         .arg(&file)
         .output()
         .expect("rustc runs inside the devenv shell");
-    let _ = fs::remove_dir_all(&directory);
+    fs::remove_dir_all(&directory).expect("the snippet directory is removable");
 
     assert!(
         !output.status.success(),
@@ -591,7 +591,7 @@ fn path_roots(code: &str) -> Vec<String> {
                     roots.push(code[from..index].to_owned());
                 }
             }
-            _ => {}
+            (true, Some(_)) | (false, None) => {}
         }
     }
     roots

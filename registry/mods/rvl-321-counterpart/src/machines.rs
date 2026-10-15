@@ -138,7 +138,14 @@ impl Upgrade {
     /// The operation time a base is reduced to, truncating toward zero.
     #[must_use]
     pub fn operation_ticks(self, base: u32) -> u32 {
-        num_traits::cast::AsPrimitive::<u32>::as_(f64::from(base) * self.operation)
+        let ticks = (f64::from(base) * self.operation).trunc();
+        num_traits::ToPrimitive::to_u32(&ticks).unwrap_or_else(|| {
+            if ticks.is_nan() || ticks < 0.0 {
+                0
+            } else {
+                u32::MAX
+            }
+        })
     }
 
     /// The fuel usage a base is raised to.
@@ -150,7 +157,8 @@ impl Upgrade {
     /// The energy capacity this upgrade gives a machine.
     #[must_use]
     pub const fn capacity(self) -> u64 {
-        BASE_CAPACITY * self.capacity as u64
+        let [first, second, third, fourth] = self.capacity.to_le_bytes();
+        BASE_CAPACITY * u64::from_le_bytes([first, second, third, fourth, 0, 0, 0, 0])
     }
 }
 
@@ -208,7 +216,7 @@ pub const SUMMONING: Bases = Bases {
 pub const SCAN_COST: u32 = 10;
 
 /// A machine's fuel and energy store.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Energy {
     /// How much energy is held.
     pub amount: u64,
@@ -575,7 +583,7 @@ impl Sweep {
         let side = self.side();
         let index = i32::try_from(index % self.area()).unwrap_or(0);
         let x = index % side - self.range;
-        let z = index / side - self.range;
+        let z = index.div_euclid(side) - self.range;
         let (dx, dz) = self.facing.map(x, z);
         let centre = self.centre();
         (centre.0 + dx, centre.1, centre.2 + dz)
@@ -707,7 +715,7 @@ pub const fn crowded(nearby: usize) -> bool {
 /// The square a summoning draws a position from.
 #[must_use]
 pub const fn summoning_side() -> u32 {
-    (2 * SUMMONING_REACH + 1) as u32
+    (2 * SUMMONING_REACH + 1).unsigned_abs()
 }
 
 /// Picks a position for a summoned creature.
@@ -726,7 +734,7 @@ pub fn summoning_position(
     for _ in 0..SUMMONING_ATTEMPTS {
         let index = draw(side * side) % (side * side);
         let x = i32::try_from(index % side).unwrap_or(0) - reach;
-        let z = i32::try_from(index / side).unwrap_or(0) - reach;
+        let z = i32::try_from(index.div_euclid(side)).unwrap_or(0) - reach;
         let position = (origin.0 + x, origin.1, origin.2 + z);
         if unobstructed(position) {
             return Some(position);
@@ -779,7 +787,7 @@ pub fn accepts_modifier(
 /// A bench slot is not a target slot: the modifier it holds names the slot it
 /// is written into, so an empty bench slot has to name the target slot it last
 /// wrote or there is nothing to remove.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Offer {
     /// A modifier to write, and the target slot it goes in.
     Write(crate::registries::Modifier, usize),
@@ -845,7 +853,7 @@ pub fn fit(target: &Target, held: &[Slotted], offers: [Offer; 2]) -> Fitted {
 }
 
 /// What a powered machine writes into its saved payload.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Persisted {
     /// The progress toward the current operation.
     pub progress: u32,
@@ -945,6 +953,33 @@ mod tests {
         assert_eq!(UPGRADES[3].operation_ticks(100), 12);
         assert_eq!(UPGRADES[4].operation_ticks(100), 2);
         assert_eq!(UPGRADES[5].operation_ticks(100), 0);
+    }
+
+    #[test]
+    fn floating_counts_truncate_and_saturate_at_unsigned_bounds() {
+        for value in [f64::NAN, f64::NEG_INFINITY, -1.0, -0.0, 0.0, 0.999] {
+            assert_eq!(
+                Upgrade {
+                    operation: value,
+                    ..UPGRADES[0]
+                }
+                .operation_ticks(1),
+                0
+            );
+        }
+        let ticks = |operation| {
+            Upgrade {
+                operation,
+                ..UPGRADES[0]
+            }
+            .operation_ticks(1)
+        };
+        assert_eq!(ticks(1.0), 1);
+        assert_eq!(ticks(1.999), 1);
+        assert_eq!(ticks(4_294_967_294.75), u32::MAX - 1);
+        for value in [f64::from(u32::MAX), 4_294_967_296.0, f64::INFINITY] {
+            assert_eq!(ticks(value), u32::MAX);
+        }
     }
 
     #[test]

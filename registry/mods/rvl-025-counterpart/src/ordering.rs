@@ -193,10 +193,10 @@ impl Ordering {
     fn run_ranks(&mut self, dimension: &str, run: &mut dyn FnMut(&Entry) -> Reenqueued) -> Drained {
         let mut drained = Drained::default();
         for rank in 0..RANKS {
-            let taken = match self.queues.get_mut(dimension) {
-                Some(ranks) => std::mem::take(&mut ranks[rank]),
-                None => Vec::new(),
-            };
+            let taken = self
+                .queues
+                .get_mut(dimension)
+                .map_or_else(Vec::new, |ranks| std::mem::take(&mut ranks[rank]));
             for entry in taken {
                 let enqueued = run(&entry);
                 drained.ran.push(entry);

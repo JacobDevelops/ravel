@@ -238,7 +238,10 @@ impl AudioError {
     pub fn unknown_entry(&self) -> &str {
         match self {
             Self::UnknownEntry { name } => name,
-            _ => "",
+            Self::Name { .. }
+            | Self::DuplicateEntry { .. }
+            | Self::UnknownEvent { .. }
+            | Self::WrongSide { .. } => "",
         }
     }
 
@@ -247,7 +250,10 @@ impl AudioError {
     pub const fn wrong_side(&self) -> Option<Side> {
         match self {
             Self::WrongSide { side, .. } => Some(*side),
-            _ => None,
+            Self::Name { .. }
+            | Self::DuplicateEntry { .. }
+            | Self::UnknownEntry { .. }
+            | Self::UnknownEvent { .. } => None,
         }
     }
 }
@@ -281,7 +287,10 @@ impl std::error::Error for AudioError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Name { source } => Some(source),
-            _ => None,
+            Self::DuplicateEntry { .. }
+            | Self::UnknownEntry { .. }
+            | Self::UnknownEvent { .. }
+            | Self::WrongSide { .. } => None,
         }
     }
 }

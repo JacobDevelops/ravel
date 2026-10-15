@@ -43,7 +43,7 @@ pub const STEP: &str = "underground_ores";
 pub const PLACEMENTS: [&str; 4] = ["count", "square_spread", "uniform_height", "biome_filter"];
 
 /// One deposit, as declared.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Deposit {
     /// The dimension it sits in.
     pub dimension: Dimension,
@@ -260,11 +260,11 @@ mod tests {
             },
             ..Settings::default()
         };
-        let generating: Vec<&Deposit> = DEPOSITS
+        let generating = DEPOSITS
             .iter()
             .filter(|deposit| deposit.generates(&settings))
-            .collect();
-        assert_eq!(generating.len(), 3);
+            .count();
+        assert_eq!(generating, 3);
     }
 
     #[test]

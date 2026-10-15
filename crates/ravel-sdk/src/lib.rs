@@ -321,7 +321,12 @@ mod tests {
     #[test]
     fn the_defaulted_methods_the_block_did_not_write_still_answer() {
         let example = Example::default();
-        assert!(example.saved_data_declaration().is_none());
+        assert!(
+            example
+                .saved_data_declaration()
+                .expect("valid declaration")
+                .is_none()
+        );
         assert!(
             example
                 .save_saved_data()

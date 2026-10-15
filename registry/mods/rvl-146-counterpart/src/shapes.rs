@@ -320,18 +320,19 @@ pub fn write_list(elements: &[Vec<u8>]) -> Result<Vec<u8>, WireRefused> {
 pub fn read_list(bytes: &[u8]) -> Result<Vec<Vec<u8>>, WireRefused> {
     let mut at = 0;
     let count = take_u32(bytes, &mut at)?;
-    if count as usize > MAX_LIST_ELEMENTS {
+    let count_index = usize::try_from(count).map_err(|_| WireRefused::TooManyElements(count))?;
+    if count_index > MAX_LIST_ELEMENTS {
         return Err(WireRefused::TooManyElements(count));
     }
-    let mut elements = Vec::with_capacity(count as usize);
+    let mut elements = Vec::with_capacity(count_index);
     for _ in 0..count {
         let length = take_u32(bytes, &mut at)?;
-        if length as usize > MAX_ELEMENT_BYTES {
+        let length_index =
+            usize::try_from(length).map_err(|_| WireRefused::ElementTooLong(length))?;
+        if length_index > MAX_ELEMENT_BYTES {
             return Err(WireRefused::ElementTooLong(length));
         }
-        let end = at
-            .checked_add(length as usize)
-            .ok_or(WireRefused::Truncated)?;
+        let end = at.checked_add(length_index).ok_or(WireRefused::Truncated)?;
         elements.push(bytes.get(at..end).ok_or(WireRefused::Truncated)?.to_vec());
         at = end;
     }
@@ -356,15 +357,15 @@ fn take_u32(bytes: &[u8], at: &mut usize) -> Result<u32, WireRefused> {
 /// Writes an optional value: a boolean, then the value when there is one.
 #[must_use]
 pub fn write_optional(value: Option<&[u8]>) -> Vec<u8> {
-    match value {
-        None => vec![0],
-        Some(present) => {
+    value.map_or_else(
+        || vec![0],
+        |present| {
             let mut bytes = Vec::with_capacity(present.len() + 1);
             bytes.push(1);
             bytes.extend_from_slice(present);
             bytes
-        }
-    }
+        },
+    )
 }
 
 /// Reads an optional value.

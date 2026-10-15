@@ -39,9 +39,9 @@ every refusal is decided before any mod runs.
 **Settings.** A mod that declares settings and never reads them is refused rather
 than ignored.
 
-**Services.** A provider starts before its consumer. A service nothing answers
-names the mod that wanted it and starts nothing. Mutual requirement is refused
-with both named.
+**Services.** Providers open before consumers, after registration and before any
+mod enters `Running`. A service nothing answers names the mod that wanted it and
+starts nothing. Mutual requirement is refused with both named.
 
 **Diagnostics.** No two refusals read the same way, and no published message names
 a filesystem path or a credential. A message your mod wrote is treated as

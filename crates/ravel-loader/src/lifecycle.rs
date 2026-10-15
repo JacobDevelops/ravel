@@ -488,12 +488,15 @@ impl LifecycleMachine {
     /// Returns [`LifecycleError::PartialStateRefused`] when a failure followed
     /// world mutation.
     pub fn request_save(&self) -> Result<(), LifecycleError> {
-        match &self.halted {
-            Some(mod_id) => Err(LifecycleError::PartialStateRefused {
+        self.halted.as_ref().map_or(Ok(()), |mod_id| {
+            Err(LifecycleError::PartialStateRefused {
                 mod_id: mod_id.clone(),
-            }),
-            None => Ok(()),
-        }
+            })
+        })
+    }
+
+    pub(crate) const fn halted_by(&self) -> Option<&ModId> {
+        self.halted.as_ref()
     }
 
     /// Snapshots set-wide facts before borrowing an individual mod.
@@ -1161,8 +1164,14 @@ mod tests {
         }
     }
 
-    fn every_refusal() -> Vec<(LifecycleError, &'static str)> {
-        vec![
+    fn every_refusal() -> impl Iterator<Item = (LifecycleError, &'static str)> {
+        transition_refusals()
+            .into_iter()
+            .chain(registration_and_world_refusals())
+    }
+
+    fn transition_refusals() -> [(LifecycleError, &'static str); 6] {
+        [
             (
                 LifecycleError::DuplicateIdentity {
                     mod_id: id("example_mod"),
@@ -1206,6 +1215,11 @@ mod tests {
                 "`example_mod` does not declare the `dedicated-server` side, so its code never \
                  loads here and it stays `resolved`",
             ),
+        ]
+    }
+
+    fn registration_and_world_refusals() -> [(LifecycleError, &'static str); 7] {
+        [
             (
                 LifecycleError::RegistrationBarrierOpen {
                     mod_id: id("first_mod"),
@@ -1289,7 +1303,17 @@ mod tests {
                 LifecycleError::ConflictingRegistryClaim { .. } => {
                     Some(FailureKind::ConflictingRegistryClaim)
                 }
-                _ => None,
+                LifecycleError::UnknownMod { .. }
+                | LifecycleError::IllegalTransition { .. }
+                | LifecycleError::AttributionRequired
+                | LifecycleError::Halted { .. }
+                | LifecycleError::RegistrationBarrierOpen { .. }
+                | LifecycleError::RegistrationBarrierClosed { .. }
+                | LifecycleError::RegistrationWindow { .. }
+                | LifecycleError::MismatchedContentBehaviour { .. }
+                | LifecycleError::WorldAccessBlocked { .. }
+                | LifecycleError::WorldAccessHalted { .. }
+                | LifecycleError::PartialStateRefused { .. } => None,
             };
             assert_eq!(
                 error.failure_kind(),
@@ -1300,7 +1324,7 @@ mod tests {
     }
 
     #[test]
-    fn a_refusal_reports_the_phase_it_names_rather_than_a_default() {
+    fn a_transition_refusal_reports_the_phase_it_names_rather_than_a_default() {
         for (error, expected) in [
             (
                 LifecycleError::IllegalTransition {
@@ -1341,6 +1365,14 @@ mod tests {
                 },
                 LifecycleState::Stopping,
             ),
+        ] {
+            assert_eq!(error.lifecycle_state(), expected, "{error:?}");
+        }
+    }
+
+    #[test]
+    fn a_set_refusal_reports_the_phase_it_names_rather_than_a_default() {
+        for (error, expected) in [
             (
                 LifecycleError::ConflictingRegistryClaim {
                     identifier: "shared:block".to_owned(),

@@ -135,11 +135,11 @@ pub enum Expression {
     /// Equal, comparing the two as text.
     StringEqual(Query, Literal),
     /// Both.
-    And(Box<Expression>, Box<Expression>),
+    And(Box<Self>, Box<Self>),
     /// Either.
-    Or(Box<Expression>, Box<Expression>),
+    Or(Box<Self>, Box<Self>),
     /// The negation.
-    Not(Box<Expression>),
+    Not(Box<Self>),
 }
 
 /// A literal on the right of a comparison.
@@ -294,7 +294,7 @@ impl Walked {
 }
 
 /// One result of an evaluation.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Match {
     /// Where in the document it was found.
     pub path: Vec<Segment>,
@@ -684,7 +684,7 @@ impl<'written> Parser<'written> {
             .find(|character: char| {
                 !character.is_ascii_digit() && character != '-' && character != '.'
             })
-            .unwrap_or(self.rest().len());
+            .unwrap_or_else(|| self.rest().len());
         let written = self.rest().get(..end).unwrap_or_default();
         match written.parse::<f64>() {
             Ok(number) if number.is_finite() => {
@@ -702,7 +702,7 @@ impl<'written> Parser<'written> {
         let end = self
             .rest()
             .find(|character: char| !character.is_ascii_alphanumeric() && character != '_')
-            .unwrap_or(self.rest().len());
+            .unwrap_or_else(|| self.rest().len());
         let name = self.rest().get(..end).unwrap_or_default().to_owned();
         self.at += end;
         name
@@ -773,33 +773,8 @@ fn apply(
             // panic here would be a worse answer than doing nothing.
             Step::Root => {}
             Step::Current => push(&mut next, found.clone())?,
-            Step::Parent => {
-                let mut path = found.path.clone();
-                path.pop();
-                if let Some(value) = at_path(document, &path) {
-                    push(
-                        &mut next,
-                        Match {
-                            path,
-                            value: value.clone(),
-                        },
-                    )?;
-                }
-            }
-            Step::Length => {
-                let length = match &found.value {
-                    JsonValue::Array(entries) => entries.len(),
-                    JsonValue::Object(entries) => entries.len(),
-                    _ => 0,
-                };
-                push(
-                    &mut next,
-                    Match {
-                        path: found.path.clone(),
-                        value: JsonValue::from(length),
-                    },
-                )?;
-            }
+            Step::Parent => apply_parent(found, document, &mut next)?,
+            Step::Length => apply_length(found, &mut next)?,
             Step::Child(name) | Step::BracketChild(name) => {
                 if let Some(value) = found.value.get(name) {
                     let mut path = found.path.clone();
@@ -814,22 +789,7 @@ fn apply(
                 }
             }
             Step::AllChildren => append_children(found, &mut next)?,
-            Step::Element(index) => {
-                if let JsonValue::Array(entries) = &found.value
-                    && let Some(resolved) = resolve(*index, entries.len())
-                    && let Some(value) = entries.get(resolved)
-                {
-                    let mut path = found.path.clone();
-                    path.push(Segment::Index(resolved));
-                    push(
-                        &mut next,
-                        Match {
-                            path,
-                            value: value.clone(),
-                        },
-                    )?;
-                }
-            }
+            Step::Element(index) => apply_element(found, *index, &mut next)?,
             Step::Slice(from, to) => append_slice(found, *from, *to, &mut next)?,
             Step::Union(branches) => {
                 for branch in branches {
@@ -855,6 +815,58 @@ fn apply(
         }
     }
     Ok(next)
+}
+
+fn apply_parent(
+    found: &Match,
+    document: &JsonValue,
+    next: &mut Vec<Match>,
+) -> Result<(), EvaluateError> {
+    let mut path = found.path.clone();
+    path.pop();
+    if let Some(value) = at_path(document, &path) {
+        push(
+            next,
+            Match {
+                path,
+                value: value.clone(),
+            },
+        )?;
+    }
+    Ok(())
+}
+
+fn apply_length(found: &Match, next: &mut Vec<Match>) -> Result<(), EvaluateError> {
+    let length = match &found.value {
+        JsonValue::Array(entries) => entries.len(),
+        JsonValue::Object(entries) => entries.len(),
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => 0,
+    };
+    push(
+        next,
+        Match {
+            path: found.path.clone(),
+            value: JsonValue::from(length),
+        },
+    )
+}
+
+fn apply_element(found: &Match, index: i64, next: &mut Vec<Match>) -> Result<(), EvaluateError> {
+    if let JsonValue::Array(entries) = &found.value
+        && let Some(resolved) = resolve(index, entries.len())
+        && let Some(value) = entries.get(resolved)
+    {
+        let mut path = found.path.clone();
+        path.push(Segment::Index(resolved));
+        push(
+            next,
+            Match {
+                path,
+                value: value.clone(),
+            },
+        )?;
+    }
+    Ok(())
 }
 
 fn append_children(found: &Match, next: &mut Vec<Match>) -> Result<(), EvaluateError> {
@@ -885,7 +897,7 @@ fn append_children(found: &Match, next: &mut Vec<Match>) -> Result<(), EvaluateE
                 )?;
             }
         }
-        _ => {}
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
     }
     Ok(())
 }
@@ -974,7 +986,11 @@ fn admits(
         Expression::StringEqual(query, literal) => compare(query, literal, &|value, literal| {
             let written = match value {
                 JsonValue::String(text) => text.clone(),
-                other => other.to_string(),
+                JsonValue::Null
+                | JsonValue::Bool(_)
+                | JsonValue::Number(_)
+                | JsonValue::Array(_)
+                | JsonValue::Object(_) => value.to_string(),
             };
             match literal {
                 Literal::Text(text) => &written == text,

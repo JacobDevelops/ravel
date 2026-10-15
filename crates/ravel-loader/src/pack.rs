@@ -274,7 +274,7 @@ impl std::error::Error for PackError {
 mod tests {
     #[test]
     fn the_pack_id_is_the_directory_the_folder_source_would_have_listed() {
-        assert_eq!(super::pack_id(), format!("file/{}", super::PACK_DIRECTORY));
+        assert_eq!(super::pack_id(), format!("file/{PACK_DIRECTORY}"));
     }
 
     use std::collections::BTreeSet;
@@ -296,7 +296,9 @@ mod tests {
 
     fn directory(name: &str) -> PathBuf {
         let at = std::env::temp_dir().join(format!("ravel-pack-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&at);
+        if at.exists() {
+            std::fs::remove_dir_all(&at).expect("a stale temporary directory is removable");
+        }
         std::fs::create_dir_all(&at).expect("a writable temporary directory");
         at
     }
@@ -315,10 +317,7 @@ mod tests {
             Ok(())
         }
 
-        fn content_declaration(&self) -> Option<ContentDeclaration> {
-            // Supplied paths only. What a declared entry adds to a pack is
-            // `ravel-data`'s to decide and its own tests' to hold; these are
-            // about which supplied file lands where.
+        fn content_declaration(&self) -> Result<Option<ContentDeclaration>, HostError> {
             let mut declaration = ContentDeclaration::new(self.id.clone());
             for (path, bytes) in &self.supplies {
                 declaration
@@ -328,21 +327,21 @@ mod tests {
                     )
                     .expect("each path is supplied once");
             }
-            Some(declaration)
+            Ok(Some(declaration))
         }
     }
 
     fn supplied(mods: &[(&str, &[(&str, &str)])]) -> Supplied {
         let hosts: Vec<Box<dyn HostMod>> = mods
             .iter()
-            .map(|(name, paths)| {
+            .map(|(name, paths)| -> Box<dyn HostMod> {
                 Box::new(Supplying {
                     id: id(name),
                     supplies: paths
                         .iter()
                         .map(|(path, bytes)| ((*path).to_owned(), (*bytes).to_owned()))
                         .collect(),
-                }) as Box<dyn HostMod>
+                })
             })
             .collect();
         let entries = mods
@@ -374,8 +373,8 @@ mod tests {
     fn tree(root: &std::path::Path) -> Vec<String> {
         fn walk(at: &std::path::Path, root: &std::path::Path, into: &mut Vec<String>) {
             let entries = std::fs::read_dir(at).expect("a readable directory");
-            for entry in entries.flatten() {
-                let path = entry.path();
+            for entry in entries {
+                let path = entry.expect("a readable directory entry").path();
                 if path.is_dir() {
                     walk(&path, root, into);
                 } else {
@@ -426,7 +425,8 @@ mod tests {
                 .expect("a supplied file is readable"),
             "{\"a\":1}"
         );
-        let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
+        std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"))
+            .expect("remove the temporary pack");
     }
 
     #[test]
@@ -447,7 +447,8 @@ mod tests {
             "skin",
             "the later mod supplies it"
         );
-        let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
+        std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"))
+            .expect("remove the temporary pack");
     }
 
     #[test]
@@ -463,7 +464,8 @@ mod tests {
             tree(&root),
             ["assets/other_mod/lang/en_us.json", "pack.mcmeta"]
         );
-        let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
+        std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"))
+            .expect("remove the temporary pack");
     }
 
     #[test]
@@ -490,7 +492,8 @@ mod tests {
         );
         assert_eq!(written.paths(), tree(&root));
         assert!(!root.join("assets").exists());
-        let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
+        std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"))
+            .expect("remove the temporary pack");
     }
 
     #[test]
@@ -501,7 +504,8 @@ mod tests {
         write_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
 
         assert_eq!(tree(&root), ["pack.mcmeta"]);
-        let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
+        std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"))
+            .expect("remove the temporary pack");
     }
 
     // Contents alone would not detect rewriting identical bytes; compare timestamps too.
@@ -551,7 +555,8 @@ mod tests {
             write_pack(&root, &changed, Half::Assets, METADATA).expect("the pack writes");
         assert!(replaced.changed(), "a set that differs replaces the tree");
         assert_ne!(timestamps(&root), before);
-        let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
+        std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"))
+            .expect("remove the temporary pack");
     }
 
     #[test]
@@ -569,7 +574,8 @@ mod tests {
             ["assets/first_mod/lang/en_us.json", "pack.mcmeta"]
         );
         assert!(!staged.exists(), "the staging directory is renamed away");
-        let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
+        std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"))
+            .expect("remove the temporary pack");
     }
 
     #[test]
@@ -586,6 +592,6 @@ mod tests {
             refused.to_string().contains("could not be written"),
             "{refused}"
         );
-        let _ = std::fs::remove_dir_all(at);
+        std::fs::remove_dir_all(at).expect("remove the temporary pack");
     }
 }

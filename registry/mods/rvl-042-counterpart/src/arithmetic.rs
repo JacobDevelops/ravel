@@ -5,7 +5,7 @@
 //! business, which is why a sweep here reports what it would harvest rather than
 //! harvesting anything.
 
-use num_traits::cast::AsPrimitive;
+use num_traits::ToPrimitive;
 
 use crate::inventory::Stack;
 
@@ -147,7 +147,8 @@ pub fn weapon_radius(radius: u32) -> f64 {
     if radius == 0 {
         return 0.0;
     }
-    1.0 + 0.25 * f64::from(radius - 1)
+    let growth = 0.25 * f64::from(radius - 1);
+    1.0 + growth
 }
 
 /// The damage a bystander takes from a full-strength sweeping attack.
@@ -192,7 +193,7 @@ pub fn combination_use_on(applies: &dyn Fn(Family) -> bool) -> Option<Family> {
 /// The durability a combination tool carries: one and a half times its material's.
 #[must_use]
 pub fn combination_durability(material_durability: u32) -> u32 {
-    u32::try_from(u64::from(material_durability) * 3 / 2).unwrap_or(u32::MAX)
+    u32::try_from((u64::from(material_durability) * 3).div_euclid(2)).unwrap_or(u32::MAX)
 }
 
 /// The half-extent of the cube a refillable tool wets and grows.
@@ -202,7 +203,7 @@ pub fn combination_durability(material_durability: u32) -> u32 {
 /// Computing the half-extent the obvious way gives a different area.
 #[must_use]
 pub const fn half_extent(side: u32) -> u32 {
-    side.saturating_sub(1) / 2
+    side.saturating_sub(1).div_euclid(2)
 }
 
 /// What one block in a refillable tool's cube offers it.
@@ -333,20 +334,18 @@ impl Colour {
     /// Packs the four channels into one number, opacity highest.
     #[must_use]
     pub const fn pack(self) -> u32 {
-        ((self.opacity as u32) << 24)
-            | ((self.red as u32) << 16)
-            | ((self.green as u32) << 8)
-            | (self.blue as u32)
+        u32::from_be_bytes([self.opacity, self.red, self.green, self.blue])
     }
 
     /// Reads four channels back out of one number.
     #[must_use]
     pub const fn unpack(packed: u32) -> Self {
+        let [opacity, red, green, blue] = packed.to_be_bytes();
         Self {
-            opacity: ((packed >> 24) & 0xff) as u8,
-            red: ((packed >> 16) & 0xff) as u8,
-            green: ((packed >> 8) & 0xff) as u8,
-            blue: (packed & 0xff) as u8,
+            opacity,
+            red,
+            green,
+            blue,
         }
     }
 
@@ -378,11 +377,14 @@ impl Colour {
         } else if span < -0.5 {
             span += 1.0;
         }
-        let hue = (from_hue + span * ratio).rem_euclid(1.0);
-        let saturation = from_saturation + (to_saturation - from_saturation) * ratio;
-        let brightness = from_brightness + (to_brightness - from_brightness) * ratio;
-        let opacity =
-            f64::from(self.opacity) + (f64::from(other.opacity) - f64::from(self.opacity)) * ratio;
+        let hue_step = span * ratio;
+        let saturation_step = (to_saturation - from_saturation) * ratio;
+        let brightness_step = (to_brightness - from_brightness) * ratio;
+        let opacity_step = (f64::from(other.opacity) - f64::from(self.opacity)) * ratio;
+        let hue = (from_hue + hue_step).rem_euclid(1.0);
+        let saturation = from_saturation + saturation_step;
+        let brightness = from_brightness + brightness_step;
+        let opacity = f64::from(self.opacity) + opacity_step;
         Self::from_hsb(hue, saturation, brightness).with_opacity(round_channel(opacity))
     }
 
@@ -413,9 +415,12 @@ impl Colour {
         let sector = hue.floor();
         let offset = hue - sector;
         let p = brightness * (1.0 - saturation);
-        let q = brightness * (1.0 - saturation * offset);
-        let t = brightness * (1.0 - saturation * (1.0 - offset));
-        let (red, green, blue) = match AsPrimitive::<i32>::as_(sector) % 6 {
+        let q_saturation = saturation * offset;
+        let t_saturation = saturation * (1.0 - offset);
+        let q = brightness * (1.0 - q_saturation);
+        let t = brightness * (1.0 - t_saturation);
+        // Finite wrapped sectors fit i32; a non-finite hue keeps the original zero sector.
+        let (red, green, blue) = match sector.to_i32().unwrap_or(0) % 6 {
             0 => (brightness, t, p),
             1 => (q, brightness, p),
             2 => (p, brightness, t),
@@ -439,7 +444,8 @@ fn round_channel(value: f64) -> u8 {
     } else if rounded >= 255.0 {
         255
     } else {
-        rounded.as_()
+        // The bounds above leave only an in-range channel or NaN, which encodes as zero.
+        rounded.to_u8().unwrap_or(0)
     }
 }
 

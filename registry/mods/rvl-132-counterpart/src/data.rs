@@ -99,9 +99,9 @@ pub enum Value {
     /// Text.
     Text(String),
     /// An ordered sequence.
-    Sequence(Vec<Value>),
+    Sequence(Vec<Self>),
     /// A named record.
-    Record(BTreeMap<String, Value>),
+    Record(BTreeMap<String, Self>),
 }
 
 impl Value {
@@ -165,7 +165,15 @@ impl Ord for Value {
             (Self::Text(left), Self::Text(right)) => left.cmp(right),
             (Self::Sequence(left), Self::Sequence(right)) => left.cmp(right),
             (Self::Record(left), Self::Record(right)) => left.cmp(right),
-            _ => self.rank().cmp(&other.rank()),
+            (
+                Self::Truth(_)
+                | Self::Whole(_)
+                | Self::Decimal(_)
+                | Self::Text(_)
+                | Self::Sequence(_)
+                | Self::Record(_),
+                _,
+            ) => self.rank().cmp(&other.rank()),
         }
     }
 }

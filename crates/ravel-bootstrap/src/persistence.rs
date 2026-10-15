@@ -35,6 +35,7 @@ pub(crate) struct PersistenceState {
     live: Option<Checkpoint>,
     staged: Option<Checkpoint>,
     observations: VecDeque<String>,
+    declarations: Option<Vec<SavedDataDeclaration>>,
 }
 
 impl PersistenceState {
@@ -66,6 +67,16 @@ enum StagedPack {
     Written = 2,
 }
 
+impl From<StagedPack> for jint {
+    fn from(pack: StagedPack) -> Self {
+        match pack {
+            StagedPack::Nothing => 0,
+            StagedPack::Unchanged => 1,
+            StagedPack::Written => 2,
+        }
+    }
+}
+
 /// What the Java adapter should do at a save crossing.
 #[derive(Debug, Eq, PartialEq)]
 pub enum SaveOutcome {
@@ -78,7 +89,8 @@ pub enum SaveOutcome {
 }
 
 pub(crate) fn install(runtime: Arc<LoaderRuntime>) {
-    let _ = RUNTIME.set(runtime);
+    // Installation is process-wide; the first runtime remains authoritative.
+    drop(RUNTIME.set(runtime));
 }
 
 fn runtime() -> Result<&'static Arc<LoaderRuntime>, String> {
@@ -173,23 +185,106 @@ impl LoaderRuntime {
             .collect()
     }
 
-    fn declarations(inner: &crate::runtime::Inner) -> Vec<SavedDataDeclaration> {
-        inner
-            .mods
-            .iter()
-            .filter_map(|host| host.saved_data_declaration())
-            .collect()
+    fn declarations(inner: &mut crate::runtime::Inner) -> Result<(), String> {
+        if inner.persistence.declarations.is_some() {
+            return Ok(());
+        }
+        let mut declarations = Vec::with_capacity(inner.mods.len());
+        for host in &inner.mods {
+            if inner
+                .machine
+                .state(host.id())
+                .map_err(|error| error.to_string())?
+                == ravel_core::LifecycleState::Failed
+            {
+                let versions = inner
+                    .machine
+                    .saved_data_versions(host.id())
+                    .map_err(|error| error.to_string())?;
+                if !versions.is_empty() {
+                    declarations.push(
+                        SavedDataDeclaration::new(host.id().clone(), versions.iter().copied())
+                            .map_err(|error| error.to_string())?,
+                    );
+                }
+                continue;
+            }
+            match host.saved_data_declaration() {
+                Ok(Some(declaration)) => {
+                    if declaration.owner() != host.id() {
+                        let owner = host.id().clone();
+                        let refused = ravel_loader::SaveRefused::ForeignDeclaration {
+                            mod_id: owner.clone(),
+                            owner: declaration.owner().clone(),
+                        };
+                        let error = ravel_host_api::HostError::Refused {
+                            mod_id: owner.clone(),
+                            state: inner
+                                .machine
+                                .state(&owner)
+                                .map_err(|error| error.to_string())?,
+                            detail: refused.to_string(),
+                        };
+                        inner
+                            .record_failure(&owner, &error)
+                            .map_err(|error| error.to_string())?;
+                        return Err(error.to_string());
+                    }
+                    declarations.push(declaration);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    let owner = host.id().clone();
+                    inner
+                        .record_failure(&owner, &error)
+                        .map_err(|error| error.to_string())?;
+                    return Err(error.to_string());
+                }
+            }
+        }
+        inner.persistence.declarations = Some(declarations);
+        Ok(())
     }
 
-    fn produce(inner: &crate::runtime::Inner) -> Result<SavedDataAggregate, String> {
+    fn produce(
+        inner: &mut crate::runtime::Inner,
+        prior: Option<&SavedDataAggregate>,
+    ) -> Result<SavedDataAggregate, String> {
         inner
             .machine
             .request_save()
             .map_err(|error| error.to_string())?;
+        inner
+            .machine
+            .world_access()
+            .map_err(|error| error.to_string())?;
         let mut aggregate = SavedDataAggregate::fresh();
-        for host in &inner.mods {
-            if let Some(envelope) = host.save_saved_data().map_err(|error| error.to_string())? {
-                aggregate.replace(envelope);
+        for host in &mut inner.mods {
+            if inner.machine.state(host.id()).expect("an admitted owner")
+                == ravel_core::LifecycleState::Failed
+            {
+                let prior = prior.or_else(|| {
+                    inner
+                        .persistence
+                        .live
+                        .as_ref()
+                        .map(|checkpoint| &checkpoint.aggregate)
+                });
+                if let Some(envelope) = prior.and_then(|aggregate| aggregate.envelope(host.id())) {
+                    aggregate.replace(envelope.clone());
+                }
+                continue;
+            }
+            match host.save_saved_data() {
+                Ok(Some(envelope)) => aggregate.replace(envelope),
+                Ok(None) => {}
+                Err(error) => {
+                    let owner = host.id().clone();
+                    inner
+                        .record_failure(&owner, &error)
+                        .map_err(|error| error.to_string())?;
+                    return Err(error.to_string());
+                }
             }
         }
         aggregate.to_bytes().map_err(|error| error.to_string())?;
@@ -197,7 +292,7 @@ impl LoaderRuntime {
     }
 
     fn write_world_pack(&self, world: &str) {
-        let _ = self.put_pack(world, crate::packs::write_world_pack);
+        self.put_pack(world, crate::packs::write_world_pack);
     }
 
     fn write_staged_pack(&self, directory: &str) -> StagedPack {
@@ -245,7 +340,8 @@ impl LoaderRuntime {
         bytes: Option<&[u8]>,
         fresh_world: bool,
     ) -> Result<(), String> {
-        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut locked = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let inner = &mut *locked;
         // Refuse before reading or writing any world state.
         inner
             .machine
@@ -258,35 +354,56 @@ impl LoaderRuntime {
             ));
         }
         if inner.persistence.staged.is_none() && inner.persistence.live.is_some() {
-            let produced = Self::produce(&inner)?;
+            let produced = Self::produce(inner, None)?;
             let live = inner.persistence.live.as_mut().expect("checked above");
             live.dirty = produced != live.aggregate;
             live.aggregate = produced;
         }
 
-        let declarations = Self::declarations(&inner);
+        Self::declarations(inner)?;
+        let declarations = inner
+            .persistence
+            .declarations
+            .as_deref()
+            .expect("collected declarations");
         // Composition supplies no package versions, so declared requirements fail closed.
         let uncheckable: BTreeMap<ModId, Version> = BTreeMap::new();
-        let aggregate = SavedDataAggregate::open(bytes, &declarations, &uncheckable)
+        let aggregate = SavedDataAggregate::open(bytes, declarations, &uncheckable)
             .map_err(|error| error.to_string())?;
-        for host in &mut inner.mods {
-            let Some(declaration) = host.saved_data_declaration() else {
+        for declaration in declarations {
+            let host = inner
+                .mods
+                .iter_mut()
+                .find(|host| host.id() == declaration.owner())
+                .expect("declaration belongs to an admitted host");
+            if inner
+                .machine
+                .state(host.id())
+                .map_err(|error| error.to_string())?
+                == ravel_core::LifecycleState::Failed
+            {
                 continue;
-            };
+            }
             let envelope = aggregate.envelope(declaration.owner());
             let plan = SavedDataPlan::open(
-                &declaration,
+                declaration,
                 envelope.map(ravel_save::SavedDataEnvelope::data_version),
             )
             .map_err(|error| error.to_string())?;
-            host.open_saved_data(envelope, &plan)
-                .map_err(|error| error.to_string())?;
+            if let Err(error) = host.open_saved_data(envelope, &plan) {
+                let owner = host.id().clone();
+                inner
+                    .record_failure(&owner, &error)
+                    .map_err(|error| error.to_string())?;
+                return Err(error.to_string());
+            }
         }
         inner.persistence.staged = Some(Checkpoint {
             identity,
             aggregate,
             dirty: true,
         });
+        drop(locked);
         Ok(())
     }
 
@@ -294,9 +411,26 @@ impl LoaderRuntime {
     fn may_write(inner: &mut crate::runtime::Inner) -> Result<Option<ModId>, String> {
         let crate::runtime::Inner { machine, mods, .. } = inner;
         let mut borrowed: Vec<&mut dyn HostMod> = mods.iter_mut().map(|host| &mut **host).collect();
-        let round = ravel_loader::intercept(machine, &mut borrowed, Point::WorldIsSaved)
-            .map_err(|refused| refused.to_string())?;
+        let round = match ravel_loader::intercept(machine, &mut borrowed, Point::WorldIsSaved) {
+            Ok(round) => round,
+            Err(refused) => {
+                if let ravel_loader::InterceptionError::Declaration { mod_id, source } = &refused {
+                    inner
+                        .record_failure(mod_id, source)
+                        .map_err(|error| error.to_string())?;
+                }
+                return Err(refused.to_string());
+            }
+        };
+        drop(borrowed);
         if let Some(failure) = round.failure() {
+            let owner = round
+                .asked()
+                .last()
+                .expect("failure belongs to an asked owner");
+            inner
+                .record_failure(owner, failure)
+                .map_err(|error| error.to_string())?;
             return Err(failure.to_string());
         }
         if round.outcome() == Outcome::Proceed {
@@ -309,6 +443,17 @@ impl LoaderRuntime {
                 .cloned()
                 .expect("a refusal comes from a mod that was asked"),
         ))
+    }
+
+    fn save_checkpoint(checkpoint: &mut Checkpoint) -> SaveOutcome {
+        if !checkpoint.dirty {
+            return SaveOutcome::Unchanged;
+        }
+        checkpoint.dirty = false;
+        match checkpoint.aggregate.to_bytes() {
+            Ok(bytes) => SaveOutcome::Replacement(bytes),
+            Err(error) => SaveOutcome::Failed(error.to_string()),
+        }
     }
 
     pub(crate) fn save_world(&self, identity: &WorldIdentity) -> SaveOutcome {
@@ -332,7 +477,7 @@ impl LoaderRuntime {
             .is_some_and(|staged| &staged.identity == identity)
         {
             let mut promoted = inner.persistence.staged.take().expect("matched above");
-            match Self::produce(&inner) {
+            match Self::produce(&mut inner, Some(&promoted.aggregate)) {
                 Ok(produced) => promoted.aggregate = produced,
                 Err(error) => {
                     inner.persistence.staged = Some(promoted);
@@ -355,7 +500,7 @@ impl LoaderRuntime {
             .is_some_and(|live| &live.identity == identity)
         {
             if inner.persistence.staged.is_none() {
-                return match Self::produce(&inner) {
+                return match Self::produce(&mut inner, None) {
                     Ok(produced) => {
                         let live = inner.persistence.live.as_mut().expect("matched above");
                         if produced == live.aggregate && !live.dirty {
@@ -371,16 +516,12 @@ impl LoaderRuntime {
                     Err(error) => SaveOutcome::Failed(error),
                 };
             }
-            let live = inner.persistence.live.as_mut().expect("matched above");
-            if live.dirty {
-                live.dirty = false;
-                return match live.aggregate.to_bytes() {
-                    Ok(bytes) => SaveOutcome::Replacement(bytes),
-                    Err(error) => SaveOutcome::Failed(error.to_string()),
-                };
-            }
-            return SaveOutcome::Unchanged;
+            let answer =
+                Self::save_checkpoint(inner.persistence.live.as_mut().expect("matched above"));
+            drop(inner);
+            return answer;
         }
+        drop(inner);
 
         SaveOutcome::IdentityMismatch(format!(
             "save receiver `{identity}` matches neither live nor staged world state"
@@ -397,7 +538,7 @@ enum Incoming {
 
 // Check the JNI array length before allocating native storage.
 fn incoming<'local>(
-    env: &mut Env<'local>,
+    env: &Env<'local>,
     aggregate: &JByteArray<'local>,
 ) -> Result<Incoming, HookError> {
     if aggregate.is_null() {
@@ -547,9 +688,9 @@ pub fn ravel_write_staged_datapack<'local>(
     env.with_env(|env: &mut Env<'local>| -> Result<jint, HookError> {
         let directory = text(env, &directory)?;
         let Ok(runtime) = runtime() else {
-            return Ok(StagedPack::Nothing as jint);
+            return Ok(jint::from(StagedPack::Nothing));
         };
-        Ok(runtime.write_staged_pack(&directory) as jint)
+        Ok(jint::from(runtime.write_staged_pack(&directory)))
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }

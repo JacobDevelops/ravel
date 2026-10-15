@@ -186,7 +186,7 @@ mod tests {
             mod_id: mod_id(name),
             sides: SideSet::new([Side::Client, Side::IntegratedServer]).expect("two sides"),
             requirement,
-            saved_data_versions: std::collections::BTreeSet::new(),
+            saved_data_versions: BTreeSet::new(),
         }
     }
 

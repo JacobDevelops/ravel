@@ -216,7 +216,8 @@ pub fn commands_table() -> String {
     for (name, _) in commands::SUBCOMMANDS {
         let arity = commands::arity(name).expect("every shipped subcommand has an arity");
         let inherited = inherited.contains(&name);
-        let _ = writeln!(rendered, "{name}\t{arity}\t{inherited}");
+        writeln!(rendered, "{name}\t{arity}\t{inherited}")
+            .expect("writing to a String cannot fail");
     }
     rendered
 }

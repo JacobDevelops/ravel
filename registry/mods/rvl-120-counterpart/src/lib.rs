@@ -304,14 +304,14 @@ impl Mod for Shared {
         .into_iter()
         .flatten()
         .next();
-        match malformed {
-            Some(detail) => Err(Self::refusal(state, detail)),
-            None => Ok(()),
-        }
+        malformed.map_or(Ok(()), |detail| Err(Self::refusal(state, detail)))
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.clone().ok()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        self.declaration
+            .clone()
+            .map(Some)
+            .map_err(|detail| Self::refusal(LifecycleState::Constructed, &detail))
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
@@ -322,8 +322,11 @@ impl Mod for Shared {
         claim_all(declaration, registrar)
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        self.settings_declaration.clone().ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        self.settings_declaration
+            .clone()
+            .map(Some)
+            .map_err(|detail| Self::refusal(LifecycleState::Constructed, &detail))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -340,8 +343,10 @@ impl Mod for Shared {
         Ok(())
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        GlobalData::declaration().ok()
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        GlobalData::declaration()
+            .map(Some)
+            .map_err(|error| Self::refusal(LifecycleState::Constructed, &error))
     }
 
     fn open_saved_data(
@@ -419,8 +424,18 @@ mod tests {
     #[test]
     fn the_library_declares_both_its_content_and_its_settings() {
         let shared = Shared::new();
-        assert!(shared.content_declaration().is_some());
-        assert!(shared.configuration_declaration().is_some());
+        assert!(
+            shared
+                .content_declaration()
+                .expect("valid content")
+                .is_some()
+        );
+        assert!(
+            shared
+                .configuration_declaration()
+                .expect("valid settings")
+                .is_some()
+        );
     }
 
     #[test]
@@ -487,7 +502,12 @@ mod tests {
                 .expect("an empty store produces nothing")
                 .is_none()
         );
-        assert!(shared.saved_data_declaration().is_some());
+        assert!(
+            shared
+                .saved_data_declaration()
+                .expect("valid saved data")
+                .is_some()
+        );
     }
 
     #[test]

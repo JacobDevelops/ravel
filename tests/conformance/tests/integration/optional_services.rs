@@ -157,6 +157,7 @@ fn a_required_and_an_optional_consumer_of_the_same_absent_provider_disagree() {
 fn the_compass_calls_a_service_it_declared_optional_rather_than_one_it_did_not_declare() {
     let declaration = CompassMod::new()
         .service_declaration()
+        .expect("the service declaration succeeds")
         .expect("the compass declares one service");
     assert!(declaration.calls(&landmarks()));
     assert!(declaration.may_do_without(&landmarks()));

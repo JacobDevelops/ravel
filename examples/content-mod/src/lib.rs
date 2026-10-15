@@ -205,11 +205,10 @@ impl ContentMod {
         declaration
     }
 
-    /// Generates a deterministic pack from [`Mod::content_declaration`].
+    /// Generates a deterministic pack from this mod's content declaration.
     #[must_use]
     pub fn generated(&self) -> GeneratedData {
-        self.content_declaration()
-            .map_or_else(GeneratedData::default, |declaration| declaration.generate())
+        self.declaration().generate()
     }
 }
 
@@ -238,8 +237,8 @@ impl Mod for ContentMod {
     ///
     /// The model this mod supplies is bytes no version of Ravel generates, so
     /// this is the only way they reach the game at all.
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        Some(self.declaration())
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        Ok(Some(self.declaration()))
     }
 
     /// Counts resource reloads and ignores everything else.
@@ -557,7 +556,12 @@ mod tests {
     #[test]
     fn a_mod_that_owns_no_world_data_declares_none_and_saves_none() {
         let content = ContentMod::new();
-        assert!(content.saved_data_declaration().is_none());
+        assert!(
+            content
+                .saved_data_declaration()
+                .expect("valid declaration")
+                .is_none()
+        );
         assert!(
             content
                 .save_saved_data()

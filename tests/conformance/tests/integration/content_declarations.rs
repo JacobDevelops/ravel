@@ -653,7 +653,9 @@ fn every_generated_document_is_legal_json_and_ends_in_one_newline() {
 #[test]
 fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
     let game = std::env::temp_dir().join(format!("ravel-supplied-content-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&game);
+    if game.exists() {
+        std::fs::remove_dir_all(&game).expect("a stale game directory is removable");
+    }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
     let (machine, _, _, supplied) = compose(
@@ -661,7 +663,7 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
         Side::DedicatedServer,
         vec![Member {
             package: include_str!("../../../../examples/content-mod/package.json").to_owned(),
-            host: Box::new(ContentMod::new()) as Box<dyn HostMod>,
+            host: Box::new(ContentMod::new()),
         }],
     )
     .expect("the shipped example should compose");
@@ -703,13 +705,15 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
         );
     }
 
-    let _ = std::fs::remove_dir_all(&game);
+    std::fs::remove_dir_all(&game).expect("the game directory is removable");
 }
 
 #[test]
 fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
     let game = std::env::temp_dir().join(format!("ravel-launch-pack-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&game);
+    if game.exists() {
+        std::fs::remove_dir_all(&game).expect("a stale game directory is removable");
+    }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
     let (_, _, _, resources) = compose(
@@ -717,7 +721,7 @@ fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
         Side::Client,
         vec![Member {
             package: include_str!("../../../../examples/content-mod/package.json").to_owned(),
-            host: Box::new(ContentMod::new()) as Box<dyn HostMod>,
+            host: Box::new(ContentMod::new()),
         }],
     )
     .expect("the shipped example should compose");
@@ -769,8 +773,14 @@ fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
         "the model the mod supplies is the model on disk"
     );
 
-    let metadata = std::fs::read_to_string(written.root().join("pack.mcmeta"))
-        .expect("the metadata is readable");
+    assert_resource_pack_metadata(written.root());
+
+    std::fs::remove_dir_all(&game).expect("the game directory is removable");
+}
+
+fn assert_resource_pack_metadata(root: &std::path::Path) {
+    let metadata =
+        std::fs::read_to_string(root.join("pack.mcmeta")).expect("the metadata is readable");
     let parsed: serde_json::Value =
         serde_json::from_str(&metadata).expect("the metadata is legal JSON");
     let declared = parsed.get("pack").expect("the metadata declares a pack");
@@ -785,15 +795,15 @@ fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
             .is_some_and(|text| text.contains("Ravel")),
         "the pack says whose it is: {metadata}"
     );
-
-    let _ = std::fs::remove_dir_all(&game);
 }
 
 // The game discovers this pack on the next world open, not during this session.
 #[test]
 fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
     let game = std::env::temp_dir().join(format!("ravel-world-data-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&game);
+    if game.exists() {
+        std::fs::remove_dir_all(&game).expect("a stale game directory is removable");
+    }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
     let (_, _, _, resources) = compose(
@@ -801,7 +811,7 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
         Side::IntegratedServer,
         vec![Member {
             package: include_str!("../../../../examples/content-mod/package.json").to_owned(),
-            host: Box::new(ContentMod::new()) as Box<dyn HostMod>,
+            host: Box::new(ContentMod::new()),
         }],
     )
     .expect("the shipped example should compose");
@@ -851,5 +861,5 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
         assert!(written.root().join(path).is_file(), "{path}");
     }
 
-    let _ = std::fs::remove_dir_all(&game);
+    std::fs::remove_dir_all(&game).expect("the game directory is removable");
 }

@@ -623,12 +623,12 @@ mod tests {
 
     mod machines {
         /// One dependent's type.
-        pub struct Furnace;
+        pub(super) struct Furnace;
     }
 
     mod terminals {
         /// Another dependent's type under the same simple name.
-        pub struct Furnace;
+        pub(super) struct Furnace;
     }
 
     const HOLDS_ITEMS: Marker = Marker("holds-items");

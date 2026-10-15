@@ -16,6 +16,8 @@
 
 use std::collections::BTreeMap;
 
+use num_traits::ToPrimitive;
+
 /// A red, green, blue and alpha quartet.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Colour {
@@ -63,20 +65,18 @@ impl Colour {
     /// Returns the packed form: alpha, then red, then green, then blue.
     #[must_use]
     pub const fn packed(self) -> u32 {
-        ((self.alpha as u32) << 24)
-            | ((self.red as u32) << 16)
-            | ((self.green as u32) << 8)
-            | (self.blue as u32)
+        u32::from_be_bytes([self.alpha, self.red, self.green, self.blue])
     }
 
     /// Reads a colour out of the packed form.
     #[must_use]
     pub const fn from_packed(packed: u32) -> Self {
+        let [alpha, red, green, blue] = packed.to_be_bytes();
         Self {
-            alpha: ((packed >> 24) & 0xFF) as u8,
-            red: ((packed >> 16) & 0xFF) as u8,
-            green: ((packed >> 8) & 0xFF) as u8,
-            blue: (packed & 0xFF) as u8,
+            red,
+            green,
+            blue,
+            alpha,
         }
     }
 
@@ -126,7 +126,8 @@ impl Colour {
         let chroma = value * saturation;
         let sector = hue.rem_euclid(360.0) / 60.0;
         let second = chroma * (1.0 - ((sector % 2.0) - 1.0).abs());
-        let (red, green, blue) = match num_traits::cast::AsPrimitive::<u32>::as_(sector) {
+        // Wrapped finite sectors fit u32; a non-finite hue keeps the original zero sector.
+        let (red, green, blue) = match sector.trunc().to_u32().unwrap_or(0) {
             0 => (chroma, second, 0.0),
             1 => (second, chroma, 0.0),
             2 => (0.0, chroma, second),
@@ -154,7 +155,9 @@ fn channel(value: f32) -> u8 {
     } else if scaled >= 255.0 {
         255
     } else {
-        num_traits::cast::AsPrimitive::<u8>::as_(scaled)
+        scaled
+            .to_u8()
+            .expect("rounded channel lies between zero and 255")
     }
 }
 
@@ -193,7 +196,7 @@ impl Animated {
     /// same colour and a value never changes between two reads within a frame.
     #[must_use]
     pub fn at(self, frame: u64) -> Colour {
-        let turns = num_traits::cast::AsPrimitive::<f32>::as_(frame % 360);
+        let turns = f32::from(u16::try_from(frame % 360).expect("a turn is below 360 degrees"));
         self.base.with_hue_turned(self.step_degrees * turns)
     }
 
@@ -319,7 +322,7 @@ pub enum Placed {
 }
 
 /// One colour value, as the two encodings see it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Value {
     /// The default colour, which the network form spells as a bare
     /// discriminator and no body at all.
@@ -805,10 +808,7 @@ mod tests {
         );
         let packed = Value::Packed(Colour::new(1, 2, 3, 4));
         assert_eq!(packed.to_document(), "#04010203");
-        assert_eq!(
-            Value::from_document(&packed.to_document()),
-            Ok(packed.clone())
-        );
+        assert_eq!(Value::from_document(&packed.to_document()), Ok(packed));
     }
 
     #[test]
@@ -830,7 +830,7 @@ mod tests {
 
     #[test]
     fn a_name_past_the_readers_ceiling_is_refused_by_the_writer_too() {
-        let legal = "n".repeat(super::MAX_NAME_BYTES);
+        let legal = "n".repeat(MAX_NAME_BYTES);
         let mut names = Names::new();
         assert_eq!(names.register(&legal, Colour::DEFAULT), Placed::Landed);
         assert!(
@@ -838,7 +838,7 @@ mod tests {
             "the ceiling itself still travels"
         );
 
-        let long = "n".repeat(super::MAX_NAME_BYTES + 1);
+        let long = "n".repeat(MAX_NAME_BYTES + 1);
         assert_eq!(
             Value::Named(long.clone()).to_wire(),
             Err(ColourError::NameTooLong(long.len())),

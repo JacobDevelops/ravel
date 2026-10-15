@@ -1,7 +1,7 @@
 use std::fmt;
 
 use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
-use ravel_host_api::{HostMod, InterceptionRefused, Occasion, Point, Points, Round};
+use ravel_host_api::{HostError, HostMod, InterceptionRefused, Occasion, Point, Points, Round};
 
 use crate::lifecycle::LifecycleMachine;
 
@@ -32,7 +32,13 @@ pub fn intercept(
         let Some(host) = mods.iter().find(|host| host.id() == mod_id) else {
             continue;
         };
-        let Some(declaration) = host.interception_declaration() else {
+        let Some(declaration) =
+            host.interception_declaration()
+                .map_err(|source| InterceptionError::Declaration {
+                    mod_id: mod_id.clone(),
+                    source,
+                })?
+        else {
             continue;
         };
         if declaration.owner() != mod_id {
@@ -59,6 +65,13 @@ pub fn intercept(
 /// Why a point could not be asked at all.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InterceptionError {
+    /// A mod refused to declare its interceptions.
+    Declaration {
+        /// The mod asked for its declaration.
+        mod_id: ModId,
+        /// The declaration hook's refusal.
+        source: HostError,
+    },
     /// A mod handed over a declaration belonging to another mod.
     Disowned {
         /// The owner the declaration named.
@@ -73,6 +86,7 @@ pub enum InterceptionError {
 impl fmt::Display for InterceptionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Declaration { source, .. } => source.fmt(formatter),
             Self::Disowned { declared, by } => write!(
                 formatter,
                 "`{by}` declared interceptions owned by `{declared}`, and a mod answers only for \
@@ -86,6 +100,7 @@ impl fmt::Display for InterceptionError {
 impl std::error::Error for InterceptionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Declaration { source, .. } => Some(source),
             Self::Disowned { .. } => None,
             Self::Refused(refused) => Some(refused),
         }
@@ -103,6 +118,7 @@ impl StructuredFailure for InterceptionError {
 
     fn quotes_untrusted_text(&self) -> bool {
         match self {
+            Self::Declaration { source, .. } => source.quotes_untrusted_text(),
             Self::Disowned { .. } => false,
             Self::Refused(refused) => {
                 matches!(refused, InterceptionRefused::UnpublishedPoint { .. })
@@ -148,6 +164,7 @@ mod tests {
         after: Option<ModId>,
         owner_override: Option<ModId>,
         fails: bool,
+        refuses_declaration: bool,
         seen: Vec<Occasion>,
     }
 
@@ -160,6 +177,7 @@ mod tests {
                 after: None,
                 owner_override: None,
                 fails: false,
+                refuses_declaration: false,
                 seen: Vec::new(),
             }
         }
@@ -189,7 +207,13 @@ mod tests {
             Ok(())
         }
 
-        fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+        fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, HostError> {
+            if self.refuses_declaration {
+                return Err(HostError::Unsupported {
+                    mod_id: self.id.clone(),
+                    state: LifecycleState::Running,
+                });
+            }
             let owner = self
                 .owner_override
                 .clone()
@@ -199,7 +223,7 @@ mod tests {
             if let Some(earlier) = &self.after {
                 declared.after(earlier);
             }
-            Some(declared)
+            Ok(Some(declared))
         }
 
         fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, HostError> {
@@ -249,6 +273,23 @@ mod tests {
     }
 
     #[test]
+    fn interception_declaration_refusal_is_not_absence() {
+        let mut host = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed);
+        host.refuses_declaration = true;
+        assert_eq!(
+            intercept(&running(&[GUARD]), &mut [&mut host], Point::WorldIsSaved),
+            Err(InterceptionError::Declaration {
+                mod_id: id(GUARD),
+                source: HostError::Unsupported {
+                    mod_id: id(GUARD),
+                    state: LifecycleState::Running,
+                },
+            })
+        );
+        assert_eq!(host.seen, Vec::<Occasion>::new());
+    }
+
+    #[test]
     fn the_declared_edge_decides_who_is_asked_first() {
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed);
         let mut ledger = Answering::new(LEDGER, Point::WorldIsSaved, Outcome::Proceed).after(GUARD);
@@ -293,7 +334,7 @@ mod tests {
 
         assert_eq!(round.asked(), [id(LEDGER)]);
         assert_eq!(round.outcome(), Outcome::Proceed);
-        assert_eq!(elsewhere.seen, [] as [ravel_host_api::Occasion; 0]);
+        assert_eq!(elsewhere.seen, Vec::<Occasion>::new());
     }
 
     #[test]
@@ -322,7 +363,7 @@ mod tests {
 
         assert_eq!(round.asked(), []);
         assert_eq!(round.outcome(), Outcome::Proceed);
-        assert_eq!(guard.seen, [] as [ravel_host_api::Occasion; 0]);
+        assert_eq!(guard.seen, Vec::<Occasion>::new());
     }
 
     #[test]
@@ -382,10 +423,12 @@ mod tests {
                 Ok(())
             }
 
-            fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+            fn interception_declaration(
+                &self,
+            ) -> Result<Option<InterceptionDeclaration>, HostError> {
                 let mut declared = InterceptionDeclaration::new(self.id.clone());
                 declared.answer_at(Point::WorldIsSaved.as_str());
-                Some(declared)
+                Ok(Some(declared))
             }
         }
 
@@ -418,10 +461,12 @@ mod tests {
                 Ok(())
             }
 
-            fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+            fn interception_declaration(
+                &self,
+            ) -> Result<Option<InterceptionDeclaration>, HostError> {
                 let mut declared = InterceptionDeclaration::new(self.id.clone());
                 declared.replace_at(Point::WorldIsSaved.as_str());
-                Some(declared)
+                Ok(Some(declared))
             }
 
             fn intercept(&mut self, _: Occasion) -> Result<Outcome, HostError> {

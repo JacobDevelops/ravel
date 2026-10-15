@@ -364,7 +364,10 @@ mod tests {
         assert_eq!(metallic.count, 2);
         let fuel = by_name("fuel_storage");
         assert_eq!((fuel.hardness, fuel.resistance), (5.0, 6.0));
-        assert_eq!(fuel.count, crate::fuel::TIERS as usize);
+        assert_eq!(
+            fuel.count,
+            usize::try_from(crate::fuel::TIERS).expect("the six fuel tiers fit usize")
+        );
         let ore = by_name("ore");
         assert_eq!((ore.hardness, ore.resistance), (3.0, 3.0));
         assert_eq!(ore.count, crate::world::DEPOSITS.len());
@@ -392,7 +395,7 @@ mod tests {
         // nugget, a gemstone, a shard, the soul, a fragment, a scale, a
         // decorative item, six fuels, six foods, six tools and six buckets.
         let named = 9
-            + crate::fuel::TIERS as usize
+            + usize::try_from(crate::fuel::TIERS).expect("the six fuel tiers fit usize")
             + crate::foods::COUNT
             + crate::tools::COUNT
             + FLUID_FAMILIES;
@@ -445,14 +448,14 @@ mod tests {
     fn the_paths_are_as_many_as_the_census_counts_and_every_one_is_distinct() {
         let blocks = block_paths();
         assert_eq!(blocks.len(), BLOCKS);
-        let mut sorted = blocks.clone();
+        let mut sorted = blocks;
         sorted.sort();
         sorted.dedup();
         assert_eq!(sorted.len(), BLOCKS);
 
         let items = item_paths();
         assert_eq!(items.len(), ITEMS);
-        let mut sorted = items.clone();
+        let mut sorted = items;
         sorted.sort();
         sorted.dedup();
         assert_eq!(sorted.len(), ITEMS);

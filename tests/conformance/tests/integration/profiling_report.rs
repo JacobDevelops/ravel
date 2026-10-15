@@ -277,16 +277,12 @@ fn a_dispatch_with_the_collectors_off_delivers_exactly_what_one_without_them_del
     let mut plain = Quiet(id("example_mod"));
     let mut profiled = Quiet(id("example_mod"));
 
-    let unprofiled = broadcast(
-        &machine,
-        &mut [&mut plain as &mut dyn HostMod],
-        GameEvent::ClientTick,
-    )
-    .expect("the set is running");
+    let unprofiled =
+        broadcast(&machine, &mut [&mut plain], GameEvent::ClientTick).expect("the set is running");
     let mut off = Profiler::off();
     let observed = broadcast_profiled(
         &machine,
-        &mut [&mut profiled as &mut dyn HostMod],
+        &mut [&mut profiled],
         GameEvent::ClientTick,
         &mut off,
     )
@@ -309,7 +305,7 @@ fn a_profiled_dispatch_attributes_the_delivery_to_the_mod_that_received_it() {
     for _ in 0..3 {
         broadcast_profiled(
             &machine,
-            &mut [&mut host as &mut dyn HostMod],
+            &mut [&mut host],
             GameEvent::ClientTick,
             &mut profiler,
         )

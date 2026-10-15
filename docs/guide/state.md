@@ -55,13 +55,9 @@ validated against your own declaration.
 deliberately: settings nothing reads are settings a player changes with no
 effect, and the loud failure is the useful one.
 
-That makes `ConfigurationDeclaration::parse(SETTINGS).ok()` the quietest failure
-this API has, and it is the shape you will reach for first. `.ok()` turns a
-document that does not parse into `None`, which the loader reads as "this mod
-declares no settings" — so `configure` is never called, the refusal above never
-happens, and your mod runs on its own defaults with nothing said to anybody. The
-document is an `include_str!` constant, so a typo in it is your bug rather than a
-player's; refuse on it in `enter`, where a refusal is heard:
+Declaration methods return `Result<Option<_>, ModError>`: `Ok(None)` means the
+mod declares no settings, while malformed author data must return `Err`. Map
+the parse error to a refusal so the loader stops before calling `configure`:
 
 ```rust
 const SETTINGS: &str = include_str!("../configuration.json");
@@ -69,21 +65,18 @@ const CAPACITY: &str = "lanterns.capacity";
 
 #[declare_mod(id = "copper_lanterns")]
 impl Mod for CopperLanterns {
-    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-        // `configuration_declaration` can only answer `Some` or `None`, so a
-        // typo in the document becomes `None`, which reads as "declares no
-        // settings": `configure` is never called and the mod runs on its own
-        // defaults in silence. Refusing here makes that loud.
-        ConfigurationDeclaration::parse(SETTINGS).map_err(|error| ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state,
-            detail: error.to_string(),
-        })?;
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        ConfigurationDeclaration::parse(SETTINGS).ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        ConfigurationDeclaration::parse(SETTINGS)
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -155,12 +148,20 @@ impl Mod for CopperLanterns {
         Ok(())
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        SavedDataDeclaration::new(Self::declared_id().clone(), [v(1), v(2)]).ok()
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        SavedDataDeclaration::new(Self::declared_id().clone(), [v(1), v(2)])
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
-    fn saved_data_migrations(&self) -> Option<MigrationChain> {
-        Some(MigrationChain::new(Self::declared_id().clone()).reaching(v(2), to_two))
+    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
+        Ok(Some(
+            MigrationChain::new(Self::declared_id().clone()).reaching(v(2), to_two),
+        ))
     }
 
     fn open_saved_data(
@@ -175,7 +176,7 @@ impl Mod for CopperLanterns {
         // The payload is at whatever version the world stored, so the chain
         // crosses the steps the plan names before anything is read.
         let current = self
-            .saved_data_migrations()
+            .saved_data_migrations()?
             .expect("this mod declares a chain")
             .apply(plan, envelope.payload())
             .map_err(|failed| ModError::Refused {
@@ -257,9 +258,8 @@ Declare both halves in `service_declaration`: what you answer, and what you need
 answered. The loader orders providers before consumers and refuses a set whose
 services do not resolve — a service nothing answers, or two mods requiring each
 other — naming the offender, before any mod starts. The `ServiceDirectory` you
-are handed in `use_services` reaches only providers already started, so the
-ordering guarantee is a property of what you receive rather than a rule you
-follow.
+are handed in `use_services` reaches providers opened earlier in dependency order,
+after all mods register and before any enters `Running`.
 
 A provider parked on this side is a service nothing answers. If you require a
 service from a client-only mod, your mod does not start on a dedicated server.
@@ -272,14 +272,19 @@ makes your mod's presence stop the game unless the other one is there. Say it
 with the third half of the declaration instead.
 
 ```rust
-fn service_declaration(&self) -> Option<ServiceDeclaration> {
+fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
     ServiceDeclaration::with_optional(
         Self::declared_id().clone(),
         [],            // what you answer
         [],            // what you need
         [landmarks()], // what you use if something answers it
     )
-    .ok()
+    .map(Some)
+    .map_err(|error| ModError::Refused {
+        mod_id: self.id().clone(),
+        state: LifecycleState::Constructed,
+        detail: error.to_string(),
+    })
 }
 ```
 

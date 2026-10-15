@@ -66,7 +66,7 @@ impl Bearings {
 ///
 /// // It is an ordinary provider: nothing about it knows it is optional, because
 /// // optionality is the consumer's statement about the dependency.
-/// let declaration = survey.service_declaration().expect("it answers one service");
+/// let declaration = survey.service_declaration().expect("valid declaration").expect("it answers one service");
 /// assert_eq!(declaration.provides().collect::<Vec<_>>(), [&landmarks()]);
 /// assert_eq!(declaration.may_use().count(), 0);
 /// ```
@@ -120,8 +120,14 @@ impl Mod for SurveyMod {
         Ok(())
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        ServiceDeclaration::new(Self::declared_id().clone(), [landmarks()], []).ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        ServiceDeclaration::new(Self::declared_id().clone(), [landmarks()], [])
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     /// Answers with the landmarks this survey holds.
@@ -158,7 +164,7 @@ impl Mod for SurveyMod {
 /// // Nothing has been asked yet, which is a third state and not "alone".
 /// assert_eq!(compass.bearings(), &Bearings::Unwired);
 ///
-/// let declaration = compass.service_declaration().expect("it may use one service");
+/// let declaration = compass.service_declaration().expect("valid declaration").expect("it may use one service");
 /// assert_eq!(declaration.may_use().collect::<Vec<_>>(), [&landmarks()]);
 /// // Nothing is required, so this mod never stops a set from loading.
 /// assert_eq!(declaration.requires().count(), 0);
@@ -193,8 +199,14 @@ impl Mod for CompassMod {
     ///
     /// The difference is the whole mod: with `requires` in place of the optional
     /// argument, installing this compass without the survey would refuse the set.
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        ServiceDeclaration::with_optional(Self::declared_id().clone(), [], [], [landmarks()]).ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        ServiceDeclaration::with_optional(Self::declared_id().clone(), [], [], [landmarks()])
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     /// Calls the survey when one is installed, and records doing without when none
@@ -276,6 +288,7 @@ mod tests {
     fn the_compass_requires_nothing_and_may_use_the_survey() {
         let declaration = CompassMod::new()
             .service_declaration()
+            .expect("valid service declaration")
             .expect("it declares one service");
         assert_eq!(declaration.requires().count(), 0);
         assert_eq!(declaration.may_use().collect::<Vec<_>>(), [&landmarks()]);
@@ -372,8 +385,18 @@ mod tests {
     #[test]
     fn neither_half_declares_anything_it_does_not_need() {
         let compass = CompassMod::new();
-        assert!(compass.saved_data_declaration().is_none());
-        assert!(compass.configuration_declaration().is_none());
+        assert!(
+            compass
+                .saved_data_declaration()
+                .expect("valid declaration")
+                .is_none()
+        );
+        assert!(
+            compass
+                .configuration_declaration()
+                .expect("valid declaration")
+                .is_none()
+        );
         let mut compass = compass;
         compass.enter(LifecycleState::Running).expect("accepted");
         let mut survey = SurveyMod::new();

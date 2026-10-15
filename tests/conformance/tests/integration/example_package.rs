@@ -158,6 +158,7 @@ fn a_mod_that_owns_world_data_declares_its_versions_in_its_manifest() {
     let journal = Journal::new();
     let declaration = journal
         .saved_data_declaration()
+        .expect("the saved-data declaration succeeds")
         .expect("the stateful example owns world data");
     let declared = declaration
         .versions()

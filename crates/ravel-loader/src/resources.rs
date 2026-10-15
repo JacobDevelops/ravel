@@ -3,7 +3,7 @@ use std::fmt;
 
 use ravel_core::{FailureKind, LifecycleState, ModId, RelativePath, StructuredFailure};
 use ravel_data::{GeneratedData, GeneratedFile, ResourceSet};
-use ravel_host_api::HostMod;
+use ravel_host_api::{HostError, HostMod};
 
 use crate::lifecycle::LifecycleMachine;
 
@@ -11,7 +11,7 @@ use crate::lifecycle::LifecycleMachine;
 ///
 /// # Errors
 ///
-/// Returns [`ResourceRefused::ForeignDeclaration`] for a declaration owned by another mod.
+/// Returns [`ResourceRefused`] for a mod's declaration refusal or a declaration owned by another mod.
 pub fn open_resources(
     machine: &LifecycleMachine,
     mods: &[Box<dyn HostMod>],
@@ -28,7 +28,13 @@ pub fn open_resources(
         let Some(host) = mods.iter().find(|host| host.id() == &mod_id) else {
             continue;
         };
-        let Some(declaration) = host.content_declaration() else {
+        let Some(declaration) =
+            host.content_declaration()
+                .map_err(|source| ResourceRefused::Mod {
+                    mod_id: mod_id.clone(),
+                    source,
+                })?
+        else {
             continue;
         };
         if declaration.owner() != &mod_id {
@@ -90,6 +96,13 @@ impl Supplied {
 /// Why an admitted set's files could not be layered.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ResourceRefused {
+    /// A mod refused to declare its content.
+    Mod {
+        /// The mod that refused.
+        mod_id: ModId,
+        /// Its refusal.
+        source: HostError,
+    },
     /// A mod handed over a declaration owned by another identity.
     ForeignDeclaration {
         /// The mod that handed it over.
@@ -101,16 +114,30 @@ pub enum ResourceRefused {
 
 impl fmt::Display for ResourceRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self::ForeignDeclaration { mod_id, owner } = self;
-        write!(
-            formatter,
-            "`{mod_id}` supplies content declared as `{owner}`'s, so its files would be filed \
-             under a namespace it does not own"
-        )
+        match self {
+            Self::Mod { mod_id, source } => {
+                write!(
+                    formatter,
+                    "`{mod_id}` refused its content declaration: {source}"
+                )
+            }
+            Self::ForeignDeclaration { mod_id, owner } => write!(
+                formatter,
+                "`{mod_id}` supplies content declared as `{owner}`'s, so its files would be filed \
+                 under a namespace it does not own"
+            ),
+        }
     }
 }
 
-impl std::error::Error for ResourceRefused {}
+impl std::error::Error for ResourceRefused {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Mod { source, .. } => Some(source),
+            Self::ForeignDeclaration { .. } => None,
+        }
+    }
+}
 
 impl StructuredFailure for ResourceRefused {
     fn failure_kind(&self) -> Option<FailureKind> {
@@ -119,6 +146,10 @@ impl StructuredFailure for ResourceRefused {
 
     fn lifecycle_state(&self) -> LifecycleState {
         LifecycleState::Registered
+    }
+
+    fn quotes_untrusted_text(&self) -> bool {
+        matches!(self, Self::Mod { .. })
     }
 }
 
@@ -145,6 +176,7 @@ mod tests {
         id: ModId,
         declared_owner: ModId,
         supplies: Vec<(RelativePath, Vec<u8>)>,
+        refuses_declaration: bool,
     }
 
     impl Supplying {
@@ -152,6 +184,7 @@ mod tests {
             Self {
                 id: id(name),
                 declared_owner: id(name),
+                refuses_declaration: false,
                 supplies: supplies
                     .iter()
                     .map(|(at, bytes)| (path(at), (*bytes).as_bytes().to_vec()))
@@ -174,7 +207,13 @@ mod tests {
             Ok(())
         }
 
-        fn content_declaration(&self) -> Option<ContentDeclaration> {
+        fn content_declaration(&self) -> Result<Option<ContentDeclaration>, HostError> {
+            if self.refuses_declaration {
+                return Err(HostError::Unsupported {
+                    mod_id: self.id.clone(),
+                    state: LifecycleState::Registered,
+                });
+            }
             let mut declaration = ContentDeclaration::new(self.declared_owner.clone());
             declaration
                 .entry(ContentKind::Item, "thing")
@@ -184,7 +223,7 @@ mod tests {
                     .resource(at.clone(), bytes.clone())
                     .expect("each path is supplied once");
             }
-            Some(declaration)
+            Ok(Some(declaration))
         }
     }
 
@@ -213,6 +252,23 @@ mod tests {
 
     fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan")
+    }
+
+    #[test]
+    fn content_declaration_refusal_is_not_absence() {
+        let mut host = Supplying::new("refusing_mod", &[]);
+        host.refuses_declaration = true;
+        let machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
+        assert_eq!(
+            open_resources(&machine, &[Box::new(host)]),
+            Err(ResourceRefused::Mod {
+                mod_id: id("refusing_mod"),
+                source: HostError::Unsupported {
+                    mod_id: id("refusing_mod"),
+                    state: LifecycleState::Registered,
+                },
+            })
+        );
     }
 
     #[test]

@@ -37,8 +37,9 @@ impl Point {
     /// Returns whether `side` is a server side, where these decisions belong.
     #[must_use]
     pub const fn happens_on(self, side: Side) -> bool {
-        let _ = self;
-        side.is_server()
+        match self {
+            Self::BlockIsBroken | Self::ItemIsUsed | Self::WorldIsSaved => side.is_server(),
+        }
     }
 }
 
@@ -498,7 +499,7 @@ mod tests {
             round.asked().iter().position(|id| id == later),
         ) {
             (Some(first), Some(second)) => first < second,
-            _ => false,
+            (None, _) | (Some(_), None) => false,
         }
     }
 

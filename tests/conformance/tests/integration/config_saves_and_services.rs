@@ -61,13 +61,8 @@ fn a_world_two_versions_behind_reaches_the_current_shape_through_the_declared_ch
     let mut stock = StockMod::new();
     let machine = machine(vec![entry(owner, &[SIDE])]);
 
-    let aggregate = open_saved_data(
-        &machine,
-        &mut [&mut stock as &mut dyn Mod],
-        Some(&bytes),
-        &BTreeMap::new(),
-    )
-    .expect("both declared steps run");
+    let aggregate = open_saved_data(&machine, &mut [&mut stock], Some(&bytes), &BTreeMap::new())
+        .expect("both declared steps run");
 
     assert_eq!(
         stock.stock(),
@@ -111,13 +106,8 @@ fn a_world_already_at_the_current_version_is_read_without_a_step() {
     let mut stock = StockMod::new();
     let machine = machine(vec![entry(owner, &[SIDE])]);
 
-    open_saved_data(
-        &machine,
-        &mut [&mut stock as &mut dyn Mod],
-        Some(&bytes),
-        &BTreeMap::new(),
-    )
-    .expect("nothing to migrate");
+    open_saved_data(&machine, &mut [&mut stock], Some(&bytes), &BTreeMap::new())
+        .expect("nothing to migrate");
 
     assert_eq!(stock.stock().currency, "shard", "the stored value was lost");
     assert_eq!(stock.stock().unit_price, 7);
@@ -130,13 +120,8 @@ fn a_world_written_by_a_newer_build_is_refused_rather_than_read_backwards() {
     let mut stock = StockMod::new();
     let machine = machine(vec![entry(owner, &[SIDE])]);
 
-    let refusal = open_saved_data(
-        &machine,
-        &mut [&mut stock as &mut dyn Mod],
-        Some(&bytes),
-        &BTreeMap::new(),
-    )
-    .expect_err("version 4 is above what this build writes");
+    let refusal = open_saved_data(&machine, &mut [&mut stock], Some(&bytes), &BTreeMap::new())
+        .expect_err("version 4 is above what this build writes");
 
     assert!(matches!(
         refusal,
@@ -235,35 +220,37 @@ fn bolt_service() -> ServiceId {
 
 #[declare_mod(id = "cycle_latch")]
 impl Mod for Latch {
-    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-        let _ = state;
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        ServiceDeclaration::new(
-            Self::declared_id().clone(),
-            [latch_service()],
-            [bolt_service()],
-        )
-        .ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        Ok(Some(
+            ServiceDeclaration::new(
+                Self::declared_id().clone(),
+                [latch_service()],
+                [bolt_service()],
+            )
+            .expect("the latch service declaration is valid"),
+        ))
     }
 }
 
 #[declare_mod(id = "cycle_bolt")]
 impl Mod for Bolt {
-    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-        let _ = state;
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        ServiceDeclaration::new(
-            Self::declared_id().clone(),
-            [bolt_service()],
-            [latch_service()],
-        )
-        .ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        Ok(Some(
+            ServiceDeclaration::new(
+                Self::declared_id().clone(),
+                [bolt_service()],
+                [latch_service()],
+            )
+            .expect("the bolt service declaration is valid"),
+        ))
     }
 }
 
@@ -310,13 +297,8 @@ fn a_stored_shape_the_chain_cannot_read_withholds_the_world_and_leaves_the_mod_e
     let mut stock = StockMod::new();
     let machine = machine(vec![entry(owner, &[SIDE])]);
 
-    let refusal = open_saved_data(
-        &machine,
-        &mut [&mut stock as &mut dyn Mod],
-        Some(&bytes),
-        &BTreeMap::new(),
-    )
-    .expect_err("the first step cannot read this shape");
+    let refusal = open_saved_data(&machine, &mut [&mut stock], Some(&bytes), &BTreeMap::new())
+        .expect_err("the first step cannot read this shape");
 
     assert_eq!(refusal.owner(), Some(owner));
     assert!(refusal.to_string().contains("no `stock`"), "{refusal}");
@@ -339,7 +321,7 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
 
     open_saved_data(
         &machine,
-        &mut [&mut stock as &mut dyn Mod],
+        &mut [&mut stock],
         Some(&world(owner, 1, json!({ "count": 12 }))),
         &BTreeMap::new(),
     )
@@ -347,7 +329,7 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
 
     open_saved_data(
         &machine,
-        &mut [&mut stock as &mut dyn Mod],
+        &mut [&mut stock],
         Some(&world(owner, 1, json!({ "stock": 5 }))),
         &BTreeMap::new(),
     )
@@ -360,14 +342,14 @@ struct Deaf;
 
 #[declare_mod(id = "deaf")]
 impl Mod for Deaf {
-    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-        let _ = state;
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        ConfigurationDeclaration::parse(
-            r#"{
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        Ok(Some(
+            ConfigurationDeclaration::parse(
+                r#"{
               "schemaVersion": 1,
               "owner": "deaf",
               "version": 1,
@@ -379,8 +361,9 @@ impl Mod for Deaf {
                 "restartRequired": false
               }]
             }"#,
-        )
-        .ok()
+            )
+            .expect("the deaf configuration declaration is valid"),
+        ))
     }
 }
 
@@ -395,7 +378,7 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
 
     let refused = open_configuration(
         &pair,
-        &mut [&mut deaf as &mut dyn Mod, &mut shop],
+        &mut [&mut deaf, &mut shop],
         &BTreeMap::new(),
         &BTreeMap::new(),
     )
@@ -409,13 +392,9 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
 
     let mut shop = ShopMod::new();
     let alone = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
-    let configured = open_configuration(
-        &alone,
-        &mut [&mut shop as &mut dyn Mod],
-        &BTreeMap::new(),
-        &BTreeMap::new(),
-    )
-    .expect("a mod with no settings has nothing to read");
+    let configured =
+        open_configuration(&alone, &mut [&mut shop], &BTreeMap::new(), &BTreeMap::new())
+            .expect("a mod with no settings has nothing to read");
     assert_eq!(configured.order(), []);
 }
 
@@ -443,7 +422,7 @@ fn the_walk_hands_each_mod_the_layer_in_force_and_reports_what_the_player_lost()
 
     let configured = open_configuration(
         &machine,
-        &mut [&mut stock as &mut dyn Mod],
+        &mut [&mut stock],
         &BTreeMap::from([(owner.clone(), pack)]),
         &BTreeMap::from([(owner.clone(), player)]),
     )
@@ -466,6 +445,7 @@ fn a_player_value_the_declaration_refuses_is_dropped_and_the_default_stays_in_fo
     let mut stock = StockMod::new();
     let declaration = stock
         .configuration_declaration()
+        .expect("the configuration declaration succeeds")
         .expect("it declares one setting");
     let player = ValueDocument::parse(
         r#"{
@@ -498,6 +478,7 @@ fn a_pack_may_state_a_legal_value_and_the_mod_reads_that_one() {
     let mut stock = StockMod::new();
     let declaration = stock
         .configuration_declaration()
+        .expect("the configuration declaration succeeds")
         .expect("it declares one setting");
     let pack = ValueDocument::parse(
         r#"{
@@ -527,18 +508,22 @@ struct Fussy {
 
 #[declare_mod(id = "fussy")]
 impl Mod for Fussy {
-    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-        let _ = state;
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()]).ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        Ok(Some(
+            ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
+                .expect("the fussy service declaration is valid"),
+        ))
     }
 
     fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
         self.called = true;
-        let _ = directory.call(&ServiceRequest::new(prices(), json!(null)));
+        directory
+            .call(&ServiceRequest::new(prices(), json!(null)))
+            .expect("the provider answers before the consumer refuses");
         Err(ModError::Refused {
             mod_id: Self::declared_id().clone(),
             state: LifecycleState::Constructed,
@@ -581,7 +566,7 @@ fn what_the_pair_writes_is_what_the_pair_reads_back() {
 
     open_saved_data(
         &machine,
-        &mut [&mut stock as &mut dyn Mod],
+        &mut [&mut stock],
         Some(&world(owner, 1, json!({ "stock": 9 }))),
         &BTreeMap::new(),
     )
@@ -598,7 +583,7 @@ fn what_the_pair_writes_is_what_the_pair_reads_back() {
     let mut reopened = StockMod::new();
     open_saved_data(
         &machine,
-        &mut [&mut reopened as &mut dyn Mod],
+        &mut [&mut reopened],
         Some(&bytes),
         &BTreeMap::new(),
     )
@@ -614,6 +599,7 @@ fn the_declarations_this_suite_is_written_against_are_the_ones_the_mods_ship() {
     assert_eq!(
         stock
             .service_declaration()
+            .expect("the service declaration succeeds")
             .expect("the provider declares one")
             .provides()
             .map(ToString::to_string)
@@ -622,6 +608,7 @@ fn the_declarations_this_suite_is_written_against_are_the_ones_the_mods_ship() {
     );
     assert_eq!(
         shop.service_declaration()
+            .expect("the service declaration succeeds")
             .expect("the consumer declares one")
             .requires()
             .map(ToString::to_string)
@@ -631,6 +618,7 @@ fn the_declarations_this_suite_is_written_against_are_the_ones_the_mods_ship() {
     assert_eq!(
         stock
             .configuration_declaration()
+            .expect("the configuration declaration succeeds")
             .expect("the provider declares settings")
             .settings
             .iter()
@@ -641,6 +629,7 @@ fn the_declarations_this_suite_is_written_against_are_the_ones_the_mods_ship() {
     assert_eq!(
         stock
             .saved_data_declaration()
+            .expect("the saved-data declaration succeeds")
             .expect("the provider owns world data")
             .versions()
             .map(SavedDataVersion::get)
@@ -650,6 +639,7 @@ fn the_declarations_this_suite_is_written_against_are_the_ones_the_mods_ship() {
     assert_eq!(
         stock
             .saved_data_migrations()
+            .expect("the saved-data migrations succeed")
             .expect("the provider declares a chain")
             .reaches()
             .map(SavedDataVersion::get)
@@ -664,10 +654,15 @@ fn the_owner_of_a_declaration_and_the_owner_of_its_chain_are_the_same_mod() {
     let stock = StockMod::new();
     let declaration: SavedDataDeclaration = stock
         .saved_data_declaration()
+        .expect("the saved-data declaration succeeds")
         .expect("the provider owns world data");
     assert_eq!(declaration.owner(), StockMod::declared_id());
     assert_eq!(
-        stock.saved_data_migrations().expect("a chain").owner(),
+        stock
+            .saved_data_migrations()
+            .expect("the saved-data migrations succeed")
+            .expect("a chain")
+            .owner(),
         StockMod::declared_id()
     );
     assert_eq!(prices().owner(), StockMod::declared_id());

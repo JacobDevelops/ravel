@@ -174,7 +174,7 @@ impl<'a> Resolution<'a> {
     }
 
     fn refuse(
-        &mut self,
+        &self,
         dependant: &'a ModId,
         dependency: &'a Dependency,
     ) -> Result<(), ResolutionError> {

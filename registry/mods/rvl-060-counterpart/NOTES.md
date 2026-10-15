@@ -87,9 +87,8 @@ saved-data ownership, networking channels — is expressed through Ravel rather 
 | §12 the three declined areas | excluded; not implemented at any Ravel revision | `src/lib.rs` |
 | §12 the client command | kept, claimed and run; user-invoked | `src/lib.rs` |
 
-Primitive numeric conversions use `num-traits`' `AsPrimitive` to retain Rust's exact cast
-semantics under the workspace lint policy: truncation, saturation, NaN handling and floating-point
-rounding are unchanged. Entity interaction attributes now live in `FluidProperties::entity`;
+Numeric conversions use checked `num-traits::ToPrimitive` results with explicit rounding and
+out-of-range handling to preserve truncation, saturation and NaN semantics. Entity interaction attributes now live in `FluidProperties::entity`;
 defaults and the flat debug representation remain unchanged.
 
 ## Four compatibility-required spellings this package refuses to invent

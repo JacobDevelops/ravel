@@ -81,7 +81,7 @@ fn to_two(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
 ///
 /// // Settings resolve to the author's default when nothing overrides them.
 /// let declaration = journal
-///     .configuration_declaration()
+///     .configuration_declaration()?
 ///     .expect("this mod declares settings");
 /// let resolved = LayeredConfiguration::resolve(declaration, None, None)?;
 /// journal.configure(&resolved)?;
@@ -157,8 +157,14 @@ impl Mod for Journal {
         Ok(())
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        ConfigurationDeclaration::parse(SETTINGS).ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        ConfigurationDeclaration::parse(SETTINGS)
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -186,12 +192,12 @@ impl Mod for Journal {
         Ok(())
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        Some(self.declaration())
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        Ok(Some(self.declaration()))
     }
 
-    fn saved_data_migrations(&self) -> Option<MigrationChain> {
-        Some(self.chain())
+    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
+        Ok(Some(self.chain()))
     }
 
     /// Migrates the stored payload to the current version and reads it.
@@ -242,8 +248,14 @@ impl Mod for Journal {
         )))
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        ServiceDeclaration::new(Self::declared_id().clone(), [entries_service()], []).ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        ServiceDeclaration::new(Self::declared_id().clone(), [entries_service()], [])
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -268,6 +280,7 @@ mod tests {
         let mut journal = Journal::new();
         let declaration = journal
             .configuration_declaration()
+            .expect("valid configuration declaration")
             .expect("this mod declares settings");
         let resolved =
             LayeredConfiguration::resolve(declaration, None, None).expect("nothing to layer");
@@ -312,7 +325,7 @@ mod tests {
     #[test]
     fn a_version_one_world_that_held_nothing_becomes_an_empty_list() {
         let journal = opened(1, json!({ "entry": "" })).expect("the step runs");
-        assert_eq!(journal.entries(), [] as [String; 0]);
+        assert_eq!(journal.entries(), Vec::<String>::new());
     }
 
     #[test]
@@ -369,6 +382,7 @@ mod tests {
         let mut journal = Journal::new();
         let declaration = journal
             .configuration_declaration()
+            .expect("valid configuration declaration")
             .expect("this mod declares settings");
         let resolved = LayeredConfiguration::resolve(declaration, Some(&pack), None)
             .expect("the pack states a declared key");

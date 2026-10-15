@@ -184,7 +184,9 @@ fn a_driver_that_cannot_carry_a_directive_errors_rather_than_fails() {
 
     match transcript.verdict() {
         Verdict::Errored(reason) => assert!(reason.contains("grant-item"), "{reason}"),
-        other => panic!("expected an errored verdict, got {other:?}"),
+        other @ (Verdict::Passed | Verdict::Failed(_)) => {
+            panic!("expected an errored verdict, got {other:?}")
+        }
     }
 }
 

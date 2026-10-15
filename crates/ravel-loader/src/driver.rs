@@ -4,6 +4,7 @@ use ravel_core::{LifecycleState, ModId, Side};
 use ravel_host_api::{HostError, HostMod};
 
 use crate::lifecycle::{LifecycleEntry, LifecycleError, LifecycleMachine, executes_mod_code};
+use crate::services::{ServiceRefused, open_services};
 
 const START_ORDER: [LifecycleState; 6] = [
     LifecycleState::Validated,
@@ -18,7 +19,7 @@ const START_ORDER: [LifecycleState; 6] = [
 ///
 /// # Errors
 ///
-/// Returns [`DriveError`] for mismatched identities, refused lifecycle operations, or host failures.
+/// Returns [`DriveError`] for mismatched identities, refused lifecycle or service admission, or host failures.
 pub fn drive(
     side: Side,
     mut composed: Vec<(LifecycleEntry, Box<dyn HostMod>)>,
@@ -47,12 +48,27 @@ pub fn drive(
         if state == LifecycleState::Constructed {
             register(&mut machine, &mut composed)?;
         }
+        if state == LifecycleState::Registered {
+            admit_services(&machine, &mut composed)?;
+        }
     }
 
     Ok((
         machine,
         composed.into_iter().map(|(_, host)| host).collect(),
     ))
+}
+
+fn admit_services(
+    machine: &LifecycleMachine,
+    composed: &mut [(LifecycleEntry, Box<dyn HostMod>)],
+) -> Result<(), DriveError> {
+    let mut mods: Vec<&mut dyn HostMod> = Vec::with_capacity(composed.len());
+    for (_, host) in composed {
+        mods.push(host.as_mut());
+    }
+    open_services(machine, &mut mods).map_err(DriveError::Services)?;
+    Ok(())
 }
 
 fn register(
@@ -88,6 +104,8 @@ pub enum DriveError {
     },
     /// The lifecycle machine refused a transition or registration.
     Lifecycle(LifecycleError),
+    /// The set's services could not be admitted before startup.
+    Services(ServiceRefused),
     /// Mod code refused a lifecycle step.
     Host(HostError),
 }
@@ -103,6 +121,7 @@ impl fmt::Display for DriveError {
                 "the entry declares `{declared}`, but its constructed mod is `{constructed}`"
             ),
             Self::Lifecycle(error) => write!(formatter, "the lifecycle refused the set: {error}"),
+            Self::Services(error) => write!(formatter, "the services refused the set: {error}"),
             Self::Host(error) => write!(formatter, "a mod refused the set: {error}"),
         }
     }
@@ -113,6 +132,7 @@ impl std::error::Error for DriveError {
         match self {
             Self::Identity { .. } => None,
             Self::Lifecycle(error) => Some(error),
+            Self::Services(error) => Some(error),
             Self::Host(error) => Some(error),
         }
     }
@@ -124,10 +144,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
-    use ravel_host_api::{HostError, HostMod};
+    use ravel_host_api::{HostError, HostMod, ServiceDeclaration, ServiceId};
 
     use super::{DriveError, drive};
     use crate::lifecycle::{LifecycleEntry, Requirement};
+    use crate::services::ServiceRefused;
 
     struct Recording {
         id: ModId,
@@ -168,10 +189,7 @@ mod tests {
 
         let (machine, mods) = drive(
             Side::Client,
-            vec![(
-                entry("example_mod", &[Side::Client]),
-                Box::new(host) as Box<dyn HostMod>,
-            )],
+            vec![(entry("example_mod", &[Side::Client]), Box::new(host))],
         )
         .expect("the set should start");
 
@@ -201,10 +219,7 @@ mod tests {
 
         let Err(error) = drive(
             Side::Client,
-            vec![(
-                entry("example_mod", &[Side::Client]),
-                Box::new(host) as Box<dyn HostMod>,
-            )],
+            vec![(entry("example_mod", &[Side::Client]), Box::new(host))],
         ) else {
             panic!("the identities disagree");
         };
@@ -231,7 +246,7 @@ mod tests {
             Side::Client,
             vec![(
                 entry("server_mod", &[Side::DedicatedServer]),
-                Box::new(host) as Box<dyn HostMod>,
+                Box::new(host),
             )],
         )
         .expect("a side-mismatched optional execution is parked");
@@ -241,5 +256,67 @@ mod tests {
             Ok(LifecycleState::Resolved)
         );
         assert!(states.lock().expect("nothing panicked").is_empty());
+    }
+
+    struct RequiringService(Recording);
+
+    impl HostMod for RequiringService {
+        fn id(&self) -> &ModId {
+            self.0.id()
+        }
+
+        fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+            self.0.enter(state)
+        }
+
+        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+            assert_eq!(
+                self.0.states.lock().expect("nothing panicked").as_slice(),
+                [
+                    LifecycleState::Loaded,
+                    LifecycleState::Loaded,
+                    LifecycleState::Constructed,
+                    LifecycleState::Constructed,
+                    LifecycleState::Registered,
+                    LifecycleState::Registered,
+                ]
+            );
+            let required = ServiceId::new("absent:prices".parse().expect("a legal service id"));
+            Ok(Some(
+                ServiceDeclaration::new(self.id().clone(), Vec::new(), vec![required])
+                    .expect("a legal requirement"),
+            ))
+        }
+    }
+
+    #[test]
+    fn service_refusal_prevents_every_running_callback() {
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let healthy = Recording {
+            id: id("healthy_mod"),
+            states: Arc::clone(&states),
+        };
+        let consumer = RequiringService(Recording {
+            id: id("consumer_mod"),
+            states: Arc::clone(&states),
+        });
+        let outcome = drive(
+            Side::Client,
+            vec![
+                (entry("healthy_mod", &[Side::Client]), Box::new(healthy)),
+                (entry("consumer_mod", &[Side::Client]), Box::new(consumer)),
+            ],
+        );
+        assert!(
+            !states
+                .lock()
+                .expect("nothing panicked")
+                .contains(&LifecycleState::Running),
+            "service admission must finish before any mod starts"
+        );
+        assert!(matches!(
+            outcome,
+            Err(DriveError::Services(ServiceRefused::NoProvider { .. }))
+        ));
     }
 }

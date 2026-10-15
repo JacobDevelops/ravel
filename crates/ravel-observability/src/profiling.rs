@@ -131,26 +131,9 @@ impl Metric {
     #[must_use]
     pub const fn support(self) -> Support {
         match self {
-            Self::RetainedMemory => Support::Unsupported(
-                "Rust attributes no allocation to a mod. Every mod is compiled into the host \
-                 process under ADG-2, so its allocations come from the same global allocator as \
-                 Ravel's and carry no identity; separating them needs a `GlobalAlloc` shim, and \
-                 implementing that trait is unsafe, which every maintained crate here forbids.",
-            ),
-            Self::AllocatedMemory => Support::Unsupported(
-                "The same reason retained memory is unsupported. A running total would need the \
-                 same per-mod allocator hook, and counting only the allocations Ravel's own API \
-                 makes on a mod's behalf would report a number far below the truth under a name \
-                 that promises the whole of it.",
-            ),
-            Self::CpuTime => Support::Unsupported(
-                "A per-thread processor clock is an operating-system call this workspace cannot \
-                 reach: it needs libc, and no maintained crate holds unsafe code. \
-                 `inclusive-time` is measured instead and is reported under its own name, because \
-                 wall-clock time inside a callback is not an imprecise CPU time but a different \
-                 quantity that scheduling, garbage collection, and blocking make arbitrarily \
-                 larger.",
-            ),
+            Self::RetainedMemory => Support::Unsupported(RETAINED_MEMORY_SUPPORT),
+            Self::AllocatedMemory => Support::Unsupported(ALLOCATED_MEMORY_SUPPORT),
+            Self::CpuTime => Support::Unsupported(CPU_TIME_SUPPORT),
             Self::InclusiveTime => Support::Approximate(
                 "The clock reading is exact and the attribution is not. The window is entry to \
                  return on the calling thread, so it charges a mod for host work it calls back \
@@ -203,6 +186,23 @@ impl Metric {
         }
     }
 }
+
+const RETAINED_MEMORY_SUPPORT: &str = "Rust attributes no allocation to a mod. Every mod is compiled into the host \
+     process under ADG-2, so its allocations come from the same global allocator as \
+     Ravel's and carry no identity; separating them needs a `GlobalAlloc` shim, and \
+     implementing that trait is unsafe, which every maintained crate here forbids.";
+
+const ALLOCATED_MEMORY_SUPPORT: &str = "The same reason retained memory is unsupported. A running total would need the \
+     same per-mod allocator hook, and counting only the allocations Ravel's own API \
+     makes on a mod's behalf would report a number far below the truth under a name \
+     that promises the whole of it.";
+
+const CPU_TIME_SUPPORT: &str = "A per-thread processor clock is an operating-system call this workspace cannot \
+     reach: it needs libc, and no maintained crate holds unsafe code. \
+     `inclusive-time` is measured instead and is reported under its own name, because \
+     wall-clock time inside a callback is not an imprecise CPU time but a different \
+     quantity that scheduling, garbage collection, and blocking make arbitrarily \
+     larger.";
 
 /// What a game hook asked one mod to do.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -463,7 +463,7 @@ impl ProfilingReport {
         let mut lines = vec![format!(
             "profiled {} mod{}, slow above {} us",
             self.mods.len(),
-            plural(self.mods.len() as u64),
+            plural(self.mods.len()),
             self.slow_callback.as_micros()
         )];
         lines.extend(self.mods.iter().map(|entry| {
@@ -506,7 +506,7 @@ const ATTRIBUTION_ACCURACY: &[&str] = &[
      callback costs something, so a mod's measured time includes being measured.",
 ];
 
-const fn plural(count: u64) -> &'static str {
+const fn plural(count: usize) -> &'static str {
     if count == 1 { "" } else { "s" }
 }
 

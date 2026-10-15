@@ -238,6 +238,11 @@ fn m6_process_and_integrity_mutations(balanced: &str) -> Vec<(usize, String)> {
                 )],
             ),
         ),
+    ]
+}
+
+fn m6_integrity_mutations(balanced: &str) -> Vec<(usize, String)> {
+    vec![
         (
             16,
             mutate(balanced, &[(r#""enforcing":true"#, r#""enforcing":false"#)]),
@@ -303,6 +308,7 @@ fn every_m6_arithmetic_clause_refuses_a_record_that_breaks_it() {
         m6_area_arithmetic_mutations(&balanced),
         m6_specification_and_provenance_mutations(&balanced),
         m6_process_and_integrity_mutations(&balanced),
+        m6_integrity_mutations(&balanced),
     ]
     .concat();
 
@@ -357,7 +363,7 @@ fn a_complete_m6_record_set_leaves_m6_closure_with_nothing_to_report() {
 
 #[test]
 fn every_m6_closure_clause_refuses_a_manifest_that_breaks_it() {
-    let manifest_cases: &[ClosureCase] = &[
+    let manifest_cases: &[ClosureCase<'_>] = &[
         (
             "work-packages",
             &[(r#","M6-W6"]"#, "]")],
@@ -415,29 +421,7 @@ fn every_m6_closure_clause_refuses_a_manifest_that_breaks_it() {
         ),
     ];
 
-    for (label, replacements, expected) in manifest_cases {
-        let root = m6_root(
-            &format!("m6-closure-{label}"),
-            &balanced_counterpart_summary(),
-            &mutate(&balanced_m6_manifest(), replacements),
-        );
-        let mut violations = Vec::new();
-
-        verify_m6_manifest(
-            &root,
-            &root.join("evidence/m6/manifest.json"),
-            &mut violations,
-        );
-
-        assert!(
-            violations
-                .iter()
-                .any(|violation| violation.contains(expected)),
-            "{label} was not refused; violations:\n{}",
-            violations.join("\n")
-        );
-        fs::remove_dir_all(root).expect("temporary root should be removable");
-    }
+    every_m6_closure_clause_check(manifest_cases);
 }
 
 #[test]
@@ -512,6 +496,32 @@ fn every_figure_m6_carries_is_recomputed_from_the_record() {
                 .iter()
                 .any(|violation| violation.contains(&format!("records {claimed_at} 987654"))),
             "{claimed_at} was not reconciled; violations:\n{}",
+            violations.join("\n")
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+}
+
+fn every_m6_closure_clause_check(manifest_cases: &[ClosureCase<'_>]) {
+    for (label, replacements, expected) in manifest_cases {
+        let root = m6_root(
+            &format!("m6-closure-{label}"),
+            &balanced_counterpart_summary(),
+            &mutate(&balanced_m6_manifest(), replacements),
+        );
+        let mut violations = Vec::new();
+
+        verify_m6_manifest(
+            &root,
+            &root.join("evidence/m6/manifest.json"),
+            &mut violations,
+        );
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains(expected)),
+            "{label} was not refused; violations:\n{}",
             violations.join("\n")
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");

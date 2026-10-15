@@ -341,7 +341,7 @@ impl BlockData {
             .get("redstone")
             .and_then(ravel_sdk::JsonValue::as_str)
             .ok_or(DataRefused::Field { field: "redstone" })?;
-        let redstone = spellings.mode(word).ok_or(DataRefused::Redstone {
+        let redstone = spellings.mode(word).ok_or_else(|| DataRefused::Redstone {
             word: word.to_owned(),
         })?;
         Ok(Self {
@@ -709,7 +709,7 @@ mod tests {
         trailing.push(0);
         assert_eq!(BlockData::from_wire(&trailing), Err(DataRefused::Trailing));
 
-        let mut bad_ordinal = wire.clone();
+        let mut bad_ordinal = wire;
         let last = bad_ordinal.len() - 1;
         bad_ordinal[last] = 9;
         assert_eq!(

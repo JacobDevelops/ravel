@@ -5,7 +5,7 @@ use std::process::ExitCode;
 const DEFAULT_DESCRIPTOR: &str = "tests/fixtures/descriptors/atm10-tts-2.0.2.json";
 const DEFAULT_ARCHIVE: &str = "tests/fixtures/local/atm10-tts-2.0.2/source/atm10-tts-2.0.2.zip";
 
-pub fn dispatch(args: &[String], root: &Path) -> Option<ExitCode> {
+pub(crate) fn dispatch(args: &[String], root: &Path) -> Option<ExitCode> {
     let result = match args {
         [host, build, instance, cache, minecraft] if host == "host" && build == "build" => {
             build_host(Path::new(instance), root, Path::new(cache), minecraft)

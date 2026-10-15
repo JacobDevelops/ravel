@@ -30,6 +30,7 @@
 //! contract here is declared through Ravel's own networking declaration and the
 //! list is dropped.
 
+use num_traits::ToPrimitive;
 use ravel_sdk::content::{ContentId, ContentIdError};
 use ravel_sdk::network::{Direction, PacketContract, PacketId};
 use ravel_sdk::{JsonValue, ModId};
@@ -150,7 +151,7 @@ pub const MAX_KINDS: usize = 256;
 pub const MAX_BODY_BYTES: usize = 1 << 20;
 
 /// One packet kind's body, in the three shapes §5 offers.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Body {
     /// A kind carrying no data at all. Its write produces nothing and its read
     /// constructs a fresh instance, which is symmetric and safe.
@@ -481,10 +482,23 @@ impl Position {
     /// Returns the chunk this position sits in.
     #[must_use]
     pub fn chunk(self) -> (i64, i64) {
-        (
-            num_traits::cast::AsPrimitive::<i64>::as_(self.x.floor()).div_euclid(16),
-            num_traits::cast::AsPrimitive::<i64>::as_(self.z.floor()).div_euclid(16),
-        )
+        // Preserve zero for NaN and saturation at the signed coordinate bounds.
+        let chunk = |coordinate: f64| {
+            coordinate
+                .floor()
+                .to_i64()
+                .unwrap_or_else(|| {
+                    if coordinate.is_nan() {
+                        0
+                    } else if coordinate.is_sign_negative() {
+                        i64::MIN
+                    } else {
+                        i64::MAX
+                    }
+                })
+                .div_euclid(16)
+        };
+        (chunk(self.x), chunk(self.z))
     }
 }
 

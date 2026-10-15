@@ -156,11 +156,11 @@ mod tests {
 
     #[test]
     fn eight_of_the_ten_frame_sprites_are_button_states_across_two_treatments() {
-        let buttons: Vec<&&str> = FRAMES
+        let buttons = FRAMES
             .iter()
             .filter(|name| name.starts_with("button_"))
-            .collect();
-        assert_eq!(buttons.len(), 8);
+            .count();
+        assert_eq!(buttons, 8);
         for treatment in ["bordered", "borderless"] {
             for state in ["idle", "pressed", "highlighted", "disabled"] {
                 let wanted = format!("button_{treatment}_{state}");

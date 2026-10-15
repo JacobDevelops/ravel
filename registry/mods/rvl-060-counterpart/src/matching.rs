@@ -511,10 +511,9 @@ impl BlockPredicate {
         {
             return false;
         }
-        match self.stored.as_ref() {
-            None => true,
-            Some(test) => candidate.stored.is_some() && test.holds(candidate.stored.as_ref()),
-        }
+        self.stored
+            .as_ref()
+            .is_none_or(|test| candidate.stored.is_some() && test.holds(candidate.stored.as_ref()))
     }
 }
 
@@ -532,7 +531,7 @@ pub struct EntityPredicate {
     /// The flags that must be set.
     pub flags: Vec<String>,
     /// An optional test applied to the entity's current target.
-    pub target: Option<Box<EntityPredicate>>,
+    pub target: Option<Box<Self>>,
 }
 
 /// What a caller knows about an entity.
@@ -549,7 +548,7 @@ pub struct EntityCandidate {
     /// Its flags.
     pub flags: Vec<String>,
     /// What it is targeting, absent for a non-targeting entity.
-    pub target: Option<Box<EntityCandidate>>,
+    pub target: Option<Box<Self>>,
 }
 
 /// How deep a target chain will be followed.
@@ -618,13 +617,12 @@ impl EntityPredicate {
         {
             return false;
         }
-        match self.target.as_ref() {
-            None => true,
-            Some(test) => match candidate.target.as_ref() {
-                None => false,
-                Some(target) => test.holds_at(target, depth + 1),
-            },
-        }
+        self.target.as_ref().is_none_or(|test| {
+            candidate
+                .target
+                .as_ref()
+                .is_some_and(|target| test.holds_at(target, depth + 1))
+        })
     }
 }
 
@@ -726,10 +724,9 @@ impl ItemPredicate {
                 return false;
             }
         }
-        match self.stored.as_ref() {
-            None => true,
-            Some(test) => test.holds(candidate.stored.as_ref()),
-        }
+        self.stored
+            .as_ref()
+            .is_none_or(|test| test.holds(candidate.stored.as_ref()))
     }
 }
 
@@ -980,7 +977,7 @@ mod tests {
         other.identity = "torch".to_owned();
         assert!(!predicate.holds(&definition(), &other));
 
-        let mut turned = candidate.clone();
+        let mut turned = candidate;
         turned.state = state(&[("facing", "south")]);
         assert!(!predicate.holds(&definition(), &turned));
     }
@@ -1032,7 +1029,7 @@ mod tests {
         without.effects = vec!["speed".to_owned()];
         assert!(!predicate.holds(&without));
 
-        let mut grounded = candidate.clone();
+        let mut grounded = candidate;
         grounded.flags = Vec::new();
         assert!(!predicate.holds(&grounded));
     }

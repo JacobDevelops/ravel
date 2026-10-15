@@ -41,7 +41,9 @@ mod tests {
             "ravel-game-directory-{}-{name}",
             std::process::id()
         ));
-        let _ = std::fs::remove_dir_all(&directory);
+        if directory.exists() {
+            std::fs::remove_dir_all(&directory).expect("remove the previous test directory");
+        }
         std::fs::create_dir_all(&directory).expect("a writable temporary directory");
         directory
     }
@@ -69,5 +71,11 @@ mod tests {
         std::fs::create_dir(game.join(MARKER)).expect("the directory should be creatable");
 
         assert!(admit(&game).is_err());
+    }
+
+    #[test]
+    fn the_working_directory_is_what_resolution_answers_with() {
+        let cwd = std::env::current_dir().expect("the gate has a working directory");
+        assert_eq!(super::resolve(), admit(&cwd).map(|()| cwd));
     }
 }

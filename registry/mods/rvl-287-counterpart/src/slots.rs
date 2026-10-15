@@ -368,7 +368,11 @@ impl Grid {
     /// cell count exceeds [`MAX_CELLS`], and [`SlotError::MissingCell`] when
     /// the cell list is not exactly `width * height` long.
     pub fn new(width: u32, height: u32, cells: Vec<TextureId>) -> Result<Self, SlotError> {
-        let area = (width as usize).checked_mul(height as usize).unwrap_or(0);
+        let area = usize::try_from(width)
+            .ok()
+            .zip(usize::try_from(height).ok())
+            .and_then(|(width, height)| width.checked_mul(height))
+            .unwrap_or(0);
         if width == 0 || height == 0 || area == 0 || area > MAX_CELLS {
             return Err(SlotError::UnusableGrid(area));
         }
@@ -403,7 +407,7 @@ impl Grid {
         // `Grid::new` refuses a cell list that is not exactly `width * height`
         // long and `index` reduces both coordinates modulo the grid, so this
         // index is always inside the list.
-        let index = self.index(column, row) as usize;
+        let index = usize::try_from(self.index(column, row)).expect("grid index fits in memory");
         &self.cells[index]
     }
 
@@ -433,12 +437,9 @@ impl Grid {
         }
         let mut cells = Vec::with_capacity(declared.len());
         for (position, held) in declared.iter().enumerate() {
-            let texture =
-                held.as_str()
-                    .and_then(TextureId::parse)
-                    .ok_or(SlotError::MissingCell(
-                        u32::try_from(position).unwrap_or(u32::MAX),
-                    ))?;
+            let texture = held.as_str().and_then(TextureId::parse).ok_or_else(|| {
+                SlotError::MissingCell(u32::try_from(position).unwrap_or(u32::MAX))
+            })?;
             cells.push(texture);
         }
         Self::new(width, height, cells)
@@ -447,8 +448,9 @@ impl Grid {
     /// Returns the texture at a cell index, or the missing sprite.
     #[must_use]
     pub fn at(&self, index: u32) -> TextureId {
-        self.cells
-            .get(index as usize)
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.cells.get(index))
             .cloned()
             .unwrap_or_else(TextureId::missing)
     }
@@ -493,12 +495,13 @@ impl PerFaceSlots {
 
         for (position, set) in sets.into_iter().enumerate() {
             for (slot, texture) in set.textures {
-                let sprite = if let Some(found) = sprites.iter().position(|held| held == &texture) {
-                    found
-                } else {
-                    sprites.push(texture);
-                    sprites.len() - 1
-                };
+                let sprite = sprites
+                    .iter()
+                    .position(|held| held == &texture)
+                    .unwrap_or_else(|| {
+                        sprites.push(texture);
+                        sprites.len() - 1
+                    });
                 let index = u32::try_from(sprite_of.len()).unwrap_or(u32::MAX);
                 sprite_of.push(u32::try_from(sprite).unwrap_or(0));
                 per_face[position].insert(slot, index);
@@ -529,9 +532,11 @@ impl PerFaceSlots {
     /// Returns the sprite a runtime index reaches.
     #[must_use]
     pub fn sprite(&self, index: u32) -> TextureId {
-        self.sprite_of
-            .get(index as usize)
-            .and_then(|sprite| self.sprites.get(*sprite as usize))
+        usize::try_from(index)
+            .ok()
+            .and_then(|index| self.sprite_of.get(index))
+            .and_then(|sprite| usize::try_from(*sprite).ok())
+            .and_then(|sprite| self.sprites.get(sprite))
             .cloned()
             .unwrap_or_else(TextureId::missing)
     }
@@ -765,7 +770,7 @@ mod tests {
         // defect 1: past the last row the original reaches slots nobody wrote.
         for column in 0..12 {
             for row in 0..12 {
-                assert!((grid.index(column, row) as usize) < 6, "{column},{row}");
+                assert!(grid.index(column, row) < 6, "{column},{row}");
             }
         }
     }

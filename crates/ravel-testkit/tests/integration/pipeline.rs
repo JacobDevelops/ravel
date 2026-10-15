@@ -137,13 +137,8 @@ fn a_valid_package_reaches_every_spec_state_in_order() {
     let (parent, packages) = single("ordered");
     let mut noop = Recording::new("example_mod");
 
-    let completed = run(
-        &packages,
-        &host(),
-        Side::Client,
-        &mut [&mut noop as &mut dyn HostMod],
-    )
-    .expect("a valid package completes the pipeline");
+    let completed = run(&packages, &host(), Side::Client, &mut [&mut noop])
+        .expect("a valid package completes the pipeline");
 
     assert_eq!(completed.plan().side(), Side::Client);
     assert_eq!(completed.plan().order(), [id("example_mod")]);
@@ -172,13 +167,8 @@ fn mod_code_runs_only_in_the_states_the_loader_admits_it() {
     let (parent, packages) = single("executed");
     let mut noop = Recording::new("example_mod");
 
-    run(
-        &packages,
-        &host(),
-        Side::Client,
-        &mut [&mut noop as &mut dyn HostMod],
-    )
-    .expect("a valid package completes the pipeline");
+    run(&packages, &host(), Side::Client, &mut [&mut noop])
+        .expect("a valid package completes the pipeline");
 
     assert_eq!(noop.entered, executed_states());
     assert_eq!(
@@ -231,10 +221,7 @@ fn the_same_package_set_produces_the_same_transcript_however_it_was_discovered()
         &packages,
         &host(),
         Side::Client,
-        &mut [
-            &mut first_a as &mut dyn HostMod,
-            &mut first_b as &mut dyn HostMod,
-        ],
+        &mut [&mut first_a, &mut first_b],
     )
     .expect("the pair resolves");
 
@@ -244,10 +231,7 @@ fn the_same_package_set_produces_the_same_transcript_however_it_was_discovered()
         &reversed,
         &host(),
         Side::Client,
-        &mut [
-            &mut second_a as &mut dyn HostMod,
-            &mut second_b as &mut dyn HostMod,
-        ],
+        &mut [&mut second_a, &mut second_b],
     )
     .expect("the reversed pair resolves");
 
@@ -272,10 +256,7 @@ fn a_set_advances_together_so_no_mod_reaches_a_state_alone() {
         &packages,
         &host(),
         Side::Client,
-        &mut [
-            &mut library as &mut dyn HostMod,
-            &mut consumer as &mut dyn HostMod,
-        ],
+        &mut [&mut library, &mut consumer],
     )
     .expect("the pair resolves");
 
@@ -306,13 +287,8 @@ fn a_document_that_is_not_a_manifest_stops_the_run_before_anything_else() {
     let packages = vec![DiscoveredPackage::new(&parent, "not json at all")];
     let mut noop = Recording::new("example_mod");
 
-    let error = run(
-        &packages,
-        &host(),
-        Side::Client,
-        &mut [&mut noop as &mut dyn HostMod],
-    )
-    .expect_err("the document is not a manifest");
+    let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
+        .expect_err("the document is not a manifest");
 
     assert!(
         matches!(error, PipelineError::Manifest(ManifestError::Syntax(_))),
@@ -334,13 +310,8 @@ fn an_altered_source_file_stops_the_run_before_any_mod_code() {
     .expect("source rewritten");
     let mut noop = Recording::new("example_mod");
 
-    let error = run(
-        &packages,
-        &host(),
-        Side::Client,
-        &mut [&mut noop as &mut dyn HostMod],
-    )
-    .expect_err("the source file was altered");
+    let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
+        .expect_err("the source file was altered");
 
     assert!(
         matches!(
@@ -368,32 +339,28 @@ fn a_package_written_for_another_host_is_refused_on_either_version() {
             minecraft: minecraft.to_owned(),
         };
         let mut noop = Recording::new("example_mod");
-        let error = run(
-            &packages,
-            &elsewhere,
-            Side::Client,
-            &mut [&mut noop as &mut dyn HostMod],
-        )
-        .expect_err("the package does not support this host");
+        let error = run(&packages, &elsewhere, Side::Client, &mut [&mut noop])
+            .expect_err("the package does not support this host");
 
-        match (&error, expected) {
-            (PipelineError::Compatibility(CompatibilityError::Ravel { .. }), "Ravel")
-            | (PipelineError::Compatibility(CompatibilityError::Minecraft { .. }), "Minecraft") => {
-            }
-            _ => panic!("{expected} mismatch reported as {error}"),
-        }
+        assert!(
+            matches!(
+                (&error, expected),
+                (
+                    PipelineError::Compatibility(CompatibilityError::Ravel { .. }),
+                    "Ravel"
+                ) | (
+                    PipelineError::Compatibility(CompatibilityError::Minecraft { .. }),
+                    "Minecraft"
+                )
+            ),
+            "{expected} mismatch reported as {error}"
+        );
         assert!(noop.entered.is_empty(), "no mod code ran");
     }
 
     // Control: the unchanged package succeeds on its declared host.
     let mut noop = Recording::new("example_mod");
-    run(
-        &packages,
-        &host(),
-        Side::Client,
-        &mut [&mut noop as &mut dyn HostMod],
-    )
-    .expect("the running host is supported");
+    run(&packages, &host(), Side::Client, &mut [&mut noop]).expect("the running host is supported");
 
     fs::remove_dir_all(&parent).expect("cleanup");
 }
@@ -408,13 +375,8 @@ fn an_unresolvable_graph_stops_the_run_before_any_mod_code() {
     )];
     let mut noop = Recording::new("example_mod");
 
-    let error = run(
-        &packages,
-        &host(),
-        Side::Client,
-        &mut [&mut noop as &mut dyn HostMod],
-    )
-    .expect_err("the required dependency is not installed");
+    let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
+        .expect_err("the required dependency is not installed");
 
     assert!(
         matches!(
@@ -434,13 +396,8 @@ fn a_mod_that_declines_a_step_stops_the_run_at_that_step() {
     let (parent, packages) = single("refusing");
     let mut noop = Recording::refusing("example_mod", LifecycleState::Registered);
 
-    let error = run(
-        &packages,
-        &host(),
-        Side::Client,
-        &mut [&mut noop as &mut dyn HostMod],
-    )
-    .expect_err("the mod declines to register");
+    let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
+        .expect_err("the mod declines to register");
 
     assert!(matches!(error, PipelineError::Host(_)), "{error}");
     assert!(error.to_string().starts_with("the run failed"));
@@ -482,10 +439,7 @@ fn a_mod_the_plan_never_ordered_is_refused_before_the_run_starts() {
         &packages,
         &host(),
         Side::Client,
-        &mut [
-            &mut planned as &mut dyn HostMod,
-            &mut stranger as &mut dyn HostMod,
-        ],
+        &mut [&mut planned, &mut stranger],
     )
     .expect_err("the plan does not order `other_mod`");
 

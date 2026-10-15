@@ -97,7 +97,7 @@ pub enum HostError {
     Refused {
         /// The mod that declined.
         mod_id: ModId,
-        /// The state the mod was asked to enter.
+        /// The lifecycle phase the refused operation belongs to.
         state: LifecycleState,
         /// What the mod said, in the mod's own words and so not yet redacted.
         detail: String,
@@ -120,7 +120,7 @@ impl HostError {
         }
     }
 
-    /// The state the mod was asked to enter when it failed.
+    /// The lifecycle phase the failed operation belongs to.
     #[must_use]
     pub const fn state(&self) -> LifecycleState {
         match self {
@@ -232,18 +232,27 @@ pub trait HostMod: Send {
     }
 
     /// Declares content and resources layered in resolved load order; defaults to none.
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        None
+    ///
+    /// # Errors
+    /// Returns the mod's declaration refusal.
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, HostError> {
+        Ok(None)
     }
 
     /// Declares the versioned world data this mod owns, when it owns any.
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        None
+    ///
+    /// # Errors
+    /// Returns the mod's declaration refusal.
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, HostError> {
+        Ok(None)
     }
 
     /// Supplies migrations checked for completeness before a world payload is read.
-    fn saved_data_migrations(&self) -> Option<MigrationChain> {
-        None
+    ///
+    /// # Errors
+    /// Returns the mod's migration refusal.
+    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, HostError> {
+        Ok(None)
     }
 
     /// Applies admitted saved data, migrating through [`SavedDataPlan::steps`] first.
@@ -259,7 +268,7 @@ pub trait HostMod: Send {
         envelope: Option<&SavedDataEnvelope>,
         plan: &SavedDataPlan,
     ) -> Result<(), HostError> {
-        if envelope.is_none() && self.saved_data_declaration().is_none() {
+        if envelope.is_none() && self.saved_data_declaration()?.is_none() {
             return Ok(());
         }
         Err(HostError::Unsupported {
@@ -283,13 +292,19 @@ pub trait HostMod: Send {
     }
 
     /// Declares settings layered by the host and returned through [`HostMod::configure`].
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        None
+    ///
+    /// # Errors
+    /// Returns the mod's declaration refusal.
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
+        Ok(None)
     }
 
     /// Declares interception points for host ordering and admission; defaults to none.
-    fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
-        None
+    ///
+    /// # Errors
+    /// Returns the mod's declaration refusal.
+    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, HostError> {
+        Ok(None)
     }
 
     /// Answers an interception; [`Outcome::Refuse`] ends the round before later mods.
@@ -299,7 +314,7 @@ pub trait HostMod: Send {
     /// Returns [`HostError::Unsupported`] by default if interceptions were declared; otherwise proceeds.
     fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, HostError> {
         let _ = occasion;
-        if self.interception_declaration().is_none() {
+        if self.interception_declaration()?.is_none() {
             return Ok(Outcome::Proceed);
         }
         Err(HostError::Unsupported {
@@ -315,7 +330,7 @@ pub trait HostMod: Send {
     /// Returns [`HostError::Unsupported`] by default if settings were declared, or an implementation's refusal.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
         let _ = resolved;
-        if self.configuration_declaration().is_none() {
+        if self.configuration_declaration()?.is_none() {
             return Ok(());
         }
         Err(HostError::Unsupported {
@@ -325,8 +340,11 @@ pub trait HostMod: Send {
     }
 
     /// Declares the services this mod answers and the ones it needs answered.
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        None
+    ///
+    /// # Errors
+    /// Returns the mod's declaration refusal.
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+        Ok(None)
     }
 
     /// Answers one call to a service this mod declared it provides.
@@ -578,7 +596,7 @@ mod tests {
     fn a_contested_identifier_reaches_the_mod_naming_who_owns_it() {
         let owner: ModId = "other_mod".parse().expect("valid id");
         let mut table = Table {
-            owned: vec![(key(ContentKind::Block, "example_mod:copper"), owner.clone())],
+            owned: vec![(key(ContentKind::Block, "example_mod:copper"), owner)],
             ..Table::default()
         };
 

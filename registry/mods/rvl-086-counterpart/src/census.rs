@@ -549,7 +549,7 @@ mod tests {
         assert_eq!(BLOCKS, 17);
         let names = block_names();
         assert_eq!(names.len(), BLOCKS);
-        let mut unique = names.clone();
+        let mut unique = names;
         unique.sort_unstable();
         unique.dedup();
         assert_eq!(unique.len(), BLOCKS, "no two blocks share a name");

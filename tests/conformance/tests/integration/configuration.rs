@@ -27,7 +27,9 @@ fn directory(name: &str) -> PathBuf {
         "ravel-configuration-conformance-{}-{name}",
         std::process::id()
     ));
-    let _ = std::fs::remove_dir_all(&directory);
+    if directory.exists() {
+        std::fs::remove_dir_all(&directory).expect("a stale directory is removable");
+    }
     std::fs::create_dir_all(&directory).expect("a writable temporary directory");
     directory
 }

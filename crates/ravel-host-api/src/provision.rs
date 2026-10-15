@@ -448,10 +448,7 @@ mod tests {
         provision.requires(&consumer, "shared_maths", range("^2"));
 
         assert_eq!(provision.providers_of("shared_maths"), [&provider]);
-        assert_eq!(
-            provision.providers_of("shared_words"),
-            [] as [&ravel_core::ModId; 0]
-        );
+        assert_eq!(provision.providers_of("shared_words"), Vec::<&ModId>::new());
         assert_eq!(
             provision
                 .resolve()

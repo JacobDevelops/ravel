@@ -276,13 +276,13 @@ pub enum Condition {
     /// The neighbour's block is a member of that group.
     NamedGroup(String),
     /// The nested condition does not hold.
-    Inverted(Box<Condition>),
+    Inverted(Box<Self>),
     /// Every listed condition holds.
-    AllOf(Vec<Condition>),
+    AllOf(Vec<Self>),
     /// Some listed condition holds.
-    AnyOf(Vec<Condition>),
+    AnyOf(Vec<Self>),
     /// Exactly one of the two listed conditions holds.
-    OneOfTwo(Box<Condition>, Box<Condition>),
+    OneOfTwo(Box<Self>, Box<Self>),
     /// Nothing connects.
     ///
     /// Every degenerate input in §7's table lands here, and so does every form
@@ -307,10 +307,10 @@ impl Condition {
     /// of an object the language does not understand.
     #[must_use]
     pub fn from_declaration(value: Option<&JsonValue>, vocabulary: &Vocabulary) -> (Self, Report) {
-        match value {
-            None => (Self::SameState, Report::default()),
-            Some(value) => Self::parse(value, vocabulary),
-        }
+        value.map_or_else(
+            || (Self::SameState, Report::default()),
+            |value| Self::parse(value, vocabulary),
+        )
     }
 
     /// Reads one condition object.
@@ -438,7 +438,7 @@ fn parse_at(
                 let first = elements.pop().unwrap_or(Condition::Never);
                 Condition::OneOfTwo(Box::new(first), Box::new(second))
             }
-            _ => {
+            Elements::Refused | Elements::One(_) | Elements::Many(_) => {
                 report.refused_forms += 1;
                 Condition::Never
             }

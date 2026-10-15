@@ -417,7 +417,11 @@ mod tests {
                 assert_eq!(lines[0].kind, "bat");
                 assert_eq!(lines[1].kind, "cow");
             }
-            other => panic!("the removal reported {other:?}"),
+            other @ (Report::Tally { .. }
+            | Report::TallyNone
+            | Report::Reclaimed { .. }
+            | Report::SweptNone
+            | Report::SweptRefusedPlayers) => panic!("the removal reported {other:?}"),
         }
         assert!(console.census().is_empty());
     }

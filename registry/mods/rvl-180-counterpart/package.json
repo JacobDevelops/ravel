@@ -63,19 +63,19 @@
       },
       {
         "path": "src/commands.rs",
-        "sha256": "baeaa2afcae14980bdb9e76c01d44c32245995eed1881b802654b027eed306c3"
+        "sha256": "b2c9914900f06a40c60e013f919b520f69325913aa52529b1b5fd6874698c11e"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "b6655a95e30d5b39b1e9d741cc5b83f965131443e3d464d8ad0b212c3960ecfe"
+        "sha256": "c44b7d1862ce3a08946480a7e103ae7a375eaee37a27ba087daef556ef71deba"
       },
       {
         "path": "src/grouping.rs",
-        "sha256": "8724453ea0f0f159039f0f96c41a3b9a9316bf564ec19db99612ec01ff2fe980"
+        "sha256": "2b93fc2f3eb2bf3a5d44fe7a818c6aa611973f04346321451357cbc9b7ffb960"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "e5a377deb5f491f44128e8db16e731413d953d7e306caebad43824ac7c174ad1"
+        "sha256": "f9b677fc03daf4dc5db33e8e0b5e51463ca6ba79773edd0f2ff3d1e47222eb86"
       },
       {
         "path": "src/presentation.rs",
@@ -83,11 +83,11 @@
       },
       {
         "path": "src/sprites.rs",
-        "sha256": "d06df4b3eab078241745ee7ce3355d63ac2faaa34db2a1124c977662a9c98c10"
+        "sha256": "317de133b0d94844924255472548809c5be0a409faf91bc14ac2d2f48c0d84f9"
       },
       {
         "path": "src/transport.rs",
-        "sha256": "034560dbe47c2d998d4127a6d38f2d6030c7280dd696306d08eea1d0d340c98a"
+        "sha256": "c587a6fd31f8ecd5e2fc303e448847f81ca7e809c423a6a6ed7d408719962faf"
       }
     ]
   },

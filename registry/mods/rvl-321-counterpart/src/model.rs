@@ -84,7 +84,7 @@ impl Tier {
 }
 
 /// A crop kind: what a crop's stem looks like and what its seed is crafted from.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CropKind {
     /// The full identifier.
     pub id: String,
@@ -112,7 +112,7 @@ impl CropKind {
 }
 
 /// What a crop is crafted from: one entry, or any member of a tag.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Crafted {
     /// A single entry, with optional item-level data narrowing it.
     Entry {

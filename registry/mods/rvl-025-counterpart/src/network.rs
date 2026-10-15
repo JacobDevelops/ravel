@@ -759,7 +759,7 @@ mod tests {
     }
 
     fn pattern_record() -> String {
-        crate::shapes::Pattern::new().to_saved().to_string()
+        Pattern::new().to_saved().to_string()
     }
 
     #[test]

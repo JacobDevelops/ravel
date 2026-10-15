@@ -75,7 +75,11 @@ mod tests {
     #[test]
     fn a_refused_compile_carries_no_instance_path() {
         let root = std::env::temp_dir().join(format!("ravel-xtask-host-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        match fs::remove_dir_all(&root) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("remove stale temporary instance: {error}"),
+        }
         fs::create_dir_all(&root).expect("the temporary instance is creatable");
 
         // Missing Ravel crates force refusal before version selection is read.
@@ -96,6 +100,6 @@ mod tests {
             "the refusal dropped the path instead of redacting it: {reported}"
         );
 
-        let _ = fs::remove_dir_all(&root);
+        fs::remove_dir_all(&root).expect("remove temporary instance");
     }
 }

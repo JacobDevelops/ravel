@@ -195,24 +195,7 @@ pub const OWN_TAG: &str = "optional_material";
 pub fn documents(blocks: &[RegistryKey], items: &[RegistryKey]) -> Result<Vec<Document>, ModError> {
     let mut documents = Vec::with_capacity(TAG_DOCUMENTS);
 
-    let storage = census::storage_block_paths();
-    for path in &storage {
-        let name = format!("{CONVENTION_NAMESPACE}:storage_blocks/{path}");
-        let one = std::slice::from_ref(path);
-        documents.push(document(&name, ContentKind::Block, held(blocks, one))?);
-        documents.push(document(&name, ContentKind::Item, held(items, one))?);
-    }
-    let aggregate = format!("{CONVENTION_NAMESPACE}:storage_blocks");
-    documents.push(document(
-        &aggregate,
-        ContentKind::Block,
-        held(blocks, &storage),
-    )?);
-    documents.push(document(
-        &aggregate,
-        ContentKind::Item,
-        held(items, &storage),
-    )?);
+    storage_documents(&mut documents, blocks, items)?;
 
     for material in census::MATERIAL_ITEMS {
         let one = [material.to_owned()];
@@ -242,6 +225,41 @@ pub fn documents(blocks: &[RegistryKey], items: &[RegistryKey]) -> Result<Vec<Do
         )?);
     }
 
+    dependent_documents(&mut documents, items)?;
+
+    Ok(documents)
+}
+
+fn storage_documents(
+    documents: &mut Vec<Document>,
+    blocks: &[RegistryKey],
+    items: &[RegistryKey],
+) -> Result<(), ModError> {
+    let storage = census::storage_block_paths();
+    for path in &storage {
+        let name = format!("{CONVENTION_NAMESPACE}:storage_blocks/{path}");
+        let one = std::slice::from_ref(path);
+        documents.push(document(&name, ContentKind::Block, held(blocks, one))?);
+        documents.push(document(&name, ContentKind::Item, held(items, one))?);
+    }
+    let aggregate = format!("{CONVENTION_NAMESPACE}:storage_blocks");
+    documents.push(document(
+        &aggregate,
+        ContentKind::Block,
+        held(blocks, &storage),
+    )?);
+    documents.push(document(
+        &aggregate,
+        ContentKind::Item,
+        held(items, &storage),
+    )?);
+    Ok(())
+}
+
+fn dependent_documents(
+    documents: &mut Vec<Document>,
+    items: &[RegistryKey],
+) -> Result<(), ModError> {
     let tools = held(items, &census::tool_item_paths());
     for name in [
         format!("{CONVENTION_NAMESPACE}:tools"),
@@ -251,7 +269,6 @@ pub fn documents(blocks: &[RegistryKey], items: &[RegistryKey]) -> Result<Vec<Do
     ] {
         documents.push(document(&name, ContentKind::Item, tools.clone())?);
     }
-
     for (path, role, kind) in [
         ("crop_blocks", Role::Block, ContentKind::Block),
         ("crop_materials", Role::Material, ContentKind::Item),
@@ -274,14 +291,12 @@ pub fn documents(blocks: &[RegistryKey], items: &[RegistryKey]) -> Result<Vec<Do
             named(kind, &ids)?,
         )?);
     }
-
     documents.push(document(
         &format!("{MOD_ID}:{OWN_TAG}"),
         ContentKind::Item,
         named(ContentKind::Item, &crops::optional_tag_members())?,
     )?);
-
-    Ok(documents)
+    Ok(())
 }
 
 /// The five conventional ore facts, each mirrored across both registries.
@@ -612,23 +627,20 @@ mod tests {
     #[test]
     fn the_fifteen_self_drops_are_the_storage_fuel_and_anchor_blocks() {
         let storage = 3;
-        let fuel = crate::fuel::TIERS as usize;
+        let fuel = usize::try_from(crate::fuel::TIERS).expect("the six fuel tiers fit usize");
         let anchors = crops::COUNT;
         assert_eq!(storage + fuel + anchors, covered(LootShape::SelfDrop));
     }
 
     #[test]
     fn the_four_ore_alternatives_match_the_deposits_and_their_ranges() {
-        assert_eq!(
-            covered(LootShape::OreAlternative),
-            crate::world::DEPOSITS.len()
-        );
-        for deposit in &crate::world::DEPOSITS {
+        assert_eq!(covered(LootShape::OreAlternative), world::DEPOSITS.len());
+        for deposit in &world::DEPOSITS {
             match deposit.ore {
-                crate::world::Ore::Shard => {
+                Ore::Shard => {
                     assert_eq!((deposit.lowest_drop, deposit.highest_drop), (2, 5));
                 }
-                crate::world::Ore::Essence => {
+                Ore::Essence => {
                     assert_eq!((deposit.lowest_drop, deposit.highest_drop), (3, 5));
                 }
             }
@@ -645,16 +657,16 @@ mod tests {
         assert_eq!(TAG_DOCUMENTS, 48);
         const { assert!(!ANY_TAG_REPLACES, "every one of them appends") };
         assert_eq!(STORAGE_TAG_DOCUMENTS, 20);
-        assert_eq!(STORAGE_TAG_DOCUMENTS / 2, STORAGE_TAG_FACTS);
+        assert_eq!(STORAGE_TAG_DOCUMENTS.div_euclid(2), STORAGE_TAG_FACTS);
     }
 
     #[test]
     fn the_two_mirrored_families_state_each_fact_twice_and_the_third_states_it_once() {
-        let mirrored: Vec<&Mirrored> = CONVENTIONAL
+        let mirrored = CONVENTIONAL
             .iter()
             .filter(|family| family.both_registries)
-            .collect();
-        assert_eq!(mirrored.len(), 2);
+            .count();
+        assert_eq!(mirrored, 2);
         assert!(CONVENTIONAL.iter().all(|family| family.facts > 0));
 
         let documents: usize = CONVENTIONAL

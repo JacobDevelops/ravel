@@ -160,7 +160,7 @@ pub enum Scope {
 }
 
 /// A codec-described world save.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Record {
     name: String,
     fallback: JsonValue,
@@ -349,7 +349,7 @@ impl std::fmt::Display for Recovery {
 }
 
 /// What a read produced.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Loaded {
     value: JsonValue,
     recovery: Option<Recovery>,
@@ -583,7 +583,7 @@ mod tests {
         let plain = Record::declare("counts", json!({})).expect("a compound default");
         assert!(!plain.writes(false));
         assert!(plain.writes(true));
-        let always = plain.clone().always_dirty();
+        let always = plain.always_dirty();
         assert!(always.writes(false));
         assert!(always.writes(true));
     }

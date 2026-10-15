@@ -60,13 +60,14 @@ pub fn geometry_table() -> String {
     for side in 1..=LARGEST_SIDE {
         let extent = half_extent(side);
         let radius = i32::try_from(extent).unwrap_or(i32::MAX);
-        let _ = writeln!(
+        writeln!(
             rendered,
             "{side}\t{extent}\t{}\t{}\t{:.6}",
             sweep_positions(ORIGIN, radius).len(),
             radial_positions(ORIGIN, radius).len(),
             weapon_radius(extent),
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
     rendered
 }
@@ -80,23 +81,25 @@ pub fn geometry_table() -> String {
 pub fn reusable_table() -> String {
     let mut rendered = String::from("uses\tunlimited\tdurability\tfresh\tspent");
     for level in 0..=LARGEST_LEVEL {
-        let _ = write!(rendered, "\tcharge_{level}");
+        write!(rendered, "\tcharge_{level}").expect("writing to a String cannot fail");
     }
     rendered.push('\n');
 
     for uses in 0..=LARGEST_USES {
         let reusable = Reusable::new(uses);
         let maximum = reusable.durability();
-        let _ = write!(
+        write!(
             rendered,
             "{uses}\t{}\t{}\t{}\t{}",
             reusable.unlimited(),
             maximum.map_or_else(|| "none".to_owned(), |value| value.to_string()),
             left(reusable.uses_left(0)),
             left(reusable.uses_left(maximum.unwrap_or(0))),
-        );
+        )
+        .expect("writing to a String cannot fail");
         for level in 0..=LARGEST_LEVEL {
-            let _ = write!(rendered, "\t{:.6}", reusable.charge_probability(level));
+            write!(rendered, "\t{:.6}", reusable.charge_probability(level))
+                .expect("writing to a String cannot fail");
         }
         rendered.push('\n');
     }

@@ -537,7 +537,9 @@ fn scratch(label: &str) -> PathBuf {
         "ravel-pack-conformance-{}-{label}",
         std::process::id()
     ));
-    let _ = fs::remove_dir_all(&directory);
+    if directory.exists() {
+        fs::remove_dir_all(&directory).expect("a stale directory is removable");
+    }
     fs::create_dir_all(&directory).expect("a scratch directory");
     directory
 }
@@ -585,8 +587,8 @@ fn the_same_pack_written_by_two_processes_is_the_same_bytes() {
         "two processes wrote different bytes for the same pack"
     );
 
-    let _ = fs::remove_dir_all(&mine);
-    let _ = fs::remove_dir_all(&theirs);
+    fs::remove_dir_all(&mine).expect("the first pack directory is removable");
+    fs::remove_dir_all(&theirs).expect("the second pack directory is removable");
 }
 
 #[test]
@@ -635,7 +637,7 @@ fn no_written_byte_names_the_machine_the_pack_was_written_on() {
         "the scan cannot find a value it is looking for, so every assertion above passed vacuously"
     );
 
-    let _ = fs::remove_dir_all(&directory);
+    fs::remove_dir_all(&directory).expect("the pack directory is removable");
 }
 
 #[test]

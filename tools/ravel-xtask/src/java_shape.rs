@@ -166,7 +166,16 @@ pub(crate) fn verify_persistence_reflection(root: &Path, violations: &mut Vec<St
         }
     }
 
-    for surface in &surfaces {
+    verify_persistence_reflection_roles(&surfaces, &spelled, &reached, violations);
+}
+
+fn verify_persistence_reflection_roles(
+    surfaces: &[ReflectiveSurface],
+    spelled: &[(String, String)],
+    reached: &[(String, String)],
+    violations: &mut Vec<String>,
+) {
+    for surface in surfaces {
         let declaring = &surface.path;
         let declared: Vec<&str> = surface
             .roles
@@ -174,7 +183,7 @@ pub(crate) fn verify_persistence_reflection(root: &Path, violations: &mut Vec<St
             .map(|role| role.name.as_str())
             .collect();
 
-        for (relative, role) in &spelled {
+        for (relative, role) in spelled {
             if !declared.contains(&role.as_str()) {
                 violations.push(format!(
                     "{relative} resolves the game class {GAME_NAMES}.{role} and {declaring} \
@@ -185,7 +194,7 @@ pub(crate) fn verify_persistence_reflection(root: &Path, violations: &mut Vec<St
         }
 
         let mut used: Vec<&str> = Vec::new();
-        for (relative, constant) in &reached {
+        for (relative, constant) in reached {
             match declaring_role(constant, &declared) {
                 Some(role) => used.push(role),
                 None => violations.push(format!(

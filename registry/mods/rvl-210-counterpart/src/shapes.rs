@@ -268,31 +268,13 @@ fn validate(
     for constraint in constraints {
         match constraint {
             Constraint::ExactSize(wanted) if region.size() != *wanted => {
-                return Err(Failure {
-                    at,
-                    reason: Reason::WrongSize {
-                        found: region.size(),
-                        wanted: *wanted,
-                    },
-                });
+                return Err(validate_size(region, *wanted));
             }
             Constraint::MinimumSize(wanted) if region.size() < *wanted => {
-                return Err(Failure {
-                    at,
-                    reason: Reason::WrongSize {
-                        found: region.size(),
-                        wanted: *wanted,
-                    },
-                });
+                return Err(validate_size(region, *wanted));
             }
             Constraint::MaximumSize(wanted) if region.size() > *wanted => {
-                return Err(Failure {
-                    at,
-                    reason: Reason::WrongSize {
-                        found: region.size(),
-                        wanted: *wanted,
-                    },
-                });
+                return Err(validate_size(region, *wanted));
             }
             Constraint::Cube => {
                 let extent = region.extent();
@@ -304,34 +286,13 @@ fn validate(
                 }
             }
             Constraint::ExactCount(block, wanted) if count_of(block) != *wanted => {
-                return Err(Failure {
-                    at,
-                    reason: Reason::WrongCount {
-                        block: block.clone(),
-                        found: count_of(block),
-                        wanted: *wanted,
-                    },
-                });
+                return Err(validate_count(at, block, count_of(block), *wanted));
             }
             Constraint::MinimumCount(block, wanted) if count_of(block) < *wanted => {
-                return Err(Failure {
-                    at,
-                    reason: Reason::WrongCount {
-                        block: block.clone(),
-                        found: count_of(block),
-                        wanted: *wanted,
-                    },
-                });
+                return Err(validate_count(at, block, count_of(block), *wanted));
             }
             Constraint::MaximumCount(block, wanted) if count_of(block) > *wanted => {
-                return Err(Failure {
-                    at,
-                    reason: Reason::WrongCount {
-                        block: block.clone(),
-                        found: count_of(block),
-                        wanted: *wanted,
-                    },
-                });
+                return Err(validate_count(at, block, count_of(block), *wanted));
             }
             Constraint::Hollow => {
                 if let Some(inside) = region
@@ -345,10 +306,36 @@ fn validate(
                     });
                 }
             }
-            _ => {}
+            Constraint::ExactSize(_)
+            | Constraint::MinimumSize(_)
+            | Constraint::MaximumSize(_)
+            | Constraint::ExactCount(..)
+            | Constraint::MinimumCount(..)
+            | Constraint::MaximumCount(..) => {}
         }
     }
     Ok(())
+}
+
+fn validate_size(region: &Region, wanted: usize) -> Failure {
+    Failure {
+        at: region.lowest,
+        reason: Reason::WrongSize {
+            found: region.size(),
+            wanted,
+        },
+    }
+}
+
+fn validate_count(at: Position, block: &str, found: usize, wanted: usize) -> Failure {
+    Failure {
+        at,
+        reason: Reason::WrongCount {
+            block: block.to_owned(),
+            found,
+            wanted,
+        },
+    }
 }
 
 #[cfg(test)]

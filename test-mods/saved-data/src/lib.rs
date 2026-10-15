@@ -291,12 +291,18 @@ impl HostMod for SavedDataMod {
         Ok(())
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        Some(self.declaration())
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, HostError> {
+        Ok(Some(self.declaration()))
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        ConfigurationDeclaration::parse(DECLARATION).ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
+        ConfigurationDeclaration::parse(DECLARATION)
+            .map(Some)
+            .map_err(|error| HostError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     /// Takes the waypoint limit the resolved settings put in force.
@@ -328,12 +334,12 @@ impl HostMod for SavedDataMod {
     /// disagree with it. The chain exists because a host opening a world checks
     /// that every declared version has a way into it before it reads a payload,
     /// which is a check a typed `match` with a panicking arm cannot answer.
-    fn saved_data_migrations(&self) -> Option<MigrationChain> {
-        Some(
+    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, HostError> {
+        Ok(Some(
             MigrationChain::new(self.id.clone())
                 .reaching(Self::version(2), Self::migrate_to_two)
                 .reaching(Self::version(3), Self::migrate_to_three),
-        )
+        ))
     }
 
     fn open_saved_data(

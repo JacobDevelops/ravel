@@ -47,14 +47,14 @@ pub const REGISTERED: [&str; 3] = [STACKABLE, PORTION, SCALAR];
 /// The largest quantity a stackable item or a fluid portion may carry.
 ///
 /// Section 6.2: both maxima are the largest 32-bit signed value.
-pub const NARROW_MAXIMUM: Amount = i32::MAX as Amount;
+pub const NARROW_MAXIMUM: Amount = 0x7fff_ffff;
 
 /// The largest quantity a scalar charge may carry.
 ///
 /// Section 6.2: the largest 64-bit signed value. Defects three and four are both
 /// about values that live above the low 32 bits of this range, so the range is
 /// what makes them reachable.
-pub const WIDE_MAXIMUM: Amount = i64::MAX as Amount;
+pub const WIDE_MAXIMUM: Amount = i64::MAX.cast_unsigned();
 
 /// One category type: an axis a kind decomposes into.
 ///

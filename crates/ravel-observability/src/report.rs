@@ -205,13 +205,12 @@ impl PreWorldReport {
     ///
     /// Returns [`WorldAccessRefused`] with the refusal count and first refusal.
     pub fn world_access(&self) -> Result<(), WorldAccessRefused> {
-        match self.refusals.first() {
-            None => Ok(()),
-            Some(first) => Err(WorldAccessRefused {
+        self.refusals.first().map_or(Ok(()), |first| {
+            Err(WorldAccessRefused {
                 refusals: self.refusals.len(),
                 first: first.line(),
-            }),
-        }
+            })
+        })
     }
 
     /// Renders the whole report, one line per entry, refusals before notices.
@@ -372,7 +371,7 @@ mod tests {
         assert_eq!(report.world_access(), Ok(()));
         assert_eq!(report.refusals(), []);
         assert_eq!(report.notices(), []);
-        assert_eq!(report.lines(), [] as [std::string::String; 0]);
+        assert_eq!(report.lines(), Vec::<String>::new());
         assert_eq!(report.environment(), &environment());
     }
 

@@ -310,7 +310,7 @@ fn a_complete_m7_record_set_leaves_m7_closure_with_nothing_to_report() {
 
 #[test]
 fn every_m7_closure_clause_refuses_a_manifest_that_breaks_it() {
-    let manifest_cases: &[ClosureCase] = &[
+    let manifest_cases: &[ClosureCase<'_>] = &[
         (
             "work-packages",
             &[(r#","M7-W6"]"#, "]")],

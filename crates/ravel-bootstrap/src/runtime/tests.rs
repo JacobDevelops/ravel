@@ -49,6 +49,7 @@ enum Behaviour {
     Records,
     Fails,
     Panics,
+    Forges(&'static str),
 }
 
 struct Recording {
@@ -91,11 +92,21 @@ impl HostMod for Recording {
                 state: LifecycleState::Running,
                 detail: "this mod declines every event".to_owned(),
             }),
+            Behaviour::Forges(owner) => Err(HostError::Unsupported {
+                mod_id: id(owner),
+                state: LifecycleState::Running,
+            }),
             Behaviour::Panics => panic!("this mod is broken"),
         }
     }
 
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), HostError> {
+        if let Behaviour::Forges(owner) = self.behaviour {
+            return Err(HostError::Unsupported {
+                mod_id: id(owner),
+                state: LifecycleState::Running,
+            });
+        }
         self.log
             .lock()
             .expect("nothing panicked")
@@ -277,6 +288,89 @@ fn the_same_mod_on_a_client_does_fill_it() {
     );
 }
 
+fn forged_pair(forged: &'static str) -> LoaderRuntime {
+    let mut machine = LifecycleMachine::new(
+        Side::Client,
+        [MOD, "innocent"]
+            .into_iter()
+            .map(|name| LifecycleEntry {
+                mod_id: id(name),
+                sides: SideSet::new([Side::Client]).expect("client"),
+                requirement: Requirement::Optional,
+                saved_data_versions: BTreeSet::new(),
+            })
+            .collect(),
+    )
+    .expect("pair");
+    let mut mods: Vec<Box<dyn HostMod>> = [MOD, "innocent"]
+        .into_iter()
+        .map(|name| -> Box<dyn HostMod> {
+            Box::new(Recording {
+                id: id(name),
+                log: Arc::new(Mutex::new(Log::default())),
+                behaviour: if name == MOD {
+                    Behaviour::Forges(forged)
+                } else {
+                    Behaviour::Records
+                },
+                claims: if name == MOD {
+                    vec![key("go")]
+                } else {
+                    Vec::new()
+                },
+            })
+        })
+        .collect();
+    for state in [
+        LifecycleState::Validated,
+        LifecycleState::Resolved,
+        LifecycleState::Loaded,
+        LifecycleState::Constructed,
+    ] {
+        machine.advance_all(state).expect("step");
+    }
+    for host in &mut mods {
+        let mut window = machine.registration_window(host.id()).expect("window");
+        host.register(&mut window).expect("register");
+    }
+    for state in [LifecycleState::Registered, LifecycleState::Running] {
+        machine.advance_all(state).expect("step");
+    }
+    LoaderRuntime::new(machine, mods)
+}
+
+#[test]
+fn forged_delivery_errors_fail_the_actual_event_or_command_owner() {
+    for forged in ["unknown_owner", "innocent"] {
+        for command in [false, true] {
+            let runtime = forged_pair(forged);
+            if command {
+                runtime.observe(&target(COMMAND), &[HookValue::Text(format!("{MOD}:go"))]);
+            } else {
+                runtime.observe(&target("client.tick"), &[]);
+            }
+            let inner = runtime.inner.lock().expect("no panic");
+            assert_eq!(inner.machine.state(&id(MOD)), Ok(LifecycleState::Failed));
+            assert_eq!(
+                inner.machine.state(&id("innocent")),
+                Ok(LifecycleState::Running)
+            );
+            let none: [ravel_observability::Refusal; 0] = [];
+            assert_eq!(inner.report.refusals(), none);
+            assert_eq!(
+                inner
+                    .machine
+                    .failure(&id(MOD))
+                    .expect("owner")
+                    .expect("failure")
+                    .mod_id,
+                Some(id(MOD))
+            );
+            drop(inner);
+        }
+    }
+}
+
 #[test]
 fn a_mod_that_panicked_does_not_silence_every_later_hook() {
     let (runtime, _log) = running(Side::DedicatedServer, Vec::new(), Behaviour::Panics);
@@ -373,6 +467,7 @@ fn a_hook_the_loader_has_no_meaning_for_delivers_nothing_and_proceeds() {
     assert_eq!(outcome, HookOutcome::Proceed);
     let seen = log.lock().expect("nothing panicked");
     assert!(seen.seen.is_empty() && seen.ran.is_empty());
+    drop(seen);
 }
 
 #[test]
@@ -404,7 +499,8 @@ fn a_command_with_no_arguments_reaches_its_owner_carrying_none() {
 
     let ran = &log.lock().expect("nothing panicked").ran;
     assert_eq!(ran.len(), 1);
-    assert_eq!(ran[0].arguments, [] as [std::string::String; 0]);
+    let empty: [String; 0] = [];
+    assert_eq!(ran[0].arguments, empty);
 }
 
 #[test]
@@ -445,10 +541,8 @@ fn a_command_hook_carrying_no_text_reaches_nobody() {
     let outcome = runtime.observe(&target(COMMAND), &[HookValue::Int(1)]);
 
     assert_eq!(outcome, HookOutcome::Proceed);
-    assert_eq!(
-        log.lock().expect("nothing panicked").ran,
-        [] as [ravel_host_api::CommandInvocation; 0]
-    );
+    let empty: [CommandInvocation; 0] = [];
+    assert_eq!(log.lock().expect("nothing panicked").ran, empty);
 }
 
 #[test]
@@ -477,6 +571,7 @@ fn a_mod_that_fails_while_reacting_is_failed_rather_than_thrown_at_the_game() {
     assert_eq!(attributed.state, LifecycleState::Running);
     assert_eq!(attributed.kind, None);
     assert!(attributed.message.text().contains("declines every event"));
+    drop(inner);
 }
 
 #[test]
@@ -497,6 +592,7 @@ fn a_failed_mod_is_failed_once_however_many_ticks_follow() {
         .iter()
         .filter(|event| event.state == LifecycleState::Failed)
         .count();
+    drop(inner);
     assert_eq!(
         failures, 1,
         "a mod that has already ended cannot fail again, and the machine says so"

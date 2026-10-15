@@ -495,7 +495,7 @@ impl Placement {
                 record: Some(Record::SelectedPosition),
             })?;
         }
-        Self::new(dimension, (read[0], read[1], read[2]))
+        Self::new(dimension, read.into())
     }
 }
 
@@ -508,10 +508,7 @@ pub fn write_tolerant(stacks: &[Option<Stack>]) -> JsonValue {
     JsonValue::Array(
         stacks
             .iter()
-            .map(|slot| match slot {
-                Some(stack) => stack.to_saved(),
-                None => JsonValue::Null,
-            })
+            .map(|slot| slot.as_ref().map_or(JsonValue::Null, Stack::to_saved))
             .collect(),
     )
 }

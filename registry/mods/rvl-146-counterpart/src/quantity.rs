@@ -62,7 +62,7 @@ use ravel_sdk::{JsonValue, json};
 ///
 /// The wire form is four fixed signed bytes, so this is the largest value that
 /// form can carry. The upgrade path is a wider field, which is a wire change.
-pub const MAX_COUNT: u32 = i32::MAX as u32;
+pub const MAX_COUNT: u32 = i32::MAX.cast_unsigned();
 
 /// The most identifiers one matcher will accept.
 pub const MAX_ACCEPTED: usize = 1024;
@@ -608,7 +608,7 @@ mod tests {
             empty.consume(&stack),
             Consumed {
                 moved: 0,
-                outstanding: empty.clone(),
+                outstanding: empty,
                 candidate: stack,
             }
         );
@@ -720,7 +720,7 @@ mod tests {
         // no length in front of it, so a buffer an original peer wrote parses
         // here. The price is that a byte appended to it is a matcher byte: only
         // the host's own reader knows where its form ends.
-        let mut appended = bytes.clone();
+        let mut appended = bytes;
         appended.push(0);
         assert_eq!(Portion::read(&appended), Ok((vec![1, 2, 3, 0], 1792)));
     }

@@ -290,8 +290,8 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.clone()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        Ok(self.declaration.clone())
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
@@ -302,8 +302,8 @@ impl Mod for Entry {
         claim_all(declaration, registrar)
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        None
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        Ok(None)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {

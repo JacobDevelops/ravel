@@ -167,16 +167,13 @@ impl Subscription {
     /// verdict for the map, not one per value.
     pub fn check(&mut self, map: &ValueMap) -> bool {
         let current: Vec<Value> = map.values().into_iter().cloned().collect();
-        let dirty = match self.remembered.as_ref() {
-            None => true,
-            Some(remembered) => {
-                remembered.len() != current.len()
-                    || !remembered
-                        .iter()
-                        .zip(&current)
-                        .all(|(held, now)| held.is(now))
-            }
-        };
+        let dirty = self.remembered.as_ref().is_none_or(|remembered| {
+            remembered.len() != current.len()
+                || !remembered
+                    .iter()
+                    .zip(&current)
+                    .all(|(held, now)| held.is(now))
+        });
         if dirty {
             self.remembered = Some(current);
         }

@@ -698,7 +698,9 @@ mod tests {
                 assert_eq!(absorbed, [1]);
                 assert_eq!(refused, [2]);
             }
-            other => panic!("several neighbours merge: {other:?}"),
+            other @ (Placement::Alone { .. } | Placement::Joined { .. }) => {
+                panic!("several neighbours merge: {other:?}")
+            }
         }
 
         assert_eq!(grouping.group_of(Position::new(0, 0, 0)), Some(3));

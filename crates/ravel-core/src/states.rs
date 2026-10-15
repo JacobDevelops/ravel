@@ -162,6 +162,16 @@ mod tests {
     }
 
     #[test]
+    fn every_state_name_matches_its_serialized_form() {
+        for state in LifecycleState::ALL {
+            assert_eq!(
+                serde_json::to_value(state).expect("state should serialize"),
+                serde_json::Value::String(state.name().to_owned())
+            );
+        }
+    }
+
+    #[test]
     fn every_state_round_trips_as_a_kebab_case_name() {
         for state in LifecycleState::ALL {
             let encoded = serde_json::to_string(&state).expect("state should serialize");

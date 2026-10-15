@@ -42,6 +42,10 @@ pub fn all() -> Vec<(&'static str, String)> {
 
 /// The vanilla bundle's attachments, one row each, in the order section nine
 /// tables them.
+///
+/// # Panics
+///
+/// Panics if formatting into a string fails.
 #[must_use]
 pub fn capabilities() -> String {
     let mut rendered = String::from("capability\tclass\tform\ttarget\n");
@@ -50,30 +54,36 @@ pub fn capabilities() -> String {
             Address::Specific(_) => "specific",
             Address::Broad(_) => "broad",
         };
-        let _ = writeln!(
+        writeln!(
             rendered,
             "{}\t{:?}\t{form}\t{}",
             attachment.capability,
             attachment.class,
             attachment.address.written()
-        );
+        )
+        .expect("writing into a String cannot fail");
     }
     rendered
 }
 
 /// The store-adapter table, one row per installed adapter.
+///
+/// # Panics
+///
+/// Panics if formatting into a string fails.
 #[must_use]
 pub fn storage() -> String {
     let mut rendered = String::from("shape\tclass\tkind\tslotted\n");
     for adapter in table() {
-        let _ = writeln!(
+        writeln!(
             rendered,
             "{:?}\t{}\t{}\t{}",
             adapter.shape,
             adapter.class.name(),
             adapter.shape.kind(),
             adapter.shape.slotted()
-        );
+        )
+        .expect("writing into a String cannot fail");
     }
     rendered
 }

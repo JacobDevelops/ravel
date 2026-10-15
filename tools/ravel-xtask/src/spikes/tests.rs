@@ -9,7 +9,7 @@ use crate::test_support::temporary_root;
 fn an_absent_spike_tree_is_not_a_violation() {
     let root = temporary_root("spikes-absent");
 
-    assert_eq!(verify_spikes(&root), [] as [std::string::String; 0]);
+    assert_eq!(verify_spikes(&root), Vec::<String>::new());
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
 

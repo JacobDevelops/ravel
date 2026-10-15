@@ -33,13 +33,19 @@ pub fn open_configuration(
         let Some(host) = mods.iter_mut().find(|host| host.id() == &mod_id) else {
             continue;
         };
-        let Some(declaration) = host.configuration_declaration() else {
+        let Some(declaration) =
+            host.configuration_declaration()
+                .map_err(|source| ConfigRefused::Mod {
+                    mod_id: mod_id.clone(),
+                    source,
+                })?
+        else {
             continue;
         };
         if declaration.owner != mod_id {
             return Err(ConfigRefused::ForeignDeclaration {
                 mod_id,
-                owner: declaration.owner.clone(),
+                owner: declaration.owner,
             });
         }
 
@@ -220,6 +226,7 @@ mod tests {
         declares: Option<ConfigurationDeclaration>,
         applied: Option<i64>,
         deaf: bool,
+        refuses_declaration: bool,
     }
 
     impl Settled {
@@ -229,6 +236,7 @@ mod tests {
                 declares: Some(declaration(name)),
                 applied: None,
                 deaf: false,
+                refuses_declaration: false,
             }
         }
 
@@ -257,8 +265,14 @@ mod tests {
             Ok(())
         }
 
-        fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-            self.declares.clone()
+        fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
+            if self.refuses_declaration {
+                return Err(HostError::Unsupported {
+                    mod_id: self.id.clone(),
+                    state: LifecycleState::Constructed,
+                });
+            }
+            Ok(self.declares.clone())
         }
 
         fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
@@ -286,6 +300,29 @@ mod tests {
 
     fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan")
+    }
+
+    #[test]
+    fn configuration_declaration_refusal_stops_admission() {
+        let mut host = Settled::new("refusing_mod");
+        host.refuses_declaration = true;
+        let machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
+        assert_eq!(
+            open_configuration(
+                &machine,
+                &mut [&mut host],
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+            ),
+            Err(ConfigRefused::Mod {
+                mod_id: id("refusing_mod"),
+                source: HostError::Unsupported {
+                    mod_id: id("refusing_mod"),
+                    state: LifecycleState::Constructed,
+                },
+            })
+        );
+        assert_eq!(host.applied, None);
     }
 
     #[test]

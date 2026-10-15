@@ -55,15 +55,15 @@
       },
       {
         "path": "src/census.rs",
-        "sha256": "cc940ee0360bc21a68ffbe07142da075a65f8f6847b91280c7b0e92ba2473318"
+        "sha256": "a629de5e6b4be324a4f362630ac2d7ff067dddec2ccf39ac7b7f27af99789f77"
       },
       {
         "path": "src/crops.rs",
-        "sha256": "48fd92120d59cf35e3915198a38ae347a565012209a637d7404fadacbfa1ce54"
+        "sha256": "90411c6fb8f45c59504cff7366452e133f9b5f7494b5c63d0308cc7917e540fc"
       },
       {
         "path": "src/data.rs",
-        "sha256": "4526ad4dee0baf2f448b2d62f1988246bec99c5ad81d69fd57c033b62899497d"
+        "sha256": "9b511e534dd5ec326fc51cbcbdbbaf5c3bc974615e0818f7888d3391ed905040"
       },
       {
         "path": "src/drops.rs",
@@ -71,11 +71,11 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "2b8fa6e722e82f2cec80f48a1481059db0de243534bc79aae829f47e9ef9b4f8"
+        "sha256": "b4e4cfffbaa3965cdf689d417f51ab889f743f55c6d1ffdc65234091074e2a94"
       },
       {
         "path": "src/foods.rs",
-        "sha256": "150274fb616c1fb4153fa575d90e3825047885859ae38f4bcda85198de59d39f"
+        "sha256": "10de31ca9ab4f4558bac0292bbd1ebf074609a9736de1ad7bf2e9ee344fe1556"
       },
       {
         "path": "src/fuel.rs",
@@ -87,7 +87,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "469e79ae3e3d9f47ebaa6f670d654d980e3f80d735bc1078a2e63744b8dccd9a"
+        "sha256": "b08033c8d32f3d9f326619275685ad2752012174e74d72580019d55772a71d1a"
       },
       {
         "path": "src/recipes.rs",
@@ -107,7 +107,7 @@
       },
       {
         "path": "src/world.rs",
-        "sha256": "f45842ff22a44a2885aeb2f1e3f144ec8b2056d8d4e7265e161e5b851e7ccbdb"
+        "sha256": "927a3f4b2cf0d62f20c011d901186dce3c89e8dcb1a182aa68c8fb1d9c399f0f"
       }
     ]
   },

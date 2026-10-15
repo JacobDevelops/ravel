@@ -464,18 +464,31 @@ impl Mod for Entry {
             // A server stopping is one of the two points section fourteen
             // clears at, and the reload is the other.
             LifecycleState::Stopping => self.invalidate(Point::Stopped),
-            _ => {}
+            LifecycleState::Discovered
+            | LifecycleState::Validated
+            | LifecycleState::Resolved
+            | LifecycleState::Loaded
+            | LifecycleState::Running
+            | LifecycleState::Stopped
+            | LifecycleState::Failed => {}
         }
         self.entered.push(state);
         Ok(())
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.clone()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        self.declaration.clone().map(Some).ok_or_else(|| {
+            Self::refused(
+                "the packaged content declaration is not well formed",
+                LifecycleState::Constructed,
+            )
+        })
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        settings::declaration().ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        settings::declaration()
+            .map(Some)
+            .map_err(|error| Self::refused(&error, LifecycleState::Constructed))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -698,7 +711,7 @@ mod tests {
             entry.fluid().comparator().ignored().collect::<Vec<&str>>(),
             ["wear"]
         );
-        assert_eq!(entry.scalar(), kinds::Scalar);
+        assert_eq!(entry.scalar(), Scalar);
     }
 
     #[test]
@@ -746,6 +759,7 @@ mod tests {
         let entry = Entry::new();
         let declared = entry
             .configuration_declaration()
+            .expect("valid settings")
             .expect("a packaged document");
         assert_eq!(declared.settings.len(), settings::KEYS.len());
     }

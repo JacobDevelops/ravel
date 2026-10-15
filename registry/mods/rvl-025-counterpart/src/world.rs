@@ -106,7 +106,7 @@ impl Variant {
     pub const fn declared_vein_size(self) -> u8 {
         match self {
             Self::Elsewhere => 10,
-            other => other.vein_size(),
+            other @ (Self::Overworld | Self::Nether | Self::End) => other.vein_size(),
         }
     }
 
@@ -328,11 +328,11 @@ mod tests {
     #[test]
     fn the_two_modifiers_partition_every_level_between_them() {
         for is_overworld in [true, false] {
-            let permitting: Vec<Modifier> = Modifier::ALL
+            let permitting = Modifier::ALL
                 .into_iter()
                 .filter(|modifier| modifier.permits(is_overworld))
-                .collect();
-            assert_eq!(permitting.len(), 1);
+                .count();
+            assert_eq!(permitting, 1);
         }
         assert!(Modifier::OnlyOverworld.permits(true));
         assert!(Modifier::AnywhereElse.permits(false));

@@ -7,8 +7,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use num_traits::cast::AsPrimitive;
-
 /// The largest run one coded pair can carry.
 pub const MAX_RUN: u8 = u8::MAX;
 
@@ -283,7 +281,8 @@ fn saturating(value: f64) -> i32 {
     if value <= f64::from(i32::MIN) {
         return i32::MIN;
     }
-    value.as_()
+    num_traits::ToPrimitive::to_i32(&value.trunc())
+        .expect("a finite value between the i32 bounds fits after truncation")
 }
 
 /// The six faces a block may be mounted against, in ordinal order.
@@ -350,8 +349,16 @@ impl Orientation {
     /// first one.
     #[must_use]
     pub const fn new(face: Face, step: u8) -> Self {
+        let face_ordinal = match face {
+            Face::Down => 0,
+            Face::Up => 1,
+            Face::North => 2,
+            Face::South => 3,
+            Face::West => 4,
+            Face::East => 5,
+        };
         Self {
-            ordinal: (face as u8) * 4 + (step & 3),
+            ordinal: face_ordinal * 4 + (step & 3),
         }
     }
 
@@ -374,7 +381,7 @@ impl Orientation {
     /// Returns the face this orientation mounts against.
     #[must_use]
     pub const fn face(self) -> Face {
-        match self.ordinal / 4 {
+        match self.ordinal.div_euclid(4) {
             0 => Face::Down,
             1 => Face::Up,
             2 => Face::North,
@@ -548,7 +555,10 @@ mod tests {
         assert_eq!(Orientation::COUNT, 24);
         for ordinal in 0..Orientation::COUNT {
             let orientation = Orientation::from_ordinal(ordinal).expect("inside the layout");
-            assert_eq!(orientation.face(), Face::ALL[usize::from(ordinal / 4)]);
+            assert_eq!(
+                orientation.face(),
+                Face::ALL[usize::from(ordinal.div_euclid(4))]
+            );
             assert_eq!(orientation.step(), ordinal % 4);
         }
         assert_eq!(Orientation::from_ordinal(24), None);

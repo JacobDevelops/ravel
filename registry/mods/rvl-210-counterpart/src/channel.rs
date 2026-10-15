@@ -78,7 +78,7 @@ impl Channel {
         }
         self.values.insert(
             identifier,
-            JsonValue::Object([(BOXED_KEY.to_owned(), value)].into_iter().collect()),
+            JsonValue::Object(std::iter::once((BOXED_KEY.to_owned(), value)).collect()),
         );
         true
     }

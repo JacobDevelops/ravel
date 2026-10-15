@@ -298,8 +298,11 @@ impl Mod for Entry {
         Ok(())
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        self.declaration.clone()
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        self.declaration
+            .clone()
+            .map(Some)
+            .ok_or_else(|| Self::packaging("the packaged content declaration is not well formed"))
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
@@ -309,8 +312,10 @@ impl Mod for Entry {
         claim_all(declaration, registrar)
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        settings::declaration().ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        settings::declaration()
+            .map(Some)
+            .map_err(|error| Self::packaging(&error))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -318,12 +323,12 @@ impl Mod for Entry {
         self.rebuild()
     }
 
-    fn interception_declaration(&self) -> Option<InterceptionDeclaration> {
+    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
         let mut declared = InterceptionDeclaration::new(Self::declared_id().clone());
         declared
             .answer_at(Point::BlockIsBroken.as_str())
             .answer_at(Point::ItemIsUsed.as_str());
-        Some(declared)
+        Ok(Some(declared))
     }
 
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
@@ -352,11 +357,11 @@ impl Mod for Entry {
         self.adopt(&decisive)
     }
 
-    fn saved_data_declaration(&self) -> Option<ravel_sdk::save::SavedDataDeclaration> {
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         // Section nine: this entry owns nothing world-level. Everything it stores
         // is item-level, and a counterpart that declared saved data here would
         // have added state the original does not have.
-        None
+        Ok(None)
     }
 }
 
@@ -418,14 +423,34 @@ mod tests {
     #[test]
     fn the_entry_declares_both_its_content_and_its_settings() {
         let entry = Entry::new();
-        assert!(entry.content_declaration().is_some());
-        assert!(entry.configuration_declaration().is_some());
+        assert!(
+            entry
+                .content_declaration()
+                .expect("valid content")
+                .is_some()
+        );
+        assert!(
+            entry
+                .configuration_declaration()
+                .expect("valid settings")
+                .is_some()
+        );
     }
 
     #[test]
     fn this_entry_owns_no_world_level_saved_data() {
-        assert!(Entry::new().saved_data_declaration().is_none());
-        assert!(Entry::new().saved_data_migrations().is_none());
+        assert!(
+            Entry::new()
+                .saved_data_declaration()
+                .expect("valid declaration")
+                .is_none()
+        );
+        assert!(
+            Entry::new()
+                .saved_data_migrations()
+                .expect("valid migrations")
+                .is_none()
+        );
     }
 
     #[test]
@@ -503,7 +528,7 @@ mod tests {
     #[test]
     fn a_delivery_for_another_contract_is_left_alone_rather_than_decoded() {
         let mut entry = Entry::new();
-        let other = attractor::Toggle::contract().expect("a legal name");
+        let other = Toggle::contract().expect("a legal name");
         let delivery = PacketDelivery::new(
             other.id().clone(),
             other.direction(),
@@ -544,7 +569,10 @@ mod tests {
                 .expect("the entry records what it observes");
         }
         assert_eq!(entry.observed().len(), OBSERVED_KEPT);
-        assert_eq!(entry.seen(), (OBSERVED_KEPT * 2) as u64);
+        assert_eq!(
+            entry.seen(),
+            u64::try_from(OBSERVED_KEPT * 2).expect("the observation ceiling fits in u64")
+        );
     }
 
     #[test]
@@ -564,6 +592,7 @@ mod tests {
     fn the_two_interception_points_ravel_publishes_are_the_two_declared() {
         let declared = Entry::new()
             .interception_declaration()
+            .expect("valid interception")
             .expect("the entry declares interception");
         assert!(declared.answers_at(Point::BlockIsBroken));
         assert!(declared.answers_at(Point::ItemIsUsed));

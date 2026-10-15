@@ -285,7 +285,7 @@ impl std::error::Error for ShapeError {}
 /// The server writes the payload when opening; the client decodes it into an
 /// optional. Decoding may yield nothing and the screen must handle that: an
 /// absent payload is the declared state when no serialiser was supplied at all.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MenuProvider {
     serialised: bool,
     resets_pointer: bool,

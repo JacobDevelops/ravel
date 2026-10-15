@@ -33,8 +33,8 @@ impl Mod for CopperLanterns {
         claim_all(&Self::declaration(), registrar)
     }
 
-    fn content_declaration(&self) -> Option<ContentDeclaration> {
-        Some(Self::declaration())
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
+        Ok(Some(Self::declaration()))
     }
 }
 ```

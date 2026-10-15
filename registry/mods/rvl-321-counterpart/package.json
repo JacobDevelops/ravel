@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "71e29e77b50ba4a2bcfb9afbd1c8d2e1ab121074cb78a0aa960485a9ad11f19c"
+        "sha256": "e36813b5d6309ccbfac5098326d9094c1f2bba81588674e6fba45ab421c086cf"
       },
       {
         "path": "aliases.json",
@@ -55,11 +55,11 @@
       },
       {
         "path": "src/cache.rs",
-        "sha256": "3d6239eab050434ea857d2f5e80ff3887aebc15ab420f6501f1fa8ebfd43b5a8"
+        "sha256": "3e4c43481aedf56ff659eb9d7e56fb9150d8e5bdcf8c2e110c887a655a446bcc"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "cabd0cb31e3da05e3c98bdf76202261319a3376b8b29381f931e62357daf19b9"
+        "sha256": "5d28643adb5aa588b3e1b8ce56af533a52b53cd71fcbdec1e710b13d01782171"
       },
       {
         "path": "src/ground.rs",
@@ -67,7 +67,7 @@
       },
       {
         "path": "src/growth.rs",
-        "sha256": "001d68dba9e6fbb76057ca67d7e3c23139954e6ce6dbd0d7080820a46bca4a67"
+        "sha256": "b68d8ad073febd622f76794d292d2a2678dcfaec3d5e2afaa4111f64e06bed16"
       },
       {
         "path": "src/harvest.rs",
@@ -75,23 +75,23 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "c79f7c2c12a202e3863c37909db7a7eb215042b129a1b3542f1951656013f22f"
+        "sha256": "550ec71ec01ad38d571eed4d83a4d35809b562672b014bf8e05a74b8846f6338"
       },
       {
         "path": "src/machines.rs",
-        "sha256": "7e63b2d9dbc61f504ce8a13a9682a03522e6e679fefa9af0d29aedec9d0b51fb"
+        "sha256": "c5a94b56777398f760517a572ba5f8596d52baa427fa3c4eaec1839126661eee"
       },
       {
         "path": "src/model.rs",
-        "sha256": "e4c4c94b44385d2cf594e6bda6bc60133c501be272512e45e7e36a6266d28473"
+        "sha256": "e03aee5059049dfcc81a93f22a1b4b780cda6605e6be10f301717e8a9f68da25"
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "1eb8e093895eb2a8eca0d1bb1398829175b4564bb35c23341f9ed6ff0ea5d2b1"
+        "sha256": "3f08aa175405367f1626e3da10c5d9de80bcfa95e5bbf7de2d148b3043130dd8"
       },
       {
         "path": "src/registries.rs",
-        "sha256": "8d4b369146c61047a1cb03d6943cbb1c6816a02ef6e869a32bc48098e82eea12"
+        "sha256": "fc0597e634fc4ed478b991b9f852d717316c4919329a148bed7f24171af8be15"
       },
       {
         "path": "src/settings.rs",

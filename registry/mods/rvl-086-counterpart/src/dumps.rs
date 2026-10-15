@@ -137,6 +137,10 @@ pub fn census() -> Result<String, FlagIdError> {
 /// # Errors
 ///
 /// Returns [`DeclarationError`] when the packaged document does not parse.
+///
+/// # Panics
+///
+/// Panics if formatting into a string fails.
 pub fn settings() -> Result<String, DeclarationError> {
     let declaration = settings::declaration()?;
     let mut rendered = String::from("key\tside\tgroup\trestart\tdefault\tflags\n");
@@ -158,26 +162,31 @@ pub fn settings() -> Result<String, DeclarationError> {
             bound.join(",")
         };
         let side = format!("{:?}", setting.side);
-        let _ = writeln!(
+        writeln!(
             rendered,
             "{key}\t{side}\t{group}\t{}\t{}\t{bound}",
             setting.restart_required, setting.default
-        );
+        )
+        .expect("writing into a String cannot fail");
     }
     Ok(rendered)
 }
 
 /// The refusal matrix: which of the seven surfaces the nearly-destroyed rule
 /// watches for each of the six shapes.
+///
+/// # Panics
+///
+/// Panics if formatting into a string fails.
 #[must_use]
 pub fn refusal() -> String {
     let mut rendered = String::from("surface");
     for shape in Shape::ALL {
-        let _ = write!(rendered, "\t{shape:?}");
+        write!(rendered, "\t{shape:?}").expect("writing into a String cannot fail");
     }
     rendered.push('\n');
     for surface in Surface::ALL {
-        let _ = write!(rendered, "{surface:?}");
+        write!(rendered, "{surface:?}").expect("writing into a String cannot fail");
         for shape in Shape::ALL {
             rendered.push('\t');
             rendered.push_str(if surface.watches(shape) {

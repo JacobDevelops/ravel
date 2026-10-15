@@ -1,8 +1,8 @@
 # RVL-042 counterpart
 
 An original Rust implementation of `specifications/m6-foundation/RVL-042.md`, written against
-`ravel-sdk`, with `num-traits` preserving primitive floating-point cast semantics under the
-workspace's strict lints. No upstream source was opened, decompiled or read to write it; the
+`ravel-sdk`, with checked `num-traits::ToPrimitive` numeric conversions preserving floating-point
+rounding and integer truncation and saturation. No upstream source was opened, decompiled or read to write it; the
 specification is the only description of the behaviour that was used.
 
 The entry is a shared library with no gameplay of its own, and §14 of the specification says what its

@@ -209,7 +209,15 @@ impl Inner {
         // Descriptors vary by version, so locate command text by kind rather than position.
         let typed = values.iter().find_map(|value| match value {
             HookValue::Text(text) => Some(text.as_str()),
-            _ => None,
+            HookValue::Boolean(_)
+            | HookValue::Byte(_)
+            | HookValue::Char(_)
+            | HookValue::Short(_)
+            | HookValue::Int(_)
+            | HookValue::Long(_)
+            | HookValue::Float(_)
+            | HookValue::Double(_)
+            | HookValue::Handle(_) => None,
         })?;
         self.command(typed)
     }
@@ -240,7 +248,7 @@ impl Inner {
 
         // Inactive sets, unknown commands, and side mismatches are not mod failures.
         if let Ok(delivery) = delivered {
-            self.record(&delivery);
+            self.record(&delivery, work);
         }
         self.carry_outward();
     }
@@ -257,23 +265,46 @@ impl Inner {
         }
     }
 
-    fn record(&mut self, delivery: &Delivery) {
+    fn record(&mut self, delivery: &Delivery, work: &Work) {
         let Some(failure) = delivery.failure() else {
             return;
         };
+        let owner = match work {
+            Work::Event(event) => self
+                .machine
+                .audience(*event)
+                .get(delivery.received().len())
+                .cloned(),
+            Work::Command(invocation) => self.machine.owner_of(&invocation.key).cloned(),
+        }
+        .expect("a delivered failure belongs to a dispatched owner");
+        if let Err(error) = self.record_failure(&owner, failure) {
+            self.report
+                .refuse(&ravel_observability::Subject::of(owner), &error);
+        }
+    }
+
+    pub(crate) fn record_failure(
+        &mut self,
+        owner: &ravel_core::ModId,
+        failure: &ravel_host_api::HostError,
+    ) -> Result<(), ravel_loader::LifecycleError> {
+        let state = self.machine.state(owner)?;
+        if state == ravel_core::LifecycleState::Failed {
+            return Ok(());
+        }
         let attribution = FailureAttribution {
-            mod_id: Some(failure.mod_id().clone()),
+            mod_id: Some(owner.clone()),
             version: None,
             dependency_chain: Vec::new(),
-            state: failure.lifecycle_state(),
+            state,
             kind: failure.failure_kind(),
             surface: None,
             environment: environment(),
             // Redaction belongs to the report surface.
             message: DiagnosticMessage::raw(failure.to_string()),
         };
-        // An already-ended mod cannot fail again.
-        let _ = self.machine.fail(failure.mod_id(), attribution);
+        self.machine.fail(owner, attribution)
     }
 }
 

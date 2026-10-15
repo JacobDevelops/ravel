@@ -687,7 +687,7 @@ mod tests {
             shape = shape.below(Level::new()).expect("inside the limit");
         }
         assert_eq!(
-            shape.clone().below(Level::new()),
+            shape.below(Level::new()),
             Err(ShapeError::TooManyLevels { limit: MAX_LEVELS })
         );
         let mut wide = Level::new();

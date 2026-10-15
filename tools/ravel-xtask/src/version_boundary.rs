@@ -91,26 +91,7 @@ pub(crate) fn verify_version_directories(root: &Path, violations: &mut Vec<Strin
                 violations.push(format!("cannot count {relative}: {error}"));
             }
             if file == "adapter.toml" {
-                if let Some(missing) = missing_pack_format(&text) {
-                    violations.push(format!("{relative} {missing}"));
-                }
-                match toml::from_str::<toml::Table>(&text) {
-                    Ok(parsed) if parsed.contains_key(RETIRED_HARNESS_ROOT) => {
-                        violations.push(format!(
-                            "{relative} declares a `{RETIRED_HARNESS_ROOT}` table, and \
-                             `[{RETIRED_HARNESS_TABLE}]` is retired: every tracked version runs \
-                             every harness section, so an absent one is a break rather than \
-                             something a version may write its way out of. A section a version \
-                             genuinely cannot run is a work package in STATUS.md and ROADMAP.md, \
-                             where somebody owns closing it"
-                        ));
-                    }
-                    Ok(_) => {}
-                    Err(error) => violations.push(format!(
-                        "cannot parse {relative} as TOML: {error}; a file nothing can read is \
-                         held to none of the requirements asked of it here"
-                    )),
-                }
+                verify_version_directories_adapter(&text, &relative, violations);
             }
         }
     }
@@ -238,18 +219,7 @@ const VERSION_CLASS_EXCUSES: [(&str, &[&str], &str); 3] = [
 ];
 
 pub(crate) fn verify_version_boundary(root: &Path, violations: &mut Vec<String>) {
-    let crates = root.join("crates");
-    if let Ok(entries) = fs::read_dir(&crates) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if let Some(suffix) = name.strip_prefix("ravel-minecraft-")
-                && suffix != "adapter"
-            {
-                violations.push(format!("unexpected per-version Minecraft crate: {name}"));
-            }
-        }
-    }
+    verify_version_boundary_crate_names(root, violations);
 
     let versions = ["minecraft/versions", "tests/fixtures/public/versions"]
         .into_iter()
@@ -388,3 +358,41 @@ fn descriptor_classes(text: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests;
+
+fn verify_version_directories_adapter(text: &str, relative: &str, violations: &mut Vec<String>) {
+    if let Some(missing) = missing_pack_format(text) {
+        violations.push(format!("{relative} {missing}"));
+    }
+    match toml::from_str::<toml::Table>(text) {
+        Ok(parsed) if parsed.contains_key(RETIRED_HARNESS_ROOT) => {
+            violations.push(format!(
+                "{relative} declares a `{RETIRED_HARNESS_ROOT}` table, and \
+                 `[{RETIRED_HARNESS_TABLE}]` is retired: every tracked version runs \
+                 every harness section, so an absent one is a break rather than \
+                 something a version may write its way out of. A section a version \
+                 genuinely cannot run is a work package in STATUS.md and ROADMAP.md, \
+                 where somebody owns closing it"
+            ));
+        }
+        Ok(_) => {}
+        Err(error) => violations.push(format!(
+            "cannot parse {relative} as TOML: {error}; a file nothing can read is \
+             held to none of the requirements asked of it here"
+        )),
+    }
+}
+
+fn verify_version_boundary_crate_names(root: &Path, violations: &mut Vec<String>) {
+    let crates = root.join("crates");
+    if let Ok(entries) = fs::read_dir(&crates) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if let Some(suffix) = name.strip_prefix("ravel-minecraft-")
+                && suffix != "adapter"
+            {
+                violations.push(format!("unexpected per-version Minecraft crate: {name}"));
+            }
+        }
+    }
+}

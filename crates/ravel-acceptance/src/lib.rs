@@ -178,7 +178,7 @@ pub enum Assertion {
         checkpoint: ProgressionCheckpoint,
     },
     /// Every inner assertion holds; an empty list holds.
-    All(Vec<Assertion>),
+    All(Vec<Self>),
 }
 
 impl Assertion {
@@ -570,9 +570,7 @@ mod tests {
                 key: ingot,
                 count: 1,
             },
-            Assertion::BlockPresent {
-                key: machine.clone(),
-            },
+            Assertion::BlockPresent { key: machine },
         ]);
         assert!(all.evaluate(&observation));
         let missing = Assertion::All(vec![Assertion::BlockPresent {

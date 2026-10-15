@@ -66,7 +66,7 @@
       },
       {
         "path": "src/capabilities.rs",
-        "sha256": "9491deb7bb98cc60d0c32ee0950003608cf30de38d42b1c76319c1121e43aca9"
+        "sha256": "aab23e43b9b9f5e5963f301c57b1e0d8420f1a06bc23c969e23d3c47285609ca"
       },
       {
         "path": "src/census.rs",
@@ -78,19 +78,19 @@
       },
       {
         "path": "src/data.rs",
-        "sha256": "626ca47cfa04838715eb38d204c61d133e6483025b2f68f11eec0e62e893bff4"
+        "sha256": "75400e0f8847ed78a1c3bf6a7c1a082b945d5b464e5fd469a9c929ef8a86df15"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "7a213b638978f5b7baab826fed3297da5b8e58d7f65c1112d6b8b47a4d04fecd"
+        "sha256": "ddf4d875ea4e529a1637bac9820073d4c4ed68d28bdb604773650d43c66a116c"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "f2f93beab5e03802813e4978a5f0f7183d48b302df25b71f2e1c4f4ae9a4c666"
+        "sha256": "8b821b75a7566b7c28264090d82c8dc6f56a9f1073ebc32dcfc7904ddb14a3d0"
       },
       {
         "path": "src/machines.rs",
-        "sha256": "a7bf278dd012719e45b01cd427a0c83a4877dfc19d08d024278c17d92ec09452"
+        "sha256": "539b65b0ecc37228144da8c625b07dff1446a3a889ec0c64e8b758ae13f80c4b"
       },
       {
         "path": "src/matching.rs",
@@ -98,35 +98,35 @@
       },
       {
         "path": "src/network.rs",
-        "sha256": "e1b486702925dea390f3e4d820305878fe2657d515b583290faa3eb68343d26b"
+        "sha256": "c7d4a8bf1d8153ef6df47f3548758072c4d2bb4f1dcc6a1b5252a5f1aa7f7e1e"
       },
       {
         "path": "src/ordering.rs",
-        "sha256": "83002f8496c7c444cc2e6c4b68c21bcbe524a119464988b8024b915808a6aaf5"
+        "sha256": "4dfd7e8469eb69348853f921a4aa92801973b8d430b034e73a48ea104ab9b8fb"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "3dbb429964ebf307de16b6cc8580ea9a8a5b230e2352bde5380725b7beffb067"
+        "sha256": "ceb932ecda2d1f190ef541e97ce8992f3a6187b5bd1888499670b721b3c6097f"
       },
       {
         "path": "src/shapes.rs",
-        "sha256": "1c07057bd24ed0d9026796eaebfbf21e5da9cc0d3892b54110dd27f98c9e1ebc"
+        "sha256": "932b55a2c050ada4d3af44030cafbd80043062ffdfb236e3c780546e158964a1"
       },
       {
         "path": "src/storage.rs",
-        "sha256": "9d80f76bc306ea7642dbd9ffb3b6cffbcbbb22a79ea6b1d8ab5e85750e7accd7"
+        "sha256": "43172aa0f5a6c4be0908e2ffda631ea84d30d67cb39c195f56cbacb486dc709b"
       },
       {
         "path": "src/tools.rs",
-        "sha256": "a82a8703ba9846edbc9138b8e4f69708c424fa4bf76b3cd78324e1903d593a46"
+        "sha256": "327c20e016704e32cc1013d826e90df28c9c71e1e969e7b12a286c331e1e9c62"
       },
       {
         "path": "src/values.rs",
-        "sha256": "1da1973468b8d3d4e40e18506d799fc9109948a0dc3b08be1216fba4f4184e81"
+        "sha256": "88ced996c8aa22699df836e8ee346099235ef12beefa095077f1a68136e26864"
       },
       {
         "path": "src/world.rs",
-        "sha256": "9a120fe45febd14cf87eea916aa362c8301639ee0cd4e8f9a0b7a04c4e2c5f7a"
+        "sha256": "70bbe5a4693866a2689a80284ea3b7d979138ce30cbde23c3be19d3d75c26460"
       }
     ]
   },

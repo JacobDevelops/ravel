@@ -22,8 +22,10 @@ impl Observers {
     }
 
     fn register(&self, observer: Box<dyn HookObserver>) -> Result<(), HookError> {
-        let mut observers = self.registry.write().map_err(|_| HookError::Unavailable)?;
-        observers.push(observer);
+        self.registry
+            .write()
+            .map_err(|_| HookError::Unavailable)?
+            .push(observer);
         self.observed.store(true, Ordering::Release);
         Ok(())
     }
@@ -43,6 +45,7 @@ impl Observers {
                 });
             }
         }
+        drop(observers);
         Ok(())
     }
 }

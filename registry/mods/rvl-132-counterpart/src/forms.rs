@@ -148,9 +148,9 @@ pub enum Tag {
     /// Text.
     Text(String),
     /// A named compound.
-    Compound(BTreeMap<String, Tag>),
+    Compound(BTreeMap<String, Self>),
     /// An ordered list.
-    List(Vec<Tag>),
+    List(Vec<Self>),
 }
 
 impl Tag {
@@ -229,8 +229,10 @@ impl Tag {
         match width.as_str() {
             "byte" => Ok(Self::Byte(narrow_byte(body)?)),
             "int" => Ok(Self::Int(narrow_int(body)?)),
-            "long" => Ok(Self::Long(body.as_i64().ok_or(TagError::Range {
-                field: "long".to_owned(),
+            "long" => Ok(Self::Long(body.as_i64().ok_or_else(|| {
+                TagError::Range {
+                    field: "long".to_owned(),
+                }
             })?)),
             "text" => Ok(Self::Text(
                 body.as_str()
@@ -266,39 +268,43 @@ impl Tag {
                 }
                 Ok(Self::Compound(read))
             }
-            "list" => {
-                let values = body
-                    .as_array()
-                    .ok_or(TagError::Shape { expected: "a list" })?;
-                if values.len() > MAX_TAG_ENTRIES {
-                    return Err(TagError::TooMany {
-                        limit: MAX_TAG_ENTRIES,
-                    });
-                }
-                let mut read = Vec::with_capacity(values.len());
-                for value in values {
-                    read.push(Self::read(value, depth + 1)?);
-                }
-                Ok(Self::List(read))
-            }
+            "list" => Self::read_list(body, depth),
             _ => Err(TagError::Shape {
                 expected: "one of the six widths",
             }),
         }
     }
 
+    fn read_list(body: &JsonValue, depth: u32) -> Result<Self, TagError> {
+        let values = body
+            .as_array()
+            .ok_or(TagError::Shape { expected: "a list" })?;
+        if values.len() > MAX_TAG_ENTRIES {
+            return Err(TagError::TooMany {
+                limit: MAX_TAG_ENTRIES,
+            });
+        }
+        let mut read = Vec::with_capacity(values.len());
+        for value in values {
+            read.push(Self::read(value, depth + 1)?);
+        }
+        Ok(Self::List(read))
+    }
+
     fn fields(&self) -> Result<&BTreeMap<String, Self>, TagError> {
         match self {
             Self::Compound(fields) => Ok(fields),
-            _ => Err(TagError::Shape {
-                expected: "a compound",
-            }),
+            Self::Byte(_) | Self::Int(_) | Self::Long(_) | Self::Text(_) | Self::List(_) => {
+                Err(TagError::Shape {
+                    expected: "a compound",
+                })
+            }
         }
     }
 }
 
 fn narrow_byte(body: &JsonValue) -> Result<i8, TagError> {
-    let raw = body.as_i64().ok_or(TagError::Range {
+    let raw = body.as_i64().ok_or_else(|| TagError::Range {
         field: "byte".to_owned(),
     })?;
     i8::try_from(raw).map_err(|_| TagError::Range {
@@ -307,7 +313,7 @@ fn narrow_byte(body: &JsonValue) -> Result<i8, TagError> {
 }
 
 fn narrow_int(body: &JsonValue) -> Result<i32, TagError> {
-    let raw = body.as_i64().ok_or(TagError::Range {
+    let raw = body.as_i64().ok_or_else(|| TagError::Range {
         field: "int".to_owned(),
     })?;
     i32::try_from(raw).map_err(|_| TagError::Range {
@@ -439,7 +445,15 @@ fn value_from(tag: &Tag, depth: u32) -> Result<Value, TagError> {
             }
             Value::Record(read)
         }
-        _ => {
+        (
+            _,
+            Tag::Byte(_)
+            | Tag::Int(_)
+            | Tag::Long(_)
+            | Tag::Text(_)
+            | Tag::Compound(_)
+            | Tag::List(_),
+        ) => {
             return Err(TagError::Shape {
                 expected: "a value whose shape and body agree",
             });
@@ -650,7 +664,7 @@ pub fn charge_from(tag: &Tag) -> Result<Charge, TagError> {
     let raw = match tag {
         Tag::Long(long) => *long,
         Tag::Int(int) => i64::from(*int),
-        _ => {
+        Tag::Byte(_) | Tag::Text(_) | Tag::Compound(_) | Tag::List(_) => {
             return Err(TagError::Shape {
                 expected: "a 64-bit or 32-bit integer",
             });
@@ -677,9 +691,11 @@ pub fn flags_tag(value: Flags) -> Tag {
 pub fn flags_from(tag: &Tag) -> Result<Flags, TagError> {
     match tag {
         Tag::Int(bits) => Ok(Flags::from_bits(bits.cast_unsigned())),
-        _ => Err(TagError::Shape {
-            expected: "a 32-bit integer",
-        }),
+        Tag::Byte(_) | Tag::Long(_) | Tag::Text(_) | Tag::Compound(_) | Tag::List(_) => {
+            Err(TagError::Shape {
+                expected: "a 32-bit integer",
+            })
+        }
     }
 }
 
@@ -702,7 +718,9 @@ pub fn truth_from(tag: &Tag) -> Result<Truth, TagError> {
         Tag::Byte(_) => Err(TagError::Range {
             field: "condition".to_owned(),
         }),
-        _ => Err(TagError::Shape { expected: "a byte" }),
+        Tag::Int(_) | Tag::Long(_) | Tag::Text(_) | Tag::Compound(_) | Tag::List(_) => {
+            Err(TagError::Shape { expected: "a byte" })
+        }
     }
 }
 
@@ -806,10 +824,10 @@ impl Serialiser {
     /// Returns whatever the stackable writer refuses.
     pub fn write(self, set: &CandidateSet<Stack>) -> Result<Tag, TagError> {
         match self {
-            Self::Candidate => match set.alternatives().next() {
-                Some(candidate) => candidate_tag(candidate, stack_tag),
-                None => Ok(Tag::compound()),
-            },
+            Self::Candidate => set.alternatives().next().map_or_else(
+                || Ok(Tag::compound()),
+                |candidate| candidate_tag(candidate, stack_tag),
+            ),
             Self::Set => candidate_set_tag(set, stack_tag),
         }
     }
@@ -944,10 +962,10 @@ pub fn candidate_from<I>(
     read: impl Fn(&Tag) -> Result<I, TagError>,
 ) -> Result<Candidate<I>, TagError> {
     let fields = tag.fields()?;
-    let value = fields.get("value").ok_or(TagError::Missing {
+    let value = fields.get("value").ok_or_else(|| TagError::Missing {
         field: "value".to_owned(),
     })?;
-    let under = fields.get("under").ok_or(TagError::Missing {
+    let under = fields.get("under").ok_or_else(|| TagError::Missing {
         field: "under".to_owned(),
     })?;
     Ok(Candidate {

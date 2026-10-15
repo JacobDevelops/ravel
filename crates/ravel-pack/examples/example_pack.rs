@@ -42,16 +42,17 @@ fn main() -> ExitCode {
     };
 
     report(&validated);
-    match std::env::args().nth(1) {
-        Some(directory) => match validated.write(Path::new(&directory)) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(refused) => {
-                eprintln!("{refused}");
-                ExitCode::FAILURE
+    std::env::args()
+        .nth(1)
+        .map_or(ExitCode::SUCCESS, |directory| {
+            match validated.write(Path::new(&directory)) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(refused) => {
+                    eprintln!("{refused}");
+                    ExitCode::FAILURE
+                }
             }
-        },
-        None => ExitCode::SUCCESS,
-    }
+        })
 }
 
 /// Declares the pack: its pins, its overrides, its own files, and its progression.

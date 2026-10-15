@@ -317,8 +317,10 @@ impl Enchanting {
         if !self.first.0.matches(first, catalogue) || !self.second.0.matches(second, catalogue) {
             return Err(Refused::Input);
         }
-        let level = (first.count / self.first.1.max(1))
-            .min(second.count / self.second.1.max(1))
+        let level = first
+            .count
+            .div_euclid(self.first.1.max(1))
+            .min(second.count.div_euclid(self.second.1.max(1)))
             .min(u64::from(self.maximum));
         let level = u32::try_from(level).unwrap_or(self.maximum);
         if level == 0 {

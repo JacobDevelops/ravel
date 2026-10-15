@@ -57,7 +57,11 @@ impl Surface {
         match self {
             Self::UseInAir => matches!(shape, Shape::Shearing | Shape::Ranged),
             Self::InteractEntity => matches!(shape, Shape::Shearing),
-            _ => matches!(shape, Shape::Digging | Shape::Sword | Shape::Shearing),
+            Self::BreakSpeed
+            | Self::BreakBlock
+            | Self::AttackEntity
+            | Self::UseOnBlock
+            | Self::CropHarvest => matches!(shape, Shape::Digging | Shape::Sword | Shape::Shearing),
         }
     }
 }

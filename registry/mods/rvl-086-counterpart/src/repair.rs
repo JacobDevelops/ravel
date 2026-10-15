@@ -10,7 +10,6 @@
 //! Every number here is integer arithmetic and both truncations are the
 //! observable behaviour, so both are reproduced rather than rounded.
 
-use num_traits::AsPrimitive;
 use ravel_sdk::{JsonValue, json};
 use rvl_042_counterpart::inventory::Stack;
 
@@ -78,7 +77,7 @@ impl Enchantment {
 }
 
 /// One occupied slot of a crafting grid.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Held {
     /// The stack in the slot.
     pub stack: Stack,
@@ -193,12 +192,12 @@ impl Cost {
         let cheaper = match shape {
             Some(Shape::Digging) => settings.repair_discounts.digging,
             Some(Shape::Shearing) => settings.repair_discounts.shearing,
-            _ => false,
+            Some(Shape::Sword | Shape::Ranged | Shape::Armour | Shape::Other) | None => false,
         };
         if cheaper {
             Self {
-                units: (settings.repair_cost / 2).max(Self::FLOOR),
-                enchantment: settings.repair_enchantment_cost / 2,
+                units: settings.repair_cost.div_euclid(2).max(Self::FLOOR),
+                enchantment: settings.repair_enchantment_cost.div_euclid(2),
             }
         } else {
             Self {
@@ -348,6 +347,10 @@ pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, 
         }
     }
 
+    Ok(repair_result(tool, context, per_unit, units))
+}
+
+fn repair_result(tool: &Held, context: &Context<'_>, per_unit: u32, units: f64) -> Repaired {
     let reduction = mended(per_unit, units).min(tool.damage);
     let mut result = tool.stack.clone();
     result.count = 1;
@@ -364,14 +367,14 @@ pub fn repair(grid: &[Option<Held>], context: &Context<'_>) -> Result<Repaired, 
         (tool.enchantments.clone(), 0)
     };
 
-    Ok(Repaired {
+    Repaired {
         result,
         damage: tool.damage - reduction,
         per_unit,
         units,
         stripped,
         enchantments,
-    })
+    }
 }
 
 /// Whether a grid would produce anything, which is the same computation.
@@ -414,7 +417,8 @@ fn mended(per_unit: u32, units: f64) -> u32 {
     if truncated >= f64::from(u32::MAX) {
         u32::MAX
     } else {
-        truncated.as_()
+        num_traits::ToPrimitive::to_u32(&truncated)
+            .expect("a finite nonnegative value below u32::MAX fits after truncation")
     }
 }
 

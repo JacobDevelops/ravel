@@ -88,9 +88,27 @@ pub fn rotate(
     let (dx, dy, dz) = (point.0 - centre.0, point.1 - centre.1, point.2 - centre.2);
     let (sin, cos) = radians.sin_cos();
     let (rx, ry, rz) = match axis {
-        Axis::X => (dx, dy * cos - dz * sin, dy * sin + dz * cos),
-        Axis::Y => (dx * cos + dz * sin, dy, -dx * sin + dz * cos),
-        Axis::Z => (dx * cos - dy * sin, dx * sin + dy * cos, dz),
+        Axis::X => {
+            let y_cos = dy * cos;
+            let z_sin = dz * sin;
+            let y_sin = dy * sin;
+            let z_cos = dz * cos;
+            (dx, y_cos - z_sin, y_sin + z_cos)
+        }
+        Axis::Y => {
+            let x_cos = dx * cos;
+            let z_sin = dz * sin;
+            let negative_x_sin = -dx * sin;
+            let z_cos = dz * cos;
+            (x_cos + z_sin, dy, negative_x_sin + z_cos)
+        }
+        Axis::Z => {
+            let x_cos = dx * cos;
+            let y_sin = dy * sin;
+            let x_sin = dx * sin;
+            let y_cos = dy * cos;
+            (x_cos - y_sin, x_sin + y_cos, dz)
+        }
     };
     (centre.0 + rx, centre.1 + ry, centre.2 + rz)
 }

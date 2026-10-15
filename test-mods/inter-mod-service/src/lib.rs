@@ -206,8 +206,14 @@ impl Mod for StockMod {
         Ok(())
     }
 
-    fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
-        ConfigurationDeclaration::parse(STOCK_SETTINGS).ok()
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        ConfigurationDeclaration::parse(STOCK_SETTINGS)
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -227,12 +233,12 @@ impl Mod for StockMod {
         Ok(())
     }
 
-    fn saved_data_declaration(&self) -> Option<SavedDataDeclaration> {
-        Some(self.declaration())
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        Ok(Some(self.declaration()))
     }
 
-    fn saved_data_migrations(&self) -> Option<MigrationChain> {
-        Some(self.chain())
+    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
+        Ok(Some(self.chain()))
     }
 
     /// Migrates the stored payload up to the current version, then reads it.
@@ -273,8 +279,14 @@ impl Mod for StockMod {
         )))
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        ServiceDeclaration::new(Self::declared_id().clone(), [prices()], []).ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        ServiceDeclaration::new(Self::declared_id().clone(), [prices()], [])
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -300,7 +312,7 @@ impl Mod for StockMod {
 /// // Nothing has answered yet, and that is observable rather than asserted.
 /// assert!(shop.prices().is_none());
 ///
-/// let declaration = shop.service_declaration().expect("it requires one service");
+/// let declaration = shop.service_declaration().expect("valid declaration").expect("it requires one service");
 /// assert_eq!(
 ///     declaration.requires().collect::<Vec<_>>(),
 ///     [&prices()]
@@ -333,8 +345,14 @@ impl Mod for ShopMod {
         Ok(())
     }
 
-    fn service_declaration(&self) -> Option<ServiceDeclaration> {
-        ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()]).ok()
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+        ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
+            .map(Some)
+            .map_err(|error| ModError::Refused {
+                mod_id: self.id().clone(),
+                state: LifecycleState::Constructed,
+                detail: error.to_string(),
+            })
     }
 
     /// Calls the one service this mod declared, and refuses without an answer.
@@ -485,6 +503,7 @@ mod tests {
         let mut stock = StockMod::new();
         let declaration = stock
             .configuration_declaration()
+            .expect("valid configuration declaration")
             .expect("this mod declares settings");
         let resolved =
             LayeredConfiguration::resolve(declaration, None, None).expect("nothing to layer");
@@ -498,6 +517,7 @@ mod tests {
         assert!(shop.prices().is_none());
         assert_eq!(
             shop.service_declaration()
+                .expect("valid declaration")
                 .expect("it requires one service")
                 .requires()
                 .collect::<Vec<_>>(),
@@ -530,8 +550,16 @@ mod tests {
         // `enter` is the whole of what either half had to write for the lifecycle,
         // so the defaulted methods still answer for both.
         let shop = ShopMod::new();
-        assert!(shop.saved_data_declaration().is_none());
-        assert!(shop.configuration_declaration().is_none());
+        assert!(
+            shop.saved_data_declaration()
+                .expect("valid declaration")
+                .is_none()
+        );
+        assert!(
+            shop.configuration_declaration()
+                .expect("valid declaration")
+                .is_none()
+        );
         assert!(
             shop.save_saved_data()
                 .expect("a mod that owns no world data produces no envelope")

@@ -105,7 +105,8 @@ pub fn wide_value_halves() -> (String, String) {
             .get_narrow(1)
             .expect("the low half is the second narrow slot");
         let recomposed = store.get(0).expect("index zero exists in a store of one");
-        let _ = writeln!(body, "{value}\t{high}\t{low}\t{recomposed}");
+        writeln!(body, "{value}\t{high}\t{low}\t{recomposed}")
+            .expect("writing to a String cannot fail");
     }
     ("generated/transport.txt".to_owned(), body)
 }
@@ -121,7 +122,7 @@ pub fn colour_layout() -> (String, String) {
     for bit in 0..u32::BITS {
         let packed = 1_u32 << bit;
         let colour = Colour::from_packed(packed);
-        let _ = writeln!(
+        writeln!(
             body,
             "{:08x}\t{}\t{}\t{}\t{}\t{:08x}",
             packed,
@@ -130,7 +131,8 @@ pub fn colour_layout() -> (String, String) {
             colour.blue,
             colour.alpha,
             colour.packed()
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
     ("generated/colour.txt".to_owned(), body)
 }

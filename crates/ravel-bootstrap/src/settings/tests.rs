@@ -316,10 +316,8 @@ fn a_choice_carries_the_values_it_may_be_cycled_through() {
     let rows = screen(None, None).rows();
 
     assert_eq!(row(&rows, "render.quality").choices, ["fast", "fancy"]);
-    assert_eq!(
-        row(&rows, "render.fancy").choices,
-        [] as [std::string::String; 0]
-    );
+    let empty: [String; 0] = [];
+    assert_eq!(row(&rows, "render.fancy").choices, empty);
 }
 
 #[test]
@@ -453,9 +451,13 @@ fn a_game_directory_failure_is_redacted_before_the_screen_can_read_it() {
     let refused = refusals(&answer);
     assert_eq!(refused.len(), 1, "{answer}");
     assert!(
-        refused[0]
-            .1
-            .contains(private.file_name().unwrap().to_str().unwrap()),
+        refused[0].1.contains(
+            private
+                .file_name()
+                .expect("a named directory")
+                .to_str()
+                .expect("UTF-8 name")
+        ),
         "the reduced error still names the failing directory: {}",
         refused[0].1
     );
@@ -468,10 +470,8 @@ fn a_restart_required_edit_is_written_and_says_so_without_taking_effect() {
 
     let answer = screen.save(&edits("example_mod", &[("render.quality", "fancy")]));
 
-    assert_eq!(
-        refusals(&answer),
-        [] as [(std::string::String, std::string::String); 0]
-    );
+    let empty: [(String, String); 0] = [];
+    assert_eq!(refusals(&answer), empty);
     let row = screen.row("render.quality");
     assert_eq!(row.value, "fast", "the session keeps the old value");
     assert_eq!(row.restart_pending, "true");

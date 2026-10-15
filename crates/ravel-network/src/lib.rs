@@ -437,7 +437,7 @@ mod tests {
                 delivery.id.clone(),
                 delivery.direction,
                 Side::DedicatedServer,
-                delivery.payload.clone(),
+                delivery.payload,
             );
             assert!(matches!(
                 forced.decode::<Inbound>(),
@@ -454,7 +454,7 @@ mod tests {
             packet_id("example_mod:other"),
             Direction::ToClient,
             Side::Client,
-            delivery.payload.clone(),
+            delivery.payload,
         );
 
         assert_eq!(
@@ -474,7 +474,7 @@ mod tests {
             delivery.id.clone(),
             Direction::ToServer,
             Side::Client,
-            delivery.payload.clone(),
+            delivery.payload,
         );
 
         assert_eq!(

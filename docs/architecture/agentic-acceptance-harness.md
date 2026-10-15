@@ -73,11 +73,10 @@ than inventing a boundary.
 
 A run reads the world through `ravel_acceptance::Observation`, a structured
 snapshot of declared keys and counts. A live `GameView` produces one by
-projecting a hook's value onto it. That projection is the work
-`crates/ravel-host-api/src/lib.rs` already records as unstarted: "What is missing
-is a projection from `HookValue` to this type, and a per-target decision about
-which of a hook's parameters are worth carrying." The acceptance harness does not
-change that boundary — it names the trait a projection satisfies and stops there.
+projecting a hook's value onto it. This requires a projection from `HookValue` to
+`Observation` and a per-target decision about which hook parameters to carry.
+Neither is implemented. The acceptance harness names the trait a projection
+satisfies without changing the host API boundary.
 The `Observation` type, the assertions over it, and the verdict arithmetic are
 built and tested now, because all three are decidable without a game.
 
@@ -159,8 +158,8 @@ here:
   a display, and for M9 a GPU).
 
 No milestone may read a green from this crate's tests as evidence that the game
-was played. That is the same discipline `ravel-host-api`'s "Nothing calls out at
-any of these yet" keeps, applied one layer up.
+was played. Testing the version-neutral model does not establish that a live
+host projects observations or performs directives.
 
 ## Relationship to the milestone tree
 

@@ -16,7 +16,7 @@ stable contracts toward concrete host internals.
   libraries. They do not depend on bootstrap, SDK, or a concrete adapter.
 - The SDK is a safe author-facing facade. It must not expose bootstrap details,
   generated JVM types, or Minecraft-version internals. Which Ravel crates it
-  depends on is not listed here: `tests/conformance/tests/sdk_boundary.rs` pins
+  depends on is not listed here: `tests/conformance/tests/integration/sdk_boundary.rs` pins
   that closure package by package from `Cargo.lock`, so it is the enumeration,
   and a second one in prose is a list that goes stale the next package that adds
   an edge — which is what happened to the list this sentence replaced. Read the

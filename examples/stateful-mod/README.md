@@ -1,15 +1,7 @@
 # Stateful mod example
 
-A Ravel mod with the kinds of state that outlive a single call: settings a player
-or a pack chooses, versioned world data that an older save migrates into, and a
-service other mods may call. It is not every kind a mod can hold — a client-only
-value and a packet's contract are state too, and `test-mods/client-only` and
-`test-mods/networking` are where those live. The table below is the list; a
-sentence counting it would be wrong the next time the list grew, which is how the
-sentence this one replaced went stale.
-
-`examples/minimal-mod` is the smallest complete mod. Read that one first; this
-one is what to read when you need to remember something.
+A configurable journal with versioned world data and an entries service.
+Start with [`minimal-mod`](../minimal-mod) for a smaller complete example.
 
 | Surface | What the mod writes | Where it is |
 | --- | --- | --- |
@@ -19,25 +11,15 @@ one is what to read when you need to remember something.
 
 ## The rules worth taking from it
 
-**A setting is a document, not a screen.** ADG-6 declares configuration in data
-and draws every Ravel-owned screen in Java, so an author writes JSON and reads
-resolved values. The three layers — the author's `default`, a pack's override,
-the player's file — are resolved before `configure` is called, and a player value
-that is unknown or illegal has already been dropped.
+Settings are JSON declarations. `configure` receives defaults resolved with
+pack overrides and valid player values.
 
-**A world data version is a promise to be able to read it.** Declaring version 1
-means a world written at version 1 still opens. `MigrationChain` is how: one step
-per version, run in order. A step that cannot read the shape it was handed
-refuses, the world is withheld, and the mod is left holding nothing — a save that
-will not open is recoverable, and a save that opened empty is not.
+Each declared world-data version must remain readable. `MigrationChain` upgrades
+older payloads in order; an unreadable payload refuses the world without
+partially changing the journal.
 
-**A service is named by whoever answers it.** `stateful:entries` is in this mod's
-namespace, so no other mod can claim it, and the request and the answer are JSON
-rather than Rust types. A consumer therefore depends on the version range its
-package manifest declares rather than on this mod's build.
-
-`Cargo.toml` beside this file lists one dependency, `ravel-sdk`, which is what a
-mod author's manifest lists.
+The provider owns the `stateful:entries` service name. Requests and answers are
+JSON, so consumers need a package dependency rather than this mod's Rust types.
 
 ## Installing it
 
@@ -50,7 +32,7 @@ instance's host.
 Its `savedDataVersions` is the one field the table above forces: a mod that owns
 world data states the same version list in its manifest that
 `Mod::saved_data_declaration` states in its code, and
-`tests/conformance/tests/example_package.rs` compares the two. That file also
+`tests/conformance/tests/integration/example_package.rs` compares the two. That file also
 recomputes the digests, the file list, and whether `"id"` still agrees with
 `#[declare_mod]`. Any edit to a declared file invalidates the manifest; refresh
 it with

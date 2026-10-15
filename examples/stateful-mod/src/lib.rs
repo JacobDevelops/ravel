@@ -1,32 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! A mod that remembers things, can be configured, and answers other mods.
+//! A configurable journal with versioned world data and an entries service.
 //!
-//! `examples/minimal-mod` is a mod with no state. This one has all three kinds a
-//! mod can have, and it exists to show what each is for and where the line
-//! between them is:
-//!
-//! - **settings** are what a player or a pack chooses, declared as a document and
-//!   handed back resolved. This mod declares one, `journal.capacity`.
-//! - **world data** is what belongs to one save. It is versioned, and an older
-//!   world reaches this build's shape through a [`MigrationChain`] rather than by
-//!   being read hopefully.
-//! - **a service** is what another mod may ask this one. It is named in this mod's
-//!   own namespace, so exactly one mod can answer it, and the answer is data.
-//!
-//! Everything here comes from `ravel-sdk`, including [`json`], which is how an
-//! author writes down the open values these three surfaces carry.
-//!
-//! # The migration chain is the part worth reading twice
-//!
-//! Version 1 of this mod's world data stored the journal as one string. Version 2
-//! stores it as a list of entries. A build that simply tried to read version 1 as
-//! version 2 would either crash or silently lose the entry; instead the version is
-//! declared, the loader works out which steps a world needs, and
-//! [`Journal::chain`] runs them. A step that cannot read what it was handed
-//! returns [`MigrationFailed`], the world is refused, and this mod is left holding
-//! nothing — which is the difference between a save that will not open and a save
-//! that opens empty.
+//! Version 1 stores one string; version 2 stores an entry list. Migration
+//! preserves the old entry and refuses malformed payloads without changing state.
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentId;
@@ -37,10 +14,7 @@ use ravel_sdk::save::{
 use ravel_sdk::services::{ServiceDeclaration, ServiceId, ServiceRequest, ServiceResponse};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod, json};
 
-/// The settings a player or a pack may change.
-///
-/// ADG-6 declares configuration in data, so this is the whole of what an author
-/// writes about it: no widget, no screen, no Java.
+/// Player- and pack-configurable journal settings.
 const SETTINGS: &str = r#"{
   "schemaVersion": 1,
   "owner": "stateful",
@@ -58,11 +32,9 @@ const SETTINGS: &str = r#"{
   ]
 }"#;
 
-/// The key this mod reads its one setting under.
 const CAPACITY: &str = "journal.capacity";
 
-/// Every saved-data version this build reads, oldest first; the highest is the
-/// one it writes.
+// Read oldest through newest; write the highest version.
 const VERSIONS: [u32; 2] = [1, 2];
 
 fn version(raw: u32) -> SavedDataVersion {
@@ -81,10 +53,7 @@ pub fn entries_service() -> ServiceId {
     )
 }
 
-/// Turns version 1's single string into version 2's list.
-///
-/// A world written before this mod kept more than one entry still holds the one it
-/// had, so the step carries it rather than dropping it.
+// Preserve the single entry when upgrading to a list.
 fn to_two(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
     let entry = payload
         .get("entry")
@@ -229,10 +198,7 @@ impl Mod for Journal {
     ///
     /// # Errors
     ///
-    /// Returns [`ModError::Refused`] when a step could not read the shape it was
-    /// handed, or when the result is still not one this build reads. This mod's own
-    /// state is left untouched, so a refused world means a mod holding nothing
-    /// rather than a mod holding half a world.
+    /// Returns [`ModError::Refused`] for unreadable data, leaving state unchanged.
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,

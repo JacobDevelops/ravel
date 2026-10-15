@@ -1,17 +1,8 @@
 #![forbid(unsafe_code)]
 
-//! Audio declaration test mod.
+//! Declares one sound and exercises client playback and server-side refusal.
 //!
-//! The mod for [`ravel_sdk::audio`]. It owns one sound, declares the event that
-//! plays it, and asks for it on every side — so the side rule is exercised by a
-//! mod rather than only by the crate that implements it. The refusal on a server
-//! is the property `ROADMAP.md`'s M6-W2 row wants shown: skipping is what would
-//! make a mod work in single player and be silent everywhere else.
-//!
-//! It also asks on the client tick and hands what it asked for to the host
-//! through [`ravel_sdk::Mod::take_play_requests`], which is the near end of
-//! the outward instruction crossing in `docs/architecture/overview.md`. That makes this
-//! mod the producer a host drains rather than a mod that only declares.
+//! Client ticks enqueue requests drained by [`ravel_sdk::Mod::take_play_requests`].
 
 use ravel_sdk::audio::{AudioDeclaration, AudioError, PlayRequest};
 use ravel_sdk::events::GameEvent;
@@ -23,11 +14,7 @@ pub const MOD_ID: &str = "audio";
 /// The entry this mod owns.
 pub const ENTRY: &str = "door_opens";
 
-/// The bytes it supplies for that entry.
-///
-/// Not a sound. What a sound file holds is a format's decision and nothing in
-/// this workspace reads one, so the mod supplies bytes it can name and the
-/// declaration carries them unread.
+// Opaque fixture bytes, not a playable sound file.
 const BYTES: &[u8] = b"the supplied bytes";
 
 /// A mod that owns a sound and plays it on the one side that can.

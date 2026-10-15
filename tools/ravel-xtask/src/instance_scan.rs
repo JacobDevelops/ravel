@@ -1,26 +1,7 @@
-//! Proves that a launcher instance carries no competing mod loader.
+//! Detects competing loaders without reporting instance-derived strings.
 //!
-//! M3-W7's gate asks for an instance scan showing that the process Ravel ran in
-//! had no Fabric, `NeoForge`, Forge, or Quilt present. That claim was previously
-//! made by a person looking at a directory, which is not evidence anyone else can
-//! recheck. This is the mechanism that makes it one.
-//!
-//! # Why nothing read here can be reported
-//!
-//! The scan runs against a real instance on a real machine — the same directory
-//! that holds the player's worlds, the launcher's account state, and Ravel's own
-//! wrapper command with its absolute paths — and its output becomes tracked
-//! evidence. A scanner that leaks is worse than no scanner, because the leak
-//! ships in the repository and the missing scan does not.
-//!
-//! So the report is closed rather than redacted. [`Finding`] and [`InstanceScan`]
-//! hold `&'static str` and integers and nothing else: every string that leaves
-//! this module is a marker constant written below, and the only file-derived
-//! values are counts. Filenames, path segments, versions, and file contents are
-//! read, compared against constants, and dropped. Redaction is therefore a
-//! property of the types rather than a filter that has to be remembered, and
-//! [`tests::a_username_shaped_path_segment_never_reaches_the_report`] is what
-//! holds it there.
+//! Reports contain only static marker constants and counts. Filenames, paths,
+//! versions, and file contents are inspected but never included in evidence.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,11 +19,7 @@ pub struct Finding {
 
 /// What scanning one launcher instance found.
 ///
-/// `conclusive` is separate from `loader_present` because they answer different
-/// questions. An instance that could not be read has no loader marker either,
-/// and reporting that as a clean scan would turn every unreadable directory into
-/// a proof of absence. M3-W7 needs the absence proved, so a scan that could not
-/// look fails closed and says why.
+/// An unreadable instance is inconclusive, not clean.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct InstanceScan {
     /// Every marker found, in the order the markers are declared below.
@@ -64,8 +41,7 @@ impl InstanceScan {
 
     /// Whether the instance is proven free of every competing loader.
     ///
-    /// An inconclusive scan is not clean. This is the single value M3-W7's
-    /// `instance.withoutAnotherLoader` claim is allowed to come from.
+    /// An inconclusive scan cannot satisfy `instance.withoutAnotherLoader`.
     #[must_use]
     pub fn without_another_loader(&self) -> bool {
         self.conclusive && self.findings.is_empty() && self.mod_archives == 0

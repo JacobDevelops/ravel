@@ -1,21 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! Client-only side and packet handling test mod.
+//! A client-only overlay and its client-bound packet contract.
 //!
-//! The client half of M4-W3's pair. `ravel-test-mod-networking` owns the
-//! server-bound contract; this mod owns the client-bound one, `client_only:overlay`,
-//! and it is the mod the gate's first property is about: **client-only code never
-//! loads on a server side.**
-//!
-//! It is arranged so that property is falsifiable rather than merely stated. The
-//! client-only work is a closure passed to [`ClientOnly::built_on`], and every time
-//! it runs it appends a line to a log the caller kept a handle on. A test that drives
-//! this mod on a server side and finds the log empty has watched the code not run; a
-//! test that finds a line in it has watched the rule break. Nothing about that
-//! depends on this mod's own word.
-//!
-//! Every type here comes from `ravel-sdk`. `Cargo.toml` beside this file lists that
-//! crate and nothing else, which is a mod author's whole manifest.
+//! [`work_log`] exposes whether client-only work ran, even after the host owns
+//! the mod. Server-side construction must leave that log empty.
 //!
 //! # Examples
 //!
@@ -64,16 +52,9 @@ pub const BUILT_THE_OVERLAY: &str = "built the overlay";
 /// What the log says when the overlay was redrawn from a packet.
 pub const REDREW_THE_OVERLAY: &str = "redrew the overlay";
 
-/// Where this mod records the client-only work it did.
+/// Shared work log retained by the caller after the host takes ownership.
 ///
-/// Shared rather than returned, because the host takes ownership of a mod value and
-/// a test that asked the mod afterwards would be asking a `dyn Mod` it cannot
-/// downcast. A handle the caller keeps is how "the code never ran" is observable
-/// from outside.
-///
-/// Every reader takes the lines out of a poisoned lock rather than panicking on it.
-/// The point of this log is to be readable after something went wrong, and a mod
-/// that panicked while holding it is exactly when a test most wants to see it.
+/// Readers recover poisoned locks so failed work remains observable.
 pub type WorkLog = Arc<Mutex<Vec<&'static str>>>;
 
 /// Builds an empty log.

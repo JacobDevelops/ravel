@@ -1,39 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! Optional, presence-gated service integration test mod.
+//! A compass optionally consumes a survey service, ordered after it when present.
 //!
-//! The pair a modpack is actually made of: [`CompassMod`] is better when
-//! [`SurveyMod`] is installed and works without it, which is what most content mods
-//! want to say about each other and what a plain requirement cannot say. Declaring
-//! the survey as required would make the compass's presence stop a game the survey is
-//! not in; not declaring it at all would make the call
-//! [`ServiceUnavailable::Undeclared`](ravel_sdk::services::ServiceUnavailable) and
-//! lose the ordering. So the compass declares it in the third half of a
-//! [`ServiceDeclaration`], through
-//! [`ServiceDeclaration::with_optional`](ravel_sdk::services::ServiceDeclaration::with_optional).
-//!
-//! Both halves live in one crate for the reason
-//! `ravel-test-mod-inter-mod-service`'s do: a graph needs two ends, and splitting
-//! them would put the two `Cargo.toml`s under test rather than the graph.
-//!
-//! # What each property is arranged to falsify
-//!
-//! **Absence is a branch the mod took, not a branch it skipped.** [`Bearings`] has
-//! three values, not two. A compass that was never offered its services reads
-//! [`Bearings::Unwired`], and one that asked and found nobody reads
-//! [`Bearings::Alone`]. A host that silently never called an optional-only consumer
-//! would leave the first, so "the absent branch ran" is observable rather than
-//! inferred from the mod not having crashed.
-//!
-//! **Ordering still holds when the provider is installed.** [`Bearings::Guided`]
-//! carries what the survey answered, so a compass composed before an installed survey
-//! reads `Alone` and is caught — a set that merely *loads* is not the property.
-//!
-//! **Absence is not failure.** The compass carries on past
-//! [`ServiceCallFailed::is_absent`](ravel_sdk::services::ServiceCallFailed::is_absent)
-//! and past nothing else. A provider that was reached and refused still refuses the
-//! compass, because that is a mod saying no rather than a mod not being there, and
-//! a consumer that treated the two alike would hide a broken survey as a missing one.
+//! [`Bearings`] distinguishes not-yet-wired, absent, and answered states.
+//! Only absence is tolerated; an installed provider's refusal propagates.
 
 use ravel_sdk::content::ContentId;
 use ravel_sdk::services::{
@@ -51,8 +21,7 @@ pub const COMPASS_MOD_ID: &str = "optional_compass";
 ///
 /// # Panics
 ///
-/// Panics if `landmarks` stops being a legal content path, which would mean this
-/// service can no longer be named.
+/// Panics if `landmarks` is not a legal content path.
 #[must_use]
 pub fn landmarks() -> ServiceId {
     ServiceId::new(
@@ -61,11 +30,7 @@ pub fn landmarks() -> ServiceId {
     )
 }
 
-/// What a compass knows about landmarks, and how it came to.
-///
-/// Three values rather than two on purpose: [`Bearings::Unwired`] is what a
-/// compass reads when nothing ever asked it to use its services, and it is the
-/// state that would otherwise be indistinguishable from a working absent branch.
+/// A compass's wiring state, distinguishing absence from not having been wired.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum Bearings {
     /// This mod has not been offered its services yet.
@@ -286,7 +251,7 @@ mod tests {
     /// A directory that answers exactly one way, so each branch can be reached.
     ///
     /// The composed proof — that a real loader produces these outcomes, in this
-    /// order — is `tests/conformance/tests/optional_services.rs`, over
+    /// order — is `tests/conformance/tests/integration/optional_services.rs`, over
     /// `ravel_loader::open_services`. This fixture only reaches the branches; it is
     /// not evidence about what a host does.
     struct Fixed(Result<ServiceResponse, ServiceCallFailed>);

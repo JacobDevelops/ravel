@@ -17,7 +17,7 @@ doctests and no code: `cargo test --doc` compiles each case and fails if a
 passing one breaks or a failing one starts to compile. The refusals are the
 evidence — they are why "an author needs no loader internals and no Java" is a
 checked claim rather than a sentence in a document.
-`tests/conformance/tests/sdk_boundary.rs` keeps those refusals honest by
+`tests/conformance/tests/integration/sdk_boundary.rs` keeps those refusals honest by
 recomputing what this crate and `ravel-sdk` are allowed to see.
 
 [`package.json`](package.json) and [`provenance.json`](provenance.json) are what
@@ -25,7 +25,7 @@ make this crate a package rather than only a crate — the metadata the loader
 validates before any of the code above runs, and the shortest complete pair to
 copy. Every optional field this mod has nothing to say about is absent rather
 than empty, which is itself the lesson.
-`tests/conformance/tests/example_package.rs` recomputes the three things a
+`tests/conformance/tests/integration/example_package.rs` recomputes the three things a
 hand-written manifest goes stale about: the digests, the file list, and whether
 `"id"` still agrees with `#[declare_mod]`. Any edit to a declared file
 invalidates the manifest; refresh it with

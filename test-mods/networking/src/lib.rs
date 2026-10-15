@@ -1,16 +1,8 @@
 #![forbid(unsafe_code)]
 
-//! Side-aware networking abstraction test mod.
+//! The server-bound `networking:ping` contract, paired with `client-only`.
 //!
-//! The server half of M4-W3's pair. This mod owns one server-bound contract,
-//! `networking:ping`, and it is what a client talks to; `ravel-test-mod-client-only`
-//! owns the client-bound contract and is what talks back. The contracts are split
-//! that way because a [`PacketId`] is namespaced by the mod that owns it and the
-//! loader routes a delivery to that mod, so each end owns what it receives and
-//! nothing has to be told who a packet is for.
-//!
-//! Every type here comes from `ravel-sdk`. `Cargo.toml` beside this file lists that
-//! crate and nothing else, which is a mod author's whole manifest.
+//! Each receiving mod owns its packet contract and namespace.
 //!
 //! # Examples
 //!
@@ -45,17 +37,9 @@ use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 pub const MOD_ID: &str = "networking";
 
 /// The version both ends of `networking:ping` speak.
-///
-/// A constant so the mod and a test cannot disagree about it, and so raising it is
-/// one edit. Raising it is what makes an old client's payload refused rather than
-/// misread.
 pub const PING_VERSION: u32 = 1;
 
-/// A client asking a server to answer.
-///
-/// The payload is what a real packet's is: values the sender chose, with nothing
-/// derived and nothing implicit. `nonce` is the client's own number and `note` is
-/// text a player could have typed, which is why reading it can fail.
+/// A client request carrying its nonce, player-supplied note, and urgency.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Ping {
     nonce: u32,

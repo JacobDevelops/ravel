@@ -16,7 +16,7 @@ Ravel content, holds no third-party code or assets, and names no local path.
 The runnable test body is
 [`test-mods/client-only`](../../../../../test-mods/client-only), which declares
 the same identity and the same single side.
-[`tests/conformance/tests/sides_and_packets.rs`](../../../../../tests/conformance/tests/sides_and_packets.rs)
+[`tests/conformance/tests/integration/sides_and_packets.rs`](../../../../../tests/conformance/tests/integration/sides_and_packets.rs)
 drives this package through validate, resolve and drive on every side and
 requires the server sides to park it.
 

@@ -18,4 +18,4 @@ the pipeline drives.
 
 The digests are the SHA-256 of the files as committed. Editing a source or
 provenance file means recomputing its manifest digest, and
-`tests/conformance/tests/noop_pipeline.rs` fails until you do.
+`tests/conformance/tests/integration/noop_pipeline.rs` fails until you do.

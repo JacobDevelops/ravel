@@ -1,0 +1,361 @@
+//! Workspace layout and crate fences.
+
+use std::fs;
+use std::path::Path;
+
+use crate::evidence::manifest::MILESTONE_MANIFESTS;
+use crate::evidence::records::verify_evidence_records;
+use crate::inventory::{
+    EXAMPLE_NAMES, EXPERIMENT_NAMES, verify_campaign_inventory, verify_example_inventory,
+    verify_game_type_claims, verify_guide_enumerations, verify_harness_lifecycles,
+    verify_hook_inventory_document, verify_manifest_percentages, verify_review_blocking_counts,
+    verify_review_round_counts, verify_test_mod_inventory, verify_void_limits,
+};
+use crate::java_shape::{
+    verify_hook_name_literals, verify_menu_row_placement, verify_persistence_reflection,
+    verify_screen_overrides, verify_screen_templates, verify_transformer_shape,
+    verify_version_readmes,
+};
+use crate::json::jq_matches;
+use crate::tracked::{collect_files, tracked_paths, verify_tracked_contents, verify_tracked_paths};
+use crate::version_boundary::{
+    hook_inventories, verify_version_boundary, verify_version_directories,
+};
+use crate::{CRATE_NAMES, TEST_MOD_NAMES};
+
+const ROOT_FILES: &[&str] = &[
+    ".cargo/config.toml",
+    ".config/nextest.toml",
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    ".markdownlint.yaml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "Makefile.toml",
+    "README.md",
+    "ROADMAP.md",
+    "SPEC.md",
+    "deny.toml",
+    "docs/architecture/m1-measurement-gate.md",
+    "evidence/m1/README.md",
+    "evidence/m2/README.md",
+    "docs/runbooks/darwin-verification.md",
+    "experiments/README.md",
+    "jvm/README.md",
+    "jvm/bootstrap/dev/ravel/jvm/Agent.java",
+    "jvm/bootstrap/dev/ravel/jvm/HookTarget.java",
+    "jvm/bootstrap/dev/ravel/jvm/Screens.java",
+    "jvm/bootstrap/dev/ravel/jvm/Transformer.java",
+    "jvm/build/build-agent.sh",
+    "jvm/build/build-screen.sh",
+    "jvm/harness/net/minecraft/util/StringUtil.java",
+    "jvm/harness/remap/Remap.java",
+    "jvm/harness/run-harness.sh",
+    "jvm/harness/template/driver/Main.java.in",
+    "jvm/harness/template/game/Screen.java.in",
+    "jvm/screen/template/RavelModsScreen.java.in",
+    "jvm/screen/template/RavelSettingsScreen.java.in",
+    "jvm/screen/template/Wire.java.in",
+    "minecraft/README.md",
+    "mise.toml",
+    "rust-toolchain.toml",
+    "rustfmt.toml",
+    "schemas/configuration-override.schema.json",
+    "schemas/configuration.schema.json",
+    "schemas/evidence.schema.json",
+    "schemas/fixture.schema.json",
+    "schemas/pack.schema.json",
+    "schemas/package.schema.json",
+    "schemas/performance-collector.schema.json",
+    "schemas/performance-result.schema.json",
+    "schemas/provenance.schema.json",
+    "schemas/runtime-inputs.schema.json",
+    "schemas/saved-data.schema.json",
+    "schemas/spike-result.schema.json",
+    "tests/conformance/Cargo.toml",
+    "tests/fixtures/README.md",
+    "tests/fixtures/local/README.md",
+    "tests/fixtures/public/README.md",
+    "tools/ravel-cli/Cargo.toml",
+    "tools/ravel-xtask/Cargo.toml",
+];
+
+/// Returns the files that define the minimum public repository scaffold.
+#[must_use]
+pub fn required_scaffold_paths() -> Vec<String> {
+    ROOT_FILES
+        .iter()
+        .map(|path| (*path).to_owned())
+        .chain(
+            MILESTONE_MANIFESTS
+                .iter()
+                .map(|(relative, _)| (*relative).to_owned()),
+        )
+        .chain(
+            CRATE_NAMES
+                .iter()
+                .map(|name| format!("crates/{name}/Cargo.toml")),
+        )
+        .chain(
+            TEST_MOD_NAMES
+                .iter()
+                .map(|name| format!("test-mods/{name}/Cargo.toml")),
+        )
+        .chain(
+            EXAMPLE_NAMES
+                .iter()
+                .map(|name| format!("examples/{name}/Cargo.toml")),
+        )
+        .chain(
+            EXPERIMENT_NAMES
+                .iter()
+                .map(|name| format!("experiments/{name}/Cargo.toml")),
+        )
+        .collect()
+}
+
+/// Checks the repository's initial public scaffold and tracked-file policy.
+#[must_use]
+pub fn verify_scaffold(root: &Path) -> Vec<String> {
+    let mut violations = Vec::new();
+
+    for relative in required_scaffold_paths() {
+        if !root.join(&relative).is_file() {
+            violations.push(format!("missing required file: {relative}"));
+        }
+    }
+
+    for relative in maintained_rust_roots(root) {
+        match fs::read_to_string(root.join(&relative)) {
+            Ok(source) if declares_unsafe_prohibition(&source) => {}
+            Ok(_) => violations.push(format!("missing unsafe prohibition: {relative}")),
+            Err(error) => violations.push(format!("cannot read {relative}: {error}")),
+        }
+    }
+
+    verify_ignored_boundaries(root, &mut violations);
+    verify_version_directories(root, &mut violations);
+    let inventories = hook_inventories(root);
+    verify_hook_inventory_document(root, &inventories, &mut violations);
+    verify_campaign_inventory(root, &mut violations);
+    verify_review_round_counts(root, &mut violations);
+    verify_review_blocking_counts(root, &mut violations);
+    verify_manifest_percentages(root, &mut violations);
+    verify_void_limits(root, &mut violations);
+    verify_harness_lifecycles(root, &mut violations);
+    verify_persistence_reflection(root, &mut violations);
+    verify_hook_name_literals(root, &inventories, &mut violations);
+    verify_transformer_shape(root, &inventories, &mut violations);
+    verify_menu_row_placement(root, &mut violations);
+    verify_screen_templates(root, &mut violations);
+    verify_screen_overrides(root, &mut violations);
+    verify_version_readmes(root, &mut violations);
+    verify_guide_enumerations(root, &mut violations);
+    verify_schema_documents(root, &mut violations);
+    verify_version_boundary(root, &mut violations);
+    verify_example_inventory(root, &mut violations);
+    verify_test_mod_inventory(root, &mut violations);
+    verify_experiment_fence(root, &mut violations);
+    violations.extend(verify_evidence_records(root));
+
+    match tracked_paths(root) {
+        Ok(paths) => {
+            violations.extend(verify_tracked_paths(paths.iter().map(String::as_str)));
+            violations.extend(verify_tracked_contents(root, &paths));
+            verify_game_type_claims(root, &paths, &mut violations);
+        }
+        Err(error) => violations.push(error),
+    }
+
+    violations
+}
+
+fn declares_unsafe_prohibition(source: &str) -> bool {
+    source
+        .lines()
+        .map(str::trim_start)
+        .any(|line| line.starts_with("#![forbid(unsafe_code)]"))
+}
+
+fn verify_experiment_fence(root: &Path, violations: &mut Vec<String>) {
+    let production_manifests = CRATE_NAMES
+        .iter()
+        .map(|name| format!("crates/{name}/Cargo.toml"))
+        .chain(
+            TEST_MOD_NAMES
+                .iter()
+                .map(|name| format!("test-mods/{name}/Cargo.toml")),
+        )
+        .chain(
+            EXAMPLE_NAMES
+                .iter()
+                .map(|name| format!("examples/{name}/Cargo.toml")),
+        )
+        .chain([
+            "tests/conformance/Cargo.toml".to_owned(),
+            "tools/ravel-cli/Cargo.toml".to_owned(),
+            "tools/ravel-xtask/Cargo.toml".to_owned(),
+        ]);
+
+    for relative in production_manifests {
+        let Ok(manifest) = fs::read_to_string(root.join(&relative)) else {
+            continue;
+        };
+        if manifest.contains("ravel-spike") || manifest.contains("experiments/") {
+            violations.push(format!(
+                "production crate depends on an experiment: {relative}"
+            ));
+        }
+        if manifest.contains(r#"unsafe_code = "allow""#) {
+            violations.push(format!(
+                "unsafe code is permitted outside the experiment boundary: {relative}"
+            ));
+        }
+    }
+
+    verify_testkit_fence(root, violations);
+
+    let mut sources = Vec::new();
+    for directory in ["crates", "test-mods", "tools", "tests"] {
+        collect_files(&root.join(directory), &mut sources);
+    }
+    for path in sources {
+        if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
+            continue;
+        }
+
+        if fs::read_to_string(&path).is_ok_and(|source| {
+            source.lines().map(str::trim_start).any(|line| {
+                line.starts_with("#![allow(unsafe_code)")
+                    || line.starts_with("#[allow(unsafe_code)")
+                    || line.starts_with("#![expect(unsafe_code)")
+                    || line.starts_with("#[expect(unsafe_code)")
+            })
+        }) {
+            let relative = path.strip_prefix(root).unwrap_or(&path);
+            violations.push(format!(
+                "unsafe code is permitted outside the experiment boundary: {}",
+                relative.display()
+            ));
+        }
+    }
+}
+
+fn verify_testkit_fence(root: &Path, violations: &mut Vec<String>) {
+    let fenced = CRATE_NAMES
+        .iter()
+        .filter(|name| **name != "ravel-testkit")
+        .map(|name| format!("crates/{name}/Cargo.toml"))
+        .chain(
+            TEST_MOD_NAMES
+                .iter()
+                .map(|name| format!("test-mods/{name}/Cargo.toml")),
+        )
+        .chain(
+            EXAMPLE_NAMES
+                .iter()
+                .map(|name| format!("examples/{name}/Cargo.toml")),
+        );
+
+    for relative in fenced {
+        let Ok(manifest) = fs::read_to_string(root.join(&relative)) else {
+            continue;
+        };
+        if manifest.contains("ravel-testkit") {
+            violations.push(format!(
+                "production crate depends on the test harness: {relative}"
+            ));
+        }
+    }
+}
+
+fn maintained_rust_roots(root: &Path) -> Vec<String> {
+    CRATE_NAMES
+        .iter()
+        .map(|name| format!("crates/{name}/src/lib.rs"))
+        .chain([
+            "tests/conformance/src/lib.rs".to_owned(),
+            "tools/ravel-cli/src/lib.rs".to_owned(),
+            "tools/ravel-cli/src/main.rs".to_owned(),
+            "tools/ravel-xtask/src/lib.rs".to_owned(),
+            "tools/ravel-xtask/src/main.rs".to_owned(),
+        ])
+        .chain(
+            TEST_MOD_NAMES
+                .iter()
+                .map(|name| format!("test-mods/{name}/src/lib.rs")),
+        )
+        .chain(
+            EXAMPLE_NAMES
+                .iter()
+                .map(|name| format!("examples/{name}/src/lib.rs")),
+        )
+        .chain(crate_example_roots(root))
+        .collect()
+}
+
+fn crate_example_roots(root: &Path) -> Vec<String> {
+    let mut roots = Vec::new();
+    for name in CRATE_NAMES {
+        let directory = root.join("crates").join(name).join("examples");
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
+                let file = entry.file_name().to_string_lossy().into_owned();
+                roots.push(format!("crates/{name}/examples/{file}"));
+            }
+        }
+    }
+    roots.sort();
+    roots
+}
+
+fn verify_ignored_boundaries(root: &Path, violations: &mut Vec<String>) {
+    let gitignore_path = root.join(".gitignore");
+    let Ok(gitignore) = fs::read_to_string(&gitignore_path) else {
+        violations.push("cannot read .gitignore".to_owned());
+        return;
+    };
+
+    if !gitignore.lines().any(|line| line.trim() == ".env") {
+        violations.push("missing credential ignore: .env".to_owned());
+    }
+}
+
+fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
+    for schema in [
+        "configuration",
+        "configuration-override",
+        "evidence",
+        "fixture",
+        "pack",
+        "package",
+        "performance-collector",
+        "performance-result",
+        "provenance",
+        "runtime-inputs",
+        "saved-data",
+        "spike-result",
+    ] {
+        let relative = format!("schemas/{schema}.schema.json");
+        let path = root.join(&relative);
+        match jq_matches(
+            &path,
+            "type == \"object\" and .\"$schema\" == \"https://json-schema.org/draft/2020-12/schema\"",
+        ) {
+            Ok(true) => {}
+            Ok(false) => violations.push(format!("invalid JSON schema document: {relative}")),
+            Err(error) => violations.push(error),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

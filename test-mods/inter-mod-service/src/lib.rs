@@ -1,36 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! Inter-mod service composition test mod.
+//! A stock provider and shop consumer exercising service ordering.
 //!
-//! M4-W4's pair, and the whole of what its gate is about. [`StockMod`] answers a
-//! service, owns versioned world data and declares settings; [`ShopMod`] requires
-//! that service and does nothing until it has an answer. Neither names anything
-//! outside `ravel-sdk`, and neither names the other: a consumer reaches a provider
-//! through a [`ServiceId`] and a JSON answer, never through the provider's Rust
-//! types, which is why `Cargo.toml` beside this file lists one dependency.
-//!
-//! Both halves live in one crate because they are one fixture — a graph needs two
-//! ends — and separating them would make the pair's `Cargo.toml`s the thing under
-//! test rather than the graph.
-//!
-//! # What each property is arranged to falsify
-//!
-//! **Migration chains.** [`StockMod`] reads three saved-data versions and declares
-//! a [`MigrationChain`] with a step into each of the two above the oldest. The
-//! shapes differ at every version, so a world at version 1 can only reach the
-//! current shape by passing through both steps in order: an implementation that ran
-//! one, or ran them out of order, produces a value the current reader refuses.
-//!
-//! **Service dependencies.** [`ShopMod`] records nothing until its call is
-//! answered, so "the provider ran first" is observable rather than asserted:
-//! [`ShopMod::prices`] is empty for a shop that was started before its provider.
-//!
-//! **Failure closure.** Both halves refuse rather than carry on. A migration step
-//! that cannot read the shape it was handed returns [`MigrationFailed`], and
-//! [`StockMod`] leaves its own state untouched — [`StockMod::stock`] still reads
-//! zero, so a refusal cannot be mistaken for a world that opened empty. A shop
-//! whose call fails returns [`ModError::Refused`] rather than running with no
-//! prices.
+//! Stock data crosses two migrations with distinct shapes before being read.
+//! Failed migrations refuse world opening without partially changing stock.
 
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentId;
@@ -49,11 +22,7 @@ pub const STOCK_MOD_ID: &str = "service_stock";
 /// The identity the consumer is packaged under.
 pub const SHOP_MOD_ID: &str = "service_shop";
 
-/// The saved-data versions [`StockMod`] reads, oldest first.
-///
-/// The highest is the one it writes. Every version above the oldest needs a
-/// migration step, and [`StockMod::chain`] is checked against this list rather
-/// than against a second copy of it.
+// Read oldest through newest; write the highest version.
 const STOCK_VERSIONS: [u32; 3] = [1, 2, 3];
 
 /// The settings [`StockMod`] declares.
@@ -84,8 +53,7 @@ fn version(raw: u32) -> SavedDataVersion {
 ///
 /// # Panics
 ///
-/// Panics if `prices` stops being a legal content path, which would mean this
-/// service can no longer be named.
+/// Panics if `prices` is not a legal content path.
 #[must_use]
 pub fn prices() -> ServiceId {
     ServiceId::new(
@@ -167,8 +135,7 @@ impl StockMod {
     ///
     /// # Panics
     ///
-    /// Panics if [`STOCK_VERSIONS`] stops being a non-empty list of non-zero
-    /// versions, which would mean this mod can no longer own world data.
+    /// Panics if [`STOCK_VERSIONS`] is empty or contains zero.
     #[must_use]
     pub fn declaration(&self) -> SavedDataDeclaration {
         SavedDataDeclaration::new(
@@ -204,7 +171,6 @@ impl StockMod {
         &self.answered
     }
 
-    /// Reads a version-3 payload, refusing anything else.
     fn read(&mut self, payload: &SavedPayload) -> Result<(), ModError> {
         let refuse = |detail: &str| ModError::Refused {
             mod_id: Self::declared_id().clone(),
@@ -271,25 +237,15 @@ impl Mod for StockMod {
 
     /// Migrates the stored payload up to the current version, then reads it.
     ///
-    /// The chain runs here rather than in the host because the shapes are this
-    /// mod's. What the host owns is the decision: the `plan` it was handed already
-    /// names the versions to cross, so this method never chooses whether to
-    /// migrate — only how.
-    ///
     /// # Errors
     ///
-    /// Returns [`ModError::Refused`] when a step could not read the shape it was
-    /// handed, or when the migrated payload is still not one this build reads. The
-    /// mod's own state is untouched in both cases, so a refused world leaves this
-    /// mod holding nothing rather than holding part of a world.
+    /// Returns [`ModError::Refused`] for unreadable data, leaving state unchanged.
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
         plan: &SavedDataPlan,
     ) -> Result<(), ModError> {
         let Some(envelope) = envelope else {
-            // Absence initializes fresh state, which is ADG-7's rule and not this
-            // mod's choice.
             return Ok(());
         };
         let current = self
@@ -363,10 +319,7 @@ impl ShopMod {
         Self::default()
     }
 
-    /// Returns what the provider answered, when it has.
-    ///
-    /// `None` is the whole point: a shop that was offered its services before the
-    /// provider ran has nothing here, so the order is checkable from outside.
+    /// Returns the provider's answer, or `None` before service wiring.
     #[must_use]
     pub const fn prices(&self) -> Option<&SavedPayload> {
         self.prices.as_ref()
@@ -388,10 +341,7 @@ impl Mod for ShopMod {
     ///
     /// # Errors
     ///
-    /// Returns [`ModError::Refused`] when the call did not produce an answer. A
-    /// shop with no prices is not a shop running in a degraded mode; it is a mod
-    /// that has not started, and saying so is what keeps a half-wired set out of a
-    /// world.
+    /// Returns [`ModError::Refused`] when the call fails.
     fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
         let answer = directory
             .call(&ServiceRequest::new(prices(), json!({ "item": "lantern" })))

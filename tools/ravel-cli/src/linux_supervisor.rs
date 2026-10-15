@@ -6,16 +6,13 @@ use std::process::{Child, Command, ExitStatus};
 
 use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
 
-use crate::{
-    InitialLinuxPerformanceMarkerCommand, PerformanceError, send_initial_linux_performance_marker,
+use crate::error::PerformanceError;
+use crate::performance_markers::{
+    InitialLinuxPerformanceMarkerCommand, send_initial_linux_performance_marker,
 };
 
 /// Runs the JVM through a same-PID marker child and reports its final status.
-///
-/// Prism invokes this function's CLI surface as a wrapper command. The child
-/// sends `process-start` using its own PID, replaces itself with Java, and
-/// inherits Prism's standard streams. The supervisor then emits either
-/// `process-exit` for a successful JVM or `abort` for a failed one.
+/// Emits `process-exit` for a successful JVM or `abort` for a failed one.
 ///
 /// # Errors
 ///
@@ -177,9 +174,7 @@ fn aborting_supervisor_error(socket_path: &Path, message: String) -> Performance
 }
 
 /// Marks this process as the capture subject, then replaces it with Java.
-///
-/// This is an internal CLI handoff used by [`supervise_initial_linux_process`].
-/// It is public only so the binary target can call the library implementation.
+/// Public for the binary target's internal supervisor handoff.
 ///
 /// # Errors
 ///

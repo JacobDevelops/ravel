@@ -1,20 +1,8 @@
 #![forbid(unsafe_code)]
 
-//! Behaviour interception test mod.
+//! Declares an ordered block-breaking interception and conditionally refuses it.
 //!
-//! The mod for [`ravel_sdk::interception`]. It declares that it answers at a
-//! published point, refuses there under a condition it owns, and declares that
-//! it is asked before another mod — which is what `ROADMAP.md`'s M6-W2 row asks
-//! an original mod to exercise.
-//!
-//! It patches nothing. A point is a place the host calls out from, so what this
-//! mod declares is an answer the host asks for, and this crate carries
-//! `#![forbid(unsafe_code)]` like every other.
-//!
-//! What this mod cannot do by itself is run a round: the order among mods and
-//! the asking are the host's, and a mod that built its own would be answering
-//! its own question. `tests/conformance/tests/sdk_gaps.rs` drives this mod
-//! through the host's round, which is the only place the two halves meet.
+//! `tests/conformance/tests/integration/sdk_gaps.rs` drives the host's ordering and round.
 
 use ravel_sdk::interception::{InterceptionDeclaration, Occasion, Outcome, Point};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod};

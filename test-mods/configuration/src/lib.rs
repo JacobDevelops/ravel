@@ -60,14 +60,9 @@ impl ConfigurationMod {
 
     /// Applies one resolved configuration to subsequent behavior.
     ///
-    /// The host reaches this through [`HostMod::configure`] rather than by
-    /// name. It stays separate because [`Self::new`] applies the author defaults
-    /// before the mod is a `HostMod` at all.
-    ///
     /// # Errors
     ///
-    /// Returns an error when the configuration belongs to another mod or no
-    /// longer contains the typed settings this mod consumes.
+    /// Returns an error for a different owner or missing typed settings.
     pub fn apply(&mut self, configuration: &LayeredConfiguration) -> Result<(), String> {
         if configuration.owner() != &self.id {
             return Err(format!(
@@ -118,8 +113,7 @@ impl HostMod for ConfigurationMod {
     ///
     /// # Errors
     ///
-    /// Never returns an error. Configuration is validated before it reaches the
-    /// mod, so entering a lifecycle state has nothing left to refuse.
+    /// Never returns an error.
     fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
         if state == LifecycleState::Running {
             self.observations.push(self.behavior());
@@ -128,10 +122,6 @@ impl HostMod for ConfigurationMod {
     }
 
     /// Declares the settings this mod owns.
-    ///
-    /// A host reads this rather than naming [`ConfigurationMod::declaration`],
-    /// which is what lets a host composed from packages it never heard of layer
-    /// this mod's settings at all.
     fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
         Some(Self::declaration())
     }
@@ -140,8 +130,7 @@ impl HostMod for ConfigurationMod {
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Refused`] with whatever [`ConfigurationMod::apply`]
-    /// said, which is this mod's own rule about a document it was handed.
+    /// Returns [`HostError::Refused`] when [`ConfigurationMod::apply`] fails.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
         Self::apply(self, resolved).map_err(|detail| HostError::Refused {
             mod_id: self.id.clone(),

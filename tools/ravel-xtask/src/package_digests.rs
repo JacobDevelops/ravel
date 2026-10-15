@@ -1,33 +1,7 @@
-//! Refreshing the digests a package manifest records.
+//! Refreshes manifest digests using the package verifier's hashing and path rules.
 //!
-//! `SPEC.md` §4.2 has the mod author publish through supported tooling. Every
-//! edit to a declared source file invalidates the manifest, and
-//! `ravel_package::verify_package` reports the first stale digest in declaration
-//! order only, so an author who edited three files learns about them one refusal
-//! at a time. This is the one command that ends that loop.
-//!
-//! # Why the manifest is rewritten as text
-//!
-//! A manifest belongs to its author. Round-tripping it through a JSON value
-//! would return their file with this tool's opinions about key order, spacing and
-//! trailing newlines baked in, and an author who ran the command once would find
-//! their whole manifest rewritten. So the digests are replaced in place, at the
-//! byte spans they occupy, and nothing else in the file is touched.
-//!
-//! Locating those spans needs the text read as JSON rather than as a string:
-//! `"path"` appears inside a description as readily as it appears as a key. The
-//! scanner below walks the document tracking string boundaries and escapes, so
-//! what it finds are keys.
-//!
-//! # Why the hashing is not done here
-//!
-//! [`ravel_package::verify_source_file`] and [`ravel_package::verify_provenance`]
-//! already hash exactly the bytes the loader hashes, resolve a declared path the
-//! way the loader resolves it, and distinguish the three refusals a package can
-//! earn before a digest is even compared. A second hasher here would be a second
-//! opinion about what a package's digest is, which is the one thing this command
-//! must not have: it reports the digest the loader will compute, or it is worse
-//! than useless. So a mismatch is asked for and its `actual` digest is the answer.
+//! Replaces only digest byte spans, preserving formatting and key order. A
+//! string-aware JSON scanner distinguishes keys from text inside descriptions.
 
 use std::fmt;
 use std::fs;
@@ -83,11 +57,8 @@ impl fmt::Display for StaleDigest {
 ///
 /// # Errors
 ///
-/// Returns every reason the package could not be read as one: an unreadable or
-/// unparsable manifest, a declared file that is missing, unreadable, or resolves
-/// outside the package, or a manifest this tool cannot rewrite without guessing
-/// which digest belongs to which file. Nothing is written when anything here
-/// fails.
+/// Returns read, parse, path, or ambiguous-rewrite failures. Nothing is written
+/// unless every declared file and replacement span can be resolved.
 pub fn refresh_digests(directory: &Path, check: bool) -> Result<DigestOutcome, Vec<String>> {
     let manifest_path = directory.join(MANIFEST_FILE);
     let document = fs::read_to_string(&manifest_path)

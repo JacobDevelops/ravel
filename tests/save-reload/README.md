@@ -1,7 +1,7 @@
 # Save and reload tests
 
 World persistence and saved-data migration are tested from
-[`tests/conformance/tests/saved_data.rs`](../conformance/tests/saved_data.rs),
+[`tests/conformance/tests/integration/saved_data.rs`](../conformance/tests/integration/saved_data.rs),
 against the world fixtures in
 [`tests/fixtures/public/worlds/`](../fixtures/public/worlds/).
 

@@ -1,16 +1,8 @@
 #![forbid(unsafe_code)]
 
-//! A Ravel mod that keeps a per-world ledger of named waystones.
+//! A per-world ledger of named waystones, with content and a `/waystone` command.
 //!
-//! It adds a waystone block, the item that places it, the recipe that makes it,
-//! the shared `c:waystones` tags other mods' recipes can find it through, and a
-//! `/waystone` command that writes names and coordinates into the world's own
-//! ledger. The ledger is versioned world data: version 1 stored bare points,
-//! version 2 stores each point with the dimension it is in, and a version-1 world
-//! reaches version 2 through the declared migration step rather than by being read
-//! hopefully.
-//!
-//! Everything here is written against `ravel-sdk` and nothing else.
+//! Version 1 stores bare points; version 2 adds a dimension through migration.
 
 use ravel_sdk::JsonValue;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
@@ -34,33 +26,21 @@ use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod, jso
 /// The one path this mod's block, item and recipe are all named after.
 const WAYSTONE: &str = "waystone";
 
-/// The namespace mods share on purpose. A tag there has no owner, so naming one
-/// is not a claim on the namespace.
+// Convention tags share the unowned `c` namespace.
 const CONVENTION: &str = "c";
 
-/// The dimension a version-1 record is assumed to have been in. Version 1 stored
-/// no dimension at all, so the step has to choose one, and the overworld is the
-/// only answer that is right more often than it is wrong.
+// Version 1 omitted dimensions; migrate its points into the overworld.
 const ASSUMED_DIMENSION: &str = "minecraft:overworld";
 
-/// The settings a player or a pack may change. Configuration is declared in data,
-/// so this is the whole of what this mod says about it.
 const SETTINGS: &str = include_str!("../configuration.json");
 
-/// The keys this mod reads out of the resolved settings.
 const CAPACITY: &str = "ledger.capacity";
 const OVERWRITE: &str = "ledger.overwrite";
 
-/// The block model, which Ravel does not generate because a model's shape belongs
-/// to a Minecraft version. It is a constant in this file rather than a file beside
-/// it so that the manifest's `source.files` digest covers it: only what
-/// `source.files` lists is integrity-checked, and a loose `.json` in the package
-/// would ship unverified unless it were listed twice.
+// Embedded model bytes are covered by the source digest.
 const MODEL: &[u8] = b"{\n  \"parent\": \"minecraft:block/lodestone\"\n}\n";
 
-/// Every saved-data version this build reads, oldest first. The highest is the one
-/// it writes, and this list is the same statement as `savedDataVersions` in
-/// `package.json`.
+// Keep oldest-to-newest versions aligned with `package.json`.
 const VERSIONS: [u32; 2] = [1, 2];
 
 fn version(raw: u32) -> SavedDataVersion {
@@ -245,12 +225,7 @@ pub struct WaystoneLedger {
 }
 
 impl WaystoneLedger {
-    /// Builds the mod instance for one side.
-    ///
-    /// The side is what the host constructs a mod with, and it is the only thing
-    /// this mod needs it for: [`ClientOnly::built_on`] does not build the client
-    /// view anywhere else, so the client-only state is not built on a server
-    /// rather than being built and hidden.
+    /// Builds the mod, constructing its client view only on the client side.
     #[must_use]
     pub fn new(side: Side) -> Self {
         Self {
@@ -372,9 +347,7 @@ impl WaystoneLedger {
     ///
     /// # Panics
     ///
-    /// Panics if any declaration here is refused. Every one is a constant in this
-    /// file, so a refusal means this mod contradicts itself and should stop a
-    /// build rather than reach a player.
+    /// Panics if these constant declarations conflict or are invalid.
     #[must_use]
     pub fn declaration() -> ContentDeclaration {
         let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
@@ -591,10 +564,7 @@ impl Mod for WaystoneLedger {
     ///
     /// # Errors
     ///
-    /// Returns [`ModError::Refused`] when a step could not read the shape it was
-    /// handed, or when what it produced is not a ledger. This mod's own state is
-    /// left untouched, so a refused world is a mod holding nothing rather than a
-    /// mod holding half a world.
+    /// Returns [`ModError::Refused`] for unreadable data, leaving state unchanged.
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
@@ -657,12 +627,7 @@ impl Mod for WaystoneLedger {
         Ok(())
     }
 
-    /// Runs `/waystone`.
-    ///
-    /// The arguments are text a player typed and nothing has interpreted them, so
-    /// anything unrecognised leaves the ledger alone and is reported as
-    /// [`Outcome::NotUnderstood`] rather than failing the mod: a typo is not a
-    /// reason to take a phase down.
+    /// Runs `/waystone`, recording unrecognized input as [`Outcome::NotUnderstood`].
     ///
     /// # Errors
     ///

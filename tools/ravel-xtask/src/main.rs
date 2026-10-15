@@ -4,12 +4,7 @@ use std::env;
 use std::path::Path;
 use std::process::ExitCode;
 
-/// Refreshes the digests a package manifest records, or checks them.
-///
-/// This one does not fit the `(subject, violations)` shape the rest share.
-/// Rewriting a manifest is not a verification, and its ordinary successful
-/// outcome — digests were wrong and are now right — has to print what changed
-/// and still exit 0, because an author ran it precisely to make that change.
+/// Reports changed digests while treating a successful rewrite as success.
 fn package_digests(directory: &Path, check: bool) -> ExitCode {
     match ravel_xtask::refresh_digests(directory, check) {
         Err(refusals) => {
@@ -71,18 +66,13 @@ fn main() -> ExitCode {
         {
             let runs = runs.iter().map(Path::new).collect::<Vec<_>>();
             let report = ravel_xtask::verify_budget(&root, &runs);
-            // Notes say what was not compared, and they print whether or not the
-            // comparison passed. A limit that is quietly not checked reads
-            // exactly like one that passed, which is the failure this command
-            // exists to end.
+            // Unchecked limits must remain visible even when comparisons pass.
             for note in &report.notes {
                 println!("- {note}");
             }
             ("budget", report.violations)
         }
-        // The report prints whether or not the instance is clean, because the
-        // sanitized facts are what an evidence record embeds and a scan that
-        // only spoke up on failure could not supply them.
+        // Emit sanitized evidence on both success and failure.
         [scan, instance, directory] if scan == "scan" && instance == "instance" => {
             let report = ravel_xtask::scan_instance(Path::new(directory));
             println!("{}", report.to_json());

@@ -15,7 +15,7 @@ progression with a gate, validates all four closures, and writes the pack.
 ## Why it is not a crate in this directory
 
 Every crate under `examples/` declares `ravel-sdk` and nothing else, and
-`tests/conformance/tests/sdk_boundary.rs` enforces that, because these are the model
+`tests/conformance/tests/integration/sdk_boundary.rs` enforces that, because these are the model
 manifests a **mod** author reads. A pack author is a different role with a different
 dependency: `SPEC.md` §4.3 has them selecting mods, pinning versions and validating
 closure, which is `ravel-pack`. Putting `ravel-pack` into a manifest this directory

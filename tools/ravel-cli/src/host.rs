@@ -1,14 +1,4 @@
-//! Building an instance's host from the packages it holds.
-//!
-//! `ravel-build` has generated a host from a discovered set since M3, and until
-//! this module nothing called it. A launch could therefore find an installed
-//! package, validate its manifest and verify its digests, and still refuse it,
-//! because the only hosts that existed were compiled from a member list written
-//! in Rust source. This is the step that turns a discovered package into a host
-//! that names it.
-//!
-//! Installation layout owns the cache path, so both directories are arguments
-//! rather than defaults invented here.
+//! Builds an instance's host from its installed packages.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -28,14 +18,6 @@ pub struct BuiltHost {
 }
 
 /// Discovers an instance's packages and compiles a host that names them.
-///
-/// `ravel_root` is where this Ravel installation keeps its own crates, which the
-/// generated workspace depends on by path, `cache` is the shared build cache,
-/// and `minecraft` is the tracked version the host is generated against. That
-/// last one is an argument rather than something read off the instance because
-/// nothing in an instance states it: a package declares a compatibility list
-/// that may hold ranges, and an instance with nothing installed declares
-/// nothing.
 ///
 /// # Errors
 ///
@@ -88,27 +70,13 @@ mod tests {
 
     use super::{HostError, build_host};
 
-    /// A build that cannot compile refuses through this function rather than
-    /// through a process exit, and what it says carries no path out of the
-    /// player's machine.
-    ///
-    /// The instance here holds no packages, which is a host with no members
-    /// rather than a refusal — a launch with nothing installed is a launch with
-    /// nothing installed. What refuses is the compile, because `ravel_root` is
-    /// pointed at a directory holding none of Ravel's own crates. That is the
-    /// path worth pinning: `ravel-build` redacts the instance before carrying
-    /// Cargo's words, and a caller that reported them raw would publish where a
-    /// player keeps their game.
     #[test]
     fn a_refused_compile_carries_no_instance_path() {
         let root = std::env::temp_dir().join(format!("ravel-cli-host-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("the temporary instance is creatable");
 
-        // The version reaches the toolchain as an environment variable and the
-        // toolchain never gets that far here: the generated workspace names
-        // Ravel crates that do not exist under this root, so Cargo refuses
-        // before any build script reads a selection.
+        // Missing Ravel crates force refusal before version selection is read.
         let error = build_host(&root, &root, &root, "unread-by-a-refused-compile")
             .expect_err("no Ravel crates live under the temporary root, so the compile refuses");
 
@@ -121,9 +89,6 @@ mod tests {
             !reported.contains(&root.display().to_string()),
             "the refusal names the instance directory: {reported}"
         );
-        // Asserted positively as well as negatively: an empty message contains
-        // no path either, and would satisfy the line above while carrying none
-        // of what a caller needs to act on.
         assert!(
             reported.contains("<instance>"),
             "the refusal dropped the path instead of redacting it: {reported}"

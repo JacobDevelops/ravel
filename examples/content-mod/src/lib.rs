@@ -1,21 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! A Ravel mod that adds content.
+//! A block, item, recipe, convention tags, translations, and supplied assets.
 //!
-//! `examples/minimal-mod` claims one command, which is the smallest thing a mod
-//! can do. This one adds a block, the item that places it, the recipe that makes
-//! it, the tags that let other mods' recipes find it, its name in two languages,
-//! and the model file Ravel does not generate — which is the smallest thing a
-//! *content* mod does, and it touches every part of M4-W2's surface.
-//!
-//! Everything is declared once, in [`ContentMod::declaration`]. The registration
-//! window claims the entries from that declaration and
-//! [`ContentMod::generated`] produces the pack from the same one, so the block
-//! this mod registers and the block its tag names cannot drift apart.
-//!
-//! `Cargo.toml` beside this file lists one dependency, `ravel-sdk`, which is a
-//! mod author's whole manifest. Nothing here names a loader type, a Minecraft
-//! version, or any Java at all.
+//! Registration and generated data use [`ContentMod::declaration`] so their
+//! identifiers stay aligned.
 
 use ravel_sdk::content::{ContentDeclaration, ContentId, ContentKind, Registrar, RegistryKey};
 use ravel_sdk::events::GameEvent;
@@ -27,31 +15,13 @@ use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod};
 /// The path this mod's block, item and recipe are all named after.
 const LANTERN: &str = "copper_lantern";
 
-/// The namespace mods share on purpose.
-///
-/// A tag in `c` is how one mod's recipe accepts another mod's ingot. Naming a
-/// tag there is not a claim on the namespace — a tag has no owner — which is the
-/// one place a mod legitimately writes outside its own name.
+// Convention tags may name the shared `c` namespace without claiming it.
 const CONVENTION: &str = "c";
 
-/// The bytes of the block model, which Ravel does not generate.
-///
-/// A model's shape is a Minecraft version's to decide, so the SDK generates none
-/// and this mod supplies it. It travels in the same generated pack as the derived
-/// files, which is what stops a supplied path and a generated path disagreeing.
-///
-/// Public so a test can require these exact bytes at the other end of a launch
-/// rather than comparing the pack with itself.
+/// Supplied block-model bytes, exposed for launch assertions.
 pub const MODEL: &[u8] = b"{\n  \"parent\": \"minecraft:block/lantern\"\n}\n";
 
-/// The bytes of the crafting recipe, which Ravel does not generate either.
-///
-/// A recipe body is the clearest case of what the SDK will not invent. The two
-/// Minecraft versions this repository tracks spell an ingredient differently —
-/// one wraps it in an object and the other writes the name on its own — so there
-/// is no shape a generator could pick that is right on both. An author who ships
-/// a recipe is targeting a version, and this one targets the version the example
-/// is played on.
+/// Supplied recipe bytes targeting the example's Minecraft version.
 pub const RECIPE: &[u8] = br##"{
   "type": "minecraft:crafting_shaped",
   "category": "misc",
@@ -186,19 +156,11 @@ impl ContentMod {
         .expect("a mod id and a literal cannot spell an illegal path")
     }
 
-    /// Declares everything this mod contributes.
-    ///
-    /// The declaration is built rather than stored, which is what makes it the
-    /// single statement of what this mod adds: the registration window and the
-    /// generator both call this, so neither can be right while the other is
-    /// stale.
+    /// Declares the content used by registration and generated data.
     ///
     /// # Panics
     ///
-    /// Panics if any declaration here is refused. Every one is a constant in
-    /// this file, so a refusal means this mod's own content is contradictory —
-    /// which is the point of the checks and is exactly what should stop a build
-    /// rather than reach a player.
+    /// Panics if these constant declarations conflict or are invalid.
     #[must_use]
     pub fn declaration(&self) -> ContentDeclaration {
         let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
@@ -213,8 +175,7 @@ impl ContentMod {
             .entry(ContentKind::Recipe, &format!("crafting/{LANTERN}"))
             .expect("the recipe is declared once");
 
-        // The block and the item go in the tag for their own registry. One tag
-        // for both would be the mistake `TagId` refuses.
+        // Block and item tags belong to distinct registries.
         declaration
             .tag(&Self::lanterns(ContentKind::Block), &block)
             .expect("a block joins a block tag");
@@ -244,16 +205,7 @@ impl ContentMod {
         declaration
     }
 
-    /// Produces the pack this mod ships.
-    ///
-    /// Calling this twice produces the same bytes, because the declaration is
-    /// the same and generation reads nothing else.
-    ///
-    /// It reads the declaration back through [`Mod::content_declaration`] rather
-    /// than calling [`ContentMod::declaration`] a second time, so the pack a test
-    /// here compares is generated from the same value the host is handed. A mod
-    /// whose files a caller could see and a host could not is the shape this
-    /// method existing beside the trait would allow.
+    /// Generates a deterministic pack from [`Mod::content_declaration`].
     #[must_use]
     pub fn generated(&self) -> GeneratedData {
         self.content_declaration()
@@ -274,10 +226,6 @@ impl Mod for ContentMod {
     }
 
     /// Claims every entry the declaration holds.
-    ///
-    /// A conflict is fatal, which is what [`ravel_sdk::content::claim_all`]
-    /// does: a content mod whose block another mod already owns cannot load as
-    /// half of itself.
     ///
     /// # Errors
     ///

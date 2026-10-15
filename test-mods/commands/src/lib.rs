@@ -8,27 +8,10 @@ use ravel_host_api::{CommandInvocation, HostError, HostMod, Registrar};
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "commands";
 
-/// The root literals this mod claims.
-///
-/// Two of them, because one command proves a mod can own a name and two prove
-/// it can tell them apart when the loader routes to it. Neither is a
-/// subcommand: `ravel-core`'s [`ContentKind::Command`] claims the root literal
-/// alone, so `warp set` and `warp list` are this mod's to parse and not the
-/// loader's to own.
+// Claim roots, not subcommands; the mod parses `warp set` and `warp list`.
 const ROOTS: [&str; 2] = ["warp", "waypoint"];
 
-/// A mod that owns two commands and runs them.
-///
-/// `ROADMAP.md`'s M3-W2 row asks for a command test mod and for process tests
-/// covering success, ordering, side and failure. This mod is the success and
-/// ordering half: it claims its roots through the same registration barrier
-/// M3-W1 built, and records every invocation the loader routed to it, in the
-/// order it arrived. A root claimed by two mods is
-/// `ravel-test-mod-failure-cases`' half, because a mod that both succeeds and
-/// fails proves neither cleanly.
-///
-/// Like `ravel-test-mod-registries`, this names [`HostMod`] directly. The SDK
-/// facade that will hide the trait is M4-W1's.
+/// Owns two command roots and records routed invocations in arrival order.
 ///
 /// # Examples
 ///
@@ -51,8 +34,7 @@ impl CommandsMod {
     ///
     /// # Panics
     ///
-    /// Panics if [`MOD_ID`] stops being a legal mod id, which would mean this
-    /// mod can no longer be packaged under the identity its manifest declares.
+    /// Panics if [`MOD_ID`] is not a legal mod id.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -71,8 +53,7 @@ impl CommandsMod {
     ///
     /// # Panics
     ///
-    /// Panics if `root` is not a legal [`ContentId`] path. Every caller in this
-    /// crate passes a constant from [`ROOTS`], and a test asserts they parse.
+    /// Panics if `root` is not a legal [`ContentId`] path.
     #[must_use]
     pub fn key(&self, root: &str) -> RegistryKey {
         RegistryKey::new(
@@ -103,22 +84,16 @@ impl HostMod for CommandsMod {
     ///
     /// # Errors
     ///
-    /// Never returns an error. Everything this mod does happens in
-    /// [`HostMod::register`] and [`HostMod::run_command`].
+    /// Never returns an error.
     fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
         Ok(())
     }
 
     /// Claims both root literals.
     ///
-    /// A refusal ends registration rather than skipping the root. A command a
-    /// mod could not claim is one a player may still type, and carrying on would
-    /// leave this mod running while another mod answers for its name.
-    ///
     /// # Errors
     ///
-    /// Returns [`HostError::Refused`] naming the root the loader would not give
-    /// it and why.
+    /// Returns [`HostError::Refused`] on the first rejected claim.
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
         for key in self.claims() {
             registrar.claim(key).map_err(|refused| HostError::Refused {
@@ -132,17 +107,9 @@ impl HostMod for CommandsMod {
 
     /// Records one invocation.
     ///
-    /// The loader routes a command only to the mod that owns it, so this does
-    /// not check the key against [`Self::claims`]. Checking would assert the
-    /// barrier's decision a second time from a place that cannot see the claim
-    /// table, and the two answers could disagree.
-    ///
     /// # Errors
     ///
-    /// Returns [`HostError::Refused`] when the invocation carries no arguments.
-    /// Both of this mod's commands take a subcommand, so an empty invocation is
-    /// a usage error, and reporting it is what makes M3-W2's failure case
-    /// something a process test can assert on without breaking the set.
+    /// Returns [`HostError::Refused`] when the invocation has no subcommand.
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), HostError> {
         if invocation.arguments.is_empty() {
             return Err(HostError::Refused {
@@ -163,7 +130,6 @@ mod tests {
 
     use super::{CommandsMod, MOD_ID, ROOTS};
 
-    /// A registrar that accepts everything, so a test sees what was asked for.
     #[derive(Default)]
     struct Accepting {
         claimed: Vec<RegistryKey>,
@@ -179,14 +145,12 @@ mod tests {
             &self.claimed
         }
 
-        // A double holds no load plan, so it knows of no other mod.
         fn loads(&self, mod_id: &ModId) -> bool {
             let _ = mod_id;
             false
         }
     }
 
-    /// A registrar that refuses the root it was built with.
     struct Refusing {
         root: &'static str,
         claimed: Vec<RegistryKey>,

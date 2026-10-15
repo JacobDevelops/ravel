@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 # This list is the point of the example, not an accident of it. A mod author's
 # manifest names `ravel-sdk` and nothing else from this workspace, and
-# `tests/conformance/tests/sdk_boundary.rs` reads this file and fails if a second
+# `tests/conformance/tests/integration/sdk_boundary.rs` reads this file and fails if a second
 # entry appears — because the compile-fail suite in `src/boundary.rs` proves
 # nothing once the crate can see more than an author can.
 [dependencies]

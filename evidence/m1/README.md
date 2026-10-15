@@ -229,7 +229,7 @@ numbers.
 
 When those are closed, the manifest is mechanical: the spike results are already
 hashed and the gate rules for M1 are already in
-[`tools/ravel-xtask/src/lib.rs`](../../tools/ravel-xtask/src/lib.rs).
+[`tools/ravel-xtask/src/evidence/m1.rs`](../../tools/ravel-xtask/src/evidence/m1.rs).
 
 The ADG-5 launch is not outstanding, and what it establishes is narrower than a
 launch. The recorded proof is three substring tests over a redacted log: that

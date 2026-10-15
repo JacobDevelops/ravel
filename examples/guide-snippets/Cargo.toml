@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 # One dependency, for the same reason the other examples have one: a snippet that
 # only compiles because this crate can see more than a mod author can is a snippet
-# that does not work. `tests/conformance/tests/sdk_boundary.rs` reads this file.
+# that does not work. `tests/conformance/tests/integration/sdk_boundary.rs` reads this file.
 [dependencies]
 ravel-sdk.workspace = true
 

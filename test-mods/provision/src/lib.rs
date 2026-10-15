@@ -1,16 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! Library provision test mod.
-//!
-//! The mod for [`ravel_sdk::provision`]. It declares that it provides one shared
-//! library at one version, and resolves that declaration against another mod's
-//! requirement, which is what `ROADMAP.md`'s general SDK gap row asks an original
-//! mod to exercise.
-//!
-//! It ships no library and loads nothing. A library two mods build on is an
-//! ordinary Cargo dependency under ADG-2; what a declaration decides is which
-//! *mod* supplies it to the set and at what version, and nothing in a running
-//! game reads one yet. The SDK module says so to the author in the same words.
+//! A library provider fixture exercising version resolution and competing claims.
+//! It ships no library and performs no loading.
 
 use ravel_sdk::provision::{Provided, Provision, ProvisionRefused, Resolved};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, VersionRange, declare_mod};
@@ -67,9 +58,7 @@ impl ProvisionMod {
     ///
     /// # Errors
     ///
-    /// Returns [`ProvisionRefused::Unsatisfied`] when [`VERSION`] is outside
-    /// `wanted`, naming the consumer. Every other refusal needs a second claim
-    /// on the library, which one mod cannot make alone.
+    /// Returns [`ProvisionRefused::Unsatisfied`] when [`VERSION`] is outside `wanted`.
     pub fn supplying(consumer: &ModId, wanted: VersionRange) -> Result<Resolved, ProvisionRefused> {
         let mut provision = Provision::default();
         Self::provide(&mut provision);
@@ -81,8 +70,7 @@ impl ProvisionMod {
     ///
     /// # Errors
     ///
-    /// Returns [`ProvisionRefused::Contested`] naming both mods, because a
-    /// launch takes one provider per library.
+    /// Returns [`ProvisionRefused::Contested`] naming both providers.
     pub fn beside(rival: &ModId, version: &str) -> Result<Resolved, ProvisionRefused> {
         let mut provision = Provision::default();
         Self::provide(&mut provision);
@@ -119,9 +107,6 @@ mod tests {
         assert_eq!(ProvisionMod::declared_id().as_str(), MOD_ID);
     }
 
-    /// The version is read back through the range that accepted it rather than
-    /// compared to the constant this mod also declares, so the assertion is
-    /// about what the resolution decided.
     #[test]
     fn a_consumer_binds_to_this_mod_at_a_version_inside_the_range_it_asked_for() {
         let consumer = id("consumer_mod");

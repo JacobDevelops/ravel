@@ -12,8 +12,8 @@ what it admits, and `devenv tasks run ravel:verify-milestone:m2` reads both.
 | [`prism-launch.json`](prism-launch.json) | M2-W5, M2-W8 | The official pinned client launched from stock Prism with Ravel's agent attached, rewriting its target classes inside the real game process, with no other mod loader installed. |
 
 The first two records are generated rather than written.
-`tests/conformance/tests/noop_pipeline.rs` and
-`tests/conformance/tests/pre_world_gate.rs` rerun the pipeline and the gate and
+`tests/conformance/tests/integration/noop_pipeline.rs` and
+`tests/conformance/tests/integration/pre_world_gate.rs` rerun the pipeline and the gate and
 fail if either file differs by a byte, so a record cannot describe a loader that
 no longer behaves that way. Regenerate one by rerunning its test and rewriting
 the file from the run it reports.

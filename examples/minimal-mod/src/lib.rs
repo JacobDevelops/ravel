@@ -1,15 +1,8 @@
 #![forbid(unsafe_code)]
 
-//! The smallest complete Ravel mod.
+//! A minimal mod that claims one command and counts server ticks.
 //!
-//! It claims one command, runs it, and counts the server ticks it saw. That is
-//! enough to exercise every part of the lifecycle a mod takes part in —
-//! construction, the registration window, the running phase, and shutdown — and
-//! nothing here reaches past [`ravel_sdk`].
-//!
-//! `Cargo.toml` beside this file lists one dependency, `ravel-sdk`, which is
-//! what a mod author's manifest lists. [`boundary`] is the compile-pass/fail
-//! suite that holds that claim to a compiler rather than to this sentence.
+//! [`boundary`] checks the mod-author dependency surface.
 
 pub mod boundary;
 
@@ -87,8 +80,7 @@ impl MinimalMod {
 
 #[declare_mod(id = "minimal")]
 impl Mod for MinimalMod {
-    /// Accepts every step, because a mod this small has nothing to set up in one
-    /// phase that it could fail to set up in another.
+    /// Accepts every lifecycle step.
     ///
     /// # Errors
     ///
@@ -100,14 +92,9 @@ impl Mod for MinimalMod {
 
     /// Claims the one command this mod owns.
     ///
-    /// A conflict is fatal here: the mod is a command and nothing else, so it has
-    /// no alternative to fall back to and says so rather than loading as
-    /// something a player cannot invoke.
-    ///
     /// # Errors
     ///
-    /// Returns [`ModError::Refused`] when another mod already owns the name or
-    /// the registration window has closed.
+    /// Returns [`ModError::Refused`] on a conflicting name or closed window.
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         registrar
             .claim(Self::greeting_command())

@@ -1,14 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! World shaping test mod.
-//!
-//! The mod for [`ravel_sdk::world_shaping`]. It declares itself a shaping mod,
-//! records what a world made with it would hold, and answers whether a later
-//! launch may open that world — which is the half `ROADMAP.md`'s M6-W2 row asks
-//! an original mod to exercise.
-//!
-//! It shapes nothing. What a shaping mod does to a world is its own, and this
-//! mod's business is the binding rather than the terrain.
+//! Exercises world-shaping declarations and persistent world binding.
+//! It validates admission without generating terrain.
 
 use ravel_sdk::world_shaping::{ShapingMismatch, ShapingRecord, WorldShaping};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod};
@@ -76,7 +69,7 @@ impl WorldShapingMod {
     ///
     /// # Errors
     ///
-    /// Returns [`ShapingMismatch`], which is the whole point: it always does.
+    /// Always returns [`ShapingMismatch`], because the recorded mod is absent.
     pub fn admit_without() -> Result<(), ShapingMismatch> {
         Self::record().admit(&WorldShaping::default())
     }

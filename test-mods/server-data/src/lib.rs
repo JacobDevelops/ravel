@@ -1,15 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Server-resolved data test mod.
-//!
-//! `ROADMAP.md`'s M6-W2 row asks for the general SDK gaps to be resolved with
-//! original test mods that exercise them. This is the one for
-//! [`ravel_sdk::server_data`]: it declares one entry of every kind a mod can
-//! own, and it exists so the declaration is exercised by something written the
-//! way an author writes rather than only by the crate that implements it.
-//!
-//! It lists `ravel-sdk` and nothing else, which is the boundary claim
-//! `tests/conformance/tests/sdk_boundary.rs` recomputes.
+//! Declares one entry of each server-resolved data kind through `ravel-sdk`.
 
 use ravel_sdk::server_data::{ServerDataDeclaration, ServerDataError, ServerDataKind};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};

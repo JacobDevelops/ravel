@@ -1,24 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! Every Rust block in [`docs/guide/`](../../docs/guide), compiled here.
+//! Compiled author-guide snippets, depending only on `ravel-sdk`.
 //!
-//! Markdown compiles nowhere, and a guide is prose full of code. So each block in
-//! the guide is a copy of a run of lines in this crate, and
-//! `tests/conformance/tests/guide_snippets.rs` recomputes that: a block that
-//! drifts from the module it was copied from fails the gate, and a block that
-//! stops compiling fails it here first.
-//!
-//! This crate depends on `ravel-sdk` and nothing else, which is the point. A
-//! snippet compiled with the workspace in scope proves nothing about whether an
-//! author can compile it — the guide exists because that difference was found by
-//! hitting it.
-//!
-//! The tests below drive each snippet rather than only building it. A block that
-//! compiles and does something other than what the prose beside it says is the
-//! failure a compile check cannot see.
-//!
-//! Each module names the section it came from. Where the guide shows a fragment
-//! rather than an item, the wrapper around it is written outside the copied lines.
+//! `tests/conformance/tests/integration/guide_snippets.rs` checks source parity with the guide;
+//! tests below exercise the snippets. Keep fragment wrappers outside copied lines.
 
 /// `docs/guide/your-first-mod.md` — The mod type, and Refusing.
 pub mod first_mod {
@@ -633,7 +618,7 @@ mod tests {
     ///
     /// What a real host does with these declarations is checked over
     /// `ravel_loader::open_services` in
-    /// `tests/conformance/tests/optional_services.rs`; this only reaches the three
+    /// `tests/conformance/tests/integration/optional_services.rs`; this only reaches the three
     /// branches the guide tells an author to write.
     struct Fixed(Result<ServiceResponse, ServiceCallFailed>);
 

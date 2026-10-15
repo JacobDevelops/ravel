@@ -71,7 +71,7 @@ independent review round returned a pass with nothing repaired after it and
 ## What the gate binds here
 
 Beyond the rules every milestone manifest is held to, `verify_m4_manifest` in
-[`tools/ravel-xtask/src/lib.rs`](../../tools/ravel-xtask/src/lib.rs) requires the
+[`tools/ravel-xtask/src/evidence/m4.rs`](../../tools/ravel-xtask/src/evidence/m4.rs) requires the
 full M4-W1 through M4-W8 inventory, both records under the `m4-surface-v1`
 protocol so each is covered by a recomputed digest, a `gateStatus` row for every
 work package with each implementation row closed and naming its evidence, a native

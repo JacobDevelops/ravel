@@ -1,14 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! Render stage ordering test mod.
-//!
-//! The mod for [`ravel_sdk::render_stages`]. It contributes to two published
-//! stages and declares that it follows another mod at them, which is what
-//! `ROADMAP.md`'s M6-W2 row asks an original mod to exercise.
-//!
-//! It draws nothing, and nothing draws at a stage yet. What a contribution
-//! declares today is where a mod's drawing would go and who it would go after;
-//! the SDK module says so to the author in the same words.
+//! Declares contributions to two render stages, ordered after another mod.
+//! This fixture resolves ordering; it does not draw.
 
 use ravel_sdk::render_stages::{RenderStage, StageDeclaration, StageOrder, StageRefused};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod};

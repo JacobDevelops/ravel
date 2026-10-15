@@ -169,7 +169,7 @@ its own, along with the fact that nothing in this stack has been pushed.
 
 The cause of the digest rot is addressed rather than the symptom, and that fix
 reaches exactly this far:
-`verify_evidence_records` in `tools/ravel-xtask/src/lib.rs` recomputes every
+`verify_evidence_records` in `tools/ravel-xtask/src/evidence/records.rs` recomputes every
 `benchmarks.results[]` digest and every `platformEvidence[].baselines[]` digest
 that names a tracked file against the working copy, recomputes every `inputs[]`
 digest against the revision its manifest pins, refuses a manifest that records its
@@ -342,7 +342,7 @@ result. Only the profiling-*off* figure is bounded: what the collectors cost whi
 they run is recorded here and gated at M9 against a real pack.
 
 Its `collectors` section is generated out of `ravel-observability` rather than
-written, and `tests/conformance/tests/profiling_report.rs` checks it against that
+written, and `tests/conformance/tests/integration/profiling_report.rs` checks it against that
 crate. The metric table, the attribution-accuracy statement, and the unsupported
 list are the two things M3-W6's row asks to be explicit, and they cannot drift
 from the code that ships: a metric that becomes supported, or a reason that
@@ -375,7 +375,7 @@ than the rounding interval, not wider. So the sensitive figure is the one that
 recovers the rounded input rather than the one that loses it, and the number a
 reader should reconcile against is `breakEven`. `overhead.rounding` states the
 rounding rule in the record itself, and
-`tests/conformance/tests/profiling_report.rs` fails the gate if that field goes
+`tests/conformance/tests/integration/profiling_report.rs` fails the gate if that field goes
 missing.
 
 ## `linux-process-matrix.json`
@@ -545,7 +545,7 @@ looking at the instance; it stands as something observed at the time, and provin
 the absent case fresh would need a world that has never been opened with Ravel
 attached. The case is not unproven — it has in-gate proof and no live proof.
 `a_world_holding_no_data_this_mod_owns_initializes_fresh_state` in
-`tests/conformance/tests/saved_data.rs` runs on every gate and asserts that a
+`tests/conformance/tests/integration/saved_data.rs` runs on every gate and asserts that a
 world holding nothing this mod owns initializes fresh rather than refusing.
 
 The record separates the operator attestation — injected input followed the

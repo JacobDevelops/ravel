@@ -33,7 +33,7 @@ name, descriptor, kind and static flag before it was written. The last two of
 those entries are the world persistence seams, tabled under
 [World save and load](#world-save-and-load--m3-w4); they arrived after this
 paragraph was first written, which is why the four counts in it are now gated.
-`verify_hook_inventory_document` in [`tools/ravel-xtask/src/lib.rs`](../../tools/ravel-xtask/src/lib.rs)
+`verify_hook_inventory_document` in [`tools/ravel-xtask/src/inventory.rs`](../../tools/ravel-xtask/src/inventory.rs)
 derives all four from `hooks.toml` itself on every `ravel:verify-scaffold` and
 fails when this file disagrees, so the sentence above cannot go stale behind the
 inventory again. A handle parameter there is a reference-type parameter of a

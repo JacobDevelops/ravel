@@ -1,47 +1,8 @@
-//! The M4-W1 compile-pass/fail suite.
+//! Compile-pass/fail cases for the mod-author dependency and privacy boundaries.
 //!
-//! `ROADMAP.md`'s M4-W1 row is verified by a compile-pass/fail suite proving
-//! authors need no loader internals or Java. This module is that suite, and it
-//! holds no code: every case below is a doctest, so `cargo test --doc` compiles
-//! each one and fails if a passing case stops compiling **or** if a failing case
-//! starts.
-//!
-//! # Why the cases live here
-//!
-//! A compile-fail case only means something in a crate that can see exactly what
-//! a mod author can see. This crate's `Cargo.toml` lists one dependency,
-//! `ravel-sdk`, which makes its doctests' import scope an author's import scope —
-//! and `tests/conformance/tests/sdk_boundary.rs` reads that manifest and refuses
-//! a second entry, so the scope cannot be widened without the gate saying so.
-//! That test also recomputes what `ravel-sdk`'s dependency closure contains from
-//! `Cargo.lock`, the resolver's own answer, so "not importable" here is backed by
-//! "not in the graph" there rather than by this module's word for it.
-//!
-//! A pass-only suite would prove nothing about a boundary. The refusals are the
-//! evidence.
-//!
-//! # Which cases carry an error code, and why the rest do not
-//!
-//! **Stable rustdoc ignores the code after `compile_fail`** — checking it is
-//! nightly-only. A review set one case to `E0999`, which is not a real code, and
-//! the suite stayed green. So a code written here means nothing unless something
-//! else recomputes it, and
-//! `the_pinned_error_codes_are_the_codes_rustc_reports` in
-//! `tests/conformance/tests/sdk_boundary.rs` is that something: it reads the
-//! cases out of this file, compiles each pinned one, and asserts rustc reports
-//! the code the case names.
-//!
-//! That check compiles a case with no dependencies at all, which is faithful for
-//! a case whose whole content is a crate name that does not resolve — the one
-//! extern rustdoc gives these doctests, `ravel_sdk`, has no bearing on whether
-//! `jni` resolves. It is not faithful for a case that names `ravel_sdk` itself,
-//! so **those cases carry no code**, and the same test fails if one acquires one.
-//!
-//! What carries the weight for them is which kind of case it is. For the facade
-//! cases, adding the missing re-export is what turns the case green. For a
-//! private field or constructor the refusal is paired with a passing case that
-//! reaches the same value by the route the SDK sanctions, so the difference
-//! between the two is the privacy and cannot be anything else.
+//! `tests/conformance/tests/integration/sdk_boundary.rs` checks the SDK dependency closure and
+//! verifies pinned error codes. Only cases without SDK imports pin codes because
+//! that check compiles them without dependencies.
 //!
 //! # Passing: a complete mod, through the facade alone
 //!

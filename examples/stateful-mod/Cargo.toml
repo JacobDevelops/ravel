@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 # One dependency, as in `examples/minimal-mod`. This list is the point of an
 # example rather than an accident of it, and
-# `tests/conformance/tests/sdk_boundary.rs` reads every example manifest and
+# `tests/conformance/tests/integration/sdk_boundary.rs` reads every example manifest and
 # fails if a second entry appears in any of them.
 [dependencies]
 ravel-sdk.workspace = true

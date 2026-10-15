@@ -1,7 +1,6 @@
 //! Fixture descriptor validation, archive verification, and reconstruction.
 
 use std::collections::HashSet;
-use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
@@ -11,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::error::FixtureError;
+use crate::hex_digest;
 
 const ALLOWED_DOWNLOAD_PREFIX: &str = "https://mediafilez.forgecdn.net/";
 
@@ -449,14 +449,6 @@ fn require_metadata(field: &'static str, expected: &str, actual: &str) -> Result
 
 fn sha256_bytes(bytes: &[u8]) -> String {
     hex_digest(&Sha256::digest(bytes))
-}
-
-fn hex_digest(digest: &[u8]) -> String {
-    let mut output = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
-    }
-    output
 }
 
 fn is_safe_component(value: &str) -> bool {

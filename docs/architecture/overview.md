@@ -89,11 +89,18 @@ Ravel into a Java mod host.
   and one reconstructible Cargo build cache per machine across instances.
   Cargo's cache keys separate different builds, and its lock serializes concurrent
   access; cache size and eviction remain open work.
-- **Acceptance runs.** A run perceives structured `GameEvent`/`Observation` data
-  by registered content keys and acts through `Directive` data carried by a
-  `GameDriver` over the existing outward instruction crossing.
-  Verdict arithmetic lives in the recorded `Transcript`; a live game driver
-  remains the launcher-integration dependency rather than a new crossing.
+  Each generated workspace starts with the installation's `Cargo.lock`, which
+  also participates in its build fingerprint. Cargo resolves generated local
+  host and mod entries offline; every resolved external name, version, source,
+  and checksum must match an installation lock entry before compilation runs
+  with `--locked`. An unvetted third-party resolution is refused, not silently
+  added to the installation's dependency graph. Generated SDK-author serde
+  dependencies and host JNI dependencies come from the root manifest.
+- **Acceptance runs.** The acceptance model describes structured
+  `GameEvent`/`Observation` data by registered content keys and planned
+  `Directive` data for the existing outward instruction crossing.
+  Verdict arithmetic lives in the recorded `Transcript`; execution and a live
+  game driver are not implemented or exposed as placeholder interfaces.
 - **Version selection.** One build emits one version's artifacts and reads only
   that version directory; one tracked version defaults automatically, while
   multiple versions require `RAVEL_MINECRAFT_VERSION` and unknown names fail closed.

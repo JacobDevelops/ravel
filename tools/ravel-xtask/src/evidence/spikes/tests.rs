@@ -1,8 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
-use crate::spikes::verify_spikes;
+use crate::evidence::spikes::verify_spikes;
 use crate::test_support::temporary_root;
 
 #[test]
@@ -52,13 +51,19 @@ fn a_spike_result_does_not_require_a_historical_change_identifier() {
     .expect("spike schema should be copied");
     let gate = root.join("evidence/m1/spikes/adg-5");
     fs::create_dir_all(&gate).expect("spike directory should be creatable");
-    let output = Command::new("jq")
-        .arg("del(.trial.revision.changeId)")
-        .arg(repository.join("evidence/m1/spikes/adg-5/adg5-stock-jvm-arguments.json"))
-        .output()
-        .expect("recorded spike result should be readable by jq");
-    assert!(output.status.success(), "spike mutation should succeed");
-    fs::write(gate.join("candidate.json"), output.stdout).expect("spike result should be writable");
+    let mut document = crate::json::read_json(
+        &repository.join("evidence/m1/spikes/adg-5/adg5-stock-jvm-arguments.json"),
+    )
+    .expect("recorded spike result should be readable");
+    document["trial"]["revision"]
+        .as_object_mut()
+        .expect("revision is an object")
+        .remove("changeId");
+    fs::write(
+        gate.join("candidate.json"),
+        serde_json::to_vec(&document).expect("JSON serializes"),
+    )
+    .expect("spike result should be writable");
 
     assert!(
         verify_spikes(&root).is_empty(),

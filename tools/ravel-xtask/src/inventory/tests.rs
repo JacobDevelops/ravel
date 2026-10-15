@@ -1,13 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::evidence::manifest::MILESTONE_MANIFESTS;
 use crate::inventory::{
-    CampaignInventory, GUIDE_DIRECTORY, HOOK_DOCUMENT, HookCounts, NETWORK_SOURCE,
-    ROUND_COUNT_EXEMPT, campaign_document_violations, documented_versions, hook_counts,
-    hook_document_violations, numbers_before, round_count_restatements, round_count_subjects,
-    verify_campaign_inventory, verify_guide_enumerations, verify_hook_inventory_document,
-    verify_manifest_percentages, verify_void_limits,
+    GUIDE_DIRECTORY, HOOK_DOCUMENT, HookCounts, NETWORK_SOURCE, documented_versions, hook_counts,
+    hook_document_violations, verify_guide_enumerations, verify_hook_inventory_document,
 };
 use crate::test_support::{temporary_root, version_directory};
 use crate::version_boundary::hook_inventories;
@@ -94,183 +90,6 @@ fn a_hook_document_stating_no_count_at_all_is_not_read_as_agreement() {
 }
 
 #[test]
-fn a_campaign_document_stating_the_wrong_inventory_anywhere_is_reported() {
-    let derived = CampaignInventory {
-        classes: 15,
-        targets: 33,
-        prior: 31,
-        launches: 3,
-    };
-
-    let violations = campaign_document_violations(
-        "Rewriting all 33 callable targets, over the same 15 classes in the reviewed \
-         inventory. The count moved from 31 to 33, over three surface launches. A later \
-         launch at 34 callable targets over 16 classes in the reviewed inventory.",
-        &derived,
-    );
-
-    assert_eq!(
-        violations,
-        [
-            "evidence/m3/README.md states 34 callable targets where \
-             evidence/m3/linux-process-matrix.json records 33"
-                .to_owned(),
-            "evidence/m3/README.md states 16 classes in the reviewed inventory where \
-             evidence/m3/linux-process-matrix.json records 15"
-                .to_owned(),
-        ]
-    );
-}
-
-#[test]
-fn a_campaign_figure_split_across_a_wrapped_line_is_still_checked() {
-    let derived = CampaignInventory {
-        classes: 15,
-        targets: 33,
-        prior: 31,
-        launches: 3,
-    };
-
-    let violations = campaign_document_violations(
-        "The count moved from 31 to 33 callable targets over the same 16 classes in the\n  \
-         reviewed inventory, across three surface launches.",
-        &derived,
-    );
-
-    assert_eq!(
-        violations,
-        [
-            "evidence/m3/README.md states 16 classes in the reviewed inventory where \
-             evidence/m3/linux-process-matrix.json records 15"
-                .to_owned()
-        ]
-    );
-}
-
-#[test]
-fn a_campaign_document_stating_no_count_at_all_is_not_read_as_agreement() {
-    let derived = CampaignInventory {
-        classes: 15,
-        targets: 33,
-        prior: 31,
-        launches: 3,
-    };
-
-    let violations = campaign_document_violations("The campaigns are recorded.", &derived);
-
-    assert_eq!(violations.len(), 4, "{violations:?}");
-    assert!(
-        violations
-            .iter()
-            .all(|violation| violation.contains("no longer writes a count against")),
-        "{violations:?}"
-    );
-}
-
-#[test]
-fn a_count_is_read_against_its_noun_however_it_was_spelled_or_qualified() {
-    assert_eq!(
-        numbers_before("six independent rounds have run", &["rounds"]),
-        [6]
-    );
-    assert_eq!(
-        numbers_before("the five tracked independent M3-W8 rounds", &["rounds"]),
-        [5]
-    );
-    assert_eq!(numbers_before("5 rounds are tracked", &["rounds"]), [5]);
-    assert_eq!(
-        numbers_before("over nine world lifecycles", &["world", "lifecycles"]),
-        [9]
-    );
-
-    assert_eq!(
-        numbers_before("the fourth round of review", &["round"]),
-        Vec::<usize>::new()
-    );
-    assert_eq!(
-        numbers_before("every round returned FAIL", &["rounds"]),
-        Vec::<usize>::new()
-    );
-}
-
-#[test]
-fn a_count_spelled_above_twenty_is_read_up_to_ninety_nine() {
-    assert_eq!(numbers_before("forty M3 review rounds", &["rounds"]), [40]);
-    assert_eq!(
-        numbers_before("twenty-one M3 review rounds", &["rounds"]),
-        [21]
-    );
-    assert_eq!(numbers_before("ninety-nine rounds", &["rounds"]), [99]);
-    assert_eq!(numbers_before("thirty rounds", &["rounds"]), [30]);
-
-    assert_eq!(
-        numbers_before("a hundred rounds", &["rounds"]),
-        Vec::<usize>::new()
-    );
-    assert_eq!(
-        numbers_before("thirty-thousand-entry rounds", &["rounds"]),
-        Vec::<usize>::new()
-    );
-    assert_eq!(
-        numbers_before("twenty-eleven rounds", &["rounds"]),
-        Vec::<usize>::new()
-    );
-    assert_eq!(numbers_before("twenty one rounds", &["rounds"]), [1]);
-}
-
-#[test]
-fn a_round_count_is_caught_whichever_noun_it_chose_and_whichever_side_it_sat() {
-    for restatement in [
-        "Five independent reviews have run against this milestone.",
-        "The independent rounds recorded here number five in total.",
-        "There have been five review iterations.",
-        "Five independent rounds have run.",
-        "There are 5 verdicts recorded below.",
-    ] {
-        assert_eq!(
-            round_count_restatements(restatement)
-                .into_iter()
-                .map(|(count, _)| count)
-                .collect::<Vec<_>>(),
-            [5],
-            "{restatement}"
-        );
-    }
-
-    for innocent in [
-        "the profiling overhead rounds to `0.05` and not one digit better",
-        "Round 5 returned FAIL with four blocking findings.",
-        "every round so far has been an independent one",
-    ] {
-        assert_eq!(round_count_restatements(innocent), Vec::new(), "{innocent}");
-    }
-}
-
-#[test]
-fn no_tracked_manifest_writes_a_percentage_into_its_prose() {
-    let root = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("../..");
-    let mut violations = Vec::new();
-
-    verify_manifest_percentages(&root, &mut violations);
-
-    assert_eq!(violations, Vec::<String>::new());
-}
-
-#[test]
-fn the_void_budget_limits_are_the_ones_the_roadmap_declares() {
-    let root = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("../..");
-    let mut violations = Vec::new();
-
-    verify_void_limits(&root, &mut violations);
-
-    assert_eq!(violations, Vec::<String>::new());
-}
-
-#[test]
 fn a_documents_subject_version_comes_from_the_directories_it_links_into() {
     let document = "Pinned in [adapter.toml](../../minecraft/versions/26.1.2/adapter.toml)\n\
                     beside minecraft/versions/26.1.2/hooks.toml, while minecraft/versions/ \
@@ -341,18 +160,6 @@ fn a_hook_document_naming_an_untracked_version_is_refused() {
         "{violations:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
-}
-
-#[test]
-fn the_tracked_campaign_document_agrees_with_the_tracked_launch_record() {
-    let root = std::env::current_dir()
-        .expect("the current directory must be available")
-        .join("../..");
-    let mut violations = Vec::new();
-
-    verify_campaign_inventory(&root, &mut violations);
-
-    assert_eq!(violations, Vec::<String>::new());
 }
 
 #[test]
@@ -497,26 +304,4 @@ fn a_guide_naming_part_of_an_enum_it_does_not_enumerate_is_accepted() {
 
     assert!(violations.is_empty(), "{violations:?}");
     fs::remove_dir_all(root).expect("temporary root should be removable");
-}
-
-#[test]
-fn the_round_count_rule_sweeps_every_milestone_it_is_not_exempt_from() {
-    let subjects = round_count_subjects();
-
-    assert_eq!(
-        subjects.len(),
-        MILESTONE_MANIFESTS.len() - ROUND_COUNT_EXEMPT.len()
-    );
-    assert!(
-        subjects
-            .iter()
-            .any(|(record, _)| record == "evidence/m5/review.md"),
-        "M5 must be swept: {subjects:?}"
-    );
-    assert!(
-        !subjects
-            .iter()
-            .any(|(record, _)| record == "evidence/m0/review.md"),
-        "M0 is exempt: {subjects:?}"
-    );
 }

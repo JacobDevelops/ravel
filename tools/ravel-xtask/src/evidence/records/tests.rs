@@ -3,10 +3,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::evidence::records::{
-    verify_admitted_revisions, verify_evidence_records, verify_recorded_inputs,
+use serde::Deserialize as _;
+use sha2::{Digest as _, Sha256};
+
+use crate::json::read_json;
+use crate::test_support::{
+    PASS_RECORD, PASS_RECORD_DIGEST, RECORDED_RUN, temporary_root, track_fixture_files,
 };
-use crate::test_support::{PASS_RECORD, PASS_RECORD_DIGEST, RECORDED_RUN, temporary_root};
+use crate::tracked::tracked_paths;
 
 fn recorded_result_root(label: &str, result: &str, digest: &str) -> PathBuf {
     recorded_artifact_root(
@@ -290,7 +294,7 @@ fn write_admitted(root: &Path, pin: &str, revision: &str) {
             r#"{{{RECORDED_RUN},"revision":{{"id":"{revision}"}},
                 "benchmarks":{{"protocolVersion":"v1",
                 "results":[{{"name":"record.json","sha256":"{}"}}]}}}}"#,
-            super::hex_digest(record.as_bytes())
+            crate::hex_digest(&Sha256::digest(record.as_bytes()))
         ),
     )
     .expect("manifest should be writable");
@@ -650,7 +654,7 @@ fn an_unparseable_manifest_cannot_answer_a_check() {
     assert!(
         violations
             .iter()
-            .any(|violation| violation.contains("jq exited 5")),
+            .any(|violation| violation.contains("cannot parse JSON")),
         "{violations:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -663,4 +667,184 @@ fn recorded_artifact_root(label: &str, file: &str, record: &str, manifest: &str)
     fs::write(milestone.join(file), record).expect("record should be writable");
     fs::write(milestone.join("manifest.json"), manifest).expect("manifest should be writable");
     root
+}
+
+// These fixtures exercise artifact binding without claiming complete milestone integrity.
+fn verify_evidence_records(root: &Path) -> Vec<String> {
+    let mut violations = Vec::new();
+    let manifests = fs::read_dir(root.join("evidence"))
+        .expect("evidence directory should be readable")
+        .map(|entry| {
+            entry
+                .expect("entry should be readable")
+                .path()
+                .join("manifest.json")
+        })
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
+    if manifests.is_empty() {
+        return vec![
+            "evidence/ holds no milestone manifest, and a manifest sweep over nothing passes \
+             vacuously"
+                .to_owned(),
+        ];
+    }
+    track_fixture_files(root);
+    let tracked = tracked_paths(root)
+        .expect("tracked paths should be readable")
+        .into_iter()
+        .collect();
+    for path in manifests {
+        match read_json(&path) {
+            Ok(manifest) => {
+                super::verify_recorded_manifest(root, &path, &manifest, &tracked, &mut violations);
+            }
+            Err(error) => violations.push(error),
+        }
+    }
+    violations
+}
+
+fn verify_admitted_revisions(root: &Path, path: &Path, violations: &mut Vec<String>) {
+    let manifest = read_json(path).expect("manifest should parse");
+    let artifacts = super::Artifacts::deserialize(&manifest).expect("artifacts should parse");
+    super::verify_revisions(root, path, &artifacts, violations);
+}
+
+fn verify_recorded_inputs(
+    root: &Path,
+    path: &Path,
+    tracked: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let manifest = read_json(path).expect("manifest should parse");
+    let artifacts = super::Artifacts::deserialize(&manifest).expect("artifacts should parse");
+    super::verify_inputs(
+        root,
+        path,
+        &manifest,
+        &artifacts.inputs,
+        tracked,
+        violations,
+    );
+}
+
+#[test]
+fn filenames_with_spaces_bind_results_baselines_and_reviews() {
+    let root = recorded_artifact_root(
+        "records-spaces",
+        "launch result.json",
+        "{}\n",
+        &format!(
+            r#"{{{RECORDED_RUN},"benchmarks":{{"results":[
+                {{"name":"launch result.json","sha256":"{EMPTY_OBJECT_DIGEST}"}}]}},
+                "platformEvidence":[{{"baselines":[{{"result":{{
+                    "name":"launch result.json","sha256":"{EMPTY_OBJECT_DIGEST}"}}}}]}}],
+                "review":{{"result":"pass","record":{{
+                    "name":"closure review.md","sha256":"{PASS_RECORD_DIGEST}"}}}}}}"#
+        ),
+    );
+    fs::write(root.join("evidence/m9/closure review.md"), PASS_RECORD)
+        .expect("review should be writable");
+    assert_eq!(verify_evidence_records(&root), Vec::<String>::new());
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn a_literal_null_revision_is_resolved_instead_of_treated_as_absent() {
+    let (root, _) = pinned_input_root("inputs-literal-null");
+    write_input_manifest(&root, "null", "input.txt", HELLO_DIGEST);
+    let mut violations = Vec::new();
+    verify_recorded_inputs(
+        &root,
+        &root.join("evidence/m9/manifest.json"),
+        &BTreeSet::from(["input.txt".to_owned()]),
+        &mut violations,
+    );
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].starts_with("evidence/m9/manifest.json revision.id null "),
+        "{violations:?}"
+    );
+    assert!(
+        !violations[0].contains("no revision to hash"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn the_full_sweep_validates_m6_integrity_not_only_artifact_binding() {
+    let (root, _) = pinned_input_root("records-m6-integrity");
+    fs::create_dir_all(root.join("schemas")).expect("schemas should be creatable");
+    fs::write(
+        root.join("schemas/evidence.schema.json"),
+        include_str!("../../../../../schemas/evidence.schema.json"),
+    )
+    .expect("schema should be writable");
+    let directory = root.join("evidence/m6");
+    fs::create_dir_all(&directory).expect("milestone should be creatable");
+    fs::write(
+        directory.join("manifest.json"),
+        r#"{"milestone":"M6","schemaVersion":2,"revision":{"dirty":true},
+            "commands":[{"exitStatus":0}],
+            "tests":{"total":1,"passed":1,"failed":0,"skipped":0,"lineCoveragePercent":90},
+            "notes":"evidence/private/redaction-canary"}"#,
+    )
+    .expect("manifest should be writable");
+    let violations = super::verify_evidence_records(&root);
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("does not conform to evidence schema")),
+        "{violations:?}"
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("clean")),
+        "{violations:?}"
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("sensitive or local data")),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn the_full_sweep_rejects_unknown_milestone_directories() {
+    let root = temporary_root("records-unknown-milestone");
+    let directory = root.join("evidence/m99");
+    fs::create_dir_all(&directory).expect("directory should be creatable");
+    fs::write(directory.join("manifest.json"), "{}\n").expect("manifest should be writable");
+    let violations = super::verify_evidence_records(&root);
+    assert!(!violations.is_empty(), "{violations:?}");
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("milestone")),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn absent_and_null_review_records_are_optional_but_malformed_records_are_not() {
+    let root = temporary_root("records-review-option");
+    let path = root.join("manifest.json");
+    for (review, rejected) in [
+        ("{}", false),
+        (r#"{"record":null}"#, false),
+        ("null", false),
+        (r#"{"record":{"name":"review.md"}}"#, true),
+    ] {
+        fs::write(&path, format!(r#"{{"review":{review}}}"#)).expect("manifest should be writable");
+        let mut violations = Vec::new();
+        super::verify_recorded_review(&root, &path, &BTreeSet::new(), &mut violations);
+        assert_eq!(!violations.is_empty(), rejected, "{review}: {violations:?}");
+    }
+    fs::remove_dir_all(root).expect("temporary root should be removable");
 }

@@ -13,7 +13,6 @@ mod java_shape;
 mod json;
 mod package_digests;
 mod scaffold;
-mod spikes;
 mod tracked;
 mod version_boundary;
 
@@ -23,12 +22,19 @@ mod test_support;
 pub use error::FixtureError;
 pub use evidence::manifest::{verify_evidence_manifest, verify_milestone};
 pub use evidence::records::verify_evidence_records;
+pub use evidence::spikes::verify_spikes;
 pub use gate_versions::verify_gate_versions;
 pub use instance_scan::{Finding, InstanceScan, scan_instance};
 pub use package_digests::{DigestOutcome, StaleDigest, refresh_digests};
 pub use scaffold::{required_scaffold_paths, verify_scaffold};
-pub use spikes::verify_spikes;
 pub use tracked::{verify_tracked_contents, verify_tracked_paths};
+
+const EXAMPLE_NAMES: &[&str] = &[
+    "content-mod",
+    "guide-snippets",
+    "minimal-mod",
+    "stateful-mod",
+];
 
 const CRATE_NAMES: &[&str] = &[
     "ravel-core",
@@ -94,3 +100,23 @@ const REGISTRY_MOD_NAMES: &[&str] = &[
     "rvl-287-counterpart",
     "rvl-321-counterpart",
 ];
+
+/// Encodes digest bytes without hashing them a second time.
+pub(crate) fn hex_digest(digest: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn digest_encoding_preserves_leading_zeroes() {
+        assert_eq!(super::hex_digest(&[0, 1, 15, 16, 255]), "00010f10ff");
+        assert_eq!(super::hex_digest(&[]), "");
+    }
+}

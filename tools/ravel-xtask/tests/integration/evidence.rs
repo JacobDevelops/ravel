@@ -1,10 +1,12 @@
 use std::fs;
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ravel_xtask::{verify_evidence_manifest, verify_milestone};
+use serde_json::{Value, json};
 
 static NEXT_PATH: AtomicUsize = AtomicUsize::new(0);
 
@@ -51,6 +53,17 @@ fn temporary_root() -> PathBuf {
     ))
 }
 
+fn track_fixture_files(root: &Path) {
+    for args in [&["init"][..], &["add", "-A"][..]] {
+        let result = Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .output()
+            .expect("git should be available");
+        assert!(result.status.success(), "{result:?}");
+    }
+}
+
 fn actual_milestone_violations(manifest: &Path) -> Vec<String> {
     let root = std::env::temp_dir().join(format!(
         "ravel-native-evidence-{}-{}",
@@ -65,6 +78,7 @@ fn actual_milestone_violations(manifest: &Path) -> Vec<String> {
     )
     .expect("evidence schema should be copied");
     fs::copy(manifest, root.join("evidence/m0/manifest.json")).expect("manifest should be copied");
+    track_fixture_files(&root);
 
     let violations = verify_milestone(&root, "M0");
 
@@ -130,6 +144,7 @@ fn a_milestone_cannot_close_over_a_record_stating_another_verdict() {
         "Result: FAIL\n",
     )
     .expect("record should be writable");
+    track_fixture_files(&root);
 
     let violations = verify_milestone(&root, "M0");
 
@@ -852,7 +867,9 @@ fn m3_work_packages_must_cover_the_whole_milestone() {
 fn m3_closure_is_refused_when_its_recorded_results_are_emptied() {
     let source = fs::read_to_string(repository_root().join("evidence/m3/manifest.json"))
         .expect("the M3 manifest must be readable");
-    let emptied = jq_edit(&source, ".benchmarks.results = []");
+    let emptied = json_edit(&source, |document| {
+        document["benchmarks"]["results"] = json!([]);
+    });
 
     let violations = m3_violations(&write_temporary(&emptied));
 
@@ -882,7 +899,9 @@ fn m3_closure_is_refused_when_a_gate_row_is_not_closed() {
 fn m3_closure_is_refused_when_the_gate_rows_are_deleted() {
     let source = fs::read_to_string(repository_root().join("evidence/m3/manifest.json"))
         .expect("the M3 manifest must be readable");
-    let emptied = jq_edit(&source, ".environment.settings.gateStatus = {}");
+    let emptied = json_edit(&source, |document| {
+        document["environment"]["settings"]["gateStatus"] = json!({});
+    });
 
     let violations = m3_violations(&write_temporary(&emptied));
 
@@ -897,7 +916,10 @@ fn m3_closure_is_refused_when_the_gate_rows_are_deleted() {
 fn m3_closure_is_refused_when_its_findings_are_deleted() {
     let source = fs::read_to_string(repository_root().join("evidence/m3/manifest.json"))
         .expect("the M3 manifest must be readable");
-    let emptied = jq_edit(&source, ".deviations = [] | .risks = []");
+    let emptied = json_edit(&source, |document| {
+        document["deviations"] = json!([]);
+        document["risks"] = json!([]);
+    });
 
     let violations = m3_violations(&write_temporary(&emptied));
 
@@ -913,7 +935,7 @@ fn m3_closure_is_refused_when_its_findings_are_deleted() {
 fn m3_closure_is_refused_without_the_operator_attestation() {
     let source = fs::read_to_string(repository_root().join("evidence/m3/manifest.json"))
         .expect("the M3 manifest must be readable");
-    let emptied = jq_edit(&source, ".attestations = []");
+    let emptied = json_edit(&source, |document| document["attestations"] = json!([]));
 
     let violations = m3_violations(&write_temporary(&emptied));
 
@@ -955,7 +977,9 @@ fn m3_closure_is_refused_when_a_record_does_not_show_what_its_row_requires() {
     );
     fs::write(
         &matrix,
-        jq_edit(&source, ".instance.withoutAnotherLoader = false"),
+        json_edit(&source, |document| {
+            document["instance"]["withoutAnotherLoader"] = json!(false);
+        }),
     )
     .expect("altered record should be writable");
 
@@ -993,24 +1017,10 @@ fn m3_closure_is_refused_when_a_record_is_missing_altogether() {
     );
 }
 
-fn jq_edit(source: &str, program: &str) -> String {
-    use std::io::Write as _;
-    use std::process::{Command, Stdio};
-
-    let mut jq = Command::new("jq")
-        .arg(program)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("jq should be available");
-    jq.stdin
-        .as_mut()
-        .expect("jq stdin should be piped")
-        .write_all(source.as_bytes())
-        .expect("the document should be writable to jq");
-    let output = jq.wait_with_output().expect("jq should complete");
-    assert!(output.status.success(), "{output:?}");
-    String::from_utf8(output.stdout).expect("jq output should be UTF-8")
+fn json_edit(source: &str, edit: impl FnOnce(&mut Value)) -> String {
+    let mut document = serde_json::from_str(source).expect("the document should be JSON");
+    edit(&mut document);
+    serde_json::to_string_pretty(&document).expect("the edited document should serialize")
 }
 
 fn write_temporary(body: &str) -> PathBuf {

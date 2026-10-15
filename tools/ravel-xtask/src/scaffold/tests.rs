@@ -1,7 +1,6 @@
 use std::fs;
 
 use crate::REGISTRY_MOD_NAMES;
-use crate::evidence::manifest::MILESTONE_MANIFESTS;
 use crate::scaffold::{
     declares_unsafe_prohibition, maintained_rust_roots, required_scaffold_paths,
     verify_ignored_boundaries, verify_production_fences, verify_scaffold, verify_testkit_fence,
@@ -73,15 +72,12 @@ fn credential_ignores_are_required() {
 }
 
 #[test]
-fn every_milestone_manifest_is_required_by_name() {
-    let required = required_scaffold_paths();
-
-    for (relative, _) in MILESTONE_MANIFESTS {
-        assert!(
-            required.iter().any(|path| path == relative),
-            "{relative} must be required by name"
-        );
-    }
+fn milestone_manifests_are_discovered_instead_of_statically_required() {
+    assert!(
+        required_scaffold_paths()
+            .iter()
+            .all(|path| !path.starts_with("evidence/") || !path.ends_with("/manifest.json"))
+    );
 }
 
 #[test]
@@ -168,5 +164,31 @@ fn every_registry_mod_obeys_production_fences() {
         fs::remove_dir_all(root.join(directory)).expect("crate directory should be removable");
     }
 
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn unlisted_crates_and_registry_mods_cannot_escape_inventory_checks() {
+    let root = temporary_root("unlisted-members");
+    for directory in ["crates/unlisted", "registry/mods/unlisted"] {
+        fs::create_dir_all(root.join(directory)).expect("member directory should be creatable");
+        fs::write(
+            root.join(directory).join("Cargo.toml"),
+            "[package]\nname = \"unlisted\"\n",
+        )
+        .expect("member manifest should be writable");
+    }
+
+    let violations = verify_scaffold(&root);
+
+    for expected in [
+        "crates/unlisted is not listed in CRATE_NAMES",
+        "registry/mods/unlisted is not listed in REGISTRY_MOD_NAMES",
+    ] {
+        assert!(
+            violations.iter().any(|violation| violation == expected),
+            "{violations:?}"
+        );
+    }
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }

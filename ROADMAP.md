@@ -249,7 +249,10 @@ ravel/
 │   ├── ravel-sdk/                  # safe public mod-author facade
 │   ├── ravel-sdk-macros/           # derives/attributes that generate SDK declarations
 │   ├── ravel-host-api/             # stable loader-to-mod execution contract
-│   ├── ravel-bootstrap/            # official-JVM entry/hook plumbing
+│   ├── ravel-bootstrap/            # safe JNI integration rlib linked into host cdylibs
+│   ├── ravel-host-runtime/         # shared instance composition and host lifecycle
+│   ├── ravel-composed-host/        # workspace-selected JVM-loadable host cdylib
+│   ├── ravel-build/                # player-local host planning and compilation
 │   ├── ravel-minecraft/            # version-neutral Minecraft capability traits
 │   ├── ravel-minecraft-adapter/    # shared version-data adapter runtime
 │   ├── ravel-minecraft-generate/   # Rust bindings, Java sources and pinned locks
@@ -259,6 +262,7 @@ ravel/
 │   ├── ravel-network/              # Ravel networking abstractions; later wire adapters
 │   ├── ravel-observability/        # diagnostics, redaction, metrics and opt-in profiling
 │   ├── ravel-pack/                 # pack manifest, composition and validation library
+│   ├── ravel-acceptance/           # declarative game acceptance scenarios and transcripts
 │   └── ravel-testkit/              # deterministic mod, loader and process test APIs
 ├── tools/
 │   └── ravel-xtask/                # codegen, host/fixture tools, policy and evidence gates
@@ -293,15 +297,28 @@ ravel/
 │   ├── provenance.schema.json
 │   └── evidence.schema.json
 ├── test-mods/
-│   ├── noop/
-│   ├── registries/
-│   ├── resources/
-│   ├── events/
+│   ├── audio/
+│   ├── client-only/
 │   ├── commands/
 │   ├── configuration/
-│   ├── saved-data/
+│   ├── dependency-base/
+│   ├── dependency-consumer/
+│   ├── events/
+│   ├── failure-cases/
+│   ├── inter-mod-service/
+│   ├── interception/
 │   ├── networking/
-│   └── inter-mod-service/
+│   ├── noop/
+│   ├── optional-service/
+│   ├── provision/
+│   ├── registries/
+│   ├── render-stages/
+│   ├── resources/
+│   ├── saved-data/
+│   ├── server-data/
+│   ├── server-only/
+│   ├── waystone-ledger/
+│   └── world-shaping/
 ├── tests/
 │   ├── conformance/                 # package, graph, lifecycle and SDK contract suites
 │   ├── minecraft-process/           # real official-Minecraft process harness
@@ -343,26 +360,34 @@ ravel/
 
 ### Crate responsibilities and dependency rules
 
-| Crate | Owns | May depend on | Must not depend on |
-| --- | --- | --- | --- |
-| `ravel-core` | Canonical IDs, versions, side/capability descriptors, lifecycle and diagnostic value types | small general-purpose safe crates | SDK, loader, concrete Minecraft adapter |
-| `ravel-package` | Manifest parsing, compatibility ranges, source declarations, source-file hashes, provenance fields | core, serialization, version/range libraries | loader, bootstrap, Minecraft adapter |
-| `ravel-resolve` | Required/optional/incompatible/discouraged edges, cycles, side checks, deterministic load plan | core, package, graph/solver dependencies | SDK, concrete adapter |
-| `ravel-loader` | Discovery-to-stop orchestration, registry barrier, failure policy, world-access gate | core, package, resolve, host API, Minecraft traits, feature crates | concrete version implementation details outside injection |
-| `ravel-sdk` | Safe public API and author-facing types | core plus public parts of config/data/save/network | loader internals, generated bindings, JNI/JVMTI |
-| `ravel-sdk-macros` | Compile-time declaration generation | parser/quote libraries and public contract types | loader, adapter, runtime state |
-| `ravel-host-api` | Stable source-compiled package execution boundary | core and serialization support | concrete Minecraft bindings |
-| `ravel-bootstrap` | Selected JVM entry, callback routing, launch bootstrap | loader, host API, Minecraft trait and selected audited boundary dependencies | public SDK implementation policy |
-| `ravel-minecraft` | Version-neutral handles, hooks and capability traits | core | version mappings or generated version symbols |
-| `ravel-minecraft-adapter` | Shared adapter runtime, hook dispatch and conversion machinery | Minecraft traits, core, selected audited JVM dependencies, version data | SDK authoring policy and hardcoded assumptions outside selected version data |
-| `ravel-minecraft-generate` | Rust bindings, generated Java sources and pinned locks from version data | core and input parsers | runtime adapter or SDK |
-| `ravel-config` | Schemas, validation, side/restart flags, layered overrides | core | generated UI widgets or version details |
-| `ravel-data` | Declarative resources, recipes, tags, loot and progression contracts | core, package | loader or concrete adapter |
-| `ravel-save` | Ownership, schema versioning, migrations and compatibility checks | core | official ATM10 To the Sky world import logic |
-| `ravel-network` | Ravel packet/channel abstractions and side rules | core | NeoForge as canonical identity or runtime dependency |
-| `ravel-observability` | Structured reports, redaction, metric schemas, profiling coordinator | core and selected collectors | authentication/token collection |
-| `ravel-pack` | Pack pinning, declarative composition, closure validation | package, resolve, config, data | marketplace/download ownership |
-| `ravel-testkit` | Deterministic fake hosts, fixture builders, process harness contracts | loader, public contracts and test-only dependencies | production runtime ownership |
+The table records ownership, not a second dependency manifest. Cargo manifests define
+direct dependencies; [dependency rules](docs/architecture/dependency-rules.md) constrain
+their direction, and the conformance `sdk_boundary` test pins the SDK's transitive closure.
+
+| Crate | Owns |
+| --- | --- |
+| `ravel-core` | Canonical IDs, versions, side/capability descriptors, lifecycle and diagnostic value types |
+| `ravel-package` | Manifest parsing, compatibility ranges, source declarations, source-file hashes and provenance |
+| `ravel-resolve` | Dependency edges, cycles, side checks and deterministic load plans |
+| `ravel-loader` | Discovery-to-stop orchestration, registry barrier, failure policy and world-access gate |
+| `ravel-sdk` | Safe public mod-author facade and author-facing types |
+| `ravel-sdk-macros` | Compile-time SDK declaration generation |
+| `ravel-host-api` | Source-compiled package execution boundary, including config/data/save/network contracts |
+| `ravel-bootstrap` | Safe JNI integration runtime linked as an rlib into host cdylibs |
+| `ravel-host-runtime` | Shared instance composition, lifecycle and outward-action routing for hosts |
+| `ravel-composed-host` | Workspace-selected host cdylib with the JVM-loadable `ravel_bootstrap` library name |
+| `ravel-build` | Player-local host planning, source composition and compilation |
+| `ravel-minecraft` | Version-neutral handles, hooks and capability traits |
+| `ravel-minecraft-adapter` | Shared adapter runtime, hook dispatch and conversion machinery |
+| `ravel-minecraft-generate` | Rust bindings, generated Java sources and pinned locks from version data |
+| `ravel-config` | Schemas, validation, side/restart flags and layered overrides |
+| `ravel-data` | Declarative resources, recipes, tags, loot and progression contracts |
+| `ravel-save` | Ownership, schema versioning, migrations and compatibility checks |
+| `ravel-network` | Ravel packet/channel abstractions and side rules |
+| `ravel-observability` | Structured reports, redaction, metric schemas and profiling coordinator |
+| `ravel-pack` | Pack pinning, declarative composition and closure validation |
+| `ravel-acceptance` | Declarative game acceptance scenarios, assertions and transcripts |
+| `ravel-testkit` | Deterministic fake hosts, fixture builders and process harness contracts |
 
 Dependency direction is inward toward contracts:
 
@@ -370,7 +395,7 @@ Dependency direction is inward toward contracts:
 SDK/test mods ───────> public contracts and feature schemas
 loader ──────────────> contracts + resolver + host/Minecraft traits
 shared adapter ──────> version data + version-neutral Minecraft traits
-bootstrap ───────────> loader + selected audited boundary dependencies
+host cdylibs ────────> host runtime + bootstrap JNI integration
 CLI/xtask/testkit ───> libraries; libraries never depend on tools
 ```
 
@@ -1043,7 +1068,7 @@ moderation, distribution, and rollback.
 | Where the generated screen artifact loads | M3-W3 | discharged; the agent uses `Instrumentation.appendToSystemClassLoaderSearch` for the sibling screen jar |
 | Whether anything reads the pack `ravel-pack` writes | M8 | M4-W5's independent review found that the writer and its own tests were the only readers of `RESERVED_PREFIX`, while `ravel-loader`'s `open_configuration` accepted a map no production caller filled. That made a write→read round trip unprovable. M4 named no reader work package, so M8 owns the obligation with the shipped-host wiring. M3 review-round counts remain in `evidence/m3/review.md`; `verify_review_round_counts` checks that this document does not restate them, after an earlier restatement proved wrong. **Discharged at change `wnkrynlrprnl`:** `ravel_config::file::PACK_DIRECTORY` is shared by writer and reader, and `ravel_host_runtime::compose`, called by every host's JNI entry, routes through `ravel_loader::open_configuration` to read the layer from disk. `tests/conformance/tests/integration/pack_round_trip.rs` exercises two configuring mods and mutates the written document to prove the observed value came from disk. A *game* reading a pack remains unproven because this test starts none; that half belongs to M8-W0's host |
 | Whether a pack's settings layer is checked when the pack is built | M8 | M4-W5's independent review found the asymmetry and it is stated at the settings write in `ravel-pack`'s `validate`. A typo'd tag member is refused to the pack author; a typo'd settings key is refused to the player, because `LayeredConfiguration::resolve` holds the check and runs at launch. Closing it means handing `validate` the members' configuration declarations and calling that same `resolve`. **Discharged at change `wnkrynlrprnl`, by doing exactly that:** `ravel_pack::validate` takes `&[ConfigurationDeclaration]` and its `settings_closure` resolves each member's overrides through `LayeredConfiguration::resolve`, the same call the launch makes, so the asymmetry is gone rather than papered over — the author is now refused a misspelled key at build time and the player is refused it at launch by the one implementation. `tests/conformance/tests/integration/pack_round_trip.rs` asserts the build-time refusal names the owner and the key, with the correctly spelled pack as its positive control |
-| How an agentic acceptance run drives a modded game | M8-W4 / M10 | A run perceives through `ravel_host_api::GameEvent` and acts through outward instructions, adding no new crossing; see the [architecture mechanisms](docs/architecture/overview.md#mechanisms). The version-neutral scenarios, steps, assertions, progression-checkpoint spine, transcript, and `GameView`/`GameDriver` traits are built and tested in `crates/ravel-acceptance`. **The live driver is not built and these green tests are not evidence the game was played.** It depends on a hook-value→`Observation` projection, a host performing outward instructions in a running game (M8-W0, including native library loading), and a signed-in session with a display. M9's performance rig additionally needs a real GPU. Until M8-W0 lands and a run is driven, the acceptance model alone cannot prove the pack was walked |
+| How an agentic acceptance run drives a modded game | M8-W4 / M10 | A run perceives through `ravel_host_api::GameEvent` and acts through outward instructions, adding no new crossing; see the [architecture mechanisms](docs/architecture/overview.md#mechanisms). The version-neutral scenario, step, assertion, progression-checkpoint, observation, and transcript models are built and tested in `crates/ravel-acceptance`; unimplemented driver traits and the fake-backed runner are not published. **The live driver is not built and model tests are not evidence the game was played.** It depends on a hook-value→`Observation` projection, a host performing outward instructions in a running game (M8-W0, including native library loading), and a signed-in session with a display. M9's performance rig additionally needs a real GPU. Until M8-W0 lands and a run is driven, the acceptance model alone cannot prove the pack was walked |
 | Whether any reviewed hook can be projected into a live `Observation` | M8-W4 / M10 | Hook-to-loader wiring landed, but the payload still cannot express the observation. `crates/ravel-bootstrap/src/runtime.rs`'s `Inner::work` binds five hooks through `EVENTS` and one by name. Per `minecraft/versions/26.1.2/hooks.toml`, none carries readable world state: `client.tick` and `resource.reload-client-packs` have no parameters; `server.tick` and `server.tick-integrated` carry a `BooleanSupplier`; `resource.load-server-resources` carries eight references; and `command.perform-prefixed` carries a `CommandSourceStack` and readable typed text. Reference parameters become `HookValue::Handle`, exposing only a declared class string and null check. `Observation` needs `(RegistryKey, u32)` held counts and `RegistryKey` block presence, neither named by the inventory; `registry.register`'s `ResourceKey` is also an unreadable handle. Retaining discarded hook values therefore would not solve it, and testing with values the JVM never supplies would be vacuous. Closing the gap needs a reviewed hook target carrying world state as a primitive or string, resolved against the pinned jar and added to `hooks.toml`. M8's work packages own a driver but no such target; until a hook exists and a run reads it, the model has not observed a running game |
 | Whether a mod may provide a shared library other mods build on | M7 | M5-W7 proposed six general SDK capabilities and M6-W2 shipped five of them. The sixth, `RVL-GAP-06`, is a mod declaring that it *provides* a library at a version, one provider resolved per library for a launch, and a refusal when two providers disagree or a required library has none. It is deferred rather than done, and the reason is that **none of M6's frozen foundation wave motivates it**: every entry in that wave is answered by the five that shipped, so building it in M6 would be a capability nothing installed would use and no test could exercise honestly. It is not the same question as [`services`](crates/ravel-sdk/src/services.rs), which orders named calls between two mods that are both installed; this one asks which mod *supplies* a shared thing and at what version. M7 is the first milestone whose set is large enough for two counterparts to want one library, so it owns the row, and M7 has now built it: [`ravel_sdk::provision`](crates/ravel-sdk/src/provision.rs) resolves one provider per library and refuses a contested library, a version outside a declared range, and a requirement nothing provides, with `test-mods/provision` and the last section of `tests/conformance/tests/integration/sdk_gaps.rs` exercising it. What remains open is the half no declaration can settle alone: no launch builds a `Provision` from the packages it composed, which `docs/guide/limits.md` states where an author reads it |
 | Official server wire surface | after M10 | blocks M11 only |

@@ -72,22 +72,20 @@ than inventing a boundary.
 ### Perception — decided surface, unstarted projection
 
 A run reads the world through `ravel_acceptance::Observation`, a structured
-snapshot of declared keys and counts. A live `GameView` produces one by
-projecting a hook's value onto it. This requires a projection from `HookValue` to
-`Observation` and a per-target decision about which hook parameters to carry.
-Neither is implemented. The acceptance harness names the trait a projection
-satisfies without changing the host API boundary.
+snapshot of declared keys and counts. A live projection would produce one from
+a hook's value. This requires a projection from `HookValue` to `Observation`
+and a per-target decision about which hook parameters to carry.
+Neither is implemented; no driver interface is published ahead of that implementation.
 The `Observation` type, the assertions over it, and the verdict arithmetic are
 built and tested now, because all three are decidable without a game.
 
 ### Action — decided mechanism, unstarted outbound leg
 
-A run acts by handing a `ravel_acceptance::Directive` to a `GameDriver`, which
-carries it outward as an instruction described in the
-[mechanisms overview](overview.md#mechanisms). Its outbound leg — a host that
-actually performs the instruction against a running game — is `ROADMAP.md`'s
-M8-W0. The harness therefore names `GameDriver` as a trait with no live
-implementation, and inherits M8-W0 as its blocker rather than restating it. A
+A run would carry a `ravel_acceptance::Directive` outward as an instruction
+described in the [mechanisms overview](overview.md#mechanisms). Its outbound
+leg — a host that actually performs the instruction against a running game —
+is `ROADMAP.md`'s M8-W0. The model publishes no execution trait or runner until
+that real implementation exists, and inherits M8-W0 as its blocker. A
 directive is data, never a Rust call into the game, so the safety boundary and
 Java-to-Rust-only crossing both hold unchanged.
 
@@ -130,21 +128,20 @@ The client renders through OpenGL and needs somewhere to draw.
 
 ### Orchestration — built as a pure model, run later
 
-The loop that waits for an occasion, carries a directive, captures an
-observation, evaluates an assertion and records a verdict is the
-`ravel_acceptance` model: `Scenario`, `Step`, `Assertion`, `Directive`,
-`ProgressionCheckpoint`, `Transcript`, and the two driver traits. All of it is
-decidable without a game and is tested now. A `GameDriver`/`GameView` pair backed
-by a launched game turns the same model into a run, and that pairing is the piece
-that waits on M8-W0 and a runtime.
+`ravel_acceptance` supplies `Scenario`, `Step`, `Assertion`, `Directive`,
+`ProgressionCheckpoint`, and `Transcript`. These data models and assertion and
+verdict arithmetic are decidable without a game and tested now. The loop that
+waits for an occasion, carries a directive, captures an observation, evaluates
+an assertion and records a verdict is not implemented. It waits on M8-W0 and a
+runtime; there is no fake-backed public runner standing in for it.
 
 ## Where the line is
 
 Built and tested now, decidable without a game:
 
-- the whole `ravel-acceptance` model — scenarios, steps, assertions, directives,
-  the checkpoint spine, verdict arithmetic, and the `GameView`/`GameDriver`
-  traits a run is written against.
+- the `ravel-acceptance` model — scenarios, steps, assertions, directives,
+  the checkpoint spine, and verdict arithmetic. No driver traits or runner
+  claim a live integration.
 
 Decided, but owned-and-unstarted, and named as blockers rather than reimplemented
 here:

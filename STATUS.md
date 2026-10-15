@@ -6,12 +6,12 @@ This file summarizes the current state and the distance to the goal. Trust
 
 ## The goal
 
-Play All the Mods 10: To the Sky 2.0.2 with a Rust mod loader instead of Java. TTS runs on Minecraft
-1.21.1, which is why 1.21.1 is the target.
+Play All the Mods 10: To the Sky 2.0.2 with a Rust mod loader instead of Java.
+The default build target is 26.1.2; the ATM10 To the Sky proof workload is pinned to 1.21.1.
 
 ## Where we are
 
-Ravel targets Minecraft 1.21.1 and also tracks 26.1.2 to exercise the multi-version machinery.
+Both versions have pinned version data.
 Version-specific bindings, hooks and screen sources are generated from each version's pinned inputs.
 The JVM harness runs all thirteen sections at every tracked version; `ravel:verify-gate-versions`
 holds the recorded runs to that set.

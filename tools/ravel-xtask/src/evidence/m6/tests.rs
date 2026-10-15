@@ -1,11 +1,12 @@
 use std::fs;
+
+use crate::evidence::closure::verify_record_arithmetic;
 use std::path::PathBuf;
 
+use crate::json::read_json;
+
 use crate::evidence::closure::verify_milestone_figures;
-use crate::evidence::m6::{
-    M6_ARITHMETIC, M6_CARRIED_FIGURES, M6_FIGURES, verify_m6_counterpart_arithmetic,
-    verify_m6_manifest,
-};
+use crate::evidence::m6::{M6_ARITHMETIC, M6_CARRIED_FIGURES, M6_FIGURES, verify_m6_manifest};
 use crate::test_support::{ClosureCase, misstate_figure, mutate, temporary_root};
 
 const M6_SUMMARY_HEAD: &str = r#"{"milestone":"M6","workPackage":"M6-W6",
@@ -96,7 +97,12 @@ fn a_balanced_counterpart_summary_closes_its_own_arithmetic() {
     );
     let mut violations = Vec::new();
 
-    verify_m6_counterpart_arithmetic(&root, &mut violations);
+    verify_record_arithmetic(
+        &root,
+        "evidence/m6/counterpart-summary.json",
+        M6_ARITHMETIC,
+        &mut violations,
+    );
 
     assert!(
         violations.is_empty(),
@@ -327,7 +333,12 @@ fn every_m6_arithmetic_clause_refuses_a_record_that_breaks_it() {
         );
         let mut violations = Vec::new();
 
-        verify_m6_counterpart_arithmetic(&root, &mut violations);
+        verify_record_arithmetic(
+            &root,
+            "evidence/m6/counterpart-summary.json",
+            M6_ARITHMETIC,
+            &mut violations,
+        );
 
         let requirement = M6_ARITHMETIC[clause].1;
         assert!(
@@ -351,7 +362,11 @@ fn a_complete_m6_record_set_leaves_m6_closure_with_nothing_to_report() {
     let manifest = root.join("evidence/m6/manifest.json");
     let mut violations = Vec::new();
 
-    verify_m6_manifest(&root, &manifest, &mut violations);
+    verify_m6_manifest(
+        &root,
+        &read_json(&manifest).expect("manifest should parse"),
+        &mut violations,
+    );
 
     assert!(
         violations.is_empty(),
@@ -438,7 +453,7 @@ fn m6_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
 
     verify_m6_manifest(
         &root,
-        &root.join("evidence/m6/manifest.json"),
+        &read_json(&root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
         &mut violations,
     );
 
@@ -462,7 +477,7 @@ fn m6_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
 
     verify_m6_manifest(
         &root,
-        &root.join("evidence/m6/manifest.json"),
+        &read_json(&root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
         &mut violations,
     );
 
@@ -479,7 +494,7 @@ fn m6_closure_refuses_a_summary_that_is_absent_or_the_wrong_shape() {
 #[test]
 fn every_figure_m6_carries_is_recomputed_from_the_record() {
     for (claimed_at, _) in M6_CARRIED_FIGURES {
-        let label = claimed_at.replace('.', "-");
+        let label = claimed_at.replace('/', "-");
         let root = m6_root(
             &format!("m6-carried{label}"),
             &balanced_counterpart_summary(),
@@ -489,7 +504,12 @@ fn every_figure_m6_carries_is_recomputed_from_the_record() {
         misstate_figure(&manifest, claimed_at);
         let mut violations = Vec::new();
 
-        verify_milestone_figures(&root, &manifest, &M6_FIGURES, &mut violations);
+        verify_milestone_figures(
+            &root,
+            &read_json(&manifest).expect("manifest should parse"),
+            &M6_FIGURES,
+            &mut violations,
+        );
 
         assert!(
             violations
@@ -513,7 +533,7 @@ fn every_m6_closure_clause_check(manifest_cases: &[ClosureCase<'_>]) {
 
         verify_m6_manifest(
             &root,
-            &root.join("evidence/m6/manifest.json"),
+            &read_json(&root.join("evidence/m6/manifest.json")).expect("manifest should parse"),
             &mut violations,
         );
 
@@ -526,4 +546,25 @@ fn every_m6_closure_clause_check(manifest_cases: &[ClosureCase<'_>]) {
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
+}
+
+#[test]
+fn missing_mutation_exit_status_is_not_a_nonzero_exit() {
+    let mut record: serde_json::Value =
+        serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
+    record["rewriteIntegrity"]["mutationProof"]["sourceInjection"] = serde_json::json!({});
+    assert!(!super::counterpart_record(&record));
+    assert!(!M6_ARITHMETIC[20].0(&record));
+}
+
+#[test]
+fn counterpart_schema_refuses_string_counts_and_duplicate_ids() {
+    let mut record: serde_json::Value =
+        serde_json::from_str(&balanced_counterpart_summary()).expect("summary should parse");
+    assert!(super::counterpart_record(&record));
+    record["counterparts"][1]["id"] = serde_json::json!("c1");
+    assert!(!super::counterpart_record(&record));
+    record["counterparts"][1]["id"] = serde_json::json!("c2");
+    record["totals"]["observableAreas"] = serde_json::json!("10");
+    assert!(!super::counterpart_record(&record));
 }

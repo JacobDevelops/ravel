@@ -4,6 +4,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use ravel_observability::redaction::CREDENTIAL_WORDS;
+
 /// Rejects secret and runtime paths from a tracked tree.
 #[must_use]
 pub fn verify_tracked_paths<'a>(paths: impl IntoIterator<Item = &'a str>) -> Vec<String> {
@@ -124,6 +126,8 @@ fn resolves_outside_root(directory: &str, value: &str) -> bool {
     false
 }
 
+/// Lists version-controlled files, preferring jj and otherwise using Git's index.
+/// Trees without repository metadata are refused rather than treated as fully tracked.
 pub(crate) fn tracked_paths(root: &Path) -> Result<Vec<String>, String> {
     if root.join(".jj").exists() {
         let output = Command::new("jj")
@@ -137,13 +141,21 @@ pub(crate) fn tracked_paths(root: &Path) -> Result<Vec<String>, String> {
         return Ok(parse_tracked_paths(&output.stdout));
     }
 
-    let mut files = Vec::new();
-    collect_files(root, &mut files);
-    Ok(files
-        .iter()
-        .filter_map(|path| path.strip_prefix(root).ok())
-        .map(|path| path.to_string_lossy().replace('\\', "/"))
-        .collect())
+    if !root.join(".git").exists() {
+        return Err("cannot list tracked files: repository has neither .jj nor .git".to_owned());
+    }
+    let output = Command::new("git")
+        .args(["ls-files", "-z"])
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("cannot list tracked files with git: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "cannot list tracked files with git: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(parse_tracked_paths(&output.stdout))
 }
 
 fn parse_tracked_paths(output: &[u8]) -> Vec<String> {
@@ -205,10 +217,14 @@ fn has_credential_assignment(line: &str) -> bool {
         return false;
     };
 
-    if !matches!(
-        name.trim(),
-        "ATP_APP_PASSWORD" | "AWS_SECRET_ACCESS_KEY" | "MINECRAFT_ACCESS_TOKEN" | "TANGLED_TOKEN"
-    ) {
+    let name = name.trim();
+    if !name
+        .bytes()
+        .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+        || !CREDENTIAL_WORDS
+            .iter()
+            .any(|word| name.split('_').any(|part| part.eq_ignore_ascii_case(word)))
+    {
         return false;
     }
 

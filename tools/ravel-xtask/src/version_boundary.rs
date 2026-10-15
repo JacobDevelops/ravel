@@ -2,10 +2,10 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::inventory::hook_counts;
-use crate::java_shape::{REFLECTION_FILE, quoted_value};
+use crate::java_shape::REFLECTION_FILE;
 use crate::tracked::collect_files;
 
 pub(crate) const VERSION_DATA: &str = "minecraft/versions";
@@ -22,22 +22,30 @@ pub(crate) const VERSION_FILES: [&str; 7] = [
 
 pub(crate) const VERSION_PROSE_FILE: &str = "README.md";
 
-fn declared_version(text: &str) -> Option<&str> {
-    text.lines()
-        .map(str::trim)
-        .find_map(|line| quoted_value(line, "minecraft"))
+fn version_directories(root: &Path, directories: &[&str]) -> Result<Vec<PathBuf>, String> {
+    let mut versions = Vec::new();
+    for directory in directories {
+        let entries = fs::read_dir(root.join(directory))
+            .map_err(|error| format!("cannot read {directory}: {error}"))?;
+        for entry in entries {
+            let entry = entry.map_err(|error| format!("cannot read {directory} entry: {error}"))?;
+            if entry.path().is_dir() {
+                versions.push(entry.path());
+            }
+        }
+    }
+    versions.sort();
+    Ok(versions)
 }
 
 pub(crate) fn tracked_versions(root: &Path) -> Result<Vec<String>, String> {
-    let entries = fs::read_dir(root.join(VERSION_DATA))
-        .map_err(|error| format!("cannot read {VERSION_DATA}: {error}"))?;
-    let mut versions = entries
-        .flatten()
-        .filter(|entry| entry.path().is_dir())
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .collect::<Vec<_>>();
-    versions.sort();
-    Ok(versions)
+    Ok(version_directories(root, &[VERSION_DATA])?
+        .into_iter()
+        .filter_map(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .collect())
 }
 
 pub(crate) fn verify_version_directories(root: &Path, violations: &mut Vec<String>) {
@@ -73,7 +81,14 @@ pub(crate) fn verify_version_directories(root: &Path, violations: &mut Vec<Strin
                     continue;
                 }
             };
-            match declared_version(&text) {
+            let parsed = match toml::from_str::<toml::Table>(&text) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    violations.push(format!("cannot parse {relative} as TOML: {error}"));
+                    continue;
+                }
+            };
+            match parsed.get("minecraft").and_then(toml::Value::as_str) {
                 Some(declared) if declared == version => {}
                 Some(declared) => violations.push(format!(
                     "{relative} declares Minecraft {declared} while its directory is named \
@@ -91,7 +106,7 @@ pub(crate) fn verify_version_directories(root: &Path, violations: &mut Vec<Strin
                 violations.push(format!("cannot count {relative}: {error}"));
             }
             if file == "adapter.toml" {
-                verify_version_directories_adapter(&text, &relative, violations);
+                verify_version_directories_adapter(&parsed, &relative, violations);
             }
         }
     }
@@ -101,8 +116,8 @@ const RETIRED_HARNESS_TABLE: &str = "harness.notRun";
 
 const RETIRED_HARNESS_ROOT: &str = "harness";
 
-fn missing_pack_format(text: &str) -> Option<String> {
-    let Some(scope) = table_scope(text, "packFormat") else {
+fn missing_pack_format(parsed: &toml::Table) -> Option<String> {
+    let Some(scope) = parsed.get("packFormat").and_then(toml::Value::as_table) else {
         return Some(
             "declares no `[packFormat]`, so nothing says which pack formats this version reads \
              and a pack written for it would carry a number from another version"
@@ -112,9 +127,19 @@ fn missing_pack_format(text: &str) -> Option<String> {
 
     let mut absent: Vec<&str> = ["resource", "resourceMinor", "data", "dataMinor"]
         .into_iter()
-        .filter(|key| scoped_number(&scope, key).is_none())
+        .filter(|key| {
+            scope
+                .get(*key)
+                .and_then(toml::Value::as_integer)
+                .and_then(|value| u32::try_from(value).ok())
+                .is_none()
+        })
         .collect();
-    if scoped_text(&scope, "spelling").is_none() {
+    if scope
+        .get("spelling")
+        .and_then(toml::Value::as_str)
+        .is_none_or(str::is_empty)
+    {
         absent.push("spelling");
     }
     if absent.is_empty() {
@@ -125,35 +150,6 @@ fn missing_pack_format(text: &str) -> Option<String> {
          version states them separately",
         absent.join(" or ")
     ))
-}
-
-fn table_scope(text: &str, name: &str) -> Option<String> {
-    let header = format!("[{name}]");
-    let mut lines = text.lines();
-    lines.find(|line| line.trim_end() == header)?;
-    Some(
-        lines
-            .take_while(|line| !line.trim_start().starts_with('['))
-            .collect::<Vec<_>>()
-            .join("\n"),
-    )
-}
-
-fn scoped_text(scope: &str, key: &str) -> Option<String> {
-    scope
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .find(|(name, _)| name.trim() == key)
-        .map(|(_, value)| value.trim().trim_matches('"').to_owned())
-        .filter(|value| !value.is_empty())
-}
-
-fn scoped_number(scope: &str, key: &str) -> Option<u32> {
-    scope
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .find(|(name, _)| name.trim() == key)
-        .and_then(|(_, value)| value.trim().parse().ok())
 }
 
 pub(crate) struct HookInventory {
@@ -221,15 +217,10 @@ const VERSION_CLASS_EXCUSES: [(&str, &[&str], &str); 3] = [
 pub(crate) fn verify_version_boundary(root: &Path, violations: &mut Vec<String>) {
     verify_version_boundary_crate_names(root, violations);
 
-    let versions = ["minecraft/versions", "tests/fixtures/public/versions"]
-        .into_iter()
-        .flat_map(|directory| fs::read_dir(root.join(directory)).into_iter().flatten())
-        .flatten()
-        .filter(|entry| entry.path().is_dir())
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .collect::<Vec<_>>();
-
-    let classes = version_class_names(root);
+    let Some((paths, versions)) = swept_versions(root, violations) else {
+        return;
+    };
+    let classes = version_class_names(&paths, violations);
     let excuses = VERSION_CLASS_EXCUSES
         .iter()
         .flat_map(|(file, excused, _)| excused.iter().map(move |class| (*file, *class)))
@@ -290,31 +281,45 @@ pub(crate) fn verify_version_boundary(root: &Path, violations: &mut Vec<String>)
     }
 }
 
-fn version_class_names(root: &Path) -> Vec<String> {
-    let mut texts = Vec::new();
-    for directory in ["minecraft/versions", "tests/fixtures/public/versions"] {
-        let Ok(entries) = fs::read_dir(root.join(directory)) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            if !entry.path().is_dir() {
-                continue;
-            }
-            for file in ["hooks.toml", "stubs.toml", "mappings.lock", REFLECTION_FILE] {
-                if let Ok(text) = fs::read_to_string(entry.path().join(file)) {
-                    texts.push(text);
-                }
-            }
-        }
-    }
+fn swept_versions(
+    root: &Path,
+    violations: &mut Vec<String>,
+) -> Option<(Vec<PathBuf>, BTreeSet<String>)> {
+    let directories = [VERSION_DATA, "tests/fixtures/public/versions"]
+        .into_iter()
+        .filter(|directory| root.join(directory).is_dir())
+        .collect::<Vec<_>>();
+    let paths = version_directories(root, &directories)
+        .map_err(|error| violations.push(error))
+        .ok()?;
+    let versions = paths
+        .iter()
+        .filter_map(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .collect();
+    Some((paths, versions))
+}
 
+fn version_class_names(directories: &[PathBuf], violations: &mut Vec<String>) -> Vec<String> {
     let mut classes = BTreeSet::new();
-    for text in &texts {
-        for line in text.lines() {
-            if let Some(value) = line.trim().strip_prefix("class = \"")
-                && let Some(value) = value.strip_suffix('"')
-            {
-                classes.insert(value.replace('.', "/"));
+    let mut references = Vec::new();
+    for directory in directories {
+        for file in ["hooks.toml", "stubs.toml", "mappings.lock", REFLECTION_FILE] {
+            let path = directory.join(file);
+            let text = match fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(error) => {
+                    violations.push(format!("cannot read {}: {error}", path.display()));
+                    continue;
+                }
+            };
+            match toml::from_str::<toml::Value>(&text) {
+                Ok(value) => collect_version_classes(&value, &mut classes, &mut references),
+                Err(error) => {
+                    violations.push(format!("cannot parse {} as TOML: {error}", path.display()));
+                }
             }
         }
     }
@@ -327,15 +332,40 @@ fn version_class_names(root: &Path) -> Vec<String> {
         })
         .collect::<BTreeSet<_>>();
 
-    for text in &texts {
-        for reference in descriptor_classes(text) {
-            if roots.iter().any(|prefix| reference.starts_with(prefix)) {
-                classes.insert(reference);
-            }
+    for reference in references {
+        if roots.iter().any(|prefix| reference.starts_with(prefix)) {
+            classes.insert(reference);
         }
     }
 
     classes.into_iter().collect()
+}
+
+fn collect_version_classes(
+    value: &toml::Value,
+    classes: &mut BTreeSet<String>,
+    references: &mut Vec<String>,
+) {
+    match value {
+        toml::Value::Table(table) => {
+            if let Some(class) = table.get("class").and_then(toml::Value::as_str) {
+                classes.insert(class.replace('.', "/"));
+            }
+            for value in table.values() {
+                collect_version_classes(value, classes, references);
+            }
+        }
+        toml::Value::Array(values) => {
+            for value in values {
+                collect_version_classes(value, classes, references);
+            }
+        }
+        toml::Value::String(text) => references.extend(descriptor_classes(text)),
+        toml::Value::Integer(_)
+        | toml::Value::Float(_)
+        | toml::Value::Boolean(_)
+        | toml::Value::Datetime(_) => {}
+    }
 }
 
 fn descriptor_classes(text: &str) -> Vec<String> {
@@ -359,26 +389,23 @@ fn descriptor_classes(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests;
 
-fn verify_version_directories_adapter(text: &str, relative: &str, violations: &mut Vec<String>) {
-    if let Some(missing) = missing_pack_format(text) {
+fn verify_version_directories_adapter(
+    parsed: &toml::Table,
+    relative: &str,
+    violations: &mut Vec<String>,
+) {
+    if let Some(missing) = missing_pack_format(parsed) {
         violations.push(format!("{relative} {missing}"));
     }
-    match toml::from_str::<toml::Table>(text) {
-        Ok(parsed) if parsed.contains_key(RETIRED_HARNESS_ROOT) => {
-            violations.push(format!(
-                "{relative} declares a `{RETIRED_HARNESS_ROOT}` table, and \
-                 `[{RETIRED_HARNESS_TABLE}]` is retired: every tracked version runs \
-                 every harness section, so an absent one is a break rather than \
-                 something a version may write its way out of. A section a version \
-                 genuinely cannot run is a work package in STATUS.md and ROADMAP.md, \
-                 where somebody owns closing it"
-            ));
-        }
-        Ok(_) => {}
-        Err(error) => violations.push(format!(
-            "cannot parse {relative} as TOML: {error}; a file nothing can read is \
-             held to none of the requirements asked of it here"
-        )),
+    if parsed.contains_key(RETIRED_HARNESS_ROOT) {
+        violations.push(format!(
+            "{relative} declares a `{RETIRED_HARNESS_ROOT}` table, and \
+             `[{RETIRED_HARNESS_TABLE}]` is retired: every tracked version runs \
+             every harness section, so an absent one is a break rather than \
+             something a version may write its way out of. A section a version \
+             genuinely cannot run is a work package in STATUS.md and ROADMAP.md, \
+             where somebody owns closing it"
+        ));
     }
 }
 

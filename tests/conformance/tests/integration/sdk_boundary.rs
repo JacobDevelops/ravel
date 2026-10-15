@@ -328,6 +328,33 @@ fn every_example_declares_only_the_one_dependency_an_author_declares() {
 }
 
 #[test]
+fn every_test_mod_uses_only_the_sdk_for_ravel_dependencies() {
+    let root = repository_root().join("test-mods");
+    let mut examined = 0;
+    for entry in fs::read_dir(&root).expect("the test-mod directory is readable") {
+        let entry = entry.expect("a readable directory entry");
+        if !entry.path().join("Cargo.toml").is_file() {
+            continue;
+        }
+        let relative = format!(
+            "test-mods/{}/Cargo.toml",
+            entry.file_name().to_string_lossy()
+        );
+        let dependencies = every_declared_dependency(&document(&relative));
+        let internal: BTreeSet<_> = dependencies
+            .into_iter()
+            .filter(|name| name.starts_with("ravel-") || name == "jni")
+            .collect();
+        assert!(
+            internal.iter().all(|name| name == AUTHOR_DEPENDENCY),
+            "{relative} must reach Ravel only through the public SDK; found {internal:?}"
+        );
+        examined += 1;
+    }
+    assert!(examined > 0, "the test-mod dependency walk was vacuous");
+}
+
+#[test]
 fn the_facade_closure_reaches_no_crate_a_mod_is_forbidden_to_reach() {
     let reached = closure();
 

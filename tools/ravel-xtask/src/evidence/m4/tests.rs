@@ -2,9 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::evidence::m4::{verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface};
-use crate::inventory::EXAMPLE_NAMES;
+use crate::json::read_json;
 use crate::test_support::temporary_root;
-use crate::{CRATE_NAMES, TEST_MOD_NAMES};
+use crate::{CRATE_NAMES, EXAMPLE_NAMES, TEST_MOD_NAMES};
 
 fn surface_root(label: &str, guide: &[&str], suites: &[&str], record: &str) -> PathBuf {
     let root = temporary_root(label);
@@ -122,7 +122,7 @@ fn a_manifest_and_a_matrix_reporting_the_same_run_are_accepted() {
     let mut violations = Vec::new();
     verify_m4_gate_figures(
         &root,
-        &root.join("evidence/m4/manifest.json"),
+        &read_json(&root.join("evidence/m4/manifest.json")).expect("manifest should parse"),
         &mut violations,
     );
 
@@ -143,15 +143,14 @@ fn a_manifest_and_a_matrix_reporting_different_runs_are_reported() {
     let mut violations = Vec::new();
     verify_m4_gate_figures(
         &root,
-        &root.join("evidence/m4/manifest.json"),
+        &read_json(&root.join("evidence/m4/manifest.json")).expect("manifest should parse"),
         &mut violations,
     );
 
     assert_eq!(
         violations,
-        ["evidence/m4/manifest.json records .tests.total 9 while \
-             evidence/m4/linux-process-matrix.json records .gate.tests.run 8; they describe \
-             one gate run",]
+        ["evidence/m4/manifest.json records /tests/total 9 while \
+             evidence/m4/linux-process-matrix.json derives 8; one gate run produced both"]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
 }
@@ -272,4 +271,41 @@ fn a_recorded_command_that_names_no_task_is_reported() {
         ]
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn missing_or_null_gate_figures_cannot_reconcile_as_a_match() {
+    for (label, figures) in [
+        ("gate-figures-missing", "{}"),
+        (
+            "gate-figures-null",
+            r#"{"total":null,"passed":null,"failed":null,"skipped":null,"lineCoveragePercent":null}"#,
+        ),
+    ] {
+        let root = gate_figures_root(label, &format!(r#"{{"tests":{figures}}}"#), "{}");
+        let manifest =
+            read_json(&root.join("evidence/m4/manifest.json")).expect("manifest should parse");
+        let mut violations = Vec::new();
+
+        verify_m4_gate_figures(&root, &manifest, &mut violations);
+
+        assert_eq!(violations.len(), 5, "{violations:?}");
+        for field in [
+            "total",
+            "passed",
+            "failed",
+            "skipped",
+            "lineCoveragePercent",
+        ] {
+            assert!(
+                violations.iter().any(|violation| violation
+                    == &format!(
+                        "evidence/m4/manifest.json: cannot compare gate run /tests/{field} with \
+                     evidence/m4/linux-process-matrix.json: a required figure is missing or null"
+                    )),
+                "{violations:?}"
+            );
+        }
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
 }

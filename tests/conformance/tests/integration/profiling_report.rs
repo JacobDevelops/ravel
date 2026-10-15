@@ -65,19 +65,14 @@ fn running() -> LifecycleMachine {
         requirement: Requirement::Required,
         saved_data_versions: std::collections::BTreeSet::new(),
     };
-    let mut machine =
-        LifecycleMachine::new(Side::Client, vec![entry]).expect("a one-mod plan is valid");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-        LifecycleState::Registered,
-        LifecycleState::Running,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
-    machine
+    let mut host = Quiet(id("example_mod"));
+    ravel_loader::drive_borrowed(
+        Side::Client,
+        &ravel_host_runtime::environment(),
+        vec![entry],
+        &mut [&mut host],
+    )
+    .expect("the production driver starts the quiet mod")
 }
 
 #[test]

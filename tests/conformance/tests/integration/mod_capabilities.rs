@@ -32,31 +32,8 @@ fn running(
     side: Side,
     mods: &mut [&mut dyn HostMod],
 ) -> LifecycleMachine {
-    let mut machine = LifecycleMachine::new(side, entries).expect("a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
-
-    let order: Vec<ModId> = machine.order().cloned().collect();
-    for mod_id in order {
-        let mut window = machine
-            .registration_window(&mod_id)
-            .expect("the plan names it");
-        if let Some(host) = mods.iter_mut().find(|host| host.id() == &mod_id) {
-            host.register(&mut window).expect("nothing conflicts");
-        }
-        assert!(window.unexpected().is_none(), "the window was open");
-    }
-
-    for state in [LifecycleState::Registered, LifecycleState::Running] {
-        machine.advance_all(state).expect("a legal step");
-    }
-    machine
+    ravel_loader::drive_borrowed(side, &ravel_host_runtime::environment(), entries, mods)
+        .expect("the production driver starts the set")
 }
 
 fn three_mod_plan() -> Vec<LifecycleEntry> {

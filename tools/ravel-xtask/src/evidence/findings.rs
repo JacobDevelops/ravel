@@ -4,19 +4,34 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use crate::json::jq_value;
-use crate::tracked::tracked_paths;
+use serde::Deserialize;
+use serde_json::Value;
 
-const FIRST_ANCHORED_MILESTONE: u32 = 5;
+use super::manifest::Milestone;
+use crate::tracked::tracked_paths;
 
 const RUST_DEFINITION_KEYWORDS: [&str; 8] = [
     "fn", "struct", "enum", "trait", "union", "const", "static", "type",
 ];
 
-pub(crate) fn verify_finding_anchors(
+#[derive(Deserialize)]
+struct Finding {
+    summary: String,
+    #[serde(default)]
+    anchor: Option<Anchor>,
+}
+
+#[derive(Deserialize)]
+struct Anchor {
+    symbol: String,
+    paths: Vec<String>,
+}
+
+pub(crate) fn verify_finding_anchors_value(
     root: &Path,
     manifest_path: &Path,
-    milestone: &str,
+    milestone: Milestone,
+    document: &Value,
     violations: &mut Vec<String>,
 ) {
     let label = relative_label(root, manifest_path);
@@ -28,34 +43,39 @@ pub(crate) fn verify_finding_anchors(
         }
     };
     let sources = tracked
-        .iter()
+        .into_iter()
         .filter(|path| {
             Path::new(path)
                 .extension()
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
         })
-        .cloned()
         .collect::<Vec<_>>();
     let defined = defined_rust_symbols(root, &sources);
-
-    let findings = match jq_value(
-        manifest_path,
-        r#"(.deviations[]?, .risks[]?)
-            | (.summary | gsub("[\n\t]"; " "))
-              + "\t" + (.anchor.symbol // "")
-              + "\t" + ((.anchor.paths // []) | join(","))"#,
-    ) {
-        Ok(findings) => findings,
-        Err(error) => {
-            violations.push(error);
+    let mut findings = Vec::new();
+    for field in ["deviations", "risks"] {
+        let Some(rows) = document[field].as_array() else {
+            violations.push(format!("{label}: {field} must be an array"));
             return;
+        };
+        for row in rows {
+            match serde_json::from_value::<Finding>(row.clone()) {
+                Ok(finding) => findings.push(finding),
+                Err(error) => violations.push(format!("{label}: invalid {field} finding: {error}")),
+            }
         }
+    }
+    let anchored_from = match milestone {
+        Milestone::M0 | Milestone::M1 | Milestone::M2 | Milestone::M3 | Milestone::M4 => false,
+        Milestone::M5
+        | Milestone::M6
+        | Milestone::M7
+        | Milestone::M8
+        | Milestone::M9
+        | Milestone::M10
+        | Milestone::M11
+        | Milestone::M12
+        | Milestone::M13 => true,
     };
-    let anchored_from = milestone
-        .strip_prefix('M')
-        .and_then(|number| number.parse::<u32>().ok())
-        .is_some_and(|number| number >= FIRST_ANCHORED_MILESTONE);
-
     verify_finding_anchors_rows(
         root,
         &label,
@@ -72,15 +92,20 @@ fn verify_finding_anchors_rows(
     label: &str,
     sources: &[String],
     defined: &BTreeSet<String>,
-    findings: &str,
+    findings: &[Finding],
     anchored_from: bool,
     violations: &mut Vec<String>,
 ) {
-    for finding in findings.lines().filter(|line| !line.trim().is_empty()) {
-        let mut fields = finding.split('\t');
-        let summary = fields.next().unwrap_or_default();
-        let symbol = fields.next().unwrap_or_default();
-        let paths = fields.next().unwrap_or_default();
+    for finding in findings {
+        let summary = &finding.summary;
+        let symbol = finding
+            .anchor
+            .as_ref()
+            .map_or("", |anchor| anchor.symbol.as_str());
+        let paths = finding
+            .anchor
+            .as_ref()
+            .map_or(&[][..], |anchor| anchor.paths.as_slice());
         let named = named_rust_symbols(summary, defined);
 
         if symbol.is_empty() {
@@ -112,13 +137,14 @@ fn verify_finding_anchors_rows(
             continue;
         }
         let allowed = paths
-            .split(',')
+            .iter()
+            .map(String::as_str)
             .filter(|prefix| !prefix.is_empty())
             .collect::<Vec<_>>();
         for source in sources_naming(root, sources, symbol) {
             if !allowed.iter().any(|prefix| source.starts_with(prefix)) {
                 violations.push(format!(
-                    "{label} anchors a finding on {symbol} outside {paths}, and \
+                    "{label} anchors a finding on {symbol} outside {paths:?}, and \
                      {source} names it; the finding has outlived the tree it describes"
                 ));
             }

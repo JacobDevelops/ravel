@@ -4,6 +4,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::Deserialize;
+
 use crate::inventory::hook_counts;
 use crate::tracked::collect_files;
 use crate::version_boundary::{HookInventory, VERSION_DATA, VERSION_PROSE_FILE, tracked_versions};
@@ -48,76 +50,62 @@ fn reflective_surfaces(root: &Path, violations: &mut Vec<String>) -> Vec<Reflect
     surfaces
 }
 
-fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
-    let mut roles: Vec<Reflected> = Vec::new();
-    let mut name = None;
-    let mut class = None;
-    let mut runtime = None;
-    let mut descriptors: Vec<String> = Vec::new();
-    let finish = |name: &mut Option<String>,
-                  class: &mut Option<String>,
-                  runtime: &mut Option<String>,
-                  descriptors: &mut Vec<String>,
-                  roles: &mut Vec<Reflected>|
-     -> Result<(), String> {
-        let carried = std::mem::take(descriptors);
-        match (name.take(), class.take(), runtime.take()) {
-            (None, None, None) => Ok(()),
-            (Some(name), Some(class), Some(_runtime)) => {
-                roles.push(Reflected {
-                    name,
-                    class,
-                    descriptors: carried,
-                });
-                Ok(())
-            }
-            (name, class, _) => Err(format!(
-                "{path} declares a reflected table without all three of name, class and runtime \
-                 ({}); a role that resolves to nothing is a name held to nothing",
-                name.or(class).unwrap_or_else(|| "unnamed".to_owned())
-            )),
-        }
-    };
+#[derive(Deserialize)]
+pub(crate) struct DeclaredHooks {
+    #[serde(default, rename = "hook")]
+    pub(crate) hooks: Vec<HookEntry>,
+    #[serde(default, rename = "nonGoal")]
+    pub(crate) non_goals: Vec<toml::Value>,
+}
 
-    let mut member = false;
-    for line in text.lines().map(str::trim) {
-        if line == "[[reflected]]" {
-            finish(
-                &mut name,
-                &mut class,
-                &mut runtime,
-                &mut descriptors,
-                &mut roles,
-            )?;
-            member = false;
-            continue;
-        }
-        if line.starts_with('[') {
-            member = true;
-            continue;
-        }
-        if member {
-            if let Some(value) = quoted_value(line, "descriptor") {
-                descriptors.push(value.to_owned());
-            }
-            continue;
-        }
-        if let Some(value) = quoted_value(line, "name") {
-            name = Some(value.to_owned());
-        } else if let Some(value) = quoted_value(line, "class") {
-            class = Some(value.to_owned());
-        } else if let Some(value) = quoted_value(line, "runtime") {
-            runtime = Some(value.to_owned());
-        }
-    }
-    finish(
-        &mut name,
-        &mut class,
-        &mut runtime,
-        &mut descriptors,
-        &mut roles,
-    )?;
-    Ok(roles)
+#[derive(Deserialize)]
+pub(crate) struct HookEntry {
+    pub(crate) id: String,
+    pub(crate) kind: Option<String>,
+    pub(crate) descriptor: Option<String>,
+}
+
+pub(crate) fn parse_hook_inventory(text: &str) -> Result<DeclaredHooks, String> {
+    toml::from_str(text).map_err(|error| format!("cannot parse hook inventory as TOML: {error}"))
+}
+
+#[derive(Deserialize)]
+struct DeclaredReflection {
+    #[serde(default)]
+    reflected: Vec<ReflectedRole>,
+}
+
+#[derive(Deserialize)]
+struct ReflectedRole {
+    name: String,
+    class: String,
+    #[serde(rename = "runtime")]
+    _runtime: String,
+    #[serde(default)]
+    member: Vec<ReflectedMember>,
+}
+
+#[derive(Deserialize)]
+struct ReflectedMember {
+    descriptor: Option<String>,
+}
+
+fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
+    let parsed: DeclaredReflection = toml::from_str(text)
+        .map_err(|error| format!("cannot parse {path} as reflected TOML: {error}"))?;
+    Ok(parsed
+        .reflected
+        .into_iter()
+        .map(|role| Reflected {
+            name: role.name,
+            class: role.class,
+            descriptors: role
+                .member
+                .into_iter()
+                .filter_map(|member| member.descriptor)
+                .collect(),
+        })
+        .collect())
 }
 
 pub(crate) fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
@@ -256,6 +244,16 @@ pub(crate) fn verify_hook_name_literals(
             .flat_map(char::to_lowercase)
             .collect()
     };
+    let parsed = inventories
+        .iter()
+        .filter_map(|inventory| match parse_hook_inventory(&inventory.text) {
+            Ok(hooks) => Some((inventory, hooks)),
+            Err(error) => {
+                violations.push(format!("{}: {error}", inventory.path));
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
     for path in java_sources(&root.join(AGENT_JAR_SOURCES)) {
         let relative = path
@@ -274,12 +272,11 @@ pub(crate) fn verify_hook_name_literals(
                 break;
             };
             rest = tail;
-            for inventory in inventories {
-                if !inventory
-                    .text
-                    .lines()
-                    .filter_map(|line| quoted_value(line, "id"))
-                    .any(|id| flattened(id) == flattened(literal))
+            for (inventory, hooks) in &parsed {
+                if !hooks
+                    .hooks
+                    .iter()
+                    .any(|hook| flattened(&hook.id) == flattened(literal))
                 {
                     violations.push(format!(
                         "{relative} matches the generated hook {literal} and {} declares no hook \
@@ -399,10 +396,17 @@ pub(crate) fn verify_transformer_shape(
     let mut held = Vec::new();
     let mut named = 0;
     for inventory in inventories {
+        let hooks = match parse_hook_inventory(&inventory.text) {
+            Ok(hooks) => hooks,
+            Err(error) => {
+                violations.push(format!("{}: {error}", inventory.path));
+                continue;
+            }
+        };
         let before = violations.len();
         let mut seams = 0;
         for seam in &TRANSFORMER_SEAMS {
-            let Some((kind, descriptor)) = declared_hook(&inventory.text, seam.id) else {
+            let Some((kind, descriptor)) = declared_hook(&hooks, seam.id) else {
                 continue;
             };
             seams += 1;
@@ -454,7 +458,7 @@ fn verify_seam_shape(
         ));
     }
 
-    let Some(parameters) = descriptor_parameters(descriptor) else {
+    let Ok(parameters) = ravel_minecraft_generate::descriptor_parameters(descriptor) else {
         violations.push(format!(
             "{path} declares {id} at `{descriptor}`, which is not a method descriptor, so the \
              transformer's slots are derived from nothing"
@@ -506,29 +510,9 @@ fn verify_seam_shape(
     }
 }
 
-fn declared_hook<'a>(inventory: &'a str, id: &str) -> Option<(&'a str, &'a str)> {
-    for block in inventory.split("[[hook]]").skip(1) {
-        let body = block
-            .split("\n[")
-            .next()
-            .expect("splitting a string yields at least one part");
-        let mut declared = None;
-        let mut kind = None;
-        let mut descriptor = None;
-        for line in body.lines().map(str::trim) {
-            if let Some(value) = quoted_value(line, "id") {
-                declared = Some(value);
-            } else if let Some(value) = quoted_value(line, "kind") {
-                kind = Some(value);
-            } else if let Some(value) = quoted_value(line, "descriptor") {
-                descriptor = Some(value);
-            }
-        }
-        if declared == Some(id) {
-            return Some((kind?, descriptor?));
-        }
-    }
-    None
+fn declared_hook<'a>(inventory: &'a DeclaredHooks, id: &str) -> Option<(&'a str, &'a str)> {
+    let hook = inventory.hooks.iter().find(|hook| hook.id == id)?;
+    Some((hook.kind.as_deref()?, hook.descriptor.as_deref()?))
 }
 
 const SCREEN_JAR_SOURCES: &str = "jvm/screen/template";
@@ -581,7 +565,10 @@ pub(crate) fn verify_version_readmes(root: &Path, violations: &mut Vec<String>) 
         let Ok(counts) = hook_counts(&inventory) else {
             continue;
         };
-        let non_goals = inventory.matches("[[nonGoal]]").count();
+        let Ok(parsed) = parse_hook_inventory(&inventory) else {
+            continue;
+        };
+        let non_goals = parsed.non_goals.len();
         let expected = format!(
             "carries {} reviewed hooks and records {non_goals} non-goals",
             counts.entries
@@ -755,48 +742,8 @@ fn game_class_literals(source: &str) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn quoted_value<'a>(line: &'a str, name: &str) -> Option<&'a str> {
-    let rest = line.strip_prefix(name)?.trim_start();
-    rest.strip_prefix('=')?
-        .trim_start()
-        .strip_prefix('"')?
-        .strip_suffix('"')
-}
-
 pub(crate) fn descriptor_handles(descriptor: &str) -> Option<usize> {
-    Some(
-        descriptor_parameters(descriptor)?
-            .iter()
-            .filter(|parameter| {
-                parameter.starts_with('[')
-                    || (parameter.starts_with('L') && **parameter != "Ljava/lang/String;")
-            })
-            .count(),
-    )
-}
-
-fn descriptor_parameters(descriptor: &str) -> Option<Vec<&str>> {
-    let mut rest = descriptor.strip_prefix('(')?.split_once(')')?.0;
-    let mut parameters = Vec::new();
-    while !rest.is_empty() {
-        let arrays = rest.len() - rest.trim_start_matches('[').len();
-        let named = &rest[arrays..];
-        let length = if let Some(class) = named.strip_prefix('L') {
-            class.split_once(';')?.0.len() + 2
-        } else {
-            if !matches!(
-                named.as_bytes().first()?,
-                b'B' | b'C' | b'D' | b'F' | b'I' | b'J' | b'S' | b'Z'
-            ) {
-                return None;
-            }
-            1
-        };
-        let (parameter, tail) = rest.split_at(arrays + length);
-        parameters.push(parameter);
-        rest = tail;
-    }
-    Some(parameters)
+    ravel_minecraft_generate::descriptor_handle_count(descriptor).ok()
 }
 
 fn generated_constants(source: &str, class: &str) -> Vec<String> {

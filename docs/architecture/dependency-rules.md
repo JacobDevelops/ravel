@@ -96,10 +96,12 @@ stable contracts toward concrete host internals.
   the checkout; authorized ignored local fixtures remain runtime test inputs,
   never package or source dependencies.
 
-- `ravel-bootstrap` is the safe JVM runtime library linked by hosts. It holds no
-  unsafe code — see [`safety-boundary.md`](safety-boundary.md). Host composition
-  may depend on it through `ravel-host-runtime`; SDK and mod dependency graphs
-  must not reach either crate.
+- `ravel-bootstrap` is the safe JNI integration runtime, built as an rlib and linked
+  into a host cdylib. Only host crates (`ravel-host-runtime` and the cdylib hosts)
+  may depend on it. The composed host and player-generated hosts own the JVM-loadable
+  `ravel_bootstrap` library; the runtime's Rust library is `ravel_bootstrap_runtime`.
+  It holds no unsafe code — see [`safety-boundary.md`](safety-boundary.md) —
+  and exposes only safe Rust upward. SDK and mod dependency graphs must not reach it.
 
 - `ravel-composed-host` is the tracked JVM harness fixture, not a generated
   player host. Its fixed test-mod membership exercises shared admission and

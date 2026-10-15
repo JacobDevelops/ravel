@@ -118,3 +118,76 @@ fn nul_delimited_tracked_paths_preserve_newlines() {
         ["registry/a\nb.rs", "registry/c.rs"]
     );
 }
+
+#[test]
+fn git_inventory_excludes_untracked_and_ignored_files() {
+    let root = temporary_root("git-tracked");
+    for args in [
+        &["init"][..],
+        &["add", "--", ".gitignore", "tracked\nfile.txt"][..],
+    ] {
+        if args[0] == "add" {
+            fs::write(root.join(".gitignore"), "ignored.txt\n").expect("ignore should be writable");
+            for name in ["tracked\nfile.txt", "untracked.txt", "ignored.txt"] {
+                fs::write(root.join(name), "sample").expect("sample should be writable");
+            }
+        }
+        let output = std::process::Command::new("git")
+            .args(args)
+            .current_dir(&root)
+            .output()
+            .expect("git should run");
+        assert!(output.status.success(), "{output:?}");
+    }
+    assert_eq!(
+        crate::tracked::tracked_paths(&root).expect("git inventory should be readable"),
+        [".gitignore", "tracked\nfile.txt"]
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn tracked_inventory_requires_version_control() {
+    let root = temporary_root("no-vcs");
+    fs::write(root.join("untracked.txt"), "sample").expect("sample should be writable");
+    assert!(
+        crate::tracked::tracked_paths(&root)
+            .expect_err("a directory listing is not a tracked inventory")
+            .contains("neither .jj nor .git")
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn credential_assignments_use_shared_words_without_treating_source_as_environment() {
+    for name in [
+        "ATP_APP_PASSWORD",
+        "AWS_SECRET_ACCESS_KEY",
+        "MINECRAFT_ACCESS_TOKEN",
+        "TANGLED_TOKEN",
+        "AUTHORIZATION",
+    ] {
+        assert!(super::has_credential_assignment(&format!(
+            "{name}=private-value"
+        )));
+        assert!(!super::has_credential_assignment(&format!(
+            "{name}=<placeholder>"
+        )));
+    }
+    assert!(!super::has_credential_assignment(
+        "const TOKEN_SEGMENT: usize = 8;"
+    ));
+    assert!(!super::has_credential_assignment("let token = redacted;"));
+}
+
+#[test]
+fn broken_git_metadata_is_an_error_instead_of_a_directory_fallback() {
+    let root = temporary_root("broken-git");
+    fs::write(root.join(".git"), "gitdir: missing\n").expect("git marker should be writable");
+    assert!(
+        crate::tracked::tracked_paths(&root)
+            .expect_err("git failure must not become a disk inventory")
+            .contains("cannot list tracked files with git")
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}

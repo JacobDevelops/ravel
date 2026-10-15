@@ -3,11 +3,69 @@ use std::path::PathBuf;
 
 use crate::java_shape::{
     AGENT_JAR_SOURCES, REFLECTION_FILE, SCREEN_JAR_SOURCES, TRANSFORMER_SHAPE_RECORD,
-    game_class_literals, verify_hook_name_literals, verify_persistence_reflection,
-    verify_screen_templates, verify_transformer_shape,
+    declared_hook, declared_roles, game_class_literals, parse_hook_inventory,
+    verify_hook_name_literals, verify_persistence_reflection, verify_screen_templates,
+    verify_transformer_shape,
 };
 use crate::test_support::{temporary_root, version_directory};
 use crate::version_boundary::{VERSION_DATA, hook_inventories};
+
+#[test]
+fn inventories_follow_toml_string_and_comment_rules() {
+    let hooks = parse_hook_inventory(
+        "[[hook]] # reviewed\nid = 'screen.open' # hook\nkind = 'instance-method'\n\
+         descriptor = '(I)V' # signature\n[[nonGoal]]\nid = 'other'\n",
+    )
+    .expect("valid hook TOML should parse");
+    assert_eq!(
+        declared_hook(&hooks, "screen.open"),
+        Some(("instance-method", "(I)V"))
+    );
+    assert_eq!(hooks.non_goals.len(), 1);
+
+    let roles = declared_roles(
+        "[[reflected]] # role\nname = 'SCREEN'\nclass = 'net.minecraft.Screen'\n\
+         runtime = 'net.minecraft.Screen'\n[[reflected.member]] # member\n\
+         descriptor = '(I)V' # signature\n",
+        "reflection.toml",
+    )
+    .expect("valid reflection TOML should parse");
+    assert_eq!(roles.len(), 1);
+    assert_eq!(roles[0].name, "SCREEN");
+    assert_eq!(roles[0].descriptors, ["(I)V"]);
+}
+
+#[test]
+fn malformed_hooks_and_missing_ids_are_reported_by_both_consumers() {
+    for (label, text, diagnostic) in [
+        ("malformed", "[[hook]\n", "cannot parse hook inventory"),
+        (
+            "missing-id",
+            "[[hook]]\nkind = 'instance-method'\n",
+            "missing field `id`",
+        ),
+    ] {
+        let root = seam_root(label, text);
+        let inventories = hook_inventories(&root);
+        let mut violations = Vec::new();
+        verify_hook_name_literals(&root, &inventories, &mut violations);
+        assert!(
+            violations
+                .iter()
+                .any(|message| message.contains(diagnostic)),
+            "{violations:?}"
+        );
+        violations.clear();
+        verify_transformer_shape(&root, &inventories, &mut violations);
+        assert!(
+            violations
+                .iter()
+                .any(|message| message.contains(diagnostic)),
+            "{violations:?}"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+}
 
 #[test]
 fn the_agent_jars_game_class_names_are_the_declared_and_the_pinned_ones() {
@@ -123,10 +181,10 @@ fn a_reflected_table_missing_a_name_is_refused_rather_than_skipped() {
     verify_persistence_reflection(&root, &mut violations);
 
     assert!(
-        violations.iter().any(|violation| violation.contains(
-            "declares a reflected table without all three of name, class and \
-                       runtime"
-        )),
+        violations
+            .iter()
+            .any(|violation| violation.contains("cannot parse")
+                && violation.contains("missing field `runtime`")),
         "{violations:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");

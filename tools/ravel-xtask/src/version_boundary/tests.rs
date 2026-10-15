@@ -5,7 +5,7 @@ use crate::java_shape::REFLECTION_FILE;
 use crate::test_support::{temporary_root, version_directory};
 use crate::version_boundary::{
     SWEPT_SCOPE, VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE,
-    verify_version_boundary, verify_version_directories, version_class_names,
+    verify_version_boundary, verify_version_directories, version_class_names, version_directories,
 };
 
 #[test]
@@ -195,8 +195,8 @@ fn a_version_declaring_no_pack_format_is_reported() {
     version_directory(&root, "26.1.2", &[]);
     let adapter = root.join(format!("{VERSION_DATA}/26.1.2/adapter.toml"));
 
-    let full = "resource = 34\nresourceMinor = 0\ndata = 48\ndataMinor = 0\n\
-                spelling = \"pack-format\"\n";
+    let full = "resource = 34 # resource format\nresourceMinor = 0\ndata = 48\ndataMinor = 0\n\
+                spelling = \"pack-format\" # spelling\n";
     let without = |key: &str| -> String {
         let mut kept = full
             .lines()
@@ -241,7 +241,7 @@ fn a_version_declaring_no_pack_format_is_reported() {
 
     fs::write(
         &adapter,
-        format!("[packFormat]\n{full}\nschemaVersion = 1\nminecraft = \"26.1.2\"\n"),
+        format!("minecraft = '26.1.2' # version\n[packFormat] # formats\n{full}"),
     )
     .expect("version data should be writable");
     let mut violations = Vec::new();
@@ -299,20 +299,80 @@ fn a_version_tree_holding_no_version_is_not_read_as_agreement() {
 }
 
 #[test]
+fn unreadable_version_roots_are_reported() {
+    let root = temporary_root("version-root-unreadable");
+    fs::create_dir_all(root.join("minecraft")).expect("parent should be creatable");
+    fs::write(root.join(VERSION_DATA), "not a directory")
+        .expect("version root obstruction should be writable");
+    let error = version_directories(&root, &[VERSION_DATA])
+        .expect_err("a version root must be readable as a directory");
+    assert!(error.contains("cannot read minecraft/versions"), "{error}");
+    let mut violations = Vec::new();
+    verify_version_directories(&root, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(violations[0].contains("cannot read minecraft/versions"));
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn malformed_non_adapter_version_files_are_reported() {
+    let root = temporary_root("version-malformed-stubs");
+    version_directory(&root, "26.1.2", &[]);
+    fs::write(
+        root.join(format!("{VERSION_DATA}/26.1.2/stubs.toml")),
+        "[stub\n",
+    )
+    .expect("version data should be writable");
+    let mut violations = Vec::new();
+    verify_version_directories(&root, &mut violations);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].contains("cannot parse minecraft/versions/26.1.2/stubs.toml as TOML"),
+        "{violations:?}"
+    );
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn unreadable_and_malformed_class_inventory_files_are_reported() {
+    let root = temporary_root("version-class-input-errors");
+    version_directory(&root, "26.1.2", &[]);
+    let directory = root.join(format!("{VERSION_DATA}/26.1.2"));
+    fs::remove_file(directory.join("hooks.toml")).expect("hook file should be removable");
+    fs::create_dir(directory.join("hooks.toml")).expect("unreadable hook path should be creatable");
+    fs::write(directory.join("stubs.toml"), "[stub\n").expect("malformed stubs should be writable");
+    let mut violations = Vec::new();
+    version_class_names(&[directory], &mut violations);
+    assert_eq!(violations.len(), 2, "{violations:?}");
+    assert!(violations[0].contains("cannot read") && violations[0].contains("hooks.toml"));
+    assert!(violations[1].contains("cannot parse") && violations[1].contains("stubs.toml"));
+    fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
 fn a_reflected_class_name_is_version_data_the_boundary_sweep_reads() {
     let root = temporary_root("version-classes");
     version_directory(&root, "26.1.2", &[]);
     fs::write(
         root.join(format!("{VERSION_DATA}/26.1.2/{REFLECTION_FILE}")),
-        "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[[reflected]]\nclass = \
-         \"net.minecraft.resources.Identifier\"\n",
+        "schemaVersion = 1\nminecraft = \"26.1.2\"\n\n[[reflected]]\n\
+         class = 'net.minecraft.resources.Identifier' # literal string\n\
+         [[reflected.member]]\nclass = \"net.minecraft.Screen\" # basic string\n",
     )
     .expect("version data should be writable");
 
-    let classes = version_class_names(&root);
+    let directories = version_directories(&root, &[VERSION_DATA])
+        .expect("version directories should be readable");
+    let mut violations = Vec::new();
+    let classes = version_class_names(&directories, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
 
     assert!(
         classes.contains(&"net/minecraft/resources/Identifier".to_owned()),
+        "{classes:?}"
+    );
+    assert!(
+        classes.contains(&"net/minecraft/Screen".to_owned()),
         "{classes:?}"
     );
     fs::remove_dir_all(root).expect("temporary root should be removable");
@@ -398,8 +458,7 @@ fn retired_declaration_root(root: &Path, declaration: &str) {
 }
 
 fn version_specific_crates_fixture(root: &Path) {
-    fs::create_dir_all(root.join("minecraft/versions/test-version"))
-        .expect("version directory should be creatable");
+    version_directory(root, "test-version", &[]);
 
     fs::write(
         root.join("minecraft/versions/test-version/hooks.toml"),

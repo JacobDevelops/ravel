@@ -141,7 +141,6 @@
     "reviewer": "independent Claude reviewer (M6-W6, independent of the work under review; the record below is the round history and says what was checked and what was not)"
   },
   "revision": {
-    "changeId": "qqotsxnvvupvqktmkytkuvxlunntsrqm",
     "dirty": false,
     "id": "ffa24813ee2390d0b9ffc76571153d69dcae4a89"
   },
@@ -173,7 +172,6 @@
   },
   "unobtainableRevisions": [
     {
-      "changeId": "pspvmmuztymsnopuomtusyulqkllsmyz",
       "id": "e6f6d5664d51c62c174504e647ed7c7f7176ecc1",
       "reason": "The M6-W2 trial ran on a dirty working copy on 2026-08-13 and pinned the commit its change was at that day; the change has since been rewritten and now holds a different tree, so no commit holds what was measured. What a reader can obtain is the change that introduced the record, whose description and diff say what the three candidate crossings were, and the record itself, whose digest this manifest recomputes. The comparison it settled, which of three ways an action reaches the running game, was carried into ROADMAP.md by that same change and is read there rather than by re-running the trial.",
       "record": "outward-crossing.json"

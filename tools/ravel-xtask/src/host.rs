@@ -81,6 +81,14 @@ mod tests {
             Err(error) => panic!("remove stale temporary instance: {error}"),
         }
         fs::create_dir_all(&root).expect("the temporary instance is creatable");
+        let installation = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("xtask must remain under tools/ravel-xtask");
+        for file in ["Cargo.toml", "Cargo.lock"] {
+            fs::copy(installation.join(file), root.join(file))
+                .expect("installation input should be copied");
+        }
 
         // Missing Ravel crates force refusal before version selection is read.
         let error = build_host(&root, &root, &root, "unread-by-a-refused-compile")

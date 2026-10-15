@@ -2,8 +2,8 @@
 
 //! Version-neutral acceptance scenarios, observations, and transcript verdicts.
 //!
-//! Drivers supply live state and carry directives to the Java adapter; this
-//! crate orders steps and evaluates their assertions without waiting for events.
+//! This crate models plans and recorded evidence; it does not execute directives
+//! or connect to a live game. Callers evaluate assertions against observations.
 
 use core::fmt;
 
@@ -20,7 +20,7 @@ pub struct Scenario {
 }
 
 impl Scenario {
-    /// Creates a scenario with no steps or checkpoints; an empty run passes.
+    /// Creates a scenario with no steps or checkpoints.
     #[must_use]
     pub fn new(name: impl Into<String>, side: Side) -> Self {
         Self {
@@ -121,7 +121,7 @@ impl Step {
     }
 }
 
-/// An instruction carried by a [`GameDriver`] to the Java adapter.
+/// A planned outward instruction, represented as data rather than a live adapter call.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Directive {
     /// Runs a mod-owned command with uninterpreted, whitespace-split arguments.
@@ -259,7 +259,7 @@ pub struct Observation {
 }
 
 impl Observation {
-    /// An empty reading, distinct from a driver failing to read state.
+    /// An empty reading: no declared key is held or present.
     #[must_use]
     pub fn empty() -> Self {
         Self::default()
@@ -329,8 +329,8 @@ pub enum Verdict {
     Passed,
     /// A named assertion did not hold. The string is the failing step's label.
     Failed(String),
-    /// The run could not reach a verdict, naming why. This is a harness or
-    /// driver fault, not a game failure.
+    /// The run could not reach a verdict, naming why. This is a harness
+    /// fault, not a game failure.
     Errored(String),
 }
 
@@ -400,71 +400,6 @@ impl Transcript {
     pub fn checkpoints_in_order(reached: &[ProgressionCheckpoint]) -> bool {
         reached.windows(2).all(|w| w[0].order() <= w[1].order())
     }
-}
-
-/// Captures structured game state for assertions.
-pub trait GameView {
-    /// Captures state; a read failure becomes [`Verdict::Errored`].
-    ///
-    /// # Errors
-    ///
-    /// Returns the reason state could not be read.
-    fn observe(&self) -> Result<Observation, String>;
-}
-
-/// Carries directives outward and lets the game advance.
-pub trait GameDriver {
-    /// Carries an instruction; success does not imply its effect is visible yet.
-    ///
-    /// Use a following [`Directive::AdvanceTicks`] step to allow effects to settle.
-    ///
-    /// # Errors
-    ///
-    /// Returns the delivery failure, which becomes [`Verdict::Errored`].
-    fn carry(&mut self, directive: &Directive) -> Result<(), String>;
-}
-
-/// Carries, observes, evaluates, and records each step in order.
-///
-/// Driver or view errors stop the run; failed assertions do not. This does not
-/// wait for a step's event: assertions run immediately after its directive.
-/// Use [`Directive::AdvanceTicks`] when an effect needs time to settle.
-pub fn run<W>(scenario: &Scenario, world: &mut W) -> Transcript
-where
-    W: GameView + GameDriver,
-{
-    let mut transcript = Transcript::new();
-    for step in scenario.steps() {
-        if let Some(directive) = step.directive()
-            && let Err(reason) = world.carry(directive)
-        {
-            transcript.record(StepOutcome {
-                label: step.label().to_owned(),
-                verdict: Verdict::Errored(reason),
-            });
-            break;
-        }
-        let observation = match world.observe() {
-            Ok(observation) => observation,
-            Err(reason) => {
-                transcript.record(StepOutcome {
-                    label: step.label().to_owned(),
-                    verdict: Verdict::Errored(reason),
-                });
-                break;
-            }
-        };
-        let verdict = if step.assertion().evaluate(&observation) {
-            Verdict::Passed
-        } else {
-            Verdict::Failed(step.label().to_owned())
-        };
-        transcript.record(StepOutcome {
-            label: step.label().to_owned(),
-            verdict,
-        });
-    }
-    transcript
 }
 
 #[cfg(test)]
@@ -602,9 +537,9 @@ mod tests {
         let mut with_error = with_failure.clone();
         with_error.record(StepOutcome {
             label: "d".into(),
-            verdict: Verdict::Errored("driver".into()),
+            verdict: Verdict::Errored("harness".into()),
         });
-        assert_eq!(with_error.verdict(), Verdict::Errored("driver".into()));
+        assert_eq!(with_error.verdict(), Verdict::Errored("harness".into()));
     }
 
     #[test]

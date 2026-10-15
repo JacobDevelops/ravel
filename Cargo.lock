@@ -700,6 +700,7 @@ dependencies = [
  "ravel-build",
  "ravel-loader",
  "ravel-minecraft-generate",
+ "ravel-observability",
  "ravel-package",
  "serde",
  "serde_json",

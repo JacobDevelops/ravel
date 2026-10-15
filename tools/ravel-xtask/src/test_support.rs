@@ -81,13 +81,15 @@ pub(crate) fn mutate(document: &str, replacements: &[(&str, &str)]) -> String {
 }
 
 pub(crate) fn misstate_figure(manifest: &Path, path: &str) {
-    let output = Command::new("jq")
-        .arg(format!("{path} = 987654"))
-        .arg(manifest)
-        .output()
-        .expect("jq should run");
-    assert!(output.status.success(), "jq could not set {path}");
-    fs::write(manifest, output.stdout).expect("manifest should be writable");
+    let mut document = crate::json::read_json(manifest).expect("manifest should parse");
+    *document
+        .pointer_mut(path)
+        .expect("carried figure should exist") = serde_json::json!(987_654);
+    fs::write(
+        manifest,
+        serde_json::to_vec(&document).expect("manifest should serialize"),
+    )
+    .expect("manifest should be writable");
 }
 
 pub(crate) fn temporary_root(label: &str) -> PathBuf {
@@ -97,4 +99,18 @@ pub(crate) fn temporary_root(label: &str) -> PathBuf {
     }
     fs::create_dir_all(&root).expect("temporary root should be creatable");
     root
+}
+
+pub(crate) fn track_fixture_files(root: &Path) {
+    if root.join(".jj").exists() {
+        return;
+    }
+    for args in [&["init"][..], &["add", "-A"][..]] {
+        let result = Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .output()
+            .expect("git should be available");
+        assert!(result.status.success(), "{result:?}");
+    }
 }

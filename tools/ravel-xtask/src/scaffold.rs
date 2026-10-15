@@ -3,25 +3,25 @@
 use std::fs;
 use std::path::Path;
 
-use crate::evidence::manifest::MILESTONE_MANIFESTS;
+use crate::evidence::accounting::{
+    verify_manifest_percentages, verify_review_blocking_counts, verify_review_round_counts,
+};
 use crate::evidence::records::verify_evidence_records;
 use crate::inventory::{
-    EXAMPLE_NAMES, verify_campaign_inventory, verify_example_inventory, verify_game_type_claims,
-    verify_guide_enumerations, verify_harness_lifecycles, verify_hook_inventory_document,
-    verify_manifest_percentages, verify_review_blocking_counts, verify_review_round_counts,
-    verify_test_mod_inventory, verify_void_limits,
+    verify_example_inventory, verify_game_type_claims, verify_guide_enumerations,
+    verify_hook_inventory_document, verify_inventory, verify_test_mod_inventory,
 };
 use crate::java_shape::{
     verify_hook_name_literals, verify_menu_row_placement, verify_persistence_reflection,
     verify_screen_overrides, verify_screen_templates, verify_transformer_shape,
     verify_version_readmes,
 };
-use crate::json::jq_matches;
+use crate::json::read_json;
 use crate::tracked::{collect_files, tracked_paths, verify_tracked_contents, verify_tracked_paths};
 use crate::version_boundary::{
     hook_inventories, verify_version_boundary, verify_version_directories,
 };
-use crate::{CRATE_NAMES, REGISTRY_MOD_NAMES, TEST_MOD_NAMES};
+use crate::{CRATE_NAMES, EXAMPLE_NAMES, REGISTRY_MOD_NAMES, TEST_MOD_NAMES};
 
 const ROOT_FILES: &[&str] = &[
     ".cargo/config.toml",
@@ -87,11 +87,6 @@ pub fn required_scaffold_paths() -> Vec<String> {
         .iter()
         .map(|path| (*path).to_owned())
         .chain(
-            MILESTONE_MANIFESTS
-                .iter()
-                .map(|(relative, _)| (*relative).to_owned()),
-        )
-        .chain(
             CRATE_NAMES
                 .iter()
                 .map(|name| format!("crates/{name}/Cargo.toml")),
@@ -138,12 +133,9 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_version_directories(root, &mut violations);
     let inventories = hook_inventories(root);
     verify_hook_inventory_document(root, &inventories, &mut violations);
-    verify_campaign_inventory(root, &mut violations);
     verify_review_round_counts(root, &mut violations);
     verify_review_blocking_counts(root, &mut violations);
     verify_manifest_percentages(root, &mut violations);
-    verify_void_limits(root, &mut violations);
-    verify_harness_lifecycles(root, &mut violations);
     verify_persistence_reflection(root, &mut violations);
     verify_hook_name_literals(root, &inventories, &mut violations);
     verify_transformer_shape(root, &inventories, &mut violations);
@@ -156,6 +148,14 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_version_boundary(root, &mut violations);
     verify_example_inventory(root, &mut violations);
     verify_test_mod_inventory(root, &mut violations);
+    verify_inventory(root, "crates", CRATE_NAMES, "CRATE_NAMES", &mut violations);
+    verify_inventory(
+        root,
+        "registry/mods",
+        REGISTRY_MOD_NAMES,
+        "REGISTRY_MOD_NAMES",
+        &mut violations,
+    );
     verify_production_fences(root, &mut violations);
     violations.extend(verify_evidence_records(root));
 
@@ -348,12 +348,11 @@ fn verify_schema_documents(root: &Path, violations: &mut Vec<String>) {
     ] {
         let relative = format!("schemas/{schema}.schema.json");
         let path = root.join(&relative);
-        match jq_matches(
-            &path,
-            "type == \"object\" and .\"$schema\" == \"https://json-schema.org/draft/2020-12/schema\"",
-        ) {
-            Ok(true) => {}
-            Ok(false) => violations.push(format!("invalid JSON schema document: {relative}")),
+        match read_json(&path) {
+            Ok(document)
+                if document.is_object()
+                    && document["$schema"] == "https://json-schema.org/draft/2020-12/schema" => {}
+            Ok(_) => violations.push(format!("invalid JSON schema document: {relative}")),
             Err(error) => violations.push(error),
         }
     }

@@ -1,153 +1,148 @@
 //! Recorded artifacts, revisions, digests, and review verdicts.
 
 use std::collections::BTreeSet;
-use std::fmt::Write as _;
+use std::fmt;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use serde::Deserialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::evidence::closure::verify_milestone_figures;
-use crate::evidence::findings::{relative_label, verify_finding_anchors};
-use crate::evidence::m4::{verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface};
-use crate::evidence::m5::{M5_FIGURES, verify_m5_inventory_arithmetic};
-use crate::evidence::manifest::{
-    MANIFEST_INVARIANTS, MILESTONE_MANIFESTS, require_manifest_rule, verify_redaction,
-};
-use crate::json::{evidence_schema_matches, jq_matches, jq_value};
+use crate::evidence::findings::relative_label;
+use crate::evidence::manifest::{milestone_manifests, verify_manifest_integrity};
+use crate::json::{Rule, array, number, read_json};
 use crate::tracked::tracked_paths;
+
+#[derive(Deserialize)]
+struct Artifact<'a> {
+    name: &'a str,
+    sha256: &'a str,
+}
+
+#[derive(Deserialize)]
+struct NamedCapture<'a> {
+    name: &'a str,
+}
+
+#[derive(Default, Deserialize)]
+struct Benchmarks<'a> {
+    #[serde(default, borrow)]
+    results: Vec<Artifact<'a>>,
+}
+
+#[derive(Deserialize)]
+struct Baseline<'a> {
+    #[serde(borrow)]
+    result: Option<Artifact<'a>>,
+    #[serde(borrow)]
+    validation: Option<NamedCapture<'a>>,
+}
+
+#[derive(Deserialize)]
+struct Platform<'a> {
+    #[serde(default, borrow)]
+    baselines: Vec<Baseline<'a>>,
+}
+
+#[derive(Default, Deserialize)]
+struct Review<'a> {
+    result: Option<&'a str>,
+    #[serde(borrow)]
+    record: Option<Artifact<'a>>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Artifacts<'a> {
+    #[serde(default, borrow)]
+    inputs: Vec<Artifact<'a>>,
+    #[serde(default, borrow)]
+    benchmarks: Benchmarks<'a>,
+    #[serde(default, borrow)]
+    platform_evidence: Vec<Platform<'a>>,
+    #[serde(default, borrow)]
+    review: Option<Review<'a>>,
+}
+
+impl<'a> Artifacts<'a> {
+    fn results(&self) -> impl Iterator<Item = &Artifact<'a>> {
+        self.benchmarks
+            .results
+            .iter()
+            .chain(self.platform_evidence.iter().flat_map(|platform| {
+                platform
+                    .baselines
+                    .iter()
+                    .filter_map(|baseline| baseline.result.as_ref())
+            }))
+    }
+}
 
 /// Recomputes every digest a milestone manifest records for its own results.
 #[must_use]
 pub fn verify_evidence_records(root: &Path) -> Vec<String> {
-    let mut violations = Vec::new();
-    let mut manifests = fs::read_dir(root.join("evidence"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path().join("manifest.json"))
-        .filter(|path| path.is_file())
-        .collect::<Vec<_>>();
-    manifests.sort();
-
+    let manifests = match milestone_manifests(root) {
+        Ok(manifests) => manifests,
+        Err(error) => return vec![error],
+    };
     if manifests.is_empty() {
-        violations.push(
+        return vec![
             "evidence/ holds no milestone manifest, and a manifest sweep over nothing passes \
              vacuously"
                 .to_owned(),
-        );
-        return violations;
+        ];
     }
-
     let tracked = match tracked_paths(root) {
         Ok(paths) => paths.into_iter().collect::<BTreeSet<String>>(),
-        Err(error) => {
-            violations.push(error);
-            return violations;
-        }
+        Err(error) => return vec![error],
     };
-
-    for manifest in &manifests {
-        verify_recorded_digests(root, manifest, &tracked, &mut violations);
-        verify_recorded_baselines(root, manifest, &tracked, &mut violations);
-        verify_recorded_review(root, manifest, &tracked, &mut violations);
-        verify_recorded_inputs(root, manifest, &tracked, &mut violations);
-        verify_recorded_run(root, manifest, &mut violations);
-        verify_admitted_revisions(root, manifest, &mut violations);
-        verify_admitted_inventory(root, manifest, &tracked, &mut violations);
-    }
-
-    for (relative, milestone) in MILESTONE_MANIFESTS {
-        let manifest = root.join(relative);
-        if manifest.is_file() {
-            verify_manifest_invariants(root, &manifest, milestone, &mut violations);
+    let mut violations = Vec::new();
+    for (path, milestone) in manifests {
+        let path = root.join(path);
+        match read_json(&path) {
+            Ok(manifest) => {
+                verify_recorded_manifest(root, &path, &manifest, &tracked, &mut violations);
+                verify_manifest_integrity(root, &path, milestone, &manifest, &mut violations);
+            }
+            Err(error) => violations.push(error),
         }
     }
-
     violations
 }
 
-fn verify_manifest_invariants(
+fn verify_recorded_manifest(
     root: &Path,
-    manifest_path: &Path,
-    milestone: &str,
+    path: &Path,
+    manifest: &Value,
+    tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    let label = relative_label(root, manifest_path);
-    match evidence_schema_matches(root, manifest_path) {
-        Ok(true) => {}
-        Ok(false) => violations.push(format!("{label} does not conform to the evidence schema")),
-        Err(error) => violations.push(error),
+    let artifacts = match Artifacts::deserialize(manifest) {
+        Ok(artifacts) => artifacts,
+        Err(error) => {
+            violations.push(format!(
+                "{} records invalid artifacts: {error}",
+                relative_label(root, path)
+            ));
+            return;
+        }
+    };
+    verify_artifact_digests(root, path, &artifacts, tracked, violations);
+    if let Some(review) = &artifacts.review {
+        verify_review(root, path, review, tracked, violations);
     }
-    verify_redaction(manifest_path, &label, violations);
-
-    for (filter, requirement) in [
-        (
-            ".schemaVersion == 1".to_owned(),
-            "must record schemaVersion 1",
-        ),
-        (
-            format!(".milestone == \"{milestone}\""),
-            "must record the milestone of the directory it sits in",
-        ),
-        (
-            format!(".workPackages | length > 0 and all(startswith(\"{milestone}-W\"))"),
-            "must carry work-package IDs belonging to its own milestone",
-        ),
-    ] {
-        require_manifest_rule(
-            manifest_path,
-            &filter,
-            &format!("{label} {requirement}"),
-            violations,
-        );
-    }
-    for (filter, requirement) in MANIFEST_INVARIANTS {
-        require_manifest_rule(
-            manifest_path,
-            filter,
-            &format!("{label} {requirement}"),
-            violations,
-        );
-    }
-
-    verify_finding_anchors(root, manifest_path, milestone, violations);
-    if milestone == "M4" {
-        verify_m4_surface(root, violations);
-        verify_m4_process_matrix(root, violations);
-        verify_m4_gate_figures(root, manifest_path, violations);
-    }
-    if milestone == "M5" {
-        verify_m5_inventory_arithmetic(root, violations);
-        verify_milestone_figures(root, manifest_path, &M5_FIGURES, violations);
-    }
+    verify_inputs(root, path, manifest, &artifacts.inputs, tracked, violations);
+    verify_recorded_run(root, path, manifest, violations);
+    verify_revisions(root, path, &artifacts, violations);
+    verify_admitted_inventory(root, path, &artifacts, tracked, violations);
 }
 
-fn verify_recorded_run(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
-    let label = manifest_path
-        .strip_prefix(root)
-        .unwrap_or(manifest_path)
-        .display()
-        .to_string();
-    let records_run = match jq_matches(
-        manifest_path,
-        r#".commands | type == "array" and length > 0"#,
-    ) {
-        Ok(records_run) => records_run,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    let records_tests = match jq_matches(manifest_path, r#".tests | type == "object""#) {
-        Ok(records_tests) => records_tests,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-
+fn verify_recorded_run(root: &Path, path: &Path, manifest: &Value, violations: &mut Vec<String>) {
+    let label = relative_label(root, path);
+    let records_run = !array(manifest, "/commands").is_empty();
+    let records_tests = manifest["tests"].is_object();
     if !records_run && !records_tests {
         violations.push(format!(
             "{label} records neither a gate run nor a test result, so there is nothing here a \
@@ -158,170 +153,185 @@ fn verify_recorded_run(root: &Path, manifest_path: &Path, violations: &mut Vec<S
     if records_run && !records_tests {
         violations.push(format!("{label} records a gate run but no test result"));
     }
-    if records_run {
-        require_manifest_rule(
-            manifest_path,
-            "[.commands[].exitStatus] | all(. == 0)",
-            &format!("{label} records a gate run that did not succeed"),
-            violations,
-        );
+    if records_run
+        && !array(manifest, "/commands")
+            .iter()
+            .all(|command| command["exitStatus"] == 0)
+    {
+        violations.push(format!("{label} records a gate run that did not succeed"));
     }
-    if !records_tests {
-        return;
-    }
-    for (filter, violation) in [
-        (
-            ".tests.total == (.tests.passed + .tests.failed + .tests.skipped)",
-            "records test counts that do not sum to its total",
-        ),
-        (
-            ".tests.total > 0 and .tests.failed == 0 and .tests.skipped == 0",
-            "records no passing test run",
-        ),
-        (
-            ".tests.lineCoveragePercent >= 80",
-            "records line coverage below the floor the gate enforces",
-        ),
-    ] {
-        require_manifest_rule(
-            manifest_path,
-            filter,
-            &format!("{label} {violation}"),
-            violations,
-        );
+    if records_tests {
+        for (rule, violation) in RUN_RULES {
+            if !rule(manifest) {
+                violations.push(format!("{label} {violation}"));
+            }
+        }
     }
 }
+
+const RUN_RULES: &[(Rule, &str)] = &[
+    (
+        |value| {
+            let tests = &value["tests"];
+            let counts = (
+                tests["total"].as_u64(),
+                tests["passed"].as_u64(),
+                tests["failed"].as_u64(),
+                tests["skipped"].as_u64(),
+            );
+            matches!(counts, (Some(total), Some(passed), Some(failed), Some(skipped))
+                if passed.checked_add(failed).and_then(|sum| sum.checked_add(skipped)) == Some(total))
+        },
+        "records test counts that do not sum to its total",
+    ),
+    (
+        |value| {
+            number(value, "/tests/total").is_some_and(|total| total > 0.0)
+                && value["tests"]["failed"] == 0
+                && value["tests"]["skipped"] == 0
+        },
+        "records no passing test run",
+    ),
+    (
+        |value| {
+            number(value, "/tests/lineCoveragePercent").is_some_and(|coverage| coverage >= 80.0)
+        },
+        "records line coverage below the floor the gate enforces",
+    ),
+];
 
 fn verify_admitted_inventory(
     root: &Path,
-    manifest_path: &Path,
+    path: &Path,
+    artifacts: &Artifacts<'_>,
     tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    let label = relative_label(root, manifest_path);
-    let Some(directory) = manifest_path.parent() else {
+    let label = relative_label(root, path);
+    let Some(directory) = path.parent() else {
         return;
     };
     let prefix = format!("{}/", relative_label(root, directory));
-    let held = tracked
-        .iter()
-        .filter_map(|path| path.strip_prefix(&prefix))
-        .filter(|path| {
-            Path::new(path)
-                .extension()
-                .is_some_and(|extension| extension == "json")
-                && *path != "manifest.json"
-        })
-        .collect::<BTreeSet<_>>();
-    let named = match jq_value(
-        manifest_path,
-        r".benchmarks.results[]?.name,
-          (.platformEvidence[]?.baselines[]?.result? | select(. != null) | .name)",
-    ) {
-        Ok(named) => named,
-        Err(error) => {
-            violations.push(error);
-            return;
+    let named: BTreeSet<_> = artifacts.results().map(|artifact| artifact.name).collect();
+    for record in tracked.iter().filter_map(|path| path.strip_prefix(&prefix)) {
+        if Path::new(record)
+            .extension()
+            .is_some_and(|extension| extension == "json")
+            && record != "manifest.json"
+            && !named.contains(record)
+        {
+            violations.push(format!(
+                "{label} names no record {record}, which its own milestone directory tracks; a record \
+                 no manifest names is a record no digest covers"
+            ));
         }
-    };
-    let named = named
-        .lines()
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .collect::<BTreeSet<_>>();
-
-    for record in held.difference(&named) {
-        violations.push(format!(
-            "{label} names no record {record}, which its own milestone directory tracks; a record \
-             no manifest names is a record no digest covers"
-        ));
     }
 }
 
-const TRIAL_PINS: &str = r#"[paths(objects) as $p
-        | select(($p | length) >= 2 and ($p[-1]) == "revision" and ($p[-2]) == "trial")
-        | {at: ($p | map(tostring) | join(".")), pin: getpath($p)}]
-    | .[]
-    | (.at | tojson) + " " + (.pin.dirty | type)"#;
-
-fn verify_admitted_revisions(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
-    let label = relative_label(root, manifest_path);
-    let Some(directory) = manifest_path.parent() else {
+fn verify_revisions(
+    root: &Path,
+    path: &Path,
+    artifacts: &Artifacts<'_>,
+    violations: &mut Vec<String>,
+) {
+    let label = relative_label(root, path);
+    let Some(directory) = path.parent() else {
         return;
     };
-
-    let names = match jq_value(
-        manifest_path,
-        r".benchmarks.results[]?.name,
-          (.platformEvidence[]?.baselines[]?.result? | select(. != null) | .name)",
-    ) {
-        Ok(names) => names,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    for name in names.lines().filter(|name| !name.trim().is_empty()) {
-        let record = directory.join(name);
-
+    for artifact in artifacts.results() {
+        let record = directory.join(artifact.name);
         if !record.is_file() {
             continue;
         }
-        match jq_value(&record, TRIAL_PINS) {
-            Ok(pins) => {
-                for pin in pins.lines().filter(|pin| !pin.trim().is_empty()) {
-                    let (at, dirty) = pin
-                        .rsplit_once(' ')
-                        .expect("TRIAL_PINS always emits a location and type separated by a space");
-                    if dirty != "boolean" {
-                        violations.push(format!(
-                            "{label} admits {name}, whose trial at {at} does not declare whether \
-                             the tree it measured was dirty"
-                        ));
-                    }
-                }
-            }
+        match read_json(&record) {
+            Ok(value) => verify_trial_pins(
+                &value,
+                &mut Vec::with_capacity(8),
+                &label,
+                artifact.name,
+                violations,
+            ),
             Err(error) => violations.push(error),
         }
     }
 }
 
-fn verify_recorded_inputs(
+enum TrialLocation<'a> {
+    Key(&'a str),
+    Index(usize),
+}
+
+impl fmt::Display for TrialLocation<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Key(key) => formatter.write_str(key),
+            Self::Index(index) => write!(formatter, "{index}"),
+        }
+    }
+}
+
+fn verify_trial_pins<'a>(
+    value: &'a Value,
+    location: &mut Vec<TrialLocation<'a>>,
+    label: &str,
+    name: &str,
+    violations: &mut Vec<String>,
+) {
+    if value.is_object()
+        && location.len() >= 2
+        && matches!(location[location.len() - 2], TrialLocation::Key("trial"))
+        && matches!(location.last(), Some(TrialLocation::Key("revision")))
+        && !value["dirty"].is_boolean()
+    {
+        let at = Value::String(
+            location
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("."),
+        );
+        violations.push(format!(
+            "{label} admits {name}, whose trial at {at} does not declare whether \
+             the tree it measured was dirty"
+        ));
+    }
+    match value {
+        Value::Object(fields) => {
+            for (key, child) in fields {
+                location.push(TrialLocation::Key(key));
+                verify_trial_pins(child, location, label, name, violations);
+                location.pop();
+            }
+        }
+        Value::Array(children) => {
+            for (index, child) in children.iter().enumerate() {
+                location.push(TrialLocation::Index(index));
+                verify_trial_pins(child, location, label, name, violations);
+                location.pop();
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+fn verify_inputs(
     root: &Path,
-    manifest_path: &Path,
+    path: &Path,
+    manifest: &Value,
+    inputs: &[Artifact<'_>],
     tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    let label = manifest_path
-        .strip_prefix(root)
-        .unwrap_or(manifest_path)
-        .display()
-        .to_string();
-    let records = match jq_value(manifest_path, r#".inputs[]? | .name + " " + .sha256"#) {
-        Ok(records) => records,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-
-    let mut inputs = Vec::new();
-    for record in records.lines().filter(|record| !record.trim().is_empty()) {
-        match record.rsplit_once(' ') {
-            Some((name, recorded)) => inputs.push((name, recorded)),
-            None => violations.push(format!("{label} records an input with no digest: {record}")),
-        }
-    }
-
-    for (name, _) in &inputs {
-        if !tracked.contains(*name) {
+    let label = relative_label(root, path);
+    for input in inputs {
+        if !tracked.contains(input.name) {
             violations.push(format!(
-                "{label} records input {name}, which the repository no longer holds, so the \
-                 digest binds a path no reader can resolve"
+                "{label} records input {}, which the repository no longer holds, so the \
+                 digest binds a path no reader can resolve",
+                input.name
             ));
         }
     }
-
     if !root.join(".jj").exists() {
         println!(
             "- {label}: input digests are not recomputed, because this checkout has no jj \
@@ -329,20 +339,17 @@ fn verify_recorded_inputs(
         );
         return;
     }
-    let revision = match jq_value(manifest_path, ".revision.id") {
-        Ok(value) if value != "null" && !value.is_empty() => value,
-        Ok(_) => {
-            violations.push(format!(
-                "{label} records inputs but no revision to hash them at"
-            ));
-            return;
-        }
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
+    let Some(revision) = manifest
+        .pointer("/revision/id")
+        .and_then(Value::as_str)
+        .filter(|revision| !revision.is_empty())
+    else {
+        violations.push(format!(
+            "{label} records inputs but no revision to hash them at"
+        ));
+        return;
     };
-    let resolved = match visible_commit(root, &revision) {
+    let resolved = match visible_commit(root, revision) {
         Ok(commit) if commit == revision => commit,
         Ok(_) => {
             violations.push(format!(
@@ -355,10 +362,13 @@ fn verify_recorded_inputs(
             return;
         }
     };
-
-    for (name, recorded) in inputs {
+    for input in inputs {
+        let Artifact {
+            name,
+            sha256: recorded,
+        } = input;
         match revision_digest(root, &resolved, name) {
-            Ok(actual) if actual == recorded => {}
+            Ok(actual) if actual == *recorded => {}
             Ok(actual) => violations.push(format!(
                 "{label} records input {name} as {recorded} but revision {revision} holds {actual}"
             )),
@@ -405,102 +415,56 @@ fn revision_digest(root: &Path, revision: &str, name: &str) -> Result<String, St
     if !output.status.success() {
         return Err(format!("cannot read it at revision {revision}"));
     }
-    Ok(hex_digest(&output.stdout))
+    Ok(crate::hex_digest(&Sha256::digest(&output.stdout)))
 }
 
-fn verify_recorded_digests(
+fn verify_artifact_digests(
     root: &Path,
-    manifest_path: &Path,
+    path: &Path,
+    artifacts: &Artifacts<'_>,
     tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    let label = relative_label(root, manifest_path);
-    let records = match jq_value(
-        manifest_path,
-        r#".benchmarks.results[]? | .name + " " + .sha256"#,
-    ) {
-        Ok(records) => records,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    let Some(directory) = manifest_path.parent() else {
+    let label = relative_label(root, path);
+    let Some(directory) = path.parent() else {
         return;
     };
-
-    for record in records.lines().filter(|record| !record.trim().is_empty()) {
-        let Some((name, recorded)) = record.rsplit_once(' ') else {
-            violations.push(format!("{label} records a result with no digest: {record}"));
-            continue;
-        };
+    for artifact in &artifacts.benchmarks.results {
         verify_tracked_digest(
             &TrackedDigest {
                 label: &label,
                 kind: "result",
                 root,
                 tracked,
-                manifest_path,
+                manifest_path: path,
                 directory,
-                name,
-                recorded,
+                name: artifact.name,
+                recorded: artifact.sha256,
             },
             violations,
         );
     }
-}
-
-fn verify_recorded_baselines(
-    root: &Path,
-    manifest_path: &Path,
-    tracked: &BTreeSet<String>,
-    violations: &mut Vec<String>,
-) {
-    let label = relative_label(root, manifest_path);
-    let results = match jq_value(
-        manifest_path,
-        r#".platformEvidence[]?.baselines[]?.result
-           | select(. != null) | .name + " " + .sha256"#,
-    ) {
-        Ok(results) => results,
-        Err(error) => {
-            violations.push(error);
-            return;
+    for baseline in artifacts
+        .platform_evidence
+        .iter()
+        .flat_map(|platform| &platform.baselines)
+    {
+        if let Some(validation) = &baseline.validation {
+            println!(
+                "- {label}: the baseline validation digest recorded for \"{}\" is not \
+                 recomputed, because a launch validation is a private capture that never enters the \
+                 repository",
+                validation.name
+            );
         }
-    };
-    let validations = match jq_value(
-        manifest_path,
-        r".platformEvidence[]?.baselines[]?.validation | select(. != null) | .name",
-    ) {
-        Ok(validations) => validations,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    let Some(directory) = manifest_path.parent() else {
-        return;
-    };
-
-    for name in validations.lines().filter(|name| !name.trim().is_empty()) {
-        println!(
-            "- {label}: the baseline validation digest recorded for \"{name}\" is not \
-             recomputed, because a launch validation is a private capture that never enters the \
-             repository"
-        );
-    }
-
-    for record in results.lines().filter(|record| !record.trim().is_empty()) {
-        let Some((name, recorded)) = record.rsplit_once(' ') else {
-            violations.push(format!(
-                "{label} records a baseline with no digest: {record}"
-            ));
+        let Some(artifact) = &baseline.result else {
             continue;
         };
-        if !names_a_path(name) {
+        if !names_a_path(artifact.name) {
             violations.push(format!(
                 "{label} records a baseline result by description rather than by path, so its \
-                 digest binds nothing obtainable: {name}"
+                 digest binds nothing obtainable: {}",
+                artifact.name
             ));
             continue;
         }
@@ -510,49 +474,67 @@ fn verify_recorded_baselines(
                 kind: "baseline",
                 root,
                 tracked,
-                manifest_path,
+                manifest_path: path,
                 directory,
-                name,
-                recorded,
+                name: artifact.name,
+                recorded: artifact.sha256,
             },
             violations,
         );
     }
 }
 
+#[cfg(test)]
 pub(crate) fn verify_recorded_review(
     root: &Path,
-    manifest_path: &Path,
+    path: &Path,
     tracked: &BTreeSet<String>,
     violations: &mut Vec<String>,
 ) {
-    let label = relative_label(root, manifest_path);
-    let record = match jq_value(
-        manifest_path,
-        r#".review.record? | select(. != null) | .name + " " + .sha256"#,
-    ) {
-        Ok(record) => record,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    if record.is_empty() {
-        return;
+    match read_json(path) {
+        Ok(manifest) => verify_recorded_review_value(root, path, &manifest, tracked, violations),
+        Err(error) => violations.push(error),
     }
-    let Some(directory) = manifest_path.parent() else {
+}
+
+pub(crate) fn verify_recorded_review_value(
+    root: &Path,
+    path: &Path,
+    manifest: &Value,
+    tracked: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let Some(value) = manifest.get("review").filter(|value| !value.is_null()) else {
         return;
     };
-    let Some((name, recorded)) = record.rsplit_once(' ') else {
-        violations.push(format!(
-            "{label} records a review record with no digest: {record}"
-        ));
+    match Review::deserialize(value) {
+        Ok(review) => verify_review(root, path, &review, tracked, violations),
+        Err(error) => violations.push(format!(
+            "{} records invalid review metadata: {error}",
+            relative_label(root, path)
+        )),
+    }
+}
+
+fn verify_review(
+    root: &Path,
+    path: &Path,
+    review: &Review<'_>,
+    tracked: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let Some(artifact) = &review.record else {
         return;
     };
-    if !names_a_path(name) {
+    let label = relative_label(root, path);
+    let Some(directory) = path.parent() else {
+        return;
+    };
+    if !names_a_path(artifact.name) {
         violations.push(format!(
             "{label} records a review record by title rather than by path, so its digest \
-             binds nothing obtainable: {name}"
+             binds nothing obtainable: {}",
+            artifact.name
         ));
         return;
     }
@@ -562,44 +544,40 @@ pub(crate) fn verify_recorded_review(
             kind: "review record",
             root,
             tracked,
-            manifest_path,
+            manifest_path: path,
             directory,
-            name,
-            recorded,
+            name: artifact.name,
+            recorded: artifact.sha256,
         },
         violations,
     );
-    verify_recorded_verdict(&label, manifest_path, &directory.join(name), violations);
+    verify_recorded_verdict(
+        &label,
+        review.result,
+        &directory.join(artifact.name),
+        violations,
+    );
 }
 
 fn verify_recorded_verdict(
     label: &str,
-    manifest_path: &Path,
+    claimed: Option<&str>,
     record: &Path,
     violations: &mut Vec<String>,
 ) {
-    let claimed = match jq_value(manifest_path, r#".review.result? // """#) {
-        Ok(claimed) => claimed,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    if claimed.is_empty() || claimed == "null" {
+    let Some(claimed) = claimed.filter(|claimed| !claimed.is_empty()) else {
         violations.push(format!(
             "{label} binds a review record but records no review.result for it to agree with"
         ));
         return;
-    }
-
+    };
     let Ok(text) = fs::read_to_string(record) else {
         return;
     };
     match text.lines().find_map(stated_verdict) {
         Some(stated) if stated == claimed => {}
         Some(stated) => violations.push(format!(
-            "{label} records review.result {claimed} while the review record it binds states \
-             {stated}"
+            "{label} records review.result {claimed} while the review record it binds states {stated}"
         )),
         None => violations.push(format!(
             "{label} binds a review record that states no verdict, so nothing checks that \
@@ -620,7 +598,7 @@ fn stated_verdict(line: &str) -> Option<String> {
 }
 
 fn names_a_path(name: &str) -> bool {
-    !name.contains(char::is_whitespace) && Path::new(name).extension().is_some()
+    Path::new(name).extension().is_some()
 }
 
 struct TrackedDigest<'a> {
@@ -652,12 +630,10 @@ fn verify_tracked_digest(record: &TrackedDigest<'_>, violations: &mut Vec<String
         return;
     }
     let path = directory.join(name);
-
     if path == manifest_path {
         violations.push(format!("{label} records its own digest, which cannot bind"));
         return;
     }
-
     let relative = relative_label(root, &path).replace('\\', "/");
     if !tracked.contains(&relative) {
         violations.push(format!(
@@ -678,15 +654,7 @@ fn verify_tracked_digest(record: &TrackedDigest<'_>, violations: &mut Vec<String
 fn file_digest(path: &Path) -> Result<String, String> {
     let bytes =
         fs::read(path).map_err(|error| format!("cannot read the recorded file: {error}"))?;
-    Ok(hex_digest(&bytes))
-}
-
-fn hex_digest(bytes: &[u8]) -> String {
-    let mut digest = String::with_capacity(64);
-    for byte in Sha256::digest(bytes) {
-        write!(digest, "{byte:02x}").expect("writing to a string cannot fail");
-    }
-    digest
+    Ok(crate::hex_digest(&Sha256::digest(&bytes)))
 }
 
 #[cfg(test)]

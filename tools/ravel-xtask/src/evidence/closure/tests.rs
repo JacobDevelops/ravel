@@ -19,6 +19,7 @@ fn a_manifest_figure_must_follow_from_the_record_it_summarises() {
     .expect("manifest should be writable");
     let mut violations = Vec::new();
 
+    let manifest = crate::json::read_json(&manifest).expect("manifest should parse");
     verify_milestone_figures(&root, &manifest, &M5_FIGURES, &mut violations);
 
     assert_eq!(
@@ -28,7 +29,7 @@ fn a_manifest_figure_must_follow_from_the_record_it_summarises() {
         violations.join("\n")
     );
     assert!(
-        violations[0].contains("records .environment.settings.inventory.artifacts 11"),
+        violations[0].contains("records /environment/settings/inventory/artifacts 11 while"),
         "violation was: {}",
         violations[0]
     );

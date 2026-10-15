@@ -5,9 +5,11 @@ use std::process::Command;
 use crate::evidence::findings::{
     defined_rust_symbols, distinguishable_symbol, named_rust_symbols, sources_naming,
 };
-use crate::evidence::manifest::verify_milestone;
+use crate::evidence::manifest::{Milestone, verify_milestone, verify_redaction_value};
 use crate::evidence::records::visible_commit;
-use crate::test_support::{PASS_RECORD, PASS_RECORD_DIGEST, RECORDED_RUN, temporary_root};
+use crate::test_support::{
+    PASS_RECORD, PASS_RECORD_DIGEST, RECORDED_RUN, temporary_root, track_fixture_files,
+};
 
 fn pinned_record_root(label: &str) -> PathBuf {
     let root = temporary_root(label);
@@ -88,6 +90,7 @@ fn milestone_review_root(label: &str, record: &str, digest: &str) -> PathBuf {
         ),
     )
     .expect("manifest should be writable");
+    track_fixture_files(&root);
     root
 }
 
@@ -132,6 +135,76 @@ fn malformed_milestone_ids_are_rejected() {
 
     assert_eq!(violations, ["invalid milestone ID: M14"]);
     fs::remove_dir_all(root).expect("temporary root should be removable");
+}
+
+#[test]
+fn milestone_ids_round_trip_through_the_typed_identity() {
+    for (text, expected) in [
+        ("M0", Milestone::M0),
+        ("M1", Milestone::M1),
+        ("M2", Milestone::M2),
+        ("M3", Milestone::M3),
+        ("M4", Milestone::M4),
+        ("M5", Milestone::M5),
+        ("M6", Milestone::M6),
+        ("M7", Milestone::M7),
+        ("M8", Milestone::M8),
+        ("M9", Milestone::M9),
+        ("M10", Milestone::M10),
+        ("M11", Milestone::M11),
+        ("M12", Milestone::M12),
+        ("M13", Milestone::M13),
+    ] {
+        let parsed = text
+            .parse::<Milestone>()
+            .expect("known milestone should parse");
+        assert_eq!(parsed, expected);
+        assert_eq!(parsed.as_str(), text);
+        assert_eq!(parsed.to_string(), text);
+    }
+    for text in [
+        "", "M", "m0", "M00", "M01", "M14", "M-1", " M0", "M0 ", "../M0",
+    ] {
+        assert_eq!(
+            text.parse::<Milestone>(),
+            Err(format!("invalid milestone ID: {text}"))
+        );
+    }
+}
+
+#[test]
+fn redaction_rejects_sensitive_values_nested_in_objects_and_arrays() {
+    for value in [
+        serde_json::json!({"outer": [{"inner": "/home/operator/instance"}]}),
+        serde_json::json!({"outer": [{"inner": "tests/fixtures/local/private.json"}]}),
+        serde_json::json!({"outer": [{"inner": "evidence/private/capture.log"}]}),
+        serde_json::json!({"outer": [{"inner": {"password": "secret"}}]}),
+        serde_json::json!({"outer": {"accessToken": [{"nested": "secret"}]}}),
+    ] {
+        let mut violations = Vec::new();
+        verify_redaction_value(&value, "record", &mut violations);
+        assert_eq!(
+            violations,
+            ["record contains sensitive or local data"],
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn redaction_preserves_safe_nested_values_and_empty_credential_fields() {
+    let value = serde_json::json!({
+        "outer": [{"inner": "evidence/m4/manifest.json"}, null, false, 42],
+        "password": {"empty": ["", null, false, 0]},
+        "escaped\"key": {"line\nbreak": "public evidence"}
+    });
+    let original = value.clone();
+    let mut violations = Vec::new();
+
+    verify_redaction_value(&value, "record", &mut violations);
+
+    assert!(violations.is_empty(), "{violations:?}");
+    assert_eq!(value, original);
 }
 
 #[test]

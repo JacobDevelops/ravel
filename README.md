@@ -1,9 +1,9 @@
 # Ravel
 
 Ravel is an experimental Minecraft: Java Edition mod loader and SDK for safe,
-natively compiled Rust mods. It supports more than one Minecraft version and
-currently targets Minecraft 1.21.1, hosted by the official game runtime.
-Both 1.21.1 and 26.1.2 have pinned version data. Ravel does not load Java mods
+natively compiled Rust mods, hosted by the official game runtime.
+The default build target is 26.1.2; the ATM10 To the Sky proof workload is pinned to 1.21.1.
+Both versions have pinned version data. Ravel does not load Java mods
 and does not use NeoForge, Fabric, Forge, Quilt, or another mod loader as its bootstrap.
 
 Ravel exists to make a large modpack cost significantly less RAM and CPU than
@@ -96,6 +96,12 @@ Credentials, launcher tokens, private-world data, and raw captures stay out of
 source control. Fixture reconstruction is documented in
 [`tests/fixtures/README.md`](tests/fixtures/README.md); recorded results live in
 [`evidence/`](evidence/).
+
+The integrity gate discovers milestone manifests under `evidence/mN/` rather than
+keeping a second list of milestones. JSON predicates and recorded arithmetic run
+in-process; JSON Schema validation remains delegated to `check-jsonschema`.
+Integrity checks bind the records, not their closure verdict: use
+`cargo make ravel:verify-milestone <id>` to ask whether a milestone is closed.
 
 ## Licence
 

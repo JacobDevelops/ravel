@@ -77,10 +77,29 @@ default = "deny"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+unreachable_pub = "forbid"
+unused_qualifications = "deny"
+elided_lifetimes_in_paths = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+missing_const_for_fn = "allow"
+# conflicts with rustc's unreachable_pub, which wants pub(crate)
+redundant_pub_crate = "allow"
+wildcard_dependencies = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+unwrap_used = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+as_conversions = "deny"
+wildcard_enum_match_arm = "deny"
+infinite_loop = "deny"
+integer_division = "deny"
+let_underscore_must_use = "deny"

@@ -9,6 +9,12 @@ wrappers. The dependency audit records the owner, purpose, licence, advisory
 status, and exposed invariants of each boundary. Ravel code does not weaken the
 unsafe prohibition or add escape hatches to make a prototype pass.
 
+The root workspace also forbids `unreachable_pub` and
+`elided_lifetimes_in_paths`, and denies `unused_qualifications`. The latter
+uses `deny` rather than `forbid` because derive macros may allow it internally.
+Clippy's `all`, `pedantic`, and `nursery` groups and the additional lint checks
+listed in `Cargo.toml` are denied; `clippy.toml` limits functions to 70 lines.
+
 ## There is no boundary crate
 
 | Operation | Crate | Dependency |

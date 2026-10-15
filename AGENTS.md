@@ -56,10 +56,13 @@ Judge the gate by its exit status, not an individual task's test summary.
 - Every maintained crate root carries `#![forbid(unsafe_code)]`, `ravel-bootstrap` included, and no
   exception exists. The table in
   [`docs/architecture/safety-boundary.md`](docs/architecture/safety-boundary.md) is empty and
-  stays empty unless deliberately changed. The workspace denies `clippy::all` and
-  `clippy::pedantic`. Fix causes: no `#[allow]`, no `#[ignore]`, no skipped tests, no loosened assertions to
-  reach green. Everywhere else, unsafe operations belong only in audited dependencies behind narrow safe
-  wrappers.
+  stays empty unless deliberately changed. Lints follow loke-rs (root `Cargo.toml`): `clippy::all`,
+  `pedantic` and `nursery` are denied except `must_use_candidate`, `missing_errors_doc`,
+  `missing_panics_doc`, `missing_const_for_fn` and `redundant_pub_crate`. Restriction lints such as
+  `unwrap_used`, `as_conversions` and `wildcard_enum_match_arm` are denied too, and functions stay
+  under 70 lines (`clippy.toml`). Fix causes: no `#[allow]`, no `#[ignore]`, no skipped tests, no
+  loosened assertions to reach green. Everywhere else, unsafe operations belong only in audited
+  dependencies behind narrow safe wrappers.
 - Respect the layering in [`docs/architecture/dependency-rules.md`](docs/architecture/dependency-rules.md).
   `ravel-core` depends on no other Ravel crate, the SDK exposes no bootstrap or JVM or version internals, and
   production crates never depend on `ravel-testkit`.

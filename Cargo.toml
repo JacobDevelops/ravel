@@ -6,12 +6,6 @@ members = [
   "examples/guide-snippets",
   "examples/minimal-mod",
   "examples/stateful-mod",
-  "experiments/adg-1-jvm-entry",
-  "experiments/adg-2-guest",
-  "experiments/adg-2-mod-execution",
-  "experiments/adg-3-bindings",
-  "experiments/adg-4-state",
-  "experiments/adg-5-prism",
   "experiments/m2-loader-overhead",
   "experiments/m3-pack-compile",
   "experiments/m3-profiling-overhead",
@@ -53,7 +47,6 @@ ravel-resolve = { path = "crates/ravel-resolve", version = "0.0.0" }
 ravel-save = { path = "crates/ravel-save", version = "0.0.0" }
 ravel-sdk = { path = "crates/ravel-sdk", version = "0.0.0" }
 ravel-sdk-macros = { path = "crates/ravel-sdk-macros", version = "0.0.0" }
-ravel-spike-adg-2-guest = { path = "experiments/adg-2-guest", version = "0.0.0" }
 ravel-spike-harness = { path = "experiments/spike-harness", version = "0.0.0" }
 ravel-test-mod-audio = { path = "test-mods/audio", version = "0.0.0" }
 ravel-test-mod-client-only = { path = "test-mods/client-only", version = "0.0.0" }

@@ -102,9 +102,12 @@ Ravel into a Java mod host.
 
 The original Linux measurements live in
 [`evidence/m1/spikes/`](../../evidence/m1/spikes/).
-The ADG-1 through ADG-7 spike names refer respectively to JVM entry, mod execution,
-bindings, state ownership, launcher integration, configuration and screens, and
-world persistence above. The world-persistence byte-preservation measurement runs
+The ADG-1 through ADG-5 candidate sources and `ravel:spike-adg-1` through
+`ravel:spike-adg-5` tasks are retired; `cargo make ravel:verify-spikes` still
+validates their saved results. The ADG names refer to JVM entry, mod execution,
+bindings, state ownership, launcher integration, configuration and screens
+(ADG-6), and world persistence (ADG-7). ADG-6 selected its mechanism without
+a new measurement. The world-persistence byte-preservation measurement runs
 with `./jvm/harness/run-datafix-byte-preservation.sh`; the outward-action crossing
 measurement runs with `cargo make ravel:measure-outward-crossing`.
 A primitive crossing's roughly 10 ns median and zero allocation are a warm,

@@ -75,12 +75,6 @@ const EXAMPLE_NAMES: &[&str] = &[
 ];
 
 const EXPERIMENT_NAMES: &[&str] = &[
-    "adg-1-jvm-entry",
-    "adg-2-guest",
-    "adg-2-mod-execution",
-    "adg-3-bindings",
-    "adg-4-state",
-    "adg-5-prism",
     "m2-loader-overhead",
     "m3-pack-compile",
     "m3-profiling-overhead",

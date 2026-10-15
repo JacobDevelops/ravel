@@ -171,14 +171,7 @@ script = '''
 set -euo pipefail
 cd "${CARGO_MAKE_WORKING_DIRECTORY}"
 
-# The per-gate spike candidates are benchmark-only instruments: what they
-# measure needs a JVM, a launcher, or a game, so they are excluded under
-# the roadmap's reviewed-allowlist clause. The shared harness is not
-# excluded — it is ordinary logic every gate depends on, so it earns the
-# floor like anything else. The fence in `ravel-verify-scaffold` keeps
-# both out of the production graph.
-cargo llvm-cov nextest --workspace --all-features --fail-under-lines 80 \
-  --ignore-filename-regex '(^|/)experiments/adg-'
+cargo llvm-cov nextest --workspace --all-features --fail-under-lines 80
 '''
 
 [tasks."ravel:audit"]
@@ -458,89 +451,6 @@ if ! grep -q '^ran: ' "$ran"; then
   echo "the harness ran for no tracked version, so this task proved nothing" >&2
   exit 1
 fi
-'''
-
-[tasks."ravel:spike-adg-1"]
-description = "Measure the ADG-1 JVM entry candidates and record their evidence."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-if [[ ! -f tests/fixtures/local/tooling/minecraft-26.1.2/client.jar ]]; then
-  echo "the pinned client jar is absent; see tests/fixtures/local/README.md" >&2
-  exit 1
-fi
-
-# Release, because a debug boundary would measure the profile rather
-# than the mechanism.
-cargo build --locked --release -p ravel-spike-adg-1-jvm-entry
-./target/release/ravel-spike-adg-1-jvm-entry
-'''
-
-[tasks."ravel:spike-adg-2"]
-description = "Measure the ADG-2 mod-execution candidates and record their evidence."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-# Release, because a debug boundary would measure the profile rather
-# than the mechanism. The guest is built twice from one source: once
-# natively for the dynamic-library candidate, once for WebAssembly.
-cargo build --locked --release -p ravel-spike-adg-2-guest --target wasm32-unknown-unknown
-cargo build --locked --release -p ravel-spike-adg-2-guest -p ravel-spike-adg-2-mod-execution
-./target/release/ravel-spike-adg-2-mod-execution
-'''
-
-[tasks."ravel:spike-adg-3"]
-description = "Generate the pinned 26.1.2 binding both ways and record the evidence."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-if [[ ! -f tests/fixtures/local/tooling/minecraft-26.1.2/client.jar ]]; then
-  echo "the pinned client jar is absent; see tests/fixtures/local/README.md" >&2
-  exit 1
-fi
-
-cargo build --locked --release -p ravel-spike-adg-3-bindings
-./target/release/ravel-spike-adg-3-bindings
-'''
-
-[tasks."ravel:spike-adg-4"]
-description = "Measure the ADG-4 state-ownership models and record their evidence."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-# Release, because a debug boundary would measure the profile rather
-# than the mechanism.
-cargo build --locked --release -p ravel-spike-adg-4-state
-./target/release/ravel-spike-adg-4-state
-'''
-
-[tasks."ravel:spike-adg-5"]
-description = "Check the pinned launcher's configuration surface without launching it."
-cwd = "${CARGO_MAKE_WORKING_DIRECTORY}"
-script_runner = "bash"
-script = '''
-set -euo pipefail
-cd "${CARGO_MAKE_WORKING_DIRECTORY}"
-
-if [[ ! -f tests/fixtures/local/tooling/prism-11.0.3/PrismLauncher-Linux-x86_64.AppImage ]]; then
-  echo "the pinned launcher is absent; see tests/fixtures/local/README.md" >&2
-  exit 1
-fi
-
-cargo build --locked --release -p ravel-spike-adg-5-prism
-./target/release/ravel-spike-adg-5-prism
 '''
 
 [tasks."ravel:measure-loader-overhead"]

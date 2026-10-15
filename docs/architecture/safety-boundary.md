@@ -45,13 +45,13 @@ The table stays empty unless deliberately changed. Measurement alternatives live
 which is fenced out of the production graph by `ravel:verify-scaffold` and may hold
 whatever unsafe a candidate needs to be measured at all.
 
-The spike code still contains hand-written `#[unsafe(no_mangle)]` exports, and those
-are not what the recorded counts describe. `maintainedUnsafeBlocks` is what a
-production implementation of a candidate would need in maintained crates, so the
-five hand-written exports in `experiments/adg-4-state` are counted by nothing. Where
-a result records a non-zero count — the hosted VM at two, JVMTI at four, the dynamic
-library at two — the operation is an `unsafe fn` no attribute can generate away, and
-that is a floor rather than an artefact of how the spike was written.
+The retired spike sources contained hand-written `#[unsafe(no_mangle)]` exports,
+which are not what the saved results' counts describe. `maintainedUnsafeBlocks`
+is what a production implementation of a candidate would need in maintained
+crates, not a count of exports in a measurement instrument. Where a result
+records a non-zero count — the hosted VM at two, JVMTI at four, the dynamic
+library at two — the operation is an `unsafe fn` no attribute can generate away,
+and that is a floor rather than an artefact of how the spike was written.
 
 Installed mods are trusted within the capabilities of the execution model.
 Initial Ravel does not promise filesystem, network, process, or native-access

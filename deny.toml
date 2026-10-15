@@ -9,19 +9,7 @@ yanked = "deny"
 
 [licenses]
 confidence-threshold = 0.93
-# ISC covers libloading, which opens a runtime library for the JNI bindings and
-# for the ADG-2 dynamic-library candidate. Apache-2.0 WITH LLVM-exception covers
-# the WebAssembly runtime the ADG-2 comparison measures, and Zlib covers a hash
-# crate inside it. All are permissive and OSI-approved, and the LLVM exception
-# only relaxes Apache's terms.
-allow = [
-  "Apache-2.0",
-  "Apache-2.0 WITH LLVM-exception",
-  "ISC",
-  "MIT",
-  "Unicode-3.0",
-  "Zlib",
-]
+allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
 
 [bans]
 multiple-versions = "warn"

@@ -455,8 +455,9 @@ listening the call returns without ever attaching an environment or entering a
 `catch_unwind`. Everything that can panic — argument collection, the string copy,
 the observer itself — happens inside the guarded closure.
 
-What that costs is still unmeasured, and deliberately so: the JVM-entry spike's
-10.02 ns is the unguarded shape, measuring the guarded one needs a running JVM, and the verify
+What that costs is still unmeasured, and deliberately so: the saved JVM-entry
+spike's 10.02 ns is the unguarded shape. Its candidate sources are retired;
+measuring the guarded one needs a running JVM, and the verify
 gate has none. M2-W8 owns the number. What M2-W5 owes is the shape, and the shape
 is: two atomics on the path that observes nothing, an attach guard plus a
 `catch_unwind` on the path that can reach mod code, and a thrown exception on the
@@ -464,8 +465,8 @@ path that refuses.
 
 ### Why `miniz_oxide` is the archive dependency
 
-The bindings spike read jar entries by shelling out to `unzip`, one process per
-class. Production uses `miniz_oxide` for inflate only, with the zip
+The retired bindings spike read jar entries by shelling out to `unzip`, one
+process per class. Production uses `miniz_oxide` for inflate only, with the zip
 central directory read by about a hundred lines in
 `crates/ravel-minecraft-adapter/src/generate/jar.rs`.
 
@@ -477,7 +478,7 @@ genuinely hard — a correct DEFLATE decoder — and it is:
 - pure Rust and `#![forbid(unsafe_code)]` itself, so the dependency does not
   reintroduce unsafe under a crate that forbids it;
 - one transitive dependency (`adler2`), also pure Rust;
-- licensed `MIT OR Zlib OR Apache-2.0`, all on `deny.toml`'s allow list;
+- licensed `MIT OR Zlib OR Apache-2.0`, with MIT and Apache-2.0 on `deny.toml`'s allow list;
 - already the backend every other Rust DEFLATE user reaches for, so it is not a
   novel piece of the supply chain.
 

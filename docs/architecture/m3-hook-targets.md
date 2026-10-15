@@ -12,7 +12,7 @@ record, not a contract: `hooks.toml` remains the reviewed inventory and
 
 ## What landed, and what did not
 
-`crates/ravel-minecraft-adapter/src/generate/render.rs` used to accept a hook
+`crates/ravel-minecraft-generate/src/render.rs` used to accept a hook
 parameter only when it was a JVM primitive or `java/lang/String`, which is why
 the first six entries are all `StringUtil` and `SmoothDouble` carrying `(I)Z`,
 `(Ljava/lang/String;Z)Ljava/lang/String;`, `(DD)D` and `D`. It now accepts any
@@ -228,7 +228,7 @@ editing M1's measurement to describe M3's inputs. The generator grew the
 lock-only mode this section asked for instead:
 
 ```console
-RAVEL_REGENERATE_LOCKS=1 cargo build -p ravel-minecraft-adapter
+cargo run -p ravel-xtask -- generate locks
 ```
 
 It resolves against the pinned jar and writes `mappings.lock` and `stubs.lock`
@@ -237,10 +237,9 @@ and `inputs.stubsLock` pin for them, so a lock can only be rewritten by someone
 holding the jar who asked for it. Those two pins are what a jar-less machine
 checks: it has nothing to resolve against, so without them, generating from a
 lock and comparing the result back to that same lock would pass any stale lock
-that is still well formed. The build script is where it lives because the generator
-refuses to build against a lock it has drifted from, which leaves nothing
-downstream able to run the writer. Ordinary builds still refuse drift; nothing
-updates a lock silently.
+that is still well formed. The explicit xtask runs independently of the adapter's
+build script, so stale locks cannot prevent the writer from running. Ordinary
+builds still refuse drift; nothing updates a lock silently.
 
 The spike route also rewrote `evidence/m1/spikes/adg-3/` on every run, so a lock
 regeneration used to arrive with M1's measurements edited underneath it. The

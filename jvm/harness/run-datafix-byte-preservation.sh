@@ -10,7 +10,7 @@ work="$root/target/ravel-jvm/datafix-byte-preservation"
 mapfile -d '' found < <(find "$screens" -name RavelWorldData.java -print0 2>/dev/null | sort -z)
 if [[ ${#found[@]} -ne 1 ]]; then
     echo "the generated screen tree holds ${#found[@]} RavelWorldData sources, not one; run:" >&2
-    echo "  cargo build -p ravel-minecraft-adapter" >&2
+    echo "  cargo run -p ravel-xtask -- generate java" >&2
     exit 1
 fi
 generated_source="${found[0]}"
@@ -19,7 +19,7 @@ generated_source="${found[0]}"
 version="$(sed -n '1s/^.*Generated from the pinned Minecraft \(.*\) inputs\..*$/\1/p' "$generated_source")"
 if [[ -z "$version" ]]; then
     echo "$generated_source carries no generated version header; run:" >&2
-    echo "  cargo build -p ravel-minecraft-adapter" >&2
+    echo "  cargo run -p ravel-xtask -- generate java" >&2
     exit 1
 fi
 

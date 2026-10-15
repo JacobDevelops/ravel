@@ -75,8 +75,7 @@ bytes = 18750
 # nothing to resolve against, so generating from a lock and comparing the result
 # back to that same lock only proves the file is well formed. These hashes are
 # what the jars produced, so a stale lock fails on a jar-less machine too. Only
-# RAVEL_REGENERATE_LOCKS rewrites them, and it rewrites the locks in the same
-# breath.
+# `cargo run -p ravel-xtask -- generate locks` rewrites and repins them.
 
 [inputs.mappingsLock]
 path = "minecraft/versions/26.1.2/mappings.lock"

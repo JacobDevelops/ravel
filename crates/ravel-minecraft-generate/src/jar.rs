@@ -191,12 +191,12 @@ pub(super) mod fixture {
     };
 
     /// Indexes an archive built in memory.
-    pub(in crate::generate) fn parse(bytes: Vec<u8>) -> Result<Archive, String> {
+    pub(crate) fn parse(bytes: Vec<u8>) -> Result<Archive, String> {
         Archive::read(bytes)
     }
 
     /// Builds a one-entry archive, storing or deflating the content.
-    pub(in crate::generate) fn archive(name: &str, content: &[u8], method: u16) -> Vec<u8> {
+    pub(crate) fn archive(name: &str, content: &[u8], method: u16) -> Vec<u8> {
         let payload = if method == DEFLATED {
             miniz_oxide::deflate::compress_to_vec(content, 6)
         } else {
@@ -243,12 +243,12 @@ pub(super) mod fixture {
     }
 
     /// Builds a one-entry archive that stores its content uncompressed.
-    pub(in crate::generate) fn stored(name: &str, content: &[u8]) -> Vec<u8> {
+    pub(crate) fn stored(name: &str, content: &[u8]) -> Vec<u8> {
         archive(name, content, super::STORED)
     }
 
     /// Builds a one-entry archive that deflates its content.
-    pub(in crate::generate) fn deflated(name: &str, content: &[u8]) -> Vec<u8> {
+    pub(crate) fn deflated(name: &str, content: &[u8]) -> Vec<u8> {
         archive(name, content, DEFLATED)
     }
 }

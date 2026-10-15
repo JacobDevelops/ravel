@@ -430,9 +430,16 @@ dependencies = [
 name = "ravel-minecraft-adapter"
 version = "0.0.0"
 dependencies = [
+ "ravel-minecraft",
+ "ravel-minecraft-generate",
+]
+
+[[package]]
+name = "ravel-minecraft-generate"
+version = "0.0.0"
+dependencies = [
  "miniz_oxide",
  "ravel-core",
- "ravel-minecraft",
  "serde",
  "sha2",
  "toml",
@@ -694,6 +701,7 @@ version = "0.0.0"
 dependencies = [
  "ravel-build",
  "ravel-loader",
+ "ravel-minecraft-generate",
  "ravel-package",
  "serde",
  "serde_json",

@@ -22,7 +22,7 @@ jars. Ravel-owned screens are drawn in Java; see the
 Build the generated sources before either jar:
 
 ```console
-cargo build -p ravel-minecraft-adapter
+cargo run -p ravel-xtask -- generate java
 ./jvm/build/build-agent.sh
 ./jvm/build/build-screen.sh
 ```
@@ -79,7 +79,7 @@ in [`evidence/m2/prism-launch.json`](../evidence/m2/prism-launch.json).
 The component commands are:
 
 ```console
-cargo build -p ravel-minecraft-adapter
+cargo run -p ravel-xtask -- generate java
 cargo build -p ravel-composed-host --release
 ./jvm/build/build-agent.sh
 ./jvm/harness/run-harness.sh

@@ -34,7 +34,7 @@ Two properties are worth stating because a reader will otherwise wonder:
   [build-time version-selection mechanism](../../../../docs/architecture/overview.md#mechanisms).
 
 The gate that reads it is
-`crates/ravel-minecraft-adapter/src/generate/mod.rs`'s
+`crates/ravel-minecraft-generate/src/lib.rs`'s
 `the_generator_reads_a_second_version_without_naming_the_pinned_one`, and
 `ravel-verify-scaffold` treats a directory name here as a version string no crate
 may spell, and the class names its inventory reviews as names no crate may spell

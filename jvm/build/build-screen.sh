@@ -13,7 +13,7 @@ jar="$work/ravel-screen.jar"
 for tree in "$generated" "$screens"; do
 	if [ ! -d "$tree" ]; then
 		echo "$tree is missing; run:" >&2
-		echo "  cargo build -p ravel-minecraft-adapter" >&2
+		echo "  cargo run -p ravel-xtask -- generate java" >&2
 		exit 1
 	fi
 done
@@ -22,7 +22,7 @@ done
 release_file="$work/generated/dev/ravel/jvm/java-release.txt"
 if [ ! -f "$release_file" ]; then
 	echo "the generated Java release is missing; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	echo "  cargo run -p ravel-xtask -- generate java" >&2
 	exit 1
 fi
 release="$(cat "$release_file")"
@@ -40,7 +40,7 @@ javac --release "$release" -nowarn -d "$stubs" "${stub_sources[@]}"
 hook="$work/generated"
 if [ ! -f "$hook/dev/ravel/jvm/Hook.java" ]; then
 	echo "the generated hook class is missing; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	echo "  cargo run -p ravel-xtask -- generate java" >&2
 	exit 1
 fi
 javac --release "$release" -Xlint:all -Werror -cp "$stubs" -d "$stubs" \
@@ -63,7 +63,7 @@ mapfile -d '' compiled < <(cd "$classes" && find . -name '*.class' -print0 | sor
 names="$work/generated/dev/ravel/jvm/ScreenNames.java"
 if [ ! -f "$names" ]; then
 	echo "the generated screen names are missing; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	echo "  cargo run -p ravel-xtask -- generate java" >&2
 	exit 1
 fi
 generated_names="$(sed -n 's/.*static final String [A-Z_]* = "\(.*\)";/\1/p' "$names")"

@@ -57,6 +57,16 @@ cargo make ravel:fixture-verify
 ```
 
 These tasks run `ravel-xtask`; the standalone `ravel-cli` has been removed.
+
+Generate the selected Minecraft version's Java sources before building the JVM jars:
+
+```console
+cargo run -p ravel-xtask -- generate java
+```
+
+`RAVEL_MINECRAFT_VERSION` selects the version, as it does for Rust builds. Rust build
+scripts write only their Cargo `OUT_DIR`; Java generation is an explicit step.
+
 Performance/resource capture and budget tooling are retired. Closed measurements
 and their manifest-bound inputs remain historical evidence.
 

@@ -4,9 +4,6 @@
 
 use ravel_minecraft::{HookId, HookTarget, VersionAdapter};
 
-#[cfg(feature = "generate")]
-pub mod generate;
-
 /// The target table generated from the pinned version's reviewed inventory.
 pub mod pinned {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

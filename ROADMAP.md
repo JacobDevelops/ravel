@@ -251,7 +251,8 @@ ravel/
 │   ├── ravel-host-api/             # stable loader-to-mod execution contract
 │   ├── ravel-bootstrap/            # official-JVM entry/hook plumbing
 │   ├── ravel-minecraft/            # version-neutral Minecraft capability traits
-│   ├── ravel-minecraft-adapter/    # shared version-data/codegen adapter runtime
+│   ├── ravel-minecraft-adapter/    # shared version-data adapter runtime
+│   ├── ravel-minecraft-generate/   # Rust bindings, Java sources and pinned locks
 │   ├── ravel-config/               # schema, validation, overrides, restart/side semantics
 │   ├── ravel-data/                 # resources, recipes, tags, loot, progression data
 │   ├── ravel-save/                 # versioned saved data and fail-closed migrations
@@ -356,7 +357,8 @@ ravel/
 | `ravel-host-api` | Stable source-compiled package execution boundary | core and serialization support | concrete Minecraft bindings |
 | `ravel-bootstrap` | Selected JVM entry, callback routing, launch bootstrap | loader, host API, Minecraft trait and selected audited boundary dependencies | public SDK implementation policy |
 | `ravel-minecraft` | Version-neutral handles, hooks and capability traits | core | version mappings or generated version symbols |
-| `ravel-minecraft-adapter` | Shared adapter runtime, code generation, hook dispatch and conversion machinery | Minecraft traits, core, selected audited JVM dependencies, version data | SDK authoring policy and hardcoded assumptions outside selected version data |
+| `ravel-minecraft-adapter` | Shared adapter runtime, hook dispatch and conversion machinery | Minecraft traits, core, selected audited JVM dependencies, version data | SDK authoring policy and hardcoded assumptions outside selected version data |
+| `ravel-minecraft-generate` | Rust bindings, generated Java sources and pinned locks from version data | core and input parsers | runtime adapter or SDK |
 | `ravel-config` | Schemas, validation, side/restart flags, layered overrides | core | generated UI widgets or version details |
 | `ravel-data` | Declarative resources, recipes, tags, loot and progression contracts | core, package | loader or concrete adapter |
 | `ravel-save` | Ownership, schema versioning, migrations and compatibility checks | core | official ATM10 To the Sky world import logic |

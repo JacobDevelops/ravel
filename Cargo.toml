@@ -36,6 +36,7 @@ ravel-host-runtime = { path = "crates/ravel-host-runtime", version = "0.0.0" }
 ravel-loader = { path = "crates/ravel-loader", version = "0.0.0" }
 ravel-minecraft = { path = "crates/ravel-minecraft", version = "0.0.0" }
 ravel-minecraft-adapter = { path = "crates/ravel-minecraft-adapter", version = "0.0.0" }
+ravel-minecraft-generate = { path = "crates/ravel-minecraft-generate", version = "0.0.0" }
 ravel-network = { path = "crates/ravel-network", version = "0.0.0" }
 ravel-observability = { path = "crates/ravel-observability", version = "0.0.0" }
 ravel-pack = { path = "crates/ravel-pack", version = "0.0.0" }

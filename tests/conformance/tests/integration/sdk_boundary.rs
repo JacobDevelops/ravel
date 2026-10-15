@@ -25,6 +25,7 @@ const FORBIDDEN: &[(&str, &str)] = &[
     ("ravel-bootstrap", "the JVM entry crate"),
     ("ravel-minecraft", "the only crate that names a JNI type"),
     ("ravel-minecraft-adapter", "the pinned version's internals"),
+    ("ravel-minecraft-generate", "build-time source generation"),
     ("ravel-loader", "the lifecycle machine and claim table"),
     ("ravel-composed-host", "the assembled host"),
     ("ravel-observability", "the report and profiling surfaces"),

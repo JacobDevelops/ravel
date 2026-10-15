@@ -44,6 +44,7 @@ const CRATE_NAMES: &[&str] = &[
     "ravel-build",
     "ravel-minecraft",
     "ravel-minecraft-adapter",
+    "ravel-minecraft-generate",
     "ravel-config",
     "ravel-data",
     "ravel-save",

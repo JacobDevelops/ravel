@@ -118,12 +118,17 @@
 //!
 //! # Failing: the pinned version's internals are not reachable
 //!
-//! `ravel-minecraft-adapter` holds the pinned version's hook inventory, mappings, and
-//! generated bindings. A mod compiled against the SDK carries no version
-//! internals, which is what M4-W6 goes on to prove against a second version.
+//! `ravel-minecraft-adapter` holds the pinned version's hook inventory and mappings;
+//! `ravel-minecraft-generate` owns code generation. Neither is a mod dependency, so
+//! a mod compiled against the SDK carries no version internals, which is what M4-W6
+//! goes on to prove against a second version.
+//!
+//! ```compile_fail,E0432
+//! use ravel_minecraft_adapter::pinned;
+//! ```
 //!
 //! ```compile_fail,E0433
-//! use ravel_minecraft_adapter::generate::stubs::Stub;
+//! use ravel_minecraft_generate::stubs::Stub;
 //! ```
 //!
 //! # Failing: the loader is not reachable

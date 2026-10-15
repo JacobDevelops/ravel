@@ -92,9 +92,9 @@ cd "${CARGO_MAKE_WORKING_DIRECTORY}"
 # twelve tests failed the first time another version was named.
 #
 # A version is skipped when its declared client mapping is absent,
-# because `generate::run` reads that file on every build under a
+# because `generate::run_rust` reads that file on every build under a
 # translating source, jars or no jars — see the comment above the
-# `mapping` call in `crates/ravel-minecraft-adapter/src/generate/mod.rs`.
+# `mapping` call in `crates/ravel-minecraft-generate/src/lib.rs`.
 # `ravel_test_versions_agree_with_the_generator` holds this rule to that
 # one so the two cannot drift apart. A skip says so loudly, because a
 # skip that reads like a pass is how a half stays unexercised.
@@ -325,14 +325,9 @@ for version_directory in minecraft/versions/*/; do
     continue
   fi
 
-  # One version at a time in a tree the generator never sweeps: the
-  # screens change package between versions, so a source left behind
-  # compiles into the next version's jar.
-  rm -rf target/ravel-jvm/generated target/ravel-jvm/generated-stubs \
-    target/ravel-jvm/generated-screen target/ravel-jvm/generated-harness
-  touch crates/ravel-minecraft-adapter/build.rs
+  # Generation is explicit: Cargo may restore build-script results from cache.
   RAVEL_MINECRAFT_VERSION="$version" \
-    cargo build --locked -p ravel-minecraft-adapter
+    cargo run --locked -p ravel-xtask -- generate java
   ./jvm/build/build-agent.sh >/dev/null
   ./jvm/build/build-screen.sh >/dev/null
 
@@ -417,17 +412,9 @@ for version_directory in minecraft/versions/*/; do
     continue
   fi
 
-  # Everything below is packaged, so it has to come from one version. The
-  # generator never sweeps this tree — two builds share it and one that
-  # emptied it would delete what another is reading — so the sweep belongs
-  # here, in the task that packages it. Touching the build script is what
-  # makes the generation happen again after the sweep: cargo caches on
-  # inputs, and deleting an output is not one.
-  rm -rf target/ravel-jvm/generated target/ravel-jvm/generated-stubs \
-    target/ravel-jvm/generated-screen target/ravel-jvm/generated-harness
-  touch crates/ravel-minecraft-adapter/build.rs
+  # Generate one version before packaging its shared output trees.
   RAVEL_MINECRAFT_VERSION="$version" \
-    cargo build --locked -p ravel-minecraft-adapter
+    cargo run --locked -p ravel-xtask -- generate java
   RAVEL_MINECRAFT_VERSION="$version" \
     cargo build --locked -p ravel-composed-host --release
   ./jvm/build/build-agent.sh

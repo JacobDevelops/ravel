@@ -185,7 +185,7 @@ const SWEPT_SCOPE: &str =
 
 const VERSION_CLASS_EXCUSES: [(&str, &[&str], &str); 3] = [
     (
-        "crates/ravel-minecraft-adapter/src/generate/mod.rs",
+        "crates/ravel-minecraft-generate/src/lib.rs",
         &[
             "net/minecraft/client/gui/components/events/AbstractContainerEventHandler",
             "net/minecraft/client/gui/screens/Screen",
@@ -194,13 +194,13 @@ const VERSION_CLASS_EXCUSES: [(&str, &[&str], &str); 3] = [
          they produce, so it names what they name",
     ),
     (
-        "crates/ravel-minecraft-adapter/src/generate/resolve.rs",
+        "crates/ravel-minecraft-generate/src/resolve.rs",
         &["net/minecraft/util/StringUtil"],
         "resolves the pinned inventory's first hook and asserts the class that \
          inventory names it against",
     ),
     (
-        "crates/ravel-minecraft-adapter/src/generate/stubs.rs",
+        "crates/ravel-minecraft-generate/src/stubs.rs",
         &[
             "net/minecraft/client/gui/components/AbstractSliderButton",
             "net/minecraft/client/gui/components/events/AbstractContainerEventHandler",
@@ -389,7 +389,7 @@ fn verify_version_boundary_crate_names(root: &Path, violations: &mut Vec<String>
             let name = entry.file_name();
             let name = name.to_string_lossy();
             if let Some(suffix) = name.strip_prefix("ravel-minecraft-")
-                && suffix != "adapter"
+                && !matches!(suffix, "adapter" | "generate")
             {
                 violations.push(format!("unexpected per-version Minecraft crate: {name}"));
             }

@@ -6,6 +6,8 @@ use std::process::ExitCode;
 
 mod commands;
 
+use ravel_minecraft_generate as generate;
+
 /// Reports changed digests while treating a successful rewrite as success.
 fn package_digests(directory: &Path, check: bool) -> ExitCode {
     match ravel_xtask::refresh_digests(directory, check) {
@@ -51,6 +53,9 @@ fn main() -> ExitCode {
         return result;
     }
     let (subject, violations) = match args.as_slice() {
+        [generate, kind] if generate == "generate" && (kind == "java" || kind == "locks") => {
+            return generate_sources(&root, kind);
+        }
         [package, digests, directory] if package == "package" && digests == "digests" => {
             return package_digests(&root.join(directory), false);
         }
@@ -80,6 +85,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage:\n  cargo xtask verify scaffold\n  cargo xtask verify spikes\n  \
                  cargo xtask verify gate-versions\n  \
+                 cargo xtask generate java\n  cargo xtask generate locks\n  \
                  cargo xtask verify milestone M<N>\n  \
                  cargo xtask host build <instance> <cache> <minecraft>\n  \
                  cargo xtask fixture reconstruct [descriptor]\n  \
@@ -100,6 +106,23 @@ fn main() -> ExitCode {
             eprintln!("- {violation}");
         }
         ExitCode::FAILURE
+    }
+}
+
+fn generate_sources(root: &Path, kind: &str) -> ExitCode {
+    let result = generate::selection(env::var_os(generate::SELECTION)).and_then(|selected| {
+        if kind == "locks" {
+            generate::regenerate_locks(root, selected.as_deref())
+        } else {
+            generate::run_java(root, selected.as_deref()).map(|_| ())
+        }
+    });
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Generation failed: {error}");
+            ExitCode::FAILURE
+        }
     }
 }
 

@@ -19,7 +19,7 @@ standin_sibling="$standins/sibling"
 
 if [ ! -f "$jar" ]; then
 	echo "the agent jar is missing; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter && ./jvm/build/build-agent.sh" >&2
+	echo "  cargo run -p ravel-xtask -- generate java && ./jvm/build/build-agent.sh" >&2
 	exit 1
 fi
 "$root/jvm/build/build-screen.sh" >/dev/null
@@ -34,7 +34,7 @@ if [ ! -f "$library/libravel_bootstrap.so" ]; then
 fi
 if [ ! -d "$standins" ] || [ ! -d "$standin_game" ]; then
 	echo "the generated stand-in game is missing; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	echo "  cargo run -p ravel-xtask -- generate java" >&2
 	exit 1
 fi
 
@@ -65,7 +65,7 @@ aliases="$standins/aliases.txt"
 if [ ! -f "$aliases" ]; then
 	echo "the generated stand-in game names no aliases.txt, so nothing says which names" >&2
 	echo "it was written under; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	echo "  cargo run -p ravel-xtask -- generate java" >&2
 	exit 1
 fi
 remapper="$work/remap"
@@ -586,7 +586,7 @@ remap "$content/classes"
 content_sibling="$(find "$root/target/ravel-jvm/generated-screen" -name 'RavelContent.java')"
 if [ ! -f "$content_sibling" ]; then
 	echo "the generated content sibling is missing; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	echo "  cargo run -p ravel-xtask -- generate java" >&2
 	exit 1
 fi
 javac -Xlint:all -Werror -cp "$content/classes" -d "$content/sibling" "$content_sibling"
@@ -610,7 +610,7 @@ if ! properties_origin="$(awk -F= -v block='game/BlockBehaviour$Properties' \
 	}' "$origins")"; then
 	echo "the generated harness record at $origins does not say, for both properties" >&2
 	echo "templates alike, which tree rendered them; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	echo "  cargo run -p ravel-xtask -- generate java" >&2
 	exit 1
 fi
 case "$properties_origin" in

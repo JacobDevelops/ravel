@@ -28,6 +28,8 @@ stable contracts toward concrete host internals.
   they generate — is that crate's model, and `ravel-pack` reads the same
   declarations to check a pack's registry closure and to merge its members' tags;
   a model living in the facade would make a feature crate depend on the facade.
+- `ravel-minecraft-generate` depends only on `ravel-core`, `miniz_oxide`, `serde`, `sha2` and
+  `toml`; it is used only by build tooling.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data. M4-W6 discharges this against a second version rather than
   against a promise: `tests/fixtures/public/versions/` holds a synthetic version's

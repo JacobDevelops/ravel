@@ -83,8 +83,8 @@ sha256 = "3f3b0aeacac88b2677aefce3a2583853eeed6e67daf54338aa7874f829f67fe2"
 bytes = 14587
 
 # The two locks below are generated, not fetched, and they are pinned for the
-# machines that cannot check them any other way. Only RAVEL_REGENERATE_LOCKS
-# rewrites them, and it rewrites the locks in the same breath.
+# machines that cannot check them any other way. Only the explicit command
+# `cargo run -p ravel-xtask -- generate locks` rewrites and repins them.
 
 [inputs.mappingsLock]
 path = "minecraft/versions/1.21.1/mappings.lock"

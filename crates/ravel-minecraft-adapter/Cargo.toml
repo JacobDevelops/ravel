@@ -11,33 +11,11 @@ build = "build.rs"
 # script metadata, which Cargo forwards only for a package declaring `links`.
 links = "ravel-minecraft-adapter"
 
-[features]
-default = []
-# The generator is build-time tooling. It is compiled into the library only when
-# asked for, so the adapter that ships into the game process does not carry an
-# archive reader and a TOML parser it never calls.
-generate = [
-  "dep:miniz_oxide",
-  "dep:ravel-core",
-  "dep:serde",
-  "dep:sha2",
-  "dep:toml",
-]
-
 [dependencies]
-miniz_oxide = { workspace = true, optional = true }
-ravel-core = { workspace = true, optional = true }
 ravel-minecraft.workspace = true
-serde = { workspace = true, optional = true }
-sha2 = { workspace = true, optional = true }
-toml = { workspace = true, optional = true }
 
 [build-dependencies]
-miniz_oxide.workspace = true
-ravel-core.workspace = true
-serde.workspace = true
-sha2.workspace = true
-toml.workspace = true
+ravel-minecraft-generate.workspace = true
 
 [lints]
 workspace = true

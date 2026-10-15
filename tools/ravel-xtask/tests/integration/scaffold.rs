@@ -48,6 +48,7 @@ fn scaffold_contract_covers_every_planned_crate() {
         "ravel-composed-host",
         "ravel-minecraft",
         "ravel-minecraft-adapter",
+        "ravel-minecraft-generate",
         "ravel-config",
         "ravel-data",
         "ravel-save",

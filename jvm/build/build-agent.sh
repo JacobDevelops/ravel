@@ -14,7 +14,7 @@ stamp="${RAVEL_JAR_DATE:-1980-01-01T00:00:02Z}"
 
 if [ ! -f "$generated/dev/ravel/jvm/Hook.java" ]; then
 	echo "the generated hook class is missing; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	echo "  cargo run -p ravel-xtask -- generate java" >&2
 	exit 1
 fi
 
@@ -22,7 +22,7 @@ fi
 release_file="$generated/dev/ravel/jvm/agent-release.txt"
 if [ ! -f "$release_file" ]; then
 	echo "the generated Java release is missing; run:" >&2
-	echo "  cargo build -p ravel-minecraft-adapter" >&2
+	echo "  cargo run -p ravel-xtask -- generate java" >&2
 	exit 1
 fi
 release="$(cat "$release_file")"

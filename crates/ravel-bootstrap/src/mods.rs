@@ -3,7 +3,7 @@
 //! Failure details are redacted here; notices were already redacted by the report.
 
 use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::fmt::Write;
 
 use jni::objects::{JClass, JString};
 use jni::{Env, EnvUnowned};
@@ -15,26 +15,13 @@ use crate::guard::HookError;
 use crate::runtime::LoaderRuntime;
 use crate::wire::{MODS_VERSION, count, field, flag};
 
-/// The installed runtime, or nothing before one is installed.
-static RUNTIME: Mutex<Option<Arc<LoaderRuntime>>> = Mutex::new(None);
-
-/// Makes the running mod set readable by the mod list screen.
-pub(crate) fn install(runtime: Arc<LoaderRuntime>) {
-    *lock() = Some(runtime);
-}
-
-// The store holds complete runtimes, so poison recovery cannot expose partial state.
-fn lock() -> std::sync::MutexGuard<'static, Option<Arc<LoaderRuntime>>> {
-    RUNTIME.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 /// Encodes the live mod list, or returns nothing before runtime installation.
 fn document() -> Option<String> {
-    // Never hold the settings and runtime-store locks together.
     let configurable = crate::settings::configurable();
-    // Release the store lock before building the surface.
-    let runtime = lock().clone();
-    document_of(runtime.as_deref(), &configurable)
+    document_of(
+        crate::runtime::installed().map(AsRef::as_ref),
+        &configurable,
+    )
 }
 
 /// The mod list a screen reads from one runtime, or nothing without one.
@@ -68,7 +55,7 @@ impl LoaderRuntime {
 fn row(out: &mut String, index: usize, entry: &ModEntry, configurable: bool) {
     count(out, index + 1);
     field(out, entry.mod_id.as_str());
-    field(out, entry.state.name());
+    field(out, entry.state.as_str());
     field(out, requirement_name(entry.requirement));
     flag(out, entry.loads_here);
     flag(out, entry.is_actionable());
@@ -84,11 +71,35 @@ fn row(out: &mut String, index: usize, entry: &ModEntry, configurable: bool) {
 
 /// Writes one failure's structured attribution.
 fn attribution(out: &mut String, failure: &FailureAttribution) {
-    field(out, failure.kind.map_or("", |kind| kind.name()));
-    let (surface_kind, surface_name) = surface_of(failure.surface.as_ref());
-    field(out, surface_kind);
-    field(out, surface_name);
-    field(out, failure.state.name());
+    field(out, failure.kind.map_or("", |kind| kind.as_str()));
+    match failure.surface.as_ref() {
+        None => {
+            field(out, "");
+            field(out, "");
+        }
+        Some(FailureSurface::Hook(name)) => {
+            field(out, "hook");
+            field(out, name);
+        }
+        Some(FailureSurface::Event(name)) => {
+            field(out, "event");
+            field(out, name);
+        }
+        Some(FailureSurface::Registry(key)) => {
+            field(out, "registry");
+            // Registry keys contain only validated ASCII, so bytes equal UTF-16 units.
+            let units = key.kind().as_str().len()
+                + key.id().namespace().as_str().len()
+                + key.id().path().len()
+                + 2;
+            write!(out, "{units}:{key}").expect("writing into a String cannot fail");
+        }
+        Some(FailureSurface::Packet(name)) => {
+            field(out, "packet");
+            field(out, name);
+        }
+    }
+    field(out, failure.state.as_str());
     field(
         out,
         failure
@@ -107,17 +118,6 @@ fn attribution(out: &mut String, failure: &FailureAttribution) {
 /// Redacts failure details at the publishing boundary, regardless of their tag.
 fn publishable(message: &DiagnosticMessage) -> DiagnosticMessage {
     DiagnosticMessage::redacted(&Redactor, message.text())
-}
-
-/// Keeps the translatable surface kind separate from its identifier.
-const fn surface_of(surface: Option<&FailureSurface>) -> (&'static str, &str) {
-    match surface {
-        None => ("", ""),
-        Some(FailureSurface::Hook(name)) => ("hook", name.as_str()),
-        Some(FailureSurface::Event(name)) => ("event", name.as_str()),
-        Some(FailureSurface::Registry(name)) => ("registry", name.as_str()),
-        Some(FailureSurface::Packet(name)) => ("packet", name.as_str()),
-    }
 }
 
 /// Names whether the set fails closed without a mod.
@@ -236,7 +236,7 @@ mod tests {
         assert_eq!(read[3], "2");
         assert_eq!(read[4], "1", "the first row states its load position");
         assert_eq!(read[5], "base_mod");
-        assert_eq!(read[6], LifecycleState::Discovered.name());
+        assert_eq!(read[6], LifecycleState::Discovered.as_str());
         assert_eq!(read[7], "required");
         assert_eq!(read[8], "true", "it loads on the side the set runs on");
         assert_eq!(read[9], "false", "nothing failed, so nothing is actionable");
@@ -280,14 +280,34 @@ mod tests {
         assert_eq!(read[2], "1", "one entry asks the player to act");
         assert_eq!(read[9], "true");
         assert_eq!(read[11], "1", "a failure block follows");
-        assert_eq!(read[12], FailureKind::DependencyCycle.name());
+        assert_eq!(read[12], FailureKind::DependencyCycle.as_str());
         assert_eq!(read[13], "hook");
         assert_eq!(read[14], "client.tick");
-        assert_eq!(read[15], LifecycleState::Constructed.name());
+        assert_eq!(read[15], LifecycleState::Constructed.as_str());
         assert_eq!(read[16], "1.2.3");
         assert_eq!(read[17], "2", "the chain crosses in order");
         assert_eq!(read[18], "base_mod");
         assert_eq!(read[19], "broken_mod");
+    }
+
+    #[test]
+    fn a_typed_registry_surface_keeps_its_complete_wire_key() {
+        let mut plan = machine(vec![entry("broken_mod", Requirement::Required)]);
+        let mut failure = attribution(LifecycleState::Running, None);
+        failure.surface = Some(FailureSurface::Registry(
+            "command:broken_mod:go".parse().expect("valid registry key"),
+        ));
+        plan.fail(&mod_id("broken_mod"), failure)
+            .expect("the owner is tracked");
+
+        let read = fields(&running(plan).mod_document(&configurable(&[])));
+
+        assert_eq!(read[13], "registry");
+        assert_eq!(read[14], "command:broken_mod:go");
+        assert_eq!(
+            read[15], "running",
+            "the key length preserves field framing"
+        );
     }
 
     #[test]
@@ -344,7 +364,7 @@ mod tests {
     fn noticed(machine: LifecycleMachine, notice: &str) -> LoaderRuntime {
         let mut report = crate::runtime::pre_world_report();
         report.note(notice);
-        LoaderRuntime::profiling(
+        LoaderRuntime::with_observers(
             machine,
             Vec::<Box<dyn HostMod>>::new(),
             ravel_observability::Profiler::off(),

@@ -32,6 +32,7 @@ pub const ENTRY_FUNCTION: &str = "__ravel_entry";
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HostPlan {
     files: BTreeMap<String, String>,
+    installation_lock: String,
     members: Vec<PlannedMember>,
     fingerprint: String,
 }
@@ -41,6 +42,12 @@ impl HostPlan {
     #[must_use]
     pub const fn files(&self) -> &BTreeMap<String, String> {
         &self.files
+    }
+
+    /// Returns the installation `Cargo.lock` every instance resolution starts from.
+    #[must_use]
+    pub fn installation_lock(&self) -> &str {
+        &self.installation_lock
     }
 
     /// Returns the packages this host will be built from, in mod-id order.
@@ -70,7 +77,7 @@ pub struct PlannedMember {
 /// Plans a host using installed package metadata and the caller's Ravel installation root.
 ///
 /// # Errors
-/// Returns a refusal for missing or invalid Cargo manifests or duplicate crate names.
+/// Returns a refusal for missing or invalid installation inputs, Cargo manifests, or duplicate crate names.
 pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, BuildRefused> {
     let mut members = Vec::with_capacity(discovered.packages().len());
     for package in discovered.packages() {
@@ -93,12 +100,23 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
         });
     }
 
+    let dependencies = installation_dependencies(ravel_root)?;
+    let author_dependencies = dependency_entries(&dependencies, &["serde", "serde_json"])?;
+    let jni_dependency = dependency_entries(&dependencies, &["jni"])?;
+    let installation_lock = installation_file(ravel_root, "Cargo.lock")?;
+    compile::lock_packages(&installation_lock).map_err(|detail| BuildRefused::Installation {
+        file: "Cargo.lock".to_owned(),
+        detail,
+    })?;
     let mut files = BTreeMap::new();
     files.insert(
         "Cargo.toml".to_owned(),
-        workspace_manifest(&members, ravel_root),
+        workspace_manifest(&members, ravel_root, &author_dependencies),
     );
-    files.insert("host/Cargo.toml".to_owned(), host_manifest(&members));
+    files.insert(
+        "host/Cargo.toml".to_owned(),
+        host_manifest(&members, ravel_root, &jni_dependency),
+    );
     files.insert("host/src/lib.rs".to_owned(), host_source(&members));
 
     let mut digest = Sha256::new();
@@ -108,12 +126,16 @@ pub fn plan(discovered: &Discovered, ravel_root: &Path) -> Result<HostPlan, Buil
         digest.update(contents.as_bytes());
         digest.update([0]);
     }
+    digest.update(b"installation Cargo.lock");
+    digest.update([0]);
+    digest.update(installation_lock.as_bytes());
     let mut bytes = [0_u8; 32];
     bytes.copy_from_slice(&digest.finalize());
     let fingerprint = Sha256Digest::from_bytes(bytes).to_string();
 
     Ok(HostPlan {
         files,
+        installation_lock,
         members,
         fingerprint,
     })
@@ -151,6 +173,48 @@ fn crate_name(root: &Path, directory: &str) -> Result<String, BuildRefused> {
             directory: directory.to_owned(),
             detail: "no `package.name` is declared".to_owned(),
         })
+}
+
+fn installation_file(root: &Path, file: &str) -> Result<String, BuildRefused> {
+    fs::read_to_string(root.join(file)).map_err(|error| BuildRefused::Installation {
+        file: file.to_owned(),
+        detail: error.to_string(),
+    })
+}
+
+fn installation_dependencies(root: &Path) -> Result<toml::Table, BuildRefused> {
+    let document = installation_file(root, "Cargo.toml")?;
+    let parsed: toml::Table =
+        toml::from_str(&document).map_err(|error| BuildRefused::Installation {
+            file: "Cargo.toml".to_owned(),
+            detail: error.to_string(),
+        })?;
+    parsed
+        .get("workspace")
+        .and_then(|workspace| workspace.get("dependencies"))
+        .and_then(toml::Value::as_table)
+        .cloned()
+        .ok_or_else(|| BuildRefused::Installation {
+            file: "Cargo.toml".to_owned(),
+            detail: "no workspace.dependencies table".to_owned(),
+        })
+}
+
+fn dependency_entries(
+    dependencies: &toml::Table,
+    names: &[&str],
+) -> Result<toml::Table, BuildRefused> {
+    let mut selected = toml::Table::new();
+    for name in names {
+        let value = dependencies
+            .get(*name)
+            .ok_or_else(|| BuildRefused::Installation {
+                file: "Cargo.toml".to_owned(),
+                detail: format!("no workspace dependency `{name}`"),
+            })?;
+        selected.insert((*name).to_owned(), value.clone());
+    }
+    Ok(selected)
 }
 
 #[cfg(test)]

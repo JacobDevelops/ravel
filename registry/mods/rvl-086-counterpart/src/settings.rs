@@ -25,7 +25,7 @@ use ravel_sdk::content::{ContentId, ContentIdError};
 use ravel_sdk::network::{
     Direction, PacketContract, PacketId, PacketReader, PacketWriter, WireError,
 };
-use ravel_sdk::{Declared, JsonValue, Side};
+use ravel_sdk::{Declared, Side};
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
 use crate::matching::Matcher;
@@ -490,6 +490,27 @@ pub struct RepairMaterials {
     /// Whether naming a tool in the table replaces its default materials.
     pub override_mode: bool,
 }
+impl RepairMaterials {
+    fn read(resolved: &LayeredConfiguration, shipped: Self) -> Self {
+        Self {
+            strip_enchantments: REPAIR_STRIP_ENCHANTMENTS
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.strip_enchantments),
+            disable_defaults: REPAIR_DISABLE_DEFAULTS
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.disable_defaults),
+            override_mode: REPAIR_OVERRIDE_MODE
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.override_mode),
+        }
+    }
+}
 
 /// Tool shapes whose repair costs are halved.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -498,6 +519,22 @@ pub struct RepairDiscounts {
     pub digging: bool,
     /// Whether both costs halve for the shearing tool.
     pub shearing: bool,
+}
+impl RepairDiscounts {
+    fn read(resolved: &LayeredConfiguration, shipped: Self) -> Self {
+        Self {
+            digging: REPAIR_CHEAPER_DIGGING
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.digging),
+            shearing: REPAIR_CHEAPER_SHEARING
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.shearing),
+        }
+    }
 }
 
 /// The values in force for one launch.
@@ -591,48 +628,81 @@ impl Settings {
     #[must_use]
     pub fn read(resolved: &LayeredConfiguration, host_namespace: &str) -> Self {
         let shipped = Self::default();
+        let (repair_cost, repair_enchantment_cost) = shipped.read_repair_costs(resolved);
         let mut switches = shipped.switches;
         for (slot, key) in SWITCH_KEYS.iter().enumerate() {
-            if let Some(value) = boolean(resolved, key) {
+            if let Some(value) = key.parse().ok().and_then(|key| resolved.boolean(&key).ok()) {
                 switches[slot] = value;
             }
         }
         Self {
-            tooltip_enabled: boolean(resolved, TOOLTIP_ENABLED).unwrap_or(shipped.tooltip_enabled),
-            tooltip_excluded: text(resolved, TOOLTIP_EXCLUDED)
-                .map_or_else(Matcher::default, |written| Matcher::parse(&written)),
+            tooltip_enabled: TOOLTIP_ENABLED
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.tooltip_enabled),
+            tooltip_excluded: TOOLTIP_EXCLUDED
+                .parse()
+                .ok()
+                .and_then(|key| resolved.text(&key).ok())
+                .map_or_else(Matcher::default, Matcher::parse),
             switches,
-            repair_enabled: boolean(resolved, REPAIR_ENABLED).unwrap_or(shipped.repair_enabled),
-            repair_cost: bounded(resolved, REPAIR_COST, COST_RANGE).unwrap_or(shipped.repair_cost),
-            repair_enchantment_cost: bounded(
-                resolved,
-                REPAIR_ENCHANTMENT_COST,
-                ENCHANTMENT_COST_RANGE,
-            )
-            .unwrap_or(shipped.repair_enchantment_cost),
-            repair_materials: RepairMaterials {
-                strip_enchantments: boolean(resolved, REPAIR_STRIP_ENCHANTMENTS)
-                    .unwrap_or(shipped.repair_materials.strip_enchantments),
-                disable_defaults: boolean(resolved, REPAIR_DISABLE_DEFAULTS)
-                    .unwrap_or(shipped.repair_materials.disable_defaults),
-                override_mode: boolean(resolved, REPAIR_OVERRIDE_MODE)
-                    .unwrap_or(shipped.repair_materials.override_mode),
-            },
-            repair_discounts: RepairDiscounts {
-                digging: boolean(resolved, REPAIR_CHEAPER_DIGGING)
-                    .unwrap_or(shipped.repair_discounts.digging),
-                shearing: boolean(resolved, REPAIR_CHEAPER_SHEARING)
-                    .unwrap_or(shipped.repair_discounts.shearing),
-            },
-            repair_blacklist: text(resolved, REPAIR_BLACKLIST)
-                .map_or_else(Matcher::default, |written| Matcher::parse(&written)),
-            repair_overrides: text(resolved, REPAIR_OVERRIDES)
-                .map_or_else(Table::default, |w| Table::parse(&w, host_namespace)),
-            tweak_nearly_destroyed: boolean(resolved, TWEAK_NEARLY_DESTROYED)
+            repair_enabled: REPAIR_ENABLED
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.repair_enabled),
+            repair_cost,
+            repair_enchantment_cost,
+            repair_materials: RepairMaterials::read(resolved, shipped.repair_materials),
+            repair_discounts: RepairDiscounts::read(resolved, shipped.repair_discounts),
+            repair_blacklist: REPAIR_BLACKLIST
+                .parse()
+                .ok()
+                .and_then(|key| resolved.text(&key).ok())
+                .map_or_else(Matcher::default, Matcher::parse),
+            repair_overrides: REPAIR_OVERRIDES
+                .parse()
+                .ok()
+                .and_then(|key| resolved.text(&key).ok())
+                .map_or_else(Table::default, |written| {
+                    Table::parse(written, host_namespace)
+                }),
+            tweak_nearly_destroyed: TWEAK_NEARLY_DESTROYED
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
                 .unwrap_or(shipped.tweak_nearly_destroyed),
-            tweak_ineffective: text(resolved, TWEAK_INEFFECTIVE)
-                .map_or_else(Matcher::default, |written| Matcher::parse(&written)),
+            tweak_ineffective: TWEAK_INEFFECTIVE
+                .parse()
+                .ok()
+                .and_then(|key| resolved.text(&key).ok())
+                .map_or_else(Matcher::default, Matcher::parse),
         }
+    }
+
+    fn read_repair_costs(&self, resolved: &LayeredConfiguration) -> (u32, u32) {
+        let cost = REPAIR_COST
+            .parse()
+            .ok()
+            .and_then(|key| resolved.integer(&key).ok())
+            .and_then(|value| {
+                u32::try_from(value.clamp(i64::from(COST_RANGE.0), i64::from(COST_RANGE.1))).ok()
+            })
+            .unwrap_or(self.repair_cost);
+        let enchantment_cost = REPAIR_ENCHANTMENT_COST
+            .parse()
+            .ok()
+            .and_then(|key| resolved.integer(&key).ok())
+            .and_then(|value| {
+                u32::try_from(value.clamp(
+                    i64::from(ENCHANTMENT_COST_RANGE.0),
+                    i64::from(ENCHANTMENT_COST_RANGE.1),
+                ))
+                .ok()
+            })
+            .unwrap_or(self.repair_enchantment_cost);
+        (cost, enchantment_cost)
     }
 
     /// Whether one feature switch is on, by its key.
@@ -861,7 +931,7 @@ pub fn publish(table: &mut FlagTable, settings: &Settings, namespace: &str) -> u
 pub fn resolves_on_every_side() -> bool {
     declaration().is_ok_and(|declaration| {
         declaration
-            .settings
+            .settings()
             .iter()
             .all(|setting| matches!(setting.side, SettingSide::Client | SettingSide::Common))
     })
@@ -890,27 +960,40 @@ fn written(matcher: &Matcher) -> String {
         .join(",")
 }
 
-fn value<'a>(resolved: &'a LayeredConfiguration, key: &str) -> Option<&'a JsonValue> {
-    resolved.value(&key.parse().ok()?)
-}
-
-fn boolean(resolved: &LayeredConfiguration, key: &str) -> Option<bool> {
-    value(resolved, key)?.as_bool()
-}
-
-fn text(resolved: &LayeredConfiguration, key: &str) -> Option<String> {
-    Some(value(resolved, key)?.as_str()?.to_owned())
-}
-
-fn bounded(resolved: &LayeredConfiguration, key: &str, range: (u32, u32)) -> Option<u32> {
-    let read = value(resolved, key)?.as_i64()?;
-    let clamped = read.clamp(i64::from(range.0), i64::from(range.1));
-    u32::try_from(clamped).ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typed_reads_apply_repair_boundaries_and_text_matchers() {
+        let document = ravel_sdk::config::ValueDocument::parse(
+            &ravel_sdk::json!({
+                "schemaVersion": 1,
+                "owner": crate::MOD_ID,
+                "values": {
+                    REPAIR_COST: COST_RANGE.1,
+                    REPAIR_ENCHANTMENT_COST: ENCHANTMENT_COST_RANGE.0,
+                    REPAIR_STRIP_ENCHANTMENTS: true,
+                    REPAIR_CHEAPER_DIGGING: true,
+                    TOOLTIP_EXCLUDED: "example:pick",
+                },
+            })
+            .to_string(),
+        )
+        .expect("a legal override document");
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration parses"),
+            Some(&document),
+            None,
+        )
+        .expect("the override values resolve");
+        let settings = Settings::read(&resolved, "example");
+        assert_eq!(settings.repair_cost, COST_RANGE.1);
+        assert_eq!(settings.repair_enchantment_cost, ENCHANTMENT_COST_RANGE.0);
+        assert!(settings.repair_materials.strip_enchantments);
+        assert!(settings.repair_discounts.digging);
+        assert_eq!(settings.tooltip_excluded, Matcher::parse("example:pick"));
+    }
 
     fn round_trip(sent: &Decisive) -> Decisive {
         let bytes = to_bytes(&|writer| sent.write(writer));
@@ -923,7 +1006,7 @@ mod tests {
     #[test]
     fn the_packaged_document_parses_and_declares_twenty_eight_settings() {
         let declaration = declaration().expect("the packaged document parses");
-        assert_eq!(declaration.settings.len(), 28);
+        assert_eq!(declaration.settings().len(), 28);
         for key in CLIENT_KEYS.iter().chain(DECIDING_KEYS.iter()) {
             let parsed = key.parse().expect("every declared key is legal");
             assert!(declaration.setting(&parsed).is_some(), "{key} is declared");

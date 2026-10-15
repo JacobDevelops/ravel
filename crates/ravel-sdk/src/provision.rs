@@ -8,14 +8,14 @@
 //!
 //! ```
 //! use ravel_sdk::provision::{Provided, Provision};
-//! use ravel_sdk::{ModId, VersionRange};
+//! use ravel_sdk::{ModId, Version, VersionRange};
 //!
 //! let provider: ModId = "maths_mod".parse()?;
 //! let consumer: ModId = "shop_mod".parse()?;
 //! let older: ModId = "legacy_mod".parse()?;
 //!
 //! let mut provision = Provision::default();
-//! provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+//! provision.provides(&provider, Provided::new("shared_maths", Version::parse("2.1.0")?));
 //! provision.requires(&consumer, "shared_maths", VersionRange::parse("^2")?);
 //!
 //! // The resolution names the provider rather than only succeeding.

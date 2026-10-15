@@ -104,7 +104,7 @@ impl ValueKind {
 
     /// The name this kind is written under, matching its serialized form.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Boolean => "boolean",
             Self::Integer => "integer",
@@ -138,9 +138,23 @@ fn type_name(value: &Value) -> &'static str {
     }
 }
 
-/// Why a value is not one its setting's [`ValueSchema`] permits.
+/// Why schema validation or typed access to a resolved setting was refused.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueError {
+    /// The owner did not declare this setting.
+    Unknown {
+        /// The requested setting.
+        key: crate::SettingKey,
+    },
+    /// A typed accessor does not match the setting's declared type.
+    AccessKind {
+        /// The accessor's type.
+        expected: ValueKind,
+        /// The schema's type, absent for an unconstrained schema.
+        declared: Option<ValueKind>,
+    },
+    /// An integer cannot be represented as a signed 64-bit value.
+    IntegerRange,
     /// The value has the wrong JSON type.
     Kind {
         /// The type the setting declared.
@@ -182,10 +196,18 @@ pub enum ValueError {
 impl fmt::Display for ValueError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Unknown { key } => write!(formatter, "`{key}` is not a declared setting"),
+            Self::AccessKind { expected, declared } => write!(
+                formatter,
+                "requested {}, but the setting declares {}",
+                expected.as_str(),
+                declared.map_or("no scalar type", ValueKind::as_str)
+            ),
+            Self::IntegerRange => formatter.write_str("the integer does not fit in i64"),
             Self::Kind { expected, found } => write!(
                 formatter,
                 "the setting holds a {}, not a {found}",
-                expected.name()
+                expected.as_str()
             ),
             Self::NotPermitted { permitted } => {
                 let names: Vec<String> = permitted.iter().map(ToString::to_string).collect();
@@ -212,6 +234,34 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{ValueError, ValueKind, ValueSchema};
+    #[test]
+    fn typed_access_errors_render_canonical_types_and_explicit_missing_types() {
+        for (error, expected) in [
+            (
+                ValueError::Unknown {
+                    key: "missing".parse().expect("a valid key"),
+                },
+                "`missing` is not a declared setting",
+            ),
+            (
+                ValueError::AccessKind {
+                    expected: ValueKind::Boolean,
+                    declared: Some(ValueKind::Integer),
+                },
+                "requested boolean, but the setting declares integer",
+            ),
+            (
+                ValueError::AccessKind {
+                    expected: ValueKind::String,
+                    declared: None,
+                },
+                "requested string, but the setting declares no scalar type",
+            ),
+            (ValueError::IntegerRange, "the integer does not fit in i64"),
+        ] {
+            assert_eq!(error.to_string(), expected);
+        }
+    }
 
     fn schema(fragment: &str) -> ValueSchema {
         serde_json::from_str(fragment).expect("a fragment inside the enforced subset")
@@ -234,7 +284,7 @@ mod tests {
             (ValueKind::String, json!("text")),
         ];
         for (kind, value) in &sample {
-            let declared = schema(&format!("{{\"type\":\"{}\"}}", kind.name()));
+            let declared = schema(&format!("{{\"type\":\"{}\"}}", kind.as_str()));
             assert_eq!(declared.check(value), Ok(()), "{kind:?}");
             for (other, candidate) in &sample {
                 if other != kind && !(*kind == ValueKind::Number && *other == ValueKind::Integer) {
@@ -354,7 +404,7 @@ mod tests {
     fn every_kind_names_itself_the_way_it_serializes() {
         for kind in ValueKind::ALL {
             let rendered = serde_json::to_string(&kind).expect("a kind serializes");
-            assert_eq!(rendered, format!("\"{}\"", kind.name()));
+            assert_eq!(rendered, format!("\"{}\"", kind.as_str()));
             assert_eq!(
                 serde_json::from_str::<ValueKind>(&rendered).expect("a kind deserializes"),
                 kind

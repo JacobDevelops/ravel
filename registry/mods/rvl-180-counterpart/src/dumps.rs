@@ -43,7 +43,8 @@ pub const SPRITES: &str = "generated/sprites.txt";
 /// [`crate::Shared::declaration`] reports, and when a file the declaration
 /// generates is not the JSON document it is generated as.
 pub fn documents() -> Result<Vec<(&'static str, String)>, ModError> {
-    let aggregation = Aggregation::conventional().map_err(|error| refused(&error))?;
+    let aggregation =
+        Aggregation::conventional().map_err(|error| ModError::refused(error.to_string()))?;
     let declaration = Shared::declaration(&aggregation)?;
     Ok(vec![
         (DECLARATIONS, declarations_document(&declaration)?),
@@ -66,10 +67,10 @@ pub fn declarations_document(declaration: &ContentDeclaration) -> Result<String,
     for file in declaration.generate().files() {
         let path = file.path().as_str();
         let text = std::str::from_utf8(file.bytes())
-            .map_err(|source| refused(&format!("{path} is not text: {source}")))?;
-        let document: JsonValue = text
-            .parse()
-            .map_err(|source| refused(&format!("{path} is not a JSON document: {source}")))?;
+            .map_err(|source| ModError::refused(format!("{path} is not text: {source}")))?;
+        let document: JsonValue = text.parse().map_err(|source| {
+            ModError::refused(format!("{path} is not a JSON document: {source}"))
+        })?;
         files.push(json!({ "path": path, "document": document }));
     }
     Ok(format!("{}\n", json!({ "files": files })))
@@ -87,7 +88,7 @@ pub fn declarations_document(declaration: &ContentDeclaration) -> Result<String,
 /// Returns [`ModError::Refused`] when a group's spelling is illegal.
 pub fn grouping_document(aggregation: &Aggregation) -> Result<String, ModError> {
     let mut document = String::from("group\tmember\n");
-    for group in grouping::all().map_err(|error| refused(&error))? {
+    for group in grouping::all().map_err(|error| ModError::refused(error.to_string()))? {
         for member in aggregation.resolve(&group).members {
             writeln!(document, "{group}\t{member}").expect("writing to a String cannot fail");
         }
@@ -116,7 +117,7 @@ pub fn sprites_document() -> Result<String, ModError> {
         } else {
             "frame"
         };
-        let path = sprites::sprite_path(name).map_err(|error| refused(&error))?;
+        let path = sprites::sprite_path(name).map_err(|error| ModError::refused(error.to_string()))?;
         writeln!(
             document,
             "{name}\t{group}\t{}\t{}",
@@ -126,14 +127,6 @@ pub fn sprites_document() -> Result<String, ModError> {
         .expect("writing to a String cannot fail");
     }
     Ok(document)
-}
-
-fn refused(detail: &(impl ToString + ?Sized)) -> ModError {
-    ModError::Refused {
-        mod_id: Shared::declared_id().clone(),
-        state: LifecycleState::Constructed,
-        detail: detail.to_string(),
-    }
 }
 
 #[cfg(test)]

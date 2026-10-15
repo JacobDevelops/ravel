@@ -265,6 +265,7 @@ name = "ravel-composed-host"
 version = "0.0.0"
 dependencies = [
  "jni",
+ "ravel-bootstrap",
  "ravel-config",
  "ravel-core",
  "ravel-host-api",
@@ -292,6 +293,7 @@ dependencies = [
 name = "ravel-conformance-tests"
 version = "0.0.0"
 dependencies = [
+ "ravel-bootstrap",
  "ravel-composed-host",
  "ravel-config",
  "ravel-core",
@@ -397,6 +399,7 @@ dependencies = [
  "ravel-core",
  "ravel-host-api",
  "ravel-loader",
+ "ravel-observability",
  "ravel-package",
  "ravel-resolve",
  "serde_json",
@@ -441,6 +444,7 @@ dependencies = [
  "miniz_oxide",
  "ravel-core",
  "serde",
+ "serde_json",
  "sha2",
  "toml",
 ]
@@ -541,8 +545,6 @@ dependencies = [
 name = "ravel-test-mod-commands"
 version = "0.0.0"
 dependencies = [
- "ravel-core",
- "ravel-host-api",
  "ravel-sdk",
 ]
 
@@ -550,9 +552,6 @@ dependencies = [
 name = "ravel-test-mod-configuration"
 version = "0.0.0"
 dependencies = [
- "ravel-config",
- "ravel-core",
- "ravel-host-api",
  "ravel-sdk",
  "serde_json",
 ]
@@ -569,8 +568,6 @@ version = "0.0.0"
 name = "ravel-test-mod-events"
 version = "0.0.0"
 dependencies = [
- "ravel-core",
- "ravel-host-api",
  "ravel-sdk",
 ]
 
@@ -603,8 +600,6 @@ dependencies = [
 name = "ravel-test-mod-noop"
 version = "0.0.0"
 dependencies = [
- "ravel-core",
- "ravel-host-api",
  "ravel-sdk",
 ]
 
@@ -626,8 +621,6 @@ dependencies = [
 name = "ravel-test-mod-registries"
 version = "0.0.0"
 dependencies = [
- "ravel-core",
- "ravel-host-api",
  "ravel-sdk",
 ]
 
@@ -642,10 +635,6 @@ dependencies = [
 name = "ravel-test-mod-resources"
 version = "0.0.0"
 dependencies = [
- "ravel-core",
- "ravel-data",
- "ravel-host-api",
- "ravel-package",
  "ravel-sdk",
 ]
 
@@ -653,9 +642,6 @@ dependencies = [
 name = "ravel-test-mod-saved-data"
 version = "0.0.0"
 dependencies = [
- "ravel-core",
- "ravel-host-api",
- "ravel-save",
  "ravel-sdk",
  "serde",
  "serde_json",

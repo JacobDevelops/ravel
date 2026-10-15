@@ -351,11 +351,7 @@ impl Library {
     }
 
     fn wrong_side(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Running,
-            detail: detail.to_string(),
-        }
+        ModError::refused(detail.to_string())
     }
 }
 
@@ -364,8 +360,6 @@ impl Mod for Library {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         if let Some(fault) = &self.fault {
             return Err(ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state,
                 detail: format!("the built-in kind table was refused: {fault:?}"),
             });
         }
@@ -624,7 +618,7 @@ mod tests {
     #[test]
     fn the_stage_this_library_would_draw_at_is_a_published_one() {
         let order = Library::stage_order(Library::declared_id()).expect("a published stage");
-        assert_eq!(order.at(STAGE.as_str()), [Library::declared_id().clone()]);
+        assert_eq!(order.at(STAGE), [Library::declared_id().clone()]);
     }
 
     #[test]

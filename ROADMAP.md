@@ -294,8 +294,6 @@ ravel/
 │   └── evidence.schema.json
 ├── test-mods/
 │   ├── noop/
-│   ├── dependency-base/
-│   ├── dependency-consumer/
 │   ├── registries/
 │   ├── resources/
 │   ├── events/
@@ -303,8 +301,7 @@ ravel/
 │   ├── configuration/
 │   ├── saved-data/
 │   ├── networking/
-│   ├── inter-mod-service/
-│   └── failure-cases/
+│   └── inter-mod-service/
 ├── tests/
 │   ├── conformance/                 # package, graph, lifecycle and SDK contract suites
 │   ├── minecraft-process/           # real official-Minecraft process harness

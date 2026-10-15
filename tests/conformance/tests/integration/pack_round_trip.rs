@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use ravel_config::{ConfigurationDeclaration, LayeredConfiguration, ValueDocument, file};
 use ravel_core::{LifecycleState, ModId, Side};
 use ravel_data::ContentDeclaration;
-use ravel_host_api::{HostError, HostMod};
+use ravel_host_api::HostMod;
 use ravel_host_runtime::{Member, compose, environment};
 use ravel_pack::{ClosureError, PackDeclaration, ValidatedPack, validate};
 use ravel_package::PackageManifest;
@@ -99,15 +99,20 @@ impl HostMod for Settled {
         &self.id
     }
 
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
         Ok(())
     }
 
-    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
+    fn configuration_declaration(
+        &self,
+    ) -> Result<Option<ConfigurationDeclaration>, ravel_host_api::ModError> {
         Ok(Some(declaration(self.id.as_str())))
     }
 
-    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
+    fn configure(
+        &mut self,
+        resolved: &LayeredConfiguration,
+    ) -> Result<(), ravel_host_api::ModError> {
         *self.applied.lock().unwrap_or_else(PoisonError::into_inner) = resolved
             .value(&LIMIT.parse().expect("a legal setting key"))
             .and_then(serde_json::Value::as_i64);
@@ -171,8 +176,11 @@ fn manifests() -> Vec<PackageManifest> {
 
 fn launch(game: &Path) -> Vec<Option<i64>> {
     let (composed, applied) = members();
-    let (machine, _, configurations, _) =
-        compose(game, SIDE, composed).expect("the composition should start");
+    let ravel_host_runtime::Composition {
+        machine,
+        configurations,
+        ..
+    } = compose(game, SIDE, composed).expect("the composition should start");
 
     for owner in MEMBERS {
         assert_eq!(

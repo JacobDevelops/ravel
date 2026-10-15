@@ -1,43 +1,19 @@
 //! Launch-time profiling opt-in and reports encoded for the Java screen.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
-
 use jni::objects::{JClass, JString};
 use jni::{Env, EnvUnowned};
 use ravel_observability::{Metric, ProfilingReport};
 
-use crate::guard::{HookError, text};
+use crate::guard::HookError;
 use crate::runtime::LoaderRuntime;
 use crate::wire::{VERSION, count, field, flag};
 
 /// The system property a launch turns the collectors on with.
 pub(crate) const SWITCH: &str = "-Dravel.profiling=true";
 
-// Premain sets this before game threads start, so relaxed ordering is sufficient.
-static REQUESTED: AtomicBool = AtomicBool::new(false);
-
-/// The installed runtime, or nothing before one is installed.
-static RUNTIME: Mutex<Option<Arc<LoaderRuntime>>> = Mutex::new(None);
-
-/// Whether this launch asked for the collectors.
-pub(crate) fn requested() -> bool {
-    REQUESTED.load(Ordering::Relaxed)
-}
-
-/// Makes the collectors readable by the profiling screen.
-pub(crate) fn install(runtime: Arc<LoaderRuntime>) {
-    *lock() = Some(runtime);
-}
-
-// The store holds complete runtimes, so poison recovery cannot expose partial state.
-fn lock() -> std::sync::MutexGuard<'static, Option<Arc<LoaderRuntime>>> {
-    RUNTIME.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 /// Encodes the report, or returns nothing before runtime installation.
 fn document() -> Option<String> {
-    document_of(lock().clone().as_deref())
+    document_of(crate::runtime::installed().map(AsRef::as_ref))
 }
 
 /// The report a screen reads from one runtime, or nothing without one.
@@ -81,41 +57,13 @@ fn render(report: &ProfilingReport) -> String {
     count(&mut out, Metric::ALL.len());
     for metric in Metric::ALL {
         let support = metric.support();
-        field(&mut out, metric.name());
+        field(&mut out, metric.as_str());
         field(&mut out, metric.unit());
-        field(&mut out, support.name());
+        field(&mut out, support.as_str());
         field(&mut out, support.detail().unwrap_or(""));
     }
 
     out
-}
-
-/// Only the exact property value "true" opts in; a missing property is off.
-fn requested_by(property: Option<&str>) -> bool {
-    property == Some("true")
-}
-
-/// Records the launch property, accepting null as profiling disabled.
-///
-/// # Panics
-///
-/// Panics become Java `RuntimeException`s rather than unwinding into the JVM.
-#[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelEnableProfiling")]
-pub fn ravel_enable_profiling<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    value: JString<'local>,
-) {
-    env.with_env(|env: &mut Env<'local>| -> Result<(), HookError> {
-        let property = if value.as_raw().is_null() {
-            None
-        } else {
-            Some(text(env, &value)?)
-        };
-        REQUESTED.store(requested_by(property.as_deref()), Ordering::Relaxed);
-        Ok(())
-    })
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 
 /// Hands the screen the whole profiling report.
@@ -145,31 +93,14 @@ mod tests {
     use std::time::Duration;
 
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
-    use ravel_host_api::{GameEvent, HostError, HostMod};
+    use ravel_host_api::{GameEvent, HostMod, ModError};
     use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
     use ravel_minecraft::{HookId, HookKind, HookObserver, HookTarget};
     use ravel_observability::{Metric, Profiler};
 
-    use super::{document_of, requested_by};
+    use super::document_of;
     use crate::runtime::LoaderRuntime;
     use crate::wire::fields;
-
-    #[test]
-    fn a_launch_that_set_no_property_asked_for_nothing() {
-        assert!(!requested_by(None));
-    }
-
-    #[test]
-    fn only_the_word_the_switch_names_turns_the_collectors_on() {
-        assert!(requested_by(Some("true")));
-
-        for otherwise in ["false", "", "TRUE", "1", "yes", "true "] {
-            assert!(
-                !requested_by(Some(otherwise)),
-                "`{otherwise}` is not the switch"
-            );
-        }
-    }
 
     fn mod_id(name: &str) -> ModId {
         name.parse().expect("a valid mod id")
@@ -182,11 +113,11 @@ mod tests {
             &self.0
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn observe(&mut self, _event: GameEvent) -> Result<(), HostError> {
+        fn observe(&mut self, _event: GameEvent) -> Result<(), ModError> {
             Ok(())
         }
     }
@@ -221,7 +152,7 @@ mod tests {
             machine.advance_all(state).expect("a legal step");
         }
         let mods: Vec<Box<dyn HostMod>> = vec![Box::new(Quiet(mod_id("example_mod")))];
-        Arc::new(LoaderRuntime::profiling(
+        Arc::new(LoaderRuntime::with_observers(
             machine,
             mods,
             profiler,
@@ -278,9 +209,9 @@ mod tests {
         let table = &read[read.len() - Metric::ALL.len() * 4..];
         for (index, metric) in Metric::ALL.into_iter().enumerate() {
             let at = index * 4;
-            assert_eq!(table[at], metric.name());
+            assert_eq!(table[at], metric.as_str());
             assert_eq!(table[at + 1], metric.unit());
-            assert_eq!(table[at + 2], metric.support().name());
+            assert_eq!(table[at + 2], metric.support().as_str());
             assert_eq!(table[at + 3], metric.support().detail().unwrap_or(""));
         }
         assert!(

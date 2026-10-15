@@ -165,7 +165,7 @@ impl fmt::Display for ClosureError {
             Self::Dependency { side, source } => write!(
                 formatter,
                 "this pack does not resolve on `{}`: {source}",
-                side.name()
+                side.as_str()
             ),
             Self::ContentMissing { member } => fmt_content_missing(formatter, member),
             Self::ContentUnpinned { owner } => write!(

@@ -157,7 +157,7 @@ impl Entry {
         }
         Self {
             declaration: Self::declaration(),
-            configuration: settings::declaration().map_err(|error| Self::packaging(&error)),
+            configuration: settings::declaration().map_err(|error| ModError::refused(error.to_string())),
             settings: Settings::default(),
             flags: FlagTable::default(),
             registries,
@@ -266,7 +266,7 @@ impl Entry {
     /// Returns [`ModError::Refused`] when the entry's own identity is not a
     /// legal mod id, which for a constant is a packaging failure.
     pub fn shape_world(shaping: &mut WorldShaping) -> Result<(), ModError> {
-        world::shaping(shaping).map_err(|error| Self::packaging(&error))
+        world::shaping(shaping).map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// The service an extension contributes to these registries through.
@@ -278,7 +278,7 @@ impl Entry {
     pub fn contribution_service() -> Result<ServiceId, ModError> {
         Ok(ServiceId::new(
             ContentId::new(Self::declared_id().clone(), CONTRIBUTION_SERVICE)
-                .map_err(|error| Self::packaging(&error))?,
+                .map_err(|error| ModError::refused(error.to_string()))?,
         ))
     }
 
@@ -355,17 +355,9 @@ impl Entry {
         for kind in RECIPE_KINDS {
             declaration
                 .entry(ContentKind::Recipe, kind)
-                .map_err(|error| Self::packaging(&error))?;
+                .map_err(|error| ModError::refused(error.to_string()))?;
         }
         Ok(declaration)
-    }
-
-    fn packaging(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail: detail.to_string(),
-        }
     }
 }
 
@@ -398,7 +390,7 @@ impl Mod for Entry {
         let published = settings::publish(&mut self.flags, &self.settings);
         let declared = settings::published_flags().len();
         if published != declared {
-            return Err(Self::packaging(&format!(
+            return Err(ModError::refused(format!(
                 "{published} of {declared} flags published, and the creative listing is gated on all of them"
             )));
         }
@@ -417,13 +409,13 @@ impl Mod for Entry {
         let service = Self::contribution_service()?;
         ServiceDeclaration::new(Self::declared_id().clone(), [service], [])
             .map(Some)
-            .map_err(|error| Self::packaging(&error))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
         let service = Self::contribution_service()?;
         if request.id != service {
-            return Err(Self::packaging("this entry answers one service"));
+            return Err(ModError::refused("this entry answers one service"));
         }
         Ok(ServiceResponse::new(self.contribute(&request.arguments)))
     }
@@ -431,7 +423,7 @@ impl Mod for Entry {
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         SavedDataDeclaration::new(Self::declared_id().clone(), [machines::DATA_VERSION])
             .map(Some)
-            .map_err(|error| Self::packaging(&error))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
@@ -456,12 +448,12 @@ impl Mod for Entry {
             return Ok(());
         };
         if !plan.steps().is_empty() {
-            return Err(Self::packaging(
+            return Err(ModError::refused(
                 "this build declares one saved-data version and so crosses no step",
             ));
         }
         if envelope.data_version() != machines::DATA_VERSION {
-            return Err(Self::packaging(
+            return Err(ModError::refused(
                 "the world stored a version this build does not read",
             ));
         }

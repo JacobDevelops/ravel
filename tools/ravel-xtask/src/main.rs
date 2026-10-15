@@ -114,7 +114,7 @@ fn generate_sources(root: &Path, kind: &str) -> ExitCode {
         if kind == "locks" {
             generate::regenerate_locks(root, selected.as_deref())
         } else {
-            generate::run_java(root, selected.as_deref()).map(|_| ())
+            generate::generate_java(root, selected.as_deref()).map(|_| ())
         }
     });
     match result {

@@ -2,11 +2,10 @@
 
 //! Registry and content test mod.
 
-use ravel_core::{
-    BlockBehaviour, ContentBehaviour, ContentId, ContentKind, ItemBehaviour, LifecycleState, ModId,
-    RegistryKey,
+use ravel_sdk::content::{
+    BlockBehaviour, ContentBehaviour, ContentId, ContentKind, ItemBehaviour, Registrar, RegistryKey,
 };
-use ravel_host_api::{HostError, HostMod, Registrar};
+use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "registries";
@@ -49,18 +48,14 @@ const fn behaviour(kind: ContentKind) -> Option<ContentBehaviour> {
 /// `ROADMAP.md`'s M3-W1 row asks for content registration to be shown on real
 /// test mods and for duplicate or conflicting claims to fail. This mod is the
 /// success half: it claims three identifiers in its own namespace and records
-/// what the loader accepted. The refusal half lives in
-/// `ravel-test-mod-failure-cases`, because a mod that both succeeds and fails
-/// proves neither cleanly.
-///
-/// Like `ravel-test-mod-noop`, this is a plain Rust value the loader owns and
-/// it names [`HostMod`] directly. How a mod's code arrives in the process is
-/// ADG-2's question, and the SDK facade that will hide this trait is M4-W1's.
+/// what the loader accepted. Refusal coverage lives in this crate's
+/// `a_refused_claim_stops_registration_and_names_the_identifier` test and the
+/// registration-barrier tests in `ravel-loader`.
 ///
 /// # Examples
 ///
 /// ```
-/// use ravel_core::ContentKind;
+/// use ravel_sdk::content::ContentKind;
 /// use ravel_test_mod_registries::RegistriesMod;
 ///
 /// let registries = RegistriesMod::new();
@@ -74,21 +69,14 @@ const fn behaviour(kind: ContentKind) -> Option<ContentBehaviour> {
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RegistriesMod {
-    id: ModId,
     registered: Vec<RegistryKey>,
 }
 
 impl RegistriesMod {
     /// Builds the mod instance the loader drives.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`MOD_ID`] stops being a legal mod id, which would mean this
-    /// mod can no longer be packaged under the identity its manifest declares.
     #[must_use]
     pub fn new() -> Self {
         Self {
-            id: MOD_ID.parse().expect("`MOD_ID` is a legal mod id"),
             registered: Vec::new(),
         }
     }
@@ -112,7 +100,7 @@ impl RegistriesMod {
     pub fn key(&self, kind: ContentKind, path: &str) -> RegistryKey {
         RegistryKey::new(
             kind,
-            ContentId::new(self.id.clone(), path).expect("a legal content path"),
+            ContentId::new(Self::declared_id().clone(), path).expect("a legal content path"),
         )
     }
 
@@ -129,18 +117,15 @@ impl Default for RegistriesMod {
     }
 }
 
-impl HostMod for RegistriesMod {
-    fn id(&self) -> &ModId {
-        &self.id
-    }
-
+#[declare_mod(id = "registries")]
+impl Mod for RegistriesMod {
     /// Accepts every step and does nothing with it.
     ///
     /// # Errors
     ///
     /// Never returns an error. Everything this mod does happens in
-    /// [`HostMod::register`].
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    /// [`Mod::register`].
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
@@ -153,10 +138,13 @@ impl HostMod for RegistriesMod {
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Refused`] naming the identifier the loader would
+    /// Returns a [`ModError`] naming the identifier the loader would
     /// not give it and why.
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
-        for key in self.claims() {
+    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
+        for (kind, path) in CLAIMS {
+            let id = ContentId::new(Self::declared_id().clone(), path)
+                .map_err(|error| ModError::refused(error.to_string()))?;
+            let key = RegistryKey::new(kind, id);
             // Described where there is something to describe, and claimed plainly
             // where there is not. A recipe names no value a registry builds, so
             // there is nothing about it to say.
@@ -164,11 +152,7 @@ impl HostMod for RegistriesMod {
                 Some(behaviour) => registrar.claim_describing(key.clone(), behaviour),
                 None => registrar.claim(key.clone()),
             };
-            claimed.map_err(|refused| HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Constructed,
-                detail: refused.to_string(),
-            })?;
+            claimed.map_err(|error| ModError::refused(error.to_string()))?;
             self.registered.push(key);
         }
         Ok(())
@@ -177,8 +161,8 @@ impl HostMod for RegistriesMod {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{ContentKind, ModId, RegistryKey};
-    use ravel_host_api::{HostMod, Registrar, RegistrationRefused};
+    use ravel_sdk::content::{ContentKind, Registrar, RegistrationRefused, RegistryKey};
+    use ravel_sdk::{Mod, ModId};
 
     use super::{CLAIMS, MOD_ID, RegistriesMod};
 

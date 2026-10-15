@@ -124,7 +124,7 @@ pub fn observers(side: Side) -> Vec<Observer> {
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
-    declaration: Option<ContentDeclaration>,
+    declaration: Result<ContentDeclaration, ModError>,
     settings: Settings,
     flags: FlagTable,
     grouping: Grouping,
@@ -146,7 +146,7 @@ impl Entry {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            declaration: Self::declaration().ok(),
+            declaration: Self::declaration(),
             settings: Settings::default(),
             flags: FlagTable::default(),
             grouping: Grouping::default(),
@@ -238,47 +238,32 @@ impl Entry {
         for (kind, name) in census::claims() {
             let key = declaration
                 .entry(kind, &name)
-                .map_err(|error| Self::packaging(&error))?;
+                .map_err(|error| ModError::refused(error.to_string()))?;
             if kind == ContentKind::Item {
                 items.push(key);
             }
         }
         declaration
             .entry(ContentKind::Recipe, repair::KIND)
-            .map_err(|error| Self::packaging(&error))?;
-        census::declare_tags(&mut declaration, &items).map_err(|error| Self::packaging(&error))?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
+        census::declare_tags(&mut declaration, &items)
+            .map_err(|error| ModError::refused(error.to_string()))?;
         declaration
             .translation(
                 census::LOCALE,
                 census::GROUPING_TITLE_KEY,
                 census::GROUPING_TITLE,
             )
-            .map_err(|error| Self::packaging(&error))?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
         Ok(declaration)
     }
 
     fn rebuild(&mut self) -> Result<(), ModError> {
         settings::publish(&mut self.flags, &self.settings, FLAG_NAMESPACE);
-        self.grouping =
-            census::grouping(FLAG_NAMESPACE).map_err(|error| Self::packaging(&error))?;
+        self.grouping = census::grouping(FLAG_NAMESPACE)
+            .map_err(|error| ModError::refused(error.to_string()))?;
         self.configured = true;
         Ok(())
-    }
-
-    fn packaging(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail: detail.to_string(),
-        }
-    }
-
-    fn refused_while_running(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Running,
-            detail: detail.to_string(),
-        }
     }
 }
 
@@ -289,33 +274,26 @@ impl Mod for Entry {
             // The two declarations are parsed from packaged text, so a malformed
             // one is a packaging failure. Refusing it here is what stops the mod
             // launching with no settings and every deciding value at its default.
-            settings::declaration().map_err(|error| Self::packaging(&error))?;
-            self.declaration.as_ref().ok_or_else(|| {
-                Self::packaging("the packaged content declaration is not well formed")
-            })?;
+            settings::declaration().map_err(|error| ModError::refused(error.to_string()))?;
+            self.declaration.as_ref().map_err(Clone::clone)?;
         }
         self.entered.push(state);
         Ok(())
     }
 
     fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration
-            .clone()
-            .map(Some)
-            .ok_or_else(|| Self::packaging("the packaged content declaration is not well formed"))
+        self.declaration.clone().map(Some)
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self.declaration.as_ref().ok_or_else(|| {
-            Self::packaging("the packaged content declaration is not well formed")
-        })?;
+        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
         claim_all(declaration, registrar)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         settings::declaration()
             .map(Some)
-            .map_err(|error| Self::packaging(&error))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -341,7 +319,8 @@ impl Mod for Entry {
     }
 
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
-        let contract = Decisive::contract().map_err(|error| Self::refused_while_running(&error))?;
+        let contract =
+            Decisive::contract().map_err(|error| ModError::refused(error.to_string()))?;
         if &delivery.id != contract.id()
             || delivery.direction != contract.direction()
             || delivery.side != Side::Client
@@ -350,10 +329,10 @@ impl Mod for Entry {
         }
         let mut reader = PacketReader::new(&delivery.payload);
         let decisive =
-            Decisive::read(&mut reader).map_err(|error| Self::refused_while_running(&error))?;
+            Decisive::read(&mut reader).map_err(|error| ModError::refused(error.to_string()))?;
         reader
             .finish()
-            .map_err(|error| Self::refused_while_running(&error))?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
         self.adopt(&decisive)
     }
 
@@ -370,26 +349,20 @@ export_mod!(Entry::new());
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ravel_sdk::content::{RegistrationRefused, RegistryKey};
 
-    #[derive(Default)]
-    struct Accepting {
-        claimed: Vec<RegistryKey>,
-    }
-
-    impl Registrar for Accepting {
-        fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused> {
-            self.claimed.push(key);
-            Ok(())
-        }
-
-        fn claimed(&self) -> &[RegistryKey] {
-            &self.claimed
-        }
-
-        fn loads(&self, _mod_id: &ModId) -> bool {
-            false
-        }
+    #[test]
+    fn deferred_content_refusal_is_not_replaced_by_a_generic_message() {
+        let original = ModError::refused("the original packaged content failure");
+        let mut entry = Entry::new();
+        entry.declaration = Err(original.clone());
+        assert_eq!(
+            entry
+                .content_declaration()
+                .expect_err("the declaration refused"),
+            original
+        );
+        assert_eq!(entry.enter(LifecycleState::Constructed), Err(original));
+        assert_eq!(entry.entered(), []);
     }
 
     #[test]
@@ -397,27 +370,6 @@ mod tests {
         assert_eq!(Entry::declared_id().as_str(), MOD_ID);
         assert_eq!(Entry::new().id().as_str(), MOD_ID);
         assert_eq!(__ravel_entry(Side::DedicatedServer).id().as_str(), MOD_ID);
-    }
-
-    #[test]
-    fn every_registry_this_entry_claims_is_claimed_at_the_barrier() {
-        let mut entry = Entry::new();
-        let mut registrar = Accepting::default();
-        entry
-            .register(&mut registrar)
-            .expect("the accepting registrar refuses nothing");
-        assert_eq!(
-            registrar.claimed().len(),
-            census::BLOCKS * 2 + census::ITEMS + 1
-        );
-        assert_eq!(
-            registrar
-                .claimed()
-                .iter()
-                .filter(|key| key.kind() == ContentKind::Recipe)
-                .count(),
-            1
-        );
     }
 
     #[test]

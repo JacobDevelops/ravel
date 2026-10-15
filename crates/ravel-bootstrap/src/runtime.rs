@@ -2,14 +2,19 @@
 //! Mod callbacks run under a non-reentrant mutex: they must not call the JVM or re-enter hooks.
 //! Only owned event data reaches mods; no JNI handles are retained.
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+
+use ravel_config::LayeredConfiguration;
 
 use ravel_core::{
-    ContentId, ContentKind, DiagnosticMessage, FailureAttribution, FailureEnvironment, RegistryKey,
-    StructuredFailure,
+    ContentId, ContentKind, DiagnosticMessage, FailureAttribution, FailureEnvironment,
+    FailureSurface, RegistryKey, StructuredFailure,
 };
 use ravel_host_api::{CommandInvocation, GameEvent, HostMod};
-use ravel_loader::{Delivery, LifecycleMachine, ModSurface, broadcast_profiled, route_profiled};
+use ravel_loader::{
+    Delivery, LifecycleMachine, ModSurface, Supplied, broadcast_profiled, route_profiled,
+};
 use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
 use ravel_observability::{PreWorldReport, Profiler, ProfilingReport};
 
@@ -32,6 +37,38 @@ const COMMAND: &str = "command.perform-prefixed";
 /// The loader, and the mods it drives, for as long as the process runs.
 pub struct LoaderRuntime {
     pub(crate) inner: Mutex<Inner>,
+    pub(crate) launch: Option<LaunchContext>,
+}
+
+pub(crate) struct LaunchContext {
+    pub(crate) game_directory: PathBuf,
+    pub(crate) supplied: Supplied,
+    pub(crate) settings: Mutex<crate::settings::Store>,
+}
+
+static RUNTIME: OnceLock<Arc<LoaderRuntime>> = OnceLock::new();
+
+pub(crate) fn installed() -> Option<&'static Arc<LoaderRuntime>> {
+    RUNTIME.get()
+}
+
+/// Reports whether the process-wide runtime has already been installed.
+#[must_use]
+pub fn is_installed() -> bool {
+    installed().is_some()
+}
+
+/// Installs the process-wide host panic reporter once, before invoking mod code.
+///
+/// The default hook is deliberately not chained: its output quotes raw mod text.
+pub fn install_panic_hook() {
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(|| {
+        std::panic::set_hook(Box::new(|panic| {
+            let message = ravel_observability::redact(&panic.to_string());
+            eprintln!("Ravel host panic: {}", message.text());
+        }));
+    });
 }
 
 pub(crate) struct Inner {
@@ -41,6 +78,7 @@ pub(crate) struct Inner {
     pub(crate) persistence: crate::persistence::PersistenceState,
     /// Pre-world failures absent from the lifecycle machine's admitted set.
     pub(crate) report: PreWorldReport,
+    pub(crate) outward: Vec<outward::Action>,
 }
 
 enum Work {
@@ -52,7 +90,7 @@ impl LoaderRuntime {
     /// Owns a driven mod set with profiling disabled and an empty pre-world report.
     #[must_use]
     pub fn new(machine: LifecycleMachine, mods: Vec<Box<dyn HostMod>>) -> Self {
-        Self::profiling(
+        Self::with_observers(
             machine,
             mods,
             Profiler::off(),
@@ -62,21 +100,29 @@ impl LoaderRuntime {
 
     /// Owns a driven mod set with the supplied profiler and pre-world report.
     #[must_use]
-    pub fn profiling(
+    pub fn with_observers(
         machine: LifecycleMachine,
         mods: Vec<Box<dyn HostMod>>,
         profiler: Profiler,
         report: PreWorldReport,
     ) -> Self {
         Self {
+            launch: None,
             inner: Mutex::new(Inner {
                 machine,
                 mods,
                 profiler,
                 persistence: crate::persistence::PersistenceState::default(),
                 report,
+                outward: Vec::new(),
             }),
         }
+    }
+
+    /// Drains only the actions produced by this runtime.
+    pub(crate) fn drain_outward(&self) -> String {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        outward::drain(&mut inner.outward)
     }
 
     /// Reads current collector data and registry claims under the runtime lock.
@@ -86,12 +132,12 @@ impl LoaderRuntime {
         let claims = inner
             .machine
             .order()
-            .map(|mod_id| (mod_id.clone(), inner.machine.registry_claims(mod_id)))
+            .map(|mod_id| (mod_id.clone(), inner.machine.registry_claim_count(mod_id)))
             .collect::<Vec<_>>();
         for (mod_id, count) in claims {
             inner
                 .profiler
-                .registry_claims(&mod_id, count.try_into().unwrap_or(u64::MAX));
+                .record_registry_claims(&mod_id, count.try_into().unwrap_or(u64::MAX));
         }
         inner.profiler.report()
     }
@@ -102,7 +148,7 @@ impl LoaderRuntime {
         let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         (
             ModSurface::of(&inner.machine),
-            inner.report.notices().to_vec(),
+            inner.report.notices().iter().cloned().collect(),
         )
     }
 }
@@ -125,7 +171,7 @@ impl LoaderRuntime {
     pub(crate) fn claim(
         &self,
         mod_id: &ravel_core::ModId,
-        identifier: &str,
+        identifier: &RegistryKey,
     ) -> Result<(), ravel_loader::LifecycleError> {
         self.inner
             .lock()
@@ -137,7 +183,7 @@ impl LoaderRuntime {
     pub(crate) fn describe(
         &self,
         mod_id: &ravel_core::ModId,
-        identifier: &str,
+        identifier: &RegistryKey,
         behaviour: ravel_core::ContentBehaviour,
     ) -> Result<(), ravel_loader::LifecycleError> {
         self.inner
@@ -166,29 +212,45 @@ pub fn pre_world_report() -> PreWorldReport {
 /// Installs a driven mod set for hooks and diagnostic screens.
 ///
 /// # Errors
-/// Returns [`HookError::Unavailable`] if the observer registry is poisoned.
+/// Returns [`HookError::AlreadyInstalled`] for a second launch, or
+/// [`HookError::Unavailable`] if the observer registry is poisoned.
 pub fn install(
     machine: LifecycleMachine,
     mods: Vec<Box<dyn HostMod>>,
     report: PreWorldReport,
+    game_directory: PathBuf,
+    supplied: Supplied,
+    configurations: Vec<LayeredConfiguration>,
+    profiling_requested: bool,
 ) -> Result<(), HookError> {
-    let runtime = Arc::new(LoaderRuntime::profiling(
+    if installed().is_some() {
+        return Err(HookError::AlreadyInstalled);
+    }
+    let settings =
+        crate::settings::Store::new(machine.side(), configurations, Ok(game_directory.clone()));
+    let mut runtime = LoaderRuntime::with_observers(
         machine,
         mods,
-        Profiler::from_switch(crate::profiling::requested()),
+        Profiler::from_switch(profiling_requested),
         report,
-    ));
-    crate::content::install(Arc::clone(&runtime));
-    crate::mods::install(Arc::clone(&runtime));
-    crate::persistence::install(Arc::clone(&runtime));
-    crate::profiling::install(Arc::clone(&runtime));
-    crate::dispatch::register(Box::new(Shared(runtime)))
+    );
+    runtime.launch = Some(LaunchContext {
+        game_directory,
+        supplied,
+        settings: Mutex::new(settings),
+    });
+    let runtime = Arc::new(runtime);
+    crate::dispatch::register_with(Box::new(Shared(Arc::clone(&runtime))), || {
+        RUNTIME
+            .set(runtime)
+            .map_err(|_| HookError::AlreadyInstalled)
+    })
 }
 
 impl HookObserver for LoaderRuntime {
     /// Delivers hooks without vetoing game execution; mod failures update the machine.
     fn observe(&self, target: &HookTarget, values: &[HookValue<'_>]) -> HookOutcome {
-        // A delivery panic precedes machine mutation; recover poison without attributing that panic.
+        // Mod callback panics are attributed by loader delivery before this lock is released.
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(work) = inner.work(target, values) {
             inner.deliver(&work);
@@ -253,34 +315,52 @@ impl Inner {
         self.carry_outward();
     }
 
-    // Drain every mod, including failed deliveries; discard server audio to bound pending requests.
+    // Failed owners are never called again; discard server audio to bound pending requests.
     fn carry_outward(&mut self) {
         let plays = !self.machine.side().is_server();
-        for host in &mut self.mods {
-            for request in host.take_play_requests() {
-                if plays {
-                    outward::play(request.owner().as_str(), request.entry());
+        for index in 0..self.mods.len() {
+            let host = &mut self.mods[index];
+            let Ok(state) = self.machine.state(host.id()) else {
+                continue;
+            };
+            if state == ravel_core::LifecycleState::Failed {
+                continue;
+            }
+            let Ok(entry) = self.machine.entry(host.id()) else {
+                continue;
+            };
+            let requests =
+                ravel_loader::callback(&entry.mod_id, state, || Ok(host.take_play_requests()));
+            match requests {
+                Ok(requests) => {
+                    if plays {
+                        self.outward.extend(requests.into_iter().map(|request| {
+                            outward::play(request.owner().as_str(), request.entry())
+                        }));
+                    }
+                }
+                Err(failure) => {
+                    let owner = failure.mod_id().clone();
+                    if let Err(error) = self.record_failure(&owner, &failure, None) {
+                        self.report
+                            .refuse(&ravel_observability::Subject::of(owner), &error);
+                    }
                 }
             }
         }
     }
 
     fn record(&mut self, delivery: &Delivery, work: &Work) {
-        let Some(failure) = delivery.failure() else {
+        let Some((owner, failure)) = delivery.failed_by().zip(delivery.failure()) else {
             return;
         };
-        let owner = match work {
-            Work::Event(event) => self
-                .machine
-                .audience(*event)
-                .get(delivery.received().len())
-                .cloned(),
-            Work::Command(invocation) => self.machine.owner_of(&invocation.key).cloned(),
-        }
-        .expect("a delivered failure belongs to a dispatched owner");
-        if let Err(error) = self.record_failure(&owner, failure) {
+        let surface = match work {
+            Work::Event(event) => FailureSurface::Event(event.as_str().to_owned()),
+            Work::Command(invocation) => FailureSurface::Registry(invocation.key.clone()),
+        };
+        if let Err(error) = self.record_failure(owner, failure, Some(surface)) {
             self.report
-                .refuse(&ravel_observability::Subject::of(owner), &error);
+                .refuse(&ravel_observability::Subject::of(owner.clone()), &error);
         }
     }
 
@@ -288,6 +368,7 @@ impl Inner {
         &mut self,
         owner: &ravel_core::ModId,
         failure: &ravel_host_api::HostError,
+        surface: Option<FailureSurface>,
     ) -> Result<(), ravel_loader::LifecycleError> {
         let state = self.machine.state(owner)?;
         if state == ravel_core::LifecycleState::Failed {
@@ -299,7 +380,7 @@ impl Inner {
             dependency_chain: Vec::new(),
             state,
             kind: failure.failure_kind(),
-            surface: None,
+            surface,
             environment: environment(),
             // Redaction belongs to the report surface.
             message: DiagnosticMessage::raw(failure.to_string()),

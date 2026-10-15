@@ -2,8 +2,8 @@
 
 //! Lifecycle hook and event-ordering test mod.
 
-use ravel_core::{LifecycleState, ModId};
-use ravel_host_api::{GameEvent, HostError, HostMod};
+use ravel_sdk::events::GameEvent;
+use ravel_sdk::{LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "events";
@@ -24,14 +24,11 @@ pub const MOD_ID: &str = "events";
 /// — and a test asserting an empty log could no longer tell which of the two
 /// kept the event out.
 ///
-/// Like `ravel-test-mod-registries`, this names [`HostMod`] directly. The SDK
-/// facade that will hide the trait is M4-W1's.
-///
 /// # Examples
 ///
 /// ```
-/// use ravel_core::LifecycleState;
-/// use ravel_host_api::{GameEvent, HostMod};
+/// use ravel_sdk::events::GameEvent;
+/// use ravel_sdk::{LifecycleState, Mod};
 /// use ravel_test_mod_events::EventsMod;
 ///
 /// let mut events = EventsMod::new();
@@ -43,7 +40,6 @@ pub const MOD_ID: &str = "events";
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EventsMod {
-    id: ModId,
     steps: Vec<LifecycleState>,
     observed: Vec<GameEvent>,
     refuses: Option<GameEvent>,
@@ -51,15 +47,9 @@ pub struct EventsMod {
 
 impl EventsMod {
     /// Builds the mod instance the loader drives.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`MOD_ID`] stops being a legal mod id, which would mean this
-    /// mod can no longer be packaged under the identity its manifest declares.
     #[must_use]
     pub fn new() -> Self {
         Self {
-            id: MOD_ID.parse().expect("`MOD_ID` is a legal mod id"),
             steps: Vec::new(),
             observed: Vec::new(),
             refuses: None,
@@ -71,10 +61,6 @@ impl EventsMod {
     /// This exists so a process test can end a broadcast part-way and assert on
     /// what the mods before and after it saw. A mod that failed unconditionally
     /// could not be driven to [`LifecycleState::Running`] to fail there.
-    ///
-    /// # Panics
-    ///
-    /// Panics for the reason [`Self::new`] does.
     #[must_use]
     pub fn refusing(event: GameEvent) -> Self {
         Self {
@@ -114,11 +100,8 @@ impl Default for EventsMod {
     }
 }
 
-impl HostMod for EventsMod {
-    fn id(&self) -> &ModId {
-        &self.id
-    }
-
+#[declare_mod(id = "events")]
+impl Mod for EventsMod {
     /// Records the step and accepts it.
     ///
     /// # Errors
@@ -126,7 +109,7 @@ impl HostMod for EventsMod {
     /// Never returns an error. This mod's only refusal is on an event, because
     /// a mod that refused a lifecycle step would never reach the state in which
     /// events are delivered.
-    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.steps.push(state);
         Ok(())
     }
@@ -135,16 +118,14 @@ impl HostMod for EventsMod {
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Refused`] for the event passed to [`Self::refusing`],
+    /// Returns a [`ModError`] for the event passed to [`Self::refusing`],
     /// naming it. The event is not recorded, so a test can tell a refusal apart
     /// from an event that was seen and then failed on.
-    fn observe(&mut self, event: GameEvent) -> Result<(), HostError> {
+    fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
         if self.refuses == Some(event) {
-            return Err(HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Running,
-                detail: format!("`{event}` is refused by this instance"),
-            });
+            return Err(ModError::refused(format!(
+                "`{event}` is refused by this instance"
+            )));
         }
         self.observed.push(event);
         Ok(())
@@ -153,8 +134,8 @@ impl HostMod for EventsMod {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{LifecycleState, ModId};
-    use ravel_host_api::{GameEvent, HostMod};
+    use ravel_sdk::events::GameEvent;
+    use ravel_sdk::{LifecycleState, Mod, ModId};
 
     use super::{EventsMod, MOD_ID};
 
@@ -227,8 +208,6 @@ mod tests {
             text.contains(GameEvent::ResourcesReloaded.as_str()),
             "{text}"
         );
-        assert_eq!(error.state(), LifecycleState::Running);
-        assert_eq!(error.mod_id().as_str(), MOD_ID);
 
         // The refused event is absent, so a test can tell a refusal apart from
         // an event that arrived and then failed.

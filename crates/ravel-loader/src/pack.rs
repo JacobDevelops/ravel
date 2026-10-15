@@ -284,7 +284,7 @@ mod tests {
     use crate::resources::{Supplied, open_resources};
     use ravel_core::{LifecycleState, ModId, Side, SideSet};
     use ravel_data::ContentDeclaration;
-    use ravel_host_api::{HostError, HostMod};
+    use ravel_host_api::{HostMod, ModError};
 
     use super::{Half, PACK_DIRECTORY, write_pack};
 
@@ -313,11 +313,11 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn content_declaration(&self) -> Result<Option<ContentDeclaration>, HostError> {
+        fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
             let mut declaration = ContentDeclaration::new(self.id.clone());
             for (path, bytes) in &self.supplies {
                 declaration
@@ -332,7 +332,7 @@ mod tests {
     }
 
     fn supplied(mods: &[(&str, &[(&str, &str)])]) -> Supplied {
-        let hosts: Vec<Box<dyn HostMod>> = mods
+        let mut hosts: Vec<Box<dyn HostMod>> = mods
             .iter()
             .map(|(name, paths)| -> Box<dyn HostMod> {
                 Box::new(Supplying {
@@ -354,7 +354,9 @@ mod tests {
             })
             .collect();
         let machine = LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan");
-        open_resources(&machine, &hosts).expect("every declaration is its own")
+        let mut borrowed: Vec<&mut dyn HostMod> =
+            hosts.iter_mut().map(|host| &mut **host).collect();
+        open_resources(&machine, &mut borrowed).expect("every declaration is its own")
     }
 
     fn timestamps(root: &std::path::Path) -> Vec<(String, std::time::SystemTime)> {

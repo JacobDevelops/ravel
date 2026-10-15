@@ -32,11 +32,7 @@
 //!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
 //!         ServiceDeclaration::new(Self::declared_id().clone(), [prices()], [])
 //!             .map(Some)
-//!             .map_err(|error| ModError::Refused {
-//!                 mod_id: Self::declared_id().clone(),
-//!                 state: LifecycleState::Constructed,
-//!                 detail: error.to_string(),
-//!             })
+//!             .map_err(|error| ModError::refused(error.to_string()))
 //!     }
 //!
 //!     fn answer_service(
@@ -68,11 +64,7 @@
 //!     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
 //!         ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
 //!             .map(Some)
-//!             .map_err(|error| ModError::Refused {
-//!                 mod_id: Self::declared_id().clone(),
-//!                 state: LifecycleState::Constructed,
-//!                 detail: error.to_string(),
-//!             })
+//!             .map_err(|error| ModError::refused(error.to_string()))
 //!     }
 //!
 //!     fn use_services(
@@ -81,11 +73,7 @@
 //!     ) -> Result<(), ModError> {
 //!         let answer = directory
 //!             .call(&ServiceRequest::new(prices(), json!({ "item": "lantern" })))
-//!             .map_err(|failed| ModError::Refused {
-//!                 mod_id: Self::declared_id().clone(),
-//!                 state: LifecycleState::Constructed,
-//!                 detail: failed.to_string(),
-//!             })?;
+//!             .map_err(|error| ModError::refused(error.to_string()))?;
 //!         self.lantern_price = answer.value().as_u64().unwrap_or_default();
 //!         Ok(())
 //!     }
@@ -133,11 +121,7 @@
 //!             [landmarks()],
 //!         )
 //!         .map(Some)
-//!         .map_err(|error| ModError::Refused {
-//!             mod_id: Self::declared_id().clone(),
-//!             state: LifecycleState::Constructed,
-//!             detail: error.to_string(),
-//!         })
+//!         .map_err(|error| ModError::refused(error.to_string()))
 //!     }
 //!
 //!     fn use_services(
@@ -152,11 +136,7 @@
 //!                 Ok(())
 //!             }
 //!             // A provider that was reached and said no is a different event.
-//!             Err(failed) => Err(ModError::Refused {
-//!                 mod_id: Self::declared_id().clone(),
-//!                 state: LifecycleState::Constructed,
-//!                 detail: failed.to_string(),
-//!             }),
+//!             Err(failed) => Err(ModError::refused(failed.to_string())),
 //!         }
 //!     }
 //! }

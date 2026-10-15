@@ -124,7 +124,7 @@ impl Shared {
                 let declaration = Self::declaration(&aggregation);
                 (aggregation, declaration)
             }
-            Err(source) => (Aggregation::default(), Err(Self::packaging(&source))),
+            Err(source) => (Aggregation::default(), Err(ModError::refused(source.to_string()))),
         };
         Self {
             side,
@@ -208,7 +208,7 @@ impl Shared {
     pub fn publish(&mut self, readout: &Readout) -> Result<bool, ModError> {
         self.outbox
             .queue(readout, self.side)
-            .map_err(|error| Self::refused_while_running(&error))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Hands over the encoded readouts and empties the queue.
@@ -244,13 +244,13 @@ impl Shared {
         for root in commands::ROOTS {
             declaration
                 .entry(ContentKind::Command, root)
-                .map_err(|error| Self::packaging(&error))?;
+                .map_err(|error| ModError::refused(error.to_string()))?;
         }
 
-        for group in grouping::all().map_err(|error| Self::packaging(&error))? {
+        for group in grouping::all().map_err(|error| ModError::refused(error.to_string()))? {
             let resolved = aggregation.resolve(&group);
             if resolved.too_deep {
-                return Err(Self::packaging(&format!(
+                return Err(ModError::refused(format!(
                     "{group} names a group past the reference depth bound, so the members it \
                      declares would be short of what it holds"
                 )));
@@ -258,40 +258,24 @@ impl Shared {
             for member in resolved.members {
                 declaration
                     .tag(&group, &member)
-                    .map_err(|error| Self::packaging(&error))?;
+                    .map_err(|error| ModError::refused(error.to_string()))?;
             }
         }
 
         for (key, line) in presentation::LINES {
             declaration
                 .translation(presentation::LOCALE, key, line)
-                .map_err(|error| Self::packaging(&error))?;
+                .map_err(|error| ModError::refused(error.to_string()))?;
         }
 
         declaration
             .resource(
-                sprites::atlas_path().map_err(|error| Self::packaging(&error))?,
+                sprites::atlas_path().map_err(|error| ModError::refused(error.to_string()))?,
                 sprites::atlas_document(),
             )
-            .map_err(|error| Self::packaging(&error))?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
 
         Ok(declaration)
-    }
-
-    fn packaging(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail: detail.to_string(),
-        }
-    }
-
-    fn refused_while_running(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Running,
-            detail: detail.to_string(),
-        }
     }
 }
 
@@ -324,15 +308,13 @@ impl Mod for Shared {
 
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
         let root = invocation.key.id().path();
-        let command = Command::from_root(root).ok_or_else(|| ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Running,
-            detail: format!("`{root}` is not a command this package claimed"),
+        let command = Command::from_root(root).ok_or_else(|| {
+            ModError::refused(format!("`{root}` is not a command this package claimed"))
         })?;
         let report = self
             .console
             .run(command, invocation.side, &invocation.arguments)
-            .map_err(|error| Self::refused_while_running(&error))?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
         // The reclamation is the release, so retaining its own report would
         // refill what the two readings it just reported were readings around.
         if command != Command::Reclaim {
@@ -346,10 +328,10 @@ impl Mod for Shared {
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
         let readout = delivery
             .decode::<Readout>()
-            .map_err(|error| Self::refused_while_running(&error))?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
         self.client
             .get_mut(self.side)
-            .map_err(|error| Self::refused_while_running(&error))?
+            .map_err(|error| ModError::refused(error.to_string()))?
             .hold(readout);
         Ok(())
     }

@@ -22,9 +22,7 @@
 
 use std::fmt;
 
-use ravel_sdk::config::{
-    ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingKey,
-};
+use ravel_sdk::config::{ConfigurationDeclaration, DeclarationError, LayeredConfiguration};
 use ravel_sdk::{JsonValue, json};
 
 /// The key debug logging is turned on and off under.
@@ -285,13 +283,24 @@ impl Settings {
     #[must_use]
     pub fn read(resolved: &LayeredConfiguration) -> Self {
         let mut settings = Self::default();
-        if let Some(value) = boolean(resolved, DEBUG_LOGGING) {
+        if let Some(value) = DEBUG_LOGGING
+            .parse()
+            .ok()
+            .and_then(|key| resolved.boolean(&key).ok())
+        {
             settings.debug_logging = value;
         }
-        if let Some(value) = boolean(resolved, RECORD_OWNER) {
+        if let Some(value) = RECORD_OWNER
+            .parse()
+            .ok()
+            .and_then(|key| resolved.boolean(&key).ok())
+        {
             settings.record_owner = value;
         }
-        if let Some(value) = integer(resolved, INFUSION_CEILING)
+        if let Some(value) = INFUSION_CEILING
+            .parse()
+            .ok()
+            .and_then(|key| resolved.integer(&key).ok())
             && (1..=i64::from(i32::MAX)).contains(&value)
         {
             settings.infusion_ceiling = value;
@@ -346,8 +355,13 @@ impl Colours {
         }
         let mut read = Vec::with_capacity(COLOUR_COUNT);
         for role in &COLOURS {
-            match text(resolved, &role.key()) {
-                Some(written) => read.push(parse_colour(&written)?),
+            match role
+                .key()
+                .parse()
+                .ok()
+                .and_then(|key| resolved.text(&key).ok())
+            {
+                Some(written) => read.push(parse_colour(written)?),
                 None => read.push(0xFF00_0000 | (role.default & 0x00FF_FFFF)),
             }
         }
@@ -368,30 +382,11 @@ impl Colours {
     }
 }
 
-fn key_of(key: &str) -> Option<SettingKey> {
-    key.parse().ok()
-}
-
-fn boolean(resolved: &LayeredConfiguration, key: &str) -> Option<bool> {
-    resolved.value(&key_of(key)?)?.as_bool()
-}
-
-fn integer(resolved: &LayeredConfiguration, key: &str) -> Option<i64> {
-    resolved.value(&key_of(key)?)?.as_i64()
-}
-
-fn text(resolved: &LayeredConfiguration, key: &str) -> Option<String> {
-    resolved
-        .value(&key_of(key)?)?
-        .as_str()
-        .map(ToOwned::to_owned)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use ravel_sdk::Side;
-    use ravel_sdk::config::ValueDocument;
+    use ravel_sdk::config::{SettingKey, ValueDocument};
 
     fn resolved(values: &str) -> LayeredConfiguration {
         let declaration = declaration().expect("the packaged declaration is well formed");

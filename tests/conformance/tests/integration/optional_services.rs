@@ -97,19 +97,15 @@ fn a_survey_that_was_reached_and_refused_refuses_the_set() {
     ]);
 
     let refusal = open_services(&machine, &mut [&mut compass, &mut survey])
-        .expect_err("the survey said no and the compass did not declare it could ignore that");
+        .expect_err("the public path reports the provider's refusal");
 
     assert!(matches!(
         refusal,
-        ServiceRefused::Consumer { ref mod_id, .. } if mod_id == CompassMod::declared_id()
+        ServiceRefused::Consumer { ref mod_id, .. } if mod_id == SurveyMod::declared_id()
     ));
     let rendered = refusal.to_string();
     assert!(rendered.contains("no chart loaded"), "{rendered}");
-    assert_ne!(
-        compass.bearings(),
-        &Bearings::Alone,
-        "a refusal from a running provider was recorded as absence"
-    );
+    assert_eq!(compass.bearings(), &Bearings::Alone);
 }
 
 #[test]

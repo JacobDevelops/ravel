@@ -42,31 +42,13 @@ fn entry(mod_id: &ModId) -> LifecycleEntry {
 // Exercise the real registration barrier even though these mods declare no content.
 fn drive(mods: &mut [&mut dyn HostMod]) -> LifecycleMachine {
     let entries: Vec<LifecycleEntry> = mods.iter().map(|host| entry(host.id())).collect();
-    let mut machine = LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan");
-
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-        for host in mods.iter_mut() {
-            host.enter(state).expect("the mod accepts every step");
-        }
-    }
-
-    let order: Vec<ModId> = machine.order().cloned().collect();
-    for mod_id in &order {
-        let mut window = machine
-            .registration_window(mod_id)
-            .expect("the plan names it");
-        if let Some(host) = mods.iter_mut().find(|host| host.id() == mod_id) {
-            host.register(&mut window)
-                .expect("a mod that claims nothing is refused nothing");
-        }
-    }
-    machine
+    ravel_loader::drive_borrowed(
+        Side::DedicatedServer,
+        &ravel_host_runtime::environment(),
+        entries,
+        mods,
+    )
+    .expect("the production driver starts the set")
 }
 
 #[test]
@@ -92,10 +74,10 @@ fn every_mod_written_against_a_new_module_is_an_ordinary_mod_to_the_loader() {
     assert_eq!(
         server_data.entered(),
         [
-            LifecycleState::Validated,
-            LifecycleState::Resolved,
             LifecycleState::Loaded,
             LifecycleState::Constructed,
+            LifecycleState::Registered,
+            LifecycleState::Running,
         ]
     );
     assert_eq!(interception.entered().len(), 4);
@@ -217,7 +199,7 @@ fn an_event_for_a_sound_nothing_declares_is_refused_where_it_is_written() {
     let refusal = declared
         .event("a_sound_nobody_declared")
         .expect_err("an event with nothing to play is refused at declaration");
-    assert_eq!(refusal.unknown_entry(), "a_sound_nobody_declared");
+    assert_eq!(refusal.unknown_entry(), Some("a_sound_nobody_declared"));
 }
 
 #[test]
@@ -226,7 +208,7 @@ fn a_mod_that_declared_it_follows_another_is_entered_after_it_at_every_stage() {
     let order = RenderStagesMod::behind(&partner).expect("the pair resolves");
 
     for stage in RenderStagesMod::stages() {
-        let at = order.at(stage.as_str());
+        let at = order.at(stage);
         let theirs = at
             .iter()
             .position(|entered| entered == &partner)
@@ -262,7 +244,7 @@ fn a_contribution_to_a_stage_nothing_publishes_is_refused_at_declaration() {
     let refusal = stages
         .contribute_checked(&id("probe"), "a_stage_nobody_publishes")
         .expect_err("a stage nothing publishes cannot be contributed to");
-    assert_eq!(refusal.unknown_stage(), "a_stage_nobody_publishes");
+    assert_eq!(refusal.unknown_stage(), Some("a_stage_nobody_publishes"));
 }
 
 #[test]
@@ -326,7 +308,7 @@ fn round(guarding: bool) -> ravel_sdk::interception::Round {
         asked: false,
     };
     let mut mods: Vec<&mut dyn HostMod> = vec![&mut follower, &mut guard];
-    let machine = interception_machine();
+    let machine = interception_machine(&mut mods);
 
     let round = ravel_loader::intercept(&machine, &mut mods, POINT).expect("a legal set");
     assert_eq!(
@@ -337,7 +319,7 @@ fn round(guarding: bool) -> ravel_sdk::interception::Round {
     round
 }
 
-fn interception_machine() -> LifecycleMachine {
+fn interception_machine(mods: &mut [&mut dyn HostMod]) -> LifecycleMachine {
     let entries = [InterceptionMod::declared_id().clone(), id("alpha_follower")]
         .into_iter()
         .map(|mod_id| LifecycleEntry {
@@ -347,18 +329,13 @@ fn interception_machine() -> LifecycleMachine {
             saved_data_versions: BTreeSet::new(),
         })
         .collect();
-    let mut machine = LifecycleMachine::new(Side::IntegratedServer, entries).expect("a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-        LifecycleState::Registered,
-        LifecycleState::Running,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
-    machine
+    ravel_loader::drive_borrowed(
+        Side::IntegratedServer,
+        &ravel_host_runtime::environment(),
+        entries,
+        mods,
+    )
+    .expect("the production driver starts the interception mods")
 }
 
 #[test]
@@ -413,7 +390,11 @@ fn a_consumer_binds_to_the_one_provider_at_a_version_inside_the_range_it_asked_f
 fn two_mods_providing_one_library_are_refused_at_resolution_naming_both() {
     let rival = id("rival_probe");
 
-    let refusal = ProvisionMod::beside(&rival, VERSION).expect_err("one launch takes one provider");
+    let refusal = ProvisionMod::beside(
+        &rival,
+        Version::parse(VERSION).expect("the packaged version is valid"),
+    )
+    .expect_err("one launch takes one provider");
 
     assert_eq!(refusal.library(), LIBRARY);
     assert_eq!(
@@ -446,7 +427,10 @@ fn a_required_library_nothing_provides_is_refused_before_anything_runs() {
     let consumer = id("consumer_probe");
 
     let mut provision = Provision::default();
-    provision.provides(&consumer, Provided::new("shared_words", "1.0.0"));
+    provision.provides(
+        &consumer,
+        Provided::new("shared_words", "1.0.0".parse().expect("a valid version")),
+    );
     provision.requires(&consumer, "shared_numbers", range("^2"));
 
     let refusal = provision

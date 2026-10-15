@@ -75,55 +75,6 @@ impl Mod for Silent {
 }
 "#;
 
-const HOST_API_SOURCE: &str = r#"#![forbid(unsafe_code)]
-
-//! A mod that reaches the host-facing surface, built on the player's machine.
-
-use ravel_core::{LifecycleState, ModId};
-use ravel_host_api::{HostError, HostMod};
-
-/// The mod this package builds.
-pub struct Installed {
-    id: ModId,
-}
-
-impl Default for Installed {
-    fn default() -> Self {
-        Self {
-            id: "{id}".parse().expect("the packaged identity is a legal mod id"),
-        }
-    }
-}
-
-/// Records, from inside this mod's own body, that it was entered.
-fn record(mark: &str) {
-    use std::io::Write as _;
-
-    let Ok(path) = std::env::var("RAVEL_PROOF") else {
-        return;
-    };
-    let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) else {
-        return;
-    };
-    let _ = writeln!(file, "{mark}");
-}
-
-impl HostMod for Installed {
-    fn id(&self) -> &ModId {
-        &self.id
-    }
-
-    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
-        if state == LifecycleState::Running {
-            record("host-api running");
-        }
-        Ok(())
-    }
-}
-
-ravel_sdk::export_mod!(Installed::default());
-"#;
-
 const RECORD: &[u8] = br#"{"origin":"example"}"#;
 
 fn game() -> String {
@@ -298,6 +249,36 @@ fn the_generated_host_names_every_installed_package_in_mod_id_order() {
         source.contains("include_str!(\"../../mods/zzz/package.json\")"),
         "{source}"
     );
+    assert!(
+        source.contains("profiling_requested: jni::sys::jboolean"),
+        "{source}"
+    );
+    assert!(
+        source.contains(
+            "initialize(named, || members(named), profiling_requested != jni::sys::JNI_FALSE)"
+        ),
+        "{source}"
+    );
+    assert!(
+        source.contains("ravel_bootstrap_runtime::install_panic_hook();"),
+        "{source}"
+    );
+    assert!(
+        source.find("install_panic_hook();").expect("panic hook")
+            < source.find("members(named)").expect("member callbacks"),
+        "{source}"
+    );
+    assert!(
+        source.contains("ravel_host_runtime::side(side).and_then(|named|"),
+        "{source}"
+    );
+    assert!(source.contains("env.throw(error.redacted())?;"), "{source}");
+    assert!(!source.contains("throw_new"), "{source}");
+
+    let agent = include_str!("../../../jvm/bootstrap/dev/ravel/jvm/Agent.java");
+    assert!(agent.contains(
+        "Hook.ravelInitialize(named, \"true\".equals(System.getProperty(\"ravel.profiling\")))"
+    ));
 
     let workspace = &plan.files()["Cargo.toml"];
     assert!(workspace.contains("\"mods/zzz\""), "{workspace}");
@@ -418,16 +399,6 @@ fn compiling_proof(cache: &Path) {
         "installed-mod",
         EXPORTING_SOURCE,
     );
-    install_with(
-        &instance,
-        "host-api-1.0.0",
-        "host_api_mod",
-        "host-api-mod",
-        HOST_API_SOURCE,
-        "ravel-core.workspace = true\n\
-         ravel-host-api.workspace = true\n\
-         ravel-sdk.workspace = true\n",
-    );
 
     install_example(&instance, "content-mod");
 
@@ -459,6 +430,8 @@ fn compiling_proof(cache: &Path) {
 
     a_second_instance_keeps_its_own_host(&library, cache);
     the_examples_this_repository_ships_install_and_compile(cache);
+    a_package_naming_internal_workspace_dependencies_refuses(cache);
+    a_registry_mod_with_explicit_third_party_dependencies_compiles(cache);
     a_package_that_names_no_value_refuses(cache);
     a_version_naming_no_tracked_directory_refuses(&plan, &instance, cache);
     fs::remove_dir_all(&instance).expect("cleanup");
@@ -508,8 +481,11 @@ const DRIVER_SOURCE: &str = "fn main() {\n\
          \x20   let game = std::env::args().nth(1).expect(\"a game directory\");\n\
          \x20   // The library name the generated host declares, which is the\n\
          \x20   // name the JVM loads and therefore the name a dependent links.\n\
+         \x20   ravel_bootstrap_runtime::install_panic_hook();\n\
          \x20   let members = ravel_bootstrap::members(ravel_core::Side::Client);\n\
-         \x20   let (machine, _, _, resources) = ravel_host_runtime::compose(\n\
+         \x20   let ravel_host_runtime::Composition {\n\
+         \x20       machine, mods, configurations, resources,\n\
+         \x20   } = ravel_host_runtime::compose(\n\
          \x20       std::path::Path::new(&game),\n\
          \x20       ravel_core::Side::Client,\n\
          \x20       members,\n\
@@ -524,12 +500,14 @@ const DRIVER_SOURCE: &str = "fn main() {\n\
          \x20   let game = std::path::Path::new(&game);\n\
          \x20   ravel_host_runtime::write_resource_pack(game, &resources)\n\
          \x20       .expect(\"the generated host writes its pack\");\n\
-         \x20   ravel_host_runtime::install_packs(resources);\n\
          \x20   let world = game.join(\"saves\").join(\"Driven\");\n\
          \x20   std::fs::create_dir_all(&world).expect(\"a world directory\");\n\
-         \x20   ravel_host_runtime::write_world_pack(&world)\n\
-         \x20       .expect(\"the generated host writes a world pack\")\n\
-         \x20       .expect(\"a host that installed a set writes one\");\n\
+         \x20   ravel_host_runtime::write_world_pack(&resources, &world)\n\
+         \x20       .expect(\"the generated host writes a world pack\");\n\
+         \x20   ravel_bootstrap_runtime::install(\n\
+         \x20       machine, mods, ravel_bootstrap_runtime::pre_world_report(),\n\
+         \x20       game.to_path_buf(), resources, configurations, false,\n\
+         \x20   ).expect(\"the generated host installs its runtime\");\n\
          }\n";
 
 fn the_written_packs_hold_the_examples_content(instance: &Path) {
@@ -632,7 +610,8 @@ fn write_driver(instance: &Path) -> PathBuf {
              [dependencies]\n\
              ravel-core = {{ path = \"{root}/crates/ravel-core\" }}\n\
              ravel-generated-host = {{ path = \"../ravel/host\" }}\n\
-             ravel-host-runtime = {{ path = \"{root}/crates/ravel-host-runtime\" }}\n",
+             ravel-host-runtime = {{ path = \"{root}/crates/ravel-host-runtime\" }}\n\
+             ravel-bootstrap-runtime = {{ package = \"ravel-bootstrap\", path = \"{root}/crates/ravel-bootstrap\" }}\n",
             root = root.display()
         ),
     )
@@ -675,11 +654,6 @@ fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
         "the driven set does not hold the installed package: {}",
         String::from_utf8_lossy(&run.stdout)
     );
-    assert!(
-        String::from_utf8_lossy(&run.stdout).contains("host_api_mod"),
-        "the driven set does not hold the package naming `ravel-host-api`: {}",
-        String::from_utf8_lossy(&run.stdout)
-    );
 
     assert!(
         String::from_utf8_lossy(&run.stdout).contains("content"),
@@ -697,10 +671,6 @@ fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
     assert!(
         recorded.contains("running"),
         "a package no Ravel developer compiled never reached `running`: {recorded}"
-    );
-    assert!(
-        recorded.contains("host-api running"),
-        "the package naming `ravel-host-api` never reached `running`: {recorded}"
     );
 }
 
@@ -778,4 +748,240 @@ fn generated_times(plan: &super::HostPlan, instance: &Path) -> Vec<std::time::Sy
                 .expect("a generated file was written")
         })
         .collect()
+}
+
+#[test]
+fn generated_dependency_tables_match_the_installation_and_expose_only_the_sdk() {
+    let instance = instance("dependency-boundary");
+    let plan = planned(&instance);
+    let root: toml::Table = fs::read_to_string(ravel_root().join("Cargo.toml"))
+        .expect("installation manifest")
+        .parse()
+        .expect("valid installation manifest");
+    let workspace: toml::Table = plan.files()["Cargo.toml"].parse().expect("valid workspace");
+    let host: toml::Table = plan.files()["host/Cargo.toml"].parse().expect("valid host");
+    let dependencies = workspace["workspace"]["dependencies"]
+        .as_table()
+        .expect("dependencies");
+    assert_eq!(
+        dependencies.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["ravel-sdk", "serde", "serde_json"]
+    );
+    for name in ["serde", "serde_json"] {
+        assert_eq!(dependencies[name], root["workspace"]["dependencies"][name]);
+    }
+    assert_eq!(
+        host["dependencies"]["jni"],
+        root["workspace"]["dependencies"]["jni"]
+    );
+    for name in [
+        "ravel-core",
+        "ravel-host-runtime",
+        "ravel-bootstrap-runtime",
+    ] {
+        let package = if name == "ravel-bootstrap-runtime" {
+            "ravel-bootstrap"
+        } else {
+            name
+        };
+        let path = ravel_root().join("crates").join(package);
+        assert_eq!(host["dependencies"][name]["path"].as_str(), path.to_str());
+        assert!(host["dependencies"][name].get("workspace").is_none());
+        assert!(!dependencies.contains_key(name));
+        assert!(!dependencies.contains_key(package));
+    }
+    assert_eq!(
+        host["dependencies"]["ravel-bootstrap-runtime"]["package"].as_str(),
+        Some("ravel-bootstrap")
+    );
+    assert_eq!(
+        plan.installation_lock(),
+        fs::read_to_string(ravel_root().join("Cargo.lock")).expect("installation lock")
+    );
+    assert!(!plan.files().contains_key("Cargo.lock"));
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn changing_the_installation_lock_changes_the_plan_fingerprint() {
+    let instance = instance("lock-fingerprint");
+    let root = instance.join("installation");
+    fs::create_dir(&root).expect("installation directory");
+    fs::copy(ravel_root().join("Cargo.toml"), root.join("Cargo.toml")).expect("manifest copy");
+    let lock = fs::read_to_string(ravel_root().join("Cargo.lock")).expect("installation lock");
+    fs::write(root.join("Cargo.lock"), &lock).expect("lock copy");
+    let discovered = discover(&instance).expect("empty instance");
+    let first = plan(&discovered, &root).expect("first plan");
+    fs::write(
+        root.join("Cargo.lock"),
+        format!("{lock}\n# changed installation\n"),
+    )
+    .expect("changed lock");
+    let second = plan(&discovered, &root).expect("second plan");
+    assert_ne!(first.fingerprint(), second.fingerprint());
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn a_malformed_installation_lock_is_refused_as_an_installation_input() {
+    let instance = instance("malformed-lock");
+    let root = instance.join("installation");
+    fs::create_dir(&root).expect("installation directory");
+    fs::copy(ravel_root().join("Cargo.toml"), root.join("Cargo.toml")).expect("manifest copy");
+    let discovered = discover(&instance).expect("empty instance");
+    for lock in ["[[package]", "version = 4\n"] {
+        fs::write(root.join("Cargo.lock"), lock).expect("malformed lock");
+        let refused = plan(&discovered, &root).expect_err("the seed lock is unusable");
+        assert!(
+            matches!(&refused, BuildRefused::Installation { file, .. } if file == "Cargo.lock"),
+            "{refused:?}"
+        );
+    }
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn generated_files_keep_odd_directory_and_crate_names_as_data() {
+    let directory = "odd\"]\n[patch.crates-io]\\name";
+    let member = super::PlannedMember {
+        mod_id: "odd_mod".to_owned(),
+        directory: directory.to_owned(),
+        crate_name: "odd \"crate\"\\name".to_owned(),
+    };
+    let members = [member.clone()];
+    let workspace: toml::Table =
+        super::generate::workspace_manifest(&members, &ravel_root(), &toml::Table::new())
+            .parse()
+            .expect("valid workspace");
+    assert!(!workspace.contains_key("patch"));
+    assert_eq!(
+        workspace["workspace"]["members"][1].as_str(),
+        Some(format!("mods/{directory}").as_str())
+    );
+    let host: toml::Table =
+        super::generate::host_manifest(&members, &ravel_root(), &toml::Table::new())
+            .parse()
+            .expect("valid host");
+    assert!(!host.contains_key("patch"));
+    assert_eq!(
+        host["dependencies"][&member.crate_name]["path"].as_str(),
+        Some(format!("../mods/{directory}").as_str())
+    );
+    let source = super::generate::host_source(&members);
+    let literal = format!("{:?}", format!("../../mods/{directory}/package.json"));
+    assert!(
+        source.contains(&format!("include_str!({literal})")),
+        "{source}"
+    );
+}
+
+#[test]
+fn lock_adjustment_allows_local_members_but_refuses_unvetted_external_entries() {
+    let seed = "version = 4\n\
+        [[package]]\nname = \"dependency\"\nversion = \"1.0.0\"\n\
+        source = \"registry+https://example.invalid/index\"\nchecksum = \"vetted\"\n";
+    let adjusted = format!(
+        "{seed}\n[[package]]\nname = \"ravel-generated-host\"\nversion = \"0.0.0\"\n\
+         dependencies = [\"installed-mod\"]\n\
+         [[package]]\nname = \"installed-mod\"\nversion = \"1.0.0\"\n\
+         dependencies = [\"dependency\"]\n"
+    );
+    let mods = std::collections::BTreeMap::from([("installed-mod", "installed_mod")]);
+    super::compile::vetted_dependencies(seed, &adjusted, &mods).expect("only local graph changes");
+    for changed in [
+        adjusted.replacen("version = \"1.0.0\"", "version = \"2.0.0\"", 1),
+        adjusted.replace("checksum = \"vetted\"", "checksum = \"other\""),
+        adjusted.replace("example.invalid/index", "other.invalid/index"),
+        adjusted.replace("\"dependency\"", "\"unvetted\""),
+    ] {
+        let refused = super::compile::vetted_dependencies(seed, &changed, &mods)
+            .expect_err("an external dependency differs from the installation lock");
+        let BuildRefused::UnpinnedDependency {
+            mods: requiring, ..
+        } = &refused
+        else {
+            panic!("the refusal should name an unpinned dependency: {refused:?}");
+        };
+        assert_eq!(requiring, &["installed_mod"]);
+        assert!(refused.to_string().contains("installed_mod"), "{refused}");
+    }
+    let refused = super::compile::vetted_dependencies(seed, "[[package]", &mods)
+        .expect_err("the resolved lock is malformed");
+    assert!(
+        matches!(refused, BuildRefused::ResolvedLock { .. }),
+        "{refused:?}"
+    );
+}
+
+fn a_package_naming_internal_workspace_dependencies_refuses(cache: &Path) {
+    let instance = instance("internal-dependency");
+    install_with(
+        &instance,
+        "internal",
+        "internal_mod",
+        "internal-mod",
+        EXPORTING_SOURCE,
+        "ravel-sdk.workspace = true\nravel-host-api.workspace = true\n",
+    );
+    let refused = build(&planned(&instance), &instance, cache, &game())
+        .expect_err("the workspace does not lend host internals to mods");
+    assert!(refused.to_string().contains("ravel-host-api"), "{refused}");
+    assert!(
+        refused.to_string().contains("workspace.dependencies"),
+        "{refused}"
+    );
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+fn a_registry_mod_with_explicit_third_party_dependencies_compiles(cache: &Path) {
+    let instance = instance("registry-numeric-dependency");
+    // A prior build leaves a lock from which Cargo pruned every unused pin.
+    install(
+        &instance,
+        "first",
+        "first_mod",
+        "first-mod",
+        EXPORTING_SOURCE,
+    );
+    build(&planned(&instance), &instance, cache, &game()).expect("the first set builds");
+    let source = ravel_root().join("registry/mods/rvl-120-counterpart");
+    let manifest: toml::Table = fs::read_to_string(source.join("Cargo.toml"))
+        .expect("registry manifest")
+        .parse()
+        .expect("valid registry manifest");
+    assert!(
+        manifest["dependencies"]["num-traits"]
+            .get("workspace")
+            .is_none()
+    );
+    copy_tree(
+        &source,
+        &instance
+            .join(PACKAGES_DIRECTORY)
+            .join("rvl-120-counterpart"),
+    );
+    let plan = planned(&instance);
+    let library = build(&plan, &instance, cache, &game())
+        .expect("the standalone numeric dependency survives installation");
+    assert!(library.is_file());
+    let lock = fs::read_to_string(instance.join(WORKSPACE_DIRECTORY).join("Cargo.lock"))
+        .expect("resolved lock");
+    assert!(lock.contains("name = \"ravel-generated-host\""));
+    assert!(lock.contains("name = \"rvl-120-counterpart\""));
+    let mods = std::collections::BTreeMap::from([("rvl-120-counterpart", "rvl_120_counterpart")]);
+    super::compile::vetted_dependencies(plan.installation_lock(), &lock, &mods)
+        .expect("the installed host uses only vetted external dependencies");
+    let pinned = |document: &str| {
+        super::compile::lock_packages(document)
+            .expect("a lock")
+            .into_iter()
+            .find(|package| package.get("name").and_then(toml::Value::as_str) == Some("num-traits"))
+            .and_then(|package| package.get("version").cloned())
+    };
+    assert_eq!(pinned(&lock), pinned(plan.installation_lock()));
+    assert!(
+        pinned(&lock).is_some(),
+        "the later dependency was resolved from the seed pin"
+    );
+    fs::remove_dir_all(&instance).expect("cleanup");
 }

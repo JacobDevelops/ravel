@@ -277,30 +277,6 @@ pub trait HookObserver: Send + Sync {
     fn observe(&self, target: &HookTarget, values: &[HookValue<'_>]) -> HookOutcome;
 }
 
-/// What a per-version adapter offers the version-neutral loader.
-pub trait VersionAdapter {
-    /// The Minecraft version this adapter's data was resolved against.
-    fn minecraft_version(&self) -> &str;
-
-    /// Every target the reviewed inventory pinned, in inventory order.
-    fn targets(&self) -> &[HookTarget];
-
-    /// The target one reviewed hook resolved to, if this adapter carries it.
-    fn target(&self, id: HookId) -> Option<&HookTarget> {
-        self.targets().iter().find(|target| target.id() == id)
-    }
-
-    /// Reviewed unsupported capabilities, distinct from unknown hook identifiers.
-    fn non_goals(&self) -> &[HookId] {
-        &[]
-    }
-
-    /// Whether this version reviewed a hook and chose not to carry it.
-    fn is_non_goal(&self, id: HookId) -> bool {
-        self.non_goals().contains(&id)
-    }
-}
-
 /// Major and minor pack-format numbers supplied by version data.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PackFormat {
@@ -428,10 +404,7 @@ mod tests {
 
     use jni::objects::JObject;
 
-    use super::{
-        HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue, JavaHandle,
-        VersionAdapter,
-    };
+    use super::{HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue, JavaHandle};
 
     const CHAT: HookId = HookId::new("chat.allowed-character");
     const INPUT: HookId = HookId::new("input.smooth-last-amount");
@@ -452,18 +425,6 @@ mod tests {
             HookKind::InstanceField,
         ),
     ];
-
-    struct Pinned;
-
-    impl VersionAdapter for Pinned {
-        fn minecraft_version(&self) -> &'static str {
-            "0.0.0-test"
-        }
-
-        fn targets(&self) -> &[HookTarget] {
-            &TARGETS
-        }
-    }
 
     struct Refusing;
 
@@ -501,19 +462,6 @@ mod tests {
             assert_eq!(kind.is_method(), method, "{kind:?}");
             assert_eq!(kind.is_static(), is_static, "{kind:?}");
         }
-    }
-
-    #[test]
-    fn an_adapter_finds_the_targets_it_carries_and_refuses_the_ones_it_does_not() {
-        let adapter = Pinned;
-
-        assert_eq!(adapter.minecraft_version(), "0.0.0-test");
-        assert_eq!(adapter.targets().len(), 2);
-        assert_eq!(
-            adapter.target(INPUT).map(HookTarget::member),
-            Some("lastAmount")
-        );
-        assert_eq!(adapter.target(HookId::new("absent")), None);
     }
 
     #[test]

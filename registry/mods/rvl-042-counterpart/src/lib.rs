@@ -165,11 +165,11 @@ impl Shared {
         for kind in RECIPE_KINDS {
             declaration
                 .entry(ContentKind::Recipe, kind)
-                .map_err(|detail| Self::packaging(&detail))?;
+                .map_err(|detail| ModError::refused(detail.to_string()))?;
         }
         declaration
             .entry(ContentKind::Command, COMMAND)
-            .map_err(|detail| Self::packaging(&detail))?;
+            .map_err(|detail| ModError::refused(detail.to_string()))?;
         Ok(declaration)
     }
 
@@ -203,7 +203,7 @@ impl Shared {
         }
         let request = Self::audio_declaration()
             .and_then(|declared| declared.play(SOUND, side))
-            .map_err(|detail| Self::refused_while_running(&detail))?;
+            .map_err(|detail| ModError::refused(detail.to_string()))?;
         self.asked.push(request);
         Ok(true)
     }
@@ -212,22 +212,6 @@ impl Shared {
     #[must_use]
     pub fn asked(&self) -> &[PlayRequest] {
         &self.asked
-    }
-
-    fn packaging(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail: detail.to_string(),
-        }
-    }
-
-    fn refused_while_running(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Running,
-            detail: detail.to_string(),
-        }
     }
 }
 
@@ -254,7 +238,7 @@ impl Mod for Shared {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         settings::declaration()
             .map(Some)
-            .map_err(|error| Self::packaging(&error))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {

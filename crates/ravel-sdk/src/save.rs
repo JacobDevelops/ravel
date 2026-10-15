@@ -38,9 +38,6 @@
 //! # Ok::<(), ravel_sdk::save::SavedDataError>(())
 //! ```
 
-/// The mod-defined JSON payload stored in a versioned envelope.
-pub use serde_json::Value as SavedPayload;
-
 pub use ravel_save::{
     MAX_AGGREGATE_BYTES, MigrationChain, MigrationFailed, MigrationStep, PackageConflict,
     RequiredPackage, SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataPlan,

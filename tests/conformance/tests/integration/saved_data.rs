@@ -7,12 +7,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet, StructuredFailure, Version};
-use ravel_host_api::HostMod;
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_save::{
     MAX_AGGREGATE_BYTES, SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope,
     SavedDataError, SavedDataPlan, SavedDataVersion,
 };
+use ravel_sdk::Mod;
 use ravel_test_mod_saved_data::{MOD_ID, SavedDataMod, SavedState};
 use serde_json::{Value, json};
 
@@ -83,24 +83,22 @@ fn entry(saved: &SavedDataMod) -> LifecycleEntry {
         mod_id: saved.id().clone(),
         sides: SideSet::new([Side::Client, Side::DedicatedServer]).expect("a non-empty side set"),
         requirement: Requirement::Required,
-        saved_data_versions: saved.declaration().versions().collect(),
+        saved_data_versions: saved
+            .declaration()
+            .expect("valid declaration")
+            .versions()
+            .collect(),
     }
 }
 
-fn running(saved: &SavedDataMod) -> LifecycleMachine {
-    let mut machine =
-        LifecycleMachine::new(Side::Client, vec![entry(saved)]).expect("one mod is a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-        LifecycleState::Registered,
-        LifecycleState::Running,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-    }
-    machine
+fn running(saved: &mut SavedDataMod) -> LifecycleMachine {
+    ravel_loader::drive_borrowed(
+        Side::Client,
+        &ravel_host_runtime::environment(),
+        vec![entry(saved)],
+        &mut [saved],
+    )
+    .expect("the production driver starts the saved-data mod")
 }
 
 // A version gap belongs to the mod declaration and cannot be a world fixture.
@@ -191,7 +189,11 @@ fn admission_refusals() -> [(&'static str, SavedDataError); 4] {
 }
 
 fn admit(bytes: Option<&[u8]>) -> Result<SavedDataAggregate, SavedDataError> {
-    SavedDataAggregate::open(bytes, &[SavedDataMod::new().declaration()], &installation())
+    SavedDataAggregate::open(
+        bytes,
+        &[SavedDataMod::new().declaration()?],
+        &installation(),
+    )
 }
 
 fn emitted(saved: &SavedDataMod) -> Vec<u8> {
@@ -208,7 +210,7 @@ fn emitted(saved: &SavedDataMod) -> Vec<u8> {
 }
 
 fn reload(saved: &mut SavedDataMod, bytes: Option<&[u8]>) -> Result<SavedDataPlan, String> {
-    let declaration = saved.declaration();
+    let declaration = saved.declaration().map_err(|error| error.to_string())?;
     let aggregate = admit(bytes).map_err(|error| error.to_string())?;
     let envelope = aggregate.envelope(declaration.owner());
     let plan = SavedDataPlan::open(&declaration, envelope.map(SavedDataEnvelope::data_version))
@@ -243,7 +245,11 @@ fn every_fixture_world_is_written_for_the_mod_this_test_drives() {
     let saved = SavedDataMod::new();
     assert_eq!(saved.current().get(), 3, "the fixtures assume 3 is written");
     assert_eq!(
-        saved.declaration().versions().collect::<Vec<_>>(),
+        saved
+            .declaration()
+            .expect("valid declaration")
+            .versions()
+            .collect::<Vec<_>>(),
         [1, 2, 3].map(|raw| SavedDataVersion::new(raw).expect("non-zero")),
         "the fixtures assume this mod declares 1, 2 and 3"
     );
@@ -251,12 +257,16 @@ fn every_fixture_world_is_written_for_the_mod_this_test_drives() {
 
 #[test]
 fn the_loader_carries_the_versions_the_mod_declares() {
-    let saved = SavedDataMod::new();
-    let machine = running(&saved);
+    let mut saved = SavedDataMod::new();
+    let machine = running(&mut saved);
 
     assert_eq!(
         machine.saved_data_versions(saved.id()),
-        Ok(&saved.declaration().versions().collect::<BTreeSet<_>>()),
+        Ok(&saved
+            .declaration()
+            .expect("valid declaration")
+            .versions()
+            .collect::<BTreeSet<_>>()),
         "a plan that lost the declared versions could not decide a world"
     );
 }
@@ -453,7 +463,7 @@ fn a_payload_its_owner_cannot_read_refuses_the_world_rather_than_opening_it_fres
     let refused = reload(&mut saved, Some(&bytes))
         .expect_err("a payload its owner cannot read opens no world");
 
-    assert!(refused.contains(MOD_ID), "{refused}");
+    assert_eq!(refused, r#"invalid type: string "many", expected u32"#);
     assert_eq!(
         saved.state(),
         &before,

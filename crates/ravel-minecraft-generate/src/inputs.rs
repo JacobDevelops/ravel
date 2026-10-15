@@ -235,37 +235,50 @@ const JAR_VERSION: &str = "version.json";
 
 /// The resource and data pack formats one jar's `version.json` states.
 fn pack_versions(text: &str) -> Option<(u16, u16, u16, u16)> {
-    let named = text.find("\"pack_version\"")?;
-    let open = text[named..].find('{')? + named;
-    let close = text[open..].find('}')? + open;
-    let scope = &text[open..close];
-    if let Some(resource) = number_after(scope, "resource") {
-        return Some((resource, 0, number_after(scope, "data")?, 0));
+    #[derive(Deserialize)]
+    struct Version {
+        pack_version: PackVersion,
     }
-    Some((
-        number_after(scope, "resource_major")?,
-        number_after(scope, "resource_minor")?,
-        number_after(scope, "data_major")?,
-        number_after(scope, "data_minor")?,
-    ))
-}
-
-/// The number one JSON key is set to, where the key is spelled exactly.
-fn number_after(text: &str, key: &str) -> Option<u16> {
-    let quoted = format!("\"{key}\"");
-    let at = text.find(&quoted)? + quoted.len();
-    let rest = text[at..].trim_start().strip_prefix(':')?.trim_start();
-    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-    digits.parse().ok()
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum PackVersion {
+        Joined {
+            resource: u16,
+            data: u16,
+        },
+        Split {
+            resource_major: u16,
+            resource_minor: u16,
+            data_major: u16,
+            data_minor: u16,
+        },
+    }
+    let version: Version = serde_json::from_str(text).ok()?;
+    Some(match version.pack_version {
+        PackVersion::Joined { resource, data } => (resource, 0, data, 0),
+        PackVersion::Split {
+            resource_major,
+            resource_minor,
+            data_major,
+            data_minor,
+        } => (resource_major, resource_minor, data_major, data_minor),
+    })
 }
 
 /// The `javaVersion.majorVersion` one version manifest states.
 fn major_version(text: &str) -> Option<u16> {
-    let object = text.find("\"javaVersion\"")?;
-    let at = text[object..].find("\"majorVersion\"")? + object + "\"majorVersion\"".len();
-    let rest = text[at..].trim_start().strip_prefix(':')?.trim_start();
-    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-    digits.parse().ok()
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Manifest {
+        java_version: JavaVersion,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct JavaVersion {
+        major_version: u16,
+    }
+    let manifest: Manifest = serde_json::from_str(text).ok()?;
+    Some(manifest.java_version.major_version)
 }
 
 /// The seam whose shape decides whether a title-menu row has to be declared.
@@ -484,12 +497,7 @@ fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> {
                     member.name, reflected.class
                 )));
             }
-            let shape = match member.lookup().map_err(|detail| {
-                GenerateError::Drift(format!(
-                    "the reflective surface declares a member of {}: {detail}",
-                    reflected.class
-                ))
-            })? {
+            let shape = match &member.lookup {
                 Lookup::Descriptor(descriptor) => descriptor.to_owned(),
                 Lookup::Parameters(count) => format!("/{count}"),
             };
@@ -788,6 +796,20 @@ mod tests {
     }
 
     #[test]
+    fn metadata_numbers_are_read_only_from_valid_json_at_the_declared_path() {
+        let nested = r#"{"pack_version":{"note":{"resource":1},"data":48,"resource":34}}"#;
+        assert_eq!(super::pack_versions(nested), Some((34, 0, 48, 0)));
+        for value in ["21.5", "-21", "65536", "\"21\"", "21garbage"] {
+            let java = format!(r#"{{"javaVersion":{{"majorVersion":{value}}}}}"#);
+            assert_eq!(super::major_version(&java), None, "{java}");
+            let packs = format!(r#"{{"pack_version":{{"resource":{value},"data":48}}}}"#);
+            assert_eq!(super::pack_versions(&packs), None, "{packs}");
+        }
+        let outside = r#"{"javaVersion":{},"elsewhere":{"majorVersion":21}}"#;
+        assert_eq!(super::major_version(outside), None);
+    }
+
+    #[test]
     fn the_tracked_version_data_reads_back_as_a_reviewed_inventory() {
         let root = repository_root();
         for version in super::tracked_versions(root) {
@@ -823,7 +845,10 @@ mod tests {
                 .classes
                 .iter()
                 .flat_map(|reflected| &reflected.members)
-                .filter_map(|member| member.descriptor.as_deref())
+                .filter_map(|member| match &member.lookup {
+                    super::Lookup::Descriptor(descriptor) => Some(descriptor.as_str()),
+                    super::Lookup::Parameters(_) => None,
+                })
                 .collect::<Vec<_>>();
             let agent = bootstrap_sources(root);
             for reflected in &pinned.surface.classes {

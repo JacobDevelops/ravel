@@ -56,10 +56,9 @@ impl Registration<'_> {
         key: RegistryKey,
         behaviour: Option<ContentBehaviour>,
     ) -> Result<(), RegistrationRefused> {
-        let identifier = key.to_string();
         match self
             .machine
-            .claim_described_registry_identifier(&self.mod_id, &identifier, behaviour)
+            .claim_described_registry_identifier(&self.mod_id, &key, behaviour)
         {
             Ok(()) => {
                 self.claimed.push(key);
@@ -67,6 +66,9 @@ impl Registration<'_> {
             }
             Err(LifecycleError::ConflictingRegistryClaim { owner, .. }) => {
                 Err(RegistrationRefused::Conflict { key, owner })
+            }
+            Err(LifecycleError::ForeignRegistryClaim { mod_id, .. }) => {
+                Err(RegistrationRefused::ForeignDeclaration { key, mod_id })
             }
             Err(error) => {
                 // Preserve detailed loader errors behind the mod-facing closed window.
@@ -98,7 +100,7 @@ impl LifecycleMachine {
     /// Returns the identity that owns a typed registry entry.
     #[must_use]
     pub fn owner_of(&self, key: &RegistryKey) -> Option<&ModId> {
-        self.registry_owner(&key.to_string())
+        self.registry_owner(key)
     }
 }
 
@@ -168,31 +170,42 @@ mod tests {
     }
 
     #[test]
-    fn the_second_mod_to_claim_an_identifier_is_told_who_holds_it() {
-        let mut machine = constructed(&["first_mod", "second_mod"]);
-        let contested = key(ContentKind::Block, "shared:copper");
+    fn foreign_namespaces_are_refused_for_content_and_commands() {
+        for kind in [ContentKind::Block, ContentKind::Command] {
+            let mut machine = constructed(&["example_mod"]);
+            let foreign = key(kind, "other_mod:copper");
+            let mut window = machine
+                .registration_window(&id("example_mod"))
+                .expect("in the plan");
+            assert_eq!(
+                window.claim(foreign.clone()),
+                Err(RegistrationRefused::ForeignDeclaration {
+                    key: foreign.clone(),
+                    mod_id: id("example_mod"),
+                })
+            );
+            assert_eq!(window.claimed(), []);
+            assert!(window.unexpected().is_none());
+            assert_eq!(machine.owner_of(&foreign), None);
+        }
+    }
 
-        machine
-            .registration_window(&id("first_mod"))
-            .expect("in the plan")
-            .claim(contested.clone())
-            .expect("nobody owns it yet");
-
+    #[test]
+    fn duplicate_claims_in_the_owners_namespace_remain_conflicts() {
+        let mut machine = constructed(&["example_mod"]);
+        let block = key(ContentKind::Block, "example_mod:copper");
         let mut window = machine
-            .registration_window(&id("second_mod"))
+            .registration_window(&id("example_mod"))
             .expect("in the plan");
-        let refused = window.claim(contested.clone()).expect_err("already owned");
-
+        window.claim(block.clone()).expect("first claim");
         assert_eq!(
-            refused,
-            RegistrationRefused::Conflict {
-                key: contested.clone(),
-                owner: id("first_mod"),
-            }
+            window.claim(block.clone()),
+            Err(RegistrationRefused::Conflict {
+                key: block.clone(),
+                owner: id("example_mod"),
+            })
         );
-        assert_eq!(window.claimed(), []);
-        assert!(window.unexpected().is_none());
-        assert_eq!(machine.owner_of(&contested), Some(&id("first_mod")));
+        assert_eq!(window.claimed(), [block]);
     }
 
     #[test]

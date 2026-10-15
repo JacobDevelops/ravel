@@ -8,7 +8,7 @@
 // resolved rather than only that resolution succeeded, because a resolution that
 // cannot be named is one nothing can be held to.
 
-use ravel_sdk::{ModId, VersionRange, provision::{Provided, Provision}};
+use ravel_sdk::{ModId, Version, VersionRange, provision::{Provided, Provision}};
 
 #[test]
 fn one_provider_answers_one_requirement() {
@@ -17,7 +17,10 @@ fn one_provider_answers_one_requirement() {
     let wanted = VersionRange::parse("^2").expect("a well formed range");
 
     let mut provision = Provision::default();
-    provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+    provision.provides(
+        &provider,
+        Provided::new("shared_maths", Version::parse("2.1.0").expect("a well formed version")),
+    );
     provision.requires(&consumer, "shared_maths", wanted);
 
     let resolved = provision.resolve().expect("one provider resolves");
@@ -31,7 +34,10 @@ fn a_provider_nobody_needs_is_still_resolved() {
     let provider = ModId::new("sample").expect("a well formed owner id");
 
     let mut provision = Provision::default();
-    provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+    provision.provides(
+        &provider,
+        Provided::new("shared_maths", Version::parse("2.1.0").expect("a well formed version")),
+    );
 
     let resolved = provision.resolve().expect("an unused provider is not an error");
 

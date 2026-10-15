@@ -605,6 +605,9 @@ Ravel must attribute failures to:
 - Minecraft and Ravel versions;
 - platform and target architecture.
 
+Mod callbacks unwind into the loader's owning-mod failure path: optional mods leave the set,
+and a required mod failure halts it. The JNI panic guard remains the last resort for host faults.
+
 Reports must redact authentication tokens, secrets, and unnecessarily identifying
 filesystem paths.
 

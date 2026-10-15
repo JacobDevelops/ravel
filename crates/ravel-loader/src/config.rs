@@ -1,56 +1,63 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use ravel_config::{LayerError, LayeredConfiguration, Rejection, ValueDocument};
-use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
+use ravel_config::{LayerError, LayeredConfiguration, Rejection, ValueDocument, file};
+use ravel_core::{FailureKind, LifecycleState, ModId, Side, StructuredFailure};
 use ravel_host_api::{HostError, HostMod};
 
-use crate::lifecycle::LifecycleMachine;
+use crate::lifecycle::LifecycleEntry;
 
 /// Resolves settings in load order for mods on this side that declare them.
 ///
 /// Rejected player values fall back to lower layers and are reported in [`Configured`].
 /// A refusal stops configuration; the caller must not start the set.
+/// Entries must be supplied in admitted load order. Player documents are read only
+/// after the mod's single declaration has passed the ownership check.
 ///
 /// # Errors
 ///
-/// Returns a [`ConfigRefused`] for foreign ownership, invalid layers, or a mod's refusal.
-pub fn open_configuration(
-    machine: &LifecycleMachine,
-    mods: &mut [&mut dyn HostMod],
+/// Returns a [`ConfigRefused`] for foreign ownership, unreadable player documents,
+/// invalid layers, or a mod's refusal.
+pub fn open_configuration<'a>(
+    side: Side,
+    entries: impl IntoIterator<Item = &'a LifecycleEntry>,
+    mods: &mut [&mut (dyn HostMod + '_)],
     packs: &BTreeMap<ModId, ValueDocument>,
-    players: &BTreeMap<ModId, ValueDocument>,
+    mut players: impl FnMut(&ModId) -> Result<Option<ValueDocument>, file::FileError>,
 ) -> Result<Configured, ConfigRefused> {
     let mut configured = Configured::default();
 
-    for mod_id in machine.order().cloned().collect::<Vec<ModId>>() {
-        if !machine
-            .entry(&mod_id)
-            .is_ok_and(|entry| entry.sides.loads_on(machine.side()))
-        {
+    for entry in entries {
+        let mod_id = entry.mod_id.clone();
+        if !entry.sides.loads_on(side) {
             continue;
         }
         let Some(host) = mods.iter_mut().find(|host| host.id() == &mod_id) else {
             continue;
         };
-        let Some(declaration) =
+        let Some(declaration) = crate::callback(&mod_id, LifecycleState::Constructed, || {
             host.configuration_declaration()
-                .map_err(|source| ConfigRefused::Mod {
-                    mod_id: mod_id.clone(),
-                    source,
-                })?
+        })
+        .map_err(|source| ConfigRefused::Mod {
+            mod_id: mod_id.clone(),
+            source,
+        })?
         else {
             continue;
         };
-        if declaration.owner != mod_id {
+        if declaration.owner() != &mod_id {
             return Err(ConfigRefused::ForeignDeclaration {
                 mod_id,
-                owner: declaration.owner,
+                owner: declaration.owner().clone(),
             });
         }
 
+        let player = players(&mod_id).map_err(|source| ConfigRefused::PlayerFile {
+            mod_id: mod_id.clone(),
+            source,
+        })?;
         let resolved =
-            LayeredConfiguration::resolve(declaration, packs.get(&mod_id), players.get(&mod_id))
+            LayeredConfiguration::resolve(declaration, packs.get(&mod_id), player.as_ref())
                 .map_err(|source| ConfigRefused::Layer {
                     mod_id: mod_id.clone(),
                     source,
@@ -58,11 +65,13 @@ pub fn open_configuration(
         for dropped in resolved.rejected() {
             configured.dropped.push((mod_id.clone(), dropped.clone()));
         }
-        host.configure(&resolved)
-            .map_err(|source| ConfigRefused::Mod {
-                mod_id: mod_id.clone(),
-                source,
-            })?;
+        crate::callback(&mod_id, LifecycleState::Constructed, || {
+            host.configure(&resolved)
+        })
+        .map_err(|source| ConfigRefused::Mod {
+            mod_id: mod_id.clone(),
+            source,
+        })?;
         configured.resolved.push(resolved);
         configured.order.push(mod_id);
     }
@@ -91,6 +100,12 @@ impl Configured {
         &self.resolved
     }
 
+    /// Takes the resolved settings without copying their schemas and values.
+    #[must_use]
+    pub fn into_resolved(self) -> Vec<LayeredConfiguration> {
+        self.resolved
+    }
+
     /// Returns dropped player values in load order, then key order within each mod.
     #[must_use]
     pub fn dropped(&self) -> &[(ModId, Rejection)] {
@@ -99,8 +114,15 @@ impl Configured {
 }
 
 /// Why a set's settings were not applied.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub enum ConfigRefused {
+    /// A player's settings document could not be read.
+    PlayerFile {
+        /// The mod whose document could not be read.
+        mod_id: ModId,
+        /// The file refusal.
+        source: file::FileError,
+    },
     /// A mod declared settings owned by another identity.
     ForeignDeclaration {
         /// The mod that declared them.
@@ -129,7 +151,8 @@ impl ConfigRefused {
     #[must_use]
     pub const fn owner(&self) -> &ModId {
         match self {
-            Self::ForeignDeclaration { mod_id, .. }
+            Self::PlayerFile { mod_id, .. }
+            | Self::ForeignDeclaration { mod_id, .. }
             | Self::Layer { mod_id, .. }
             | Self::Mod { mod_id, .. } => mod_id,
         }
@@ -139,6 +162,12 @@ impl ConfigRefused {
 impl fmt::Display for ConfigRefused {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::PlayerFile { mod_id, source } => {
+                write!(
+                    formatter,
+                    "`{mod_id}`'s player configuration cannot be read: {source}"
+                )
+            }
             Self::ForeignDeclaration { mod_id, owner } => write!(
                 formatter,
                 "`{mod_id}` declared settings owned by `{owner}`, and a mod declares only its own \
@@ -157,6 +186,7 @@ impl fmt::Display for ConfigRefused {
 impl std::error::Error for ConfigRefused {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::PlayerFile { source, .. } => Some(source),
             Self::ForeignDeclaration { .. } => None,
             Self::Layer { source, .. } => Some(source),
             Self::Mod { source, .. } => Some(source),
@@ -186,8 +216,60 @@ mod tests {
     use ravel_core::{LifecycleState, ModId, Side, SideSet, StructuredFailure};
     use ravel_host_api::{HostError, HostMod};
 
-    use super::{ConfigRefused, open_configuration};
+    use super::ConfigRefused;
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
+
+    fn open_configuration(
+        machine: &LifecycleMachine,
+        mods: &mut [&mut (dyn HostMod + '_)],
+        packs: &BTreeMap<ModId, ValueDocument>,
+        players: &BTreeMap<ModId, ValueDocument>,
+    ) -> Result<super::Configured, ConfigRefused> {
+        super::open_configuration(machine.side(), machine.entries(), mods, packs, |owner| {
+            Ok(players.get(owner).cloned())
+        })
+    }
+
+    #[test]
+    fn foreign_declarations_never_select_a_player_document() {
+        let mut host = Settled::new("thief_mod").declaring_for("other_mod");
+        let entries = [entry("thief_mod", &[Side::DedicatedServer])];
+        let refused = super::open_configuration(
+            Side::DedicatedServer,
+            &entries,
+            &mut [&mut host],
+            &BTreeMap::new(),
+            |_| panic!("foreign ownership must be refused before reading player files"),
+        )
+        .expect_err("foreign declaration");
+        assert!(matches!(refused, ConfigRefused::ForeignDeclaration { .. }));
+    }
+
+    #[test]
+    fn unreadable_player_documents_stop_configuration() {
+        let mut host = Settled::new("first_mod");
+        let entries = [entry("first_mod", &[Side::DedicatedServer])];
+        let refused = super::open_configuration(
+            Side::DedicatedServer,
+            &entries,
+            &mut [&mut host],
+            &BTreeMap::new(),
+            |_| {
+                Err(ravel_config::file::FileError::Io {
+                    path: "settings.json".into(),
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "unreadable settings",
+                    ),
+                })
+            },
+        )
+        .expect_err("unreadable player document");
+        assert_eq!(refused.owner(), &id("first_mod"));
+        assert!(matches!(refused, ConfigRefused::PlayerFile { .. }));
+        assert!(std::error::Error::source(&refused).is_some());
+        assert_eq!(host.applied, None);
+    }
 
     fn id(value: &str) -> ModId {
         value.parse().expect("a legal mod id")
@@ -261,26 +343,25 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
             Ok(())
         }
 
-        fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
+        fn configuration_declaration(
+            &self,
+        ) -> Result<Option<ConfigurationDeclaration>, ravel_host_api::ModError> {
             if self.refuses_declaration {
-                return Err(HostError::Unsupported {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Constructed,
-                });
+                return Err(ravel_host_api::ModError::Unsupported);
             }
             Ok(self.declares.clone())
         }
 
-        fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
+        fn configure(
+            &mut self,
+            resolved: &LayeredConfiguration,
+        ) -> Result<(), ravel_host_api::ModError> {
             if self.deaf {
-                return Err(HostError::Unsupported {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Constructed,
-                });
+                return Err(ravel_host_api::ModError::Unsupported);
             }
             self.applied = resolved
                 .value(&"limit".parse().expect("a legal key"))
@@ -307,21 +388,23 @@ mod tests {
         let mut host = Settled::new("refusing_mod");
         host.refuses_declaration = true;
         let machine = machine(vec![entry("refusing_mod", &[Side::DedicatedServer])]);
-        assert_eq!(
-            open_configuration(
-                &machine,
-                &mut [&mut host],
-                &BTreeMap::new(),
-                &BTreeMap::new(),
-            ),
-            Err(ConfigRefused::Mod {
-                mod_id: id("refusing_mod"),
+        let refused = open_configuration(
+            &machine,
+            &mut [&mut host],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
+        .expect_err("configuration declaration refusal");
+        assert!(matches!(
+            refused,
+            ConfigRefused::Mod {
+                mod_id,
                 source: HostError::Unsupported {
-                    mod_id: id("refusing_mod"),
+                    mod_id: source_mod_id,
                     state: LifecycleState::Constructed,
                 },
-            })
-        );
+            } if mod_id == id("refusing_mod") && source_mod_id == id("refusing_mod")
+        ));
         assert_eq!(host.applied, None);
     }
 
@@ -443,13 +526,11 @@ mod tests {
         )
         .expect_err("a mod declares only its own settings");
 
-        assert_eq!(
-            refused,
-            ConfigRefused::ForeignDeclaration {
-                mod_id: id("thief_mod"),
-                owner: id("first_mod"),
-            }
-        );
+        assert!(matches!(
+            &refused,
+            ConfigRefused::ForeignDeclaration { mod_id, owner }
+                if mod_id == &id("thief_mod") && owner == &id("first_mod")
+        ));
         let text = refused.to_string();
         assert!(
             text.contains("thief_mod") && text.contains("first_mod"),

@@ -2,8 +2,7 @@
 
 //! No-op lifecycle test mod.
 
-use ravel_core::{LifecycleState, ModId};
-use ravel_host_api::{HostError, HostMod};
+use ravel_sdk::{LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 ///
@@ -20,23 +19,10 @@ pub const MOD_ID: &str = "noop";
 /// "the pipeline ran the mod" are different claims and only the second one is
 /// what `ROADMAP.md`'s M2-W6 row asks to be shown.
 ///
-/// This is a plain Rust value the loader owns. It is not a dynamic library, a
-/// guest module, or a helper process, and it exports no foreign symbol: how a
-/// mod's code arrives in the process is ADG-2's question, ADG-2 is deferred to
-/// M3, and `docs/architecture/dependency-rules.md` forbids selecting a mod
-/// execution model before then. [`HostMod`] is written to survive that choice,
-/// so the value is constructed here and nothing about the construction is a
-/// distribution decision.
-///
-/// A mod author will not name [`HostMod`] once the SDK carries registration.
-/// This mod does because M2 has no SDK surface yet, and inventing one to hide a
-/// two-method trait would be building M3's facade a milestone early.
-///
 /// # Examples
 ///
 /// ```
-/// use ravel_core::LifecycleState;
-/// use ravel_host_api::HostMod;
+/// use ravel_sdk::{LifecycleState, Mod};
 /// use ravel_test_mod_noop::NoopMod;
 ///
 /// let mut noop = NoopMod::new();
@@ -48,25 +34,18 @@ pub const MOD_ID: &str = "noop";
 ///     noop.entered(),
 ///     [LifecycleState::Loaded, LifecycleState::Constructed]
 /// );
-/// # Ok::<(), ravel_host_api::HostError>(())
+/// # Ok::<(), ravel_sdk::ModError>(())
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NoopMod {
-    id: ModId,
     entered: Vec<LifecycleState>,
 }
 
 impl NoopMod {
     /// Builds the mod instance the loader drives.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`MOD_ID`] stops being a legal mod id, which would mean this
-    /// mod can no longer be packaged under the identity its manifest declares.
     #[must_use]
     pub fn new() -> Self {
         Self {
-            id: MOD_ID.parse().expect("`MOD_ID` is a legal mod id"),
             entered: Vec::new(),
         }
     }
@@ -84,11 +63,8 @@ impl Default for NoopMod {
     }
 }
 
-impl HostMod for NoopMod {
-    fn id(&self) -> &ModId {
-        &self.id
-    }
-
+#[declare_mod(id = "noop")]
+impl Mod for NoopMod {
     /// Accepts every step and does nothing with it.
     ///
     /// # Errors
@@ -96,7 +72,7 @@ impl HostMod for NoopMod {
     /// Never returns an error. A no-op that could refuse would be exercising
     /// the refusal path rather than the successful one, and `ravel-host-api`'s
     /// own tests already cover a mod that declines.
-    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.entered.push(state);
         Ok(())
     }
@@ -104,8 +80,7 @@ impl HostMod for NoopMod {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{LifecycleState, ModId};
-    use ravel_host_api::HostMod;
+    use ravel_sdk::{LifecycleState, Mod, ModId};
 
     use super::{MOD_ID, NoopMod};
 

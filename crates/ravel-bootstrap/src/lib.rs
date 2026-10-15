@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! JVM entry point binding the generated hook surface to Ravel.
+//! Safe hook runtime and JVM crossings linked into Ravel's host libraries.
 
 mod content;
 mod dispatch;
@@ -19,13 +19,12 @@ mod wire;
 
 pub use dispatch::register;
 pub use guard::HookError;
-pub use packs::{install as install_packs, write_world_pack};
-pub use persistence::{OpenOutcome, SaveOutcome, observations, save, stage};
+pub use packs::write_world_pack;
+pub use persistence::{OpenOutcome, SaveOutcome, save, stage};
 pub use runtime::{
-    LoaderRuntime, data_pack_metadata, environment, install, pre_world_report,
-    resource_pack_metadata,
+    LoaderRuntime, data_pack_metadata, environment, install, install_panic_hook, is_installed,
+    pre_world_report, resource_pack_metadata,
 };
-pub use settings::install as install_settings;
 pub use side::{SideError, side};
 
 /// JNI exports for native entry points and generated callable hook shapes.
@@ -38,7 +37,7 @@ pub mod exports {
         ravel_open_world_persistence, ravel_pack_id, ravel_save_world_persistence,
         ravel_write_staged_datapack, ravel_write_world_datapack,
     };
-    pub use crate::profiling::{ravel_enable_profiling, ravel_profiling_report};
+    pub use crate::profiling::ravel_profiling_report;
     pub use crate::report::native_invocations;
     pub use crate::settings::{
         ravel_save_settings, ravel_settings_crossings, ravel_settings_document,
@@ -48,13 +47,13 @@ pub mod exports {
 
 #[cfg(test)]
 mod tests {
-    use ravel_minecraft::{HookKind, VersionAdapter};
-    use ravel_minecraft_adapter::PinnedAdapter;
+    use ravel_minecraft::HookKind;
+    use ravel_minecraft_adapter::pinned::TARGETS;
 
     #[test]
     fn every_callable_target_has_an_exported_symbol_and_no_field_does() {
         let source = include_str!(env!("RAVEL_GENERATED_EXPORTS"));
-        let targets = PinnedAdapter.targets();
+        let targets = &TARGETS;
 
         let callable = targets
             .iter()

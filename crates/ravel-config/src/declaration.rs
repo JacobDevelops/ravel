@@ -11,8 +11,7 @@ use serde_json::Value;
 use crate::SchemaVersion;
 use crate::schema::{ValueError, ValueSchema};
 
-/// The separators `configuration.schema.json`'s `key` pattern admits.
-const SEPARATORS: [char; 3] = ['.', '_', '-'];
+pub use ravel_core::ModIdError as SettingKeyError;
 
 /// A setting key matching `^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$`.
 ///
@@ -38,43 +37,13 @@ impl SettingKey {
     pub fn as_str(&self) -> &str {
         &self.0
     }
-
-    fn validate(candidate: &str) -> Result<(), SettingKeyError> {
-        if candidate.is_empty() {
-            return Err(SettingKeyError::Empty);
-        }
-
-        let mut pending_separator = None;
-        for (index, character) in candidate.chars().enumerate() {
-            if index == 0 {
-                if !character.is_ascii_lowercase() {
-                    return Err(SettingKeyError::Leading { character });
-                }
-            } else if character.is_ascii_lowercase() || character.is_ascii_digit() {
-                pending_separator = None;
-            } else if SEPARATORS.contains(&character) {
-                if pending_separator.is_some() {
-                    return Err(SettingKeyError::Separator { character, index });
-                }
-                pending_separator = Some((character, index));
-            } else {
-                return Err(SettingKeyError::Character { character, index });
-            }
-        }
-
-        if let Some((character, index)) = pending_separator {
-            return Err(SettingKeyError::Separator { character, index });
-        }
-
-        Ok(())
-    }
 }
 
 impl FromStr for SettingKey {
     type Err = SettingKeyError;
 
     fn from_str(candidate: &str) -> Result<Self, Self::Err> {
-        Self::validate(candidate)?;
+        ravel_core::check_identifier(candidate)?;
         Ok(Self(candidate.to_owned()))
     }
 }
@@ -83,7 +52,7 @@ impl TryFrom<String> for SettingKey {
     type Error = SettingKeyError;
 
     fn try_from(candidate: String) -> Result<Self, Self::Error> {
-        Self::validate(&candidate)?;
+        ravel_core::check_identifier(&candidate)?;
         Ok(Self(candidate))
     }
 }
@@ -99,56 +68,6 @@ impl fmt::Display for SettingKey {
         formatter.write_str(&self.0)
     }
 }
-
-/// Why a candidate string is not a valid [`SettingKey`].
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SettingKeyError {
-    /// The candidate is empty.
-    Empty,
-    /// The first character is not an ASCII lowercase letter.
-    Leading {
-        /// The rejected first character.
-        character: char,
-    },
-    /// A later character is neither `[a-z0-9]` nor a separator.
-    Character {
-        /// The rejected character.
-        character: char,
-        /// Zero-based character index of the rejection.
-        index: usize,
-    },
-    /// A separator ends the key or immediately follows another separator.
-    Separator {
-        /// The misplaced separator.
-        character: char,
-        /// Zero-based character index of the rejection.
-        index: usize,
-    },
-}
-
-impl fmt::Display for SettingKeyError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => formatter.write_str("a setting key cannot be empty"),
-            Self::Leading { character } => write!(
-                formatter,
-                "a setting key starts with an ASCII lowercase letter, not `{character}`"
-            ),
-            Self::Character { character, index } => write!(
-                formatter,
-                "a setting key holds only `a`-`z`, `0`-`9`, `.`, `_`, and `-`, but character \
-                 {index} is `{character}`"
-            ),
-            Self::Separator { character, index } => write!(
-                formatter,
-                "a setting key separator is always followed by a letter or a digit, but \
-                 `{character}` at character {index} is not"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for SettingKeyError {}
 
 /// The process sides a setting applies to, including `common` for every side.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -175,7 +94,7 @@ impl SettingSide {
 
     /// The name this value is written under, matching its serialized form.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Client => "client",
             Self::IntegratedServer => "integrated-server",
@@ -283,18 +202,58 @@ pub struct Setting {
 /// assert!(!setting.pack_override.overrules_player());
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
+///
+/// Validated declarations cannot be edited into an invalid state:
+///
+/// ```compile_fail
+/// use ravel_config::ConfigurationDeclaration;
+/// fn invalidate(declaration: &mut ConfigurationDeclaration) {
+///     declaration.settings[0].default = serde_json::Value::Null;
+/// }
+/// ```
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(try_from = "RawConfigurationDeclaration", rename_all = "camelCase")]
 pub struct ConfigurationDeclaration {
     /// The configuration contract this document was written against.
-    pub schema_version: SchemaVersion,
+    pub(super) schema_version: SchemaVersion,
     /// The mod whose settings these are.
-    pub owner: ModId,
+    pub(super) owner: ModId,
     /// The declaration's own version, which the author bumps as settings change.
-    pub version: NonZeroU32,
+    pub(super) version: NonZeroU32,
     /// The settings, in the order the author declared them.
+    pub(super) settings: Vec<Setting>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawConfigurationDeclaration {
+    schema_version: SchemaVersion,
+    owner: ModId,
+    version: NonZeroU32,
     #[serde(deserialize_with = "deserialize_unique_keys")]
-    pub settings: Vec<Setting>,
+    settings: Vec<Setting>,
+}
+
+impl TryFrom<RawConfigurationDeclaration> for ConfigurationDeclaration {
+    type Error = DeclarationError;
+
+    fn try_from(raw: RawConfigurationDeclaration) -> Result<Self, Self::Error> {
+        for setting in &raw.settings {
+            setting
+                .value_schema
+                .check(&setting.default)
+                .map_err(|reason| DeclarationError::Default {
+                    key: setting.key.clone(),
+                    reason,
+                })?;
+        }
+        Ok(Self {
+            schema_version: raw.schema_version,
+            owner: raw.owner,
+            version: raw.version,
+            settings: raw.settings,
+        })
+    }
 }
 
 impl ConfigurationDeclaration {
@@ -304,17 +263,33 @@ impl ConfigurationDeclaration {
     ///
     /// Returns syntax/schema errors, or [`DeclarationError::Default`] for an invalid default.
     pub fn parse(document: &str) -> Result<Self, DeclarationError> {
-        let declaration: Self =
+        let raw: RawConfigurationDeclaration =
             serde_json::from_str(document).map_err(|error| DeclarationError::from_json(&error))?;
-        for setting in &declaration.settings {
-            if let Err(reason) = setting.value_schema.check(&setting.default) {
-                return Err(DeclarationError::Default {
-                    key: setting.key.clone(),
-                    reason,
-                });
-            }
-        }
-        Ok(declaration)
+        Self::try_from(raw)
+    }
+
+    /// Returns the validated configuration contract version.
+    #[must_use]
+    pub const fn schema_version(&self) -> SchemaVersion {
+        self.schema_version
+    }
+
+    /// Returns the mod that owns these settings.
+    #[must_use]
+    pub const fn owner(&self) -> &ModId {
+        &self.owner
+    }
+
+    /// Returns the author's declaration version.
+    #[must_use]
+    pub const fn version(&self) -> NonZeroU32 {
+        self.version
+    }
+
+    /// Returns validated settings in declaration order.
+    #[must_use]
+    pub fn settings(&self) -> &[Setting] {
+        &self.settings
     }
 
     /// Renders the declaration back into the JSON document form it parses from.
@@ -536,6 +511,9 @@ mod tests {
             }
         );
         assert!(error.to_string().contains("its own value schema refuses"));
+        let direct = serde_json::from_str::<ConfigurationDeclaration>(contradictory)
+            .expect_err("direct deserialization must also reject invalid defaults");
+        assert!(direct.to_string().contains("its own value schema refuses"));
     }
 
     #[test]
@@ -668,7 +646,7 @@ mod tests {
                 candidate.parse::<SettingKey>().expect_err(candidate),
                 expected
             );
-            assert!(expected.to_string().contains("a setting key"));
+            assert!(expected.to_string().contains("an identifier"));
             assert!(SettingKey::try_from(candidate.to_owned()).is_err());
         }
     }

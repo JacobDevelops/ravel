@@ -4,13 +4,12 @@
 
 use std::num::NonZero;
 
-use ravel_core::{LifecycleState, ModId};
-use ravel_host_api::{HostError, HostMod};
-use ravel_save::{
+use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
+use ravel_sdk::save::{
     MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataError,
     SavedDataPlan, SavedDataVersion,
 };
-use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
+use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 use serde::{Deserialize, Serialize};
 
 /// The canonical identity this mod is packaged and validated under.
@@ -62,10 +61,6 @@ pub struct SavedState {
 /// decides admissibility itself, because a mod that could would be able to open
 /// a world `ravel-save` refused.
 ///
-/// Like `ravel-test-mod-registries`, this is a plain Rust value the loader owns
-/// and it names [`HostMod`] directly. The SDK facade that will hide that trait
-/// is M4-W1's.
-///
 /// # Examples
 ///
 /// ```
@@ -88,7 +83,6 @@ pub struct SavedState {
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SavedDataMod {
-    id: ModId,
     entered: Vec<LifecycleState>,
     state: SavedState,
     // Absent until the host states one, which is what an unconfigured mod knows.
@@ -98,15 +92,9 @@ pub struct SavedDataMod {
 impl SavedDataMod {
     /// Builds the mod instance the loader drives, holding a world's worth of
     /// nothing until one is opened.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`MOD_ID`] stops being a legal mod id, which would mean this
-    /// mod can no longer be packaged under the identity its manifest declares.
     #[must_use]
     pub fn new() -> Self {
         Self {
-            id: MOD_ID.parse().expect("`MOD_ID` is a legal mod id"),
             entered: Vec::new(),
             state: SavedState::default(),
             waypoint_limit: None,
@@ -121,25 +109,20 @@ impl SavedDataMod {
 
     /// Returns what this mod declares about the data it owns.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if [`VERSIONS`] is empty or holds a zero, neither of which a
-    /// constant array of three non-zero literals can be.
-    #[must_use]
-    pub fn declaration(&self) -> SavedDataDeclaration {
+    /// Returns an error if the declared versions are empty or invalid.
+    pub fn declaration(&self) -> Result<SavedDataDeclaration, SavedDataError> {
         SavedDataDeclaration::new(
-            self.id.clone(),
-            VERSIONS
-                .into_iter()
-                .map(|raw| NonZero::new(raw).expect("every declared version is non-zero")),
+            Self::declared_id().clone(),
+            VERSIONS.into_iter().map(Self::version),
         )
-        .expect("this mod declares three versions")
     }
 
     /// Returns the version this build writes.
     #[must_use]
     pub fn current(&self) -> SavedDataVersion {
-        self.declaration().current()
+        Self::version(3)
     }
 
     /// Opens what a world holds for this mod, stepping it to [`Self::current`].
@@ -158,7 +141,7 @@ impl SavedDataMod {
         &mut self,
         stored: Option<(SavedDataVersion, SavedState)>,
     ) -> Result<SavedDataPlan, SavedDataError> {
-        let declaration = self.declaration();
+        let declaration = self.declaration()?;
         let Some((version, mut state)) = stored else {
             let plan = SavedDataPlan::open(&declaration, None)?;
             self.state = SavedState::default();
@@ -226,7 +209,7 @@ impl SavedDataMod {
 
     /// Counts one opening of the world, which is what [`SavedState::visits`] is.
     ///
-    /// Called from [`HostMod::open_saved_data`] rather than only from a test,
+    /// Called from [`Mod::open_saved_data`] rather than only from a test,
     /// which is the whole difference between a counter and a field. Until it was
     /// called there, nothing in a running game ever changed this mod's state:
     /// every session produced the default payload, so the bytes a world stored
@@ -272,11 +255,8 @@ impl Default for SavedDataMod {
     }
 }
 
-impl HostMod for SavedDataMod {
-    fn id(&self) -> &ModId {
-        &self.id
-    }
-
+#[declare_mod(id = "saved_data")]
+impl Mod for SavedDataMod {
     /// Records the step and does nothing else.
     ///
     /// Opening saved data is not driven from here. `SPEC.md` §14 decides it
@@ -286,40 +266,33 @@ impl HostMod for SavedDataMod {
     /// # Errors
     ///
     /// Never returns an error.
-    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.entered.push(state);
         Ok(())
     }
 
-    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, HostError> {
-        Ok(Some(self.declaration()))
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
+        self.declaration()
+            .map(Some)
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
-    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(DECLARATION)
             .map(Some)
-            .map_err(|error| HostError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Takes the waypoint limit the resolved settings put in force.
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Refused`] when this mod's own setting key stops
+    /// Returns a [`ModError`] when this mod's own setting key stops
     /// being a legal one.
-    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
-        let refuse = |detail: String| HostError::Refused {
-            mod_id: self.id.clone(),
-            state: LifecycleState::Constructed,
-            detail,
-        };
-        let key = WAYPOINT_LIMIT
-            .parse()
-            .map_err(|_| refuse(format!("`{WAYPOINT_LIMIT}` is not a legal setting key")))?;
+    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
+        let key = WAYPOINT_LIMIT.parse().map_err(|_| {
+            ModError::refused(format!("`{WAYPOINT_LIMIT}` is not a legal setting key"))
+        })?;
         self.waypoint_limit = resolved
             .value(&key)
             .and_then(serde_json::Value::as_u64)
@@ -334,9 +307,9 @@ impl HostMod for SavedDataMod {
     /// disagree with it. The chain exists because a host opening a world checks
     /// that every declared version has a way into it before it reads a payload,
     /// which is a check a typed `match` with a panicking arm cannot answer.
-    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, HostError> {
+    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
         Ok(Some(
-            MigrationChain::new(self.id.clone())
+            MigrationChain::new(Self::declared_id().clone())
                 .reaching(Self::version(2), Self::migrate_to_two)
                 .reaching(Self::version(3), Self::migrate_to_three),
         ))
@@ -346,29 +319,21 @@ impl HostMod for SavedDataMod {
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
         plan: &SavedDataPlan,
-    ) -> Result<(), HostError> {
+    ) -> Result<(), ModError> {
         let state = envelope
             .map(|stored| {
                 serde_json::from_value::<SavedState>(stored.payload().clone())
                     .map(|state| (stored.data_version(), state))
             })
             .transpose()
-            .map_err(|error| HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Registered,
-                detail: error.to_string(),
-            })?;
-        let opened = self.open(state).map_err(|error| HostError::Refused {
-            mod_id: self.id.clone(),
-            state: LifecycleState::Registered,
-            detail: error.to_string(),
-        })?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
+        let opened = self
+            .open(state)
+            .map_err(|error| ModError::refused(error.to_string()))?;
         if opened != *plan {
-            return Err(HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Registered,
-                detail: "the admitted saved-data plan changed during delivery".to_owned(),
-            });
+            return Err(ModError::refused(
+                "the admitted saved-data plan changed during delivery",
+            ));
         }
         // Last, so a delivery this mod refused above counts no visit and leaves
         // the state it was holding alone.
@@ -376,15 +341,12 @@ impl HostMod for SavedDataMod {
         Ok(())
     }
 
-    fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, HostError> {
+    fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
         let (version, state) = self.save();
-        let payload = serde_json::to_value(state).map_err(|error| HostError::Refused {
-            mod_id: self.id.clone(),
-            state: LifecycleState::Running,
-            detail: error.to_string(),
-        })?;
+        let payload =
+            serde_json::to_value(state).map_err(|error| ModError::refused(error.to_string()))?;
         Ok(Some(SavedDataEnvelope::new(
-            self.id.clone(),
+            Self::declared_id().clone(),
             version,
             Vec::new(),
             Some("urn:ravel:test:saved-state:1".to_owned()),
@@ -397,10 +359,9 @@ impl HostMod for SavedDataMod {
 mod tests {
     use std::num::NonZero;
 
-    use ravel_core::{LifecycleState, ModId, Side};
-    use ravel_host_api::HostMod;
-    use ravel_save::{SavedDataEnvelope, SavedDataPlan, SavedDataVersion};
     use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
+    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan, SavedDataVersion};
+    use ravel_sdk::{LifecycleState, Mod, ModId, Side};
     use serde_json::json;
 
     use super::{DECLARATION, MOD_ID, SavedDataMod, SavedState, VERSIONS};
@@ -422,8 +383,11 @@ mod tests {
 
     /// The plan a world at `at` resolves to for this mod.
     fn plan_from(saved: &SavedDataMod, at: Option<u32>) -> SavedDataPlan {
-        SavedDataPlan::open(&saved.declaration(), at.map(version))
-            .expect("this build reads every version these tests name")
+        SavedDataPlan::open(
+            &saved.declaration().expect("valid declaration"),
+            at.map(version),
+        )
+        .expect("this build reads every version these tests name")
     }
 
     /// What a world at `raw` holds, as [`SavedDataMod::open`] takes it.
@@ -447,7 +411,7 @@ mod tests {
     #[test]
     fn the_declaration_holds_every_version_this_build_reads_and_writes_the_highest() {
         let saved = SavedDataMod::new();
-        let declaration = saved.declaration();
+        let declaration = saved.declaration().expect("valid declaration");
 
         assert_eq!(declaration.owner(), saved.id());
         assert_eq!(
@@ -626,15 +590,19 @@ mod tests {
         let declaration = ConfigurationDeclaration::parse(DECLARATION)
             .expect("the packaged declaration is valid");
 
-        assert_eq!(declaration.owner.as_str(), MOD_ID);
-        for setting in &declaration.settings {
+        assert_eq!(declaration.owner().as_str(), MOD_ID);
+        for setting in declaration.settings() {
             assert!(
                 setting.side.applies_to(Side::IntegratedServer),
                 "`{}` is offered somewhere a world is not open",
                 setting.key
             );
             for elsewhere in [Side::Client, Side::DedicatedServer] {
-                assert!(!setting.side.applies_to(elsewhere), "{}", elsewhere.name());
+                assert!(
+                    !setting.side.applies_to(elsewhere),
+                    "{}",
+                    elsewhere.as_str()
+                );
             }
         }
     }

@@ -101,6 +101,10 @@ impl StructuredFailure for CompatibilityError {
     fn failure_kind(&self) -> Option<FailureKind> {
         Some(FailureKind::IncompatibleVersion)
     }
+
+    fn quotes_untrusted_text(&self) -> bool {
+        matches!(self, Self::Minecraft { .. })
+    }
 }
 
 #[cfg(test)]
@@ -227,5 +231,23 @@ mod tests {
             "the package supports Minecraft 26.0.0, 26.0.1, but Minecraft 25.0.0 is running"
         );
         assert_eq!(error.diagnostic().text(), error.to_string());
+        assert!(error.quotes_untrusted_text());
+    }
+
+    #[test]
+    fn a_minecraft_rejection_identifies_free_form_manifest_text_as_quoted() {
+        let manifest = manifest("*", r#"["words supplied by the package author"]"#);
+        let error = manifest
+            .compatibility
+            .check_minecraft("26.1.5")
+            .expect_err("free-form text does not name the running version");
+
+        assert!(error.quotes_untrusted_text());
+        assert!(
+            error
+                .diagnostic()
+                .text()
+                .contains("words supplied by the package author")
+        );
     }
 }

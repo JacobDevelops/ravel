@@ -2,10 +2,11 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::PathBuf;
 
-use ravel_core::{LifecycleState, ModId, Side, StructuredFailure, Version};
+use ravel_core::{FailureEnvironment, LifecycleState, ModId, Side, StructuredFailure, Version};
 use ravel_host_api::{HostError, HostMod};
 use ravel_loader::{
-    LifecycleEntry, LifecycleError, LifecycleEvent, LifecycleMachine, admitted, executes_mod_code,
+    DriveError, LifecycleEntry, LifecycleError, LifecycleEvent, ServiceRefused, admitted,
+    drive_borrowed, executes_mod_code, stop_all,
 };
 use ravel_package::{
     CompatibilityError, IntegrityError, ManifestError, PackageManifest, verify_package,
@@ -26,14 +27,14 @@ const RUN_ORDER: [LifecycleState; 8] = [
 
 /// A package root and unparsed manifest, preserving the validation boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DiscoveredPackage {
+pub struct TestPackage {
     /// The package directory that the manifest's relative paths resolve against.
     pub root: PathBuf,
     /// The manifest document, exactly as it was read.
     pub document: String,
 }
 
-impl DiscoveredPackage {
+impl TestPackage {
     /// Records a package found at `root` with the manifest text `document`.
     #[must_use]
     pub fn new(root: impl Into<PathBuf>, document: impl Into<String>) -> Self {
@@ -111,12 +112,14 @@ impl PipelineRun {
 /// Mods run in resolved order after each set-wide transition. Packages not active
 /// on this side remain at [`LifecycleState::Resolved`] and need no mod value.
 /// The caller supplies already-constructed mods; this function loads no code.
+/// Startup and shutdown both use the production loader drivers, with the supplied
+/// host versions and the current process's platform and architecture.
 ///
 /// # Errors
 ///
 /// Returns the first validation, resolution, mod-set, lifecycle, or host failure.
 pub fn run(
-    packages: &[DiscoveredPackage],
+    packages: &[TestPackage],
     host: &Host,
     side: Side,
     mods: &mut [&mut dyn HostMod],
@@ -128,18 +131,15 @@ pub fn run(
         .map_err(PipelineError::Compatibility)?;
     refuse_mods_outside_the_set(&entries, mods)?;
 
-    let mut machine = LifecycleMachine::new(side, entries).map_err(PipelineError::Lifecycle)?;
-    for state in RUN_ORDER {
-        machine
-            .advance_all(state)
-            .map_err(PipelineError::Lifecycle)?;
-        if executes_mod_code(state) {
-            enter_all(&plan, mods, state)?;
-        }
-        if state == LifecycleState::Constructed {
-            register_all(&plan, mods, &mut machine)?;
-        }
-    }
+    let environment = FailureEnvironment {
+        ravel: host.ravel.clone(),
+        minecraft: host.minecraft.clone(),
+        platform: std::env::consts::OS.to_owned(),
+        architecture: std::env::consts::ARCH.to_owned(),
+    };
+    let mut machine =
+        drive_borrowed(side, &environment, entries, mods).map_err(PipelineError::from)?;
+    stop_all(&mut machine, &environment, mods).map_err(PipelineError::from)?;
 
     Ok(PipelineRun {
         plan,
@@ -147,10 +147,7 @@ pub fn run(
     })
 }
 
-fn validate(
-    packages: &[DiscoveredPackage],
-    host: &Host,
-) -> Result<Vec<PackageManifest>, PipelineError> {
+fn validate(packages: &[TestPackage], host: &Host) -> Result<Vec<PackageManifest>, PipelineError> {
     let mut manifests = Vec::with_capacity(packages.len());
     for package in packages {
         let manifest =
@@ -184,53 +181,6 @@ fn refuse_mods_outside_the_set(
     Ok(())
 }
 
-fn enter_all(
-    plan: &LoadPlan,
-    mods: &mut [&mut dyn HostMod],
-    state: LifecycleState,
-) -> Result<(), PipelineError> {
-    for id in plan.order() {
-        let host = mods
-            .iter_mut()
-            .find(|host| host.id() == id)
-            .ok_or_else(|| PipelineError::MissingMod {
-                mod_id: id.clone(),
-                state,
-            })?;
-        host.enter(state).map_err(PipelineError::Host)?;
-    }
-    Ok(())
-}
-
-// Claim in resolved order; preserve window violations over a mod's summary error.
-fn register_all(
-    plan: &LoadPlan,
-    mods: &mut [&mut dyn HostMod],
-    machine: &mut LifecycleMachine,
-) -> Result<(), PipelineError> {
-    for id in plan.order() {
-        let host = mods
-            .iter_mut()
-            .find(|host| host.id() == id)
-            .ok_or_else(|| PipelineError::MissingMod {
-                mod_id: id.clone(),
-                state: LifecycleState::Registered,
-            })?;
-
-        let mut window = machine
-            .registration_window(id)
-            .map_err(PipelineError::Lifecycle)?;
-        let outcome = host.register(&mut window);
-        let unexpected = window.unexpected().cloned();
-
-        if let Some(error) = unexpected {
-            return Err(PipelineError::Lifecycle(error));
-        }
-        outcome.map_err(PipelineError::Host)?;
-    }
-    Ok(())
-}
-
 /// A pipeline failure, preserving errors from the responsible crate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PipelineError {
@@ -253,6 +203,8 @@ pub enum PipelineError {
     Lifecycle(LifecycleError),
     /// A mod declined a step it was driven through.
     Host(HostError),
+    /// The production service barrier refused the set.
+    Services(ServiceRefused),
     /// The plan ordered a mod the caller supplied no value for.
     MissingMod {
         /// The mod the plan named.
@@ -279,10 +231,11 @@ impl fmt::Display for PipelineError {
             Self::Resolution(error) => write!(formatter, "resolution failed: {error}"),
             Self::Lifecycle(error) => write!(formatter, "the run failed: {error}"),
             Self::Host(error) => write!(formatter, "the run failed: {error}"),
+            Self::Services(error) => write!(formatter, "the run failed: {error}"),
             Self::MissingMod { mod_id, state } => write!(
                 formatter,
                 "the plan orders `{mod_id}`, but no mod was supplied to enter `{}`",
-                state.name()
+                state.as_str()
             ),
             Self::UnexpectedMod { mod_id } => write!(
                 formatter,
@@ -310,7 +263,21 @@ impl PipelineError {
             Self::Resolution(error) => Some(error),
             Self::Lifecycle(error) => Some(error),
             Self::Host(error) => Some(error),
+            Self::Services(error) => Some(error),
             Self::Unreadable { .. } | Self::MissingMod { .. } | Self::UnexpectedMod { .. } => None,
+        }
+    }
+}
+impl From<DriveError> for PipelineError {
+    fn from(error: DriveError) -> Self {
+        match error {
+            DriveError::Lifecycle(error) => Self::Lifecycle(error),
+            DriveError::Host { source, .. } => Self::Host(source),
+            DriveError::Services(error) => Self::Services(error),
+            DriveError::MissingMod { mod_id, state } => Self::MissingMod { mod_id, state },
+            DriveError::Identity { constructed, .. } => Self::UnexpectedMod {
+                mod_id: constructed,
+            },
         }
     }
 }

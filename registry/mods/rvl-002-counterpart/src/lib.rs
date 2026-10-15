@@ -133,7 +133,7 @@ impl Entry {
             .collect();
         Self {
             declaration: Self::declaration(),
-            configuration: settings::declaration().map_err(|error| Self::packaging(&error)),
+            configuration: settings::declaration().map_err(|error| ModError::refused(error.to_string())),
             settings: Settings::default(),
             flags: FlagTable::default(),
             tier,
@@ -212,7 +212,7 @@ impl Entry {
     /// Returns [`ModError::Refused`] when the entry's own identity is not a
     /// legal mod id, which for a constant is a packaging failure.
     pub fn shape_world(shaping: &mut WorldShaping) -> Result<(), ModError> {
-        world::shaping(shaping).map_err(|error| Self::packaging(&error))
+        world::shaping(shaping).map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// What this entry claims at the registration barrier.
@@ -234,7 +234,7 @@ impl Entry {
             blocks.push(
                 declaration
                     .entry(ContentKind::Block, &path)
-                    .map_err(|error| Self::packaging(&error))?,
+                    .map_err(|error| ModError::refused(error.to_string()))?,
             );
         }
         let mut items = Vec::with_capacity(census::ITEMS);
@@ -242,25 +242,17 @@ impl Entry {
             items.push(
                 declaration
                     .entry(ContentKind::Item, &path)
-                    .map_err(|error| Self::packaging(&error))?,
+                    .map_err(|error| ModError::refused(error.to_string()))?,
             );
         }
         let tags = data::declare_tags(&mut declaration, &blocks, &items)?;
         if tags != data::TAG_DOCUMENTS {
-            return Err(Self::packaging(&format!(
+            return Err(ModError::refused(format!(
                 "{tags} of the {} tag documents were declared",
                 data::TAG_DOCUMENTS
             )));
         }
         Ok(declaration)
-    }
-
-    pub(crate) fn packaging(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail: detail.to_string(),
-        }
     }
 }
 
@@ -295,7 +287,7 @@ impl Mod for Entry {
         let published = settings::publish(&mut self.flags, &self.settings);
         let declared = settings::published_flags().len();
         if published != declared {
-            return Err(Self::packaging(&format!(
+            return Err(ModError::refused(format!(
                 "{published} of the {declared} flags this entry publishes reached the table"
             )));
         }

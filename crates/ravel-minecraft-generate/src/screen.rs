@@ -6,9 +6,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::classfile;
 use super::inputs::Adapter;
 use super::mapping::Mapping;
-use super::render;
 use super::roles::Roles;
 use super::stubs::Stub;
 use super::{GenerateError, SCREEN_PACKAGE};
@@ -229,11 +229,11 @@ fn render_location(
             .linked
             .get(&template.name)
             .ok_or_else(|| unresolved_role(template, &template.name))?;
-        let declared = render::alias(linked_name, version.aliased);
+        let declared = classfile::alias(linked_name, version.aliased);
         if &declared != linked_name {
             aliases.push((declared.clone(), linked_name.clone()));
         }
-        let (package, simple) = render::split(&declared);
+        let (package, simple) = classfile::split(&declared);
         Ok((package, simple.to_owned(), format!("{declared}.java")))
     } else {
         let relative = owned.map_or_else(
@@ -344,7 +344,7 @@ fn every_name_is_nameable(
         for role in declared.into_iter().chain(referenced) {
             let Some(outside) = linked
                 .get(role)
-                .filter(|name| render::split(name).0.is_none())
+                .filter(|name| classfile::split(name).0.is_none())
             else {
                 continue;
             };
@@ -563,8 +563,8 @@ pub(super) fn name_space(
     }
     let names = || linked.iter().map(String::as_str);
     Ok(NameSpace {
-        unnamed: names().any(|name| render::split(name).0.is_none()),
-        split: render::name_space_is_split(names()),
+        unnamed: names().any(|name| classfile::split(name).0.is_none()),
+        split: classfile::name_space_is_split(names()),
     })
 }
 
@@ -625,11 +625,11 @@ fn linked_classes(
             return Err(GenerateError::Unresolved(format!(
                 "a screen template names {role}, which this version binds to {}, and that class \
                  is not stubbed, so the screen jar would compile against nothing",
-                render::source_name(&class)
+                classfile::source_name(&class)
             )));
         }
         let name = mapping.runtime_class(&class).to_owned();
-        let last = render::split(&name).1.to_owned();
+        let last = classfile::split(&name).1.to_owned();
         // Two roles for one class are two words for one thing, which is what a
         // class the reflective surface and the stub seeds both name is. Two
         // roles for two classes that link as one name are the collision: a
@@ -729,15 +729,15 @@ fn resolve(
         // nothing: the language refuses the import and the simple name is the
         // whole name.
         Placeholder::Import(class) => {
-            let linked = render::alias(&name(class)?, version.aliased);
-            Ok(match render::split(&linked).0 {
-                Some(_) => format!("import {};", render::source_name(&linked)),
+            let linked = classfile::alias(&name(class)?, version.aliased);
+            Ok(match classfile::split(&linked).0 {
+                Some(_) => format!("import {};", classfile::source_name(&linked)),
                 None => String::new(),
             })
         }
         Placeholder::Class(class) => {
             let linked = name(class)?;
-            Ok(render::split(&linked).1.to_owned())
+            Ok(classfile::split(&linked).1.to_owned())
         }
         Placeholder::Member(role, member) => {
             member_name(role, member, version.roles, version.stubs, version.mapping)
@@ -757,7 +757,7 @@ fn member_name(
     mapping: &Mapping,
 ) -> Result<String, GenerateError> {
     let class = roles.class(role)?;
-    let reviewed = render::source_name(&class);
+    let reviewed = classfile::source_name(&class);
     let seeded = seeded_member_name(&class, role, member_role, roles, stubs, mapping)?;
     let declared = roles.declared_member(role, member_role)?.map(|declared| {
         mapping
@@ -801,7 +801,7 @@ fn seeded_member_name(
     let Some(seeded) = bound.iter().find(|seeded| seeded.role() == member_role) else {
         return Ok(None);
     };
-    let reviewed = render::source_name(class);
+    let reviewed = classfile::source_name(class);
     let member = seeded.member();
     let stub = stubs
         .iter()
@@ -819,7 +819,7 @@ fn seeded_member_name(
     let mut candidates = Vec::new();
     for declared in stub.members.iter().filter(|held| held.name == member) {
         if let Some(wanted) = seeded.parameters() {
-            let (parameters, _) = render::signature(&declared.descriptor).map_err(|detail| {
+            let (parameters, _) = classfile::signature(&declared.descriptor).map_err(|detail| {
                 GenerateError::Unsupported(format!(
                     "{reviewed}#{member} carries a descriptor that does not read: {detail}"
                 ))
@@ -904,7 +904,6 @@ mod tests {
     use std::fmt::Write as _;
 
     use super::super::inputs::{self, MappingSource, Seed, SeedMember, Seeds};
-    use super::super::render;
     use super::super::stubs::{Member, Stub};
     use super::*;
 
@@ -978,7 +977,6 @@ com.example.util.Held -> com.example.util.Held:
                 non_goals: Vec::new(),
             },
         )
-        .expect("the invented declarations read")
     }
 
     fn roles(seeds: &Seeds) -> Roles {
@@ -1210,8 +1208,8 @@ com.example.util.Held -> com.example.util.Held:
                 let next = format!("m{index}_{}", renamed.len());
                 let linked = renamed.entry(member.name.as_str()).or_insert(next).clone();
                 if member.method {
-                    let (parameters, returns) =
-                        render::signature(&member.descriptor).expect("a stubbed descriptor reads");
+                    let (parameters, returns) = classfile::signature(&member.descriptor)
+                        .expect("a stubbed descriptor reads");
                     writeln!(
                         text,
                         "    {returns} {}({}) -> {linked}",
@@ -1220,8 +1218,8 @@ com.example.util.Held -> com.example.util.Held:
                     )
                     .expect("writing to a String cannot fail");
                 } else {
-                    let (kind, _) =
-                        render::java_type(&member.descriptor).expect("a stubbed descriptor reads");
+                    let (kind, _) = classfile::java_type(&member.descriptor)
+                        .expect("a stubbed descriptor reads");
                     writeln!(text, "    {kind} {} -> {linked}", member.name)
                         .expect("writing to a String cannot fail");
                 }
@@ -2250,8 +2248,7 @@ com.example.util.Held -> com.example.util.Held:
                     runtime: "com.example.gui.Panel".to_owned(),
                     members: vec![inputs::ReflectedMember {
                         name: "width".to_owned(),
-                        descriptor: Some("I".to_owned()),
-                        parameters: None,
+                        lookup: inputs::Lookup::Descriptor("I".to_owned()),
                     }],
                 }],
             },
@@ -2261,8 +2258,7 @@ com.example.util.Held -> com.example.util.Held:
                 hooks: Vec::new(),
                 non_goals: Vec::new(),
             },
-        )
-        .expect("the invented declarations read");
+        );
 
         let name = member_name("Ticker", "width", &bound, &stubs(), &proguard())
             .expect("the surface declares the member by descriptor");

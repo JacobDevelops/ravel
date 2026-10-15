@@ -36,10 +36,9 @@
 //! # Ok::<(), ravel_sdk::content::ContentIdError>(())
 //! ```
 
-use ravel_core::LifecycleState;
-
 pub use ravel_core::{
-    ContentId, ContentIdError, ContentKind, ContentKindError, RegistryKey, RegistryKeyError,
+    BlockBehaviour, ContentBehaviour, ContentId, ContentIdError, ContentKind, ContentKindError,
+    ItemBehaviour, RegistryKey, RegistryKeyError,
 };
 pub use ravel_data::{ContentDeclaration, DeclarationError};
 pub use ravel_host_api::{Registrar, RegistrationRefused};
@@ -53,7 +52,7 @@ use crate::ModError;
 ///
 /// # Errors
 ///
-/// Returns [`ModError::Refused`] for the owner in [`LifecycleState::Constructed`].
+/// Returns the claim refusal detail; the host attributes the registration hook.
 ///
 /// # Examples
 ///
@@ -110,11 +109,7 @@ pub fn claim_all(
     for key in declaration.entries() {
         registrar
             .claim(key.clone())
-            .map_err(|refusal| ModError::Refused {
-                mod_id: declaration.owner().clone(),
-                state: LifecycleState::Constructed,
-                detail: refusal.to_string(),
-            })?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
     }
     Ok(())
 }

@@ -7,7 +7,7 @@
 // The alternative is what the counted evidence shows the entries doing today,
 // which is each shipping a copy and hoping the one that wins is theirs.
 
-use ravel_sdk::{ModId, VersionRange, provision::{Provided, Provision}};
+use ravel_sdk::{ModId, Version, VersionRange, provision::{Provided, Provision}};
 
 #[test]
 fn two_requirements_no_version_satisfies_are_refused() {
@@ -16,7 +16,10 @@ fn two_requirements_no_version_satisfies_are_refused() {
     let newer = ModId::new("witness").expect("a well formed owner id");
 
     let mut provision = Provision::default();
-    provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+    provision.provides(
+        &provider,
+        Provided::new("shared_maths", Version::parse("2.1.0").expect("a well formed version")),
+    );
     provision.requires(&older, "shared_maths", VersionRange::parse("^1").expect("a range"));
     provision.requires(&newer, "shared_maths", VersionRange::parse("^2").expect("a range"));
 

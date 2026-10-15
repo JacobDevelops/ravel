@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
+use super::classfile::method_types;
 use super::inputs::{self, Adapter, Inventory, Lookup, Reflection, Spelling};
 use super::mapping::Mapping;
 use super::resolve::Resolved;
@@ -229,79 +230,37 @@ pub(super) fn shapes(
 
 /// Reads the parameter types out of a JVM method descriptor.
 fn parameters(descriptor: &str) -> Result<Vec<JavaType>, String> {
-    let mut rest = descriptor
-        .strip_prefix('(')
-        .and_then(|rest| rest.split(')').next())
-        .ok_or_else(|| format!("{descriptor} is not a method descriptor"))?;
-
-    let mut parameters = Vec::new();
-    while !rest.is_empty() {
-        let (parameter, remainder) = parameter(rest)?;
-        parameters.push(parameter);
-        rest = remainder;
-    }
-    Ok(parameters)
-}
-
-/// Reads one parameter descriptor, returning it and whatever follows it.
-fn parameter(descriptor: &str) -> Result<(JavaType, &str), String> {
-    let first = descriptor
-        .chars()
-        .next()
-        .ok_or_else(|| "a parameter descriptor is empty".to_owned())?;
-    let primitive = match first {
-        'Z' => Some(JavaType::Boolean),
-        'B' => Some(JavaType::Byte),
-        'C' => Some(JavaType::Char),
-        'S' => Some(JavaType::Short),
-        'I' => Some(JavaType::Int),
-        'J' => Some(JavaType::Long),
-        'F' => Some(JavaType::Float),
-        'D' => Some(JavaType::Double),
-        _ => None,
-    };
-    if let Some(kind) = primitive {
-        return Ok((kind, &descriptor[1..]));
-    }
-
-    match first {
-        'L' => {
-            let end = descriptor
-                .find(';')
-                .ok_or_else(|| format!("{descriptor} names a class that is never terminated"))?;
-            let name = &descriptor[1..end];
-            // The inventory's descriptor is written by hand and reviewed, so a
-            // slip that names no class at all is worth catching here rather than
-            // rendering a handle onto nothing.
-            if name.is_empty() {
-                return Err(format!("{descriptor} names no class between L and ;"));
+    let (parameters, _) = method_types(descriptor)?;
+    Ok(parameters
+        .into_iter()
+        .map(|kind| {
+            if kind.dimensions != 0 {
+                return if kind.descriptor == "[B" {
+                    JavaType::Bytes
+                } else {
+                    JavaType::Handle(kind.descriptor.to_owned())
+                };
             }
-            let kind = if name == "java/lang/String" {
-                // A string is copied rather than handled: it is immutable, so a
-                // copy of one cannot go stale, and an owned `String` is what a
-                // hook wants to look at anyway.
-                JavaType::Text
-            } else {
-                JavaType::Handle(name.to_owned())
-            };
-            Ok((kind, &descriptor[end + 1..]))
-        }
-        '[' => {
-            // An array is an object, so it crosses as a handle like any other.
-            // The element descriptor is parsed only to find where this one ends
-            // and to refuse an array of nothing valid.
-            let (_, after) = parameter(&descriptor[1..])?;
-            // `[B` and nothing else is the exception, because a world's aggregate
-            // is bytes rather than an object a hook looks at. `[[B` is still a
-            // handle: it is an array of arrays, not a payload.
-            if descriptor.len() - after.len() == 2 && descriptor.starts_with("[B") {
-                return Ok((JavaType::Bytes, after));
+            if kind.descriptor.starts_with('L') {
+                return if kind.name == "java/lang/String" {
+                    JavaType::Text
+                } else {
+                    JavaType::Handle(kind.name.to_owned())
+                };
             }
-            let end = descriptor.len() - after.len();
-            Ok((JavaType::Handle(descriptor[..end].to_owned()), after))
-        }
-        other => Err(format!("{other} is not a parameter descriptor")),
-    }
+            match kind.name {
+                "boolean" => JavaType::Boolean,
+                "byte" => JavaType::Byte,
+                "char" => JavaType::Char,
+                "short" => JavaType::Short,
+                "int" => JavaType::Int,
+                "long" => JavaType::Long,
+                "float" => JavaType::Float,
+                "double" => JavaType::Double,
+                name => JavaType::Handle(name.to_owned()),
+            }
+        })
+        .collect())
 }
 
 /// Turns a hook identifier into a Rust constant name.
@@ -787,12 +746,7 @@ pub(super) fn game_members(
     for reflected in &surface.classes {
         let owner = reflected.class.replace('.', "/");
         for member in &reflected.members {
-            let lookup = member.lookup().map_err(|detail| {
-                GenerateError::Drift(format!(
-                    "the reflective surface declares a member of {}: {detail}",
-                    reflected.class
-                ))
-            })?;
+            let lookup = &member.lookup;
             let Lookup::Descriptor(descriptor) = lookup else {
                 continue;
             };
@@ -945,8 +899,9 @@ fn written_declarations() -> &'static str {
          \x20    * loader yet.\n\
          \x20    *\n\
          \x20    * @param side the code {@code dev.ravel.jvm.Agent} named the side by\n\
+         \x20    * @param profilingRequested whether this launch requested opt-in profiling\n\
          \x20    */\n\
-         \x20   public static native void ravelInitialize(int side);\n\n\
+         \x20   public static native void ravelInitialize(int side, boolean profilingRequested);\n\n\
          \x20   /** Hook invocations the native side has counted. */\n\
          \x20   public static native long nativeInvocations();\n\n\
          \x20   /**\n\
@@ -999,20 +954,6 @@ fn written_declarations() -> &'static str {
          \x20    * @return the mod list, or {@code null} when no set is installed\n\
          \x20    */\n\
          \x20   public static native String ravelModSurface();\n\n\
-         \x20   /**\n\
-         \x20    * Records whether this launch asked for opt-in profiling.\n\
-         \x20    *\n\
-         \x20    * <p>Called once from {@code premain}, before any mod exists.\n\
-         \x20    * The property is read here because Java is where a system\n\
-         \x20    * property is. The crossing runs from Java to Rust,\n\
-         \x20    * not the other way, so this is the direction the switch can\n\
-         \x20    * travel in. Reading it once is what lets the collectors hold a\n\
-         \x20    * plain flag instead of an atomic on every crossing.\n\
-         \x20    *\n\
-         \x20    * @param value {@code System.getProperty(\"ravel.profiling\")},\n\
-         \x20    *     or {@code null} when the launch set nothing\n\
-         \x20    */\n\
-         \x20   public static native void ravelEnableProfiling(String value);\n\n\
          \x20   /**\n\
          \x20    * What opt-in profiling collected, and what it could not.\n\
          \x20    *\n\
@@ -1255,122 +1196,9 @@ fn stub_lock_entries(text: &mut String, stubs: &[Stub]) {
     }
 }
 
-/// Splits an internal class name into its package and the name Java declares.
-///
-/// A nested class keeps its `$`: the declared name is the binary one, which is
-/// what the JVM links against and what javac writes into the class file. A class
-/// with no package at all is the unnamed one, which an obfuscated version puts
-/// most of the game in.
-pub(super) fn split(class: &str) -> (Option<String>, &str) {
-    class
-        .rsplit_once('/')
-        .map_or((None, class), |(package, simple)| {
-            (Some(package.replace('/', ".")), simple)
-        })
-}
-
-/// Whether these linked names span the unnamed package and named ones at once.
-pub(super) fn name_space_is_split<'a>(classes: impl IntoIterator<Item = &'a str>) -> bool {
-    let (mut named, mut unnamed) = (false, false);
-    for class in classes {
-        if split(class).0.is_none() {
-            unnamed = true;
-        } else {
-            named = true;
-        }
-    }
-    named && unnamed
-}
-
-/// The internal name a source declares and names one linked class by.
-///
-/// Java source inside a package cannot name a class outside every package — the
-/// language has no syntax for it — so a version that splits its game across the
-/// two has no source form for the packaged half at all. Where it is split, every
-/// class is written in the unnamed package instead, which is the only name space
-/// both halves can be spelled in and leaves javac one name per class. The
-/// package is put back into the compiled class files afterwards, so what the JVM
-/// links is still the linked name.
-///
-/// The alias runs this way round rather than lifting the unnamed half into a
-/// package of Ravel's own because the packaged half is the small one: an
-/// obfuscated version leaves a handful of classes named and moves the rest out
-/// of every package, so writing them all as the majority already is renames the
-/// fewest classes and leaves the harness's compiled names the ones the adapter
-/// resolves for all but those few.
-pub(super) fn alias(class: &str, split_name_space: bool) -> String {
-    if split_name_space {
-        split(class).1.to_owned()
-    } else {
-        class.to_owned()
-    }
-}
-
-/// An internal class name as Java source writes it.
-pub(super) fn source_name(class: &str) -> String {
-    class.replace('/', ".")
-}
-
-/// Reads a method descriptor as the Java source types it declares.
-pub(super) fn signature(descriptor: &str) -> Result<(Vec<String>, String), String> {
-    let mut rest = descriptor
-        .strip_prefix('(')
-        .ok_or_else(|| format!("{descriptor} is not a method descriptor"))?;
-    let mut parameters = Vec::new();
-    while !rest.starts_with(')') {
-        let (kind, remainder) = java_type(rest)?;
-        parameters.push(kind);
-        rest = remainder;
-    }
-    let (returns, after) = java_type(&rest[1..])?;
-    if !after.is_empty() {
-        return Err(format!("{descriptor} declares more than one return type"));
-    }
-    Ok((parameters, returns))
-}
-
-/// Reads one type descriptor as Java source, returning it and whatever follows.
-pub(super) fn java_type(descriptor: &str) -> Result<(String, &str), String> {
-    let first = descriptor
-        .chars()
-        .next()
-        .ok_or_else(|| format!("{descriptor} ends before a type does"))?;
-    let primitive = match first {
-        'V' => Some("void"),
-        'Z' => Some("boolean"),
-        'B' => Some("byte"),
-        'C' => Some("char"),
-        'S' => Some("short"),
-        'I' => Some("int"),
-        'J' => Some("long"),
-        'F' => Some("float"),
-        'D' => Some("double"),
-        _ => None,
-    };
-    if let Some(kind) = primitive {
-        return Ok((kind.to_owned(), &descriptor[1..]));
-    }
-    match first {
-        'L' => {
-            let end = descriptor
-                .find(';')
-                .ok_or_else(|| format!("{descriptor} names a class that is never terminated"))?;
-            let name = &descriptor[1..end];
-            if name.is_empty() {
-                return Err(format!("{descriptor} names no class between L and ;"));
-            }
-            Ok((source_name(name), &descriptor[end + 1..]))
-        }
-        '[' => {
-            let (element, after) = java_type(&descriptor[1..])?;
-            Ok((format!("{element}[]"), after))
-        }
-        other => Err(format!("{other} is not a type descriptor")),
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::classfile::{alias, java_type, name_space_is_split, signature};
     use super::super::inputs::{
         Adapter, Hook, Input, Inputs, Inventory, Kind, MappingSource, PackFormat, Reflected,
         Reflection, Spelling,
@@ -1379,10 +1207,10 @@ mod tests {
     use super::super::stub_render::stub_java;
     use super::super::stubs::{Member as StubMember, Stub};
     use super::{
-        JavaType, alias, bindings, constant_name, exports, game_names, hook_java, java_name,
-        name_space_is_split, parameters, rust_name, shapes,
+        JavaType, bindings, constant_name, exports, game_names, hook_java, java_name, parameters,
+        rust_name, shapes,
     };
-    use super::{Mapping, java_type, signature, stub_lock};
+    use super::{Mapping, stub_lock};
 
     /// Adapter inputs standing in for the tracked ones.
     ///
@@ -1601,7 +1429,7 @@ mod tests {
         assert!(
             parameters("([)V")
                 .expect_err("an array of nothing must be refused")
-                .contains("empty")
+                .contains("not a type descriptor")
         );
         assert!(
             parameters("(L;)V")
@@ -1611,17 +1439,63 @@ mod tests {
         assert!(
             parameters("(Q)V")
                 .expect_err("an unknown descriptor must be refused")
-                .contains("not a parameter descriptor")
+                .contains("not a type descriptor")
         );
         assert!(
             parameters("(V)V")
                 .expect_err("void is not a parameter")
-                .contains("not a parameter descriptor")
+                .contains("not a type descriptor")
         );
         assert!(
             parameters("I)V")
                 .expect_err("this is not a method descriptor")
                 .contains("not a method descriptor")
+        );
+    }
+
+    #[test]
+    fn every_descriptor_consumer_rejects_invalid_method_returns_and_void_arrays() {
+        for descriptor in ["(I)", "(I)VZ", "(I)Q", "(I)[V", "([V)V", "(I", "()"] {
+            assert!(parameters(descriptor).is_err(), "{descriptor}");
+            assert!(signature(descriptor).is_err(), "{descriptor}");
+            assert!(
+                crate::descriptor_parameters(descriptor).is_err(),
+                "{descriptor}"
+            );
+            assert!(
+                crate::descriptor_handle_count(descriptor).is_err(),
+                "{descriptor}"
+            );
+        }
+    }
+
+    #[test]
+    fn shared_descriptor_inventory_matches_generated_handle_classification() {
+        let descriptor = "(ZBCSIJFDLjava/lang/String;Ljava/lang/Object;[B[[B[Ljava/lang/String;)V";
+        let kinds = parameters(descriptor).expect("hook parameters");
+        let handles = kinds
+            .iter()
+            .filter(|kind| matches!(kind, JavaType::Handle(_)))
+            .count();
+        assert_eq!(handles, 3);
+        assert_eq!(
+            crate::descriptor_handle_count(descriptor).expect("inventory count"),
+            handles
+        );
+        assert_eq!(
+            crate::descriptor_parameters("([B[[BLjava/lang/String;)V").expect("exact tokens"),
+            ["[B", "[[B", "Ljava/lang/String;"]
+        );
+        assert_eq!(
+            signature("([B[[BLjava/lang/String;)V").expect("source spelling"),
+            (
+                vec![
+                    "byte[]".to_owned(),
+                    "byte[][]".to_owned(),
+                    "java.lang.String".to_owned()
+                ],
+                "void".to_owned()
+            )
         );
     }
 

@@ -32,7 +32,7 @@ use ravel_sdk::network::{
     WireError,
 };
 use ravel_sdk::sides::{ClientOnly, Side};
-use ravel_sdk::{Declared, JsonValue, LifecycleState, Mod, ModError, declare_mod};
+use ravel_sdk::{JsonValue, LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "client_only";
@@ -226,11 +226,7 @@ impl ClientOnlyMod {
         self.overlays
             .get(self.side)
             .map(Overlays::drawn)
-            .map_err(|wrong| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Running,
-                detail: wrong.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 }
 
@@ -249,11 +245,7 @@ impl Mod for ClientOnlyMod {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(DECLARATION)
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Takes the switch the resolved settings put in force.
@@ -263,19 +255,14 @@ impl Mod for ClientOnlyMod {
     /// Returns [`ModError::Refused`] when the setting this mod declared did not
     /// resolve to the boolean it declared.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let refuse = |detail: String| ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail,
-        };
         let key = ENABLED
             .parse()
-            .map_err(|_| refuse(format!("`{ENABLED}` is not a legal setting key")))?;
+            .map_err(|_| ModError::refused(format!("`{ENABLED}` is not a legal setting key")))?;
         let enabled = resolved
             .value(&key)
             .and_then(JsonValue::as_bool)
             .ok_or_else(|| {
-                refuse(format!(
+                ModError::refused(format!(
                     "`{ENABLED}` resolved to something that is not a switch"
                 ))
             })?;
@@ -297,11 +284,7 @@ impl Mod for ClientOnlyMod {
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
         let overlay = delivery
             .decode::<Overlay>()
-            .map_err(|refused| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Running,
-                detail: refused.to_string(),
-            })?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
 
         let side = self.side;
         let enabled = self.enabled != Some(false);
@@ -309,11 +292,7 @@ impl Mod for ClientOnlyMod {
         let overlays = self
             .overlays
             .get_mut(side)
-            .map_err(|wrong| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Running,
-                detail: wrong.to_string(),
-            })?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
 
         if !enabled {
             return Ok(());
@@ -367,7 +346,7 @@ mod tests {
         let sides = SideSet::new(ClientOnlyMod::SIDES).expect("a non-empty side set");
         assert!(sides.loads_on(Side::Client));
         for side in Side::ALL.into_iter().filter(|side| side.is_server()) {
-            assert!(!sides.loads_on(side), "{}", side.name());
+            assert!(!sides.loads_on(side), "{}", side.as_str());
         }
     }
 
@@ -381,10 +360,10 @@ mod tests {
                 assert!(
                     host.work_done().is_empty(),
                     "`{}` ran client-only code",
-                    side.name()
+                    side.as_str()
                 );
-                assert!(!host.has_overlay(), "{}", side.name());
-                assert!(host.drawn().is_err(), "{}", side.name());
+                assert!(!host.has_overlay(), "{}", side.as_str());
+                assert!(host.drawn().is_err(), "{}", side.as_str());
             } else {
                 assert_eq!(host.work_done(), [BUILT_THE_OVERLAY]);
                 assert!(host.has_overlay());
@@ -403,8 +382,6 @@ mod tests {
         let host = ClientOnlyMod::new(Side::DedicatedServer, &log);
 
         let error = host.drawn().expect_err("a dedicated server draws nothing");
-        assert_eq!(error.mod_id(), ClientOnlyMod::declared_id());
-        assert_eq!(error.state(), LifecycleState::Running);
         assert!(
             matches!(&error, ModError::Refused { detail, .. }
                 if detail.contains("dedicated-server")),
@@ -450,7 +427,7 @@ mod tests {
                 sent.is_ok(),
                 side.is_server(),
                 "{} sent a client-bound packet",
-                side.name()
+                side.as_str()
             );
         }
     }
@@ -479,11 +456,11 @@ mod tests {
             let error = host
                 .receive_packet(&arriving(encode(&overlay()), side))
                 .expect_err("a server side is not an end of a client-bound link");
-            assert_eq!(error.mod_id(), ClientOnlyMod::declared_id());
+            assert!(matches!(error, ModError::Refused { .. }));
             assert!(
                 host.work_done().is_empty(),
                 "`{}` did client-only work",
-                side.name()
+                side.as_str()
             );
         }
     }
@@ -524,7 +501,7 @@ mod tests {
             .expect("valid configuration declaration")
             .expect("this mod declares settings");
 
-        assert_eq!(&declared.owner, ClientOnlyMod::declared_id());
+        assert_eq!(declared.owner(), ClientOnlyMod::declared_id());
     }
 
     #[test]

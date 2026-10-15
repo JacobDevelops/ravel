@@ -10,10 +10,10 @@
 //! The preference order is inert in the original: nothing reads it. It is live
 //! here, which is the declared behaviour change [`crate::selection`] describes.
 
+use ravel_sdk::Side;
 use ravel_sdk::config::{
     ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
 };
-use ravel_sdk::{JsonValue, Side};
 
 use crate::selection::Preference;
 
@@ -124,25 +124,28 @@ impl Settings {
     pub fn read(resolved: &LayeredConfiguration) -> Self {
         let shipped = Self::default();
         Self {
-            tag_tooltip: boolean(resolved, TAG_TOOLTIP).unwrap_or(shipped.tag_tooltip),
-            data_tooltip: boolean(resolved, DATA_TOOLTIP).unwrap_or(shipped.data_tooltip),
-            preference: text(resolved, PREFERENCE)
-                .map_or_else(Preference::default, |value| Preference::parse(&value)),
-            self_heal: boolean(resolved, SELF_HEAL).unwrap_or(shipped.self_heal),
+            tag_tooltip: TAG_TOOLTIP
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.tag_tooltip),
+            data_tooltip: DATA_TOOLTIP
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.data_tooltip),
+            preference: PREFERENCE
+                .parse()
+                .ok()
+                .and_then(|key| resolved.text(&key).ok())
+                .map_or_else(Preference::default, Preference::parse),
+            self_heal: SELF_HEAL
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.self_heal),
         }
     }
-}
-
-fn value<'a>(resolved: &'a LayeredConfiguration, key: &str) -> Option<&'a JsonValue> {
-    resolved.value(&key.parse().ok()?)
-}
-
-fn boolean(resolved: &LayeredConfiguration, key: &str) -> Option<bool> {
-    value(resolved, key)?.as_bool()
-}
-
-fn text(resolved: &LayeredConfiguration, key: &str) -> Option<String> {
-    Some(value(resolved, key)?.as_str()?.to_owned())
 }
 
 /// Whether any shipped setting would have to travel to a joining client.
@@ -160,7 +163,7 @@ fn text(resolved: &LayeredConfiguration, key: &str) -> Option<String> {
 #[must_use]
 pub fn travels_to_clients() -> bool {
     declaration().is_ok_and(|declaration| {
-        declaration.settings.iter().any(|setting| {
+        declaration.settings().iter().any(|setting| {
             matches!(
                 setting.side,
                 SettingSide::DedicatedServer | SettingSide::IntegratedServer
@@ -188,6 +191,35 @@ pub fn resolved_on(key: &str, side: Side) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typed_reads_apply_tooltip_switches_and_borrowed_preference_text() {
+        let document = ravel_sdk::config::ValueDocument::parse(
+            &ravel_sdk::json!({
+                "schemaVersion": 1,
+                "owner": crate::MOD_ID,
+                "values": {
+                    TAG_TOOLTIP: false,
+                    DATA_TOOLTIP: true,
+                    PREFERENCE: " other, host, other ",
+                    SELF_HEAL: false,
+                },
+            })
+            .to_string(),
+        )
+        .expect("a legal override document");
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration parses"),
+            Some(&document),
+            None,
+        )
+        .expect("the override values resolve");
+        let settings = Settings::read(&resolved);
+        assert!(!settings.tag_tooltip);
+        assert!(settings.data_tooltip);
+        assert!(!settings.self_heal);
+        assert_eq!(settings.preference.namespaces(), ["other", "host"]);
+    }
 
     #[test]
     fn the_packaged_document_parses_and_declares_four_settings() {
@@ -222,7 +254,7 @@ mod tests {
     #[test]
     fn every_shipped_setting_is_one_the_reading_side_resolves_for_itself() {
         let declaration = declaration().expect("the packaged document parses");
-        for setting in &declaration.settings {
+        for setting in declaration.settings() {
             assert!(
                 matches!(setting.side, SettingSide::Client | SettingSide::Common),
                 "{} is declared on a side a client cannot resolve for itself",

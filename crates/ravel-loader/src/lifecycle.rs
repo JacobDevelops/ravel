@@ -117,9 +117,9 @@ pub struct LifecycleMachine {
     side: Side,
     entries: Vec<Tracked>,
     transcript: Vec<LifecycleEvent>,
-    claims: BTreeMap<String, ModId>,
+    claims: BTreeMap<RegistryKey, ModId>,
     /// Descriptions exist only for identifiers present in `claims`.
-    behaviours: BTreeMap<String, ContentBehaviour>,
+    behaviours: BTreeMap<RegistryKey, ContentBehaviour>,
     world_mutated: bool,
     halted: Option<ModId>,
 }
@@ -168,6 +168,20 @@ impl LifecycleMachine {
     /// Returns the mod ids in resolved order.
     pub fn order(&self) -> impl Iterator<Item = &ModId> + '_ {
         self.entries.iter().map(|tracked| &tracked.entry.mod_id)
+    }
+
+    /// Returns admitted entries in resolved order.
+    pub fn entries(&self) -> impl Iterator<Item = &LifecycleEntry> {
+        self.entries.iter().map(|tracked| &tracked.entry)
+    }
+
+    /// Iterates admitted entries and their states in resolved order.
+    pub(crate) fn tracked_entries(
+        &self,
+    ) -> impl Iterator<Item = (&LifecycleEntry, LifecycleState)> {
+        self.entries
+            .iter()
+            .map(|tracked| (&tracked.entry, tracked.state))
     }
 
     /// Returns every state change so far, in the order it happened.
@@ -234,30 +248,29 @@ impl LifecycleMachine {
 
     /// Returns the identity that owns a registry identifier.
     #[must_use]
-    pub fn registry_owner(&self, identifier: &str) -> Option<&ModId> {
+    pub fn registry_owner(&self, identifier: &RegistryKey) -> Option<&ModId> {
         self.claims.get(identifier)
     }
 
     /// Returns how many registry identifiers one mod owns.
     #[must_use]
-    pub fn registry_claims(&self, mod_id: &ModId) -> usize {
+    pub fn registry_claim_count(&self, mod_id: &ModId) -> usize {
         self.claims
             .values()
             .filter(|owner| *owner == mod_id)
             .count()
     }
 
-    /// Returns admitted content in identifier order, skipping unparseable keys.
+    /// Returns admitted content in registry-key order when its kind has a behaviour.
     pub fn claimed_content(&self) -> impl Iterator<Item = (RegistryKey, &ModId, ContentBehaviour)> {
-        self.claims.iter().filter_map(|(identifier, owner)| {
-            let key: RegistryKey = identifier.parse().ok()?;
+        self.claims.iter().filter_map(|(key, owner)| {
             // Omitted descriptions use the kind's default, if one exists.
             let behaviour = self
                 .behaviours
-                .get(identifier)
+                .get(key)
                 .copied()
                 .or_else(|| ContentBehaviour::default_for(key.kind()))?;
-            Some((key, owner, behaviour))
+            Some((key.clone(), owner, behaviour))
         })
     }
 
@@ -370,13 +383,13 @@ impl LifecycleMachine {
     /// Returns [`LifecycleError::UnknownMod`] for an id outside the plan,
     /// [`LifecycleError::RegistrationBarrierClosed`] once the set has
     /// registered, [`LifecycleError::RegistrationWindow`] while the set is
-    /// still registering but this mod is not constructed, and
-    /// [`LifecycleError::ConflictingRegistryClaim`] when the identifier is
-    /// already owned.
+    /// still registering but this mod is not constructed,
+    /// [`LifecycleError::ForeignRegistryClaim`] for another mod's namespace,
+    /// and [`LifecycleError::ConflictingRegistryClaim`] when already owned.
     pub fn claim_registry_identifier(
         &mut self,
         mod_id: &ModId,
-        identifier: &str,
+        identifier: &RegistryKey,
     ) -> Result<(), LifecycleError> {
         self.claim_described_registry_identifier(mod_id, identifier, None)
     }
@@ -391,7 +404,7 @@ impl LifecycleMachine {
     pub fn claim_described_registry_identifier(
         &mut self,
         mod_id: &ModId,
-        identifier: &str,
+        identifier: &RegistryKey,
         behaviour: Option<ContentBehaviour>,
     ) -> Result<(), LifecycleError> {
         let closed = self.registration_barrier_closed();
@@ -399,19 +412,25 @@ impl LifecycleMachine {
         if closed {
             return Err(LifecycleError::RegistrationBarrierClosed {
                 mod_id: tracked.entry.mod_id.clone(),
-                identifier: identifier.to_owned(),
+                identifier: identifier.to_string(),
             });
         }
         if tracked.state != LifecycleState::Constructed {
             return Err(LifecycleError::RegistrationWindow {
                 mod_id: tracked.entry.mod_id.clone(),
-                identifier: identifier.to_owned(),
+                identifier: identifier.to_string(),
                 state: tracked.state,
+            });
+        }
+        if identifier.id().namespace() != mod_id {
+            return Err(LifecycleError::ForeignRegistryClaim {
+                key: identifier.clone(),
+                mod_id: mod_id.clone(),
             });
         }
         if let Some(owner) = self.claims.get(identifier) {
             return Err(LifecycleError::ConflictingRegistryClaim {
-                identifier: identifier.to_owned(),
+                identifier: identifier.to_string(),
                 owner: owner.clone(),
                 claimant: tracked.entry.mod_id.clone(),
             });
@@ -419,21 +438,19 @@ impl LifecycleMachine {
 
         // Validate before writing either table so a refused claim owns nothing.
         if let Some(behaviour) = behaviour
-            && !identifier
-                .parse::<RegistryKey>()
-                .is_ok_and(|key| behaviour.describes(key.kind()))
+            && !behaviour.describes(identifier.kind())
         {
             return Err(LifecycleError::MismatchedContentBehaviour {
-                identifier: identifier.to_owned(),
+                identifier: identifier.to_string(),
                 described: behaviour.kind(),
             });
         }
 
         let owner = tracked.entry.mod_id.clone();
         if let Some(behaviour) = behaviour {
-            self.behaviours.insert(identifier.to_owned(), behaviour);
+            self.behaviours.insert(identifier.clone(), behaviour);
         }
-        self.claims.insert(identifier.to_owned(), owner);
+        self.claims.insert(identifier.clone(), owner);
         Ok(())
     }
 
@@ -487,7 +504,7 @@ impl LifecycleMachine {
     ///
     /// Returns [`LifecycleError::PartialStateRefused`] when a failure followed
     /// world mutation.
-    pub fn request_save(&self) -> Result<(), LifecycleError> {
+    pub fn save_access(&self) -> Result<(), LifecycleError> {
         self.halted.as_ref().map_or(Ok(()), |mod_id| {
             Err(LifecycleError::PartialStateRefused {
                 mod_id: mod_id.clone(),
@@ -840,10 +857,13 @@ mod tests {
         let mut machine = machine_at(LifecycleState::Loaded);
         let mod_id = id("example_mod");
         assert_eq!(
-            machine.claim_registry_identifier(&mod_id, "example_mod:block"),
+            machine.claim_registry_identifier(
+                &mod_id,
+                &"block:example_mod:block".parse().expect("valid key")
+            ),
             Err(LifecycleError::RegistrationWindow {
                 mod_id: mod_id.clone(),
-                identifier: "example_mod:block".to_owned(),
+                identifier: "block:example_mod:block".to_owned(),
                 state: LifecycleState::Loaded,
             })
         );
@@ -852,10 +872,19 @@ mod tests {
             .advance(&mod_id, LifecycleState::Constructed)
             .expect("legal");
         machine
-            .claim_registry_identifier(&mod_id, "example_mod:block")
+            .claim_registry_identifier(
+                &mod_id,
+                &"block:example_mod:block".parse().expect("valid key"),
+            )
             .expect("the window is open while constructed");
-        assert_eq!(machine.registry_owner("example_mod:block"), Some(&mod_id));
-        assert_eq!(machine.registry_owner("example_mod:item"), None);
+        assert_eq!(
+            machine.registry_owner(&"block:example_mod:block".parse().expect("valid key")),
+            Some(&mod_id)
+        );
+        assert_eq!(
+            machine.registry_owner(&"item:example_mod:item".parse().expect("valid key")),
+            None
+        );
     }
 
     #[test]
@@ -879,10 +908,16 @@ mod tests {
 
         // Claim order differs from identifier order.
         machine
-            .claim_registry_identifier(&id("second_mod"), "item:second_mod:ingot")
+            .claim_registry_identifier(
+                &id("second_mod"),
+                &"item:second_mod:ingot".parse().expect("valid key"),
+            )
             .expect("accepted");
         machine
-            .claim_registry_identifier(&id("first_mod"), "block:first_mod:copper")
+            .claim_registry_identifier(
+                &id("first_mod"),
+                &"block:first_mod:copper".parse().expect("valid key"),
+            )
             .expect("accepted");
 
         let claimed: Vec<(String, ModId)> = machine
@@ -918,7 +953,7 @@ mod tests {
         machine
             .claim_described_registry_identifier(
                 &mod_id,
-                "block:example_mod:obsidian",
+                &"block:example_mod:obsidian".parse().expect("valid key"),
                 Some(ContentBehaviour::Block(ravel_core::BlockBehaviour {
                     hardness: 50.0,
                     explosion_resistance: 1200.0,
@@ -928,7 +963,10 @@ mod tests {
             )
             .expect("accepted");
         machine
-            .claim_registry_identifier(&mod_id, "item:example_mod:ingot")
+            .claim_registry_identifier(
+                &mod_id,
+                &"item:example_mod:ingot".parse().expect("valid key"),
+            )
             .expect("accepted");
 
         let described: Vec<ContentBehaviour> = machine
@@ -960,7 +998,7 @@ mod tests {
         let error = machine
             .claim_described_registry_identifier(
                 &mod_id,
-                "item:example_mod:copper",
+                &"item:example_mod:copper".parse().expect("valid key"),
                 Some(ContentBehaviour::Block(
                     ravel_core::BlockBehaviour::default(),
                 )),
@@ -972,7 +1010,7 @@ mod tests {
             "{error}"
         );
         assert_eq!(
-            machine.registry_claims(&mod_id),
+            machine.registry_claim_count(&mod_id),
             0,
             "a refused description leaves no identifier owned, or the mod holds a \
              name it can neither re-claim nor use"
@@ -980,27 +1018,34 @@ mod tests {
     }
 
     #[test]
-    fn a_claim_that_names_no_kind_is_skipped_rather_than_taking_the_game_down() {
+    fn foreign_namespace_claims_never_acquire_ownership() {
         let mut machine = machine_at(LifecycleState::Constructed);
-        machine
-            .claim_registry_identifier(&id("example_mod"), "example_mod:block")
-            .expect("the barrier stores whatever text it is given");
-
+        let foreign = "block:other_mod:copper".parse().expect("valid key");
+        let mod_id = id("example_mod");
         assert_eq!(
-            machine.claimed_content().count(),
-            0,
-            "an identifier the barrier holds that names no kind carries no \
-             content, and carrying less is not the same as failing"
+            machine.claim_registry_identifier(&mod_id, &foreign),
+            Err(LifecycleError::ForeignRegistryClaim {
+                key: foreign.clone(),
+                mod_id: mod_id.clone(),
+            })
         );
+        let refusal = LifecycleError::ForeignRegistryClaim {
+            key: foreign.clone(),
+            mod_id: mod_id.clone(),
+        };
         assert_eq!(
-            machine.registry_claims(&id("example_mod")),
-            1,
-            "the barrier still owns it, so the footprint is unchanged"
+            refusal.to_string(),
+            "`example_mod` cannot claim `block:other_mod:copper` in another mod's namespace"
         );
+        assert_eq!(refusal.lifecycle_state(), LifecycleState::Constructed);
+        assert_eq!(refusal.failure_kind(), None);
+        assert_eq!(machine.registry_owner(&foreign), None);
+        assert_eq!(machine.registry_claim_count(&mod_id), 0);
+        assert_eq!(machine.claimed_content().count(), 0);
     }
 
     #[test]
-    fn two_mods_cannot_claim_one_registry_identifier() {
+    fn an_owner_cannot_claim_one_registry_identifier_twice() {
         let mut machine = LifecycleMachine::new(
             Side::Client,
             vec![
@@ -1019,18 +1064,24 @@ mod tests {
         }
 
         machine
-            .claim_registry_identifier(&id("first_mod"), "shared:block")
+            .claim_registry_identifier(
+                &id("first_mod"),
+                &"block:first_mod:block".parse().expect("valid key"),
+            )
             .expect("the first claim is accepted");
         assert_eq!(
-            machine.claim_registry_identifier(&id("second_mod"), "shared:block"),
+            machine.claim_registry_identifier(
+                &id("first_mod"),
+                &"block:first_mod:block".parse().expect("valid key")
+            ),
             Err(LifecycleError::ConflictingRegistryClaim {
-                identifier: "shared:block".to_owned(),
+                identifier: "block:first_mod:block".to_owned(),
                 owner: id("first_mod"),
-                claimant: id("second_mod"),
+                claimant: id("first_mod"),
             })
         );
         assert_eq!(
-            machine.registry_owner("shared:block"),
+            machine.registry_owner(&"block:first_mod:block".parse().expect("valid key")),
             Some(&id("first_mod"))
         );
     }
@@ -1114,7 +1165,10 @@ mod tests {
             Err(refusal())
         );
         assert_eq!(
-            machine.claim_registry_identifier(&unknown, "other_mod:block"),
+            machine.claim_registry_identifier(
+                &unknown,
+                &"block:other_mod:block".parse().expect("valid key")
+            ),
             Err(refusal())
         );
     }
@@ -1132,7 +1186,7 @@ mod tests {
             .expect("legal");
         assert_eq!(machine.transcript(), []);
         machine.world_access().expect("nothing blocks an empty set");
-        machine.request_save().expect("nothing halted an empty set");
+        machine.save_access().expect("nothing halted an empty set");
     }
 
     #[test]
@@ -1310,6 +1364,7 @@ mod tests {
                 | LifecycleError::RegistrationBarrierOpen { .. }
                 | LifecycleError::RegistrationBarrierClosed { .. }
                 | LifecycleError::RegistrationWindow { .. }
+                | LifecycleError::ForeignRegistryClaim { .. }
                 | LifecycleError::MismatchedContentBehaviour { .. }
                 | LifecycleError::WorldAccessBlocked { .. }
                 | LifecycleError::WorldAccessHalted { .. }

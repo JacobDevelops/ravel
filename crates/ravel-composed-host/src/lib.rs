@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Statically composed host with the tracked test-mod member list.
+//! JVM harness fixture composing the tracked test-mod member list.
 //! Admission and startup use [`ravel_host_runtime`].
 
 use jni::EnvUnowned;
@@ -56,15 +56,29 @@ pub fn compose(game_directory: &std::path::Path, side: Side) -> Result<Compositi
     ravel_host_runtime::compose(game_directory, side, members(side))
 }
 
-/// Starts the player-local statically composed set before game methods run.
+/// Starts the tracked JVM harness fixture before game methods run.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelInitialize")]
 pub fn ravel_initialize<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     side: jni::sys::jint,
+    profiling_requested: jni::sys::jboolean,
 ) {
-    env.with_env(|_env| run(side, members(ravel_host_runtime::side(side)?)))
-        .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+    ravel_bootstrap_runtime::install_panic_hook();
+    env.with_env(|env| -> Result<(), LaunchError> {
+        let result = ravel_host_runtime::side(side).and_then(|named| {
+            run(
+                named,
+                || members(named),
+                profiling_requested != jni::sys::JNI_FALSE,
+            )
+        });
+        if let Err(error) = result {
+            env.throw(error.redacted())?;
+        }
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 
 #[cfg(test)]
@@ -75,7 +89,7 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        CLIENT_ONLY_PACKAGE, CONFIGURATION_PACKAGE, LaunchError, SAVED_DATA_PACKAGE,
+        CLIENT_ONLY_PACKAGE, CONFIGURATION_PACKAGE, Composition, LaunchError, SAVED_DATA_PACKAGE,
         SERVER_ONLY_PACKAGE, compose,
     };
 
@@ -126,7 +140,7 @@ mod tests {
     #[test]
     fn the_client_only_member_is_admitted_and_parked_on_a_dedicated_server() {
         let game = directory("dedicated");
-        let (machine, mods, _, _) =
+        let Composition { machine, mods, .. } =
             compose(&game, Side::DedicatedServer).expect("the tracked composition should start");
 
         assert_eq!(
@@ -150,7 +164,7 @@ mod tests {
     #[test]
     fn the_server_only_member_is_admitted_and_parked_on_the_client() {
         let game = directory("client");
-        let (machine, mods, _, _) =
+        let Composition { machine, mods, .. } =
             compose(&game, Side::Client).expect("the tracked composition should start");
 
         assert_eq!(
@@ -169,21 +183,21 @@ mod tests {
     #[test]
     fn the_shipped_pair_runs_on_opposite_sides_of_every_launch() {
         for side in Side::ALL {
-            let game = directory(&format!("pair-{}", side.name()));
-            let (machine, _, _, _) =
+            let game = directory(&format!("pair-{}", side.as_str()));
+            let Composition { machine, .. } =
                 compose(&game, side).expect("the tracked composition should start");
 
             assert_eq!(
                 machine.state(&client_owner()) == Ok(LifecycleState::Running),
                 side == Side::Client,
                 "client_only on `{}`",
-                side.name()
+                side.as_str()
             );
             assert_eq!(
                 machine.state(&server_owner()) == Ok(LifecycleState::Running),
                 side.is_server(),
                 "server_only on `{}`",
-                side.name()
+                side.as_str()
             );
         }
     }
@@ -191,8 +205,12 @@ mod tests {
     #[test]
     fn the_selected_composition_drives_every_mod_its_manifests_admit() {
         let game = directory("defaults");
-        let (machine, mods, configurations, _) =
-            compose(&game, Side::Client).expect("the tracked composition should start");
+        let Composition {
+            machine,
+            mods,
+            configurations,
+            ..
+        } = compose(&game, Side::Client).expect("the tracked composition should start");
 
         for id in [owner(), saved_owner(), client_owner(), registries_owner()] {
             assert_eq!(machine.state(&id), Ok(LifecycleState::Running), "{id}");
@@ -247,7 +265,11 @@ mod tests {
         }
 
         let saved = ravel_test_mod_saved_data::SavedDataMod::new();
-        let declared: std::collections::BTreeSet<_> = saved.declaration().versions().collect();
+        let declared: std::collections::BTreeSet<_> = saved
+            .declaration()
+            .expect("valid declaration")
+            .versions()
+            .collect();
         let manifest = ravel_package::PackageManifest::parse(SAVED_DATA_PACKAGE)
             .expect("a shipped manifest parses");
         assert_eq!(
@@ -343,7 +365,7 @@ mod tests {
         let game = directory("installed-known");
         install(&game, "client_only", SOURCE_DIGEST);
 
-        let (machine, _, _, _) =
+        let Composition { machine, .. } =
             compose(&game, Side::Client).expect("the composition should start");
         assert_eq!(machine.state(&client_owner()), Ok(LifecycleState::Running));
     }
@@ -351,7 +373,7 @@ mod tests {
     #[test]
     fn the_world_owning_mod_carries_the_versions_it_declares() {
         let game = directory("saved-versions");
-        let (machine, _, _, _) =
+        let Composition { machine, .. } =
             compose(&game, Side::Client).expect("the tracked composition should start");
 
         assert!(
@@ -397,7 +419,7 @@ mod tests {
         std::fs::write(&pack_path, pack.to_json()).expect("the pack file should be writable");
         file::write(&game, &player).expect("the player file should be writable");
 
-        let (_, _, configurations, _) =
+        let Composition { configurations, .. } =
             compose(&game, Side::Client).expect("the selected pack values should resolve");
         let resolved = settings_of(&configurations, &owner());
 
@@ -439,7 +461,7 @@ mod tests {
         .expect("a valid player document");
         file::write(&game, &player).expect("the player file should be writable");
 
-        let (_, _, configurations, _) =
+        let Composition { configurations, .. } =
             compose(&game, Side::Client).expect("the player values should resolve");
 
         assert_eq!(

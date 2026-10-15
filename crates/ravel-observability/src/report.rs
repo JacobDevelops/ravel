@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::VecDeque, fmt};
 
 use ravel_core::{
     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureSurface, ModId,
@@ -6,6 +6,8 @@ use ravel_core::{
 };
 
 use crate::redaction::redact;
+
+const NOTICE_CAPACITY: usize = 32;
 
 /// A refusal's subject, with identity absent until established.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -82,7 +84,7 @@ impl Refusal {
         };
         let kind = attribution
             .kind
-            .map_or_else(String::new, |kind| format!(" [{}]", kind.name()));
+            .map_or_else(String::new, |kind| format!(" [{}]", kind.as_str()));
         let chain = if attribution.dependency_chain.is_empty() {
             String::new()
         } else {
@@ -100,13 +102,16 @@ impl Refusal {
 
         format!(
             "refused {subject} at `{}`{kind}{chain}{surface}: {}{author}",
-            attribution.state.name(),
+            attribution.state.as_str(),
             attribution.message.text()
         )
     }
 }
 
 /// Pre-world refusals and notices, redacted on entry.
+///
+/// Notices retain the latest 32 distinct redacted messages in a FIFO ring.
+/// Repeating a retained notice does not refresh its position; refusals are never evicted.
 ///
 /// # Examples
 ///
@@ -125,6 +130,9 @@ impl Refusal {
 /// # impl StructuredFailure for Missing {
 /// #     fn failure_kind(&self) -> Option<FailureKind> {
 /// #         Some(FailureKind::MissingRequiredDependency)
+/// #     }
+/// #     fn quotes_untrusted_text(&self) -> bool {
+/// #         false
 /// #     }
 /// # }
 /// let environment = FailureEnvironment {
@@ -145,7 +153,7 @@ impl Refusal {
 pub struct PreWorldReport {
     environment: FailureEnvironment,
     refusals: Vec<Refusal>,
-    notices: Vec<DiagnosticMessage>,
+    notices: VecDeque<DiagnosticMessage>,
 }
 
 impl PreWorldReport {
@@ -155,7 +163,7 @@ impl PreWorldReport {
         Self {
             environment,
             refusals: Vec::new(),
-            notices: Vec::new(),
+            notices: VecDeque::new(),
         }
     }
 
@@ -176,9 +184,22 @@ impl PreWorldReport {
         });
     }
 
-    /// Records something a player is told without being refused.
+    /// Records a redacted notice unless its text is already retained.
+    ///
+    /// At most 32 distinct notices are retained. A new notice evicts the oldest
+    /// when the ring is full; duplicates neither evict nor refresh an entry.
     pub fn note(&mut self, text: &str) {
-        self.notices.push(redact(text));
+        let notice = redact(text);
+        if self.notices.contains(&notice) {
+            return;
+        }
+        if self.notices.len() == NOTICE_CAPACITY {
+            drop(self.notices.pop_front());
+        }
+        if self.notices.capacity() == 0 {
+            self.notices.reserve_exact(NOTICE_CAPACITY);
+        }
+        self.notices.push_back(notice);
     }
 
     /// Returns the host every attribution in this report names.
@@ -193,9 +214,9 @@ impl PreWorldReport {
         &self.refusals
     }
 
-    /// Returns every notice, in the order it was recorded.
+    /// Returns up to 32 retained notices, oldest first.
     #[must_use]
-    pub fn notices(&self) -> &[DiagnosticMessage] {
+    pub const fn notices(&self) -> &VecDeque<DiagnosticMessage> {
         &self.notices
     }
 
@@ -276,7 +297,7 @@ fn named(surface: &FailureSurface) -> String {
     match surface {
         FailureSurface::Hook(name) => format!("hook `{name}`"),
         FailureSurface::Event(name) => format!("event `{name}`"),
-        FailureSurface::Registry(name) => format!("registry `{name}`"),
+        FailureSurface::Registry(key) => format!("registry `{key}`"),
         FailureSurface::Packet(name) => format!("packet `{name}`"),
     }
 }
@@ -370,7 +391,7 @@ mod tests {
         let report = report();
         assert_eq!(report.world_access(), Ok(()));
         assert_eq!(report.refusals(), []);
-        assert_eq!(report.notices(), []);
+        assert!(report.notices().is_empty());
         assert_eq!(report.lines(), Vec::<String>::new());
         assert_eq!(report.environment(), &environment());
     }
@@ -446,6 +467,67 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_notices_keep_their_original_position() {
+        let mut report = report();
+        report.note("first notice");
+        report.note("second notice");
+        report.note("first notice");
+
+        assert_eq!(
+            report.lines(),
+            ["noted: first notice", "noted: second notice"]
+        );
+        assert_eq!(report.world_access(), Ok(()));
+    }
+
+    #[test]
+    fn notice_overflow_keeps_the_latest_32_distinct_entries_in_order() {
+        let mut report = report();
+        report.refuse(&Subject::unidentified(), &Failure::new("still refused"));
+        for index in 0..32 {
+            report.note(&format!("notice {index}"));
+        }
+        report.note("notice 0");
+        assert_eq!(report.notices().len(), 32);
+        for index in 32..96 {
+            report.note(&format!("notice {index}"));
+        }
+
+        assert_eq!(
+            report
+                .notices()
+                .iter()
+                .map(|notice| notice.text().to_owned())
+                .collect::<Vec<_>>(),
+            (64..96)
+                .map(|index| format!("notice {index}"))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(report.refusals().len(), 1);
+        assert!(report.world_access().is_err());
+        assert_eq!(report.lines().len(), 33);
+
+        report.note("notice 0");
+        assert_eq!(report.notices().len(), 32);
+        assert_eq!(report.notices()[0].text(), "notice 65");
+        assert_eq!(report.notices()[31].text(), "notice 0");
+    }
+
+    #[test]
+    fn notices_are_deduplicated_by_redacted_text_not_secrets_or_paths() {
+        let mut report = report();
+        report.note("wrote /home/alice/logs/latest.log token=first-secret");
+        report.note("wrote /home/bob/logs/latest.log token=second-secret");
+
+        assert_eq!(report.notices().len(), 1);
+        let notice = &report.notices()[0];
+        assert_eq!(notice.text(), "wrote latest.log token=[redacted]");
+        assert_eq!(notice.redaction(), Redaction::Applied);
+        assert!(notice.is_publishable());
+        assert_eq!(report.lines(), ["noted: wrote latest.log token=[redacted]"]);
+    }
+
+    #[test]
     fn every_message_the_report_holds_has_been_through_the_policy() {
         let mut report = report();
         report.refuse(
@@ -493,7 +575,11 @@ mod tests {
     fn a_line_carries_every_facet_the_spec_requires_of_an_attribution() {
         let mut report = report();
         let subject = Subject {
-            surface: Some(FailureSurface::Registry("example_mod:block".to_owned())),
+            surface: Some(FailureSurface::Registry(
+                "block:example_mod:block"
+                    .parse()
+                    .expect("valid registry key"),
+            )),
             ..Subject::of(id("example_mod"))
                 .declaring(version("1.4.0"))
                 .required_by([id("example_pack"), id("example_bundle")])
@@ -509,7 +595,7 @@ mod tests {
         assert_eq!(
             report.refusals()[0].line(),
             "refused `example_mod` 1.4.0 at `constructed` [conflicting-registry-claim] (required \
-             by `example_pack` -> `example_bundle`) on registry `example_mod:block`: \
+             by `example_pack` -> `example_bundle`) on registry `block:example_mod:block`: \
              `example_mod` claimed an identifier `example_pack` already owns"
         );
 
@@ -523,8 +609,11 @@ mod tests {
     fn every_surface_the_spec_names_renders_under_its_own_word() {
         for (surface, expected) in [
             (FailureSurface::Hook("world_load".to_owned()), "hook"),
-            (FailureSurface::Event("player_tick".to_owned()), "event"),
-            (FailureSurface::Registry("a:b".to_owned()), "registry"),
+            (FailureSurface::Event("server-tick".to_owned()), "event"),
+            (
+                FailureSurface::Registry("block:a:b".parse().expect("valid registry key")),
+                "registry",
+            ),
             (FailureSurface::Packet("a:b".to_owned()), "packet"),
         ] {
             let mut report = report();

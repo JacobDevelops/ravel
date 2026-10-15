@@ -25,7 +25,7 @@ fn main() {
         }
     };
 
-    let generated = match generate::run_rust(root, &out, selected.as_deref()) {
+    let generated = match generate::generate_rust(root, &out, selected.as_deref()) {
         Ok(generated) => generated,
         Err(error) => {
             println!("cargo::error=the pinned Minecraft binding could not be generated: {error}");

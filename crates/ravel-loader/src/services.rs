@@ -25,21 +25,79 @@ impl ServiceOrder {
 
 /// Opens services in lexicographically smallest provider-before-consumer order.
 ///
-/// Only mods on this side participate; directories contain providers whose services were opened earlier.
+/// Only nonfailed mods on this side participate; directories contain providers whose services were opened earlier.
 /// Present optional services add dependency edges; absent ones do not refuse the set.
-/// A refusal stops opening services, and the caller must not start the set.
+/// A refusal stops opening services, and the caller must not replay callbacks already completed.
 /// The loader calls this after registration and before entering `running`.
 ///
 /// # Errors
 ///
-/// Returns [`ServiceRefused`] for missing required providers, cycles, foreign declarations, or consumer refusal.
+/// Returns [`ServiceRefused`] for missing required providers, cycles, foreign declarations, or callback failure.
 pub fn open_services(
-    machine: &LifecycleMachine,
-    mods: &mut [&mut dyn HostMod],
+    mut machine: &LifecycleMachine,
+    mods: &mut [&mut (dyn HostMod + '_)],
 ) -> Result<ServiceOrder, ServiceRefused> {
-    let declarations = declared(machine, mods)?;
+    open_with_context(&mut machine, mods)
+}
+
+/// Opens each callback at most once, allowing the driver to fail optional owners and continue.
+pub(crate) fn open_services_with_failure_handler<E: From<ServiceRefused>>(
+    machine: &mut LifecycleMachine,
+    mods: &mut [&mut (dyn HostMod + '_)],
+    on_failure: impl FnMut(&mut LifecycleMachine, HostError) -> Result<(), E>,
+) -> Result<ServiceOrder, E> {
+    open_with_context(
+        &mut Tracked {
+            machine,
+            on_failure,
+        },
+        mods,
+    )
+}
+
+trait ServiceContext<E> {
+    fn machine(&self) -> &LifecycleMachine;
+    fn fail(&mut self, source: HostError) -> Result<(), E>;
+}
+
+impl ServiceContext<ServiceRefused> for &LifecycleMachine {
+    fn machine(&self) -> &LifecycleMachine {
+        self
+    }
+
+    fn fail(&mut self, source: HostError) -> Result<(), ServiceRefused> {
+        Err(ServiceRefused::Consumer {
+            mod_id: source.mod_id().clone(),
+            source,
+        })
+    }
+}
+
+struct Tracked<'a, F> {
+    machine: &'a mut LifecycleMachine,
+    on_failure: F,
+}
+
+impl<E, F> ServiceContext<E> for Tracked<'_, F>
+where
+    F: FnMut(&mut LifecycleMachine, HostError) -> Result<(), E>,
+{
+    fn machine(&self) -> &LifecycleMachine {
+        self.machine
+    }
+
+    fn fail(&mut self, source: HostError) -> Result<(), E> {
+        (self.on_failure)(self.machine, source)
+    }
+}
+
+fn open_with_context<E: From<ServiceRefused>>(
+    context: &mut impl ServiceContext<E>,
+    mods: &mut [&mut (dyn HostMod + '_)],
+) -> Result<ServiceOrder, E> {
+    let declarations = declared(context, mods)?;
     let providers = providers(&declarations);
-    let order = dependency_order(&declarations, &providers)?;
+    let mut order = dependency_order(&declarations, &providers).map_err(E::from)?;
 
     arrange(mods, &order);
     for position in 0..mods.len() {
@@ -48,23 +106,34 @@ pub fn open_services(
         let Some(declaration) = declarations.get(consumer.id()) else {
             continue;
         };
+        if context.machine().state(consumer.id()) == Ok(LifecycleState::Failed) {
+            continue;
+        }
         if declaration.requires().next().is_none() && declaration.may_use().next().is_none() {
             continue;
         }
 
+        let mod_id = consumer.id().clone();
+        let Ok(state) = context.machine().state(&mod_id) else {
+            continue;
+        };
         let mut directory = Started {
-            caller: consumer.id().clone(),
+            caller: mod_id.clone(),
             declaration,
             mods: started,
+            context,
+            failure: None,
         };
-        consumer
-            .use_services(&mut directory)
-            .map_err(|source| ServiceRefused::Consumer {
-                mod_id: source.mod_id().clone(),
-                source,
-            })?;
+        let outcome = crate::callback(&mod_id, state, || consumer.use_services(&mut directory));
+        if let Some(error) = directory.failure {
+            return Err(error);
+        }
+        if let Err(source) = outcome {
+            context.fail(source)?;
+        }
     }
 
+    order.retain(|owner| context.machine().state(owner) != Ok(LifecycleState::Failed));
     Ok(ServiceOrder { order })
 }
 
@@ -73,32 +142,36 @@ pub fn open_services(
 /// # Errors
 ///
 /// Returns [`ServiceRefused::ForeignDeclaration`] naming both identities.
-fn declared(
-    machine: &LifecycleMachine,
-    mods: &[&mut dyn HostMod],
-) -> Result<BTreeMap<ModId, ServiceDeclaration>, ServiceRefused> {
+fn declared<E: From<ServiceRefused>>(
+    context: &mut impl ServiceContext<E>,
+    mods: &[&mut (dyn HostMod + '_)],
+) -> Result<BTreeMap<ModId, ServiceDeclaration>, E> {
     let mut declarations = BTreeMap::new();
     for host in mods {
+        let machine = context.machine();
         let loads_here = machine
             .entry(host.id())
             .is_ok_and(|entry| entry.sides.loads_on(machine.side()));
-        if !loads_here {
+        if !loads_here || machine.state(host.id()) == Ok(LifecycleState::Failed) {
             continue;
         }
-        let Some(declaration) =
-            host.service_declaration()
-                .map_err(|source| ServiceRefused::Consumer {
-                    mod_id: host.id().clone(),
-                    source,
-                })?
-        else {
+        let mod_id = host.id();
+        let Ok(state) = machine.state(mod_id) else {
             continue;
         };
+        let declaration = match crate::callback(mod_id, state, || host.service_declaration()) {
+            Ok(Some(declaration)) => declaration,
+            Ok(None) => continue,
+            Err(source) => {
+                context.fail(source)?;
+                continue;
+            }
+        };
         if declaration.owner() != host.id() {
-            return Err(ServiceRefused::ForeignDeclaration {
+            return Err(E::from(ServiceRefused::ForeignDeclaration {
                 mod_id: host.id().clone(),
                 owner: declaration.owner().clone(),
-            });
+            }));
         }
         declarations.insert(host.id().clone(), declaration);
     }
@@ -154,7 +227,7 @@ fn dependency_order(
 }
 
 /// Moves declared mods into `order`, leaving undeclared mods after them.
-fn arrange(mods: &mut [&mut dyn HostMod], order: &[ModId]) {
+fn arrange(mods: &mut [&mut (dyn HostMod + '_)], order: &[ModId]) {
     let mut placed = 0;
     for mod_id in order {
         if let Some(found) = mods[placed..].iter().position(|host| host.id() == mod_id) {
@@ -165,13 +238,15 @@ fn arrange(mods: &mut [&mut dyn HostMod], order: &[ModId]) {
 }
 
 /// A directory over the mods already started.
-struct Started<'a, 'm> {
+struct Started<'a, 'm, 'h, E, C> {
     caller: ModId,
     declaration: &'a ServiceDeclaration,
-    mods: &'a mut [&'m mut dyn HostMod],
+    mods: &'a mut [&'m mut (dyn HostMod + 'h)],
+    context: &'a mut C,
+    failure: Option<E>,
 }
 
-impl ServiceDirectory for Started<'_, '_> {
+impl<E, C: ServiceContext<E>> ServiceDirectory for Started<'_, '_, '_, E, C> {
     fn call(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ServiceCallFailed> {
         if !self.declaration.calls(&request.id) {
             return Err(ServiceCallFailed::Unavailable(
@@ -181,25 +256,38 @@ impl ServiceDirectory for Started<'_, '_> {
                 },
             ));
         }
-        // Present optional providers were ordered before this consumer.
-        let Some(provider) = self
-            .mods
-            .iter_mut()
-            .find(|host| host.id() == request.id.owner())
-        else {
-            let service = request.id.clone();
-            return Err(ServiceCallFailed::Unavailable(
-                if self.declaration.may_do_without(&service) {
-                    ServiceUnavailable::Absent { service }
-                } else {
-                    ServiceUnavailable::NoProvider { service }
-                },
-            ));
+        let Some(provider) = self.mods.iter_mut().find(|host| {
+            host.id() == request.id.owner()
+                && self.context.machine().state(host.id()) != Ok(LifecycleState::Failed)
+        }) else {
+            return Err(unavailable(self.declaration, request));
         };
-        provider
-            .answer_service(request)
-            .map_err(ServiceCallFailed::Refused)
+        let mod_id = provider.id().clone();
+        let Ok(state) = self.context.machine().state(&mod_id) else {
+            return Err(unavailable(self.declaration, request));
+        };
+        if self.failure.is_some() {
+            return Err(unavailable(self.declaration, request));
+        }
+        match crate::callback(&mod_id, state, || provider.answer_service(request)) {
+            Ok(response) => Ok(response),
+            Err(source) => {
+                if let Err(error) = self.context.fail(source) {
+                    self.failure = Some(error);
+                }
+                Err(unavailable(self.declaration, request))
+            }
+        }
     }
+}
+
+fn unavailable(declaration: &ServiceDeclaration, request: &ServiceRequest) -> ServiceCallFailed {
+    let service = request.id.clone();
+    ServiceCallFailed::Unavailable(if declaration.may_do_without(&service) {
+        ServiceUnavailable::Absent { service }
+    } else {
+        ServiceUnavailable::NoProvider { service }
+    })
 }
 
 /// Why a set's services did not open.
@@ -224,9 +312,9 @@ pub enum ServiceRefused {
         /// The identity the declaration names as its owner.
         owner: ModId,
     },
-    /// A mod refused the services it was offered.
+    /// A mod's service callback refused or panicked.
     Consumer {
-        /// The mod that refused.
+        /// The owner whose callback failed.
         mod_id: ModId,
         /// What it said.
         source: HostError,
@@ -286,7 +374,7 @@ impl StructuredFailure for ServiceRefused {
             Self::NoProvider { .. } | Self::Cycle { .. } | Self::ForeignDeclaration { .. } => {
                 LifecycleState::Resolved
             }
-            Self::Consumer { .. } => LifecycleState::Constructed,
+            Self::Consumer { source, .. } => source.state(),
         }
     }
 
@@ -302,13 +390,134 @@ mod tests {
 
     use ravel_core::{ContentId, LifecycleState, ModId, Side, SideSet};
     use ravel_host_api::{
-        HostError, HostMod, ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest,
-        ServiceResponse,
+        HostError, HostMod, ModError, ServiceDeclaration, ServiceDirectory, ServiceId,
+        ServiceRequest, ServiceResponse,
     };
     use serde_json::json;
 
     use super::{ServiceRefused, open_services};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
+
+    struct Failing {
+        id: ModId,
+        phase: &'static str,
+    }
+
+    impl HostMod for Failing {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
+            Ok(())
+        }
+
+        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
+            assert_ne!(self.phase, "declaration", "declaration panic");
+            Ok(Some(
+                ServiceDeclaration::new(self.id.clone(), [], [service("provider", "answer")])
+                    .expect("valid declaration"),
+            ))
+        }
+
+        fn use_services(&mut self, _directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
+            assert_ne!(self.phase, "consumer", "consumer panic");
+            Err(ModError::Unsupported)
+        }
+
+        fn answer_service(
+            &mut self,
+            _request: &ServiceRequest,
+        ) -> Result<ServiceResponse, ModError> {
+            panic!("provider panic")
+        }
+    }
+
+    #[test]
+    fn service_callbacks_cannot_forge_the_consumer_or_unwind() {
+        for phase in ["declaration", "consumer", "refusal"] {
+            let mut host = Failing {
+                id: id("actual"),
+                phase,
+            };
+            let mut provider = Wired::new("provider", &[service("provider", "answer")], &[]);
+            let machine = machine(vec![
+                entry("actual", &[Side::DedicatedServer]),
+                entry("provider", &[Side::DedicatedServer]),
+            ]);
+            let refusal = open_services(&machine, &mut [&mut host, &mut provider])
+                .expect_err("callback failure stays contained");
+            let ServiceRefused::Consumer { mod_id, source } = refusal else {
+                panic!("expected a consumer refusal");
+            };
+            assert_eq!(mod_id, id("actual"));
+            assert_eq!(source.mod_id(), &id("actual"));
+        }
+    }
+
+    #[test]
+    fn provider_panics_are_contained_and_stamped_with_the_provider() {
+        let mut provider = Failing {
+            id: id("provider"),
+            phase: "provider",
+        };
+        let declaration =
+            ServiceDeclaration::new(id("consumer"), [], [service("provider", "answer")])
+                .expect("valid declaration");
+        let mut providers: [&mut dyn HostMod; 1] = [&mut provider];
+        let machine = machine(vec![entry("provider", &[Side::DedicatedServer])]);
+        let mut context = &machine;
+        let mut directory = super::Started {
+            caller: id("consumer"),
+            declaration: &declaration,
+            mods: &mut providers,
+            context: &mut context,
+            failure: None,
+        };
+        let error = directory
+            .call(&ServiceRequest::new(
+                service("provider", "answer"),
+                json!(null),
+            ))
+            .expect_err("provider refusal is contained");
+        assert!(matches!(
+            error,
+            ravel_host_api::ServiceCallFailed::Unavailable(_)
+        ));
+        let Some(ServiceRefused::Consumer { source, .. }) = directory.failure else {
+            panic!("expected provider attribution");
+        };
+        assert_eq!(source.mod_id(), &id("provider"));
+    }
+
+    #[test]
+    fn continuing_after_a_refusal_never_replays_completed_consumers() {
+        let mut provider = Wired::new("provider", &[service("provider", "answer")], &[]);
+        let mut healthy = Wired::new("consumer", &[], &[service("provider", "answer")]);
+        let mut refusing = Failing {
+            id: id("zfail"),
+            phase: "refusal",
+        };
+        let mut machine = machine(vec![
+            entry("provider", &[Side::DedicatedServer]),
+            entry("consumer", &[Side::DedicatedServer]),
+            entry("zfail", &[Side::DedicatedServer]),
+        ]);
+        let mut refusals = Vec::new();
+        super::open_services_with_failure_handler(
+            &mut machine,
+            &mut [&mut healthy, &mut refusing, &mut provider],
+            |_, source| {
+                refusals.push(source);
+                Ok::<(), ServiceRefused>(())
+            },
+        )
+        .expect("the handler permits continuation");
+        assert_eq!(refusals.len(), 1);
+        assert_eq!(refusals[0].mod_id(), &id("zfail"));
+        assert_eq!(healthy.reached, ["provider"]);
+        assert_eq!(provider.answered, [service("provider", "answer")]);
+    }
 
     fn id(value: &str) -> ModId {
         value.parse().expect("a legal mod id")
@@ -363,16 +572,13 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
             if self.refuses_declaration {
-                return Err(HostError::Unsupported {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Constructed,
-                });
+                return Err(ModError::Unsupported);
             }
             Ok(Some(self.declaration.clone()))
         }
@@ -380,16 +586,14 @@ mod tests {
         fn answer_service(
             &mut self,
             request: &ServiceRequest,
-        ) -> Result<ServiceResponse, HostError> {
+        ) -> Result<ServiceResponse, ModError> {
             self.answered.push(request.id.clone());
             Ok(ServiceResponse::new(json!(self.id.as_str())))
         }
 
-        fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), HostError> {
+        fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
             if self.refuses {
-                return Err(HostError::Refused {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Constructed,
+                return Err(ModError::Refused {
                     detail: "the answer was not one this mod accepts".to_owned(),
                 });
             }
@@ -397,9 +601,7 @@ mod tests {
             for wanted in requested {
                 let answer = directory
                     .call(&ServiceRequest::new(wanted, json!(null)))
-                    .map_err(|failed| HostError::Refused {
-                        mod_id: self.id.clone(),
-                        state: LifecycleState::Constructed,
+                    .map_err(|failed| ModError::Refused {
                         detail: failed.to_string(),
                     })?;
                 self.reached
@@ -433,7 +635,7 @@ mod tests {
                 mod_id: id("refusing_mod"),
                 source: HostError::Unsupported {
                     mod_id: id("refusing_mod"),
-                    state: LifecycleState::Constructed,
+                    state: LifecycleState::Discovered,
                 },
             })
         );
@@ -648,11 +850,11 @@ mod tests {
                 &self.id
             }
 
-            fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
                 Ok(())
             }
 
-            fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+            fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
                 Ok(Some(
                     ServiceDeclaration::new(
                         self.id.clone(),
@@ -666,16 +868,14 @@ mod tests {
             fn use_services(
                 &mut self,
                 directory: &mut dyn ServiceDirectory,
-            ) -> Result<(), HostError> {
+            ) -> Result<(), ModError> {
                 let failed = directory
                     .call(&ServiceRequest::new(
                         service("warehouse", "stock"),
                         json!(null),
                     ))
                     .expect_err("undeclared");
-                Err(HostError::Refused {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Constructed,
+                Err(ModError::Refused {
                     detail: failed.to_string(),
                 })
             }
@@ -718,7 +918,7 @@ mod tests {
                 &self.id
             }
 
-            fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
                 Ok(())
             }
         }
@@ -764,27 +964,23 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
             Ok(Some(self.declaration.clone()))
         }
 
         fn answer_service(
             &mut self,
             _request: &ServiceRequest,
-        ) -> Result<ServiceResponse, HostError> {
+        ) -> Result<ServiceResponse, ModError> {
             Ok(ServiceResponse::new(json!(self.id.as_str())))
         }
 
-        /// Carries on past absence and past nothing else.
-        ///
-        /// The branch is on the outcome's own shape rather than on its sentence,
-        /// which is the property this fixture is here to exercise: a provider that
-        /// was reached and refused still refuses this mod.
-        fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), HostError> {
+        // Optional consumers can carry on when a failed provider becomes unavailable.
+        fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
             let optional: Vec<ServiceId> = self.declaration.may_use().cloned().collect();
             for wanted in optional {
                 match directory.call(&ServiceRequest::new(wanted.clone(), json!(null))) {
@@ -793,9 +989,7 @@ mod tests {
                         .push(answer.value().as_str().unwrap_or_default().to_owned()),
                     Err(failed) if failed.is_absent() => self.absent.push(wanted),
                     Err(failed) => {
-                        return Err(HostError::Refused {
-                            mod_id: self.id.clone(),
-                            state: LifecycleState::Constructed,
+                        return Err(ModError::Refused {
                             detail: failed.to_string(),
                         });
                     }
@@ -809,6 +1003,7 @@ mod tests {
     struct Grudging {
         id: ModId,
         declaration: ServiceDeclaration,
+        panics: bool,
     }
 
     impl Grudging {
@@ -817,6 +1012,7 @@ mod tests {
                 id: id(name),
                 declaration: ServiceDeclaration::new(id(name), provides.to_vec(), [])
                     .expect("a legal declaration"),
+                panics: false,
             }
         }
     }
@@ -826,21 +1022,20 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+        fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
             Ok(Some(self.declaration.clone()))
         }
 
         fn answer_service(
             &mut self,
             _request: &ServiceRequest,
-        ) -> Result<ServiceResponse, HostError> {
-            Err(HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Running,
+        ) -> Result<ServiceResponse, ModError> {
+            assert!(!self.panics, "provider answer panic");
+            Err(ModError::Refused {
                 detail: "this provider is not answering today".to_owned(),
             })
         }
@@ -909,10 +1104,7 @@ mod tests {
     }
 
     #[test]
-    fn a_provider_that_answered_and_refused_is_not_absence() {
-        // The distinction a consumer branches on. `warehouse` is installed and running,
-        // so its refusal is an answer about the call and not about the install —
-        // and the consumer must not swallow it as "nobody there".
+    fn a_public_provider_refusal_is_attributed_to_its_owner() {
         let mut consumer = Hedging::new("consumer", &[], &[service("warehouse", "prices")]);
         let mut warehouse = Grudging::new("warehouse", &[service("warehouse", "prices")]);
         let machine = machine(vec![
@@ -925,16 +1117,62 @@ mod tests {
 
         assert!(matches!(
             refusal,
-            ServiceRefused::Consumer { ref mod_id, .. } if mod_id == &id("consumer")
+            ServiceRefused::Consumer { ref mod_id, .. } if mod_id == &id("warehouse")
         ));
         assert!(
             refusal.to_string().contains("not answering today"),
             "{refusal}"
         );
-        assert!(
-            consumer.absent.is_empty(),
-            "a refusal from a running provider was read as absence"
-        );
+        assert_eq!(consumer.absent, [service("warehouse", "prices")]);
+    }
+
+    #[test]
+    fn drive_records_provider_failures_without_failing_optional_service_consumers() {
+        for panics in [false, true] {
+            for requirement in [Requirement::Optional, Requirement::Required] {
+                provider_failure(panics, requirement);
+            }
+        }
+    }
+
+    fn provider_failure(panics: bool, requirement: Requirement) {
+        let wanted = service("warehouse", "prices");
+        let consumer = Hedging::new("consumer", &[], std::slice::from_ref(&wanted));
+        let mut provider = Grudging::new("warehouse", std::slice::from_ref(&wanted));
+        provider.panics = panics;
+        let mut provider_entry = entry("warehouse", &[Side::DedicatedServer]);
+        provider_entry.requirement = requirement;
+        let environment = ravel_core::FailureEnvironment {
+            ravel: "0.1.0".parse().expect("valid version"),
+            minecraft: "Synthetic26.1.5".to_owned(),
+            platform: "test".to_owned(),
+            architecture: "test".to_owned(),
+        };
+        let composed: Vec<(LifecycleEntry, Box<dyn HostMod>)> = vec![
+            (
+                entry("consumer", &[Side::DedicatedServer]),
+                Box::new(consumer),
+            ),
+            (provider_entry, Box::new(provider)),
+        ];
+        let result = crate::drive(Side::DedicatedServer, &environment, composed);
+        if requirement == Requirement::Required {
+            assert!(
+                matches!(result, Err(crate::DriveError::Host { attribution, .. })
+                if attribution.mod_id == Some(id("warehouse"))
+                    && attribution.state == LifecycleState::Registered)
+            );
+        } else {
+            let (machine, _) = result.expect("the optional provider may fail");
+            assert_eq!(machine.state(&id("warehouse")), Ok(LifecycleState::Failed));
+            assert_eq!(machine.state(&id("consumer")), Ok(LifecycleState::Running));
+            let attribution = machine
+                .failure(&id("warehouse"))
+                .expect("known owner")
+                .expect("recorded provider failure");
+            assert_eq!(attribution.state, LifecycleState::Registered);
+            assert_eq!(attribution.environment, environment);
+        }
     }
 
     #[test]

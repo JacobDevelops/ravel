@@ -18,7 +18,7 @@ use ravel_sdk::tags::TagId;
 use rvl_321_counterpart::registries::Role;
 
 use crate::world::{Dimension, Ore};
-use crate::{CONVENTION_NAMESPACE, Entry, HOST_NAMESPACE, MOD_ID, census, crops, world};
+use crate::{CONVENTION_NAMESPACE, HOST_NAMESPACE, MOD_ID, census, crops, world};
 
 /// Block loot documents this entry ships, for twenty block items.
 pub const LOOT_DOCUMENTS: usize = 19;
@@ -365,7 +365,7 @@ fn named(kind: ContentKind, ids: &[String]) -> Result<Vec<RegistryKey>, ModError
         .map(|id| {
             id.parse::<ContentId>()
                 .map(|id| RegistryKey::new(kind, id))
-                .map_err(|error| Entry::packaging(&error))
+                .map_err(|error| ModError::refused(error.to_string()))
         })
         .collect()
 }
@@ -373,8 +373,8 @@ fn named(kind: ContentKind, ids: &[String]) -> Result<Vec<RegistryKey>, ModError
 fn document(id: &str, kind: ContentKind, members: Vec<RegistryKey>) -> Result<Document, ModError> {
     let id = id
         .parse::<ContentId>()
-        .map_err(|error| Entry::packaging(&error))?;
-    let tag = TagId::new(kind, id).map_err(|error| Entry::packaging(&error))?;
+        .map_err(|error| ModError::refused(error.to_string()))?;
+    let tag = TagId::new(kind, id).map_err(|error| ModError::refused(error.to_string()))?;
     Ok(Document { tag, members })
 }
 
@@ -397,7 +397,7 @@ pub fn declare_tags(
     let mut declared = 0;
     for document in documents(blocks, items)? {
         if document.members.is_empty() {
-            return Err(Entry::packaging(&format!(
+            return Err(ModError::refused(format!(
                 "the tag {} would be declared with no members",
                 document.tag
             )));
@@ -405,7 +405,7 @@ pub fn declare_tags(
         for member in &document.members {
             declaration
                 .tag(&document.tag, member)
-                .map_err(|error| Entry::packaging(&error))?;
+                .map_err(|error| ModError::refused(error.to_string()))?;
         }
         declared += 1;
     }
@@ -415,6 +415,7 @@ pub fn declare_tags(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Entry;
     use ravel_sdk::Declared;
 
     fn declared() -> (ContentDeclaration, usize) {

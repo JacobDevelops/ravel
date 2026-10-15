@@ -116,6 +116,7 @@ fn game() -> PathBuf {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&directory).expect("a writable temporary directory");
+    std::fs::write(directory.join("options.txt"), "version:1\n").expect("a writable client marker");
     directory
 }
 
@@ -128,7 +129,7 @@ impl Screen {
     fn new(configurations: Vec<LayeredConfiguration>) -> Self {
         let game = game();
         Self {
-            store: Store::new(Side::Client, configurations, Some(Ok(game.clone()))),
+            store: Store::new(Side::Client, configurations, Ok(game.clone())),
             game,
         }
     }
@@ -138,7 +139,7 @@ impl Screen {
         directory: Result<PathBuf, String>,
     ) -> Self {
         Self {
-            store: Store::new(Side::Client, configurations, Some(directory)),
+            store: Store::new(Side::Client, configurations, directory),
             game: game(),
         }
     }
@@ -233,7 +234,7 @@ fn an_owner_with_nothing_to_show_on_this_side_is_not_offered_a_screen() {
         None,
     )
     .expect("the layers should resolve");
-    let store = Store::new(Side::Client, vec![here, elsewhere], None);
+    let store = Store::new(Side::Client, vec![here, elsewhere], Ok(game()));
 
     let offered: Vec<String> = store
         .configurable()
@@ -414,6 +415,24 @@ fn a_save_that_cannot_reach_a_game_directory_says_so_rather_than_looking_saved()
     assert_eq!(refused.len(), 1, "{answer}");
     assert_eq!(refused[0].0, "", "a whole-file failure names no key");
     assert_eq!(refused[0].1, "no game directory here");
+}
+
+#[test]
+fn a_save_without_the_client_marker_refuses_the_stored_launch_directory() {
+    let mut screen = screen(None, None);
+    std::fs::remove_file(screen.game.join("options.txt")).expect("remove the client marker");
+
+    let answer = screen.save(&edits("example_mod", &[("render.distance", "8")]));
+
+    let refused = refusals(&answer);
+    assert_eq!(refused.len(), 1, "{answer}");
+    assert!(refused[0].1.contains("options.txt"), "{answer}");
+    let owner: ModId = "example_mod".parse().expect("a valid owner");
+    assert!(
+        file::read(&screen.game, &owner)
+            .expect("read settings")
+            .is_none()
+    );
 }
 
 #[test]

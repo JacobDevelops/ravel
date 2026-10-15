@@ -3,7 +3,7 @@
 //! Structured diagnostics, redaction, metrics, and opt-in profiling contracts.
 
 mod profiling;
-mod redaction;
+pub mod redaction;
 mod report;
 
 pub use profiling::{

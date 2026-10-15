@@ -21,7 +21,7 @@ pub use diagnostics::{
     DiagnosticMessage, FailureAttribution, FailureEnvironment, FailureKind, FailureSurface,
     Redaction, RedactionPolicy, StructuredFailure,
 };
-pub use identity::{ModId, ModIdError};
+pub use identity::{ModId, ModIdError, check_identifier};
 pub use paths::{RelativePath, RelativePathError};
 pub use precedence::{Cycle, precedence};
 /// An exact semantic version of a mod or Ravel, not a Minecraft release.

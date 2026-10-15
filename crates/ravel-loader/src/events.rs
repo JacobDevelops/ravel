@@ -27,6 +27,11 @@ pub enum DispatchRefused {
         /// The key nobody owns.
         key: RegistryKey,
     },
+    /// The supplied key identifies content other than a command.
+    NotACommand {
+        /// The non-command key that cannot be routed.
+        key: RegistryKey,
+    },
     /// The command's owner is not in a state that reacts.
     OwnerNotReacting {
         /// The mod that owns the command.
@@ -70,13 +75,14 @@ impl fmt::Display for DispatchRefused {
             Self::NotReacting { mod_id, state } => write!(
                 formatter,
                 "the set is `{}` at `{mod_id}`, which does not react",
-                state.name()
+                state.as_str()
             ),
             Self::Unclaimed { key } => write!(formatter, "no mod claimed `{key}`"),
+            Self::NotACommand { key } => write!(formatter, "`{key}` is not a command"),
             Self::OwnerNotReacting { mod_id, state } => write!(
                 formatter,
                 "`{mod_id}` owns the command and is `{}`, which does not react",
-                state.name()
+                state.as_str()
             ),
             Self::OwnerWrongSide { mod_id } => write!(
                 formatter,
@@ -89,8 +95,8 @@ impl fmt::Display for DispatchRefused {
             } => write!(
                 formatter,
                 "`{id}` arrived claiming the `{}` side and the set is running as `{}`",
-                claimed.name(),
-                running.name()
+                claimed.as_str(),
+                running.as_str()
             ),
             Self::PacketWrongSide {
                 id,
@@ -99,7 +105,7 @@ impl fmt::Display for DispatchRefused {
             } => write!(
                 formatter,
                 "`{id}` travels {direction} and the `{}` side is not an end of that",
-                side.name()
+                side.as_str()
             ),
             Self::Absent { mod_id } => {
                 write!(formatter, "the order names `{mod_id}` and no value for it")
@@ -120,6 +126,7 @@ impl StructuredFailure for DispatchRefused {
         match self {
             Self::NotReacting { state, .. } | Self::OwnerNotReacting { state, .. } => *state,
             Self::Unclaimed { .. }
+            | Self::NotACommand { .. }
             | Self::OwnerWrongSide { .. }
             | Self::PacketForeignSide { .. }
             | Self::PacketWrongSide { .. }
@@ -137,7 +144,7 @@ impl StructuredFailure for DispatchRefused {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Delivery {
     received: Vec<ModId>,
-    failure: Option<HostError>,
+    failure: Option<(ModId, HostError)>,
 }
 
 impl Delivery {
@@ -149,8 +156,14 @@ impl Delivery {
 
     /// Returns the failure that ended the delivery, when one did.
     #[must_use]
-    pub const fn failure(&self) -> Option<&HostError> {
-        self.failure.as_ref()
+    pub fn failure(&self) -> Option<&HostError> {
+        self.failure.as_ref().map(|(_, error)| error)
+    }
+
+    /// Returns the actual owner whose callback failed.
+    #[must_use]
+    pub fn failed_by(&self) -> Option<&ModId> {
+        self.failure.as_ref().map(|(owner, _)| owner)
     }
 
     /// Returns whether every mod that should have reacted did so.
@@ -164,19 +177,21 @@ impl LifecycleMachine {
     /// Returns side-compatible recipients, excluding failed optional mods, in resolved order.
     #[must_use]
     pub fn audience(&self, event: GameEvent) -> Vec<ModId> {
-        if !event.happens_on(self.side()) {
-            return Vec::new();
-        }
-        self.order()
-            .filter(|mod_id| {
-                self.entry(mod_id).is_ok_and(|entry| {
-                    entry.sides.loads_on(self.side())
-                        && (entry.requirement == crate::lifecycle::Requirement::Required
-                            || self.loads(mod_id))
-                })
-            })
-            .cloned()
+        self.audience_entries(event)
+            .map(|(entry, _)| entry.mod_id.clone())
             .collect()
+    }
+
+    fn audience_entries(
+        &self,
+        event: GameEvent,
+    ) -> impl Iterator<Item = (&crate::LifecycleEntry, LifecycleState)> {
+        self.tracked_entries().filter(move |(entry, state)| {
+            event.happens_on(self.side())
+                && entry.sides.loads_on(self.side())
+                && (entry.requirement == crate::Requirement::Required
+                    || *state != LifecycleState::Failed)
+        })
     }
 
     /// Returns whether `mod_id` loads on the side this set is running on.
@@ -220,17 +235,10 @@ pub fn broadcast_profiled(
     event: GameEvent,
     profiler: &mut Profiler,
 ) -> Result<Delivery, DispatchRefused> {
-    if let Some(mod_id) = machine.halted_by() {
-        return Err(DispatchRefused::NotReacting {
-            mod_id: mod_id.clone(),
-            state: LifecycleState::Failed,
-        });
-    }
+    ensure_active(machine)?;
     let audience = machine.audience(event);
-    for mod_id in &audience {
-        let state = machine.state(mod_id).map_err(|_| DispatchRefused::Absent {
-            mod_id: mod_id.clone(),
-        })?;
+    for (entry, state) in machine.audience_entries(event) {
+        let mod_id = &entry.mod_id;
         if !reacts(state) {
             return Err(DispatchRefused::NotReacting {
                 mod_id: mod_id.clone(),
@@ -250,11 +258,14 @@ pub fn broadcast_profiled(
             .iter_mut()
             .find(|host| host.id() == &mod_id)
             .expect("the audience was checked against the supplied values");
-        let observed = profiler.measure(&mod_id, CallKind::Event, || host.observe(event));
+        let observed = profiler.measure(&mod_id, CallKind::Event, || {
+            let state = machine.state(&mod_id).expect("the audience was validated");
+            crate::callback(&mod_id, state, || host.observe(event))
+        });
         if let Err(failure) = observed {
             return Ok(Delivery {
                 received,
-                failure: Some(failure),
+                failure: Some((mod_id, failure)),
             });
         }
         received.push(mod_id);
@@ -269,12 +280,13 @@ pub fn broadcast_profiled(
 ///
 /// # Errors
 ///
-/// Returns [`DispatchRefused`] for incompatible sides, an absent owner, or an owner not reacting.
+/// Returns [`DispatchRefused`] for a halted set, incompatible sides, or an absent or inactive owner.
 pub fn deliver_packet(
     machine: &LifecycleMachine,
     mods: &mut [&mut (dyn HostMod + '_)],
     delivery: &PacketDelivery,
 ) -> Result<Delivery, DispatchRefused> {
+    ensure_active(machine)?;
     if delivery.side != machine.side() {
         return Err(DispatchRefused::PacketForeignSide {
             id: delivery.id.clone(),
@@ -290,7 +302,29 @@ pub fn deliver_packet(
         });
     }
 
-    let owner = delivery.id.owner().clone();
+    to_owner(
+        machine,
+        mods,
+        delivery.id.owner().clone(),
+        |owner, state, host| crate::callback(owner, state, || host.receive_packet(delivery)),
+    )
+}
+
+pub(crate) fn ensure_active(machine: &LifecycleMachine) -> Result<(), DispatchRefused> {
+    machine.halted_by().map_or(Ok(()), |mod_id| {
+        Err(DispatchRefused::NotReacting {
+            mod_id: mod_id.clone(),
+            state: LifecycleState::Failed,
+        })
+    })
+}
+
+fn to_owner(
+    machine: &LifecycleMachine,
+    mods: &mut [&mut (dyn HostMod + '_)],
+    owner: ModId,
+    call: impl FnOnce(&ModId, LifecycleState, &mut dyn HostMod) -> Result<(), HostError>,
+) -> Result<Delivery, DispatchRefused> {
     let state = machine.state(&owner).map_err(|_| DispatchRefused::Absent {
         mod_id: owner.clone(),
     })?;
@@ -303,22 +337,20 @@ pub fn deliver_packet(
             state,
         });
     }
-
     let host = mods
         .iter_mut()
         .find(|host| host.id() == &owner)
         .ok_or_else(|| DispatchRefused::Absent {
             mod_id: owner.clone(),
         })?;
-
-    match host.receive_packet(delivery) {
+    match call(&owner, state, &mut **host) {
         Ok(()) => Ok(Delivery {
             received: vec![owner],
             failure: None,
         }),
-        Err(failure) => Ok(Delivery {
+        Err(error) => Ok(Delivery {
             received: Vec::new(),
-            failure: Some(failure),
+            failure: Some((owner, error)),
         }),
     }
 }
@@ -327,7 +359,7 @@ pub fn deliver_packet(
 ///
 /// # Errors
 ///
-/// Returns [`DispatchRefused`] if the command is unclaimed or its owner is absent, on another side, or not reacting.
+/// Returns [`DispatchRefused`] for a halted set, an invalid command key, or an absent or inactive owner.
 pub fn route(
     machine: &LifecycleMachine,
     mods: &mut [&mut (dyn HostMod + '_)],
@@ -347,6 +379,12 @@ pub fn route_profiled(
     invocation: &CommandInvocation,
     profiler: &mut Profiler,
 ) -> Result<Delivery, DispatchRefused> {
+    ensure_active(machine)?;
+    if invocation.key.kind() != ravel_core::ContentKind::Command {
+        return Err(DispatchRefused::NotACommand {
+            key: invocation.key.clone(),
+        });
+    }
     let owner = machine
         .owner_of(&invocation.key)
         .ok_or_else(|| DispatchRefused::Unclaimed {
@@ -354,36 +392,11 @@ pub fn route_profiled(
         })?
         .clone();
 
-    if !machine.loads_here(&owner) {
-        return Err(DispatchRefused::OwnerWrongSide { mod_id: owner });
-    }
-    let state = machine.state(&owner).map_err(|_| DispatchRefused::Absent {
-        mod_id: owner.clone(),
-    })?;
-    if !reacts(state) {
-        return Err(DispatchRefused::OwnerNotReacting {
-            mod_id: owner,
-            state,
-        });
-    }
-
-    let host = mods
-        .iter_mut()
-        .find(|host| host.id() == &owner)
-        .ok_or_else(|| DispatchRefused::Absent {
-            mod_id: owner.clone(),
-        })?;
-
-    match profiler.measure(&owner, CallKind::Command, || host.run_command(invocation)) {
-        Ok(()) => Ok(Delivery {
-            received: vec![owner],
-            failure: None,
-        }),
-        Err(failure) => Ok(Delivery {
-            received: Vec::new(),
-            failure: Some(failure),
-        }),
-    }
+    to_owner(machine, mods, owner, |owner, state, host| {
+        profiler.measure(owner, CallKind::Command, || {
+            crate::callback(owner, state, || host.run_command(invocation))
+        })
+    })
 }
 
 #[cfg(test)]
@@ -394,7 +407,7 @@ mod tests {
         ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet,
         StructuredFailure,
     };
-    use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, Registrar};
+    use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, ModError, Registrar};
     use ravel_network::{Direction, PacketDelivery, PacketId};
 
     use super::{Delivery, DispatchRefused, broadcast, deliver_packet, route};
@@ -427,6 +440,7 @@ mod tests {
         ran: Vec<CommandInvocation>,
         fails_on: Option<GameEvent>,
         claims: Vec<RegistryKey>,
+        panics: bool,
     }
 
     impl Recording {
@@ -437,6 +451,7 @@ mod tests {
                 ran: Vec::new(),
                 fails_on: None,
                 claims: Vec::new(),
+                panics: false,
             }
         }
 
@@ -455,41 +470,214 @@ mod tests {
         }
     }
 
+    #[test]
+    fn event_and_command_panics_name_the_called_owner() {
+        let key = command("example_mod", "run");
+        let mut host = Recording::claiming("example_mod", vec![key.clone()]);
+        host.panics = true;
+        let machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::Client,
+            &mut [&mut host],
+        );
+        let event = broadcast(&machine, &mut [&mut host], GameEvent::ClientTick)
+            .expect("dispatch itself is valid");
+        assert_eq!(event.failed_by(), Some(&id("example_mod")));
+        assert_eq!(
+            event.failure().map(HostError::mod_id),
+            Some(&id("example_mod"))
+        );
+        let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
+        let command =
+            route(&machine, &mut [&mut host], &invocation).expect("dispatch itself is valid");
+        assert_eq!(command.failed_by(), Some(&id("example_mod")));
+        assert_eq!(host.seen, []);
+        assert_eq!(host.ran, []);
+    }
+
+    #[test]
+    fn packet_panics_name_the_called_owner() {
+        let mut host = Networked::new("example_mod");
+        host.panics = true;
+        let machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::Client,
+            &mut [&mut host],
+        );
+        let packet = delivery("example_mod:ping", Direction::ToClient, Side::Client);
+        let delivered =
+            deliver_packet(&machine, &mut [&mut host], &packet).expect("dispatch itself is valid");
+        assert_eq!(delivered.failed_by(), Some(&id("example_mod")));
+        assert_eq!(host.received, []);
+    }
+
+    #[test]
+    fn non_command_claims_never_invoke_command_code() {
+        let key = RegistryKey::new(
+            ContentKind::Item,
+            ContentId::new(id("example_mod"), "item").expect("a valid item"),
+        );
+        let mut host = Recording::claiming("example_mod", vec![key.clone()]);
+        let machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::Client,
+            &mut [&mut host],
+        );
+        let invocation = CommandInvocation::new(key.clone(), Side::Client, Vec::new());
+        let refused = route(&machine, &mut [&mut host], &invocation)
+            .expect_err("items cannot be routed as commands");
+        assert_eq!(refused, DispatchRefused::NotACommand { key: key.clone() });
+        assert_eq!(refused.to_string(), format!("`{key}` is not a command"));
+        assert_eq!(refused.lifecycle_state(), LifecycleState::Running);
+        assert!(!refused.quotes_untrusted_text());
+        assert_eq!(host.ran, []);
+    }
+
+    #[test]
+    fn panicking_commands_are_charged_to_the_owner() {
+        let key = command("example_mod", "run");
+        let mut host = Recording::claiming("example_mod", vec![key.clone()]);
+        host.panics = true;
+        let machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::Client,
+            &mut [&mut host],
+        );
+        let mut profiler = ravel_observability::Profiler::on(std::time::Duration::ZERO);
+        let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
+        let delivered =
+            super::route_profiled(&machine, &mut [&mut host], &invocation, &mut profiler)
+                .expect("the command is routable");
+        assert_eq!(delivered.failed_by(), Some(&id("example_mod")));
+        let report = profiler.report();
+        assert_eq!(report.mods().len(), 1);
+        assert_eq!(report.mods()[0].cost.command_calls, 1);
+        assert_eq!(report.mods()[0].cost.slow_callbacks, 1);
+    }
+
+    #[test]
+    fn second_broadcast_recipient_panics_are_attributed_to_that_recipient() {
+        let mut first = Recording::new("first_mod");
+        let mut second = Recording::new("second_mod");
+        second.panics = true;
+        let machine = running(
+            vec![
+                entry("first_mod", &Side::ALL),
+                entry("second_mod", &Side::ALL),
+            ],
+            Side::Client,
+            &mut [&mut first, &mut second],
+        );
+        let delivered = broadcast(
+            &machine,
+            &mut [&mut first, &mut second],
+            GameEvent::ClientTick,
+        )
+        .expect("the audience is running");
+        assert_eq!(delivered.received(), &[id("first_mod")]);
+        assert_eq!(delivered.failed_by(), Some(&id("second_mod")));
+        assert_eq!(
+            delivered.failure().map(HostError::mod_id),
+            Some(&id("second_mod"))
+        );
+    }
+
+    #[test]
+    fn stopping_event_panics_retain_the_owners_current_state() {
+        let mut host = Recording::new("example_mod");
+        host.panics = true;
+        let mut machine = running(
+            vec![entry("example_mod", &Side::ALL)],
+            Side::Client,
+            &mut [&mut host],
+        );
+        machine
+            .advance_all(LifecycleState::Stopping)
+            .expect("running mods may stop");
+        let delivered = broadcast(&machine, &mut [&mut host], GameEvent::ClientTick)
+            .expect("stopping mods may react");
+        assert_eq!(
+            delivered.failure(),
+            Some(&HostError::Panicked {
+                mod_id: id("example_mod"),
+                state: LifecycleState::Stopping,
+            })
+        );
+    }
+
+    #[test]
+    fn halted_sets_refuse_claimed_commands_and_non_command_keys_before_dispatch() {
+        let key = command("healthy_mod", "run");
+        let mut healthy = Recording::claiming("healthy_mod", vec![key.clone()]);
+        let mut machine = running(
+            vec![
+                entry("required_mod", &Side::ALL),
+                entry("healthy_mod", &Side::ALL),
+            ],
+            Side::Client,
+            &mut [&mut healthy],
+        );
+        machine
+            .record_world_mutation()
+            .expect("a running set can mutate the world");
+        machine
+            .fail(
+                &id("required_mod"),
+                failure_attribution("required_mod", "required mod failed"),
+            )
+            .expect("a running mod can fail");
+        assert_eq!(
+            machine.state(&id("healthy_mod")),
+            Ok(LifecycleState::Running)
+        );
+        let item = RegistryKey::new(
+            ContentKind::Item,
+            ContentId::new(id("healthy_mod"), "item").expect("valid item"),
+        );
+        for key in [key, item] {
+            let invocation = CommandInvocation::new(key, Side::Client, Vec::new());
+            assert_eq!(
+                route(&machine, &mut [&mut healthy], &invocation),
+                Err(DispatchRefused::NotReacting {
+                    mod_id: id("required_mod"),
+                    state: LifecycleState::Failed,
+                }),
+            );
+        }
+        assert_eq!(healthy.ran, []);
+    }
+
     impl HostMod for Recording {
         fn id(&self) -> &ModId {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
+        fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
             for key in &self.claims {
                 registrar
                     .claim(key.clone())
-                    .map_err(|refused| HostError::Refused {
-                        mod_id: self.id.clone(),
-                        state: LifecycleState::Constructed,
-                        detail: refused.to_string(),
-                    })?;
+                    .map_err(|error| ModError::refused(error.to_string()))?;
             }
             Ok(())
         }
 
-        fn observe(&mut self, event: GameEvent) -> Result<(), HostError> {
+        fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
+            assert!(!self.panics, "mod callback panic");
             if self.fails_on == Some(event) {
-                return Err(HostError::Refused {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Running,
-                    detail: format!("`{event}` is more than it can take"),
-                });
+                return Err(ModError::refused(format!(
+                    "`{event}` is more than it can take"
+                )));
             }
             self.seen.push(event);
             Ok(())
         }
 
-        fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), HostError> {
+        fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
+            assert!(!self.panics, "mod callback panic");
             self.ran.push(invocation.clone());
             Ok(())
         }
@@ -620,6 +808,26 @@ mod tests {
         });
         assert_eq!(
             broadcast(&machine, &mut mods, GameEvent::ClientTick),
+            refused
+        );
+        assert_eq!(
+            route(
+                &machine,
+                &mut mods,
+                &CommandInvocation {
+                    key: command("healthy_mod", "run"),
+                    side: Side::Client,
+                    arguments: Vec::new(),
+                }
+            ),
+            refused
+        );
+        assert_eq!(
+            deliver_packet(
+                &machine,
+                &mut mods,
+                &delivery("healthy_mod:ping", Direction::ToClient, Side::Client,)
+            ),
             refused
         );
         assert_eq!(healthy.seen, Vec::<GameEvent>::new());
@@ -884,18 +1092,14 @@ mod tests {
                 &self.id
             }
 
-            fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+            fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
                 Ok(())
             }
 
-            fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
+            fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
                 registrar
                     .claim(self.key.clone())
-                    .map_err(|refused| HostError::Refused {
-                        mod_id: self.id.clone(),
-                        state: LifecycleState::Constructed,
-                        detail: refused.to_string(),
-                    })
+                    .map_err(|error| ModError::refused(error.to_string()))
             }
         }
 
@@ -1008,6 +1212,7 @@ mod tests {
         id: ModId,
         received: Vec<PacketId>,
         refuses: bool,
+        panics: bool,
     }
 
     impl Networked {
@@ -1016,6 +1221,7 @@ mod tests {
                 id: id(name),
                 received: Vec::new(),
                 refuses: false,
+                panics: false,
             }
         }
 
@@ -1032,17 +1238,17 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), HostError> {
+        fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
+            assert!(!self.panics, "mod callback panic");
             if self.refuses {
-                return Err(HostError::Refused {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Running,
-                    detail: format!("`{}` is refused by this instance", delivery.id),
-                });
+                return Err(ModError::refused(format!(
+                    "`{}` is refused by this instance",
+                    delivery.id
+                )));
             }
             self.received.push(delivery.id.clone());
             Ok(())
@@ -1119,9 +1325,9 @@ mod tests {
         );
         // Both sides are named, so a reader can tell which end set it wrong.
         let rendered = refusal.to_string();
-        assert!(rendered.contains(Side::Client.name()), "{rendered}");
+        assert!(rendered.contains(Side::Client.as_str()), "{rendered}");
         assert!(
-            rendered.contains(Side::DedicatedServer.name()),
+            rendered.contains(Side::DedicatedServer.as_str()),
             "{rendered}"
         );
         assert!(host.received.is_empty(), "the mod was handed the delivery");

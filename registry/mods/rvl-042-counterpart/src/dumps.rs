@@ -126,13 +126,13 @@ fn left(uses_left: UsesLeft) -> String {
 pub fn settings_document() -> Result<String, DeclarationError> {
     let declaration = settings::declaration()?;
     let settings: Vec<JsonValue> = declaration
-        .settings
+        .settings()
         .iter()
         .map(|setting| {
             let resolved: Vec<&str> = Side::ALL
                 .into_iter()
                 .filter(|side| settings::resolved_on(setting.key.as_str(), *side))
-                .map(Side::name)
+                .map(Side::as_str)
                 .collect();
             json!({
                 "key": setting.key.as_str(),
@@ -148,7 +148,7 @@ pub fn settings_document() -> Result<String, DeclarationError> {
         .collect();
 
     let document = json!({
-        "owner": declaration.owner.as_str(),
+        "owner": declaration.owner().as_str(),
         "travelsToClients": settings::travels_to_clients(),
         "settings": settings,
     });

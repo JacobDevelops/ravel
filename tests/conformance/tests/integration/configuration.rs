@@ -170,8 +170,12 @@ fn production_composition_reads_pack_and_player_files_and_drives_the_real_mod() 
     )
     .expect("the launch player file is writable");
 
-    let (machine, mods, configurations, _) =
-        compose(&game, Side::Client).expect("the production source composition starts");
+    let ravel_host_runtime::Composition {
+        machine,
+        mods,
+        configurations,
+        ..
+    } = compose(&game, Side::Client).expect("the production source composition starts");
     let owner = "configuration"
         .parse()
         .expect("the tracked mod id is valid");

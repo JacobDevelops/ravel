@@ -1,8 +1,9 @@
 #[test]
 fn a_world_path_that_names_no_absolute_directory_is_refused() {
     for named in ["null", "", "world", "./world", "../world"] {
-        let refusal = super::admissible_world(std::path::Path::new(named))
-            .expect_err("a relative path is not a world directory");
+        let refusal =
+            super::admissible_world(std::path::Path::new(named), std::path::Path::new("/game"))
+                .expect_err("a relative path is not a world directory");
         assert!(
             refusal.contains("not an absolute path"),
             "{named} was refused for the wrong reason: {refusal}"
@@ -23,13 +24,14 @@ fn scratch(name: &str) -> std::path::PathBuf {
 fn a_world_path_that_is_absent_or_is_a_file_is_refused() {
     let directory = scratch("absent");
     let absent = directory.join("no-such-world");
-    let refusal = super::admissible_world(&absent)
+    let refusal = super::admissible_world(&absent, &directory)
         .expect_err("a path that is not there is not a world directory");
     assert!(refusal.contains("not an existing directory"), "{refusal}");
 
     let file = directory.join("world");
     std::fs::write(&file, b"not a directory").expect("the file should be written");
-    let refusal = super::admissible_world(&file).expect_err("a file is not a world directory");
+    let refusal =
+        super::admissible_world(&file, &directory).expect_err("a file is not a world directory");
     assert!(refusal.contains("not an existing directory"), "{refusal}");
 }
 
@@ -38,7 +40,62 @@ fn an_existing_absolute_world_directory_is_admitted() {
     let world = scratch("admitted").join("Driven");
     std::fs::create_dir_all(&world).expect("the world should be created");
 
-    super::admissible_world(&world).expect("an ordinary world directory is writable");
+    super::admissible_world(&world, world.parent().expect("world parent"))
+        .expect("an ordinary world directory is writable without an options.txt marker");
+}
+
+#[test]
+fn the_launch_directory_and_its_ancestors_are_not_world_directories() {
+    let root = scratch("contains-game");
+    let game = root.join("game");
+    std::fs::create_dir_all(&game).expect("launch directory");
+    for world in [&root, &game] {
+        let refused = super::admissible_world(world, &game).expect_err("contains launch directory");
+        assert!(refused.contains("holds the game directory"), "{refused}");
+    }
+}
+
+#[test]
+fn an_unresolvable_launch_directory_never_disables_containment() {
+    let root = scratch("missing-game");
+    let refused = super::admissible_world(&root, &root.join("missing"))
+        .expect_err("missing launch directory fails closed");
+    assert!(
+        refused.contains("launch directory cannot be resolved"),
+        "{refused}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_world_symlink_cannot_hide_the_launch_directory() {
+    let root = scratch("symlink-game");
+    let game = root.join("game");
+    let world = root.join("world");
+    std::fs::create_dir_all(&game).expect("launch directory");
+    std::os::unix::fs::symlink(&root, &world).expect("world symlink");
+    let refused = super::admissible_world(&world, &game).expect_err("hidden launch directory");
+    assert!(refused.contains("holds the game directory"), "{refused}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_pack_directory_cannot_redirect_the_write() {
+    let root = scratch("symlink-datapacks");
+    let game = root.join("game");
+    let world = root.join("world");
+    let outside = root.join("outside");
+    for directory in [&game, &world, &outside] {
+        std::fs::create_dir_all(directory).expect("scratch directory");
+    }
+    std::os::unix::fs::symlink(&outside, world.join(ravel_loader::WORLD_DATA_PACKS))
+        .expect("datapacks symlink");
+    let refused = super::admissible_world(&world, &game).expect_err("escaping pack target");
+    assert!(refused.contains("is a symbolic link"), "{refused}");
+    assert!(
+        refused.contains(ravel_loader::WORLD_DATA_PACKS),
+        "{refused}"
+    );
 }
 
 use std::collections::BTreeSet;
@@ -47,7 +104,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
-use ravel_host_api::{HostError, HostMod, InterceptionDeclaration, Occasion, Outcome, Point};
+use ravel_host_api::{HostMod, InterceptionDeclaration, ModError, Occasion, Outcome, Point};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_save::{
     MAX_AGGREGATE_BYTES, SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope,
@@ -56,8 +113,8 @@ use ravel_save::{
 use serde_json::json;
 
 use super::{
-    FAILED, IDENTITY_MISMATCH, OBSERVATION_CAPACITY, OpenOutcome, REPLACEMENT, SaveOutcome,
-    StagedPack, UNCHANGED, WorldIdentity, tagged,
+    FAILED, IDENTITY_MISMATCH, OpenOutcome, REPLACEMENT, SaveOutcome, StagedPack, UNCHANGED,
+    WorldIdentity, tagged,
 };
 use crate::runtime::LoaderRuntime;
 
@@ -65,6 +122,18 @@ const OWNER: &str = "saved_data";
 const OTHER_OWNER: &str = "other_saved_data";
 const FIRST: &str = "worlds/first";
 const SECOND: &str = "worlds/second";
+
+fn notices(runtime: &LoaderRuntime) -> Vec<String> {
+    runtime
+        .inner
+        .lock()
+        .expect("test lock")
+        .report
+        .notices()
+        .iter()
+        .map(|notice| notice.text().to_owned())
+        .collect()
+}
 
 fn id(name: &str) -> ModId {
     name.parse().expect("a legal mod id")
@@ -91,11 +160,11 @@ fn version(raw: u32) -> SavedDataVersion {
 struct Held {
     visits: AtomicU32,
     refuses_production: AtomicBool,
+    panics_production: AtomicBool,
     refuses_open: AtomicBool,
     refuses_interception: AtomicBool,
     refuses_interception_declaration: AtomicBool,
     opened_with: Mutex<Option<SavedDataPlan>>,
-    error_owner: Mutex<Option<ModId>>,
     declaration_owner: Mutex<Option<ModId>>,
     refuses_declaration: AtomicBool,
 }
@@ -120,42 +189,33 @@ impl HostMod for Owning {
         &self.id
     }
 
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
-    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, HostError> {
+    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
         if self
             .held
             .refuses_interception_declaration
             .load(Ordering::SeqCst)
         {
-            return Err(HostError::Unsupported {
-                mod_id: id(OTHER_OWNER),
-                state: LifecycleState::Running,
-            });
+            return Err(ModError::Unsupported);
         }
         let mut declaration = InterceptionDeclaration::new(self.id.clone());
         declaration.answer_at(Point::WorldIsSaved.as_str());
         Ok(Some(declaration))
     }
 
-    fn intercept(&mut self, _occasion: Occasion) -> Result<Outcome, HostError> {
+    fn intercept(&mut self, _occasion: Occasion) -> Result<Outcome, ModError> {
         if self.held.refuses_interception.load(Ordering::SeqCst) {
-            return Err(HostError::Unsupported {
-                mod_id: id(OTHER_OWNER),
-                state: LifecycleState::Running,
-            });
+            return Err(ModError::Unsupported);
         }
         Ok(Outcome::Proceed)
     }
 
-    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, HostError> {
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         if self.held.refuses_declaration.load(Ordering::SeqCst) {
-            return Err(HostError::Unsupported {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Running,
-            });
+            return Err(ModError::Unsupported);
         }
         let owner = self
             .held
@@ -169,17 +229,26 @@ impl HostMod for Owning {
         ))
     }
 
+    fn saved_data_migrations(&self) -> Result<Option<ravel_save::MigrationChain>, ModError> {
+        Ok(Some(
+            ravel_save::MigrationChain::new(self.id.clone()).reaching(version(2), |payload| {
+                let visits = payload["visits"]
+                    .as_u64()
+                    .ok_or_else(|| ravel_save::MigrationFailed::new("version 1 lacks visits"))?;
+                Ok(json!({ "visits": visits + 1 }))
+            }),
+        ))
+    }
+
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
         plan: &SavedDataPlan,
-    ) -> Result<(), HostError> {
+    ) -> Result<(), ModError> {
         if self.held.refuses_open.load(Ordering::SeqCst) {
-            return Err(HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Registered,
-                detail: "this mod cannot read what the world stored".to_owned(),
-            });
+            return Err(ModError::refused(
+                "this mod cannot read what the world stored",
+            ));
         }
         let visits = envelope.map_or(0, |stored| {
             u32::try_from(stored.payload()["visits"].as_u64().unwrap_or(0)).unwrap_or(u32::MAX)
@@ -193,19 +262,13 @@ impl HostMod for Owning {
         Ok(())
     }
 
-    fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, HostError> {
+    fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
+        assert!(
+            !self.held.panics_production.load(Ordering::SeqCst),
+            "the owner panicked with private data: token=ghp_private"
+        );
         if self.held.refuses_production.load(Ordering::SeqCst) {
-            return Err(HostError::Refused {
-                mod_id: self
-                    .held
-                    .error_owner
-                    .lock()
-                    .expect("test lock")
-                    .clone()
-                    .unwrap_or_else(|| self.id.clone()),
-                state: LifecycleState::Running,
-                detail: "this mod cannot produce an envelope".to_owned(),
-            });
+            return Err(ModError::refused("this mod cannot produce an envelope"));
         }
         Ok(Some(SavedDataEnvelope::new(
             self.id.clone(),
@@ -235,6 +298,10 @@ impl ravel_core::StructuredFailure for Unresolvable {
 
     fn lifecycle_state(&self) -> LifecycleState {
         LifecycleState::Validated
+    }
+
+    fn quotes_untrusted_text(&self) -> bool {
+        false
     }
 }
 
@@ -299,7 +366,7 @@ fn owners_running_with_requirement(
         machine.advance_all(state).expect("a legal step");
     }
     (
-        LoaderRuntime::profiling(machine, hosts, ravel_observability::Profiler::off(), report),
+        LoaderRuntime::with_observers(machine, hosts, ravel_observability::Profiler::off(), report),
         held,
     )
 }
@@ -317,17 +384,17 @@ impl HostMod for Guarding {
         &self.id
     }
 
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
-    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, HostError> {
+    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
         let mut declared = InterceptionDeclaration::new(self.id.clone());
         declared.answer_at(Point::WorldIsSaved.as_str());
         Ok(Some(declared))
     }
 
-    fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, HostError> {
+    fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, ModError> {
         assert_eq!(occasion.point(), Point::WorldIsSaved);
         self.asked.fetch_add(1, Ordering::SeqCst);
         Ok(if self.refusing.load(Ordering::SeqCst) {
@@ -379,7 +446,7 @@ fn guarded_running() -> (LoaderRuntime, Arc<Held>, Arc<AtomicBool>, Arc<AtomicU3
         machine.advance_all(state).expect("a legal step");
     }
     (
-        LoaderRuntime::profiling(
+        LoaderRuntime::with_observers(
             machine,
             hosts,
             ravel_observability::Profiler::off(),
@@ -404,12 +471,11 @@ fn a_mod_refusing_at_world_is_saved_withholds_ravels_write_and_a_later_save_offe
     assert_eq!(withheld, SaveOutcome::Withheld);
     assert_eq!(asked.load(Ordering::SeqCst), 1, "the round was not asked");
     assert!(
-        runtime
-            .persistence_observations()
+        notices(&runtime)
             .iter()
             .any(|notice| notice.contains(GUARD) && notice.contains("world_is_saved")),
         "a withheld write is invisible to the player: {:?}",
-        runtime.persistence_observations()
+        notices(&runtime)
     );
 
     refusing.store(false, Ordering::SeqCst);
@@ -429,22 +495,18 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, HostError> {
+        fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
             let mut declared = InterceptionDeclaration::new(self.id.clone());
             declared.answer_at(Point::WorldIsSaved.as_str());
             Ok(Some(declared))
         }
 
-        fn intercept(&mut self, _occasion: Occasion) -> Result<Outcome, HostError> {
-            Err(HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Running,
-                detail: "the guard broke".to_owned(),
-            })
+        fn intercept(&mut self, _occasion: Occasion) -> Result<Outcome, ModError> {
+            Err(ModError::refused("the guard broke"))
         }
     }
 
@@ -466,7 +528,7 @@ fn a_mod_that_fails_at_world_is_saved_fails_the_save_rather_than_writing() {
     ] {
         machine.advance_all(state).expect("a legal step");
     }
-    let runtime = LoaderRuntime::profiling(
+    let runtime = LoaderRuntime::with_observers(
         machine,
         hosts,
         ravel_observability::Profiler::off(),
@@ -503,11 +565,102 @@ fn an_optional_owner_failed_before_first_open_is_admitted_without_callbacks() {
     held.refuses_open.store(true, Ordering::SeqCst);
     runtime
         .stage_world(WorldIdentity::of(FIRST), Some(&durable), false)
-        .expect("terminal optional owners are admitted from trusted lifecycle metadata");
+        .expect("terminal optional owners retain opaque envelopes without callbacks");
     assert_eq!(
         replacement(runtime.save_world(&WorldIdentity::of(FIRST))),
         durable
     );
+}
+
+#[test]
+fn an_already_failed_owner_keeps_its_original_version_without_migration() {
+    let stored = stored_at(version(99), 5);
+    let (runtime, held) = optional_running();
+    runtime
+        .inner
+        .lock()
+        .expect("test lock")
+        .machine
+        .fail(&id(OWNER), attribution())
+        .expect("optional owner failed before mutation");
+    held.refuses_declaration.store(true, Ordering::SeqCst);
+    held.refuses_open.store(true, Ordering::SeqCst);
+    runtime
+        .stage_world(WorldIdentity::of(FIRST), Some(&stored), false)
+        .expect("failed owner's envelope remains opaque even at an undeclared version");
+    let written = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+    assert_eq!(
+        written, stored,
+        "failed owner's payload and data version are preserved"
+    );
+}
+
+#[test]
+fn failed_checkpoint_serialization_retains_dirty_state_for_every_retry() {
+    let mut aggregate = SavedDataAggregate::fresh();
+    aggregate.replace(SavedDataEnvelope::new(
+        id(OWNER),
+        version(2),
+        Vec::new(),
+        None,
+        json!({ "oversized": "x".repeat(MAX_AGGREGATE_BYTES) }),
+    ));
+    let mut checkpoint = super::Checkpoint {
+        identity: WorldIdentity::of(FIRST),
+        aggregate,
+        dirty: true,
+    };
+    for _ in 0..2 {
+        assert!(matches!(
+            LoaderRuntime::save_checkpoint(&mut checkpoint),
+            SaveOutcome::Failed(_)
+        ));
+        assert!(
+            checkpoint.dirty,
+            "a failed serialization must be offered again"
+        );
+    }
+    checkpoint.aggregate = SavedDataAggregate::fresh();
+    assert!(matches!(
+        LoaderRuntime::save_checkpoint(&mut checkpoint),
+        SaveOutcome::Replacement(_)
+    ));
+    assert!(
+        !checkpoint.dirty,
+        "only successful serialization clears dirty"
+    );
+    assert_eq!(
+        LoaderRuntime::save_checkpoint(&mut checkpoint),
+        SaveOutcome::Unchanged
+    );
+}
+
+#[test]
+fn a_failed_migration_does_not_deliver_payload_or_arm_world_mutation() {
+    let (runtime, held) = optional_running();
+    let mut aggregate = SavedDataAggregate::fresh();
+    aggregate.replace(SavedDataEnvelope::new(
+        id(OWNER),
+        version(1),
+        Vec::new(),
+        None,
+        json!({"not_visits": true}),
+    ));
+    let bytes = aggregate.to_bytes().expect("bounded fixture");
+    assert!(
+        runtime
+            .stage_world(WorldIdentity::of(FIRST), Some(&bytes), false)
+            .is_err()
+    );
+    assert!(held.opened_with.lock().expect("test lock").is_none());
+    let inner = runtime.inner.lock().expect("test lock");
+    assert!(inner.persistence.staged.is_none());
+    assert_eq!(inner.machine.state(&id(OWNER)), Ok(LifecycleState::Failed));
+    assert!(
+        inner.machine.world_access().is_ok(),
+        "no mutation was admitted"
+    );
+    drop(inner);
 }
 
 #[test]
@@ -569,7 +722,27 @@ fn optional_running() -> (LoaderRuntime, Arc<Held>) {
 }
 
 #[test]
-fn optional_save_failure_preserves_the_last_durable_owner_envelope() {
+fn a_panicking_save_callback_fails_the_owner_without_poisoning_runtime() {
+    let (runtime, held) = running();
+    runtime
+        .stage_world(WorldIdentity::of(FIRST), None, true)
+        .expect("fresh world");
+    held.panics_production.store(true, Ordering::SeqCst);
+    let SaveOutcome::Failed(detail) = runtime.save_world(&WorldIdentity::of(FIRST)) else {
+        panic!("a panicking callback cannot produce durable data");
+    };
+    assert!(!detail.contains("ghp_private"), "{detail}");
+    let inner = runtime
+        .inner
+        .lock()
+        .expect("caught panic must not poison runtime");
+    assert_eq!(inner.machine.state(&id(OWNER)), Ok(LifecycleState::Failed));
+    assert!(inner.machine.world_access().is_err());
+    drop(inner);
+}
+
+#[test]
+fn a_save_failure_after_world_mutation_halts_even_an_optional_owner() {
     let (runtime, held) = optional_running();
     runtime
         .stage_world(WorldIdentity::of(FIRST), None, true)
@@ -582,16 +755,19 @@ fn optional_save_failure_preserves_the_last_durable_owner_envelope() {
         SaveOutcome::Failed(_)
     ));
     for _ in 0..2 {
-        assert_eq!(
+        assert!(matches!(
             runtime.save_world(&WorldIdentity::of(FIRST)),
-            SaveOutcome::Unchanged
-        );
+            SaveOutcome::Failed(_)
+        ));
     }
-    assert_eq!(visits(&durable), 7);
+    let inner = runtime.inner.lock().expect("test lock");
+    let live = inner.persistence.live.as_ref().expect("durable checkpoint");
+    assert_eq!(live.aggregate.to_bytes().expect("bounded"), durable);
+    drop(inner);
 }
 
 #[test]
-fn failed_optional_owner_never_opens_again_and_preserves_each_worlds_data() {
+fn an_optional_failure_after_open_withholds_another_world() {
     let (runtime, held) = optional_running();
     runtime
         .stage_world(WorldIdentity::of(FIRST), None, true)
@@ -604,52 +780,98 @@ fn failed_optional_owner_never_opens_again_and_preserves_each_worlds_data() {
         SaveOutcome::Failed(_)
     ));
     held.refuses_open.store(true, Ordering::SeqCst);
-    runtime
-        .stage_world(WorldIdentity::of(SECOND), Some(&durable), false)
-        .expect("failed optional owner must not open again");
+    assert!(
+        runtime
+            .stage_world(WorldIdentity::of(SECOND), Some(&durable), false)
+            .is_err(),
+        "world mutation prevents continuing after even an optional owner fails"
+    );
+    let inner = runtime.inner.lock().expect("test lock");
     assert_eq!(
-        visits(&replacement(runtime.save_world(&WorldIdentity::of(SECOND)))),
-        7
+        inner
+            .persistence
+            .live
+            .as_ref()
+            .expect("durable checkpoint")
+            .aggregate
+            .to_bytes()
+            .expect("bounded"),
+        durable
     );
 }
 
 #[test]
-fn forged_save_error_identity_fails_the_callback_owner_without_panicking() {
-    for forged in ["unknown_owner", OTHER_OWNER] {
-        let (runtime, held, _) = running_pair();
+fn save_errors_fail_the_callback_owner_without_panicking() {
+    let (runtime, held, _) = running_pair();
+    runtime
+        .stage_world(WorldIdentity::of(FIRST), None, true)
+        .expect("fresh world");
+    held.refuses_production.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        runtime.save_world(&WorldIdentity::of(FIRST)),
+        SaveOutcome::Failed(_)
+    ));
+    let inner = runtime.inner.lock().expect("callback errors do not panic");
+    assert_eq!(
+        inner.machine.state(&id(OWNER)).expect("owner"),
+        LifecycleState::Failed
+    );
+    assert_eq!(
+        inner.machine.state(&id(OTHER_OWNER)).expect("other owner"),
+        LifecycleState::Running
+    );
+    assert_eq!(
+        inner
+            .machine
+            .failure(&id(OWNER))
+            .expect("owner")
+            .expect("failure recorded")
+            .mod_id,
+        Some(id(OWNER))
+    );
+    drop(inner);
+}
+
+#[test]
+fn save_panics_are_caught_and_attributed_for_every_requirement() {
+    for requirement in [Requirement::Required, Requirement::Optional] {
+        let (runtime, held) = owners_running_with_requirement(
+            &[OWNER],
+            crate::runtime::pre_world_report(),
+            requirement,
+        );
         runtime
             .stage_world(WorldIdentity::of(FIRST), None, true)
-            .expect("fresh world");
-        *held.error_owner.lock().expect("test lock") = Some(id(forged));
-        held.refuses_production.store(true, Ordering::SeqCst);
+            .expect("a new world stages");
+        held[0].panics_production.store(true, Ordering::SeqCst);
         assert!(matches!(
             runtime.save_world(&WorldIdentity::of(FIRST)),
             SaveOutcome::Failed(_)
         ));
-        let inner = runtime.inner.lock().expect("callback errors do not panic");
-        assert_eq!(
-            inner.machine.state(&id(OWNER)).expect("owner"),
-            LifecycleState::Failed
-        );
-        assert_eq!(
-            inner.machine.state(&id(OTHER_OWNER)).expect("other owner"),
-            LifecycleState::Running
-        );
-        assert_eq!(
-            inner
-                .machine
-                .failure(&id(OWNER))
-                .expect("owner")
-                .expect("failure recorded")
-                .mod_id,
-            Some(id(OWNER))
-        );
+        let inner = runtime.inner.lock().expect("the save panic is contained");
+        assert_eq!(inner.machine.state(&id(OWNER)), Ok(LifecycleState::Failed));
+        let failure = inner
+            .machine
+            .failure(&id(OWNER))
+            .expect("owner")
+            .expect("failure");
+        assert_eq!(failure.mod_id, Some(id(OWNER)));
+        assert_eq!(failure.state, LifecycleState::Running);
+        assert_eq!(failure.environment, crate::runtime::environment());
+        assert_eq!(failure.surface, None);
+        assert!(failure.message.text().contains("panicked"));
+        assert!(!failure.message.text().contains("ghp_private"));
+        assert!(inner.machine.world_access().is_err());
         drop(inner);
+        assert!(matches!(
+            runtime.save_world(&WorldIdentity::of(FIRST)),
+            SaveOutcome::Failed(_)
+        ));
     }
 }
 
 #[test]
-fn interception_declaration_errors_fail_the_asking_owner_and_preserve_admission() {
+fn interception_declaration_errors_after_open_fail_the_owner_and_halt_every_requirement() {
     for requirement in [Requirement::Required, Requirement::Optional] {
         let (runtime, held) = owners_running_with_requirement(
             &[OWNER],
@@ -681,21 +903,18 @@ fn interception_declaration_errors_fail_the_asking_owner_and_preserve_admission(
             .expect("structured declaration failure");
         assert_eq!(failure.mod_id, Some(id(OWNER)));
         assert_eq!(failure.state, LifecycleState::Running);
-        assert_eq!(
-            inner.machine.world_access().is_ok(),
-            requirement == Requirement::Optional
+        assert!(
+            inner.machine.world_access().is_err(),
+            "a callback failure after opening must halt every requirement class"
         );
         drop(inner);
         let retry = runtime.save_world(&WorldIdentity::of(FIRST));
-        assert_eq!(
-            matches!(retry, SaveOutcome::Failed(_)),
-            requirement == Requirement::Required
-        );
+        assert!(matches!(retry, SaveOutcome::Failed(_)));
     }
 }
 
 #[test]
-fn save_callback_errors_fail_the_owner_and_preserve_required_optional_admission() {
+fn save_callback_errors_after_open_fail_the_owner_and_halt_every_requirement() {
     for requirement in [Requirement::Required, Requirement::Optional] {
         let held = Arc::new(Held::default());
         let mut machine = LifecycleMachine::new(
@@ -754,16 +973,13 @@ fn save_callback_errors_fail_the_owner_and_preserve_required_optional_admission(
                 .text()
                 .contains("cannot produce an envelope")
         );
-        assert_eq!(
-            inner.machine.world_access().is_ok(),
-            requirement == Requirement::Optional
+        assert!(
+            inner.machine.world_access().is_err(),
+            "a save failure after opening must halt every requirement class"
         );
         drop(inner);
         let retry = runtime.save_world(&WorldIdentity::of(FIRST));
-        assert_eq!(
-            matches!(retry, SaveOutcome::Failed(_)),
-            requirement == Requirement::Required
-        );
+        assert!(matches!(retry, SaveOutcome::Failed(_)));
     }
 }
 
@@ -841,7 +1057,7 @@ fn a_stored_aggregate_reaches_the_mod_that_owns_it() {
 }
 
 #[test]
-fn a_world_written_at_an_older_version_hands_the_mod_the_steps_to_reach_current() {
+fn a_world_written_at_an_older_version_is_migrated_before_delivery() {
     let (runtime, held) = running();
 
     runtime
@@ -854,12 +1070,10 @@ fn a_world_written_at_an_older_version_hands_the_mod_the_steps_to_reach_current(
 
     let plan = held.opened_with();
     assert_eq!(plan.owner(), &id(OWNER));
-    assert_eq!(
-        plan.steps(),
-        [version(2)],
-        "the mod was told a world written at version 1 needed no migration"
-    );
-    assert!(!plan.is_current());
+    assert!(plan.is_current(), "delivery receives the migrated version");
+    assert_eq!(held.visits.load(Ordering::SeqCst), 6);
+    let bytes = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
+    assert_eq!(visits(&bytes), 6, "the migrated payload survives saving");
 
     let (current, current_held) = running();
     current
@@ -889,17 +1103,17 @@ fn each_owner_in_one_world_receives_its_own_envelope_and_no_other() {
     );
     assert_eq!(
         second.visits.load(Ordering::SeqCst),
-        9,
+        10,
         "`{OTHER_OWNER}` did not receive its own state"
     );
     assert_eq!(first.opened_with().owner(), &id(OWNER));
     assert_eq!(second.opened_with().owner(), &id(OTHER_OWNER));
     assert!(first.opened_with().is_current());
-    assert_eq!(second.opened_with().steps(), [version(2)]);
+    assert!(second.opened_with().is_current());
 
     let written = replacement(runtime.save_world(&WorldIdentity::of(FIRST)));
     assert_eq!(visits_for(&written, &owners, OWNER), 5);
-    assert_eq!(visits_for(&written, &owners, OTHER_OWNER), 9);
+    assert_eq!(visits_for(&written, &owners, OTHER_OWNER), 10);
 }
 
 #[test]
@@ -967,7 +1181,11 @@ fn shipped_running() -> LoaderRuntime {
         mod_id: shipped.id().clone(),
         sides: SideSet::new([Side::Client]).expect("a non-empty side set"),
         requirement: Requirement::Required,
-        saved_data_versions: shipped.declaration().versions().collect(),
+        saved_data_versions: shipped
+            .declaration()
+            .expect("valid declaration")
+            .versions()
+            .collect(),
     }];
     let mut machine =
         LifecycleMachine::new(Side::Client, entries).expect("one mod is a legal plan");
@@ -981,7 +1199,7 @@ fn shipped_running() -> LoaderRuntime {
     ] {
         machine.advance_all(state).expect("a legal step");
     }
-    LoaderRuntime::profiling(
+    LoaderRuntime::with_observers(
         machine,
         vec![Box::new(shipped)],
         ravel_observability::Profiler::off(),
@@ -1005,7 +1223,9 @@ fn a_launch_that_stages_no_pack_does_not_ask_for_a_reload() {
 }
 
 fn shipped_visits(bytes: &[u8]) -> u64 {
-    let declaration = ravel_test_mod_saved_data::SavedDataMod::new().declaration();
+    let declaration = ravel_test_mod_saved_data::SavedDataMod::new()
+        .declaration()
+        .expect("valid declaration");
     let owner = declaration.owner().clone();
     SavedDataAggregate::open(
         Some(bytes),
@@ -1061,7 +1281,8 @@ fn a_mod_refusing_its_stored_state_withholds_the_world_and_stages_nothing() {
 
     let refused = runtime
         .stage_world(WorldIdentity::of(FIRST), Some(&stored_visits(5)), false)
-        .expect_err("a mod that cannot read its stored state opens no world");
+        .expect_err("a mod that cannot read its stored state opens no world")
+        .to_string();
     assert!(refused.contains(OWNER), "{refused}");
     assert!(
         refused.contains("cannot read what the world stored"),
@@ -1216,7 +1437,8 @@ fn an_oversized_aggregate_is_refused_before_it_is_parsed() {
 
     let refused = runtime
         .stage_world(WorldIdentity::of(FIRST), Some(&oversized), true)
-        .expect_err("an aggregate over the ceiling does not open a world");
+        .expect_err("an aggregate over the ceiling does not open a world")
+        .to_string();
 
     assert!(refused.contains("limit"), "{refused}");
     assert_eq!(
@@ -1254,7 +1476,8 @@ fn a_world_this_build_cannot_read_refuses_rather_than_staging() {
         let (runtime, _held) = running();
         let refused = runtime
             .stage_world(WorldIdentity::of(FIRST), Some(&bytes), true)
-            .expect_err("this aggregate does not open a world");
+            .expect_err("this aggregate does not open a world")
+            .to_string();
         assert!(!refused.is_empty(), "`{name}` refused without saying why");
         assert!(
             matches!(
@@ -1328,35 +1551,18 @@ fn two_different_worlds_are_never_the_same_world() {
 }
 
 #[test]
-fn the_notices_a_long_session_accumulates_stay_bounded() {
+fn every_missing_data_notice_reaches_the_player_report() {
     let (runtime, _held) = running();
-    let overrun = OBSERVATION_CAPACITY + 3;
-    for index in 0..overrun {
+    for index in 0..3 {
         runtime
             .stage_world(WorldIdentity::of(&format!("worlds/w{index}")), None, false)
             .expect("an existing world with no Ravel data still stages");
     }
-
-    let observed = runtime.persistence_observations();
-
-    assert_eq!(
-        observed.len(),
-        OBSERVATION_CAPACITY,
-        "the notices a session writes are bounded, and this session wrote more"
-    );
-    assert!(
-        observed
-            .iter()
-            .all(|notice| !notice.contains("`worlds/w0`")),
-        "the oldest notice outlived the bound: {observed:?}"
-    );
-    assert!(
-        observed
-            .last()
-            .expect("the bound is not zero")
-            .contains(&format!("`worlds/w{}`", overrun - 1)),
-        "the newest notice was dropped instead of the oldest: {observed:?}"
-    );
+    let observed = notices(&runtime);
+    assert_eq!(observed.len(), 3);
+    for (index, notice) in observed.iter().enumerate() {
+        assert!(notice.contains(&format!("worlds/w{index}")), "{notice}");
+    }
 }
 
 #[test]
@@ -1370,7 +1576,8 @@ fn a_world_requiring_a_package_is_refused_and_the_same_world_without_one_is_not(
     let (runtime, _held) = running();
     let refused = runtime
         .stage_world(WorldIdentity::of(FIRST), Some(&requiring), true)
-        .expect_err("a requirement this process cannot check opens no world");
+        .expect_err("a requirement this process cannot check opens no world")
+        .to_string();
     assert!(refused.contains("base"), "{refused}");
     assert!(
         matches!(
@@ -1406,7 +1613,7 @@ fn an_existing_world_that_lost_its_data_is_noticed_and_admitted_anyway() {
         .stage_world(WorldIdentity::of(FIRST), None, false)
         .expect("absence still initializes fresh state for any world");
 
-    let observed = runtime.persistence_observations();
+    let observed = notices(&runtime);
     assert_eq!(observed.len(), 1, "{observed:?}");
     assert!(observed[0].contains(FIRST), "{observed:?}");
     assert!(observed[0].contains("holds no Ravel data"), "{observed:?}");
@@ -1422,7 +1629,7 @@ fn a_new_world_with_no_data_is_the_ordinary_case_and_says_nothing() {
         .expect("a new world stages");
 
     let empty: [String; 0] = [];
-    assert_eq!(runtime.persistence_observations(), empty);
+    assert_eq!(notices(&runtime), empty);
 }
 
 #[test]
@@ -1448,7 +1655,8 @@ fn a_halted_set_cannot_open_a_world_at_the_crossing_the_game_calls() {
 
     let refused = runtime
         .stage_world(WorldIdentity::of(SECOND), None, true)
-        .expect_err("a halted set opens no world");
+        .expect_err("a halted set opens no world")
+        .to_string();
     assert!(refused.starts_with("no world opens: "), "{refused}");
     assert!(refused.contains(OWNER), "{refused}");
     assert_eq!(
@@ -1468,7 +1676,8 @@ fn a_refusal_the_machine_never_saw_still_withholds_the_world() {
 
     let refused = runtime
         .stage_world(WorldIdentity::of(FIRST), None, true)
-        .expect_err("a report holding a refusal withholds the world");
+        .expect_err("a report holding a refusal withholds the world")
+        .to_string();
     assert!(
         refused.contains("`example_mod` requires `example_library`"),
         "{refused}"
@@ -1491,6 +1700,28 @@ fn a_refusal_carries_the_diagnostic_to_the_java_adapter() {
             "the canonical saved-data aggregate exceeds the 1048576-byte limit".to_owned()
         )
     );
+}
+
+#[test]
+fn persistence_diagnostics_are_redacted_before_the_jni_output() {
+    let detail = "could not read /home/player/.minecraft/world, token=ghp_secretvalue";
+    let published = super::publishable(detail);
+    assert!(!published.contains("ghp_secretvalue"), "{published}");
+    assert!(!published.contains("/home/player"), "{published}");
+    assert!(published.contains("redacted"), "{published}");
+    for (tag, outcome) in [
+        (FAILED, SaveOutcome::Failed(detail.to_owned())),
+        (
+            IDENTITY_MISMATCH,
+            SaveOutcome::IdentityMismatch(detail.to_owned()),
+        ),
+    ] {
+        let answer = super::save_answer(outcome);
+        assert_eq!(answer[0], tag);
+        let published = String::from_utf8_lossy(&answer[1..]);
+        assert!(!published.contains("ghp_secretvalue"), "{published}");
+        assert!(!published.contains("/home/player"), "{published}");
+    }
 }
 
 fn java_int(source: &str, name: &str) -> i32 {

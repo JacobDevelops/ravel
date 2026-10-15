@@ -37,11 +37,9 @@ pub mod first_mod {
         ///
         /// Always. The refusal is what this exists to produce.
         pub fn refuse() -> Result<(), ModError> {
-            Err(ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Constructed,
-                detail: "the lantern registry name is already taken".to_owned(),
-            })
+            Err(ModError::refused(
+                "the lantern registry name is already taken",
+            ))
         }
     }
 }
@@ -74,18 +72,18 @@ pub mod content {
     }
 
     impl CopperLanterns {
-        fn declaration() -> ContentDeclaration {
+        fn declaration() -> Result<ContentDeclaration, ModError> {
             let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
             let block = declaration
                 .entry(ContentKind::Block, "copper_lantern")
-                .expect("legal");
+                .map_err(|error| ModError::refused(error.to_string()))?;
             declaration
                 .entry(ContentKind::Item, "copper_lantern")
-                .expect("legal");
+                .map_err(|error| ModError::refused(error.to_string()))?;
             declaration
                 .tag(&lanterns(ContentKind::Block), &block)
-                .expect("blocks are taggable");
-            declaration
+                .map_err(|error| ModError::refused(error.to_string()))?;
+            Ok(declaration)
         }
     }
 
@@ -97,11 +95,11 @@ pub mod content {
         }
 
         fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-            claim_all(&Self::declaration(), registrar)
+            claim_all(&Self::declaration()?, registrar)
         }
 
         fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-            Ok(Some(Self::declaration()))
+            Self::declaration().map(Some)
         }
     }
 }
@@ -175,9 +173,10 @@ pub mod client_only {
 
 /// `docs/guide/state.md` — World data is versioned, and you cross the versions.
 pub mod state {
+    use ravel_sdk::JsonValue;
     use ravel_sdk::json;
     use ravel_sdk::prelude::*;
-    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan, SavedPayload};
+    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan};
 
     /// A mod that owns one list of entries in every world.
     #[derive(Default)]
@@ -185,7 +184,7 @@ pub mod state {
         entries: Vec<String>,
     }
 
-    fn read_entries(current: &SavedPayload) -> Vec<String> {
+    fn read_entries(current: &JsonValue) -> Vec<String> {
         current
             .get("entries")
             .and_then(|value| value.as_array())
@@ -203,10 +202,10 @@ pub mod state {
     }
 
     /// Version 1 stored one entry; version 2 stores a list.
-    fn to_two(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
+    fn to_two(payload: &JsonValue) -> Result<JsonValue, MigrationFailed> {
         let entry = payload
             .get("entry")
-            .and_then(SavedPayload::as_str)
+            .and_then(JsonValue::as_str)
             .ok_or_else(|| MigrationFailed::new("version 1 held no `entry` string"))?;
         Ok(json!({ "entries": [entry] }))
     }
@@ -221,11 +220,7 @@ pub mod state {
         fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
             SavedDataDeclaration::new(Self::declared_id().clone(), [v(1), v(2)])
                 .map(Some)
-                .map_err(|error| ModError::Refused {
-                    mod_id: self.id().clone(),
-                    state: LifecycleState::Constructed,
-                    detail: error.to_string(),
-                })
+                .map_err(|error| ModError::refused(error.to_string()))
         }
 
         fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
@@ -249,11 +244,7 @@ pub mod state {
                 .saved_data_migrations()?
                 .expect("this mod declares a chain")
                 .apply(plan, envelope.payload())
-                .map_err(|failed| ModError::Refused {
-                    mod_id: Self::declared_id().clone(),
-                    state: LifecycleState::Registered,
-                    detail: failed.to_string(),
-                })?;
+                .map_err(|failed| ModError::refused(failed.to_string()))?;
             self.entries = read_entries(&current);
             Ok(())
         }
@@ -301,11 +292,7 @@ pub mod settings {
         fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
             ConfigurationDeclaration::parse(SETTINGS)
                 .map(Some)
-                .map_err(|error| ModError::Refused {
-                    mod_id: self.id().clone(),
-                    state: LifecycleState::Constructed,
-                    detail: error.to_string(),
-                })
+                .map_err(|error| ModError::refused(error.to_string()))
         }
 
         fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -313,11 +300,10 @@ pub mod settings {
             self.capacity = resolved
                 .value(&key)
                 .and_then(JsonValue::as_u64)
-                .ok_or_else(|| ModError::Refused {
-                    mod_id: Self::declared_id().clone(),
-                    state: LifecycleState::Constructed,
-                    detail: "`lanterns.capacity` resolved to something that is not a count"
-                        .to_owned(),
+                .ok_or_else(|| {
+                    ModError::refused(
+                        "`lanterns.capacity` resolved to something that is not a count",
+                    )
                 })?;
             Ok(())
         }
@@ -332,18 +318,18 @@ pub mod optional_integration {
     /// What this mod registers when the lanterns mod is running, and nothing
     /// otherwise.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `lit_copper` stops being a legal content path, which would mean
-    /// the integration can no longer be named.
-    #[must_use]
-    pub fn integration() -> ContentDeclaration {
-        let owner: ModId = "foundry".parse().expect("`foundry` is a legal mod id");
+    /// Returns a refusal if the integration cannot be declared.
+    pub fn integration() -> Result<ContentDeclaration, ModError> {
+        let owner = "foundry"
+            .parse::<ModId>()
+            .map_err(|error| ModError::refused(error.to_string()))?;
         let mut declaration = ContentDeclaration::new(owner);
         declaration
             .entry(ContentKind::Recipe, "lit_copper")
-            .expect("a legal entry");
-        declaration
+            .map_err(|error| ModError::refused(error.to_string()))?;
+        Ok(declaration)
     }
 
     /// A mod whose recipe exists only when another mod does.
@@ -368,7 +354,7 @@ pub mod optional_integration {
 
         fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
             if registrar.loads(&self.lanterns) {
-                claim_all(&integration(), registrar)?;
+                claim_all(&integration()?, registrar)?;
             }
             Ok(())
         }
@@ -428,11 +414,7 @@ pub mod optional_service {
                 [landmarks()], // what you use if something answers it
             )
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
         }
 
         fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
@@ -447,11 +429,7 @@ pub mod optional_service {
                     Ok(())
                 }
                 // The atlas is installed and said no, which is a different thing.
-                Err(failed) => Err(ModError::Refused {
-                    mod_id: Self::declared_id().clone(),
-                    state: LifecycleState::Constructed,
-                    detail: failed.to_string(),
-                }),
+                Err(failed) => Err(ModError::refused(failed.to_string())),
             }
         }
     }
@@ -499,12 +477,11 @@ mod tests {
     }
 
     #[test]
-    fn the_refusal_snippet_names_the_mod_and_the_phase() {
+    fn the_refusal_snippet_reports_the_authors_detail() {
         let error = crate::first_mod::CopperLanterns::refuse().expect_err("it refuses");
-        assert_eq!(error.state(), LifecycleState::Constructed);
         assert_eq!(
-            error.mod_id(),
-            crate::first_mod::CopperLanterns::declared_id()
+            error,
+            ModError::refused("the lantern registry name is already taken")
         );
     }
 
@@ -685,7 +662,7 @@ mod tests {
         assert!(
             refused
                 .use_services(&mut Fixed(Err(ServiceCallFailed::Refused(
-                    ModError::Refused {
+                    ravel_sdk::HostError::Refused {
                         mod_id: crate::optional_service::Compass::declared_id().clone(),
                         state: LifecycleState::Running,
                         detail: "no survey loaded".to_owned(),

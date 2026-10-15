@@ -165,7 +165,7 @@ impl fmt::Display for DeliveryRefused {
             } => write!(
                 formatter,
                 "`{id}` travels {direction} and the `{}` side is not an end of that",
-                side.name()
+                side.as_str()
             ),
             Self::WrongContract { expected, found } => write!(
                 formatter,
@@ -385,7 +385,7 @@ mod tests {
                     direction.may_send_from(side),
                     direction.may_receive_on(side),
                     "{direction} on {}",
-                    side.name()
+                    side.as_str()
                 );
             }
         }
@@ -422,7 +422,7 @@ mod tests {
                 assert!(
                     matches!(built, Err(DeliveryRefused::WrongSide { .. })),
                     "{}",
-                    side.name()
+                    side.as_str()
                 );
                 continue;
             }

@@ -1,8 +1,9 @@
 //! Materializes a planned workspace, invokes Cargo, and delivers its library.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use ravel_core::MINECRAFT_VERSION_SELECTION;
 
@@ -38,10 +39,12 @@ pub fn build(
             detail: error.to_string(),
         })?;
     }
+    resolve_locked_graph(plan, &workspace, game_directory)?;
 
     let output = Command::new("cargo")
         .arg("build")
         .arg("--release")
+        .arg("--locked")
         .arg("--manifest-path")
         .arg(workspace.join("host/Cargo.toml"))
         .arg("--target-dir")
@@ -77,4 +80,127 @@ fn redact(text: &str, game_directory: &Path) -> String {
         return text.to_owned();
     }
     text.replace(&instance, "<instance>")
+}
+
+// Installed path packages and the generated host are not members of the root
+// lockfile. Every resolution starts from the installation's lockfile, lets
+// Cargo add those local entries offline, then admits only external identities
+// and checksums vetted by that seed. A previous instance lock is never reused,
+// because Cargo prunes unused pins from it.
+fn resolve_locked_graph(
+    plan: &HostPlan,
+    workspace: &Path,
+    game_directory: &Path,
+) -> Result<(), BuildRefused> {
+    let lock = workspace.join("Cargo.lock");
+    if fs::read_to_string(&lock).ok().as_deref() != Some(plan.installation_lock()) {
+        fs::write(&lock, plan.installation_lock()).map_err(|error| BuildRefused::Write {
+            file: "Cargo.lock".to_owned(),
+            detail: error.to_string(),
+        })?;
+    }
+    let output = Command::new("cargo")
+        .args(["metadata", "--offline", "--format-version", "1"])
+        .arg("--manifest-path")
+        .arg(workspace.join("host/Cargo.toml"))
+        .stdout(Stdio::null())
+        .output()
+        .map_err(|error| BuildRefused::Toolchain {
+            detail: error.to_string(),
+        })?;
+    if !output.status.success() {
+        return Err(BuildRefused::Compile {
+            detail: redact(&String::from_utf8_lossy(&output.stderr), game_directory),
+        });
+    }
+    let resolved = fs::read_to_string(&lock).map_err(|error| BuildRefused::ResolvedLock {
+        detail: error.to_string(),
+    })?;
+    let mods = plan
+        .members()
+        .iter()
+        .map(|member| (member.crate_name.as_str(), member.mod_id.as_str()))
+        .collect();
+    vetted_dependencies(plan.installation_lock(), &resolved, &mods)
+}
+
+pub(super) fn vetted_dependencies(
+    seed: &str,
+    resolved: &str,
+    mods: &BTreeMap<&str, &str>,
+) -> Result<(), BuildRefused> {
+    let vetted = lock_packages(seed).map_err(|detail| BuildRefused::Installation {
+        file: "Cargo.lock".to_owned(),
+        detail,
+    })?;
+    let resolved =
+        lock_packages(resolved).map_err(|detail| BuildRefused::ResolvedLock { detail })?;
+    for package in &resolved {
+        if package.get("source").is_none() {
+            continue;
+        }
+        let matches = vetted.iter().any(|candidate| {
+            ["name", "version", "source", "checksum"]
+                .iter()
+                .all(|field| candidate.get(*field) == package.get(*field))
+        });
+        if !matches {
+            let name = field(package, "name");
+            return Err(BuildRefused::UnpinnedDependency {
+                package: name.to_owned(),
+                version: field(package, "version").to_owned(),
+                mods: requiring_mods(&resolved, name, mods),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn field<'a>(package: &'a toml::Value, name: &str) -> &'a str {
+    package
+        .get(name)
+        .and_then(toml::Value::as_str)
+        .unwrap_or("<unknown>")
+}
+
+/// Walks resolved dependency edges backward from `package` to installed mod crates.
+fn requiring_mods(
+    packages: &[toml::Value],
+    package: &str,
+    mods: &BTreeMap<&str, &str>,
+) -> Vec<String> {
+    let mut pending = Vec::with_capacity(packages.len());
+    pending.push(package);
+    let mut seen = BTreeSet::from([package]);
+    let mut found = BTreeSet::new();
+    while let Some(current) = pending.pop() {
+        if let Some(mod_id) = mods.get(current) {
+            found.insert((*mod_id).to_owned());
+            continue;
+        }
+        for dependent in packages {
+            let depends = dependent
+                .get("dependencies")
+                .and_then(toml::Value::as_array)
+                .is_some_and(|edges| {
+                    edges
+                        .iter()
+                        .filter_map(toml::Value::as_str)
+                        .any(|edge| edge.split_whitespace().next() == Some(current))
+                });
+            let name = field(dependent, "name");
+            if depends && seen.insert(name) {
+                pending.push(name);
+            }
+        }
+    }
+    found.into_iter().collect()
+}
+
+pub(super) fn lock_packages(lock: &str) -> Result<Vec<toml::Value>, String> {
+    let mut parsed: toml::Table = toml::from_str(lock).map_err(|error| error.to_string())?;
+    match parsed.remove("package") {
+        Some(toml::Value::Array(packages)) => Ok(packages),
+        _ => Err("the dependency lock has no package list".to_owned()),
+    }
 }

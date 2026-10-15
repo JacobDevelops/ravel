@@ -8,7 +8,7 @@ use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Sid
 use ravel_data::{ContentDeclaration, DeclarationError, TagId, TagSet};
 use ravel_example_content_mod::{ContentMod, MODEL, RECIPE};
 use ravel_host_api::{HostError, HostMod, Registrar};
-use ravel_host_runtime::{Member, compose, install_packs, write_resource_pack, write_world_pack};
+use ravel_host_runtime::{Member, compose, write_resource_pack, write_world_pack};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_sdk::Declared;
 use ravel_sdk::generate::{GeneratedData, GeneratedFile};
@@ -27,7 +27,6 @@ fn entry(name: &str) -> LifecycleEntry {
     }
 }
 
-// A second mod may claim another namespace; the barrier must reject duplicate keys.
 struct Rival {
     id: ModId,
     claims: Vec<RegistryKey>,
@@ -38,19 +37,15 @@ impl HostMod for Rival {
         &self.id
     }
 
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
         Ok(())
     }
 
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
+    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ravel_host_api::ModError> {
         for key in &self.claims {
             registrar
                 .claim(key.clone())
-                .map_err(|refused| HostError::Refused {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Constructed,
-                    detail: refused.to_string(),
-                })?;
+                .map_err(|error| ravel_host_api::ModError::refused(error.to_string()))?;
         }
         Ok(())
     }
@@ -79,7 +74,12 @@ fn register_all(
             .registration_window(&mod_id)
             .expect("the plan names it");
         if let Some(host) = mods.iter_mut().find(|host| host.id() == &mod_id) {
-            outcomes.push((mod_id.clone(), host.register(&mut window)));
+            outcomes.push((
+                mod_id.clone(),
+                host.register(&mut window).map_err(|error| {
+                    error.with_context(mod_id.clone(), LifecycleState::Constructed)
+                }),
+            ));
         }
         assert!(window.unexpected().is_none(), "the window was open");
     }
@@ -157,6 +157,7 @@ fn the_example_still_declares_the_content_this_suite_is_written_against() {
     assert_eq!(
         content
             .declaration()
+            .expect("valid declaration")
             .entries()
             .iter()
             .map(ToString::to_string)
@@ -167,7 +168,11 @@ fn the_example_still_declares_the_content_this_suite_is_written_against() {
          If the example legitimately declares something else, decide it here."
     );
     assert_eq!(
-        content.generated().paths().collect::<Vec<_>>(),
+        content
+            .generated()
+            .expect("valid declaration")
+            .paths()
+            .collect::<Vec<_>>(),
         GENERATED_PATHS,
         "the same floor for the generated side: an entry, a tag, a locale or a supplied resource \
          dropped from the example changes this list and nothing else in this file."
@@ -177,7 +182,11 @@ fn the_example_still_declares_the_content_this_suite_is_written_against() {
 #[test]
 fn every_entry_the_example_declares_is_owned_by_it_after_the_real_barrier_closes() {
     let mut content = ContentMod::new();
-    let declared = content.declaration().entries().to_vec();
+    let declared = content
+        .declaration()
+        .expect("valid declaration")
+        .entries()
+        .to_vec();
     assert!(
         !declared.is_empty(),
         "an example that declares nothing would make every check below vacuous"
@@ -196,7 +205,7 @@ fn every_entry_the_example_declares_is_owned_by_it_after_the_real_barrier_closes
         );
     }
     assert_eq!(
-        machine.registry_claims(ContentMod::declared_id()),
+        machine.registry_claim_count(ContentMod::declared_id()),
         declared.len()
     );
 
@@ -255,6 +264,7 @@ fn a_second_mod_claiming_the_examples_block_is_refused_and_told_who_owns_it() {
     let mut content = ContentMod::new();
     let contested = content
         .declaration()
+        .expect("valid declaration")
         .entries()
         .iter()
         .find(|key| key.kind() == ContentKind::Block)
@@ -284,14 +294,15 @@ fn a_second_mod_claiming_the_examples_block_is_refused_and_told_who_owns_it() {
         machine.owner_of(&contested),
         Some(ContentMod::declared_id())
     );
-    assert_eq!(machine.registry_claims(&id("rival")), 0);
+    assert_eq!(machine.registry_claim_count(&id("rival")), 0);
 }
 
 #[test]
-fn the_example_is_refused_when_it_is_the_second_mod_to_reach_the_barrier() {
+fn a_foreign_claim_cannot_reserve_the_examples_namespace_before_its_owner() {
     let mut content = ContentMod::new();
     let contested = content
         .declaration()
+        .expect("valid declaration")
         .entries()
         .first()
         .expect("the example declares content")
@@ -308,17 +319,28 @@ fn the_example_is_refused_when_it_is_the_second_mod_to_reach_the_barrier() {
 
     let refusal = outcomes
         .iter()
-        .find(|(mod_id, _)| mod_id == ContentMod::declared_id())
+        .find(|(mod_id, _)| mod_id == &id("rival"))
         .and_then(|(_, outcome)| outcome.as_ref().err())
-        .expect("the example's claim was refused");
-    assert_eq!(refusal.mod_id(), ContentMod::declared_id());
+        .expect("the foreign claim was refused before acquiring ownership");
+    assert_eq!(refusal.mod_id(), &id("rival"));
     assert_eq!(refusal.state(), LifecycleState::Constructed);
     let detail = refusal.to_string();
     assert!(detail.contains("rival"), "{detail}");
     assert!(detail.contains(&contested.to_string()), "{detail}");
 
-    assert_eq!(machine.owner_of(&contested), Some(&id("rival")));
-    assert_eq!(machine.registry_claims(ContentMod::declared_id()), 0);
+    assert_eq!(
+        machine.owner_of(&contested),
+        Some(ContentMod::declared_id())
+    );
+    assert_eq!(machine.registry_claim_count(&id("rival")), 0);
+    assert_eq!(
+        machine.registry_claim_count(ContentMod::declared_id()),
+        content
+            .declaration()
+            .expect("valid declaration")
+            .entries()
+            .len()
+    );
 }
 
 #[test]
@@ -345,7 +367,7 @@ fn a_second_mod_claiming_a_name_the_example_did_not_declare_is_accepted() {
 
 #[test]
 fn two_mods_contributing_to_one_tag_is_not_a_conflict_and_both_members_survive() {
-    let content = ContentMod::new().declaration();
+    let content = ContentMod::new().declaration().expect("valid declaration");
     let lanterns = ContentMod::lanterns(ContentKind::Item);
 
     let mut rival = ContentDeclaration::new(id("rival"));
@@ -516,8 +538,8 @@ fn as_written(data: &GeneratedData) -> Vec<u8> {
 #[test]
 fn generating_one_declaration_twice_produces_identical_bytes() {
     let content = ContentMod::new();
-    let first = content.generated();
-    let second = content.generated();
+    let first = content.generated().expect("valid declaration");
+    let second = content.generated().expect("valid declaration");
 
     assert!(
         !first.is_empty(),
@@ -528,7 +550,7 @@ fn generating_one_declaration_twice_produces_identical_bytes() {
 
 #[test]
 fn the_same_content_declared_in_a_different_order_produces_identical_bytes() {
-    let expected = ContentMod::new().generated();
+    let expected = ContentMod::new().generated().expect("valid declaration");
     let reordered = declared_in_another_order().generate();
 
     assert_eq!(
@@ -539,7 +561,10 @@ fn the_same_content_declared_in_a_different_order_produces_identical_bytes() {
 
     assert_ne!(
         declared_in_another_order().entries(),
-        ContentMod::new().declaration().entries()
+        ContentMod::new()
+            .declaration()
+            .expect("valid declaration")
+            .entries()
     );
 }
 
@@ -590,8 +615,8 @@ fn a_tags_members_are_generated_in_the_same_order_whichever_order_they_joined_in
 #[test]
 fn every_generated_path_is_derived_from_a_declaration_rather_than_spelled() {
     let content = ContentMod::new();
-    let declaration = content.declaration();
-    let generated = content.generated();
+    let declaration = content.declaration().expect("valid declaration");
+    let generated = content.generated().expect("valid declaration");
 
     let mut derived: Vec<String> = declaration
         .tags()
@@ -629,7 +654,7 @@ fn every_generated_path_is_derived_from_a_declaration_rather_than_spelled() {
 
 #[test]
 fn a_generated_file_is_the_same_bytes_whichever_way_it_is_reached() {
-    let generated = ContentMod::new().generated();
+    let generated = ContentMod::new().generated().expect("valid declaration");
     for file in generated.files() {
         assert_eq!(
             generated.file(file.path()).map(GeneratedFile::bytes),
@@ -640,7 +665,11 @@ fn a_generated_file_is_the_same_bytes_whichever_way_it_is_reached() {
 
 #[test]
 fn every_generated_document_is_legal_json_and_ends_in_one_newline() {
-    for file in ContentMod::new().generated().files() {
+    for file in ContentMod::new()
+        .generated()
+        .expect("valid declaration")
+        .files()
+    {
         let text = std::str::from_utf8(file.bytes()).expect("generated output is UTF-8");
         serde_json::from_str::<serde_json::Value>(text)
             .unwrap_or_else(|error| panic!("{} is not legal JSON: {error}", file.path()));
@@ -658,7 +687,11 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let (machine, _, _, supplied) = compose(
+    let ravel_host_runtime::Composition {
+        machine,
+        resources: supplied,
+        ..
+    } = compose(
         &game,
         Side::DedicatedServer,
         vec![Member {
@@ -679,7 +712,7 @@ fn a_composed_host_is_supplied_every_file_the_content_mod_generates() {
     );
     assert_eq!(supplied.bytes(&model), Some(MODEL));
 
-    let generated = ContentMod::new().generated();
+    let generated = ContentMod::new().generated().expect("valid declaration");
     assert!(!generated.is_empty(), "the example generates files");
     assert_eq!(
         supplied
@@ -716,7 +749,7 @@ fn a_launch_writes_the_mods_assets_as_a_pack_the_client_scans() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let (_, _, _, resources) = compose(
+    let ravel_host_runtime::Composition { resources, .. } = compose(
         &game,
         Side::Client,
         vec![Member {
@@ -806,7 +839,12 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
     }
     std::fs::create_dir_all(&game).expect("a writable temporary directory");
 
-    let (_, _, _, resources) = compose(
+    let ravel_host_runtime::Composition {
+        machine,
+        mods,
+        configurations,
+        resources,
+    } = compose(
         &game,
         Side::IntegratedServer,
         vec![Member {
@@ -815,14 +853,21 @@ fn opening_a_world_leaves_the_mods_data_where_that_world_reads_it() {
         }],
     )
     .expect("the shipped example should compose");
-    install_packs(resources);
 
     let world = game.join("saves").join("New World");
     std::fs::create_dir_all(&world).expect("a writable world directory");
 
-    let written = write_world_pack(&world)
-        .expect("the pack should write")
-        .expect("a launch that installed a set writes one");
+    let written = write_world_pack(&resources, &world).expect("the pack should write");
+    ravel_bootstrap_runtime::install(
+        machine,
+        mods,
+        ravel_bootstrap_runtime::pre_world_report(),
+        game.clone(),
+        resources,
+        configurations,
+        false,
+    )
+    .expect("the composed runtime should install");
 
     assert_eq!(written.root(), world.join("datapacks").join("ravel"));
     assert_eq!(

@@ -2,8 +2,11 @@
 
 //! Command registration and execution test mod.
 
-use ravel_core::{ContentId, ContentKind, LifecycleState, ModId, RegistryKey};
-use ravel_host_api::{CommandInvocation, HostError, HostMod, Registrar};
+use ravel_sdk::content::{
+    ContentDeclaration, ContentId, ContentKind, Registrar, RegistryKey, claim_all,
+};
+use ravel_sdk::events::CommandInvocation;
+use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "commands";
@@ -25,20 +28,14 @@ const ROOTS: [&str; 2] = ["warp", "waypoint"];
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommandsMod {
-    id: ModId,
     invocations: Vec<CommandInvocation>,
 }
 
 impl CommandsMod {
     /// Builds the mod instance the loader drives.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`MOD_ID`] is not a legal mod id.
     #[must_use]
     pub fn new() -> Self {
         Self {
-            id: MOD_ID.parse().expect("`MOD_ID` is a legal mod id"),
             invocations: Vec::new(),
         }
     }
@@ -58,7 +55,7 @@ impl CommandsMod {
     pub fn key(&self, root: &str) -> RegistryKey {
         RegistryKey::new(
             ContentKind::Command,
-            ContentId::new(self.id.clone(), root).expect("a legal content path"),
+            ContentId::new(Self::declared_id().clone(), root).expect("a legal content path"),
         )
     }
 
@@ -66,6 +63,16 @@ impl CommandsMod {
     #[must_use]
     pub fn invocations(&self) -> &[CommandInvocation] {
         &self.invocations
+    }
+
+    fn declaration() -> Result<ContentDeclaration, ModError> {
+        let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
+        for root in ROOTS {
+            declaration
+                .entry(ContentKind::Command, root)
+                .map_err(|error| ModError::refused(error.to_string()))?;
+        }
+        Ok(declaration)
     }
 }
 
@@ -75,17 +82,14 @@ impl Default for CommandsMod {
     }
 }
 
-impl HostMod for CommandsMod {
-    fn id(&self) -> &ModId {
-        &self.id
-    }
-
+#[declare_mod(id = "commands")]
+impl Mod for CommandsMod {
     /// Accepts every step and does nothing with it.
     ///
     /// # Errors
     ///
     /// Never returns an error.
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
@@ -93,30 +97,22 @@ impl HostMod for CommandsMod {
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Refused`] on the first rejected claim.
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
-        for key in self.claims() {
-            registrar.claim(key).map_err(|refused| HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Constructed,
-                detail: refused.to_string(),
-            })?;
-        }
-        Ok(())
+    /// Returns a [`ModError`] on the first rejected claim.
+    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
+        claim_all(&Self::declaration()?, registrar)
     }
 
     /// Records one invocation.
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Refused`] when the invocation has no subcommand.
-    fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), HostError> {
+    /// Returns a [`ModError`] when the invocation has no subcommand.
+    fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
         if invocation.arguments.is_empty() {
-            return Err(HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Running,
-                detail: format!("`{}` needs a subcommand", invocation.key),
-            });
+            return Err(ModError::refused(format!(
+                "`{}` needs a subcommand",
+                invocation.key
+            )));
         }
         self.invocations.push(invocation.clone());
         Ok(())
@@ -125,8 +121,9 @@ impl HostMod for CommandsMod {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{ContentKind, LifecycleState, ModId, RegistryKey, Side};
-    use ravel_host_api::{CommandInvocation, HostMod, Registrar, RegistrationRefused};
+    use ravel_sdk::content::{ContentKind, Registrar, RegistrationRefused, RegistryKey};
+    use ravel_sdk::events::CommandInvocation;
+    use ravel_sdk::{Mod, ModId, Side};
 
     use super::{CommandsMod, MOD_ID, ROOTS};
 
@@ -271,8 +268,6 @@ mod tests {
 
         let error = commands.run_command(&empty).expect_err("no subcommand");
         assert!(error.to_string().contains("needs a subcommand"), "{error}");
-        assert_eq!(error.state(), LifecycleState::Running);
-        assert_eq!(error.mod_id().as_str(), MOD_ID);
         assert_eq!(commands.invocations(), []);
 
         // The same root with an argument is accepted, so the refusal is about

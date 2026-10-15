@@ -130,7 +130,7 @@ integrates with does.
 ```rust
 fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
     if registrar.loads(&self.lanterns) {
-        claim_all(&integration(), registrar)?;
+        claim_all(&integration()?, registrar)?;
     }
     Ok(())
 }

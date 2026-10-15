@@ -107,12 +107,12 @@ pub fn network() -> String {
 pub fn settings() -> String {
     let declaration = crate::settings::declaration().expect("a packaged declaration is legal");
     let mut rendered = String::from("key\tside\tdefault\n");
-    for setting in &declaration.settings {
+    for setting in declaration.settings() {
         writeln!(
             rendered,
             "{}\t{}\t{}",
             setting.key.as_str(),
-            setting.side.name(),
+            setting.side.as_str(),
             setting.default
         )
         .expect("writing to a string never fails");

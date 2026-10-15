@@ -186,7 +186,7 @@ mod tests {
                 GAME,
             )
             .expect("a compatible set");
-            assert_eq!(first, second, "{}", side.name());
+            assert_eq!(first, second, "{}", side.as_str());
             assert_eq!(first.len(), 3, "every installed package is admitted");
         }
     }

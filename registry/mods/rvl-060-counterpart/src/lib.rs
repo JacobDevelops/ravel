@@ -435,11 +435,10 @@ impl Mod for Shared {
 
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
         if invocation.key != Self::command_key() {
-            return Err(ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Running,
-                detail: format!("`{}` is not this package's command", invocation.key),
-            });
+            return Err(ModError::refused(format!(
+                "`{}` is not this package's command",
+                invocation.key
+            )));
         }
         self.report = Some(self.support_report());
         Ok(())

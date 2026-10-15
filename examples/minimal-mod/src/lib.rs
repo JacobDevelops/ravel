@@ -98,11 +98,7 @@ impl Mod for MinimalMod {
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         registrar
             .claim(Self::greeting_command())
-            .map_err(|refusal| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Constructed,
-                detail: refusal.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Counts server ticks and ignores everything else.
@@ -241,8 +237,6 @@ mod tests {
             })
             .expect_err("a contested claim is fatal for this mod");
 
-        assert_eq!(error.mod_id(), MinimalMod::declared_id());
-        assert_eq!(error.state(), LifecycleState::Constructed);
         assert!(
             matches!(&error, ModError::Refused { detail, .. } if detail.contains(owner.as_str())),
             "{error}"

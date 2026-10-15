@@ -26,7 +26,7 @@ impl Support {
 
     /// The word a record or a screen labels this support with.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Exact => "exact",
             Self::Approximate(_) => "approximate",
@@ -92,7 +92,7 @@ impl Metric {
 
     /// The name a record and a screen call this metric by.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::RetainedMemory => "retained-memory",
             Self::AllocatedMemory => "allocated-memory",
@@ -324,7 +324,7 @@ impl Profiler {
     }
 
     /// Replaces a mod's registry-claim count when profiling is enabled.
-    pub fn registry_claims(&mut self, mod_id: &ModId, claims: u64) {
+    pub fn record_registry_claims(&mut self, mod_id: &ModId, claims: u64) {
         if self.on {
             self.cost_of(mod_id).registry_claims = claims;
         }
@@ -482,7 +482,7 @@ impl ProfilingReport {
         lines.extend(
             Self::unsupported()
                 .into_iter()
-                .map(|(metric, reason)| format!("`{}` is unsupported: {reason}", metric.name())),
+                .map(|(metric, reason)| format!("`{}` is unsupported: {reason}", metric.as_str())),
         );
         lines
     }
@@ -534,7 +534,7 @@ mod tests {
         let mut entered = 0;
         profiler.measure(&id("example_mod"), CallKind::Event, || entered += 1);
         profiler.tick();
-        profiler.registry_claims(&id("example_mod"), 3);
+        profiler.record_registry_claims(&id("example_mod"), 3);
 
         let report = profiler.report();
         assert_eq!(entered, 1, "the body still runs with profiling off");
@@ -595,8 +595,8 @@ mod tests {
         let mut profiler = Profiler::on(DEFAULT_SLOW_CALLBACK);
         profiler.tick();
         profiler.tick();
-        profiler.registry_claims(&id("example_mod"), 9);
-        profiler.registry_claims(&id("example_mod"), 4);
+        profiler.record_registry_claims(&id("example_mod"), 9);
+        profiler.record_registry_claims(&id("example_mod"), 4);
 
         let report = profiler.report();
         assert_eq!(report.ticks(), 2);
@@ -623,11 +623,11 @@ mod tests {
     #[test]
     fn mods_are_reported_costliest_first_and_ties_break_on_identity() {
         let mut profiler = Profiler::on(Duration::from_secs(1));
-        profiler.measure(&id("cheap_mod"), CallKind::Event, || ());
+        profiler.record_registry_claims(&id("zebra_mod"), 1);
         profiler.measure(&id("costly_mod"), CallKind::Event, || {
             thread::sleep(Duration::from_millis(2));
         });
-        profiler.registry_claims(&id("aardvark_mod"), 1);
+        profiler.record_registry_claims(&id("aardvark_mod"), 1);
 
         let report = profiler.report();
         let order = report
@@ -635,16 +635,14 @@ mod tests {
             .iter()
             .map(|entry| entry.mod_id.to_string())
             .collect::<Vec<_>>();
-        assert_eq!(order[0], "costly_mod");
-        assert!(order.contains(&"aardvark_mod".to_owned()));
-        assert_eq!(report.mods().len(), 3);
+        assert_eq!(order, ["costly_mod", "aardvark_mod", "zebra_mod"]);
     }
 
     #[test]
     fn every_spec_metric_states_what_m3_can_say_about_it() {
         assert_eq!(Metric::ALL.len(), 12);
         for metric in Metric::ALL {
-            assert_ne!(metric.name(), "");
+            assert_ne!(metric.as_str(), "");
             assert!(matches!(metric.unit(), "bytes" | "nanoseconds" | "count"));
             match metric.support() {
                 Support::Exact => assert!(metric.support().detail().is_none()),
@@ -652,7 +650,7 @@ mod tests {
                     assert!(
                         detail.len() > 40,
                         "{} explains itself briefly",
-                        metric.name()
+                        metric.as_str()
                     );
                 }
             }
@@ -664,7 +662,7 @@ mod tests {
         let unsupported = ProfilingReport::unsupported();
         let names = unsupported
             .iter()
-            .map(|(metric, _)| metric.name())
+            .map(|(metric, _)| metric.as_str())
             .collect::<Vec<_>>();
         assert_eq!(
             names,
@@ -692,7 +690,7 @@ mod tests {
         let measured = Metric::ALL
             .into_iter()
             .filter(|metric| metric.support().is_measured())
-            .map(Metric::name)
+            .map(Metric::as_str)
             .collect::<Vec<_>>();
         assert_eq!(
             measured,

@@ -26,32 +26,61 @@ pub(crate) fn flag(out: &mut String, value: bool) {
     field(out, if value { "true" } else { "false" });
 }
 
+/// Decodes the same UTF-16 length-prefixed fields used by Java.
+pub(crate) struct Reader {
+    units: Vec<u16>,
+    at: usize,
+}
+
+impl Reader {
+    pub(crate) fn new(payload: &str) -> Self {
+        Self {
+            units: payload.encode_utf16().collect(),
+            at: 0,
+        }
+    }
+
+    pub(crate) fn field(&mut self) -> Option<String> {
+        let separator = self.at
+            + self
+                .units
+                .get(self.at..)?
+                .iter()
+                .position(|unit| *unit == u16::from(b':'))?;
+        let length: usize = String::from_utf16(&self.units[self.at..separator])
+            .ok()?
+            .parse()
+            .ok()?;
+        let start = separator + 1;
+        let end = start.checked_add(length)?;
+        let field = String::from_utf16(self.units.get(start..end)?).ok()?;
+        self.at = end;
+        Some(field)
+    }
+
+    pub(crate) fn count(&mut self) -> Option<usize> {
+        self.field()?.parse().ok()
+    }
+
+    pub(crate) const fn finished(&self) -> bool {
+        self.at == self.units.len()
+    }
+}
+
 /// Decodes fields for crossing tests using Java's UTF-16 indexing.
 #[cfg(test)]
 pub(crate) fn fields(payload: &str) -> Vec<String> {
-    let units: Vec<u16> = payload.encode_utf16().collect();
+    let mut reader = Reader::new(payload);
     let mut read = Vec::new();
-    let mut at = 0;
-    while at < units.len() {
-        let separator = at
-            + units[at..]
-                .iter()
-                .position(|unit| *unit == u16::from(b':'))
-                .expect("every field states a length");
-        let length: usize = String::from_utf16(&units[at..separator])
-            .expect("a length is text")
-            .parse()
-            .expect("a length is a number");
-        let start = separator + 1;
-        read.push(String::from_utf16(&units[start..start + length]).expect("a field is text"));
-        at = start + length;
+    while !reader.finished() {
+        read.push(reader.field().expect("a valid length-prefixed field"));
     }
     read
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{count, field, fields, flag};
+    use super::{Reader, count, field, fields, flag};
 
     #[test]
     fn a_field_states_the_length_the_other_side_reads() {
@@ -89,5 +118,31 @@ mod tests {
 
         assert_eq!(out, "2:124:true5:false");
         assert_eq!(fields(&out), ["12", "true", "false"]);
+    }
+
+    #[test]
+    fn malformed_fields_are_refused_without_advancing_the_reader() {
+        for payload in [
+            "missing",
+            "x:value",
+            "9:short",
+            "1:🎈",
+            "999999999999999999999999:x",
+        ] {
+            let mut reader = Reader::new(payload);
+            assert_eq!(reader.field(), None, "{payload}");
+            assert_eq!(reader.field(), None, "a refusal does not consume input");
+            assert!(!reader.finished());
+        }
+    }
+
+    #[test]
+    fn counts_and_empty_fields_share_the_production_decoder() {
+        let mut reader = Reader::new("1:20:3:a🎈");
+        assert_eq!(reader.count(), Some(2));
+        assert_eq!(reader.field().as_deref(), Some(""));
+        assert_eq!(reader.field().as_deref(), Some("a🎈"));
+        assert!(reader.finished());
+        assert_eq!(reader.field(), None);
     }
 }

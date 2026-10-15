@@ -3,19 +3,27 @@ use std::fmt;
 
 use ravel_core::{ModId, Version, VersionRange};
 
-/// A supplied library and its version, validated when the launch set resolves.
+/// A supplied library and its already parsed version.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Provided {
     library: String,
-    version: String,
+    version: Version,
 }
 
 impl Provided {
     /// Declares `library` supplied at `version`.
-    pub fn new(library: impl Into<String>, version: impl Into<String>) -> Self {
+    ///
+    /// Raw version text must be parsed before declaring a provider.
+    ///
+    /// ```compile_fail
+    /// use ravel_host_api::Provided;
+    ///
+    /// let invalid = Provided::new("shared_maths", "not-a-version");
+    /// ```
+    pub fn new(library: impl Into<String>, version: Version) -> Self {
         Self {
             library: library.into(),
-            version: version.into(),
+            version,
         }
     }
 
@@ -25,9 +33,9 @@ impl Provided {
         &self.library
     }
 
-    /// Returns the version as it was declared.
+    /// Returns the parsed version the provider declared.
     #[must_use]
-    pub fn version(&self) -> &str {
+    pub const fn version(&self) -> &Version {
         &self.version
     }
 }
@@ -39,14 +47,17 @@ impl Provided {
 /// # Examples
 ///
 /// ```
-/// use ravel_core::{ModId, VersionRange};
+/// use ravel_core::{ModId, Version, VersionRange};
 /// use ravel_host_api::{Provided, Provision};
 ///
 /// let provider: ModId = "maths_mod".parse()?;
 /// let consumer: ModId = "shop_mod".parse()?;
 ///
 /// let mut provision = Provision::default();
-/// provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+/// provision.provides(
+///     &provider,
+///     Provided::new("shared_maths", Version::parse("2.1.0").expect("a version")),
+/// );
 /// provision.requires(
 ///     &consumer,
 ///     "shared_maths",
@@ -60,7 +71,7 @@ impl Provided {
 /// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Provision {
-    provided: BTreeMap<String, Vec<(ModId, String)>>,
+    provided: BTreeMap<String, Vec<(ModId, Version)>>,
     required: BTreeMap<String, Vec<(ModId, VersionRange)>>,
 }
 
@@ -97,7 +108,7 @@ impl Provision {
     ///
     /// # Errors
     ///
-    /// Returns a refusal for missing or contested providers, invalid versions, or unsatisfied ranges.
+    /// Returns a refusal for missing or contested providers, or unsatisfied ranges.
     pub fn resolve(&self) -> Result<Resolved, ProvisionRefused> {
         let libraries: BTreeSet<&String> =
             self.provided.keys().chain(self.required.keys()).collect();
@@ -130,24 +141,17 @@ impl Provision {
                 }
             };
 
-            let parsed =
-                Version::parse(version).map_err(|_| ProvisionRefused::UnreadableVersion {
-                    library: library.clone(),
-                    provider: provider.clone(),
-                    version: version.clone(),
-                })?;
-
-            let unsatisfied = requiring(Some(&parsed));
+            let unsatisfied = requiring(Some(version));
             if !unsatisfied.is_empty() {
                 return Err(ProvisionRefused::Unsatisfied {
                     library: library.clone(),
                     provider: provider.clone(),
-                    version: version.clone(),
+                    version: version.to_string(),
                     unsatisfied,
                 });
             }
 
-            chosen.insert(library.clone(), (provider.clone(), version.clone()));
+            chosen.insert(library.clone(), (provider.clone(), version.to_string()));
         }
 
         Ok(Resolved { chosen })
@@ -210,15 +214,6 @@ pub enum ProvisionRefused {
         /// The mods whose range that version is outside, in declaration order.
         unsatisfied: Vec<ModId>,
     },
-    /// A declared version is not a version.
-    UnreadableVersion {
-        /// The library it was declared for.
-        library: String,
-        /// The mod that declared it.
-        provider: ModId,
-        /// What was written where a version belongs.
-        version: String,
-    },
 }
 
 impl ProvisionRefused {
@@ -228,8 +223,7 @@ impl ProvisionRefused {
         match self {
             Self::NoProvider { library, .. }
             | Self::Contested { library, .. }
-            | Self::Unsatisfied { library, .. }
-            | Self::UnreadableVersion { library, .. } => library,
+            | Self::Unsatisfied { library, .. } => library,
         }
     }
 
@@ -246,7 +240,7 @@ impl ProvisionRefused {
             Self::NoProvider { unsatisfied, .. } | Self::Unsatisfied { unsatisfied, .. } => {
                 unsatisfied
             }
-            Self::Contested { .. } | Self::UnreadableVersion { .. } => &[],
+            Self::Contested { .. } => &[],
         }
     }
 
@@ -255,9 +249,7 @@ impl ProvisionRefused {
     pub fn providers(&self) -> &[ModId] {
         match self {
             Self::Contested { providers, .. } => providers,
-            Self::NoProvider { .. } | Self::Unsatisfied { .. } | Self::UnreadableVersion { .. } => {
-                &[]
-            }
+            Self::NoProvider { .. } | Self::Unsatisfied { .. } => &[],
         }
     }
 }
@@ -295,14 +287,6 @@ impl fmt::Display for ProvisionRefused {
                  declared",
                 names(unsatisfied)
             ),
-            Self::UnreadableVersion {
-                library,
-                provider,
-                version,
-            } => write!(
-                formatter,
-                "`{provider}` provides `{library}` at `{version}`, which is not a version"
-            ),
         }
     }
 }
@@ -311,7 +295,7 @@ impl std::error::Error for ProvisionRefused {}
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{ModId, VersionRange};
+    use ravel_core::{ModId, Version, VersionRange};
 
     use super::{Provided, Provision, ProvisionRefused};
 
@@ -323,13 +307,17 @@ mod tests {
         VersionRange::parse(grammar).expect("a well formed range")
     }
 
+    fn version(text: &str) -> Version {
+        Version::parse(text).expect("a well formed version")
+    }
+
     #[test]
     fn one_provider_answers_one_requirement_and_is_named() {
         let provider = id("sample");
         let consumer = id("probe");
 
         let mut provision = Provision::default();
-        provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+        provision.provides(&provider, Provided::new("shared_maths", version("2.1.0")));
         provision.requires(&consumer, "shared_maths", range("^2"));
 
         let resolved = provision.resolve().expect("one provider resolves");
@@ -357,7 +345,7 @@ mod tests {
         let provider = id("sample");
 
         let mut provision = Provision::default();
-        provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+        provision.provides(&provider, Provided::new("shared_maths", version("2.1.0")));
 
         let resolved = provision
             .resolve()
@@ -390,7 +378,7 @@ mod tests {
         let newer = id("witness");
 
         let mut provision = Provision::default();
-        provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+        provision.provides(&provider, Provided::new("shared_maths", version("2.1.0")));
         provision.requires(&older, "shared_maths", range("^1"));
         provision.requires(&newer, "shared_maths", range("^2"));
 
@@ -410,8 +398,8 @@ mod tests {
         let second = id("probe");
 
         let mut provision = Provision::default();
-        provision.provides(&first, Provided::new("shared_maths", "2.1.0"));
-        provision.provides(&second, Provided::new("shared_maths", "2.1.0"));
+        provision.provides(&first, Provided::new("shared_maths", version("2.1.0")));
+        provision.provides(&second, Provided::new("shared_maths", version("2.1.0")));
 
         let refusal = provision
             .resolve()
@@ -428,8 +416,8 @@ mod tests {
         let provider = id("sample");
 
         let mut provision = Provision::default();
-        provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
-        provision.provides(&provider, Provided::new("shared_maths", "3.0.0"));
+        provision.provides(&provider, Provided::new("shared_maths", version("2.1.0")));
+        provision.provides(&provider, Provided::new("shared_maths", version("3.0.0")));
 
         let refusal = provision.resolve().expect_err("one library, one version");
 
@@ -442,8 +430,8 @@ mod tests {
         let consumer = id("probe");
 
         let mut provision = Provision::default();
-        provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
-        provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+        provision.provides(&provider, Provided::new("shared_maths", version("2.1.0")));
+        provision.provides(&provider, Provided::new("shared_maths", version("2.1.0")));
         provision.requires(&consumer, "shared_maths", range("^2"));
         provision.requires(&consumer, "shared_maths", range("^2"));
 
@@ -459,32 +447,16 @@ mod tests {
     }
 
     #[test]
-    fn a_version_that_is_not_a_version_is_refused_rather_than_ignored() {
-        let provider = id("sample");
-        let consumer = id("probe");
-
-        let mut provision = Provision::default();
-        provision.provides(&provider, Provided::new("shared_maths", "the latest one"));
-        provision.requires(&consumer, "shared_maths", range("*"));
-
-        let refusal = provision
-            .resolve()
-            .expect_err("a version nothing can read answers no range");
-
-        assert_eq!(refusal.library(), "shared_maths");
-        assert_eq!(refusal.unsatisfied(), []);
-        assert!(refusal.to_string().contains("the latest one"), "{refusal}");
-        assert!(matches!(
-            refusal,
-            ProvisionRefused::UnreadableVersion { .. }
-        ));
+    fn invalid_provider_versions_are_rejected_before_declaration() {
+        assert!(Version::parse("the latest one").is_err());
     }
 
     #[test]
     fn a_declaration_keeps_the_library_and_version_it_was_written_with() {
-        let provided = Provided::new("shared_maths", "2.1.0");
+        let version = version("2.1.0");
+        let provided = Provided::new("shared_maths", version.clone());
         assert_eq!(provided.library(), "shared_maths");
-        assert_eq!(provided.version(), "2.1.0");
+        assert_eq!(provided.version(), &version);
     }
 
     #[test]
@@ -493,7 +465,7 @@ mod tests {
         let consumer = id("probe");
 
         let mut provision = Provision::default();
-        provision.provides(&provider, Provided::new("shared_maths", "2.1.0"));
+        provision.provides(&provider, Provided::new("shared_maths", version("2.1.0")));
         provision.requires(&consumer, "shared_maths", range("^2"));
         provision.requires(&consumer, "shared_words", range("^1"));
 

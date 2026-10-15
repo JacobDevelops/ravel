@@ -254,6 +254,23 @@ impl SavedDataAggregate {
         declarations: &[SavedDataDeclaration],
         packages: &BTreeMap<ModId, Version>,
     ) -> Result<Self, SavedDataError> {
+        Self::open_preserving(bytes, declarations, packages, |_| false)
+    }
+
+    /// Admits an aggregate while retaining selected unavailable owners as opaque envelopes.
+    ///
+    /// Preserved owners need no declaration or installed packages. Aggregate bounds, format,
+    /// duplicate owners, and envelope schemas remain checked for every owner.
+    ///
+    /// # Errors
+    ///
+    /// Returns the admission errors from [`Self::open`] for nonpreserved owners and structure.
+    pub fn open_preserving(
+        bytes: Option<&[u8]>,
+        declarations: &[SavedDataDeclaration],
+        packages: &BTreeMap<ModId, Version>,
+        preserve: impl Fn(&ModId) -> bool,
+    ) -> Result<Self, SavedDataError> {
         let Some(bytes) = bytes else {
             return Ok(Self::fresh());
         };
@@ -264,7 +281,7 @@ impl SavedDataAggregate {
         }
         let mut aggregate: Self = serde_json::from_slice(bytes)
             .map_err(|error| SavedDataError::InvalidAggregate(error.to_string()))?;
-        aggregate.admit(declarations, packages)?;
+        aggregate.admit(declarations, packages, preserve)?;
         Ok(aggregate)
     }
 
@@ -272,6 +289,7 @@ impl SavedDataAggregate {
         &mut self,
         declarations: &[SavedDataDeclaration],
         packages: &BTreeMap<ModId, Version>,
+        preserve: impl Fn(&ModId) -> bool,
     ) -> Result<(), SavedDataError> {
         if self.format_version != AGGREGATE_FORMAT_VERSION {
             return Err(SavedDataError::UnsupportedAggregateVersion {
@@ -295,6 +313,9 @@ impl SavedDataAggregate {
                     stored: envelope.schema_version,
                     current: ENVELOPE_SCHEMA_VERSION,
                 });
+            }
+            if preserve(envelope.owner()) {
+                continue;
             }
             let declaration = declarations
                 .iter()
@@ -547,6 +568,54 @@ mod tests {
 
         let exact = BTreeMap::from([(id("base"), Version::new(2, 0, 0))]);
         SavedDataAggregate::open(Some(&bytes), &[declaration()], &exact).expect("an exact match");
+    }
+
+    #[test]
+    fn preserved_owners_remain_opaque_without_declarations_or_installed_packages() {
+        let mut prior = SavedDataAggregate::fresh();
+        prior.replace(SavedDataEnvelope::new(
+            id("failed_owner"),
+            version(99),
+            vec![RequiredPackage {
+                id: id("absent"),
+                version: Version::new(8, 0, 0),
+            }],
+            None,
+            json!({"opaque": ["unchanged", 42]}),
+        ));
+        let bytes = prior.to_bytes().expect("prior aggregate");
+        let admitted =
+            SavedDataAggregate::open_preserving(Some(&bytes), &[], &BTreeMap::new(), |owner| {
+                owner == &id("failed_owner")
+            })
+            .expect("failed-owner envelopes are opaque");
+        assert_eq!(admitted.to_bytes().expect("bytes"), bytes);
+        assert!(matches!(
+            SavedDataAggregate::open(Some(&bytes), &[], &BTreeMap::new()),
+            Err(SavedDataError::UnknownOwner { .. })
+        ));
+    }
+
+    #[test]
+    fn preserving_an_owner_does_not_bypass_structural_admission() {
+        assert!(matches!(
+            SavedDataAggregate::open_preserving(
+                Some(&stored_under(2, 1)),
+                &[],
+                &BTreeMap::new(),
+                |_| true,
+            ),
+            Err(SavedDataError::UnsupportedAggregateVersion { .. })
+        ));
+        assert!(matches!(
+            SavedDataAggregate::open_preserving(
+                Some(&stored_under(1, 2)),
+                &[],
+                &BTreeMap::new(),
+                |_| true,
+            ),
+            Err(SavedDataError::UnsupportedEnvelopeVersion { .. })
+        ));
     }
 
     #[test]

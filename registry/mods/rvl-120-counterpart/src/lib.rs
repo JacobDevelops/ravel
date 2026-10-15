@@ -88,8 +88,8 @@ pub const INTEGRATIONS: [&str; 4] = [
 #[derive(Debug)]
 pub struct Shared {
     side: Side,
-    declaration: Result<ContentDeclaration, String>,
-    settings_declaration: Result<ConfigurationDeclaration, String>,
+    declaration: Result<ContentDeclaration, ModError>,
+    settings_declaration: Result<ConfigurationDeclaration, ModError>,
     settings: Settings,
     colours: Colours,
     commands: Commands,
@@ -121,8 +121,8 @@ impl Shared {
     pub fn on(side: Side) -> Self {
         Self {
             side,
-            declaration: census::declaration().map_err(|error| error.to_string()),
-            settings_declaration: settings::declaration().map_err(|error| error.to_string()),
+            declaration: census::declaration().map_err(|error| ModError::refused(error.to_string())),
+            settings_declaration: settings::declaration().map_err(|error| ModError::refused(error.to_string())),
             settings: Settings::default(),
             colours: Colours::shipped(),
             commands: Commands::new(),
@@ -252,14 +252,6 @@ impl Shared {
         self.manual_held = down;
         pressed
     }
-
-    fn refusal(state: LifecycleState, detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state,
-            detail: detail.to_string(),
-        }
-    }
 }
 
 /// The change check dependents summarise a block of data with.
@@ -304,36 +296,27 @@ impl Mod for Shared {
         .into_iter()
         .flatten()
         .next();
-        malformed.map_or(Ok(()), |detail| Err(Self::refusal(state, detail)))
+        malformed.map_or(Ok(()), |error| Err(error.clone()))
     }
 
     fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration
-            .clone()
-            .map(Some)
-            .map_err(|detail| Self::refusal(LifecycleState::Constructed, &detail))
+        self.declaration.clone().map(Some)
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        let declaration = self
-            .declaration
-            .as_ref()
-            .map_err(|detail| Self::refusal(LifecycleState::Registered, detail))?;
+        let declaration = self.declaration.as_ref().map_err(Clone::clone)?;
         claim_all(declaration, registrar)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
-        self.settings_declaration
-            .clone()
-            .map(Some)
-            .map_err(|detail| Self::refusal(LifecycleState::Constructed, &detail))
+        self.settings_declaration.clone().map(Some)
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
         self.settings = Settings::read(resolved);
         self.colours
             .resolve(Document::of(self.side), resolved)
-            .map_err(|refused| Self::refusal(LifecycleState::Constructed, &refused))?;
+            .map_err(|refused| ModError::refused(refused.to_string()))?;
         Ok(())
     }
 
@@ -346,7 +329,7 @@ impl Mod for Shared {
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         GlobalData::declaration()
             .map(Some)
-            .map_err(|error| Self::refusal(LifecycleState::Constructed, &error))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn open_saved_data(
@@ -361,7 +344,7 @@ impl Mod for Shared {
             return Ok(());
         };
         self.global = GlobalData::from_payload(envelope.payload())
-            .map_err(|refused| Self::refusal(LifecycleState::Registered, &refused))?;
+            .map_err(|refused| ModError::refused(refused.to_string()))?;
         Ok(())
     }
 
@@ -372,7 +355,7 @@ impl Mod for Shared {
         self.global
             .envelope()
             .map(Some)
-            .map_err(|refused| Self::refusal(LifecycleState::Registered, &refused))
+            .map_err(|refused| ModError::refused(refused.to_string()))
     }
 }
 
@@ -382,6 +365,36 @@ export_mod!(|side| Shared::on(side));
 mod tests {
     use super::*;
     use ravel_sdk::content::{ContentKind, RegistrationRefused, RegistryKey};
+
+    #[test]
+    fn deferred_declarations_preserve_the_original_refusal() {
+        let original = ModError::refused("the original packaged declaration failure");
+        let mut shared = Shared::new();
+        shared.declaration = Err(original.clone());
+        assert_eq!(
+            shared
+                .content_declaration()
+                .expect_err("the declaration refused"),
+            original
+        );
+        assert_eq!(
+            shared.enter(LifecycleState::Constructed),
+            Err(original.clone())
+        );
+        assert_eq!(
+            shared.register(&mut Accepting::default()),
+            Err(original.clone())
+        );
+        shared.declaration = census::declaration().map_err(|error| ModError::refused(error.to_string()));
+        shared.settings_declaration = Err(original.clone());
+        assert_eq!(
+            shared
+                .configuration_declaration()
+                .expect_err("the declaration refused"),
+            original
+        );
+        assert_eq!(shared.enter(LifecycleState::Constructed), Err(original));
+    }
 
     #[derive(Default)]
     struct Accepting {

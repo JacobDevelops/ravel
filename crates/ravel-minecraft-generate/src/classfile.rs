@@ -1,6 +1,155 @@
-//! Reads declared members, signatures, flags, and supertypes without decoding bytecode.
+//! Reads class files and owns shared JVM names, descriptor tokens, flags, and supertypes.
 
 use std::fmt;
+
+/// One validated JVM type, retaining its exact spelling for opaque handles.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DescriptorType<'a> {
+    pub(super) name: &'a str,
+    pub(super) dimensions: usize,
+    pub(super) descriptor: &'a str,
+}
+
+impl DescriptorType<'_> {
+    fn source(self) -> String {
+        let mut name = source_name(self.name);
+        for _ in 0..self.dimensions {
+            name.push_str("[]");
+        }
+        name
+    }
+}
+
+/// Tokenizes exactly one JVM type; void is accepted only as a return type.
+fn descriptor_type(descriptor: &str, returns: bool) -> Result<(DescriptorType<'_>, &str), String> {
+    let dimensions = descriptor.bytes().take_while(|byte| *byte == b'[').count();
+    let rest = &descriptor[dimensions..];
+    let first = rest
+        .chars()
+        .next()
+        .ok_or_else(|| format!("{descriptor} ends before a type does"))?;
+    let (name, after) = match first {
+        'V' if returns && dimensions == 0 => ("void", &rest[1..]),
+        'Z' => ("boolean", &rest[1..]),
+        'B' => ("byte", &rest[1..]),
+        'C' => ("char", &rest[1..]),
+        'S' => ("short", &rest[1..]),
+        'I' => ("int", &rest[1..]),
+        'J' => ("long", &rest[1..]),
+        'F' => ("float", &rest[1..]),
+        'D' => ("double", &rest[1..]),
+        'L' => {
+            let end = rest
+                .find(';')
+                .ok_or_else(|| format!("{descriptor} names a class that is never terminated"))?;
+            let name = &rest[1..end];
+            if name.is_empty() {
+                return Err(format!("{descriptor} names no class between L and ;"));
+            }
+            (name, &rest[end + 1..])
+        }
+        other => return Err(format!("{other} is not a type descriptor")),
+    };
+    Ok((
+        DescriptorType {
+            name,
+            dimensions,
+            descriptor: &descriptor[..descriptor.len() - after.len()],
+        },
+        after,
+    ))
+}
+
+/// Parses every parameter and exactly one return type with the same tokenizer.
+pub(super) fn method_types(
+    descriptor: &str,
+) -> Result<(Vec<DescriptorType<'_>>, DescriptorType<'_>), String> {
+    let mut rest = descriptor
+        .strip_prefix('(')
+        .ok_or_else(|| format!("{descriptor} is not a method descriptor"))?;
+    let mut parameters = Vec::new();
+    while !rest.starts_with(')') {
+        let (kind, after) = descriptor_type(rest, false)?;
+        parameters.push(kind);
+        rest = after;
+    }
+    let (returns, after) = descriptor_type(&rest[1..], true)?;
+    if !after.is_empty() {
+        return Err(format!("{descriptor} declares more than one return type"));
+    }
+    Ok((parameters, returns))
+}
+
+/// Reads a method descriptor as Java source types.
+pub(super) fn signature(descriptor: &str) -> Result<(Vec<String>, String), String> {
+    let (parameters, returns) = method_types(descriptor)?;
+    Ok((
+        parameters.into_iter().map(DescriptorType::source).collect(),
+        returns.source(),
+    ))
+}
+
+/// Reads one field or return type as Java source, retaining any following input.
+pub(super) fn java_type(descriptor: &str) -> Result<(String, &str), String> {
+    let (kind, after) = descriptor_type(descriptor, true)?;
+    Ok((kind.source(), after))
+}
+
+/// Splits an internal class name into its package and the name Java declares.
+///
+/// A nested class keeps its `$`: the declared name is the binary one, which is
+/// what the JVM links against and what javac writes into the class file. A class
+/// with no package at all is the unnamed one, which an obfuscated version puts
+/// most of the game in.
+pub(super) fn split(class: &str) -> (Option<String>, &str) {
+    class
+        .rsplit_once('/')
+        .map_or((None, class), |(package, simple)| {
+            (Some(package.replace('/', ".")), simple)
+        })
+}
+
+/// Whether these linked names span the unnamed package and named ones at once.
+pub(super) fn name_space_is_split<'a>(classes: impl IntoIterator<Item = &'a str>) -> bool {
+    let (mut named, mut unnamed) = (false, false);
+    for class in classes {
+        if split(class).0.is_none() {
+            unnamed = true;
+        } else {
+            named = true;
+        }
+    }
+    named && unnamed
+}
+
+/// The internal name a source declares and names one linked class by.
+///
+/// Java source inside a package cannot name a class outside every package — the
+/// language has no syntax for it — so a version that splits its game across the
+/// two has no source form for the packaged half at all. Where it is split, every
+/// class is written in the unnamed package instead, which is the only name space
+/// both halves can be spelled in and leaves javac one name per class. The
+/// package is put back into the compiled class files afterwards, so what the JVM
+/// links is still the linked name.
+///
+/// The alias runs this way round rather than lifting the unnamed half into a
+/// package of Ravel's own because the packaged half is the small one: an
+/// obfuscated version leaves a handful of classes named and moves the rest out
+/// of every package, so writing them all as the majority already is renames the
+/// fewest classes and leaves the harness's compiled names the ones the adapter
+/// resolves for all but those few.
+pub(super) fn alias(class: &str, split_name_space: bool) -> String {
+    if split_name_space {
+        split(class).1.to_owned()
+    } else {
+        class.to_owned()
+    }
+}
+
+/// An internal class name as Java source writes it.
+pub(super) fn source_name(class: &str) -> String {
+    class.replace('/', ".")
+}
 
 /// Class files start with this magic number.
 const MAGIC: u32 = 0xCAFE_BABE;

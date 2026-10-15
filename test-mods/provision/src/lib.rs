@@ -4,7 +4,9 @@
 //! It ships no library and performs no loading.
 
 use ravel_sdk::provision::{Provided, Provision, ProvisionRefused, Resolved};
-use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, VersionRange, declare_mod};
+use ravel_sdk::{
+    Declared, LifecycleState, Mod, ModError, ModId, Version, VersionRange, declare_mod,
+};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "provision";
@@ -51,7 +53,13 @@ impl ProvisionMod {
 
     /// Declares what this mod provides into `provision`.
     pub fn provide(provision: &mut Provision) {
-        provision.provides(Self::declared_id(), Provided::new(LIBRARY, VERSION));
+        provision.provides(
+            Self::declared_id(),
+            Provided::new(
+                LIBRARY,
+                Version::parse(VERSION).expect("the packaged version is valid"),
+            ),
+        );
     }
 
     /// Resolves this mod's library against `consumer` needing `wanted`.
@@ -71,7 +79,7 @@ impl ProvisionMod {
     /// # Errors
     ///
     /// Returns [`ProvisionRefused::Contested`] naming both providers.
-    pub fn beside(rival: &ModId, version: &str) -> Result<Resolved, ProvisionRefused> {
+    pub fn beside(rival: &ModId, version: Version) -> Result<Resolved, ProvisionRefused> {
         let mut provision = Provision::default();
         Self::provide(&mut provision);
         provision.provides(rival, Provided::new(LIBRARY, version));
@@ -90,7 +98,7 @@ impl Mod for ProvisionMod {
 #[cfg(test)]
 mod tests {
     use ravel_sdk::provision::{Provided, Provision, ProvisionRefused};
-    use ravel_sdk::{Declared, ModId, VersionRange};
+    use ravel_sdk::{Declared, ModId, Version, VersionRange};
 
     use super::{LIBRARY, MOD_ID, ProvisionMod, VERSION};
 
@@ -145,7 +153,8 @@ mod tests {
         let rival = id("rival_mod");
 
         let refusal =
-            ProvisionMod::beside(&rival, VERSION).expect_err("one launch takes one provider");
+            ProvisionMod::beside(&rival, Version::parse(VERSION).expect("a valid version"))
+                .expect_err("one launch takes one provider");
 
         assert_eq!(
             refusal.providers(),
@@ -187,9 +196,12 @@ mod tests {
 
     #[test]
     fn what_this_mod_declares_is_what_it_provides() {
-        let declared = Provided::new(LIBRARY, VERSION);
+        let declared = Provided::new(LIBRARY, Version::parse(VERSION).expect("a valid version"));
         assert_eq!(declared.library(), LIBRARY);
-        assert_eq!(declared.version(), VERSION);
+        assert_eq!(
+            declared.version(),
+            &Version::parse(VERSION).expect("a valid version")
+        );
     }
 }
 

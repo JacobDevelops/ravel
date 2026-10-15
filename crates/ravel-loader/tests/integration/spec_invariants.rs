@@ -209,6 +209,22 @@ fn constructed_registry_set() -> LifecycleMachine {
     machine
 }
 
+fn assert_late_claims_refused(machine: &mut LifecycleMachine, names: [&str; 2], when: &str) {
+    for name in names {
+        assert_eq!(
+            machine.claim_registry_identifier(
+                &id(name),
+                &"block:late:block".parse().expect("valid key")
+            ),
+            Err(LifecycleError::RegistrationBarrierClosed {
+                mod_id: id(name),
+                identifier: "block:late:block".to_owned(),
+            }),
+            "{name} claimed an identifier {when}"
+        );
+    }
+}
+
 /// The second invariant: registry identifiers become immutable after the
 /// registration barrier.
 ///
@@ -222,7 +238,10 @@ fn registry_identifiers_become_immutable_after_the_registration_barrier() {
     let names = ["first_mod", "second_mod"];
     assert!(!machine.registration_barrier_closed());
     machine
-        .claim_registry_identifier(&id("first_mod"), "first_mod:block")
+        .claim_registry_identifier(
+            &id("first_mod"),
+            &"block:first_mod:block".parse().expect("valid key"),
+        )
         .expect("claims are accepted before the barrier");
 
     // One mod committing its registrations does not close the barrier, and it
@@ -240,7 +259,10 @@ fn registry_identifiers_become_immutable_after_the_registration_barrier() {
         "no mod starts while another is still registering"
     );
     machine
-        .claim_registry_identifier(&id("second_mod"), "second_mod:block")
+        .claim_registry_identifier(
+            &id("second_mod"),
+            &"block:second_mod:block".parse().expect("valid key"),
+        )
         .expect("the barrier is still open for a mod that has not registered");
 
     // Closing it makes every identifier immutable, whichever mod asks.
@@ -248,42 +270,27 @@ fn registry_identifiers_become_immutable_after_the_registration_barrier() {
         .advance(&id("second_mod"), LifecycleState::Registered)
         .expect("the second mod commits");
     assert!(machine.registration_barrier_closed());
-    for name in names {
-        assert_eq!(
-            machine.claim_registry_identifier(&id(name), "late:block"),
-            Err(LifecycleError::RegistrationBarrierClosed {
-                mod_id: id(name),
-                identifier: "late:block".to_owned(),
-            }),
-            "{name} claimed an identifier after the barrier closed"
-        );
-    }
+    assert_late_claims_refused(&mut machine, names, "after the barrier closed");
 
     machine
         .advance_all(LifecycleState::Running)
         .expect("a registered set starts");
-    for name in names {
-        assert_eq!(
-            machine.claim_registry_identifier(&id(name), "late:block"),
-            Err(LifecycleError::RegistrationBarrierClosed {
-                mod_id: id(name),
-                identifier: "late:block".to_owned(),
-            }),
-            "{name} claimed an identifier while the set was running"
-        );
-    }
+    assert_late_claims_refused(&mut machine, names, "while the set was running");
 
     // What was committed before the barrier keeps its owner, and nothing was
     // added after it.
     assert_eq!(
-        machine.registry_owner("first_mod:block"),
+        machine.registry_owner(&"block:first_mod:block".parse().expect("valid key")),
         Some(&id("first_mod"))
     );
     assert_eq!(
-        machine.registry_owner("second_mod:block"),
+        machine.registry_owner(&"block:second_mod:block".parse().expect("valid key")),
         Some(&id("second_mod"))
     );
-    assert_eq!(machine.registry_owner("late:block"), None);
+    assert_eq!(
+        machine.registry_owner(&"block:late:block".parse().expect("valid key")),
+        None
+    );
 }
 
 /// The third invariant: required dependency failure prevents world access.
@@ -512,7 +519,7 @@ fn failure_after_world_mutation_cannot_silently_continue_or_save_partial_state()
     )
     .expect("two mods are a valid plan");
     started(&mut machine);
-    machine.request_save().expect("a healthy set may save");
+    machine.save_access().expect("a healthy set may save");
     machine
         .record_world_mutation()
         .expect("a running set may mutate the world");
@@ -530,7 +537,7 @@ fn failure_after_world_mutation_cannot_silently_continue_or_save_partial_state()
 
     // Nothing about the run continues: no save, no world, no forward progress.
     assert_eq!(
-        machine.request_save(),
+        machine.save_access(),
         Err(LifecycleError::PartialStateRefused {
             mod_id: id("first_mod")
         })
@@ -560,7 +567,7 @@ fn failure_after_world_mutation_cannot_silently_continue_or_save_partial_state()
         LifecycleState::Stopped
     );
     assert_eq!(
-        machine.request_save(),
+        machine.save_access(),
         Err(LifecycleError::PartialStateRefused {
             mod_id: id("first_mod")
         })
@@ -599,7 +606,7 @@ fn failure_before_world_mutation_allows_survivors_to_start_and_save() {
         )
         .expect("failure is legal from resolved");
     untouched
-        .request_save()
+        .save_access()
         .expect("nothing was mutated, so nothing is partial");
     untouched
         .advance_all(LifecycleState::Loaded)

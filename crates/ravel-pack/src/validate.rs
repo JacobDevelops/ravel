@@ -229,7 +229,7 @@ fn settings_closure(
     for (owner, document) in pack.settings() {
         let Some(declaration) = configurations
             .iter()
-            .find(|declaration| &declaration.owner == owner)
+            .find(|declaration| declaration.owner() == owner)
         else {
             return Err(ClosureError::SettingsUndeclared {
                 owner: owner.clone(),

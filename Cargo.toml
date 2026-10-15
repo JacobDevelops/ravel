@@ -25,6 +25,7 @@ num-traits = { version = "0.2", default-features = false }
 miniz_oxide = "0.8.9"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
+ravel-bootstrap = { path = "crates/ravel-bootstrap", version = "0.0.0" }
 ravel-config = { path = "crates/ravel-config", version = "0.0.0" }
 ravel-core = { path = "crates/ravel-core", version = "0.0.0" }
 ravel-data = { path = "crates/ravel-data", version = "0.0.0" }
@@ -104,3 +105,9 @@ wildcard_enum_match_arm = "deny"
 infinite_loop = "deny"
 integer_division = "deny"
 let_underscore_must_use = "deny"
+
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"

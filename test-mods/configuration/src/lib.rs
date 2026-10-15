@@ -2,9 +2,8 @@
 
 //! Configuration schema and generated-UI test mod.
 
-use ravel_config::{ConfigurationDeclaration, LayeredConfiguration, SettingKey};
-use ravel_core::{LifecycleState, ModId};
-use ravel_host_api::{HostError, HostMod};
+use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration, SettingKey};
+use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "configuration";
@@ -18,7 +17,6 @@ const PROFILE: &str = "common.profile";
 /// A mod whose running behavior records the effective configuration it received.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConfigurationMod {
-    id: ModId,
     enabled: bool,
     profile: String,
     observations: Vec<String>,
@@ -36,7 +34,6 @@ impl ConfigurationMod {
         let configuration = LayeredConfiguration::resolve(declaration, None, None)
             .expect("the author defaults resolve");
         let mut value = Self {
-            id: MOD_ID.parse().expect("`MOD_ID` is a legal mod id"),
             enabled: false,
             profile: String::new(),
             observations: Vec::new(),
@@ -64,11 +61,11 @@ impl ConfigurationMod {
     ///
     /// Returns an error for a different owner or missing typed settings.
     pub fn apply(&mut self, configuration: &LayeredConfiguration) -> Result<(), String> {
-        if configuration.owner() != &self.id {
+        if configuration.owner() != Self::declared_id() {
             return Err(format!(
                 "configuration belongs to `{}`, not `{}`",
                 configuration.owner(),
-                self.id
+                Self::declared_id()
             ));
         }
         self.enabled = configuration
@@ -104,17 +101,14 @@ impl Default for ConfigurationMod {
     }
 }
 
-impl HostMod for ConfigurationMod {
-    fn id(&self) -> &ModId {
-        &self.id
-    }
-
+#[declare_mod(id = "configuration")]
+impl Mod for ConfigurationMod {
     /// Records the effective behavior when the mod starts running.
     ///
     /// # Errors
     ///
     /// Never returns an error.
-    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         if state == LifecycleState::Running {
             self.observations.push(self.behavior());
         }
@@ -122,21 +116,19 @@ impl HostMod for ConfigurationMod {
     }
 
     /// Declares the settings this mod owns.
-    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
-        Ok(Some(Self::declaration()))
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
+        ConfigurationDeclaration::parse(DECLARATION)
+            .map(Some)
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Applies the settings in force for this launch.
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Refused`] when [`ConfigurationMod::apply`] fails.
-    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
-        Self::apply(self, resolved).map_err(|detail| HostError::Refused {
-            mod_id: self.id.clone(),
-            state: LifecycleState::Constructed,
-            detail,
-        })
+    /// Returns a [`ModError`] when [`ConfigurationMod::apply`] fails.
+    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
+        Self::apply(self, resolved).map_err(ModError::refused)
     }
 }
 
@@ -146,11 +138,10 @@ fn key(value: &str) -> SettingKey {
 
 #[cfg(test)]
 mod tests {
-    use ravel_config::{
+    use ravel_sdk::config::{
         ConfigurationDeclaration, LayeredConfiguration, PackOverride, SettingSide, ValueDocument,
     };
-    use ravel_core::{LifecycleState, ModId, Side};
-    use ravel_host_api::HostMod;
+    use ravel_sdk::{LifecycleState, Mod, ModId, Side};
     use serde_json::json;
 
     use super::{ConfigurationMod, MOD_ID, key};
@@ -173,8 +164,8 @@ mod tests {
         let declaration = ConfigurationMod::declaration();
 
         assert_eq!(configuration.id(), &MOD_ID.parse::<ModId>().expect("an id"));
-        assert_eq!(declaration.owner, *configuration.id());
-        assert_eq!(declaration.settings.len(), 4);
+        assert_eq!(declaration.owner(), configuration.id());
+        assert_eq!(declaration.settings().len(), 4);
         assert_eq!(ConfigurationMod::default(), configuration);
     }
 
@@ -182,12 +173,12 @@ mod tests {
     fn the_declaration_covers_every_side_and_override_policy() {
         let declaration = ConfigurationMod::declaration();
         let sides = declaration
-            .settings
+            .settings()
             .iter()
             .map(|setting| setting.side)
             .collect::<Vec<_>>();
         let policies = declaration
-            .settings
+            .settings()
             .iter()
             .map(|setting| setting.pack_override)
             .collect::<Vec<_>>();
@@ -212,7 +203,7 @@ mod tests {
         );
         assert!(
             declaration
-                .settings
+                .settings()
                 .last()
                 .expect("common setting")
                 .restart_required

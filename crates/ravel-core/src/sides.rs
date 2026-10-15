@@ -27,7 +27,7 @@ impl Side {
 
     /// Returns the side's canonical serialized name.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Client => "client",
             Self::IntegratedServer => "integrated-server",
@@ -184,7 +184,7 @@ impl fmt::Display for WrongSide {
         write!(
             formatter,
             "the `{}` side holds no client-only value; client-only code runs on the client alone",
-            self.side.name()
+            self.side.as_str()
         )
     }
 }
@@ -222,9 +222,9 @@ mod tests {
                 ran,
                 u32::from(!side.is_server()),
                 "`{}` ran the client-only closure",
-                side.name()
+                side.as_str()
             );
-            assert_eq!(held.is_present(), !side.is_server(), "{}", side.name());
+            assert_eq!(held.is_present(), !side.is_server(), "{}", side.as_str());
         }
     }
 
@@ -236,10 +236,10 @@ mod tests {
         assert_eq!(held.get(Side::Client), Ok(&8));
 
         for side in Side::ALL.into_iter().filter(|side| side.is_server()) {
-            let refusal = held.get(side).expect_err(side.name());
+            let refusal = held.get(side).expect_err(side.as_str());
             assert_eq!(refusal.side(), side);
-            assert!(refusal.to_string().contains(side.name()), "{refusal}");
-            assert!(held.get_mut(side).is_err(), "{}", side.name());
+            assert!(refusal.to_string().contains(side.as_str()), "{refusal}");
+            assert!(held.get_mut(side).is_err(), "{}", side.as_str());
         }
     }
 
@@ -257,7 +257,7 @@ mod tests {
     fn every_side_names_itself_the_way_it_serializes() {
         for side in Side::ALL {
             let encoded = serde_json::to_string(&side).expect("a side serializes");
-            assert_eq!(encoded, format!("\"{}\"", side.name()));
+            assert_eq!(encoded, format!("\"{}\"", side.as_str()));
         }
     }
 
@@ -277,7 +277,7 @@ mod tests {
             named,
             Side::ALL
                 .iter()
-                .map(|side| format!("`{}`", side.name()))
+                .map(|side| format!("`{}`", side.as_str()))
                 .collect::<Vec<_>>()
                 .join(", "),
             "`Side::ALL` and the enum disagree about which sides exist"

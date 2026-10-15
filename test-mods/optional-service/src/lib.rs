@@ -123,11 +123,7 @@ impl Mod for SurveyMod {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::new(Self::declared_id().clone(), [landmarks()], [])
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Answers with the landmarks this survey holds.
@@ -140,11 +136,7 @@ impl Mod for SurveyMod {
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
         let _ = request;
         if self.refusing {
-            return Err(ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Running,
-                detail: "this survey has no chart loaded".to_owned(),
-            });
+            return Err(ModError::refused("this survey has no chart loaded"));
         }
         self.answered += 1;
         Ok(ServiceResponse::new(json!({ "landmarks": self.known })))
@@ -202,11 +194,7 @@ impl Mod for CompassMod {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::with_optional(Self::declared_id().clone(), [], [], [landmarks()])
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Calls the survey when one is installed, and records doing without when none
@@ -226,10 +214,8 @@ impl Mod for CompassMod {
                     .value()
                     .get("landmarks")
                     .and_then(|value| value.as_array())
-                    .ok_or_else(|| ModError::Refused {
-                        mod_id: Self::declared_id().clone(),
-                        state: LifecycleState::Constructed,
-                        detail: "the survey answered without a `landmarks` list".to_owned(),
+                    .ok_or_else(|| {
+                        ModError::refused("the survey answered without a `landmarks` list")
                     })?
                     .iter()
                     .filter_map(|value| value.as_str().map(ToOwned::to_owned))
@@ -241,11 +227,7 @@ impl Mod for CompassMod {
                 self.bearings = Bearings::Alone;
                 Ok(())
             }
-            Err(failed) => Err(ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Constructed,
-                detail: failed.to_string(),
-            }),
+            Err(failed) => Err(ModError::refused(failed.to_string())),
         }
     }
 }
@@ -253,7 +235,7 @@ impl Mod for CompassMod {
 #[cfg(test)]
 mod tests {
     use ravel_sdk::services::{ServiceCallFailed, ServiceResponse, ServiceUnavailable};
-    use ravel_sdk::{Declared, LifecycleState, Mod, json};
+    use ravel_sdk::{Declared, LifecycleState, Mod, ModError, json};
 
     use super::{
         Bearings, COMPASS_MOD_ID, CompassMod, SURVEY_MOD_ID, ServiceDirectory, ServiceRequest,
@@ -332,14 +314,18 @@ mod tests {
         let mut survey = SurveyMod::refusing();
         let refusal = survey
             .answer_service(&ServiceRequest::new(landmarks(), json!(null)))
-            .expect_err("this survey has no chart");
+            .expect_err("this survey has no chart")
+            .with_context(SurveyMod::declared_id().clone(), LifecycleState::Running);
+        assert_eq!(refusal.mod_id(), SurveyMod::declared_id());
+        assert_eq!(refusal.state(), LifecycleState::Running);
+        assert!(refusal.to_string().contains("no chart loaded"), "{refusal}");
+        let expected = ModError::refused(refusal.to_string());
 
         let mut compass = CompassMod::new();
         let failed = compass
             .use_services(&mut Fixed(Err(ServiceCallFailed::Refused(refusal))))
             .expect_err("a refusal is not absence");
-        assert_eq!(failed.mod_id(), CompassMod::declared_id());
-        assert!(failed.to_string().contains("no chart loaded"), "{failed}");
+        assert_eq!(failed, expected);
         assert_eq!(
             compass.bearings(),
             &Bearings::Unwired,

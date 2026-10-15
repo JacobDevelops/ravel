@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::declaration::{ConfigurationDeclaration, Setting, SettingKey, SettingSide};
 use crate::document::ValueDocument;
-use crate::schema::ValueError;
+use crate::schema::{ValueError, ValueKind};
 
 /// Which layer an effective value came from.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -234,6 +234,58 @@ impl LayeredConfiguration {
     #[must_use]
     pub fn value(&self, key: &SettingKey) -> Option<&Value> {
         Some(self.layer(self.declaration.setting(key)?).0)
+    }
+
+    /// Returns a boolean from a setting declared as boolean.
+    pub fn boolean(&self, key: &SettingKey) -> Result<bool, ValueError> {
+        self.typed_value(key, ValueKind::Boolean)?
+            .as_bool()
+            .ok_or(ValueError::Kind {
+                expected: ValueKind::Boolean,
+                found: "non-boolean",
+            })
+    }
+
+    /// Returns a signed integer from a setting declared as integer.
+    pub fn integer(&self, key: &SettingKey) -> Result<i64, ValueError> {
+        self.typed_value(key, ValueKind::Integer)?
+            .as_i64()
+            .ok_or(ValueError::IntegerRange)
+    }
+
+    /// Returns a number from a setting declared as number.
+    pub fn number(&self, key: &SettingKey) -> Result<f64, ValueError> {
+        self.typed_value(key, ValueKind::Number)?
+            .as_f64()
+            .ok_or(ValueError::Kind {
+                expected: ValueKind::Number,
+                found: "non-number",
+            })
+    }
+
+    /// Borrows text from a setting explicitly declared as string.
+    ///
+    /// Closed choices also require `"type": "string"`; an enum alone does not
+    /// establish a scalar kind.
+    pub fn text(&self, key: &SettingKey) -> Result<&str, ValueError> {
+        self.typed_value(key, ValueKind::String)?
+            .as_str()
+            .ok_or(ValueError::Kind {
+                expected: ValueKind::String,
+                found: "non-string",
+            })
+    }
+
+    fn typed_value(&self, key: &SettingKey, expected: ValueKind) -> Result<&Value, ValueError> {
+        let setting = self
+            .declaration
+            .setting(key)
+            .ok_or_else(|| ValueError::Unknown { key: key.clone() })?;
+        let declared = setting.value_schema.kind;
+        if declared != Some(expected) {
+            return Err(ValueError::AccessKind { expected, declared });
+        }
+        Ok(self.layer(setting).0)
     }
 
     /// Returns the layer the value in force for `key` came from.
@@ -474,7 +526,7 @@ impl fmt::Display for EditError {
             Self::OtherSide { key, declared, .. } => write!(
                 formatter,
                 "`{key}` is a {} setting, which this side does not own",
-                declared.name()
+                declared.as_str()
             ),
             Self::FixedByPack { key } => write!(
                 formatter,
@@ -574,6 +626,58 @@ mod tests {
         player: Option<&ValueDocument>,
     ) -> LayeredConfiguration {
         LayeredConfiguration::resolve(declaration(), pack, player).expect("legal layers")
+    }
+
+    #[test]
+    fn typed_accessors_follow_layers_and_enforce_declared_kinds() {
+        let mut config = resolved(None, Some(&document(&[("render.distance", json!(20))])));
+        assert_eq!(config.integer(&key("render.distance")), Ok(20));
+        assert_eq!(config.text(&key("world.difficulty")), Ok("calm"));
+        assert_eq!(
+            config.boolean(&key("render.distance")),
+            Err(ValueError::AccessKind {
+                expected: ValueKind::Boolean,
+                declared: Some(ValueKind::Integer),
+            })
+        );
+        assert_eq!(
+            config.text(&key("absent")),
+            Err(ValueError::Unknown { key: key("absent") })
+        );
+        config
+            .set(&key("engine.threads"), json!(8), Side::Client)
+            .expect("a valid edit");
+        assert_eq!(config.integer(&key("engine.threads")), Ok(4));
+        let pack = document(&[
+            ("world.difficulty", json!("harsh")),
+            ("server.motd", json!("pack")),
+        ]);
+        assert_eq!(
+            resolved(Some(&pack), None).text(&key("world.difficulty")),
+            Ok("harsh")
+        );
+    }
+
+    #[test]
+    fn typed_accessors_cover_numbers_booleans_untyped_schemas_and_integer_overflow() {
+        let declaration = ConfigurationDeclaration::parse(r#"{
+          "schemaVersion":1,"owner":"example_mod","version":1,"settings":[
+            {"key":"enabled","valueSchema":{"type":"boolean"},"default":true,"side":"common","restartRequired":false},
+            {"key":"ratio","valueSchema":{"type":"number"},"default":1.5,"side":"common","restartRequired":false},
+            {"key":"large","valueSchema":{"type":"integer"},"default":18446744073709551615,"side":"common","restartRequired":false},
+            {"key":"untyped","valueSchema":{},"default":true,"side":"common","restartRequired":false}
+          ]}"#).expect("valid defaults");
+        let config = LayeredConfiguration::resolve(declaration, None, None).expect("valid layers");
+        assert_eq!(config.boolean(&key("enabled")), Ok(true));
+        assert_eq!(config.number(&key("ratio")), Ok(1.5));
+        assert_eq!(config.integer(&key("large")), Err(ValueError::IntegerRange));
+        assert_eq!(
+            config.boolean(&key("untyped")),
+            Err(ValueError::AccessKind {
+                expected: ValueKind::Boolean,
+                declared: None,
+            })
+        );
     }
 
     #[test]

@@ -4,9 +4,9 @@ use std::fmt::Write as _;
 
 use super::GenerateError;
 use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
+use super::classfile::{java_type, signature, source_name, split};
 use super::inputs::Adapter;
 use super::mapping::Mapping;
-use super::render::{java_type, signature, source_name, split};
 use super::stubs::{self, Member, Stub};
 
 /// Renders a stub under the names the JVM links.

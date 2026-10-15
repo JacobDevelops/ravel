@@ -2,49 +2,33 @@
 //!
 //! Each verb carries an argument count so readers can skip unknown verbs.
 
-use std::sync::{Mutex, PoisonError};
-
 use jni::objects::{JClass, JString};
 use jni::{Env, EnvUnowned};
 
 use crate::guard::HookError;
 use crate::wire::{VERSION, count, field};
 
-/// Actions queued since the adapter last drained them.
-static PENDING: Mutex<Vec<Action>> = Mutex::new(Vec::new());
-
-/// Serializes tests sharing the process-wide action queue.
-#[cfg(test)]
-pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
-
 /// Adapter verb for a declared sound.
 const PLAY: &str = "audio.play";
 
 /// One thing the game should do, in the shape the adapter performs it.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct Action {
+pub(crate) struct Action {
     verb: &'static str,
     arguments: Vec<String>,
 }
 
 /// Asks for a declared sound to be played on the client.
-pub fn play(owner: &str, entry: &str) {
-    queue(Action {
+pub(crate) fn play(owner: &str, entry: &str) -> Action {
+    Action {
         verb: PLAY,
         arguments: vec![owner.to_owned(), entry.to_owned(), "1".to_owned()],
-    });
-}
-
-fn queue(action: Action) {
-    PENDING
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .push(action);
+    }
 }
 
 /// Encodes and clears queued actions; an empty queue returns an empty string.
-pub fn drain() -> String {
-    let taken = std::mem::take(&mut *PENDING.lock().unwrap_or_else(PoisonError::into_inner));
+pub(crate) fn drain(actions: &mut Vec<Action>) -> String {
+    let taken = std::mem::take(actions);
     if taken.is_empty() {
         return String::new();
     }
@@ -79,7 +63,10 @@ pub fn ravel_outward_actions<'local>(
 ) -> JString<'local> {
     env.with_env(
         |env: &mut Env<'local>| -> Result<JString<'local>, HookError> {
-            Ok(env.new_string(drain())?)
+            let payload = crate::runtime::installed()
+                .map(|runtime| runtime.drain_outward())
+                .unwrap_or_default();
+            Ok(env.new_string(payload)?)
         },
     )
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
@@ -87,7 +74,6 @@ pub fn ravel_outward_actions<'local>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::PoisonError;
 
     use super::{Action, PLAY, drain, encode, play};
 
@@ -125,11 +111,13 @@ mod tests {
 
     #[test]
     fn draining_answers_what_was_queued_and_empties_it() {
-        let _serial = super::SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
-        play("audio", "door_opens");
+        let mut queued = vec![play("audio", "door_opens")];
 
-        assert_eq!(drain(), "1:11:110:audio.play1:35:audio10:door_opens1:1");
-        assert_eq!(drain(), "");
+        assert_eq!(
+            drain(&mut queued),
+            "1:11:110:audio.play1:35:audio10:door_opens1:1"
+        );
+        assert_eq!(drain(&mut queued), "");
     }
 
     #[test]

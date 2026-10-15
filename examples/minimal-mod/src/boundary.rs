@@ -55,11 +55,9 @@
 //!             ContentId::new(Self::declared_id().clone(), "copper")
 //!                 .expect("`copper` is a legal content path"),
 //!         );
-//!         registrar.claim(key).map_err(|refusal| ModError::Refused {
-//!             mod_id: Self::declared_id().clone(),
-//!             state: LifecycleState::Constructed,
-//!             detail: refusal.to_string(),
-//!         })
+//!         registrar
+//!             .claim(key)
+//!             .map_err(|error| ModError::refused(error.to_string()))
 //!     }
 //!
 //!     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
@@ -68,11 +66,7 @@
 //!             [SavedDataVersion::new(1).expect("1 is not zero")],
 //!         )
 //!         .map(Some)
-//!         .map_err(|error| ModError::Refused {
-//!             mod_id: Self::declared_id().clone(),
-//!             state: LifecycleState::Constructed,
-//!             detail: error.to_string(),
-//!         })
+//!         .map_err(|error| ModError::refused(error.to_string()))
 //!     }
 //! }
 //!
@@ -94,8 +88,8 @@
 //! `ravel-bootstrap` and a mod cannot reach it. It is not a dependency of this
 //! crate and not in `ravel-sdk`'s closure, so the name does not resolve.
 //!
-//! ```compile_fail,E0433
-//! use ravel_bootstrap::runtime::Runtime;
+//! ```compile_fail,E0432
+//! use ravel_bootstrap_runtime::LoaderRuntime;
 //! ```
 //!
 //! # Failing: the only JNI-typed value in the workspace is not reachable
@@ -149,7 +143,7 @@
 //! above a mod rather than beside it, and none is in a mod's graph.
 //!
 //! ```compile_fail,E0432
-//! use ravel_composed_host::compose;
+//! use ravel_bootstrap::compose;
 //! ```
 //!
 //! ```compile_fail,E0432
@@ -274,8 +268,8 @@
 //! about the envelope.
 //!
 //! ```
-//! use ravel_sdk::save::{SavedDataEnvelope, SavedDataVersion, SavedPayload};
-//! use ravel_sdk::ModId;
+//! use ravel_sdk::save::{SavedDataEnvelope, SavedDataVersion};
+//! use ravel_sdk::{JsonValue, ModId};
 //!
 //! let owner: ModId = "example".parse().expect("a legal mod id");
 //! let envelope = SavedDataEnvelope::new(
@@ -283,14 +277,14 @@
 //!     SavedDataVersion::new(1).expect("1 is not zero"),
 //!     Vec::new(),
 //!     None,
-//!     SavedPayload::Null,
+//!     JsonValue::Null,
 //! );
-//! assert_eq!(envelope.payload(), &SavedPayload::Null);
+//! assert_eq!(envelope.payload(), &JsonValue::Null);
 //! ```
 //!
 //! ```compile_fail
 //! use ravel_sdk::save::{SavedDataEnvelope, SavedDataVersion};
-//! use ravel_sdk::ModId;
+//! use ravel_sdk::{JsonValue, ModId};
 //!
 //! fn main() {
 //!     let owner: ModId = "example".parse().expect("a legal mod id");
@@ -299,7 +293,7 @@
 //!         SavedDataVersion::new(1).expect("1 is not zero"),
 //!         Vec::new(),
 //!         None,
-//!         ravel_sdk::save::SavedPayload::Null,
+//!         JsonValue::Null,
 //!     );
 //!     let _ = envelope.payload;
 //! }

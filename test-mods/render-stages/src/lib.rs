@@ -18,14 +18,15 @@ const STAGES: [RenderStage; 2] = [RenderStage::AfterTerrain, RenderStage::AfterI
 ///
 /// ```
 /// use ravel_sdk::{Declared, ModId};
+/// use ravel_sdk::render_stages::RenderStage;
 /// use ravel_test_mod_render_stages::RenderStagesMod;
 ///
 /// let partner: ModId = "partner_mod".parse()?;
 /// let order = RenderStagesMod::behind(&partner).expect("the pair resolves");
 ///
 /// // This mod asked to follow the partner, so it is second at both stages.
-/// assert_eq!(order.at("after_terrain"), [partner.clone(), RenderStagesMod::declared_id().clone()]);
-/// assert_eq!(order.at("after_interface"), [partner, RenderStagesMod::declared_id().clone()]);
+/// assert_eq!(order.at(RenderStage::AfterTerrain), [partner.clone(), RenderStagesMod::declared_id().clone()]);
+/// assert_eq!(order.at(RenderStage::AfterInterface), [partner, RenderStagesMod::declared_id().clone()]);
 /// # Ok::<(), ravel_sdk::ModIdError>(())
 /// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -108,7 +109,7 @@ mod tests {
         let order = RenderStagesMod::behind(&partner).expect("the pair resolves");
 
         for stage in RenderStagesMod::stages() {
-            let at = order.at(stage.as_str());
+            let at = order.at(stage);
             let mine = at
                 .iter()
                 .position(|id| id == RenderStagesMod::declared_id())

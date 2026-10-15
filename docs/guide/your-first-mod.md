@@ -106,11 +106,9 @@ Every method returns `Result<(), ModError>`. The refusal a mod raises is
 state it was in, and a sentence in the mod's own words.
 
 ```rust
-Err(ModError::Refused {
-    mod_id: Self::declared_id().clone(),
-    state: LifecycleState::Constructed,
-    detail: "the lantern registry name is already taken".to_owned(),
-})
+Err(ModError::refused(
+    "the lantern registry name is already taken",
+))
 ```
 
 Fill all three honestly. The loader attributes a failure to the mod and the phase

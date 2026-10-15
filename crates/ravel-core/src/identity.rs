@@ -31,43 +31,41 @@ impl ModId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
 
-    fn validate(candidate: &str) -> Result<(), ModIdError> {
-        if candidate.is_empty() {
-            return Err(ModIdError::Empty);
-        }
-
-        let mut pending_separator = None;
-        for (index, character) in candidate.chars().enumerate() {
-            if index == 0 {
-                if !character.is_ascii_lowercase() {
-                    return Err(ModIdError::Leading { character });
-                }
-            } else if character.is_ascii_lowercase() || character.is_ascii_digit() {
-                pending_separator = None;
-            } else if SEPARATORS.contains(&character) {
-                if pending_separator.is_some() {
-                    return Err(ModIdError::Separator { character, index });
-                }
-                pending_separator = Some((character, index));
-            } else {
-                return Err(ModIdError::Character { character, index });
-            }
-        }
-
-        if let Some((character, index)) = pending_separator {
-            return Err(ModIdError::Separator { character, index });
-        }
-
-        Ok(())
+/// Checks the shared mod-identity and setting-key grammar.
+pub fn check_identifier(candidate: &str) -> Result<(), ModIdError> {
+    if candidate.is_empty() {
+        return Err(ModIdError::Empty);
     }
+    let mut pending_separator = None;
+    for (index, character) in candidate.chars().enumerate() {
+        if index == 0 {
+            if !character.is_ascii_lowercase() {
+                return Err(ModIdError::Leading { character });
+            }
+        } else if character.is_ascii_lowercase() || character.is_ascii_digit() {
+            pending_separator = None;
+        } else if SEPARATORS.contains(&character) {
+            if pending_separator.is_some() {
+                return Err(ModIdError::Separator { character, index });
+            }
+            pending_separator = Some((character, index));
+        } else {
+            return Err(ModIdError::Character { character, index });
+        }
+    }
+    if let Some((character, index)) = pending_separator {
+        return Err(ModIdError::Separator { character, index });
+    }
+    Ok(())
 }
 
 impl FromStr for ModId {
     type Err = ModIdError;
 
     fn from_str(candidate: &str) -> Result<Self, Self::Err> {
-        Self::validate(candidate)?;
+        check_identifier(candidate)?;
         Ok(Self(candidate.to_owned()))
     }
 }
@@ -76,7 +74,7 @@ impl TryFrom<String> for ModId {
     type Error = ModIdError;
 
     fn try_from(candidate: String) -> Result<Self, Self::Error> {
-        Self::validate(&candidate)?;
+        check_identifier(&candidate)?;
         Ok(Self(candidate))
     }
 }
@@ -93,7 +91,7 @@ impl fmt::Display for ModId {
     }
 }
 
-/// Why a candidate string is not a valid [`ModId`].
+/// Why a mod identity or setting key fails the shared identifier grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModIdError {
     /// The candidate is empty.
@@ -122,19 +120,19 @@ pub enum ModIdError {
 impl fmt::Display for ModIdError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Empty => formatter.write_str("a mod id cannot be empty"),
+            Self::Empty => formatter.write_str("an identifier cannot be empty"),
             Self::Leading { character } => write!(
                 formatter,
-                "a mod id starts with an ASCII lowercase letter, not `{character}`"
+                "an identifier starts with an ASCII lowercase letter, not `{character}`"
             ),
             Self::Character { character, index } => write!(
                 formatter,
-                "a mod id holds only `a`-`z`, `0`-`9`, `-`, `_`, and `.`, but character {index} \
+                "an identifier holds only `a`-`z`, `0`-`9`, `-`, `_`, and `.`, but character {index} \
                  is `{character}`"
             ),
             Self::Separator { character, index } => write!(
                 formatter,
-                "a mod id separator is always followed by a letter or a digit, but `{character}` \
+                "an identifier separator is always followed by a letter or a digit, but `{character}` \
                  at character {index} is not"
             ),
         }
@@ -256,24 +254,24 @@ mod tests {
     #[test]
     fn every_rejection_renders_the_broken_rule() {
         for (error, expected) in [
-            (ModIdError::Empty, "a mod id cannot be empty"),
+            (ModIdError::Empty, "an identifier cannot be empty"),
             (
                 ModIdError::Leading { character: 'E' },
-                "a mod id starts with an ASCII lowercase letter, not `E`",
+                "an identifier starts with an ASCII lowercase letter, not `E`",
             ),
             (
                 ModIdError::Character {
                     character: '/',
                     index: 7,
                 },
-                "a mod id holds only `a`-`z`, `0`-`9`, `-`, `_`, and `.`, but character 7 is `/`",
+                "an identifier holds only `a`-`z`, `0`-`9`, `-`, `_`, and `.`, but character 7 is `/`",
             ),
             (
                 ModIdError::Separator {
                     character: '_',
                     index: 7,
                 },
-                "a mod id separator is always followed by a letter or a digit, but `_` at \
+                "an identifier separator is always followed by a letter or a digit, but `_` at \
                  character 7 is not",
             ),
         ] {
@@ -299,7 +297,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("a mod id starts with an ASCII lowercase letter"),
+                .contains("an identifier starts with an ASCII lowercase letter"),
             "{error}"
         );
     }

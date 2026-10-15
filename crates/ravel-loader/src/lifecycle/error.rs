@@ -1,6 +1,8 @@
 use std::fmt;
 
-use ravel_core::{ContentKind, FailureKind, LifecycleState, ModId, Side, StructuredFailure};
+use ravel_core::{
+    ContentKind, FailureKind, LifecycleState, ModId, RegistryKey, Side, StructuredFailure,
+};
 
 /// Why the lifecycle refused an operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -66,6 +68,13 @@ pub enum LifecycleError {
         identifier: String,
         /// The state the claim arrived in.
         state: LifecycleState,
+    },
+    /// A mod claimed a registry key in another identity's namespace.
+    ForeignRegistryClaim {
+        /// The claimed key.
+        key: RegistryKey,
+        /// The claiming mod.
+        mod_id: ModId,
     },
     /// Two mods claim one registry identifier.
     ConflictingRegistryClaim {
@@ -140,17 +149,14 @@ impl fmt::Display for LifecycleError {
             } => write!(
                 formatter,
                 "`{mod_id}` can claim `{identifier}` only while constructed, but it is `{}`",
-                state.name()
+                state.as_str()
             ),
+            Self::ForeignRegistryClaim { key, mod_id } => fmt_foreign_claim(formatter, key, mod_id),
             Self::ConflictingRegistryClaim {
                 identifier,
                 owner,
                 claimant,
-            } => write!(
-                formatter,
-                "`{claimant}` claimed the registry identifier `{identifier}`, which `{owner}` \
-                 already owns"
-            ),
+            } => fmt_registry_conflict(formatter, identifier, owner, claimant),
             Self::MismatchedContentBehaviour {
                 identifier,
                 described,
@@ -162,7 +168,7 @@ impl fmt::Display for LifecycleError {
             Self::WorldAccessBlocked { mod_id, state } => write!(
                 formatter,
                 "`{mod_id}` is `{}` rather than running, so the set cannot open a world",
-                state.name()
+                state.as_str()
             ),
             Self::WorldAccessHalted { mod_id } => write!(
                 formatter,
@@ -176,6 +182,29 @@ impl fmt::Display for LifecycleError {
     }
 }
 
+fn fmt_registry_conflict(
+    formatter: &mut fmt::Formatter<'_>,
+    identifier: &str,
+    owner: &ModId,
+    claimant: &ModId,
+) -> fmt::Result {
+    write!(
+        formatter,
+        "`{claimant}` claimed the registry identifier `{identifier}`, which `{owner}` already owns"
+    )
+}
+
+fn fmt_foreign_claim(
+    formatter: &mut fmt::Formatter<'_>,
+    key: &RegistryKey,
+    mod_id: &ModId,
+) -> fmt::Result {
+    write!(
+        formatter,
+        "`{mod_id}` cannot claim `{key}` in another mod's namespace"
+    )
+}
+
 fn fmt_illegal_transition(
     formatter: &mut fmt::Formatter<'_>,
     mod_id: &ModId,
@@ -185,8 +214,8 @@ fn fmt_illegal_transition(
     write!(
         formatter,
         "`{mod_id}` cannot move from `{}` to `{}`",
-        from.name(),
-        to.name()
+        from.as_str(),
+        to.as_str()
     )
 }
 
@@ -200,8 +229,8 @@ fn fmt_halted(
         formatter,
         "the set failed after mutating the world, so `{mod_id}` cannot move from `{}` to \
          `{}`; only stopping remains",
-        from.name(),
-        to.name()
+        from.as_str(),
+        to.as_str()
     )
 }
 
@@ -215,8 +244,8 @@ fn fmt_side_mismatch(
         formatter,
         "`{mod_id}` does not declare the `{}` side, so its code never loads here and it \
          stays `{}`",
-        side.name(),
-        from.name()
+        side.as_str(),
+        from.as_str()
     )
 }
 
@@ -235,6 +264,7 @@ impl StructuredFailure for LifecycleError {
             | Self::RegistrationBarrierOpen { .. }
             | Self::RegistrationBarrierClosed { .. }
             | Self::RegistrationWindow { .. }
+            | Self::ForeignRegistryClaim { .. }
             | Self::MismatchedContentBehaviour { .. }
             | Self::WorldAccessBlocked { .. }
             | Self::WorldAccessHalted { .. }
@@ -250,9 +280,9 @@ impl StructuredFailure for LifecycleError {
             Self::RegistrationWindow { state, .. } | Self::WorldAccessBlocked { state, .. } => {
                 *state
             }
-            Self::ConflictingRegistryClaim { .. } | Self::MismatchedContentBehaviour { .. } => {
-                LifecycleState::Constructed
-            }
+            Self::ConflictingRegistryClaim { .. }
+            | Self::ForeignRegistryClaim { .. }
+            | Self::MismatchedContentBehaviour { .. } => LifecycleState::Constructed,
             Self::RegistrationBarrierOpen { .. } | Self::RegistrationBarrierClosed { .. } => {
                 LifecycleState::Registered
             }
@@ -263,5 +293,9 @@ impl StructuredFailure for LifecycleError {
             | Self::UnknownMod { .. }
             | Self::AttributionRequired => LifecycleState::Discovered,
         }
+    }
+
+    fn quotes_untrusted_text(&self) -> bool {
+        false
     }
 }

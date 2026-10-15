@@ -190,11 +190,8 @@ public final class Hook {
     public static void initialize() {
     }
 
-    public static void ravelEnableProfiling(String value) {
-    }
-
     // Force class loading during initialization; side selection is tested against the real host.
-    public static void ravelInitialize(int side) {
+    public static void ravelInitialize(int side, boolean profilingRequested) {
         String className;
         if (Boolean.getBoolean("ravel.test.transform.hierarchy")) {
             className = "dev.ravel.jvm.hierarchy.HierarchySource";

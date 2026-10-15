@@ -5,11 +5,12 @@
 //! Version 1 stores one string; version 2 stores an entry list. Migration
 //! preserves the old entry and refuses malformed payloads without changing state.
 
+use ravel_sdk::JsonValue;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentId;
 use ravel_sdk::save::{
     MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan,
-    SavedDataVersion, SavedPayload,
+    SavedDataVersion,
 };
 use ravel_sdk::services::{ServiceDeclaration, ServiceId, ServiceRequest, ServiceResponse};
 use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod, json};
@@ -54,10 +55,10 @@ pub fn entries_service() -> ServiceId {
 }
 
 // Preserve the single entry when upgrading to a list.
-fn to_two(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
+fn to_two(payload: &JsonValue) -> Result<JsonValue, MigrationFailed> {
     let entry = payload
         .get("entry")
-        .and_then(SavedPayload::as_str)
+        .and_then(JsonValue::as_str)
         .ok_or_else(|| MigrationFailed::new("version 1 held no `entry` string"))?;
     let entries: Vec<&str> = if entry.is_empty() {
         Vec::new()
@@ -89,7 +90,7 @@ fn to_two(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
 ///
 /// // A version-1 world reaches version 2 through the declared step.
 /// let one = SavedDataVersion::new(1).expect("1 is not zero");
-/// let plan = SavedDataPlan::open(&journal.declaration(), Some(one))?;
+/// let plan = SavedDataPlan::open(&journal.declaration()?, Some(one))?;
 /// assert_eq!(
 ///     journal.chain().apply(&plan, &json!({ "entry": "found copper" }))?,
 ///     json!({ "entries": ["found copper"] })
@@ -111,16 +112,15 @@ impl Journal {
 
     /// Returns the versions this build reads.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if [`VERSIONS`] stops being a non-empty list of non-zero versions.
-    #[must_use]
-    pub fn declaration(&self) -> SavedDataDeclaration {
+    /// Returns a refusal if the packaged versions are invalid.
+    pub fn declaration(&self) -> Result<SavedDataDeclaration, ModError> {
         SavedDataDeclaration::new(
             Self::declared_id().clone(),
             VERSIONS.into_iter().map(version),
         )
-        .expect("`VERSIONS` is a non-empty list of non-zero versions")
+        .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Returns the step into every version above the oldest.
@@ -160,32 +160,23 @@ impl Mod for Journal {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(SETTINGS)
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let refuse = |detail: String| ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail,
-        };
         let key = CAPACITY
             .parse()
-            .map_err(|_| refuse(format!("`{CAPACITY}` is not a legal setting key")))?;
+            .map_err(|_| ModError::refused(format!("`{CAPACITY}` is not a legal setting key")))?;
         let capacity = resolved
             .value(&key)
-            .and_then(SavedPayload::as_u64)
+            .and_then(JsonValue::as_u64)
             .ok_or_else(|| {
-                refuse(format!(
+                ModError::refused(format!(
                     "`{CAPACITY}` resolved to something that is not a count"
                 ))
             })?;
         self.capacity = usize::try_from(capacity).map_err(|_| {
-            refuse(format!(
+            ModError::refused(format!(
                 "`{CAPACITY}` resolved to a count this platform cannot hold"
             ))
         })?;
@@ -193,7 +184,7 @@ impl Mod for Journal {
     }
 
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
-        Ok(Some(self.declaration()))
+        self.declaration().map(Some)
     }
 
     fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
@@ -213,25 +204,20 @@ impl Mod for Journal {
         let Some(envelope) = envelope else {
             return Ok(());
         };
-        let refuse = |detail: String| ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Registered,
-            detail,
-        };
         let current = self
             .chain()
             .apply(plan, envelope.payload())
-            .map_err(|refusal| refuse(refusal.to_string()))?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
         let stored = current
             .get("entries")
-            .and_then(SavedPayload::as_array)
-            .ok_or_else(|| refuse("the stored journal holds no entry list".to_owned()))?;
+            .and_then(JsonValue::as_array)
+            .ok_or_else(|| ModError::refused("the stored journal holds no entry list"))?;
 
         let mut entries = Vec::with_capacity(stored.len());
         for value in stored {
             let entry = value
                 .as_str()
-                .ok_or_else(|| refuse("a stored journal entry is not text".to_owned()))?;
+                .ok_or_else(|| ModError::refused("a stored journal entry is not text"))?;
             entries.push(entry.to_owned());
         }
         self.entries = entries;
@@ -241,7 +227,7 @@ impl Mod for Journal {
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
         Ok(Some(SavedDataEnvelope::new(
             Self::declared_id().clone(),
-            self.declaration().current(),
+            self.declaration()?.current(),
             Vec::new(),
             None,
             json!({ "entries": self.entries }),
@@ -251,11 +237,7 @@ impl Mod for Journal {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::new(Self::declared_id().clone(), [entries_service()], [])
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -270,9 +252,9 @@ impl Mod for Journal {
 #[cfg(test)]
 mod tests {
     use ravel_sdk::config::LayeredConfiguration;
-    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan, SavedPayload};
+    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan};
     use ravel_sdk::services::ServiceRequest;
-    use ravel_sdk::{Declared, Mod, json};
+    use ravel_sdk::{Declared, JsonValue, Mod, json};
 
     use super::{CAPACITY, Journal, VERSIONS, entries_service, version};
 
@@ -288,9 +270,9 @@ mod tests {
         journal
     }
 
-    fn opened(at: u32, payload: SavedPayload) -> Result<Journal, ravel_sdk::ModError> {
+    fn opened(at: u32, payload: JsonValue) -> Result<Journal, ravel_sdk::ModError> {
         let mut journal = configured();
-        let plan = SavedDataPlan::open(&journal.declaration(), Some(version(at)))
+        let plan = SavedDataPlan::open(&journal.declaration()?, Some(version(at)))
             .expect("a declared version");
         let envelope = SavedDataEnvelope::new(
             Journal::declared_id().clone(),
@@ -308,10 +290,10 @@ mod tests {
         let journal = Journal::new();
         journal
             .chain()
-            .covers(&journal.declaration())
+            .covers(&journal.declaration().expect("valid declaration"))
             .expect("every declared version has a step into it");
         assert_eq!(
-            journal.declaration().current(),
+            journal.declaration().expect("valid declaration").current(),
             version(*VERSIONS.last().expect("`VERSIONS` is not empty"))
         );
     }
@@ -332,7 +314,6 @@ mod tests {
     fn a_shape_the_step_cannot_read_refuses_and_leaves_the_journal_empty() {
         let refusal =
             opened(1, json!({ "note": "found copper" })).expect_err("version 1 held no `entry`");
-        assert_eq!(refusal.mod_id(), Journal::declared_id());
         assert!(refusal.to_string().contains("`entry`"), "{refusal}");
     }
 
@@ -347,8 +328,11 @@ mod tests {
             .expect("and produces an envelope");
 
         let mut reopened = configured();
-        let plan = SavedDataPlan::open(&reopened.declaration(), Some(envelope.data_version()))
-            .expect("the current version");
+        let plan = SavedDataPlan::open(
+            &reopened.declaration().expect("valid declaration"),
+            Some(envelope.data_version()),
+        )
+        .expect("the current version");
         reopened
             .open_saved_data(Some(&envelope), &plan)
             .expect("its own shape");

@@ -233,15 +233,15 @@ pub enum AudioError {
 }
 
 impl AudioError {
-    /// Returns the entry an event named and did not find, or `""`.
+    /// Returns the entry an event named and did not find, if that caused the error.
     #[must_use]
-    pub fn unknown_entry(&self) -> &str {
+    pub fn unknown_entry(&self) -> Option<&str> {
         match self {
-            Self::UnknownEntry { name } => name,
+            Self::UnknownEntry { name } => Some(name),
             Self::Name { .. }
             | Self::DuplicateEntry { .. }
             | Self::UnknownEvent { .. }
-            | Self::WrongSide { .. } => "",
+            | Self::WrongSide { .. } => None,
         }
     }
 
@@ -277,7 +277,7 @@ impl fmt::Display for AudioError {
             Self::WrongSide { name, side } => write!(
                 formatter,
                 "`{}` has no sound to play with, so `{name}` is refused there rather than skipped",
-                side.name()
+                side.as_str()
             ),
         }
     }
@@ -344,7 +344,7 @@ mod tests {
             .event("door_opens")
             .expect_err("an event with nothing to play is refused at declaration");
 
-        assert_eq!(refusal.unknown_entry(), "door_opens");
+        assert_eq!(refusal.unknown_entry(), Some("door_opens"));
         assert_eq!(declared.events().count(), 0);
     }
 
@@ -358,6 +358,7 @@ mod tests {
             .expect_err("a second claim on one name is refused");
 
         assert!(matches!(refusal, AudioError::DuplicateEntry { .. }));
+        assert_eq!(refusal.unknown_entry(), None);
         // The first bytes are still the ones declared.
         assert_eq!(declared.bytes("door_opens"), Some(BYTES));
     }
@@ -379,6 +380,7 @@ mod tests {
                 .expect_err("a server has nothing to play with and says so");
 
             assert_eq!(refusal.wrong_side(), Some(side));
+            assert_eq!(refusal.unknown_entry(), None);
             assert!(refusal.to_string().contains("door_opens"));
         }
     }

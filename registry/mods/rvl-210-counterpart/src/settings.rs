@@ -83,16 +83,17 @@ impl Settings {
     /// resolution does not carry.
     #[must_use]
     pub fn read(resolved: &LayeredConfiguration) -> Self {
-        let truth = |key: &str| {
-            key.parse()
-                .ok()
-                .and_then(|key| resolved.value(&key))
-                .and_then(ravel_sdk::JsonValue::as_bool)
-                .unwrap_or(false)
-        };
         Self {
-            scratch_world_shortcut: truth(DEVELOPMENT_SHORTCUT),
-            silence_music: truth(DEVELOPMENT_SILENCE_MUSIC),
+            scratch_world_shortcut: DEVELOPMENT_SHORTCUT
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(false),
+            silence_music: DEVELOPMENT_SILENCE_MUSIC
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(false),
         }
     }
 }

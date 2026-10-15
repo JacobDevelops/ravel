@@ -4,12 +4,11 @@ use std::sync::{Arc, Mutex};
 use ravel_core::{
     ContentId, ContentKind, LifecycleState, ModId, RegistryKey, Side, SideSet, StructuredFailure,
 };
-use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, Registrar};
+use ravel_host_api::{CommandInvocation, GameEvent, HostError, HostMod, ModError, Registrar};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement};
 use ravel_minecraft::{HookId, HookKind, HookObserver, HookOutcome, HookTarget, HookValue};
 
 use super::{COMMAND, EVENTS, LoaderRuntime, environment};
-use crate::outward;
 
 use ravel_data::PlayRequest;
 
@@ -49,7 +48,7 @@ enum Behaviour {
     Records,
     Fails,
     Panics,
-    Forges(&'static str),
+    Unsupported,
 }
 
 struct Recording {
@@ -64,48 +63,34 @@ impl HostMod for Recording {
         &self.id
     }
 
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
+    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         for claim in &self.claims {
             registrar
                 .claim(claim.clone())
-                .map_err(|refused| HostError::Refused {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Constructed,
-                    detail: refused.to_string(),
-                })?;
+                .map_err(|refused| ModError::refused(refused.to_string()))?;
         }
         Ok(())
     }
 
-    fn observe(&mut self, event: GameEvent) -> Result<(), HostError> {
+    fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
         match self.behaviour {
             Behaviour::Records => {
                 self.log.lock().expect("nothing panicked").seen.push(event);
                 Ok(())
             }
-            Behaviour::Fails => Err(HostError::Refused {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Running,
-                detail: "this mod declines every event".to_owned(),
-            }),
-            Behaviour::Forges(owner) => Err(HostError::Unsupported {
-                mod_id: id(owner),
-                state: LifecycleState::Running,
-            }),
+            Behaviour::Fails => Err(ModError::refused("this mod declines every event")),
+            Behaviour::Unsupported => Err(ModError::Unsupported),
             Behaviour::Panics => panic!("this mod is broken"),
         }
     }
 
-    fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), HostError> {
-        if let Behaviour::Forges(owner) = self.behaviour {
-            return Err(HostError::Unsupported {
-                mod_id: id(owner),
-                state: LifecycleState::Running,
-            });
+    fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
+        if self.behaviour == Behaviour::Unsupported {
+            return Err(ModError::Unsupported);
         }
         self.log
             .lock()
@@ -193,31 +178,35 @@ fn held(side: Side, host: Box<dyn HostMod>) -> LoaderRuntime {
 
 #[test]
 fn a_mod_asking_to_play_reaches_the_outward_queue_as_the_adapter_reads_it() {
-    let _serial = outward::SERIAL
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    outward::drain();
-
     let runtime = playing(Side::Client);
     runtime.observe(&target("client.tick"), &[]);
 
     assert_eq!(
-        outward::drain(),
+        runtime.drain_outward(),
         "1:11:110:audio.play1:35:audio10:door_opens1:1"
     );
 }
 
 #[test]
-fn a_delivery_a_mod_asked_nothing_on_queues_nothing() {
-    let _serial = outward::SERIAL
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    outward::drain();
+fn outward_actions_belong_only_to_the_runtime_that_produced_them() {
+    let producing = playing(Side::Client);
+    let idle = playing(Side::Client);
+    producing.observe(&target("client.tick"), &[]);
 
+    assert_eq!(idle.drain_outward(), "");
+    assert_eq!(
+        producing.drain_outward(),
+        "1:11:110:audio.play1:35:audio10:door_opens1:1"
+    );
+    assert_eq!(producing.drain_outward(), "");
+}
+
+#[test]
+fn a_delivery_a_mod_asked_nothing_on_queues_nothing() {
     let runtime = playing(Side::Client);
     runtime.observe(&target("resource.reload-client-packs"), &[]);
 
-    assert_eq!(outward::drain(), "");
+    assert_eq!(runtime.drain_outward(), "");
 }
 
 struct AsksOnEveryEvent {
@@ -230,11 +219,11 @@ impl HostMod for AsksOnEveryEvent {
         &self.id
     }
 
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
-    fn observe(&mut self, _event: GameEvent) -> Result<(), HostError> {
+    fn observe(&mut self, _event: GameEvent) -> Result<(), ModError> {
         self.asked.push(
             ravel_test_mod_audio::AudioMod::play(Side::Client)
                 .expect("a client request is legal to build anywhere"),
@@ -249,11 +238,6 @@ impl HostMod for AsksOnEveryEvent {
 
 #[test]
 fn a_server_process_queues_nothing_outward() {
-    let _serial = outward::SERIAL
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    outward::drain();
-
     let runtime = held(
         Side::DedicatedServer,
         Box::new(AsksOnEveryEvent {
@@ -263,16 +247,11 @@ fn a_server_process_queues_nothing_outward() {
     );
     runtime.observe(&target("server.tick"), &[]);
 
-    assert_eq!(outward::drain(), "");
+    assert_eq!(runtime.drain_outward(), "");
 }
 
 #[test]
 fn the_same_mod_on_a_client_does_fill_it() {
-    let _serial = outward::SERIAL
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    outward::drain();
-
     let runtime = held(
         Side::Client,
         Box::new(AsksOnEveryEvent {
@@ -283,12 +262,12 @@ fn the_same_mod_on_a_client_does_fill_it() {
     runtime.observe(&target("client.tick"), &[]);
 
     assert_eq!(
-        outward::drain(),
+        runtime.drain_outward(),
         "1:11:110:audio.play1:35:audio10:door_opens1:1"
     );
 }
 
-fn forged_pair(forged: &'static str) -> LoaderRuntime {
+fn failing_pair(behaviour: Behaviour, log: &Arc<Mutex<Log>>) -> LoaderRuntime {
     let mut machine = LifecycleMachine::new(
         Side::Client,
         [MOD, "innocent"]
@@ -307,9 +286,9 @@ fn forged_pair(forged: &'static str) -> LoaderRuntime {
         .map(|name| -> Box<dyn HostMod> {
             Box::new(Recording {
                 id: id(name),
-                log: Arc::new(Mutex::new(Log::default())),
+                log: Arc::clone(log),
                 behaviour: if name == MOD {
-                    Behaviour::Forges(forged)
+                    behaviour
                 } else {
                     Behaviour::Records
                 },
@@ -340,63 +319,63 @@ fn forged_pair(forged: &'static str) -> LoaderRuntime {
 }
 
 #[test]
-fn forged_delivery_errors_fail_the_actual_event_or_command_owner() {
-    for forged in ["unknown_owner", "innocent"] {
-        for command in [false, true] {
-            let runtime = forged_pair(forged);
-            if command {
-                runtime.observe(&target(COMMAND), &[HookValue::Text(format!("{MOD}:go"))]);
-            } else {
-                runtime.observe(&target("client.tick"), &[]);
-            }
-            let inner = runtime.inner.lock().expect("no panic");
-            assert_eq!(inner.machine.state(&id(MOD)), Ok(LifecycleState::Failed));
-            assert_eq!(
-                inner.machine.state(&id("innocent")),
-                Ok(LifecycleState::Running)
-            );
-            let none: [ravel_observability::Refusal; 0] = [];
-            assert_eq!(inner.report.refusals(), none);
-            assert_eq!(
-                inner
-                    .machine
-                    .failure(&id(MOD))
-                    .expect("owner")
-                    .expect("failure")
-                    .mod_id,
-                Some(id(MOD))
-            );
-            drop(inner);
+fn unsupported_delivery_errors_fail_the_actual_event_or_command_owner() {
+    for command in [false, true] {
+        let runtime = failing_pair(
+            Behaviour::Unsupported,
+            &Arc::new(Mutex::new(Log::default())),
+        );
+        if command {
+            runtime.observe(&target(COMMAND), &[HookValue::Text(format!("{MOD}:go"))]);
+        } else {
+            runtime.observe(&target("client.tick"), &[]);
         }
+        let inner = runtime.inner.lock().expect("no panic");
+        assert_eq!(inner.machine.state(&id(MOD)), Ok(LifecycleState::Failed));
+        assert_eq!(
+            inner.machine.state(&id("innocent")),
+            Ok(LifecycleState::Running)
+        );
+        let none: [ravel_observability::Refusal; 0] = [];
+        assert_eq!(inner.report.refusals(), none);
+        let failure = inner
+            .machine
+            .failure(&id(MOD))
+            .expect("owner")
+            .expect("failure");
+        assert_eq!(failure.mod_id, Some(id(MOD)));
+        assert_eq!(
+            failure.surface,
+            Some(if command {
+                ravel_core::FailureSurface::Registry(key("go"))
+            } else {
+                ravel_core::FailureSurface::Event(GameEvent::ClientTick.as_str().to_owned())
+            })
+        );
+        drop(inner);
     }
 }
 
 #[test]
 fn a_mod_that_panicked_does_not_silence_every_later_hook() {
-    let (runtime, _log) = running(Side::DedicatedServer, Vec::new(), Behaviour::Panics);
+    let log = Arc::new(Mutex::new(Log::default()));
+    let runtime = failing_pair(Behaviour::Panics, &log);
 
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let deliveries = [(); 2].map(|()| {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            runtime.observe(&target("server.tick"), &[]);
+            runtime.observe(&target("client.tick"), &[]);
+            log.lock()
+                .expect("healthy callback did not panic")
+                .seen
+                .len()
         }))
     });
     std::panic::set_hook(previous);
 
-    for (which, caught) in ["first", "second"].into_iter().zip(deliveries) {
-        let raised = caught.expect_err("the mod under test panics on every event");
-        let message = raised
-            .downcast_ref::<&str>()
-            .copied()
-            .or_else(|| raised.downcast_ref::<String>().map(String::as_str))
-            .unwrap_or_default();
-        assert_eq!(
-            message, "this mod is broken",
-            "the {which} delivery reached the mod; refusing a poisoned lock would \
-             have raised about the lock instead, for the rest of the run"
-        );
-    }
+    let observed_counts =
+        deliveries.map(|caught| caught.expect("a callback panic is contained by loader delivery"));
 
     let inner = runtime
         .inner
@@ -404,16 +383,121 @@ fn a_mod_that_panicked_does_not_silence_every_later_hook() {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(
         inner.machine.state(&id(MOD)).expect("known mod"),
+        LifecycleState::Failed
+    );
+    assert_eq!(
+        inner.machine.state(&id("innocent")).expect("healthy mod"),
         LifecycleState::Running
     );
+    assert!(
+        observed_counts[1] > observed_counts[0],
+        "after the failing first delivery, the later hook reaches the healthy mod"
+    );
+}
+
+struct PanickingDrain {
+    id: ModId,
+    drains: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl HostMod for PanickingDrain {
+    fn id(&self) -> &ModId {
+        &self.id
+    }
+
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
+        Ok(())
+    }
+
+    fn observe(&mut self, _event: GameEvent) -> Result<(), ModError> {
+        Ok(())
+    }
+
+    fn take_play_requests(&mut self) -> Vec<PlayRequest> {
+        self.drains
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        panic!("private drain callback payload");
+    }
+}
+
+#[test]
+fn panicking_outward_drain_is_attributed_and_never_called_again() {
+    let (machine, _, _) = parts(Side::Client, Vec::new(), Behaviour::Records);
+    let drains = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let runtime = LoaderRuntime::new(
+        machine,
+        vec![Box::new(PanickingDrain {
+            id: id(MOD),
+            drains: Arc::clone(&drains),
+        })],
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            runtime.observe(&target("client.tick"), &[]),
+            HookOutcome::Proceed
+        );
+    }
+    assert_eq!(drains.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let inner = runtime
+        .inner
+        .lock()
+        .expect("the drain panic is caught before unlocking");
+    assert_eq!(inner.machine.state(&id(MOD)), Ok(LifecycleState::Failed));
+    let failure = inner
+        .machine
+        .failure(&id(MOD))
+        .expect("owner")
+        .expect("failure");
+    assert_eq!(failure.mod_id, Some(id(MOD)));
+    assert_eq!(failure.state, LifecycleState::Running);
+    assert_eq!(failure.environment, environment());
+    assert_eq!(failure.surface, None);
+    assert!(!failure.message.text().contains("private drain"));
+    drop(inner);
+}
+
+#[test]
+fn owners_failed_before_outward_delivery_are_never_drained() {
+    let (machine, _, _) = parts(Side::Client, Vec::new(), Behaviour::Records);
+    let drains = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let runtime = LoaderRuntime::new(
+        machine,
+        vec![Box::new(PanickingDrain {
+            id: id(MOD),
+            drains: Arc::clone(&drains),
+        })],
+    );
+    {
+        let mut inner = runtime.inner.lock().expect("healthy lock");
+        inner
+            .record_failure(
+                &id(MOD),
+                &HostError::Panicked {
+                    mod_id: id(MOD),
+                    state: LifecycleState::Running,
+                },
+                None,
+            )
+            .expect("known owner can fail");
+    }
+    runtime.observe(&target("client.tick"), &[]);
+    assert_eq!(drains.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
 #[test]
 fn an_installed_set_receives_what_the_observer_registry_delivers() {
     let (machine, mods, log) = parts(Side::DedicatedServer, Vec::new(), Behaviour::Records);
 
-    super::install(machine, mods, super::pre_world_report())
-        .expect("the registry accepts an observer");
+    super::install(
+        machine,
+        mods,
+        super::pre_world_report(),
+        std::env::temp_dir(),
+        ravel_loader::Supplied::default(),
+        Vec::new(),
+        false,
+    )
+    .expect("the registry accepts an observer");
     crate::dispatch::deliver(&target("server.tick"), &[]).expect("nothing here vetoes");
 
     assert_eq!(
@@ -421,6 +505,24 @@ fn an_installed_set_receives_what_the_observer_registry_delivers() {
         [GameEvent::ServerTick],
         "the join is the registry the guard already delivers through, not a second path"
     );
+    let (machine, mods, replacement_log) =
+        parts(Side::DedicatedServer, Vec::new(), Behaviour::Records);
+    assert!(matches!(
+        super::install(
+            machine,
+            mods,
+            super::pre_world_report(),
+            std::env::temp_dir(),
+            ravel_loader::Supplied::default(),
+            Vec::new(),
+            true,
+        ),
+        Err(crate::guard::HookError::AlreadyInstalled)
+    ));
+    crate::dispatch::deliver(&target("server.tick"), &[])
+        .expect("the original runtime remains active");
+    assert_eq!(replacement_log.lock().expect("nothing panicked").seen, []);
+    assert_eq!(log.lock().expect("nothing panicked").seen.len(), 2);
 }
 
 #[test]
@@ -575,6 +677,29 @@ fn a_mod_that_fails_while_reacting_is_failed_rather_than_thrown_at_the_game() {
 }
 
 #[test]
+fn a_real_event_callback_failure_records_the_delivered_event_surface() {
+    let (runtime, _log) = running(Side::DedicatedServer, Vec::new(), Behaviour::Fails);
+    runtime.observe(&target("server.tick"), &[]);
+
+    let inner = runtime
+        .inner
+        .lock()
+        .expect("callback failure stays contained");
+    let failure = inner
+        .machine
+        .failure(&id(MOD))
+        .expect("known mod")
+        .expect("the event callback really failed");
+    assert_eq!(
+        failure.surface,
+        Some(ravel_core::FailureSurface::Event(
+            GameEvent::ServerTick.as_str().to_owned()
+        ))
+    );
+    drop(inner);
+}
+
+#[test]
 fn a_failed_mod_is_failed_once_however_many_ticks_follow() {
     let (runtime, _log) = running(Side::DedicatedServer, Vec::new(), Behaviour::Fails);
 
@@ -601,34 +726,24 @@ fn a_failed_mod_is_failed_once_however_many_ticks_follow() {
 
 #[test]
 fn every_hook_the_runtime_projects_is_one_the_reviewed_inventory_decided_about() {
-    use ravel_minecraft::{HookId, VersionAdapter};
-    use ravel_minecraft_adapter::PinnedAdapter;
+    use ravel_minecraft_adapter::pinned::{MINECRAFT_VERSION, NON_GOALS, TARGETS};
 
-    let reviewed: Vec<&str> = PinnedAdapter
-        .targets()
-        .iter()
-        .map(|target| target.id().as_str())
-        .collect();
+    let reviewed: Vec<&str> = TARGETS.iter().map(|target| target.id().as_str()).collect();
 
     for hook in EVENTS.iter().map(|(hook, _)| *hook).chain([COMMAND]) {
         assert!(
-            reviewed.contains(&hook) || PinnedAdapter.is_non_goal(HookId::new(hook)),
-            "{hook} is neither a reviewed hook nor a declared non-goal of {}",
-            PinnedAdapter.minecraft_version()
+            reviewed.contains(&hook) || NON_GOALS.iter().any(|goal| goal.as_str() == hook),
+            "{hook} is neither a reviewed hook nor a declared non-goal of {MINECRAFT_VERSION}",
         );
     }
 }
 
 #[test]
 fn the_command_seam_is_carried_by_every_version_that_could_decline_it() {
-    use ravel_minecraft::VersionAdapter;
-    use ravel_minecraft_adapter::PinnedAdapter;
+    use ravel_minecraft_adapter::pinned::TARGETS;
 
     assert!(
-        PinnedAdapter
-            .targets()
-            .iter()
-            .any(|target| target.id().as_str() == COMMAND),
+        TARGETS.iter().any(|target| target.id().as_str() == COMMAND),
         "{COMMAND} is what makes a command reachable, so no version may decline it"
     );
 }

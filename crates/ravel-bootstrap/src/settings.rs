@@ -4,8 +4,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::PoisonError;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, PoisonError};
 
 use jni::objects::{JClass, JString};
 use jni::{Env, EnvUnowned};
@@ -16,26 +16,23 @@ use ravel_core::{ModId, Side};
 use ravel_observability::redact;
 use serde_json::Value;
 
-use crate::game_directory;
 use crate::guard::{HookError, text};
-use crate::wire::{VERSION as WIRE_VERSION, field};
+use crate::wire::{Reader, VERSION as WIRE_VERSION, field};
 
-static STORE: Mutex<Option<Store>> = Mutex::new(None);
 static DOCUMENT_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
 static SAVE_CROSSINGS: AtomicUsize = AtomicUsize::new(0);
 
-struct Store {
+pub(crate) struct Store {
     side: Side,
     configurations: BTreeMap<ModId, LayeredConfiguration>,
-    // Resolve production paths at save time: options.txt does not exist during premain.
-    game_directory: Option<Result<PathBuf, String>>,
+    game_directory: Result<PathBuf, String>,
 }
 
 impl Store {
-    fn new(
+    pub(crate) fn new(
         side: Side,
         configurations: Vec<LayeredConfiguration>,
-        game_directory: Option<Result<PathBuf, String>>,
+        game_directory: Result<PathBuf, String>,
     ) -> Self {
         Self {
             side,
@@ -48,62 +45,25 @@ impl Store {
     }
 }
 
-/// Installs resolved configurations, exposing only settings visible on `side`.
-pub fn install(side: Side, configurations: Vec<LayeredConfiguration>) {
-    *lock() = Some(Store::new(side, configurations, None));
-}
-
-// Rendering only reads, and edits validate before mutation, so poison recovery is safe.
-fn lock() -> std::sync::MutexGuard<'static, Option<Store>> {
-    STORE.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-struct Reader {
-    units: Vec<u16>,
-    at: usize,
-}
-
-impl Reader {
-    fn new(payload: &str) -> Self {
-        Self {
-            units: payload.encode_utf16().collect(),
-            at: 0,
-        }
-    }
-
-    fn field(&mut self) -> Option<String> {
-        let separator = self.at
-            + self.units[self.at..]
-                .iter()
-                .position(|unit| *unit == u16::from(b':'))?;
-        let length: usize = String::from_utf16(&self.units[self.at..separator])
-            .ok()?
-            .parse()
-            .ok()?;
-        let start = separator + 1;
-        let end = start.checked_add(length)?;
-        if end > self.units.len() {
-            return None;
-        }
-        self.at = end;
-        String::from_utf16(&self.units[start..end]).ok()
-    }
-
-    fn count(&mut self) -> Option<usize> {
-        self.field()?.parse().ok()
-    }
-
-    const fn finished(&self) -> bool {
-        self.at == self.units.len()
-    }
-}
-
 pub(crate) fn configurable() -> BTreeSet<ModId> {
-    lock().as_ref().map(Store::configurable).unwrap_or_default()
+    let Some(launch) = crate::runtime::installed().and_then(|runtime| runtime.launch.as_ref())
+    else {
+        return BTreeSet::new();
+    };
+    launch
+        .settings
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .configurable()
 }
 
 fn document(owner: &str) -> Option<String> {
-    lock().as_ref()?.document(owner)
+    let launch = crate::runtime::installed()?.launch.as_ref()?;
+    launch
+        .settings
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .document(owner)
 }
 
 impl Store {
@@ -146,7 +106,7 @@ fn row(out: &mut String, configuration: &LayeredConfiguration, resolved: &Resolv
     );
     field(out, setting.description.as_deref().unwrap_or(""));
     field(out, widget(resolved));
-    field(out, schema.kind.map_or("", ValueKind::name));
+    field(out, schema.kind.map_or("", ValueKind::as_str));
     field(out, &text_of(resolved.value));
     field(out, source_name(resolved.source));
     field(out, &resolved.editable.to_string());
@@ -231,9 +191,15 @@ const fn side_name(side: Side) -> &'static str {
 
 fn save(payload: &str) -> String {
     // Release the store lock before disk I/O.
-    let applied = lock()
-        .as_mut()
-        .and_then(|store| store.apply(&mut Reader::new(payload)));
+    let applied = crate::runtime::installed()
+        .and_then(|runtime| runtime.launch.as_ref())
+        .and_then(|launch| {
+            launch
+                .settings
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .apply(&mut Reader::new(payload))
+        });
     answer(applied)
 }
 
@@ -241,7 +207,7 @@ struct Applied {
     refusals: usize,
     refused: String,
     document: ValueDocument,
-    directory: Option<Result<PathBuf, String>>,
+    directory: Result<PathBuf, String>,
 }
 
 impl Store {
@@ -303,7 +269,6 @@ fn answer(applied: Option<Applied>) -> String {
         return refusal("", "the settings the screen sent could not be read");
     };
 
-    let directory = directory.unwrap_or_else(game_directory::resolve);
     if let Err(reason) = persist(directory.as_deref(), &document) {
         refusals += 1;
         entry(&mut refused, "", redact(&reason).text());
@@ -318,6 +283,7 @@ fn answer(applied: Option<Applied>) -> String {
 // Persistence failure leaves edits active in memory but absent from the next launch.
 fn persist(directory: Result<&Path, &String>, document: &ValueDocument) -> Result<(), String> {
     let directory = directory.map_err(Clone::clone)?;
+    crate::game_directory::admit(directory)?;
     file::write(directory, document).map_err(|error| error.to_string())
 }
 

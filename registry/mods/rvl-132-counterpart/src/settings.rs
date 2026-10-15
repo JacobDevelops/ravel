@@ -18,7 +18,6 @@
 
 use core::fmt;
 
-use ravel_sdk::JsonValue;
 use ravel_sdk::config::{ConfigurationDeclaration, DeclarationError, LayeredConfiguration};
 
 use crate::data::{Comparator, MAX_IGNORED};
@@ -208,39 +207,39 @@ impl Settings {
     /// which leave every value at its shipped default.
     pub fn read(resolved: &LayeredConfiguration) -> Result<Self, Refused> {
         let shipped = Self::shipped();
-        let truth = |key: &str, fallback: bool| {
-            key.parse()
-                .ok()
-                .and_then(|key| resolved.value(&key))
-                .and_then(JsonValue::as_bool)
-                .unwrap_or(fallback)
-        };
+        let abort_on_invalid_recipe = ABORT_ON_INVALID_RECIPE
+            .parse()
+            .ok()
+            .and_then(|key| resolved.boolean(&key).ok())
+            .unwrap_or(shipped.abort_on_invalid_recipe);
+        let abort_on_bundle_failure = ABORT_ON_BUNDLE_FAILURE
+            .parse()
+            .ok()
+            .and_then(|key| resolved.boolean(&key).ok())
+            .unwrap_or(shipped.abort_on_bundle_failure);
+        let log_unequal_data = LOG_UNEQUAL_DATA
+            .parse()
+            .ok()
+            .and_then(|key| resolved.boolean(&key).ok())
+            .unwrap_or(shipped.log_unequal_data);
         let text = IGNORED_COMPONENTS
             .parse()
             .ok()
-            .and_then(|key| resolved.value(&key))
-            .and_then(|value| value.as_str().map(str::to_owned))
+            .and_then(|key| resolved.text(&key).ok())
             .unwrap_or_default();
-        let ignored = ignored_from(&text)?;
+        let ignored = ignored_from(text)?;
         let cap = CLOSURE_CAP
             .parse()
             .ok()
-            .and_then(|key| resolved.value(&key))
-            .and_then(JsonValue::as_u64)
+            .and_then(|key| resolved.integer(&key).ok())
             .and_then(|cap| usize::try_from(cap).ok())
             .filter(|cap| *cap >= 1 && *cap <= MAX_CLOSURE_CAP)
             .unwrap_or(shipped.closure_cap);
         Ok(Self {
-            abort_on_invalid_recipe: truth(
-                ABORT_ON_INVALID_RECIPE,
-                shipped.abort_on_invalid_recipe,
-            ),
-            abort_on_bundle_failure: truth(
-                ABORT_ON_BUNDLE_FAILURE,
-                shipped.abort_on_bundle_failure,
-            ),
+            abort_on_invalid_recipe,
+            abort_on_bundle_failure,
             ignored,
-            log_unequal_data: truth(LOG_UNEQUAL_DATA, shipped.log_unequal_data),
+            log_unequal_data,
             closure_cap: cap,
         })
     }
@@ -304,9 +303,9 @@ mod tests {
     #[test]
     fn the_packaged_declaration_parses_and_names_five_settings() {
         let declared = declaration().expect("a packaged document");
-        assert_eq!(declared.settings.len(), 5);
+        assert_eq!(declared.settings().len(), 5);
         let keys: Vec<String> = declared
-            .settings
+            .settings()
             .iter()
             .map(|setting| setting.key.to_string())
             .collect();
@@ -320,7 +319,7 @@ mod tests {
         // by a rename.
         let declared = declaration().expect("a packaged document");
         let keys: Vec<String> = declared
-            .settings
+            .settings()
             .iter()
             .map(|setting| setting.key.to_string())
             .collect();
@@ -347,7 +346,7 @@ mod tests {
             IGNORED_COMPONENTS,
         ] {
             let setting = declared
-                .settings
+                .settings()
                 .iter()
                 .find(|setting| setting.key.to_string() == key)
                 .expect("a declared setting");
@@ -363,7 +362,7 @@ mod tests {
     fn the_diagnostic_setting_is_client_scoped() {
         let declared = declaration().expect("a packaged document");
         let setting = declared
-            .settings
+            .settings()
             .iter()
             .find(|setting| setting.key.to_string() == LOG_UNEQUAL_DATA)
             .expect("a declared setting");

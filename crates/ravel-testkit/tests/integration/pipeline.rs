@@ -4,11 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side};
-use ravel_host_api::{HostError, HostMod};
+use ravel_host_api::{HostMod, ModError};
 use ravel_loader::LifecycleError;
 use ravel_package::{CompatibilityError, IntegrityError, ManifestError, Sha256Digest};
 use ravel_resolve::ResolutionError;
-use ravel_testkit::{DiscoveredPackage, Host, PipelineError, executed_states, run, run_order};
+use ravel_testkit::{Host, PipelineError, TestPackage, executed_states, run, run_order};
 use serde_json::{Value, json};
 
 const RUNNING_RAVEL: &str = "0.1.0";
@@ -19,6 +19,7 @@ struct Recording {
     id: ModId,
     entered: Vec<LifecycleState>,
     refuses: Option<LifecycleState>,
+    requires_service: bool,
 }
 
 impl Recording {
@@ -27,6 +28,7 @@ impl Recording {
             id: id.parse().expect("a valid mod id"),
             entered: Vec::new(),
             refuses: None,
+            requires_service: false,
         }
     }
 
@@ -43,16 +45,24 @@ impl HostMod for Recording {
         &self.id
     }
 
-    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         if self.refuses == Some(state) {
-            return Err(HostError::Refused {
-                mod_id: self.id.clone(),
-                state,
-                detail: "this mod was built to decline".to_owned(),
-            });
+            return Err(ModError::refused("this mod was built to decline"));
         }
         self.entered.push(state);
         Ok(())
+    }
+
+    fn service_declaration(&self) -> Result<Option<ravel_host_api::ServiceDeclaration>, ModError> {
+        if !self.requires_service {
+            return Ok(None);
+        }
+        let required =
+            ravel_host_api::ServiceId::new("absent:prices".parse().expect("a legal service id"));
+        Ok(Some(
+            ravel_host_api::ServiceDeclaration::new(self.id.clone(), [], [required])
+                .expect("a legal requirement"),
+        ))
     }
 }
 
@@ -84,7 +94,7 @@ fn scratch(label: &str) -> PathBuf {
     root
 }
 
-fn write_package(parent: &Path, name: &str, dependencies: &Value) -> DiscoveredPackage {
+fn write_package(parent: &Path, name: &str, dependencies: &Value) -> TestPackage {
     let root = parent.join(name);
     let source = format!("pub fn {name}() {{}}\n").into_bytes();
     let record = format!("{{\"package\":\"{name}\"}}").into_bytes();
@@ -108,18 +118,18 @@ fn write_package(parent: &Path, name: &str, dependencies: &Value) -> DiscoveredP
         "provenance": { "record": "provenance.json", "sha256": digest_of(&record) }
     })
     .to_string();
-    fs::write(root.join(DiscoveredPackage::MANIFEST_FILE), &document).expect("manifest written");
+    fs::write(root.join(TestPackage::MANIFEST_FILE), &document).expect("manifest written");
 
-    DiscoveredPackage::new(root, document)
+    TestPackage::new(root, document)
 }
 
-fn single(label: &str) -> (PathBuf, Vec<DiscoveredPackage>) {
+fn single(label: &str) -> (PathBuf, Vec<TestPackage>) {
     let parent = scratch(label);
     let packages = vec![write_package(&parent, "example_mod", &json!([]))];
     (parent, packages)
 }
 
-fn pair(label: &str) -> (PathBuf, Vec<DiscoveredPackage>) {
+fn pair(label: &str) -> (PathBuf, Vec<TestPackage>) {
     let parent = scratch(label);
     let packages = vec![
         write_package(
@@ -155,7 +165,7 @@ fn a_valid_package_reaches_every_spec_state_in_order() {
             LifecycleState::Stopping,
             LifecycleState::Stopped,
         ],
-        "the run covers validate, resolve, load, construct, register, run and stop"
+        "the run covers production startup and shutdown"
     );
     assert_eq!(completed.states_of(&id("other_mod")), []);
 
@@ -180,7 +190,7 @@ fn mod_code_runs_only_in_the_states_the_loader_admits_it() {
             LifecycleState::Running,
             LifecycleState::Stopping,
         ],
-        "no mod code runs before validation and resolution, or after the process stops"
+        "no mod code runs before validation and resolution"
     );
 
     fs::remove_dir_all(&parent).expect("cleanup");
@@ -213,7 +223,7 @@ fn the_run_order_is_the_spec_states_a_successful_run_passes_through() {
 #[test]
 fn the_same_package_set_produces_the_same_transcript_however_it_was_discovered() {
     let (parent, packages) = pair("deterministic");
-    let reversed: Vec<DiscoveredPackage> = packages.iter().rev().cloned().collect();
+    let reversed: Vec<TestPackage> = packages.iter().rev().cloned().collect();
 
     let mut first_a = Recording::new("example_mod");
     let mut first_b = Recording::new("example_library");
@@ -284,7 +294,7 @@ fn a_set_advances_together_so_no_mod_reaches_a_state_alone() {
 #[test]
 fn a_document_that_is_not_a_manifest_stops_the_run_before_anything_else() {
     let parent = scratch("unparseable");
-    let packages = vec![DiscoveredPackage::new(&parent, "not json at all")];
+    let packages = vec![TestPackage::new(&parent, "not json at all")];
     let mut noop = Recording::new("example_mod");
 
     let error = run(&packages, &host(), Side::Client, &mut [&mut noop])
@@ -458,10 +468,10 @@ fn a_mod_the_plan_never_ordered_is_refused_before_the_run_starts() {
 fn a_package_is_read_from_its_manifest_file_or_reported_by_name() {
     let (parent, packages) = single("read");
 
-    let read = DiscoveredPackage::read(&packages[0].root).expect("the manifest is readable");
+    let read = TestPackage::read(&packages[0].root).expect("the manifest is readable");
     assert_eq!(read, packages[0]);
 
-    let error = DiscoveredPackage::read(parent.join("absent")).expect_err("there is no package");
+    let error = TestPackage::read(parent.join("absent")).expect_err("there is no package");
     assert!(
         matches!(error, PipelineError::Unreadable { ref file, .. } if file == "package.json"),
         "{error}"
@@ -512,10 +522,9 @@ fn every_forwarded_failure_names_its_stage_and_keeps_the_error_that_raised_it() 
             "the run failed: ",
         ),
         (
-            PipelineError::Host(HostError::Unsupported {
-                mod_id: id("example_mod"),
-                state: LifecycleState::Stopping,
-            }),
+            PipelineError::Host(
+                ModError::Unsupported.with_context(id("example_mod"), LifecycleState::Stopping),
+            ),
             "the run failed: ",
         ),
     ] {
@@ -564,4 +573,26 @@ fn no_refusal_this_harness_writes_names_a_path_or_a_directory() {
         assert!(!rendered.contains('/'), "{rendered}");
         assert!(!rendered.contains("tmp"), "{rendered}");
     }
+}
+
+#[test]
+fn the_harness_uses_the_production_service_barrier_before_running() {
+    let (parent, packages) = single("missing-service");
+    let mut consumer = Recording::new("example_mod");
+    consumer.requires_service = true;
+
+    let error = run(&packages, &host(), Side::Client, &mut [&mut consumer])
+        .expect_err("the required service provider is absent");
+
+    assert!(matches!(error, PipelineError::Services(_)), "{error}");
+    assert_eq!(
+        consumer.entered,
+        [
+            LifecycleState::Loaded,
+            LifecycleState::Constructed,
+            LifecycleState::Registered,
+        ],
+        "service admission must refuse before any Running callback"
+    );
+    fs::remove_dir_all(parent).expect("cleanup");
 }

@@ -6,9 +6,10 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
+use ravel_host_api::HostMod;
 use ravel_loader::{
     DispatchRefused, LifecycleEntry, LifecycleMachine, ModSurface, Requirement, admitted,
-    deliver_packet, drive, executes_mod_code,
+    deliver_packet, drive,
 };
 use ravel_package::PackageManifest;
 use ravel_resolve::resolve;
@@ -22,7 +23,7 @@ use ravel_test_mod_client_only::{
 };
 use ravel_test_mod_networking::{NetworkingMod, PING_VERSION, Ping, ping_id};
 use ravel_test_mod_noop::NoopMod;
-use ravel_testkit::{DiscoveredPackage, Host, PipelineRun, run};
+use ravel_testkit::{Host, PipelineRun, TestPackage, run};
 
 const EVERY_SIDE: [Side; 3] = Side::ALL;
 
@@ -38,6 +39,16 @@ fn id(text: &str) -> ModId {
     text.parse().expect("a legal mod id")
 }
 
+fn environment() -> ravel_core::FailureEnvironment {
+    let running = host();
+    ravel_core::FailureEnvironment {
+        ravel: running.ravel,
+        minecraft: running.minecraft,
+        platform: std::env::consts::OS.to_owned(),
+        architecture: std::env::consts::ARCH.to_owned(),
+    }
+}
+
 fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
     LifecycleEntry {
         mod_id: id(name),
@@ -49,7 +60,7 @@ fn entry(name: &str, sides: &[Side]) -> LifecycleEntry {
 
 fn started(side: Side, client_sides: &[Side]) -> (LifecycleMachine, WorkLog) {
     let log = work_log();
-    let composed: Vec<(LifecycleEntry, Box<dyn Mod>)> = vec![
+    let composed: Vec<(LifecycleEntry, Box<dyn HostMod>)> = vec![
         (
             entry("client_only", client_sides),
             Box::new(ClientOnlyMod::new(side, &log)),
@@ -60,7 +71,8 @@ fn started(side: Side, client_sides: &[Side]) -> (LifecycleMachine, WorkLog) {
         ),
     ];
 
-    let (machine, _) = drive(side, composed).expect("a side-mismatched mod is parked, not refused");
+    let (machine, _) = drive(side, &environment(), composed)
+        .expect("a side-mismatched mod is parked, not refused");
     (machine, log)
 }
 
@@ -70,26 +82,8 @@ fn running(
     entries: Vec<LifecycleEntry>,
     mods: &mut [&mut dyn Mod],
 ) -> LifecycleMachine {
-    let mut machine = LifecycleMachine::new(side, entries).expect("a legal plan");
-    for state in [
-        LifecycleState::Validated,
-        LifecycleState::Resolved,
-        LifecycleState::Loaded,
-        LifecycleState::Constructed,
-        LifecycleState::Registered,
-        LifecycleState::Running,
-    ] {
-        machine.advance_all(state).expect("a legal step");
-        if !executes_mod_code(state) {
-            continue;
-        }
-        for host in mods.iter_mut() {
-            if machine.state(host.id()) == Ok(state) {
-                host.enter(state).expect("neither mod refuses a step");
-            }
-        }
-    }
-    machine
+    ravel_loader::drive_borrowed(side, &environment(), entries, mods)
+        .expect("the production driver starts the set")
 }
 
 #[test]
@@ -101,12 +95,12 @@ fn a_client_only_mod_is_parked_on_every_server_side_and_runs_no_code_at_all() {
             machine.state(ClientOnlyMod::declared_id()),
             Ok(LifecycleState::Resolved),
             "`{}` did not park the client-only mod",
-            side.name()
+            side.as_str()
         );
         assert!(
             log.lock().expect("nothing panicked").is_empty(),
             "client-only code ran on `{}`",
-            side.name()
+            side.as_str()
         );
 
         assert_eq!(
@@ -140,12 +134,12 @@ fn a_mod_that_loads_on_a_server_side_still_does_not_run_its_client_only_work_the
             machine.state(ClientOnlyMod::declared_id()),
             Ok(LifecycleState::Running),
             "the client-only mod was parked, so this arrangement proved the wrong thing on `{}`",
-            side.name()
+            side.as_str()
         );
         assert!(
             log.lock().expect("nothing panicked").is_empty(),
             "client-only code ran on `{}` in a mod that loads there",
-            side.name()
+            side.as_str()
         );
     }
 }
@@ -156,9 +150,8 @@ fn reaching_for_client_only_resources_on_a_server_side_is_refused_and_names_the_
     for side in Side::ALL {
         let host = ClientOnlyMod::new(side, &log);
         if side.is_server() {
-            let refusal = host.drawn().expect_err(side.name());
-            assert_eq!(refusal.mod_id(), ClientOnlyMod::declared_id());
-            assert!(refusal.to_string().contains(side.name()), "{refusal}");
+            let refusal = host.drawn().expect_err(side.as_str());
+            assert!(refusal.to_string().contains(side.as_str()), "{refusal}");
         } else {
             host.drawn().expect("the client holds them");
         }
@@ -172,9 +165,9 @@ fn a_value_built_for_the_client_is_still_refused_to_the_server_half_of_one_proce
     assert!(built_for_the_client.is_present(), "the value exists");
 
     for side in Side::ALL.into_iter().filter(|side| side.is_server()) {
-        let refusal = built_for_the_client.get(side).expect_err(side.name());
+        let refusal = built_for_the_client.get(side).expect_err(side.as_str());
         assert_eq!(refusal.side(), side);
-        assert!(refusal.to_string().contains(side.name()), "{refusal}");
+        assert!(refusal.to_string().contains(side.as_str()), "{refusal}");
     }
     assert_eq!(built_for_the_client.get(Side::Client), Ok(&"the overlay"));
 }
@@ -190,9 +183,8 @@ fn repository_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn discovered(directory: &str) -> DiscoveredPackage {
-    DiscoveredPackage::read(repository_root().join(directory))
-        .expect("the fixture package is readable")
+fn discovered(directory: &str) -> TestPackage {
+    TestPackage::read(repository_root().join(directory)).expect("the fixture package is readable")
 }
 
 fn host() -> Host {
@@ -244,17 +236,17 @@ fn a_manifest_declaring_the_client_side_alone_is_parked_by_the_pipeline_on_every
             completed.states_of(client_only),
             [LifecycleState::Validated, LifecycleState::Resolved],
             "`{}` did not park the mod its manifest excludes",
-            side.name()
+            side.as_str()
         );
         assert!(
             !completed.plan().order().contains(client_only),
             "the resolver ordered a package that does not load on `{}`",
-            side.name()
+            side.as_str()
         );
         assert!(
             log.lock().expect("nothing panicked").is_empty(),
             "client-only code ran on `{}`",
-            side.name()
+            side.as_str()
         );
 
         assert_eq!(
@@ -299,12 +291,12 @@ fn the_mod_list_marks_a_parked_package_as_installed_and_not_loading_here() {
         .collect();
     let plan = resolve(&manifests, side).expect("a legal package set");
     let running = host();
-    let composed: Vec<(LifecycleEntry, Box<dyn Mod>)> =
+    let composed: Vec<(LifecycleEntry, Box<dyn HostMod>)> =
         admitted(&plan, &manifests, &running.ravel, &running.minecraft)
             .expect("the fixture packages declare the version this repository pins")
             .into_iter()
             .map(|entry| {
-                let host: Box<dyn Mod> = if entry.mod_id == *ClientOnlyMod::declared_id() {
+                let host: Box<dyn HostMod> = if entry.mod_id == *ClientOnlyMod::declared_id() {
                     Box::new(ClientOnlyMod::new(side, &log))
                 } else {
                     Box::new(NoopMod::new())
@@ -312,7 +304,8 @@ fn the_mod_list_marks_a_parked_package_as_installed_and_not_loading_here() {
                 (entry, host)
             })
             .collect();
-    let (machine, _) = drive(side, composed).expect("a parked package does not fail the set");
+    let (machine, _) =
+        drive(side, &environment(), composed).expect("a parked package does not fail the set");
 
     let surface = ModSurface::of(&machine);
     let listed = surface
@@ -361,11 +354,11 @@ fn a_client_bound_packet_arriving_on_a_server_side_reaches_no_mod() {
                 side,
             }
         );
-        assert!(refusal.to_string().contains(side.name()), "{refusal}");
+        assert!(refusal.to_string().contains(side.as_str()), "{refusal}");
         assert!(
             log.lock().expect("nothing panicked").is_empty(),
             "client-only code ran while handling a packet on `{}`",
-            side.name()
+            side.as_str()
         );
     }
 }

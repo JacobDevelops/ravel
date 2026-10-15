@@ -268,8 +268,30 @@ pub struct RustGenerated {
     pub exports: PathBuf,
 }
 
+/// Returns exact parameter descriptors after validating the complete method signature.
+pub fn descriptor_parameters(descriptor: &str) -> Result<Vec<&str>, GenerateError> {
+    let (parameters, _) =
+        classfile::method_types(descriptor).map_err(GenerateError::Unsupported)?;
+    Ok(parameters.into_iter().map(|kind| kind.descriptor).collect())
+}
+
+/// Counts borrowed opaque handles, excluding copied strings and byte payloads.
+pub fn descriptor_handle_count(descriptor: &str) -> Result<usize, GenerateError> {
+    let (parameters, _) =
+        classfile::method_types(descriptor).map_err(GenerateError::Unsupported)?;
+    Ok(parameters
+        .into_iter()
+        .filter(|kind| {
+            if kind.dimensions != 0 {
+                return kind.descriptor != "[B";
+            }
+            kind.descriptor.starts_with('L') && kind.name != "java/lang/String"
+        })
+        .count())
+}
+
 /// Writes only Rust bindings and exports into `out`.
-pub fn run_rust(
+pub fn generate_rust(
     root: &Path,
     out: &Path,
     selected: Option<&str>,
@@ -289,12 +311,12 @@ pub fn run_rust(
 }
 
 /// Writes the selected version's Java trees for packaging and harness execution.
-pub fn run_java(root: &Path, selected: Option<&str>) -> Result<JavaGenerated, GenerateError> {
-    run_java_and_inspect(root, selected, std::convert::identity)
+pub fn generate_java(root: &Path, selected: Option<&str>) -> Result<JavaGenerated, GenerateError> {
+    generate_java_and_inspect(root, selected, std::convert::identity)
 }
 
 /// Keeps the output lock held while a consumer inspects generated Java trees.
-fn run_java_and_inspect<T>(
+fn generate_java_and_inspect<T>(
     root: &Path,
     selected: Option<&str>,
     inspect: impl FnOnce(JavaGenerated) -> T,
@@ -414,7 +436,7 @@ fn compose_render(
         .iter()
         .map(|stub| stub_render::stub_java(&pinned.adapter, stub, mapping))
         .collect::<Result<Vec<_>, _>>()?;
-    let roles = roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory)?;
+    let roles = roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory);
     screen::every_seeded_member_resolves(&roles, stubbed, mapping)?;
     let [screens, stand_ins, drivers, siblings] = sources(root, pinned, &roles, stubbed, mapping)?;
     let harness = [
@@ -724,8 +746,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        GenerateError, LIBRARY_PROPERTY, LOCK_STALE, OUTPUT_LOCK, OutputLock, SELECTION, inputs,
-        run_java_and_inspect, run_rust, selection,
+        GenerateError, LIBRARY_PROPERTY, LOCK_STALE, OUTPUT_LOCK, OutputLock, SELECTION,
+        generate_java_and_inspect, generate_rust, inputs, selection,
     };
 
     /// Test fixture combining the independently owned Rust and Java outputs.
@@ -751,8 +773,8 @@ mod tests {
         selected: Option<&str>,
         inspect: impl FnOnce(&Generated) -> T,
     ) -> Result<T, GenerateError> {
-        let rust = run_rust(root, out, selected)?;
-        run_java_and_inspect(root, selected, |java| {
+        let rust = generate_rust(root, out, selected)?;
+        generate_java_and_inspect(root, selected, |java| {
             inspect(&Generated {
                 watched: rust.watched,
                 bindings: rust.bindings,
@@ -1239,7 +1261,7 @@ mod tests {
     fn rust_generation_writes_only_into_its_output_directory() {
         let (root, _) = staged("rust-only");
         let out = output("rust-only-out");
-        let generated = run_rust(&root, &out, None).expect("generate Rust outputs");
+        let generated = generate_rust(&root, &out, None).expect("generate Rust outputs");
         assert!(generated.bindings.is_file());
         assert!(generated.exports.is_file());
         assert!(!root.join("target").exists());
@@ -1361,7 +1383,10 @@ mod tests {
         assert!(java.contains("public static native String ravelSettingsDocument(String owner);"));
         assert!(java.contains("public static native String ravelSaveSettings(String payload);"));
         assert!(java.contains("public static native String ravelModSurface();"));
-        assert!(java.contains("public static native void ravelEnableProfiling(String value);"));
+        assert!(java.contains(
+            "public static native void ravelInitialize(int side, boolean profilingRequested);"
+        ));
+        assert!(!java.contains("ravelEnableProfiling"));
         assert!(java.contains("public static native String ravelProfilingReport();"));
         // The world's two crossings are declared here for the same reason the
         // screen's are, and they carry bytes rather than a handle: the aggregate

@@ -2,10 +2,9 @@
 
 //! Resource and generated-data test mod.
 
-use ravel_core::{LifecycleState, ModId};
-use ravel_data::ResourceSet;
-use ravel_host_api::{GameEvent, HostError, HostMod};
-use ravel_package::RelativePath;
+use ravel_sdk::events::GameEvent;
+use ravel_sdk::resources::{RelativePath, ResourceSet};
+use ravel_sdk::{Declared, LifecycleState, Mod, ModError, ModId, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "resources";
@@ -46,23 +45,14 @@ const DECLARED: [&str; 2] = ["resources/lang/en.json", "resources/models/warp.js
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResourcesMod {
-    id: ModId,
     reloads: usize,
 }
 
 impl ResourcesMod {
     /// Builds the mod instance the loader drives.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`MOD_ID`] stops being a legal mod id, which would mean this
-    /// mod can no longer be packaged under the identity its manifest declares.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            id: MOD_ID.parse().expect("`MOD_ID` is a legal mod id"),
-            reloads: 0,
-        }
+        Self { reloads: 0 }
     }
 
     /// Returns the paths this mod declares, in manifest order.
@@ -97,7 +87,7 @@ impl ResourcesMod {
     #[must_use]
     pub fn layered_under(&self, later: &ModId, paths: &[RelativePath]) -> ResourceSet {
         let own = self.declared();
-        ResourceSet::layered([(&self.id, own.iter()), (later, paths.iter())])
+        ResourceSet::layered([(Self::declared_id(), own.iter()), (later, paths.iter())])
     }
 }
 
@@ -107,18 +97,15 @@ impl Default for ResourcesMod {
     }
 }
 
-impl HostMod for ResourcesMod {
-    fn id(&self) -> &ModId {
-        &self.id
-    }
-
+#[declare_mod(id = "resources")]
+impl Mod for ResourcesMod {
     /// Accepts every step and does nothing with it.
     ///
     /// # Errors
     ///
     /// Never returns an error. Declaring resources happens in the manifest,
     /// before any of this mod's code runs.
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
         Ok(())
     }
 
@@ -129,7 +116,7 @@ impl HostMod for ResourcesMod {
     /// Never returns an error. A mod that failed on a reload would fail the set
     /// for a thing the player did, and `SPEC.md` §9.2's fail-closed path is
     /// about a mod graph rather than a reload.
-    fn observe(&mut self, event: GameEvent) -> Result<(), HostError> {
+    fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
         if event == GameEvent::ResourcesReloaded {
             self.reloads += 1;
         }
@@ -139,9 +126,9 @@ impl HostMod for ResourcesMod {
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::{LifecycleState, ModId};
-    use ravel_host_api::{GameEvent, HostMod};
-    use ravel_package::RelativePath;
+    use ravel_sdk::events::GameEvent;
+    use ravel_sdk::resources::RelativePath;
+    use ravel_sdk::{LifecycleState, Mod, ModId};
 
     use super::{DECLARED, MOD_ID, ResourcesMod};
 

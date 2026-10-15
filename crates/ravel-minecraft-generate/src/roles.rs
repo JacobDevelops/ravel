@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::inputs::{Inventory, Lookup, Reflection, SeedMember, Seeds};
-use super::{GenerateError, render};
+use super::{GenerateError, classfile};
 
 /// Where one binding of a role was read, and what it bound the role to.
 struct Binding {
@@ -38,15 +38,7 @@ pub(super) struct Roles {
 
 impl Roles {
     /// Collects bindings, deferring agreement checks until a role is requested.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when a reflected member declares an invalid lookup.
-    pub(super) fn new(
-        seeds: &Seeds,
-        surface: &Reflection,
-        inventory: &Inventory,
-    ) -> Result<Self, GenerateError> {
+    pub(super) fn new(seeds: &Seeds, surface: &Reflection, inventory: &Inventory) -> Self {
         let mut bound: BTreeMap<String, Vec<Binding>> = BTreeMap::new();
         let mut declared: BTreeMap<(String, String), Vec<Declared>> = BTreeMap::new();
         let mut seeded = BTreeMap::new();
@@ -71,13 +63,7 @@ impl Roles {
                     class: internal(&reflected.class),
                 });
             for member in &reflected.members {
-                let lookup = member.lookup().map_err(|detail| {
-                    GenerateError::Drift(format!(
-                        "the reflective surface declares a member of {}: {detail}",
-                        reflected.class
-                    ))
-                })?;
-                match lookup {
+                match &member.lookup {
                     // Argument counts do not identify a member declaration.
                     Lookup::Parameters(_) => {}
                     Lookup::Descriptor(descriptor) => {
@@ -108,11 +94,11 @@ impl Roles {
                     descriptor: hook.descriptor.clone(),
                 });
         }
-        Ok(Self {
+        Self {
             bound,
             declared,
             seeded,
-        })
+        }
     }
 
     /// The internal class name this version binds a role to.
@@ -132,10 +118,10 @@ impl Roles {
             return Err(GenerateError::Input(format!(
                 "the role {role} is bound to {} by {}'s {} and to {} by {}'s {}, and one role \
                  names one class",
-                render::source_name(&first.class),
+                classfile::source_name(&first.class),
                 first.list,
                 first.key,
-                render::source_name(&other.class),
+                classfile::source_name(&other.class),
                 other.list,
                 other.key
             )));
@@ -271,7 +257,7 @@ mod tests {
             surface(&[]),
             inventory(&[]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
+        let roles = Roles::new(&seeds, &surface, &inventory);
         assert_eq!(
             roles.class("Panel").expect("the stub seeds bind it"),
             "com/example/Panel"
@@ -285,7 +271,7 @@ mod tests {
             surface(&[("PANEL", "com.example.Panel")]),
             inventory(&[]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
+        let roles = Roles::new(&seeds, &surface, &inventory);
         assert_eq!(
             roles.class("PANEL").expect("the surface binds it"),
             "com/example/Panel"
@@ -299,7 +285,7 @@ mod tests {
             surface(&[]),
             inventory(&[("panel.draw", "com.example.Panel")]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
+        let roles = Roles::new(&seeds, &surface, &inventory);
         assert_eq!(
             roles.class("panel.draw").expect("the inventory binds it"),
             "com/example/Panel"
@@ -313,7 +299,7 @@ mod tests {
             surface(&[("Panel", "com.example.Panel")]),
             inventory(&[("Panel", "com.example.Panel")]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
+        let roles = Roles::new(&seeds, &surface, &inventory);
         assert_eq!(
             roles.class("Panel").expect("all three agree"),
             "com/example/Panel"
@@ -327,7 +313,7 @@ mod tests {
             surface(&[("Panel", "com.example.Frame")]),
             inventory(&[]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
+        let roles = Roles::new(&seeds, &surface, &inventory);
         let error = roles
             .class("Panel")
             .expect_err("two lists bind the role to two classes");
@@ -349,7 +335,7 @@ mod tests {
             surface(&[]),
             inventory(&[("Panel", "com.example.Frame")]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
+        let roles = Roles::new(&seeds, &surface, &inventory);
         let message = roles
             .class("Panel")
             .expect_err("the inventory names another class")
@@ -361,26 +347,21 @@ mod tests {
 
     #[test]
     fn a_member_declared_both_ways_is_refused_rather_than_dropped() {
-        let surface = Reflection {
-            schema_version: 1,
-            minecraft: String::from("0.0.0"),
-            classes: vec![Reflected {
-                name: String::from("PANEL"),
-                class: String::from("com.example.Panel"),
-                runtime: String::from("com.example.Panel"),
-                members: vec![ReflectedMember {
-                    name: String::from("draw"),
-                    descriptor: Some(String::from("()V")),
-                    parameters: Some(0),
-                }],
-            }],
-        };
-        let Err(error) = Roles::new(&seeds(&[]), &surface, &inventory(&[])) else {
-            panic!("a member declared both ways says which member it is twice");
-        };
-        let message = error.to_string();
-        assert!(message.contains("com.example.Panel"), "{message}");
-        assert!(message.contains("draw"), "{message}");
+        for lookup in [
+            "descriptor = '()V'\nparameters = 0",
+            "",
+            "descriptor = '()V'\nunknown = true",
+        ] {
+            let source = format!("name = 'draw'\n{lookup}");
+            assert!(
+                toml::from_str::<ReflectedMember>(&source).is_err(),
+                "{source}"
+            );
+        }
+        for lookup in ["descriptor = '()V'", "parameters = 0"] {
+            let source = format!("name = 'draw'\n{lookup}");
+            toml::from_str::<ReflectedMember>(&source).expect("one lookup is valid");
+        }
     }
 
     #[test]
@@ -390,7 +371,7 @@ mod tests {
             surface(&[]),
             inventory(&[]),
         );
-        let roles = Roles::new(&seeds, &surface, &inventory).expect("the declarations read");
+        let roles = Roles::new(&seeds, &surface, &inventory);
         let message = roles
             .class("Frame")
             .expect_err("nothing binds the role")

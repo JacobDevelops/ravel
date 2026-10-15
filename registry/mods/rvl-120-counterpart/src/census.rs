@@ -85,11 +85,7 @@ pub fn declaration() -> Result<ContentDeclaration, DeclarationError> {
 /// Returns [`ModError::Refused`] when the declared path is not a legal content
 /// path.
 pub fn claimed() -> Result<Vec<RegistryKey>, ModError> {
-    let declaration = declaration().map_err(|error| ModError::Refused {
-        mod_id: crate::Shared::declared_id().clone(),
-        state: ravel_sdk::LifecycleState::Constructed,
-        detail: error.to_string(),
-    })?;
+    let declaration = declaration().map_err(|error| ModError::refused(error.to_string()))?;
     Ok(declaration.entries().to_vec())
 }
 

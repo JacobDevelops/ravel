@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! Content declarations, deterministic pack generation, and ordered tag/resource merging.
+//! Content and audio declarations, deterministic pack generation, ordered tag/resource
+//! merging, and client render-stage contribution ordering.
 
 mod audio;
 mod declare;

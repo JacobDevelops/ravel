@@ -43,7 +43,7 @@ impl LifecycleState {
 
     /// Returns the state's canonical serialized name.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Discovered => "discovered",
             Self::Validated => "validated",
@@ -166,7 +166,7 @@ mod tests {
         for state in LifecycleState::ALL {
             assert_eq!(
                 serde_json::to_value(state).expect("state should serialize"),
-                serde_json::Value::String(state.name().to_owned())
+                serde_json::Value::String(state.as_str().to_owned())
             );
         }
     }

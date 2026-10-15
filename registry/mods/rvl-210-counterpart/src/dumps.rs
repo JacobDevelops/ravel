@@ -182,7 +182,7 @@ pub fn census_document() -> String {
         .collect();
     let companions: BTreeMap<&str, Vec<&str>> = Side::ALL
         .into_iter()
-        .map(|side| (side.name(), declared.companions_on(side)))
+        .map(|side| (side.as_str(), declared.companions_on(side)))
         .collect();
     let document = json!({
         "kinds": declarations::KINDS.as_slice(),
@@ -238,7 +238,7 @@ pub fn settings_document() -> String {
             let sides: Vec<&str> = Side::ALL
                 .into_iter()
                 .filter(|side| declared.scope().resolved_by(*side))
-                .map(Side::name)
+                .map(Side::as_str)
                 .collect();
             json!({
                 "property": declared.property(),

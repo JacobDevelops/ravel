@@ -229,6 +229,13 @@ carrying the answer as a number or a string, and
 [`minecraft/versions/26.1.2/hooks.toml`](../../minecraft/versions/26.1.2/hooks.toml)
 holds none — reviewing and pinning one is what `ROADMAP.md` leaves open.
 
+**A command runs for whoever typed it.** A command invocation carries its key,
+its side and its arguments, and nothing about who sent it or at what permission
+level. The hook sees the command source but the loader drops that handle, and no
+reviewed hook value carries a level. Treat every command you claim as one any
+connected player can run, and keep operator-only actions out of commands until a
+hook target carrying the source's level is reviewed and pinned.
+
 **Writing a packet field can panic; reading one cannot.** The reading half
 refuses everything the bytes do not say, including a length prefix that runs past
 the end of the buffer, and that refusal is explicitly not a panic. The writing

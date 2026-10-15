@@ -57,7 +57,7 @@ pub const RECIPE: &[u8] = br##"{
 /// assert_eq!(content.id().as_str(), "content");
 ///
 /// // The registry entries, and a block and an item may share the name.
-/// let declaration = content.declaration();
+/// let declaration = content.declaration()?;
 /// assert_eq!(
 ///     declaration
 ///         .entries()
@@ -77,7 +77,7 @@ pub const RECIPE: &[u8] = br##"{
 /// // blockstates, item model, item definition and loot table a block needs to
 /// // render, be held and drop itself.
 /// assert_eq!(
-///     content.generated().paths().collect::<Vec<_>>(),
+///     content.generated()?.paths().collect::<Vec<_>>(),
 ///     [
 ///         "assets/content/blockstates/copper_lantern.json",
 ///         "assets/content/items/copper_lantern.json",
@@ -91,6 +91,7 @@ pub const RECIPE: &[u8] = br##"{
 ///         "data/content/recipe/crafting/copper_lantern.json",
 ///     ]
 /// );
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ContentMod {
@@ -158,30 +159,29 @@ impl ContentMod {
 
     /// Declares the content used by registration and generated data.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if these constant declarations conflict or are invalid.
-    #[must_use]
-    pub fn declaration(&self) -> ContentDeclaration {
+    /// Returns a refusal if the packaged declarations conflict or are invalid.
+    pub fn declaration(&self) -> Result<ContentDeclaration, ModError> {
         let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
 
         let block = declaration
             .entry(ContentKind::Block, LANTERN)
-            .expect("the block is declared once");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         let item = declaration
             .entry(ContentKind::Item, LANTERN)
-            .expect("an item is a different registry from a block");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         declaration
             .entry(ContentKind::Recipe, &format!("crafting/{LANTERN}"))
-            .expect("the recipe is declared once");
+            .map_err(|error| ModError::refused(error.to_string()))?;
 
         // Block and item tags belong to distinct registries.
         declaration
             .tag(&Self::lanterns(ContentKind::Block), &block)
-            .expect("a block joins a block tag");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         declaration
             .tag(&Self::lanterns(ContentKind::Item), &item)
-            .expect("an item joins an item tag");
+            .map_err(|error| ModError::refused(error.to_string()))?;
 
         for (locale, name) in [("en_us", "Copper Lantern"), ("fr_fr", "Lanterne de cuivre")] {
             for prefix in ["block", "item"] {
@@ -191,24 +191,27 @@ impl ContentMod {
                         &format!("{prefix}.{}.{LANTERN}", Self::declared_id()),
                         name,
                     )
-                    .expect("each key is named once per locale");
+                    .map_err(|error| ModError::refused(error.to_string()))?;
             }
         }
 
         declaration
             .resource(Self::model_path(), MODEL.to_vec())
-            .expect("the model is supplied once, and nothing generates that path");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         declaration
             .resource(Self::recipe_path(), RECIPE.to_vec())
-            .expect("the recipe is supplied once, and nothing generates that path");
+            .map_err(|error| ModError::refused(error.to_string()))?;
 
-        declaration
+        Ok(declaration)
     }
 
     /// Generates a deterministic pack from this mod's content declaration.
-    #[must_use]
-    pub fn generated(&self) -> GeneratedData {
-        self.declaration().generate()
+    ///
+    /// # Errors
+    ///
+    /// Returns a refusal if the packaged declarations conflict or are invalid.
+    pub fn generated(&self) -> Result<GeneratedData, ModError> {
+        Ok(self.declaration()?.generate())
     }
 }
 
@@ -230,7 +233,7 @@ impl Mod for ContentMod {
     ///
     /// Returns [`ModError::Refused`] naming the contested entry and its owner.
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        ravel_sdk::content::claim_all(&self.declaration(), registrar)
+        ravel_sdk::content::claim_all(&self.declaration()?, registrar)
     }
 
     /// Hands the host the declaration the claims above came from.
@@ -238,7 +241,7 @@ impl Mod for ContentMod {
     /// The model this mod supplies is bytes no version of Ravel generates, so
     /// this is the only way they reach the game at all.
     fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        Ok(Some(self.declaration()))
+        self.declaration().map(Some)
     }
 
     /// Counts resource reloads and ignores everything else.
@@ -259,9 +262,12 @@ impl Mod for ContentMod {
 /// Returns the entries this mod declares, for a caller that has no instance.
 ///
 /// A test or a pack validator wants the content without driving a lifecycle.
-#[must_use]
-pub fn declared_entries() -> Vec<RegistryKey> {
-    ContentMod::new().declaration().entries().to_vec()
+///
+/// # Errors
+///
+/// Returns a refusal if the packaged declarations conflict or are invalid.
+pub fn declared_entries() -> Result<Vec<RegistryKey>, ModError> {
+    Ok(ContentMod::new().declaration()?.entries().to_vec())
 }
 
 #[cfg(test)]
@@ -350,7 +356,7 @@ mod tests {
 
     #[test]
     fn every_declared_entry_is_named_in_this_mods_own_namespace() {
-        for key in declared_entries() {
+        for key in declared_entries().expect("valid declaration") {
             assert_eq!(key.id().namespace(), ContentMod::declared_id());
             assert!(key.id().path().contains(LANTERN), "{key}");
             // The canonical spelling is what the barrier stores, so it has to
@@ -365,8 +371,15 @@ mod tests {
     #[test]
     fn the_declaration_is_the_same_statement_every_time_it_is_built() {
         let content = ContentMod::new();
-        assert_eq!(content.declaration(), content.declaration());
-        assert_eq!(content.declaration(), ContentMod::new().declaration());
+        let declaration = content.declaration().expect("valid declaration");
+        assert_eq!(
+            declaration,
+            content.declaration().expect("valid declaration")
+        );
+        assert_eq!(
+            declaration,
+            ContentMod::new().declaration().expect("valid declaration")
+        );
     }
 
     #[test]
@@ -374,11 +387,14 @@ mod tests {
         let mut content = ContentMod::new();
         let mut registrar = Accepting::default();
         content.register(&mut registrar).expect("nothing conflicts");
-        assert_eq!(registrar.claimed(), declared_entries());
+        assert_eq!(
+            registrar.claimed(),
+            declared_entries().expect("valid declaration")
+        );
     }
 
     #[test]
-    fn a_contested_entry_fails_the_mod_and_names_the_owner_and_the_phase() {
+    fn a_contested_entry_fails_the_mod_and_names_the_owner() {
         for kind in [ContentKind::Block, ContentKind::Item, ContentKind::Recipe] {
             let owner: ModId = "other".parse().expect("a legal mod id");
             let mut registrar = Contested {
@@ -390,8 +406,6 @@ mod tests {
             let error = ContentMod::new()
                 .register(&mut registrar)
                 .expect_err("one kind is taken");
-            assert_eq!(error.mod_id(), ContentMod::declared_id());
-            assert_eq!(error.state(), LifecycleState::Constructed);
             assert!(
                 matches!(&error, ModError::Refused { detail, .. }
                     if detail.contains(owner.as_str()) && detail.contains(kind.as_str())),
@@ -400,6 +414,7 @@ mod tests {
 
             // Registration stopped at the refusal rather than claiming past it.
             let refused_at = declared_entries()
+                .expect("valid declaration")
                 .iter()
                 .position(|key| key.kind() == kind)
                 .expect("every kind is declared");
@@ -410,7 +425,7 @@ mod tests {
     #[test]
     fn the_block_and_the_item_join_the_tag_for_their_own_registry() {
         let content = ContentMod::new();
-        let declaration = content.declaration();
+        let declaration = content.declaration().expect("valid declaration");
         let set = TagSet::merged([&declaration]);
 
         for kind in [ContentKind::Block, ContentKind::Item] {
@@ -426,7 +441,7 @@ mod tests {
     fn a_second_mod_joins_the_same_shared_tag_rather_than_conflicting_with_this_one() {
         // The convention namespace exists for this. Two mods in `c:lanterns` is
         // the case a tag is for, and it is not a conflict anywhere.
-        let content = ContentMod::new().declaration();
+        let content = ContentMod::new().declaration().expect("valid declaration");
         let tag = ContentMod::lanterns(ContentKind::Item);
 
         let mut other = ContentDeclaration::new("other".parse().expect("a legal mod id"));
@@ -442,7 +457,7 @@ mod tests {
 
     #[test]
     fn a_block_cannot_join_the_item_tag() {
-        let mut declaration = ContentMod::new().declaration();
+        let mut declaration = ContentMod::new().declaration().expect("valid declaration");
         let block = declaration
             .entries()
             .iter()
@@ -458,7 +473,7 @@ mod tests {
 
     #[test]
     fn the_supplied_model_is_carried_into_the_generated_pack_unchanged() {
-        let generated = ContentMod::new().generated();
+        let generated = ContentMod::new().generated().expect("valid declaration");
         assert_eq!(
             generated
                 .file(&ContentMod::model_path())
@@ -469,7 +484,7 @@ mod tests {
 
     #[test]
     fn the_generated_tag_and_language_files_are_the_exact_documents_pinned_here() {
-        let generated = ContentMod::new().generated();
+        let generated = ContentMod::new().generated().expect("valid declaration");
 
         for (kind, expected) in [
             (
@@ -510,8 +525,8 @@ mod tests {
     #[test]
     fn generating_the_pack_twice_produces_the_same_bytes() {
         let content = ContentMod::new();
-        let first = content.generated();
-        let second = content.generated();
+        let first = content.generated().expect("declared data generates");
+        let second = content.generated().expect("declared data generates");
 
         assert_eq!(first, second);
         for (left, right) in first.files().iter().zip(second.files()) {

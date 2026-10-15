@@ -2,10 +2,12 @@ use ravel_core::{DiagnosticMessage, RedactionPolicy};
 
 const REDACTED: &str = "[redacted]";
 
-// Keep credential names aligned with the evidence-manifest policy.
-const CREDENTIAL_WORDS: [&str; 5] = ["token", "password", "secret", "credential", "authorization"];
+/// Case-insensitive substrings identifying credential-bearing labels.
+pub const CREDENTIAL_WORDS: [&str; 5] =
+    ["token", "password", "secret", "credential", "authorization"];
 
-const CREDENTIAL_PREFIXES: [&str; 6] = ["ghp_", "gho_", "ghs_", "xoxb-", "xoxp-", "sk-"];
+/// Case-sensitive prefixes identifying credential values without a label.
+pub const CREDENTIAL_PREFIXES: [&str; 6] = ["ghp_", "gho_", "ghs_", "xoxb-", "xoxp-", "sk-"];
 
 // Short dotted names are not tokens.
 const TOKEN_SEGMENT: usize = 8;

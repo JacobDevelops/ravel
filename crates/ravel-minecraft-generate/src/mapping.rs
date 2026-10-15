@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use super::inputs::{Lookup, MappingSource, Reflected, ReflectedMember, Reflection};
-use super::{GenerateError, classfile, jar, render};
+use super::{GenerateError, classfile, jar};
 
 /// How a Mojang name becomes the name the JVM links.
 #[derive(Clone, Debug)]
@@ -292,20 +292,14 @@ fn verify_member(
     mojang_class: &str,
     declared: &[classfile::Member],
 ) -> Result<(), GenerateError> {
-    let lookup = member.lookup().map_err(|detail| {
-        GenerateError::Drift(format!(
-            "the reflective surface declares a member of {}: {detail}",
-            reflected.class
-        ))
-    })?;
-    let linked = match lookup {
+    let linked = match &member.lookup {
         Lookup::Descriptor(descriptor) => {
             let (name, descriptor) =
                 mapping.runtime_member(mojang_class, &member.name, descriptor)?;
             Linked::Exact { name, descriptor }
         }
         Lookup::Parameters(parameters) => {
-            mapping.linked_by_arity(mojang_class, &member.name, parameters)?
+            mapping.linked_by_arity(mojang_class, &member.name, *parameters)?
         }
     };
     if declared.iter().any(|held| linked.matches(held)) {
@@ -340,7 +334,7 @@ fn holds(declared: &[classfile::Member], name: &str) -> String {
 
 /// Whether a descriptor is a method descriptor of the given width.
 fn takes(descriptor: &str, parameters: usize) -> bool {
-    render::signature(descriptor).is_ok_and(|(taken, _)| taken.len() == parameters)
+    classfile::signature(descriptor).is_ok_and(|(taken, _)| taken.len() == parameters)
 }
 
 /// A member's name paired with its descriptor.
@@ -1119,8 +1113,13 @@ com.example.Plain -> com.example.Plain:
         let mut surface = surface(class, class);
         surface.classes[0].members = vec![ReflectedMember {
             name: name.to_owned(),
-            descriptor: descriptor.map(str::to_owned),
-            parameters,
+            lookup: match (descriptor, parameters) {
+                (Some(descriptor), None) => {
+                    super::super::inputs::Lookup::Descriptor(descriptor.to_owned())
+                }
+                (None, Some(count)) => super::super::inputs::Lookup::Parameters(count),
+                _ => panic!("the fixture must declare exactly one lookup"),
+            },
         }];
         surface
     }
@@ -1307,16 +1306,20 @@ com.example.Plain -> com.example.Plain:
 
     #[test]
     fn a_member_declared_in_no_way_or_in_two_is_refused_before_the_jar_is_asked() {
-        for (descriptor, parameters) in [(Some("()V"), Some(0)), (None, None)] {
-            let error = verify_reflected_members(
-                &declaring("com.example.Alpha", "tick", descriptor, parameters),
-                &Mapping::Identity,
-                &holding("com/example/Alpha.class", &[("tick", "()V", true)]),
-            )
-            .expect_err("a member that says which member it is twice or never must be refused");
+        for declaration in [
+            "name = \"tick\"\ndescriptor = \"()V\"\nparameters = 0",
+            "name = \"tick\"",
+        ] {
+            let error = toml::from_str::<ReflectedMember>(declaration)
+                .expect_err("a member that says which member it is twice or never must be refused");
 
-            assert!(error.to_string().contains("com.example.Alpha"), "{error}");
             assert!(error.to_string().contains("tick"), "{error}");
+            assert!(
+                error
+                    .to_string()
+                    .contains("exactly one of descriptor or parameters"),
+                "{error}"
+            );
         }
     }
 

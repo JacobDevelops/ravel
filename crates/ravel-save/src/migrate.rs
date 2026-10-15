@@ -4,9 +4,7 @@ use std::fmt;
 use ravel_core::ModId;
 use serde_json::Value;
 
-use crate::{
-    SavedDataAggregate, SavedDataDeclaration, SavedDataError, SavedDataPlan, SavedDataVersion,
-};
+use crate::{SavedDataDeclaration, SavedDataError, SavedDataPlan, SavedDataVersion};
 
 /// A non-capturing migration from the preceding data version to the target version.
 pub type MigrationStep = fn(&Value) -> Result<Value, MigrationFailed>;
@@ -170,60 +168,13 @@ impl MigrationChain {
     }
 }
 
-impl SavedDataAggregate {
-    /// Migrates every owner's payload, replacing envelopes only after all succeed.
-    ///
-    /// # Errors
-    ///
-    /// Returns admission or migration errors from [`SavedDataPlan::resolve`] and [`MigrationChain::apply`], leaving the aggregate unchanged.
-    pub fn migrate(
-        &mut self,
-        declarations: &[SavedDataDeclaration],
-        chains: &[MigrationChain],
-    ) -> Result<Vec<SavedDataPlan>, SavedDataError> {
-        let mut migrated = Vec::with_capacity(self.owners.len());
-        let mut plans = Vec::with_capacity(self.owners.len());
-
-        for envelope in &self.owners {
-            let declaration = declarations
-                .iter()
-                .find(|declaration| declaration.owner() == envelope.owner())
-                .ok_or_else(|| SavedDataError::UnknownOwner {
-                    owner: envelope.owner().clone(),
-                })?;
-            let plan = SavedDataPlan::resolve(declaration, envelope.data_version())?;
-            if plan.is_current() {
-                migrated.push(envelope.clone());
-                plans.push(plan);
-                continue;
-            }
-
-            let chain = chains
-                .iter()
-                .find(|chain| chain.owner() == envelope.owner())
-                .ok_or_else(|| SavedDataError::MissingMigration {
-                    owner: envelope.owner().clone(),
-                    to: declaration.current(),
-                })?;
-            let payload = chain.apply(&plan, envelope.payload())?;
-            migrated.push(envelope.migrated(declaration.current(), payload));
-            plans.push(plan);
-        }
-
-        self.owners = migrated;
-        Ok(plans)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
 
     use super::{MigrationChain, MigrationFailed};
     use crate::tests::{id, version};
-    use crate::{
-        SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataPlan,
-    };
+    use crate::{SavedDataDeclaration, SavedDataError, SavedDataPlan};
 
     fn to_two(payload: &Value) -> Result<Value, MigrationFailed> {
         append(payload, 2)
@@ -361,73 +312,5 @@ mod tests {
                 owner: id("example"),
             })
         );
-    }
-
-    fn aggregate(entries: &[(&str, u32)]) -> SavedDataAggregate {
-        let mut aggregate = SavedDataAggregate::fresh();
-        for (owner, at) in entries {
-            aggregate.replace(SavedDataEnvelope::new(
-                id(owner),
-                version(*at),
-                Vec::new(),
-                None,
-                stored(*at),
-            ));
-        }
-        aggregate
-    }
-
-    #[test]
-    fn every_owner_reaches_the_current_version_or_none_of_them_moves() {
-        let declarations = [
-            SavedDataDeclaration::new(id("first"), [version(1), version(2)]).expect("versions"),
-            SavedDataDeclaration::new(id("second"), [version(1), version(2)]).expect("versions"),
-        ];
-        let chains = [
-            MigrationChain::new(id("first")).reaching(version(2), to_two),
-            MigrationChain::new(id("second")).reaching(version(2), to_two),
-        ];
-
-        let mut both = aggregate(&[("first", 1), ("second", 1)]);
-        both.migrate(&declarations, &chains)
-            .expect("both chains succeed");
-        for owner in ["first", "second"] {
-            let envelope = both.envelope(&id(owner)).expect("still present");
-            assert_eq!(envelope.data_version(), version(2));
-            assert_eq!(envelope.payload(), &json!({ "route": [1, 2] }));
-        }
-
-        // A later refusal must roll back earlier owners' successful migrations.
-        let refusing_chains = [
-            MigrationChain::new(id("first")).reaching(version(2), to_two),
-            MigrationChain::new(id("second")).reaching(version(2), refusing),
-        ];
-        let arrived = aggregate(&[("first", 1), ("second", 1)]);
-        let mut attempted = arrived.clone();
-        let refusal = attempted
-            .migrate(&declarations, &refusing_chains)
-            .expect_err("the second owner refuses");
-        assert_eq!(refusal.owner(), Some(&id("second")));
-        assert_eq!(
-            attempted, arrived,
-            "one owner was migrated while the world was refused"
-        );
-    }
-
-    #[test]
-    fn an_owner_with_versions_to_cross_and_no_chain_at_all_is_refused() {
-        let declarations =
-            [SavedDataDeclaration::new(id("first"), [version(1), version(2)]).expect("versions")];
-        let arrived = aggregate(&[("first", 1)]);
-        let mut attempted = arrived.clone();
-
-        assert_eq!(
-            attempted.migrate(&declarations, &[]),
-            Err(SavedDataError::MissingMigration {
-                owner: id("first"),
-                to: version(2),
-            })
-        );
-        assert_eq!(attempted, arrived);
     }
 }

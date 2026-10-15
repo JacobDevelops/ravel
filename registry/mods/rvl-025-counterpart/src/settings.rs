@@ -126,133 +126,41 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// Reads the four values off a resolved configuration.
+    /// Reads all four validated integer settings together for one launch.
     ///
-    /// A value the declaration would have refused never arrives, so a key that
-    /// is absent here is a key this build did not declare and the shipped
-    /// default stands. All four are read together, which is the divergence §3
-    /// asks for rather than the original's split between values read once and
-    /// values read on every use. The ceiling is floored at one whatever arrives, because
-    /// a ceiling of zero would make every upgradable item unacceptable and the
-    /// declared range already excludes it.
+    /// Keys absent from this configuration retain their shipped defaults.
     #[must_use]
     pub fn read(resolved: &LayeredConfiguration) -> Self {
-        Self::read_reporting(resolved).0
-    }
-
-    /// Reads the four values and says which of them were not read.
-    ///
-    /// A key that is absent is the shipped default and is not reported: this
-    /// build declares four settings, so an absent key is a value nobody wrote.
-    /// A key that is *present* and unreadable is reported, because that is the
-    /// one failure this function exists to catch, and folding it into the
-    /// shipped default is how a pack that wrote a value out of range runs on a
-    /// number nobody chose and nothing says so.
-    ///
-    /// The declaration validates first, so this is defence in depth. It is kept
-    /// because the layer it defends against is the one where a value arrives
-    /// having passed nothing.
-    #[must_use]
-    pub fn read_reporting(resolved: &LayeredConfiguration) -> (Self, Vec<Unread>) {
-        let mut unread = Vec::new();
-        let mut whole = |name: &'static str, fallback: i32| -> i32 {
-            let Ok(key) = name.parse() else {
-                unread.push(Unread {
-                    setting: name,
-                    why: Why::NotAKey,
-                });
-                return fallback;
-            };
-            let (value, refused) = read_whole(name, resolved.value(&key), fallback);
-            if let Some(refused) = refused {
-                unread.push(refused);
-            }
-            value
-        };
-        let settings = Self {
-            upgrade_ceiling: whole(UPGRADE_CEILING, DEFAULT_UPGRADE_CEILING).max(1),
-            energy_per_tick: whole(ENERGY_PER_TICK, DEFAULT_ENERGY_PER_TICK).max(0),
-            energy_capacity: whole(ENERGY_CAPACITY, DEFAULT_ENERGY_CAPACITY).max(0),
-            energy_accepted: whole(ENERGY_ACCEPTED, DEFAULT_ENERGY_ACCEPTED).max(0),
-        };
-        (settings, unread)
-    }
-}
-
-/// Reads one written value, saying what was wrong with it where something was.
-///
-/// Separate from [`Settings::read_reporting`] because it is the half that can be
-/// driven: the declaration refuses a bad value before a resolved configuration
-/// exists, so no resolved configuration can be built carrying one. That is what
-/// makes this defence in depth, and it is also why the layer below it is held to
-/// its own assertions here rather than through a resolve that cannot produce the
-/// input.
-#[must_use]
-pub fn read_whole(
-    setting: &'static str,
-    written: Option<&ravel_sdk::JsonValue>,
-    fallback: i32,
-) -> (i32, Option<Unread>) {
-    // An absent key is a value nobody wrote, which is the shipped default and
-    // not a failure. This build declares four settings, so absence here means a
-    // pack left one alone.
-    let Some(written) = written else {
-        return (fallback, None);
-    };
-    let Some(whole) = written.as_i64() else {
-        return (
-            fallback,
-            Some(Unread {
-                setting,
-                why: Why::NotAWholeNumber,
-            }),
-        );
-    };
-    i32::try_from(whole).map_or(
-        (
-            fallback,
-            Some(Unread {
-                setting,
-                why: Why::OutOfRange,
-            }),
-        ),
-        |value| (value, None),
-    )
-}
-
-/// One setting that was present and could not be read.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Unread {
-    /// Which setting.
-    pub setting: &'static str,
-    /// What was wrong with it.
-    pub why: Why,
-}
-
-/// Why a present setting was not read.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Why {
-    /// The name this build spells is not a legal configuration key, which for a
-    /// constant is a packaging failure.
-    NotAKey,
-    /// The value is not a whole number.
-    NotAWholeNumber,
-    /// The value is a whole number wider than the setting's declared range.
-    OutOfRange,
-}
-
-impl std::fmt::Display for Unread {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let why = match self.why {
-            Why::NotAKey => "is not a legal configuration key",
-            Why::NotAWholeNumber => "was written as something other than a whole number",
-            Why::OutOfRange => "was written outside the range the setting declares",
-        };
-        write!(
-            formatter,
-            "the setting {} {why}, so the shipped default is in force",
-            self.setting
-        )
+        Self {
+            upgrade_ceiling: UPGRADE_CEILING
+                .parse()
+                .ok()
+                .and_then(|key| resolved.integer(&key).ok())
+                .and_then(|value| i32::try_from(value).ok())
+                .unwrap_or(DEFAULT_UPGRADE_CEILING)
+                .max(1),
+            energy_per_tick: ENERGY_PER_TICK
+                .parse()
+                .ok()
+                .and_then(|key| resolved.integer(&key).ok())
+                .and_then(|value| i32::try_from(value).ok())
+                .unwrap_or(DEFAULT_ENERGY_PER_TICK)
+                .max(0),
+            energy_capacity: ENERGY_CAPACITY
+                .parse()
+                .ok()
+                .and_then(|key| resolved.integer(&key).ok())
+                .and_then(|value| i32::try_from(value).ok())
+                .unwrap_or(DEFAULT_ENERGY_CAPACITY)
+                .max(0),
+            energy_accepted: ENERGY_ACCEPTED
+                .parse()
+                .ok()
+                .and_then(|key| resolved.integer(&key).ok())
+                .and_then(|value| i32::try_from(value).ok())
+                .unwrap_or(DEFAULT_ENERGY_ACCEPTED)
+                .max(0),
+        }
     }
 }
 
@@ -267,7 +175,7 @@ impl std::fmt::Display for Unread {
 /// Returns whatever [`declaration`] refuses.
 pub fn declared_sides() -> Result<Vec<SettingSide>, DeclarationError> {
     Ok(declaration()?
-        .settings
+        .settings()
         .iter()
         .map(|setting| setting.side)
         .collect())
@@ -279,77 +187,67 @@ mod tests {
     use ravel_sdk::json;
 
     #[test]
-    fn a_written_value_that_cannot_be_read_is_reported_rather_than_silently_defaulted() {
-        assert_eq!(
-            read_whole(ENERGY_CAPACITY, None, DEFAULT_ENERGY_CAPACITY),
-            (DEFAULT_ENERGY_CAPACITY, None),
-            "an absent key is a value nobody wrote"
-        );
-        assert_eq!(
-            read_whole(
-                ENERGY_CAPACITY,
-                Some(&json!("600")),
-                DEFAULT_ENERGY_CAPACITY
-            ),
-            (
-                DEFAULT_ENERGY_CAPACITY,
-                Some(Unread {
-                    setting: ENERGY_CAPACITY,
-                    why: Why::NotAWholeNumber,
+    fn the_declaration_refuses_wrong_types_and_integer_overflow() {
+        for value in [json!("600"), json!(i64::from(i32::MAX) + 1)] {
+            let written = ValueDocument::parse(
+                &json!({
+                    "schemaVersion": 1,
+                    "owner": crate::MOD_ID,
+                    "values": { ENERGY_CAPACITY: value },
                 })
-            ),
-            "a pack that wrote text where a number belongs is told rather than run at the default"
-        );
-        assert_eq!(
-            read_whole(
-                ENERGY_CAPACITY,
-                Some(&json!(i64::from(i32::MAX) + 1)),
-                DEFAULT_ENERGY_CAPACITY
-            ),
-            (
-                DEFAULT_ENERGY_CAPACITY,
-                Some(Unread {
-                    setting: ENERGY_CAPACITY,
-                    why: Why::OutOfRange,
-                })
+                .to_string(),
             )
-        );
-        assert_eq!(
-            read_whole(ENERGY_CAPACITY, Some(&json!(42)), DEFAULT_ENERGY_CAPACITY),
-            (42, None)
-        );
+            .expect("the override document is well formed");
+            assert!(
+                LayeredConfiguration::resolve(
+                    declaration().expect("the shipped document is legal"),
+                    Some(&written),
+                    None,
+                )
+                .is_err()
+            );
+        }
     }
 
     #[test]
-    fn the_declaration_refuses_an_unreadable_value_before_a_resolved_one_exists() {
-        let declaration = declaration().expect("the shipped document is legal");
+    fn typed_integer_reads_preserve_zero_and_i32_boundary_values() {
         let written = ValueDocument::parse(
             &json!({
                 "schemaVersion": 1,
                 "owner": crate::MOD_ID,
-                "values": { ENERGY_CAPACITY: "600" },
+                "values": {
+                    UPGRADE_CEILING: 1,
+                    ENERGY_PER_TICK: 0,
+                    ENERGY_CAPACITY: i32::MAX,
+                    ENERGY_ACCEPTED: i32::MAX,
+                },
             })
             .to_string(),
         )
         .expect("the override document is well formed");
-
-        assert!(
-            LayeredConfiguration::resolve(declaration, Some(&written), None).is_err(),
-            "the declaration is the layer that refuses, and the reporting read is behind it"
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the shipped document is legal"),
+            Some(&written),
+            None,
+        )
+        .expect("the boundary values resolve");
+        assert_eq!(
+            Settings::read(&resolved),
+            Settings {
+                upgrade_ceiling: 1,
+                energy_per_tick: 0,
+                energy_capacity: i32::MAX,
+                energy_accepted: i32::MAX,
+            }
         );
     }
 
     #[test]
-    fn a_configuration_that_resolves_cleanly_reports_nothing_unread() {
+    fn a_configuration_that_resolves_cleanly_reads_the_shipped_defaults() {
         let declaration = declaration().expect("the shipped document is legal");
         let resolved = LayeredConfiguration::resolve(declaration, None, None)
             .expect("the shipped defaults resolve");
-        let (settings, unread) = Settings::read_reporting(&resolved);
-        assert_eq!(settings, Settings::default());
-        assert!(
-            unread.is_empty(),
-            "an absent key is a value nobody wrote, which is not a failure"
-        );
+        assert_eq!(Settings::read(&resolved), Settings::default());
     }
 
     use super::*;
@@ -387,7 +285,7 @@ mod tests {
     fn every_declared_key_is_one_the_reader_asks_for() {
         let declaration = declaration().expect("the packaged document parses");
         let declared: Vec<String> = declaration
-            .settings
+            .settings()
             .iter()
             .map(|setting| setting.key.to_string())
             .collect();

@@ -1,6 +1,13 @@
 #![forbid(unsafe_code)]
 
 //! Configuration declarations, value schemas, and default/pack/player layering.
+//!
+//! Declarations validate defaults on every deserialization path and expose only
+//! borrowed settings, so resolved values cannot be invalidated after validation.
+//! [`LayeredConfiguration::boolean`], [`LayeredConfiguration::integer`],
+//! [`LayeredConfiguration::number`] and [`LayeredConfiguration::text`] enforce
+//! the declared scalar kind and report missing keys as [`ValueError`].
+//! Filesystem failures retain their path and original [`std::io::Error`] source.
 
 mod declaration;
 mod document;

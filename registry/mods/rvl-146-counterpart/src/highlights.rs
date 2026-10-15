@@ -309,6 +309,7 @@ pub fn draws_on(side: Side) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use ravel_sdk::render_stages::RenderStage;
     use ravel_sdk::{ModId, Side};
 
     use super::{
@@ -504,7 +505,7 @@ mod tests {
         let order = declare_stage(&owner)
             .resolve()
             .expect("one contribution has no cycle");
-        assert_eq!(order.at("after_terrain"), [owner]);
+        assert_eq!(order.at(RenderStage::AfterTerrain), [owner]);
         assert!(draws_on(Side::Client));
         assert!(!draws_on(Side::DedicatedServer));
         assert!(!draws_on(Side::IntegratedServer));

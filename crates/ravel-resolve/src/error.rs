@@ -129,6 +129,10 @@ impl StructuredFailure for ResolutionError {
     fn lifecycle_state(&self) -> LifecycleState {
         LifecycleState::Validated
     }
+
+    fn quotes_untrusted_text(&self) -> bool {
+        false
+    }
 }
 
 fn cycle_path(members: &[ModId]) -> String {

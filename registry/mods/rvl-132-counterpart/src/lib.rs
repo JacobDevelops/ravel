@@ -138,7 +138,7 @@ impl core::fmt::Display for Refused {
 /// The entry, as the loader drives it.
 #[derive(Debug)]
 pub struct Entry {
-    declaration: Option<ContentDeclaration>,
+    declaration: Result<ContentDeclaration, ModError>,
     settings: Settings,
     comparator: Comparator,
     serialisers: Serialisers,
@@ -166,7 +166,7 @@ impl Entry {
         // one built from a list a caller assigned.
         let comparator = settings.comparator().unwrap_or_default();
         Self {
-            declaration: Self::declaration().ok(),
+            declaration: Self::declaration(),
             settings,
             comparator,
             serialisers: Serialisers::new(),
@@ -422,14 +422,6 @@ impl Entry {
     pub fn invalidate(&mut self, at: Point) {
         self.caches.invalidate(at);
     }
-
-    fn refused(detail: &(impl ToString + ?Sized), state: LifecycleState) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state,
-            detail: detail.to_string(),
-        }
-    }
 }
 
 #[declare_mod(id = "rvl_132_counterpart")]
@@ -438,27 +430,22 @@ impl Mod for Entry {
         match state {
             LifecycleState::Constructed => {
                 settings::declaration()
-                    .map_err(|refused| Self::refused(&refused, LifecycleState::Constructed))?;
-                self.declaration.as_ref().ok_or_else(|| {
-                    Self::refused(
-                        "the packaged content declaration is not well formed",
-                        LifecycleState::Constructed,
-                    )
-                })?;
+                    .map_err(|refused| ModError::refused(refused.to_string()))?;
+                self.declaration.as_ref().map_err(Clone::clone)?;
                 // Registry construction sits inside this state, and the
                 // serialisers go in before registry population.
                 self.install_serialisers()
-                    .map_err(|refused| Self::refused(&refused, LifecycleState::Constructed))?;
+                    .map_err(|refused| ModError::refused(refused.to_string()))?;
             }
             LifecycleState::Registered => {
                 self.register_kinds()
-                    .map_err(|refused| Self::refused(&refused, LifecycleState::Registered))?;
+                    .map_err(|refused| ModError::refused(refused.to_string()))?;
                 self.common_setup()
-                    .map_err(|refused| Self::refused(&refused, LifecycleState::Registered))?;
+                    .map_err(|refused| ModError::refused(refused.to_string()))?;
                 self.install_adapters()
-                    .map_err(|refused| Self::refused(&refused, LifecycleState::Registered))?;
+                    .map_err(|refused| ModError::refused(refused.to_string()))?;
                 self.load_compatibility(None)
-                    .map_err(|refused| Self::refused(&refused, LifecycleState::Registered))?;
+                    .map_err(|refused| ModError::refused(refused.to_string()))?;
                 self.attachments.bake();
             }
             // A server stopping is one of the two points section fourteen
@@ -477,30 +464,25 @@ impl Mod for Entry {
     }
 
     fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        self.declaration.clone().map(Some).ok_or_else(|| {
-            Self::refused(
-                "the packaged content declaration is not well formed",
-                LifecycleState::Constructed,
-            )
-        })
+        self.declaration.clone().map(Some)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         settings::declaration()
             .map(Some)
-            .map_err(|error| Self::refused(&error, LifecycleState::Constructed))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
         // Section three: the list is re-read on every load and reload and the
         // comparator is rebuilt from it each time, so the setting takes effect
         // without a restart.
-        self.settings = Settings::read(resolved)
-            .map_err(|refused| Self::refused(&refused, LifecycleState::Running))?;
+        self.settings =
+            Settings::read(resolved).map_err(|refused| ModError::refused(refused.to_string()))?;
         self.comparator = self
             .settings
             .comparator()
-            .map_err(|refused| Self::refused(&refused, LifecycleState::Running))?;
+            .map_err(|refused| ModError::refused(refused.to_string()))?;
         Ok(())
     }
 
@@ -519,6 +501,21 @@ mod tests {
     use super::*;
     use crate::capabilities::{RECIPES, VANILLA_ATTACHMENTS};
     use crate::kinds::REGISTERED;
+
+    #[test]
+    fn deferred_declaration_keeps_the_original_error_detail() {
+        let original = ModError::refused("the original packaged content failure");
+        let mut entry = Entry::new();
+        entry.declaration = Err(original.clone());
+        assert_eq!(
+            entry
+                .content_declaration()
+                .expect_err("the declaration refused"),
+            original
+        );
+        assert_eq!(entry.enter(LifecycleState::Constructed), Err(original));
+        assert_eq!(entry.entered(), []);
+    }
 
     fn run_to_registered() -> Entry {
         let mut entry = Entry::new();
@@ -761,7 +758,7 @@ mod tests {
             .configuration_declaration()
             .expect("valid settings")
             .expect("a packaged document");
-        assert_eq!(declared.settings.len(), settings::KEYS.len());
+        assert_eq!(declared.settings().len(), settings::KEYS.len());
     }
 
     #[test]

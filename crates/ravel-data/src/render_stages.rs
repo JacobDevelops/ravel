@@ -4,6 +4,8 @@ use std::fmt;
 use ravel_core::{ModId, Side, precedence};
 
 /// A published frame stage; declarations currently provide ordering, not drawing.
+///
+/// Published names use `snake_case` to match the mod-facing stage declaration vocabulary.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum RenderStage {
     /// After the world's solid geometry is drawn.
@@ -60,7 +62,7 @@ impl fmt::Display for RenderStage {
 ///
 /// ```
 /// use ravel_core::ModId;
-/// use ravel_data::StageDeclaration;
+/// use ravel_data::{RenderStage, StageDeclaration};
 ///
 /// let glow: ModId = "glow_mod".parse()?;
 /// let outline: ModId = "outline_mod".parse()?;
@@ -72,7 +74,7 @@ impl fmt::Display for RenderStage {
 /// stages.after(&outline, &glow);
 ///
 /// let order = stages.resolve().expect("a stage without a cycle resolves");
-/// assert_eq!(order.at("after_terrain"), [glow, outline]);
+/// assert_eq!(order.at(RenderStage::AfterTerrain), [glow, outline]);
 /// # Ok::<(), ravel_core::ModIdError>(())
 /// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -185,14 +187,12 @@ pub struct StageOrder {
 }
 
 impl StageOrder {
-    /// Returns the mods entered at the stage named `stage`, in order.
+    /// Returns the mods entered at `stage`, in order.
     ///
-    /// Unknown or unused stages return an empty slice.
+    /// An unused stage returns an empty slice.
     #[must_use]
-    pub fn at(&self, stage: &str) -> &[ModId] {
-        RenderStage::published(stage)
-            .and_then(|published| self.ordered.get(&published))
-            .map_or(&[], Vec::as_slice)
+    pub fn at(&self, stage: RenderStage) -> &[ModId] {
+        self.ordered.get(&stage).map_or(&[], Vec::as_slice)
     }
 
     /// Returns every stage anything contributes to, in frame order.
@@ -226,12 +226,12 @@ pub enum StageRefused {
 }
 
 impl StageRefused {
-    /// Returns the unpublished name, or `""` when the refusal is not about one.
+    /// Returns the unpublished name, if the refusal is about one.
     #[must_use]
-    pub fn unknown_stage(&self) -> &str {
+    pub fn unknown_stage(&self) -> Option<&str> {
         match self {
-            Self::UnknownStage { name, .. } => name,
-            Self::UnknownContributors { .. } | Self::Circular { .. } => "",
+            Self::UnknownStage { name, .. } => Some(name),
+            Self::UnknownContributors { .. } | Self::Circular { .. } => None,
         }
     }
 
@@ -299,7 +299,12 @@ mod tests {
         name.parse().expect("a well formed owner id")
     }
 
-    fn entered_before(order: &StageOrder, stage: &str, earlier: &ModId, later: &ModId) -> bool {
+    fn entered_before(
+        order: &StageOrder,
+        stage: RenderStage,
+        earlier: &ModId,
+        later: &ModId,
+    ) -> bool {
         let at = order.at(stage);
         match (
             at.iter().position(|id| id == earlier),
@@ -334,8 +339,16 @@ mod tests {
 
         let order = stages.resolve().expect("a stage without a cycle resolves");
 
-        assert_eq!(order.at("after_terrain"), [early.clone(), late.clone()]);
-        assert!(entered_before(&order, "after_terrain", &early, &late));
+        assert_eq!(
+            order.at(RenderStage::AfterTerrain),
+            [early.clone(), late.clone()]
+        );
+        assert!(entered_before(
+            &order,
+            RenderStage::AfterTerrain,
+            &early,
+            &late
+        ));
         assert_eq!(
             order.stages().collect::<Vec<_>>(),
             [RenderStage::AfterTerrain]
@@ -354,8 +367,16 @@ mod tests {
         stages.after(&first, &second);
 
         let order = stages.resolve().expect("a stage without a cycle resolves");
-        assert_eq!(order.at("after_terrain"), [second.clone(), first.clone()]);
-        assert!(entered_before(&order, "after_terrain", &second, &first));
+        assert_eq!(
+            order.at(RenderStage::AfterTerrain),
+            [second.clone(), first.clone()]
+        );
+        assert!(entered_before(
+            &order,
+            RenderStage::AfterTerrain,
+            &second,
+            &first
+        ));
     }
 
     #[test]
@@ -365,9 +386,8 @@ mod tests {
         stages.contribute(&owner, "after_terrain");
 
         let order = stages.resolve().expect("one contributor resolves");
-        assert_eq!(order.at("after_terrain"), [owner]);
-        assert_eq!(order.at("after_entities"), []);
-        assert_eq!(order.at("a_stage_nobody_publishes"), []);
+        assert_eq!(order.at(RenderStage::AfterTerrain), [owner]);
+        assert_eq!(order.at(RenderStage::AfterEntities), []);
     }
 
     #[test]
@@ -399,12 +419,12 @@ mod tests {
             .contribute_checked(&owner, "a_stage_nobody_publishes")
             .expect_err("a stage nothing publishes cannot be contributed to");
 
-        assert_eq!(refusal.unknown_stage(), "a_stage_nobody_publishes");
+        assert_eq!(refusal.unknown_stage(), Some("a_stage_nobody_publishes"));
         assert_eq!(
             stages
                 .resolve()
                 .expect("nothing was declared")
-                .at("after_terrain"),
+                .at(RenderStage::AfterTerrain),
             []
         );
     }
@@ -419,7 +439,7 @@ mod tests {
             .resolve()
             .expect_err("an unpublished name is not quietly dropped");
 
-        assert_eq!(refusal.unknown_stage(), "a_stage_nobody_publishes");
+        assert_eq!(refusal.unknown_stage(), Some("a_stage_nobody_publishes"));
         assert!(refusal.to_string().contains("sample"));
     }
 
@@ -451,7 +471,7 @@ mod tests {
 
         assert_eq!(refusal.unknown_contributors(), [absent]);
         assert_eq!(refusal.cycle(), []);
-        assert_eq!(refusal.unknown_stage(), "");
+        assert_eq!(refusal.unknown_stage(), None);
     }
 
     #[test]

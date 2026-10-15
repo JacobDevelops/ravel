@@ -174,7 +174,7 @@ impl fmt::Display for Refusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::WrongSide { command, side } => {
-                write!(formatter, "{command} does not run on {}", side.name())
+                write!(formatter, "{command} does not run on {}", side.as_str())
             }
             Self::Argument(source) => write!(formatter, "{source}"),
         }

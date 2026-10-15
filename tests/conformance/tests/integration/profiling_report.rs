@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ravel_core::{LifecycleState, ModId, Side, SideSet};
-use ravel_host_api::{GameEvent, HostError, HostMod};
+use ravel_host_api::{GameEvent, HostMod};
 use ravel_loader::{LifecycleEntry, LifecycleMachine, Requirement, broadcast, broadcast_profiled};
 use ravel_observability::{CallKind, Metric, Profiler, ProfilingReport, Support};
 use serde_json::Value;
@@ -49,11 +49,11 @@ impl HostMod for Quiet {
         &self.0
     }
 
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
         Ok(())
     }
 
-    fn observe(&mut self, _event: GameEvent) -> Result<(), HostError> {
+    fn observe(&mut self, _event: GameEvent) -> Result<(), ravel_host_api::ModError> {
         Ok(())
     }
 }
@@ -94,25 +94,25 @@ fn the_recorded_metric_table_is_what_the_collectors_can_actually_measure() {
     );
     for (row, metric) in rows.iter().zip(Metric::ALL) {
         let support = metric.support();
-        assert_eq!(row["metric"], metric.name());
+        assert_eq!(row["metric"], metric.as_str());
         assert_eq!(row["unit"], metric.unit());
         assert_eq!(
             row["support"],
-            support.name(),
+            support.as_str(),
             "`{}` is recorded as something the crate no longer says",
-            metric.name()
+            metric.as_str()
         );
         match support.detail() {
             None => assert!(
                 row.get("detail").is_none(),
                 "`{}` is exact and the record explains it anyway",
-                metric.name()
+                metric.as_str()
             ),
             Some(detail) => assert_eq!(
                 row["detail"],
                 detail,
                 "`{}`'s reason has changed since the record was written",
-                metric.name()
+                metric.as_str()
             ),
         }
     }
@@ -124,7 +124,7 @@ fn every_metric_m3_cannot_measure_is_named_in_the_record_rather_than_absent() {
     let recorded = strings(&record["collectors"]["unsupported"]);
     let actual = ProfilingReport::unsupported()
         .into_iter()
-        .map(|(metric, _)| metric.name().to_owned())
+        .map(|(metric, _)| metric.as_str().to_owned())
         .collect::<Vec<_>>();
 
     assert_eq!(
@@ -138,10 +138,10 @@ fn every_metric_m3_cannot_measure_is_named_in_the_record_rather_than_absent() {
     for metric in Metric::ALL {
         let support = metric.support();
         assert_eq!(
-            actual.contains(&metric.name().to_owned()),
+            actual.contains(&metric.as_str().to_owned()),
             !support.is_measured(),
             "`{}` is on one list and not the other",
-            metric.name()
+            metric.as_str()
         );
     }
 }
@@ -334,17 +334,17 @@ fn a_metric_that_is_measured_at_all_is_labelled_exact_or_approximate_and_never_b
         match support {
             Support::Exact => {
                 assert!(support.is_measured());
-                assert_eq!(support.name(), "exact");
+                assert_eq!(support.as_str(), "exact");
                 assert!(support.detail().is_none());
             }
             Support::Approximate(_) => {
                 assert!(support.is_measured());
-                assert_eq!(support.name(), "approximate");
+                assert_eq!(support.as_str(), "approximate");
                 assert!(support.detail().is_some());
             }
             Support::Unsupported(_) => {
                 assert!(!support.is_measured());
-                assert_eq!(support.name(), "unsupported");
+                assert_eq!(support.as_str(), "unsupported");
                 assert!(support.detail().is_some());
             }
         }

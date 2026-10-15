@@ -144,7 +144,7 @@ pub fn census() -> Result<String, FlagIdError> {
 pub fn settings() -> Result<String, DeclarationError> {
     let declaration = settings::declaration()?;
     let mut rendered = String::from("key\tside\tgroup\trestart\tdefault\tflags\n");
-    for setting in &declaration.settings {
+    for setting in declaration.settings() {
         let key = setting.key.as_str();
         let group = if settings::DECIDING_KEYS.contains(&key) {
             "deciding"

@@ -31,6 +31,11 @@
 //! # Ok::<(), ModError>(())
 //! ```
 //!
+//! Refuse a hook with [`ModError::refused`], supplying only the reason. The host
+//! records the identity and lifecycle phase of the hook it actually called.
+//! Convert an error's display text with `ModError::refused(error.to_string())`;
+//! strings can be supplied directly. Return [`ModError`] from mod callbacks,
+//! not [`HostError`], which already carries host attribution.
 
 // Let attribute expansions use the same absolute path inside this crate.
 extern crate self as ravel_sdk;
@@ -53,10 +58,12 @@ pub mod tags;
 pub mod world_shaping;
 
 pub use ravel_core::{LifecycleState, ModId, ModIdError, Side, SideSet, Version, VersionRange};
-/// A lifecycle refusal attributed to the mod and phase that failed.
-pub use ravel_host_api::HostError as ModError;
+/// An attributed host failure returned when calling another mod's service.
+pub use ravel_host_api::HostError;
 /// The lifecycle contract a mod implements; only `enter` is required.
 pub use ravel_host_api::HostMod as Mod;
+/// A mod's refusal detail; the host supplies identity and lifecycle attribution.
+pub use ravel_host_api::ModError;
 pub use ravel_sdk_macros::declare_mod;
 /// The error returned when parsing a [`JsonValue`] from text.
 pub use serde_json::Error as JsonError;
@@ -288,11 +295,7 @@ mod tests {
         fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
             registrar
                 .claim(Self::command())
-                .map_err(|refusal| ModError::Refused {
-                    mod_id: Self::declared_id().clone(),
-                    state: LifecycleState::Constructed,
-                    detail: refusal.to_string(),
-                })
+                .map_err(|error| ModError::refused(error.to_string()))
         }
 
         fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {

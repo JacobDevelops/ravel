@@ -1,30 +1,18 @@
 #![forbid(unsafe_code)]
 
-//! Shared adapter runtime for version data and generated bindings.
+//! Generated version data in [`pinned`] and reviewed hook lookup through [`target`].
 
-use ravel_minecraft::{HookId, HookTarget, VersionAdapter};
+use ravel_minecraft::{HookId, HookTarget};
 
 /// The target table generated from the pinned version's reviewed inventory.
 pub mod pinned {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
-/// The adapter over the one version this build generated against.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct PinnedAdapter;
-
-impl VersionAdapter for PinnedAdapter {
-    fn minecraft_version(&self) -> &str {
-        pinned::MINECRAFT_VERSION
-    }
-
-    fn targets(&self) -> &[HookTarget] {
-        &pinned::TARGETS
-    }
-
-    fn non_goals(&self) -> &[HookId] {
-        &pinned::NON_GOALS
-    }
+/// Finds a reviewed hook in the generated target table.
+#[must_use]
+pub fn target(id: HookId) -> Option<&'static HookTarget> {
+    pinned::TARGETS.iter().find(|target| target.id() == id)
 }
 
 #[cfg(test)]
@@ -32,9 +20,9 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use ravel_minecraft::{HookId, HookKind, VersionAdapter};
+    use ravel_minecraft::{HookId, HookKind};
 
-    use super::{PinnedAdapter, pinned};
+    use super::{pinned, target};
 
     #[test]
     fn the_adapter_reports_the_version_its_data_directory_is_named_for() {
@@ -51,44 +39,39 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(
-            names.contains(&PinnedAdapter.minecraft_version().to_owned()),
+            names.contains(&pinned::MINECRAFT_VERSION.to_owned()),
             "the generated binding should name a tracked version, not {names:?}"
         );
     }
 
     #[test]
     fn every_reviewed_hook_reached_the_generated_target_table() {
-        let adapter = PinnedAdapter;
-
-        assert_eq!(adapter.targets().len(), pinned::TARGETS.len());
         assert!(
-            adapter.targets().len() >= 6,
+            pinned::TARGETS.len() >= 6,
             "the reviewed inventory carries at least six resolved hook targets"
         );
         // Internal names permit an unnamed package but never use dots.
         assert!(
-            adapter
-                .targets()
+            pinned::TARGETS
                 .iter()
                 .all(|target| !target.class().contains('.')),
             "a target names its class the way the JVM writes it"
         );
-        assert_eq!(adapter.target(HookId::new("absent.hook")), None);
+        assert_eq!(target(HookId::new("absent.hook")), None);
+        for reviewed in &pinned::TARGETS {
+            assert_eq!(target(reviewed.id()), Some(reviewed));
+        }
     }
 
     #[test]
     fn the_table_carries_both_a_method_and_a_field_target() {
-        let adapter = PinnedAdapter;
-
         assert!(
-            adapter
-                .targets()
+            pinned::TARGETS
                 .iter()
                 .any(|target| target.kind() == HookKind::StaticMethod)
         );
         assert!(
-            adapter
-                .targets()
+            pinned::TARGETS
                 .iter()
                 .any(|target| target.kind() == HookKind::InstanceField),
             "field extraction is what proves the generator reads more than methods"

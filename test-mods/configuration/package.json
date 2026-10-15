@@ -29,11 +29,11 @@
     "files": [
       {
         "path": "Cargo.toml",
-        "sha256": "cec8b3f9a285bf706925767a9d2f392e91a60a64711f6517423dee826460412e"
+        "sha256": "4b68425482ee6a232075859ac460a69c7224cc24a26a5b69813e922ad61e91ac"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "c4df73c7f34f5b88c8184610d2b5b14564dcaf342cc08419cb26676583b8de85"
+        "sha256": "5058d62d0ab81ddc2b9e9b0f637849378f813dc78c03920f658ed41079a3730e"
       },
       {
         "path": "configuration.json",

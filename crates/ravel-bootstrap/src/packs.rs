@@ -5,50 +5,41 @@
 //! Repeated writes are safe because `write_pack` leaves identical trees untouched.
 
 use std::path::Path;
-use std::sync::{Mutex, PoisonError};
 
 use ravel_loader::{Half, PACK_DIRECTORY, Supplied, WORLD_DATA_PACKS, Written, write_pack};
 
-static SUPPLIED: Mutex<Option<Supplied>> = Mutex::new(None);
-
-/// Installs the launch's layered mod files for later hooks.
-pub fn install(supplied: Supplied) {
-    *SUPPLIED.lock().unwrap_or_else(PoisonError::into_inner) = Some(supplied);
-}
-
-/// Writes installed data into `world`, or returns `None` if no set is installed.
+/// Writes the launch's supplied data into `world`.
 ///
 /// # Errors
 ///
 /// Returns an error if the pack cannot be written.
-pub fn write_world_pack(world: &Path) -> Result<Option<Written>, ravel_loader::PackError> {
-    write_data_pack(&world.join(WORLD_DATA_PACKS))
+pub fn write_world_pack(
+    supplied: &Supplied,
+    world: &Path,
+) -> Result<Written, ravel_loader::PackError> {
+    write_data_pack(supplied, &world.join(WORLD_DATA_PACKS))
 }
 
-/// Writes installed data into a staging holder, or returns `None` without a set.
+/// Writes the launch's supplied data into a staging holder.
 ///
 /// # Errors
 ///
 /// Returns an error if the pack cannot be written.
-pub(crate) fn write_staged_pack(holder: &Path) -> Result<Option<Written>, ravel_loader::PackError> {
-    write_data_pack(holder)
+pub(crate) fn write_staged_pack(
+    supplied: &Supplied,
+    holder: &Path,
+) -> Result<Written, ravel_loader::PackError> {
+    write_data_pack(supplied, holder)
 }
 
 // Staging copies the holder's contents, so the pack belongs directly inside it.
-fn write_data_pack(holder: &Path) -> Result<Option<Written>, ravel_loader::PackError> {
-    let held = SUPPLIED.lock().unwrap_or_else(PoisonError::into_inner);
-    let Some(supplied) = held.as_ref() else {
-        return Ok(None);
-    };
-    let written = write_pack(
+fn write_data_pack(supplied: &Supplied, holder: &Path) -> Result<Written, ravel_loader::PackError> {
+    write_pack(
         &holder.join(PACK_DIRECTORY),
         supplied,
         Half::Data,
         &crate::runtime::data_pack_metadata(Half::Data.description()),
     )
-    .map(Some);
-    drop(held);
-    written
 }
 
 #[cfg(test)]
@@ -56,6 +47,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{write_staged_pack, write_world_pack};
+    use ravel_loader::Supplied;
 
     fn directory(name: &str) -> PathBuf {
         let at =
@@ -67,26 +59,24 @@ mod tests {
         at
     }
 
-    // Installing a set here would affect every test sharing the process-wide slot.
+    // A launch with no declared files still publishes the version's metadata.
     #[test]
-    fn a_launch_with_no_installed_set_leaves_the_world_alone() {
+    fn an_empty_launch_writes_world_pack_metadata() {
         let world = directory("absent");
 
-        let written = write_world_pack(&world).expect("nothing to write cannot fail");
+        write_world_pack(&Supplied::default(), &world).expect("the pack can be written");
 
-        assert!(written.is_none());
-        assert!(!world.join("datapacks").exists());
+        assert!(world.join("datapacks/ravel/pack.mcmeta").is_file());
         std::fs::remove_dir_all(world).expect("remove the test world");
     }
 
     #[test]
-    fn a_launch_with_no_installed_set_stages_nothing() {
+    fn an_empty_launch_stages_pack_metadata() {
         let staging = directory("unstaged");
 
-        let written = write_staged_pack(&staging).expect("nothing to write cannot fail");
+        write_staged_pack(&Supplied::default(), &staging).expect("the pack can be written");
 
-        assert!(written.is_none());
-        assert!(!staging.join("ravel").exists());
+        assert!(staging.join("ravel/pack.mcmeta").is_file());
         assert!(!staging.join("datapacks").exists());
         std::fs::remove_dir_all(staging).expect("remove the staging directory");
     }

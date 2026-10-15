@@ -19,7 +19,7 @@
 //! stages.after(&outline, &glow);
 //!
 //! let order = stages.resolve().expect("a stage without a cycle resolves");
-//! assert_eq!(order.at("after_terrain"), [glow.clone(), outline]);
+//! assert_eq!(order.at(RenderStage::AfterTerrain), [glow.clone(), outline]);
 //!
 //! // A stage nothing publishes is refused where it is written.
 //! assert!(stages.contribute_checked(&glow, "after_everything").is_err());

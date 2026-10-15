@@ -11,6 +11,8 @@
 //! Fourteen of these are also published as named flags through the shared
 //! library, which is what gates the creative listing; [`published_flags`] names
 //! them and [`publish`] binds them.
+//!
+//! Each setting-key constant matches its key in [`DOCUMENT`].
 
 use ravel_sdk::config::{
     ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
@@ -18,45 +20,25 @@ use ravel_sdk::config::{
 use ravel_sdk::{JsonValue, Side};
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 
-/// The key chance a defeated pathfinding creature drops the first tier material is written under.
 pub const DROPS_CREATURE_MATERIAL_CHANCE: &str = "drops.creature_material_chance";
-/// The key uses on the basic ritual catalyst is written under.
 pub const RITUAL_CATALYST_USES: &str = "ritual.catalyst_uses";
-/// The key seconds between growth pulses is written under.
 pub const GROWTH_PULSE_SECONDS: &str = "growth.pulse_seconds";
-/// The key chance a harvested crop yields the weak fertiliser is written under.
 pub const DROPS_FERTILISER_CHANCE: &str = "drops.fertiliser_chance";
-/// The key a second seed may drop is written under.
 pub const DROPS_SECOND_SEED: &str = "drops.second_seed";
-/// The key crops require their own tier's ground to grow is written under.
 pub const GROWTH_REQUIRE_EFFECTIVE_GROUND: &str = "growth.require_effective_ground";
-/// The key the first boss creature drops tier material is written under.
 pub const DROPS_FIRST_BOSS_MATERIAL: &str = "drops.first_boss_material";
-/// The key the second boss creature drops tier material is written under.
 pub const DROPS_SECOND_BOSS_MATERIAL: &str = "drops.second_boss_material";
-/// The key the first boss creature drops the rare dust is written under.
 pub const DROPS_FIRST_BOSS_DUST: &str = "drops.first_boss_dust";
-/// The key the second boss creature drops the rare dust is written under.
 pub const DROPS_SECOND_BOSS_DUST: &str = "drops.second_boss_dust";
-/// The key right-clicking plain tilled ground with a tier material converts it is written under.
 pub const GROUND_CONVERT_BY_MATERIAL: &str = "ground.convert_by_material";
-/// The key plain-grid seed recipes are generated is written under.
 pub const RECIPES_PLAIN_GRID_SEEDS: &str = "recipes.plain_grid_seeds";
-/// The key the two top tool tiers are enchantable at a table is written under.
 pub const GEAR_TOP_TOOLS_ENCHANTABLE: &str = "gear.top_tools_enchantable";
-/// The key the two top armour tiers are unbreakable is written under.
 pub const GEAR_TOP_ARMOUR_UNBREAKABLE: &str = "gear.top_armour_unbreakable";
-/// The key automated stand-in players may use the wetting tool is written under.
 pub const GEAR_AUTOMATED_WETTING: &str = "gear.automated_wetting";
-/// The key a full top-tier armour set grants its growth aura is written under.
 pub const GEAR_ARMOUR_SET_AURA: &str = "gear.armour_set_aura";
-/// The key the first ore deposit generates is written under.
 pub const WORLD_FIRST_DEPOSIT: &str = "world.first_deposit";
-/// The key the second ore deposit generates is written under.
 pub const WORLD_SECOND_DEPOSIT: &str = "world.second_deposit";
-/// The key the third deposit generates is written under.
 pub const WORLD_THIRD_DEPOSIT: &str = "world.third_deposit";
-/// The key chance the third deposit substitutes the rarer ore is written under.
 pub const WORLD_RARE_SUBSTITUTION_CHANCE: &str = "world.rare_substitution_chance";
 
 /// Every key this document declares, in declaration order.
@@ -92,7 +74,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "drops.creature_material_chance",
       "title": "Chance a defeated pathfinding creature drops the first tier material",
-      "description": "Chance a defeated pathfinding creature drops the first tier material.",
       "valueSchema": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
       "default": 0.2,
       "side": "common",
@@ -102,7 +83,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "ritual.catalyst_uses",
       "title": "Uses on the basic ritual catalyst",
-      "description": "Uses on the basic ritual catalyst.",
       "valueSchema": { "type": "integer", "minimum": 10 },
       "default": 1000,
       "side": "common",
@@ -112,7 +92,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "growth.pulse_seconds",
       "title": "Seconds between growth pulses",
-      "description": "Seconds between growth pulses.",
       "valueSchema": { "type": "integer", "minimum": 1 },
       "default": 10,
       "side": "common",
@@ -122,7 +101,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "drops.fertiliser_chance",
       "title": "Chance a harvested crop yields the weak fertiliser",
-      "description": "Chance a harvested crop yields the weak fertiliser.",
       "valueSchema": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
       "default": 0.1,
       "side": "common",
@@ -132,7 +110,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "drops.second_seed",
       "title": "A second seed may drop",
-      "description": "A second seed may drop.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -142,7 +119,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "growth.require_effective_ground",
       "title": "Crops require their own tier's ground to grow",
-      "description": "Crops require their own tier's ground to grow.",
       "valueSchema": { "type": "boolean" },
       "default": false,
       "side": "common",
@@ -152,7 +128,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "drops.first_boss_material",
       "title": "The first boss creature drops tier material",
-      "description": "The first boss creature drops tier material.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -162,7 +137,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "drops.second_boss_material",
       "title": "The second boss creature drops tier material",
-      "description": "The second boss creature drops tier material.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -172,7 +146,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "drops.first_boss_dust",
       "title": "The first boss creature drops the rare dust",
-      "description": "The first boss creature drops the rare dust.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -182,7 +155,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "drops.second_boss_dust",
       "title": "The second boss creature drops the rare dust",
-      "description": "The second boss creature drops the rare dust.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -192,7 +164,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "ground.convert_by_material",
       "title": "Right-clicking plain tilled ground with a tier material converts it",
-      "description": "Right-clicking plain tilled ground with a tier material converts it.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -202,7 +173,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "recipes.plain_grid_seeds",
       "title": "Plain-grid seed recipes are generated",
-      "description": "Plain-grid seed recipes are generated.",
       "valueSchema": { "type": "boolean" },
       "default": false,
       "side": "common",
@@ -212,7 +182,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "gear.top_tools_enchantable",
       "title": "The two top tool tiers are enchantable at a table",
-      "description": "The two top tool tiers are enchantable at a table.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -222,7 +191,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "gear.top_armour_unbreakable",
       "title": "The two top armour tiers are unbreakable",
-      "description": "The two top armour tiers are unbreakable.",
       "valueSchema": { "type": "boolean" },
       "default": false,
       "side": "common",
@@ -232,7 +200,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "gear.automated_wetting",
       "title": "Automated stand-in players may use the wetting tool",
-      "description": "Automated stand-in players may use the wetting tool.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -242,7 +209,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "gear.armour_set_aura",
       "title": "A full top-tier armour set grants its growth aura",
-      "description": "A full top-tier armour set grants its growth aura.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -252,7 +218,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "world.first_deposit",
       "title": "The first ore deposit generates",
-      "description": "The first ore deposit generates.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -262,7 +227,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "world.second_deposit",
       "title": "The second ore deposit generates",
-      "description": "The second ore deposit generates.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -272,7 +236,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "world.third_deposit",
       "title": "The third deposit generates",
-      "description": "The third deposit generates.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -282,7 +245,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "world.rare_substitution_chance",
       "title": "Chance the third deposit substitutes the rarer ore",
-      "description": "Chance the third deposit substitutes the rarer ore.",
       "valueSchema": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
       "default": 0.05,
       "side": "common",
@@ -468,6 +430,92 @@ impl Default for Settings {
         }
     }
 }
+impl DropSettings {
+    fn read(resolved: &LayeredConfiguration, shipped: &Self) -> Self {
+        Self {
+            second_seed: DROPS_SECOND_SEED
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.second_seed),
+            first_boss: BossDrops {
+                material: DROPS_FIRST_BOSS_MATERIAL
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
+                    .unwrap_or(shipped.first_boss.material),
+                dust: DROPS_FIRST_BOSS_DUST
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
+                    .unwrap_or(shipped.first_boss.dust),
+            },
+            second_boss: BossDrops {
+                material: DROPS_SECOND_BOSS_MATERIAL
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
+                    .unwrap_or(shipped.second_boss.material),
+                dust: DROPS_SECOND_BOSS_DUST
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
+                    .unwrap_or(shipped.second_boss.dust),
+            },
+        }
+    }
+}
+
+impl GearSettings {
+    fn read(resolved: &LayeredConfiguration, shipped: &Self) -> Self {
+        Self {
+            top: TopGearSettings {
+                tools_enchantable: GEAR_TOP_TOOLS_ENCHANTABLE
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
+                    .unwrap_or(shipped.top.tools_enchantable),
+                armour_unbreakable: GEAR_TOP_ARMOUR_UNBREAKABLE
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
+                    .unwrap_or(shipped.top.armour_unbreakable),
+            },
+            automated_wetting: GEAR_AUTOMATED_WETTING
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.automated_wetting),
+            armour_set_aura: GEAR_ARMOUR_SET_AURA
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.armour_set_aura),
+        }
+    }
+}
+
+impl DepositSettings {
+    fn read(resolved: &LayeredConfiguration, shipped: &Self) -> Self {
+        Self {
+            first: WORLD_FIRST_DEPOSIT
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.first),
+            second: WORLD_SECOND_DEPOSIT
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.second),
+            third: WORLD_THIRD_DEPOSIT
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
+                .unwrap_or(shipped.third),
+        }
+    }
+}
 
 impl Settings {
     /// Reads the values in force out of a resolved configuration.
@@ -478,54 +526,50 @@ impl Settings {
     pub fn read(resolved: &LayeredConfiguration) -> Self {
         let shipped = Self::default();
         Self {
-            drops_creature_material_chance: fraction(resolved, DROPS_CREATURE_MATERIAL_CHANCE)
+            drops_creature_material_chance: DROPS_CREATURE_MATERIAL_CHANCE
+                .parse()
+                .ok()
+                .and_then(|key| resolved.number(&key).ok())
                 .unwrap_or(shipped.drops_creature_material_chance),
-            ritual_catalyst_uses: integer(resolved, RITUAL_CATALYST_USES)
+            ritual_catalyst_uses: RITUAL_CATALYST_USES
+                .parse()
+                .ok()
+                .and_then(|key| resolved.integer(&key).ok())
+                .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or(shipped.ritual_catalyst_uses),
-            growth_pulse_seconds: integer(resolved, GROWTH_PULSE_SECONDS)
+            growth_pulse_seconds: GROWTH_PULSE_SECONDS
+                .parse()
+                .ok()
+                .and_then(|key| resolved.integer(&key).ok())
+                .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or(shipped.growth_pulse_seconds),
-            drops_fertiliser_chance: fraction(resolved, DROPS_FERTILISER_CHANCE)
+            drops_fertiliser_chance: DROPS_FERTILISER_CHANCE
+                .parse()
+                .ok()
+                .and_then(|key| resolved.number(&key).ok())
                 .unwrap_or(shipped.drops_fertiliser_chance),
-            drops: DropSettings {
-                second_seed: boolean(resolved, DROPS_SECOND_SEED)
-                    .unwrap_or(shipped.drops.second_seed),
-                first_boss: BossDrops {
-                    material: boolean(resolved, DROPS_FIRST_BOSS_MATERIAL)
-                        .unwrap_or(shipped.drops.first_boss.material),
-                    dust: boolean(resolved, DROPS_FIRST_BOSS_DUST)
-                        .unwrap_or(shipped.drops.first_boss.dust),
-                },
-                second_boss: BossDrops {
-                    material: boolean(resolved, DROPS_SECOND_BOSS_MATERIAL)
-                        .unwrap_or(shipped.drops.second_boss.material),
-                    dust: boolean(resolved, DROPS_SECOND_BOSS_DUST)
-                        .unwrap_or(shipped.drops.second_boss.dust),
-                },
-            },
-            growth_require_effective_ground: boolean(resolved, GROWTH_REQUIRE_EFFECTIVE_GROUND)
+            drops: DropSettings::read(resolved, &shipped.drops),
+            growth_require_effective_ground: GROWTH_REQUIRE_EFFECTIVE_GROUND
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
                 .unwrap_or(shipped.growth_require_effective_ground),
-            ground_convert_by_material: boolean(resolved, GROUND_CONVERT_BY_MATERIAL)
+            ground_convert_by_material: GROUND_CONVERT_BY_MATERIAL
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
                 .unwrap_or(shipped.ground_convert_by_material),
-            recipes_plain_grid_seeds: boolean(resolved, RECIPES_PLAIN_GRID_SEEDS)
+            recipes_plain_grid_seeds: RECIPES_PLAIN_GRID_SEEDS
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
                 .unwrap_or(shipped.recipes_plain_grid_seeds),
-            gear: GearSettings {
-                top: TopGearSettings {
-                    tools_enchantable: boolean(resolved, GEAR_TOP_TOOLS_ENCHANTABLE)
-                        .unwrap_or(shipped.gear.top.tools_enchantable),
-                    armour_unbreakable: boolean(resolved, GEAR_TOP_ARMOUR_UNBREAKABLE)
-                        .unwrap_or(shipped.gear.top.armour_unbreakable),
-                },
-                automated_wetting: boolean(resolved, GEAR_AUTOMATED_WETTING)
-                    .unwrap_or(shipped.gear.automated_wetting),
-                armour_set_aura: boolean(resolved, GEAR_ARMOUR_SET_AURA)
-                    .unwrap_or(shipped.gear.armour_set_aura),
-            },
-            deposits: DepositSettings {
-                first: boolean(resolved, WORLD_FIRST_DEPOSIT).unwrap_or(shipped.deposits.first),
-                second: boolean(resolved, WORLD_SECOND_DEPOSIT).unwrap_or(shipped.deposits.second),
-                third: boolean(resolved, WORLD_THIRD_DEPOSIT).unwrap_or(shipped.deposits.third),
-            },
-            world_rare_substitution_chance: fraction(resolved, WORLD_RARE_SUBSTITUTION_CHANCE)
+            gear: GearSettings::read(resolved, &shipped.gear),
+            deposits: DepositSettings::read(resolved, &shipped.deposits),
+            world_rare_substitution_chance: WORLD_RARE_SUBSTITUTION_CHANCE
+                .parse()
+                .ok()
+                .and_then(|key| resolved.number(&key).ok())
                 .unwrap_or(shipped.world_rare_substitution_chance),
         }
     }
@@ -618,27 +662,11 @@ fn flag_value(settings: &Settings, key: &str) -> bool {
     }
 }
 
-fn value<'a>(resolved: &'a LayeredConfiguration, key: &str) -> Option<&'a JsonValue> {
-    resolved.value(&key.parse().ok()?)
-}
-
-fn boolean(resolved: &LayeredConfiguration, key: &str) -> Option<bool> {
-    value(resolved, key)?.as_bool()
-}
-
-fn integer(resolved: &LayeredConfiguration, key: &str) -> Option<u32> {
-    u32::try_from(value(resolved, key)?.as_u64()?).ok()
-}
-
-fn fraction(resolved: &LayeredConfiguration, key: &str) -> Option<f64> {
-    value(resolved, key)?.as_f64()
-}
-
 /// Whether any shipped setting would have to travel to a joining client.
 #[must_use]
 pub fn travels_to_clients() -> bool {
     declaration().is_ok_and(|declared| {
-        declared.settings.iter().any(|setting| {
+        declared.settings().iter().any(|setting| {
             matches!(
                 setting.side,
                 SettingSide::DedicatedServer | SettingSide::IntegratedServer
@@ -666,9 +694,49 @@ mod tests {
     use ravel_sdk::json;
 
     #[test]
+    fn typed_reads_apply_scalars_and_each_group_of_switches() {
+        let document = ravel_sdk::config::ValueDocument::parse(
+            &json!({
+                "schemaVersion": 1,
+                "owner": crate::MOD_ID,
+                "values": {
+                    DROPS_CREATURE_MATERIAL_CHANCE: 0.75,
+                    RITUAL_CATALYST_USES: 10,
+                    GROWTH_PULSE_SECONDS: 1,
+                    DROPS_SECOND_SEED: false,
+                    DROPS_FIRST_BOSS_MATERIAL: false,
+                    DROPS_SECOND_BOSS_DUST: false,
+                    GEAR_TOP_ARMOUR_UNBREAKABLE: true,
+                    GEAR_AUTOMATED_WETTING: false,
+                    WORLD_SECOND_DEPOSIT: false,
+                },
+            })
+            .to_string(),
+        )
+        .expect("a legal override document");
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration parses"),
+            Some(&document),
+            None,
+        )
+        .expect("the override values resolve");
+        let settings = Settings::read(&resolved);
+        assert_eq!(settings.drops_creature_material_chance, 0.75);
+        assert_eq!(settings.ritual_catalyst_uses, 10);
+        assert_eq!(settings.growth_pulse_seconds, 1);
+        assert!(!settings.drops.second_seed);
+        assert!(!settings.drops.first_boss.material);
+        assert!(!settings.drops.second_boss.dust);
+        assert!(settings.gear.top.armour_unbreakable);
+        assert!(!settings.gear.automated_wetting);
+        assert!(!settings.deposits.second);
+        assert!(settings.deposits.first);
+    }
+
+    #[test]
     fn the_packaged_document_declares_twenty_settings_and_every_named_key() {
         let declared = declaration().expect("the packaged document parses");
-        assert_eq!(declared.settings.len(), 20);
+        assert_eq!(declared.settings().len(), 20);
         for key in KEYS {
             let parsed = key.parse().expect("every declared key is legal");
             assert!(declared.setting(&parsed).is_some(), "declares {key}");

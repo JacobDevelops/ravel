@@ -287,21 +287,17 @@ fn two_mods_cannot_claim_the_same_command_root() {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
             Ok(())
         }
 
         fn register(
             &mut self,
             registrar: &mut dyn ravel_host_api::Registrar,
-        ) -> Result<(), HostError> {
+        ) -> Result<(), ravel_host_api::ModError> {
             registrar
                 .claim(self.key.clone())
-                .map_err(|refused| HostError::Refused {
-                    mod_id: self.id.clone(),
-                    state: LifecycleState::Constructed,
-                    detail: refused.to_string(),
-                })
+                .map_err(|error| ravel_host_api::ModError::refused(error.to_string()))
         }
     }
 
@@ -539,11 +535,11 @@ impl HostMod for Ticking {
         &self.id
     }
 
-    fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
         Ok(())
     }
 
-    fn observe(&mut self, _event: GameEvent) -> Result<(), HostError> {
+    fn observe(&mut self, _event: GameEvent) -> Result<(), ravel_host_api::ModError> {
         self.calls += 1;
         Ok(())
     }

@@ -37,23 +37,15 @@
 //!     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
 //!         ConfigurationDeclaration::parse(SETTINGS)
 //!             .map(Some)
-//!             .map_err(|error| ModError::Refused {
-//!                 mod_id: Self::declared_id().clone(),
-//!                 state: LifecycleState::Constructed,
-//!                 detail: error.to_string(),
-//!             })
+//!             .map_err(|error| ModError::refused(error.to_string()))
 //!     }
 //!
 //!     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
 //!         let key = "lanterns".parse().expect("the key this mod declared");
-//!         self.lanterns = resolved
-//!             .value(&key)
-//!             .and_then(|value| value.as_u64())
-//!             .ok_or_else(|| ModError::Refused {
-//!                 mod_id: Self::declared_id().clone(),
-//!                 state: LifecycleState::Constructed,
-//!                 detail: "`lanterns` resolved to something that is not a count".to_owned(),
-//!             })?;
+//!         self.lanterns = u64::try_from(
+//!             resolved.integer(&key).map_err(|error| ModError::refused(error.to_string()))?,
+//!         )
+//!         .map_err(|error| ModError::refused(error.to_string()))?;
 //!         Ok(())
 //!     }
 //! }

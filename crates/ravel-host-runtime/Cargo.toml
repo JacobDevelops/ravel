@@ -9,11 +9,12 @@ rust-version.workspace = true
 
 [dependencies]
 jni.workspace = true
-ravel-bootstrap-runtime = { package = "ravel-bootstrap", path = "../ravel-bootstrap", version = "0.0.0" }
+ravel-bootstrap.workspace = true
 ravel-config.workspace = true
 ravel-core.workspace = true
 ravel-host-api.workspace = true
 ravel-loader.workspace = true
+ravel-observability.workspace = true
 ravel-package.workspace = true
 ravel-resolve.workspace = true
 serde_json.workspace = true

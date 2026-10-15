@@ -22,10 +22,18 @@ impl Observers {
     }
 
     fn register(&self, observer: Box<dyn HookObserver>) -> Result<(), HookError> {
-        self.registry
-            .write()
-            .map_err(|_| HookError::Unavailable)?
-            .push(observer);
+        self.register_with(observer, || Ok(()))
+    }
+
+    fn register_with(
+        &self,
+        observer: Box<dyn HookObserver>,
+        publish: impl FnOnce() -> Result<(), HookError>,
+    ) -> Result<(), HookError> {
+        let mut registry = self.registry.write().map_err(|_| HookError::Unavailable)?;
+        publish()?;
+        registry.push(observer);
+        drop(registry);
         self.observed.store(true, Ordering::Release);
         Ok(())
     }
@@ -59,6 +67,14 @@ static OBSERVERS: Observers = Observers::new();
 /// Returns an error if the registry's write lock is poisoned.
 pub fn register(observer: Box<dyn HookObserver>) -> Result<(), HookError> {
     OBSERVERS.register(observer)
+}
+
+/// Publishes runtime state only after the observer registry is writable.
+pub(crate) fn register_with(
+    observer: Box<dyn HookObserver>,
+    publish: impl FnOnce() -> Result<(), HookError>,
+) -> Result<(), HookError> {
+    OBSERVERS.register_with(observer, publish)
 }
 
 /// Whether any observer would see an invocation.
@@ -128,5 +144,43 @@ mod tests {
             "{error}"
         );
         assert!(error.to_string().contains("is not allowed here"), "{error}");
+    }
+
+    #[test]
+    fn a_poisoned_registry_does_not_publish_runtime_state() {
+        let observers = Observers::new();
+        let poisoned = std::panic::catch_unwind(|| {
+            let _guard = observers.registry.write().expect("initially writable");
+            panic!("poison the registry");
+        });
+        assert!(poisoned.is_err());
+        let mut published = false;
+        let result = observers.register_with(Box::new(Watching), || {
+            published = true;
+            Ok(())
+        });
+        assert!(matches!(result, Err(crate::guard::HookError::Unavailable)));
+        assert!(!published);
+        assert!(!observers.is_observed());
+    }
+
+    #[test]
+    fn a_refused_publication_does_not_register_an_observer() {
+        let observers = Observers::new();
+        let result = observers.register_with(Box::new(Watching), || {
+            Err(crate::guard::HookError::AlreadyInstalled)
+        });
+        assert!(matches!(
+            result,
+            Err(crate::guard::HookError::AlreadyInstalled)
+        ));
+        assert!(!observers.is_observed());
+        assert!(
+            observers
+                .registry
+                .read()
+                .expect("writable registry")
+                .is_empty()
+        );
     }
 }

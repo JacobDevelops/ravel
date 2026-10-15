@@ -6,18 +6,16 @@
 mod options;
 
 pub use options::{OptionsError, Seeded, seed_pack};
-/// World-pack installation and writing at the world-open boundary.
-pub use ravel_bootstrap_runtime::{install_packs, write_world_pack};
+/// Writes the explicitly supplied world pack at the world-open boundary.
+pub use ravel_bootstrap_runtime::write_world_pack;
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
 use ravel_bootstrap_runtime::{
-    HookError, SideError, install, install_settings, pre_world_report, resource_pack_metadata,
-    side as running_side,
+    HookError, SideError, install, pre_world_report, resource_pack_metadata, side as running_side,
 };
-use ravel_config::{LayeredConfiguration, ValueDocument, file};
+use ravel_config::{LayeredConfiguration, file};
 use ravel_core::{ModId, Side};
 use ravel_host_api::HostMod;
 pub use ravel_loader::Written;
@@ -52,12 +50,16 @@ pub struct Member {
 type Admitted = Vec<(LifecycleEntry, Box<dyn HostMod>)>;
 
 /// Lifecycle, mods, resolved settings, and supplied files for one launch.
-pub type Composition = (
-    LifecycleMachine,
-    Vec<Box<dyn HostMod>>,
-    Vec<LayeredConfiguration>,
-    Supplied,
-);
+pub struct Composition {
+    /// The driven lifecycle and admitted identities.
+    pub machine: LifecycleMachine,
+    /// The compiled members, including parked members.
+    pub mods: Vec<Box<dyn HostMod>>,
+    /// The settings handed to configured members.
+    pub configurations: Vec<LayeredConfiguration>,
+    /// The resources layered after registration.
+    pub resources: Supplied,
+}
 
 /// Admits and configures a composed set, opening services before any mod starts.
 ///
@@ -74,58 +76,39 @@ pub fn compose(
     let packs = file::read_pack(game_directory).map_err(LaunchError::PackFile)?;
 
     let mut composed = admit(side, members)?;
-    let players = player_documents(game_directory, side, &composed)?;
-    let plan = composed.iter().map(|(entry, _)| entry.clone()).collect();
-    let machine = LifecycleMachine::new(side, plan).map_err(LaunchError::Lifecycle)?;
     let configurations = {
-        let mut hosts: Vec<&mut dyn HostMod> = Vec::with_capacity(composed.len());
-        for (_, host) in &mut composed {
-            hosts.push(&mut **host);
-        }
-        open_configuration(&machine, &mut hosts, &packs, &players)
-            .map_err(LaunchError::Config)?
-            .resolved()
-            .to_vec()
+        let (entries, mut hosts): (Vec<_>, Vec<&mut (dyn HostMod + '_)>) = composed
+            .iter_mut()
+            .map(|(entry, host)| (&*entry, &mut **host))
+            .unzip();
+        open_configuration(side, entries, &mut hosts, &packs, |owner| {
+            file::read(game_directory, owner)
+        })
+        .map_err(LaunchError::Config)?
+        .into_resolved()
     };
 
-    let (machine, mods) = drive(side, composed).map_err(|error| match error {
-        DriveError::Services(error) => LaunchError::Services(error),
-        error @ (DriveError::Identity { .. } | DriveError::Lifecycle(_) | DriveError::Host(_)) => {
-            LaunchError::Drive(error)
-        }
-    })?;
+    let (machine, mut mods) =
+        drive(side, &environment(), composed).map_err(|error| match error {
+            DriveError::Services(error) => LaunchError::Services(error),
+            error @ (DriveError::Identity { .. }
+            | DriveError::MissingMod { .. }
+            | DriveError::Lifecycle(_)
+            | DriveError::Host { .. }) => LaunchError::Drive(error),
+        })?;
     // Resource declarations are available only after registration in `drive`.
-    let resources = open_resources(&machine, &mods).map_err(LaunchError::Resources)?;
+    let resources = {
+        let mut hosts: Vec<&mut (dyn HostMod + '_)> =
+            mods.iter_mut().map(|host| &mut **host).collect();
+        open_resources(&machine, &mut hosts).map_err(LaunchError::Resources)?
+    };
 
-    Ok((machine, mods, configurations, resources))
-}
-
-fn player_documents(
-    game_directory: &Path,
-    side: Side,
-    members: &[(LifecycleEntry, Box<dyn HostMod>)],
-) -> Result<BTreeMap<ModId, ValueDocument>, LaunchError> {
-    let mut players = BTreeMap::new();
-    for (entry, host) in members {
-        if !entry.sides.loads_on(side) {
-            continue;
-        }
-        let Some(declaration) = host.configuration_declaration().map_err(|source| {
-            LaunchError::Config(ConfigRefused::Mod {
-                mod_id: host.id().clone(),
-                source,
-            })
-        })?
-        else {
-            continue;
-        };
-        if let Some(document) =
-            file::read(game_directory, &declaration.owner).map_err(LaunchError::PlayerFile)?
-        {
-            players.insert(declaration.owner, document);
-        }
-    }
-    Ok(players)
+    Ok(Composition {
+        machine,
+        mods,
+        configurations,
+        resources,
+    })
 }
 
 /// Refuses installed packages that have no compiled member.
@@ -169,26 +152,44 @@ fn admit(side: Side, members: Vec<Member>) -> Result<Admitted, LaunchError> {
     Ok(composed)
 }
 
-/// Composes and installs a host's members for the agent-reported side.
+/// Constructs, composes, and installs members only if no runtime is installed.
 ///
 /// # Errors
 ///
 /// Returns an error if the directory, side, composition, pack setup, or installation fails.
-pub fn initialize(code: i32, members: Vec<Member>) -> Result<(), LaunchError> {
+pub fn initialize(
+    side: Side,
+    members: impl FnOnce() -> Vec<Member>,
+    profiling_requested: bool,
+) -> Result<(), LaunchError> {
+    if ravel_bootstrap_runtime::is_installed() {
+        return Err(LaunchError::Install(HookError::AlreadyInstalled));
+    }
     let game_directory = std::env::current_dir().map_err(LaunchError::CurrentDirectory)?;
-    let side = side(code)?;
-    let (machine, mods, configurations, resources) = compose(&game_directory, side, members)?;
+    let Composition {
+        machine,
+        mods,
+        configurations,
+        resources,
+    } = compose(&game_directory, side, members())?;
     // The client scans resource packs during startup, before runtime installation.
     write_resource_pack(&game_directory, &resources)?;
     let seeded = seed_pack(&game_directory).map_err(LaunchError::Options)?;
     // World data is written later, when the world-open crossing supplies its path.
-    install_packs(resources);
-    install_settings(side, configurations);
     let mut report = pre_world_report();
     if let Some(notice) = pack_notice(&seeded, side) {
         report.note(&notice);
     }
-    install(machine, mods, report).map_err(LaunchError::Install)
+    install(
+        machine,
+        mods,
+        report,
+        game_directory,
+        resources,
+        configurations,
+        profiling_requested,
+    )
+    .map_err(LaunchError::Install)
 }
 
 /// Maximum characters quoted from an unreadable settings line.
@@ -262,8 +263,6 @@ pub enum LaunchError {
     Side(SideError),
     /// The pack's settings layer could not be read.
     PackFile(file::FileError),
-    /// The player's existing value document could not be read.
-    PlayerFile(file::FileError),
     /// The instance's installed packages could not be established.
     Discovery(DiscoveryRefused),
     /// An installed package names no value this host holds.
@@ -294,6 +293,15 @@ pub enum LaunchError {
     Install(HookError),
 }
 
+impl LaunchError {
+    /// Redacts launch diagnostics before they cross into a thrown JVM exception.
+    pub fn redacted(&self) -> String {
+        ravel_observability::redact(&self.to_string())
+            .text()
+            .to_owned()
+    }
+}
+
 impl fmt::Display for LaunchError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -304,9 +312,6 @@ impl fmt::Display for LaunchError {
             Self::Side(error) => write!(formatter, "the running side cannot be named: {error}"),
             Self::PackFile(error) => {
                 write!(formatter, "pack configuration cannot be read: {error}")
-            }
-            Self::PlayerFile(error) => {
-                write!(formatter, "player configuration cannot be read: {error}")
             }
             Self::Discovery(error) => write!(
                 formatter,
@@ -373,7 +378,7 @@ impl std::error::Error for LaunchError {
             Self::Jvm(error) => Some(error),
             Self::CurrentDirectory(error) => Some(error),
             Self::Side(error) => Some(error),
-            Self::PackFile(error) | Self::PlayerFile(error) => Some(error),
+            Self::PackFile(error) => Some(error),
             Self::Discovery(error) => Some(error),
             Self::Manifest(error) => Some(error),
             Self::Compatibility(error) => Some(error),
@@ -396,10 +401,61 @@ mod tests {
     use std::sync::{Arc, Mutex, PoisonError};
 
     use ravel_core::{LifecycleState, ModId, Side};
-    use ravel_host_api::{HostError, HostMod};
+    use ravel_host_api::HostMod;
     use ravel_loader::drive;
 
     use super::{Member, admit, environment};
+
+    #[test]
+    fn repeated_initialize_never_constructs_members_or_touches_launch_files() {
+        let game =
+            std::env::temp_dir().join(format!("ravel-repeat-initialize-{}", std::process::id()));
+        assert!(
+            !game.exists(),
+            "the rejected launch must not create its directory"
+        );
+        ravel_bootstrap_runtime::install(
+            ravel_loader::LifecycleMachine::new(Side::Client, vec![]).expect("empty plan"),
+            vec![],
+            ravel_bootstrap_runtime::pre_world_report(),
+            game.clone(),
+            ravel_loader::Supplied::default(),
+            vec![],
+            false,
+        )
+        .expect("install the first runtime");
+        let mut constructed = false;
+        let error = super::initialize(
+            Side::Client,
+            || {
+                constructed = true;
+                std::fs::create_dir_all(&game).expect("factory side effect");
+                Vec::new()
+            },
+            false,
+        )
+        .expect_err("a second launch is refused");
+        assert!(matches!(
+            error,
+            super::LaunchError::Install(ravel_bootstrap_runtime::HookError::AlreadyInstalled)
+        ));
+        assert!(!constructed);
+        assert!(
+            !game.exists(),
+            "rejected initialization has no filesystem effects"
+        );
+    }
+
+    #[test]
+    fn launch_exception_diagnostics_redact_secret_tokens() {
+        let error = super::LaunchError::CurrentDirectory(std::io::Error::other(
+            "cannot open /home/player/.minecraft: token=ghp_secretvalue",
+        ));
+        let diagnostic = error.redacted();
+        assert!(diagnostic.contains("[redacted]"), "{diagnostic}");
+        assert!(!diagnostic.contains("ghp_secretvalue"), "{diagnostic}");
+        assert!(!diagnostic.contains("/home/player"), "{diagnostic}");
+    }
 
     struct Recording {
         id: ModId,
@@ -411,7 +467,7 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
             self.states
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -430,7 +486,7 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
             self.states
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -440,7 +496,7 @@ mod tests {
 
         fn service_declaration(
             &self,
-        ) -> Result<Option<ravel_host_api::ServiceDeclaration>, HostError> {
+        ) -> Result<Option<ravel_host_api::ServiceDeclaration>, ravel_host_api::ModError> {
             Ok(Some(
                 ravel_host_api::ServiceDeclaration::new(
                     self.id.clone(),
@@ -452,6 +508,67 @@ mod tests {
                 .expect("a valid service declaration"),
             ))
         }
+    }
+
+    struct CountingConfiguration {
+        id: ModId,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl HostMod for CountingConfiguration {
+        fn id(&self) -> &ModId {
+            &self.id
+        }
+
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
+            Ok(())
+        }
+
+        fn configuration_declaration(
+            &self,
+        ) -> Result<Option<ravel_config::ConfigurationDeclaration>, ravel_host_api::ModError>
+        {
+            self.calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(Some(
+                ravel_config::ConfigurationDeclaration::parse(&format!(
+                    r#"{{"schemaVersion":1,"owner":"{}","version":1,"settings":[]}}"#,
+                    self.id
+                ))
+                .expect("valid empty settings"),
+            ))
+        }
+
+        fn configure(
+            &mut self,
+            _resolved: &ravel_config::LayeredConfiguration,
+        ) -> Result<(), ravel_host_api::ModError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn composition_reads_each_configuration_declaration_once() {
+        let (package, id, _) = member("count_configuration", &["client"]);
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let game =
+            std::env::temp_dir().join(format!("ravel-configuration-once-{}", std::process::id()));
+        std::fs::create_dir_all(&game).expect("create launch directory");
+        let composition = super::compose(
+            &game,
+            Side::Client,
+            vec![Member {
+                package,
+                host: Box::new(CountingConfiguration {
+                    id,
+                    calls: Arc::clone(&calls),
+                }),
+            }],
+        )
+        .expect("configuration starts");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(composition.configurations.len(), 1);
+        std::fs::remove_dir_all(game).expect("remove launch directory");
     }
 
     #[test]
@@ -493,17 +610,15 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ravel_host_api::ModError> {
             Ok(())
         }
 
         fn configuration_declaration(
             &self,
-        ) -> Result<Option<ravel_config::ConfigurationDeclaration>, HostError> {
-            Err(HostError::Unsupported {
-                mod_id: self.id.clone(),
-                state: LifecycleState::Constructed,
-            })
+        ) -> Result<Option<ravel_config::ConfigurationDeclaration>, ravel_host_api::ModError>
+        {
+            Err(ravel_host_api::ModError::Unsupported)
         }
     }
 
@@ -692,8 +807,12 @@ mod tests {
                 })
                 .collect();
 
-            let (machine, _) = drive(side, admit(side, members).expect("a compatible set"))
-                .expect("the composed set should start");
+            let (machine, _) = drive(
+                side,
+                &environment(),
+                admit(side, members).expect("a compatible set"),
+            )
+            .expect("the composed set should start");
 
             let expected = [side == Side::Client, side.is_server(), true];
             for (((_, mod_id, log), (name, _)), runs) in
@@ -703,13 +822,13 @@ mod tests {
                     machine.state(mod_id) == Ok(LifecycleState::Running),
                     runs,
                     "`{name}` on `{}`",
-                    side.name()
+                    side.as_str()
                 );
                 assert_eq!(
                     !steps(log).is_empty(),
                     runs,
                     "`{name}` ran mod code on `{}`",
-                    side.name()
+                    side.as_str()
                 );
             }
         }

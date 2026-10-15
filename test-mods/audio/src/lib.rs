@@ -93,11 +93,7 @@ impl Mod for AudioMod {
     fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
         if event == GameEvent::ClientTick {
             self.asked.push(
-                Self::play(Side::Client).map_err(|refusal| ModError::Refused {
-                    mod_id: Self::declared_id().clone(),
-                    state: LifecycleState::Running,
-                    detail: refusal.to_string(),
-                })?,
+                Self::play(Side::Client).map_err(|error| ModError::refused(error.to_string()))?,
             );
         }
         Ok(())
@@ -137,7 +133,7 @@ mod tests {
             .event("door_closes")
             .expect_err("an event with nothing to play is refused");
 
-        assert_eq!(refusal.unknown_entry(), "door_closes");
+        assert_eq!(refusal.unknown_entry(), Some("door_closes"));
     }
 
     /// What the host pulls is what the mod asked for, and only once.

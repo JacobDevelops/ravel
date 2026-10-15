@@ -123,7 +123,6 @@ pub struct Holding {
 pub struct Entrypoint {
     declaration: Result<ContentDeclaration, ModError>,
     settings: Settings,
-    unread: Vec<settings::Unread>,
     surface: Surface,
     ordering: Ordering,
     store: Store,
@@ -151,7 +150,6 @@ impl Entrypoint {
         Self {
             declaration: Self::content(),
             settings: Settings::default(),
-            unread: Vec::new(),
             surface: Surface::new(),
             ordering: Ordering::new(),
             store: Store::new(),
@@ -174,16 +172,6 @@ impl Entrypoint {
     #[must_use]
     pub const fn settings(&self) -> &Settings {
         &self.settings
-    }
-
-    /// Returns the settings that were written and could not be read.
-    ///
-    /// Empty for every launch whose configuration resolved cleanly, which is
-    /// every launch this build declares its own document for. A pack that wrote
-    /// a value the declaration would have refused is what fills it.
-    #[must_use]
-    pub fn unread_settings(&self) -> &[settings::Unread] {
-        &self.unread
     }
 
     /// Returns the world data this entry owns.
@@ -263,7 +251,7 @@ impl Entrypoint {
     pub fn surface_service() -> Result<ServiceId, ModError> {
         Ok(ServiceId::new(
             ContentId::new(Self::declared_id().clone(), SURFACE_SERVICE)
-                .map_err(|error| Self::packaging(&error))?,
+                .map_err(|error| ModError::refused(error.to_string()))?,
         ))
     }
 
@@ -276,7 +264,7 @@ impl Entrypoint {
     pub fn ordering_service() -> Result<ServiceId, ModError> {
         Ok(ServiceId::new(
             ContentId::new(Self::declared_id().clone(), ORDERING_SERVICE)
-                .map_err(|error| Self::packaging(&error))?,
+                .map_err(|error| ModError::refused(error.to_string()))?,
         ))
     }
 
@@ -358,23 +346,7 @@ impl Entrypoint {
     /// Returns [`ModError::Refused`] when a name this package spells is not a
     /// legal content path, which for constants is a packaging failure.
     pub fn content() -> Result<ContentDeclaration, ModError> {
-        census::declaration(Self::declared_id().clone()).map_err(|error| Self::packaging(&error))
-    }
-
-    fn packaging(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail: detail.to_string(),
-        }
-    }
-
-    fn refused(detail: &(impl ToString + ?Sized)) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Running,
-            detail: detail.to_string(),
-        }
+        census::declaration(Self::declared_id().clone()).map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Answers the surface service, which is how a dependent reaches §15.
@@ -687,8 +659,9 @@ impl Entrypoint {
         let path = delivery.id.id().path().to_owned();
         let held = self.holding.kind;
         if path == network::HeldComponents::contract().id().id().path() {
-            let payload: network::HeldComponents =
-                delivery.decode().map_err(|error| Self::refused(&error))?;
+            let payload: network::HeldComponents = delivery
+                .decode()
+                .map_err(|error| ModError::refused(error.to_string()))?;
             if network::apply_components(held, &payload, Record::PatternContents)
                 == network::Applied::Accepted
                 && let Some(written) = payload
@@ -703,8 +676,9 @@ impl Entrypoint {
             return Ok(());
         }
         if path == network::CardArguments::contract().id().id().path() {
-            let payload: network::CardArguments =
-                delivery.decode().map_err(|error| Self::refused(&error))?;
+            let payload: network::CardArguments = delivery
+                .decode()
+                .map_err(|error| ModError::refused(error.to_string()))?;
             // This packet never updates card state, whether accepted or refused.
             match network::apply_card_arguments(held, &payload) {
                 network::Applied::Accepted
@@ -714,8 +688,9 @@ impl Entrypoint {
             return Ok(());
         }
         if path == network::BrowserPattern::contract().id().id().path() {
-            let payload: network::BrowserPattern =
-                delivery.decode().map_err(|error| Self::refused(&error))?;
+            let payload: network::BrowserPattern = delivery
+                .decode()
+                .map_err(|error| ModError::refused(error.to_string()))?;
             if network::apply_browser_pattern(held, self.card_menu_open(), &payload)
                 == network::Applied::Accepted
                 && let Ok(pushed) = self.surface.push_browser_grid(&payload.slots)
@@ -725,8 +700,9 @@ impl Entrypoint {
             return Ok(());
         }
         if path == network::ReadoutRequest::contract().id().id().path() {
-            let payload: network::ReadoutRequest =
-                delivery.decode().map_err(|error| Self::refused(&error))?;
+            let payload: network::ReadoutRequest = delivery
+                .decode()
+                .map_err(|error| ModError::refused(error.to_string()))?;
             if network::answer_readout(&payload, self.holding.at, self.holding.chunk_loaded)
                 == network::Applied::Accepted
             {
@@ -743,11 +719,12 @@ impl Entrypoint {
             return Ok(());
         }
         if path == network::ReadoutAnswer::contract().id().id().path() {
-            let payload: network::ReadoutAnswer =
-                delivery.decode().map_err(|error| Self::refused(&error))?;
+            let payload: network::ReadoutAnswer = delivery
+                .decode()
+                .map_err(|error| ModError::refused(error.to_string()))?;
             return self.accept_readout(&payload);
         }
-        Err(Self::refused(
+        Err(ModError::refused(
             "this entry declares no contract under that name",
         ))
     }
@@ -759,7 +736,7 @@ impl Entrypoint {
         }
         let stamp = self.ordering.stamp();
         self.client_mut()
-            .map_err(|error| Self::refused(&error))?
+            .map_err(|error| ModError::refused(error.to_string()))?
             .screen
             .accept(readings, stamp);
         Ok(())
@@ -770,8 +747,9 @@ impl Entrypoint {
         delivery: &PacketDelivery,
         held: network::Held,
     ) -> Result<(), ModError> {
-        let payload: network::HeldItem =
-            delivery.decode().map_err(|error| Self::refused(&error))?;
+        let payload: network::HeldItem = delivery
+            .decode()
+            .map_err(|error| ModError::refused(error.to_string()))?;
         if network::apply_held_item(held, held, &payload) != network::Applied::Accepted {
             return Ok(());
         }
@@ -838,13 +816,11 @@ impl Mod for Entrypoint {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         settings::declaration()
             .map(Some)
-            .map_err(|error| Self::packaging(&error))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let (settings, unread) = Settings::read_reporting(resolved);
-        self.settings = settings;
-        self.unread = unread;
+        self.settings = Settings::read(resolved);
         Ok(())
     }
 
@@ -874,7 +850,7 @@ impl Mod for Entrypoint {
     fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
         let name = invocation.key.id().path();
         let filed = commands::resolve(name)
-            .ok_or_else(|| Self::refused("this entry files no command under that name"))?;
+            .ok_or_else(|| ModError::refused("this entry files no command under that name"))?;
         match filed.name {
             commands::EVALUATE => {
                 let held = self.card_menu_open().then_some(&mut self.card);
@@ -882,7 +858,7 @@ impl Mod for Entrypoint {
             }
             commands::CYCLE => {
                 let step = commands::direction(&invocation.arguments)
-                    .map_err(|error| Self::refused(&error))?;
+                    .map_err(|error| ModError::refused(error.to_string()))?;
                 let holding = match self.holding.kind {
                     network::Held::Carrier => Some(commands::Cyclable::Carrier(&mut self.carrier)),
                     network::Held::PatternCard
@@ -914,7 +890,7 @@ impl Mod for Entrypoint {
         let ordering = Self::ordering_service()?;
         ServiceDeclaration::new(Self::declared_id().clone(), [surface, ordering], [])
             .map(Some)
-            .map_err(|error| Self::packaging(&error))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Answers §16's first two entries, which are the two a dependent needs.
@@ -942,13 +918,13 @@ impl Mod for Entrypoint {
                 self.answer_ordering(&request.arguments),
             ));
         }
-        Err(Self::refused("this entry answers two services"))
+        Err(ModError::refused("this entry answers two services"))
     }
 
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         SavedDataDeclaration::new(Self::declared_id().clone(), [DATA_VERSION])
             .map(Some)
-            .map_err(|error| Self::packaging(&error))
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Writes the five records of §4 out to the world.
@@ -975,17 +951,17 @@ impl Mod for Entrypoint {
             return Ok(());
         };
         if !plan.steps().is_empty() {
-            return Err(Self::packaging(
+            return Err(ModError::refused(
                 "this build declares one saved-data version and so crosses no step",
             ));
         }
         if envelope.data_version() != DATA_VERSION {
-            return Err(Self::packaging(
+            return Err(ModError::refused(
                 "the world stored a version this build does not read",
             ));
         }
         self.store =
-            Store::from_saved(envelope.payload()).map_err(|error| Self::refused(&error))?;
+            Store::from_saved(envelope.payload()).map_err(|error| ModError::refused(error.to_string()))?;
         Ok(())
     }
 }

@@ -1,33 +1,20 @@
-//! Resolves the game directory from the process working directory.
+//! Checks the launch directory before persisting client settings.
 //!
-//! Launchers using a different `--gameDir` are not detectable here. An existing
-//! `options.txt` is required before saving; premain reads do not use this guard.
+//! An existing `options.txt` is required before saving; premain reads and
+//! world-pack containment use the stored launch path without this client marker.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 // The client writes this before screens open; saves/ may not exist on a first launch.
 const MARKER: &str = "options.txt";
 
-/// Resolves the working directory and checks the client marker.
-///
-/// # Errors
-///
-/// Returns a reason if the working directory cannot be read or lacks the marker.
-pub(crate) fn resolve() -> Result<PathBuf, String> {
-    let directory = std::env::current_dir()
-        .map_err(|error| format!("the working directory cannot be read: {error}"))?;
-    admit(&directory).map(|()| directory)
-}
-
 /// Whether a directory carries the sign of being the game's.
-fn admit(directory: &Path) -> Result<(), String> {
+pub(crate) fn admit(directory: &Path) -> Result<(), String> {
     if directory.join(MARKER).is_file() {
         return Ok(());
     }
     Err(format!(
-        "`{}` holds no `{MARKER}` and so is not the game directory; \
-         Ravel takes the working directory as the game directory, which is what \
-         the game itself does unless it was launched with `--gameDir`",
+        "`{}` holds no `{MARKER}` and so cannot be confirmed as the client game directory",
         directory.display()
     ))
 }
@@ -71,11 +58,5 @@ mod tests {
         std::fs::create_dir(game.join(MARKER)).expect("the directory should be creatable");
 
         assert!(admit(&game).is_err());
-    }
-
-    #[test]
-    fn the_working_directory_is_what_resolution_answers_with() {
-        let cwd = std::env::current_dir().expect("the gate has a working directory");
-        assert_eq!(super::resolve(), admit(&cwd).map(|()| cwd));
     }
 }

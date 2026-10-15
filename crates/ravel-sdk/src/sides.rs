@@ -27,7 +27,7 @@
 //! # Ok::<(), ravel_sdk::sides::WrongSide>(())
 //! ```
 //!
-//! Convert [`WrongSide`] into [`crate::ModError::Refused`] when wrong-side access
-//! must stop the mod. Code outside [`ClientOnly`] is not guarded.
+//! Convert [`WrongSide`] with [`crate::ModError::refused`] when wrong-side access
+//! must stop the mod. The host attributes the refusal to the hook it called.
 
 pub use ravel_core::{ClientOnly, EmptySideSet, Side, SideSet, WrongSide};

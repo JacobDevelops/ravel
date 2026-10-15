@@ -127,6 +127,7 @@ A payload is refused rather than misread in every way it can be wrong, and
 `WireError::TrailingBytes`, the body ending with bytes left over;
 `WireError::NotUtf8`, a length-prefixed text field that is not UTF-8;
 `WireError::NotABool`, a boolean byte that is neither zero nor one;
+`WireError::ContentId`, a text field that is not a legal namespaced content identifier;
 `WireError::Identity`, a payload naming one contract and read as another; and
 `WireError::Version`, a payload written under another version of the contract.
 Every one is named here rather than summarised, because an author writing an

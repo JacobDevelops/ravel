@@ -31,7 +31,7 @@ use ravel_sdk::network::{
     Direction, Packet, PacketContract, PacketDelivery, PacketId, PacketReader, PacketWriter,
     WireError,
 };
-use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
+use ravel_sdk::{LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "networking";
@@ -170,11 +170,7 @@ impl Mod for NetworkingMod {
     fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
         let ping = delivery
             .decode::<Ping>()
-            .map_err(|refused| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Running,
-                detail: refused.to_string(),
-            })?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
         self.answered.push(ping);
         Ok(())
     }
@@ -272,8 +268,7 @@ mod tests {
         let error = host
             .receive_packet(&arriving(full[..full.len() - 1].to_vec()))
             .expect_err("the body ends early");
-        assert_eq!(error.mod_id(), NetworkingMod::declared_id());
-        assert_eq!(error.state(), LifecycleState::Running);
+        assert!(matches!(error, ModError::Refused { .. }));
         assert_eq!(host.answered(), []);
 
         // And the whole payload is accepted, so the refusal is about the cut.

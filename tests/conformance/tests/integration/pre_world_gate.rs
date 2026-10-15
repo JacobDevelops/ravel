@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ravel_core::{FailureEnvironment, FailureKind, LifecycleState, ModId, Side, StructuredFailure};
-use ravel_host_api::{HostError, HostMod};
+use ravel_host_api::{HostMod, ModError};
 use ravel_observability::{PreWorldReport, Subject, redact};
 use ravel_package::Sha256Digest;
-use ravel_testkit::{DiscoveredPackage, Host, PipelineError, run};
+use ravel_testkit::{Host, PipelineError, TestPackage, run};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -128,12 +128,12 @@ impl<'a> Declaration<'a> {
     }
 }
 
-fn write(parent: &Path, declaration: &Declaration<'_>) -> DiscoveredPackage {
+fn write(parent: &Path, declaration: &Declaration<'_>) -> TestPackage {
     let root = parent.join(declaration.id);
     fs::create_dir_all(root.join("src")).expect("the package should be creatable");
     fs::write(root.join("src/lib.rs"), SOURCE_BYTES).expect("source written");
     fs::write(root.join("provenance.json"), RECORD_BYTES).expect("record written");
-    DiscoveredPackage::new(root, declaration.document(&digest_of(SOURCE_BYTES)))
+    TestPackage::new(root, declaration.document(&digest_of(SOURCE_BYTES)))
 }
 
 // Never refuse, so failures come from the loader.
@@ -156,7 +156,7 @@ impl HostMod for Silent {
         &self.id
     }
 
-    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.entered.push(state);
         Ok(())
     }
@@ -185,8 +185,8 @@ impl Refused {
         json!({
             "case": self.case,
             "invalidInput": self.what,
-            "failureKind": attribution.kind.map(FailureKind::name),
-            "lifecycleState": attribution.state.name(),
+            "failureKind": attribution.kind.map(FailureKind::as_str),
+            "lifecycleState": attribution.state.as_str(),
             "report": self.line(),
             "quotesUntrustedText": self.report.refusals()[0].quotes_untrusted_text(),
             "worldAccess": self.report.world_access().is_ok(),
@@ -199,7 +199,7 @@ fn refuse(
     case: &'static str,
     what: &'static str,
     parent: &Path,
-    packages: &[DiscoveredPackage],
+    packages: &[TestPackage],
     side: Side,
     subject: &Subject,
 ) -> Refused {
@@ -249,7 +249,7 @@ fn unparsable_manifest() -> Refused {
     let parent = workspace("unparsable");
     let root = parent.join("example_mod");
     fs::create_dir_all(&root).expect("the package should be creatable");
-    let packages = [DiscoveredPackage::new(root, "{ this is not a manifest")];
+    let packages = [TestPackage::new(root, "{ this is not a manifest")];
 
     refuse(
         "unparsable-manifest",
@@ -374,12 +374,10 @@ fn dependency_cycle() -> Refused {
 
 // Only the redacted form of the mod-authored message reaches evidence.
 fn redaction_demonstration() -> Value {
-    let refused = HostError::Refused {
-        mod_id: id("example_mod"),
-        state: LifecycleState::Loaded,
-        detail: "could not open /home/player/.minecraft/saves/level.dat using ghp_0123456789"
-            .to_owned(),
-    };
+    let refused = ModError::refused(
+        "could not open /home/player/.minecraft/saves/level.dat using ghp_0123456789",
+    )
+    .with_context(id("example_mod"), LifecycleState::Loaded);
 
     let mut report = PreWorldReport::new(environment());
     report.refuse(&Subject::of(id("example_mod")), &refused);

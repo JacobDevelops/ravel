@@ -13,6 +13,8 @@
 //! dependency's namespace and are never published here; [`consumed_flags`] names
 //! them, and the direction is what [`published_flags`] and that function keep
 //! apart.
+//!
+//! Each setting-key constant matches its key in [`DOCUMENT`].
 
 use ravel_sdk::config::{
     ConfigurationDeclaration, DeclarationError, LayeredConfiguration, SettingSide,
@@ -21,21 +23,13 @@ use ravel_sdk::{JsonValue, Side};
 use rvl_042_counterpart::flags::{FlagId, FlagTable};
 use rvl_321_counterpart::settings as depended;
 
-/// The key the chance a defeated wither-class boss drops the soul item is written under.
 pub const DROPS_SOUL_CHANCE: &str = "drops.soul_chance";
-/// The key the number of scales a defeated dragon-class boss drops is written under.
 pub const DROPS_SCALE_COUNT: &str = "drops.scale_count";
-/// The key the sixth tier's crops accept the growth accelerant is written under.
 pub const CROPS_FERTILISABLE: &str = "crops.fertilisable";
-/// The key the duration each food's effects grant, in seconds, is written under.
 pub const FOODS_EFFECT_SECONDS: &str = "foods.effect_seconds";
-/// The key the lower dimension's shard deposit generates is written under.
 pub const WORLD_LOWER_SHARD_DEPOSIT: &str = "world.lower_shard_deposit";
-/// The key the lower dimension's essence deposit generates is written under.
 pub const WORLD_LOWER_ESSENCE_DEPOSIT: &str = "world.lower_essence_deposit";
-/// The key the outer dimension's shard deposit generates is written under.
 pub const WORLD_OUTER_SHARD_DEPOSIT: &str = "world.outer_shard_deposit";
-/// The key the outer dimension's essence deposit generates is written under.
 pub const WORLD_OUTER_ESSENCE_DEPOSIT: &str = "world.outer_essence_deposit";
 
 /// Every key this document declares, in declaration order.
@@ -65,7 +59,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "drops.soul_chance",
       "title": "Chance a defeated wither-class boss drops the soul item",
-      "description": "Chance a defeated wither-class boss drops the soul item.",
       "valueSchema": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
       "default": 0.35,
       "side": "common",
@@ -105,7 +98,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "world.lower_shard_deposit",
       "title": "The lower dimension's shard deposit generates",
-      "description": "The lower dimension's shard deposit generates.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -115,7 +107,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "world.lower_essence_deposit",
       "title": "The lower dimension's essence deposit generates",
-      "description": "The lower dimension's essence deposit generates.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -125,7 +116,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "world.outer_shard_deposit",
       "title": "The outer dimension's shard deposit generates",
-      "description": "The outer dimension's shard deposit generates.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -135,7 +125,6 @@ pub const DOCUMENT: &str = r#"{
     {
       "key": "world.outer_essence_deposit",
       "title": "The outer dimension's essence deposit generates",
-      "description": "The outer dimension's essence deposit generates.",
       "valueSchema": { "type": "boolean" },
       "default": true,
       "side": "common",
@@ -227,27 +216,53 @@ impl Settings {
     pub fn read(resolved: &LayeredConfiguration) -> Self {
         let shipped = Self::default();
         Self {
-            drops_soul_chance: fraction(resolved, DROPS_SOUL_CHANCE)
+            drops_soul_chance: DROPS_SOUL_CHANCE
+                .parse()
+                .ok()
+                .and_then(|key| resolved.number(&key).ok())
                 .filter(|held| (0.0..=1.0).contains(held))
                 .unwrap_or(shipped.drops_soul_chance),
-            drops_scale_count: integer(resolved, DROPS_SCALE_COUNT)
+            drops_scale_count: DROPS_SCALE_COUNT
+                .parse()
+                .ok()
+                .and_then(|key| resolved.integer(&key).ok())
+                .and_then(|value| u32::try_from(value).ok())
                 .filter(|held| *held <= MAXIMUM_SCALE_COUNT)
                 .unwrap_or(shipped.drops_scale_count),
-            crops_fertilisable: boolean(resolved, CROPS_FERTILISABLE)
+            crops_fertilisable: CROPS_FERTILISABLE
+                .parse()
+                .ok()
+                .and_then(|key| resolved.boolean(&key).ok())
                 .unwrap_or(shipped.crops_fertilisable),
-            foods_effect_seconds: integer(resolved, FOODS_EFFECT_SECONDS)
+            foods_effect_seconds: FOODS_EFFECT_SECONDS
+                .parse()
+                .ok()
+                .and_then(|key| resolved.integer(&key).ok())
+                .and_then(|value| u32::try_from(value).ok())
                 .filter(|held| *held >= 1 && *held <= MAXIMUM_EFFECT_SECONDS)
                 .unwrap_or(shipped.foods_effect_seconds),
             world_lower: Deposits {
-                shard: boolean(resolved, WORLD_LOWER_SHARD_DEPOSIT)
+                shard: WORLD_LOWER_SHARD_DEPOSIT
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
                     .unwrap_or(shipped.world_lower.shard),
-                essence: boolean(resolved, WORLD_LOWER_ESSENCE_DEPOSIT)
+                essence: WORLD_LOWER_ESSENCE_DEPOSIT
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
                     .unwrap_or(shipped.world_lower.essence),
             },
             world_outer: Deposits {
-                shard: boolean(resolved, WORLD_OUTER_SHARD_DEPOSIT)
+                shard: WORLD_OUTER_SHARD_DEPOSIT
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
                     .unwrap_or(shipped.world_outer.shard),
-                essence: boolean(resolved, WORLD_OUTER_ESSENCE_DEPOSIT)
+                essence: WORLD_OUTER_ESSENCE_DEPOSIT
+                    .parse()
+                    .ok()
+                    .and_then(|key| resolved.boolean(&key).ok())
                     .unwrap_or(shipped.world_outer.essence),
             },
         }
@@ -330,27 +345,11 @@ fn flag_value(settings: &Settings, key: &str) -> bool {
     }
 }
 
-fn value<'a>(resolved: &'a LayeredConfiguration, key: &str) -> Option<&'a JsonValue> {
-    resolved.value(&key.parse().ok()?)
-}
-
-fn boolean(resolved: &LayeredConfiguration, key: &str) -> Option<bool> {
-    value(resolved, key)?.as_bool()
-}
-
-fn integer(resolved: &LayeredConfiguration, key: &str) -> Option<u32> {
-    u32::try_from(value(resolved, key)?.as_u64()?).ok()
-}
-
-fn fraction(resolved: &LayeredConfiguration, key: &str) -> Option<f64> {
-    value(resolved, key)?.as_f64()
-}
-
 /// Whether any shipped setting would have to travel to a joining client.
 #[must_use]
 pub fn travels_to_clients() -> bool {
     declaration().is_ok_and(|declared| {
-        declared.settings.iter().any(|setting| {
+        declared.settings().iter().any(|setting| {
             matches!(
                 setting.side,
                 SettingSide::DedicatedServer | SettingSide::IntegratedServer
@@ -377,9 +376,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn typed_reads_apply_numbers_integers_and_boolean_overrides() {
+        let document = ravel_sdk::config::ValueDocument::parse(
+            &ravel_sdk::json!({
+                "schemaVersion": 1,
+                "owner": crate::MOD_ID,
+                "values": {
+                    DROPS_SOUL_CHANCE: 0.75,
+                    DROPS_SCALE_COUNT: 0,
+                    FOODS_EFFECT_SECONDS: 1,
+                    CROPS_FERTILISABLE: false,
+                    WORLD_OUTER_ESSENCE_DEPOSIT: false,
+                },
+            })
+            .to_string(),
+        )
+        .expect("a legal override document");
+        let resolved = LayeredConfiguration::resolve(
+            declaration().expect("the packaged declaration parses"),
+            Some(&document),
+            None,
+        )
+        .expect("the override values resolve");
+        let settings = Settings::read(&resolved);
+        assert_eq!(settings.drops_soul_chance, 0.75);
+        assert_eq!(settings.drops_scale_count, 0);
+        assert_eq!(settings.foods_effect_seconds, 1);
+        assert!(!settings.crops_fertilisable);
+        assert!(!settings.world_outer.essence);
+        assert!(settings.world_lower.shard);
+    }
+
+    #[test]
     fn the_document_declares_eight_settings_and_the_shipped_defaults_match_it() {
         let declared = declaration().expect("the packaged document parses");
-        assert_eq!(declared.settings.len(), 8);
+        assert_eq!(declared.settings().len(), 8);
         for key in KEYS {
             assert!(
                 declared

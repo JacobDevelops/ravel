@@ -7,18 +7,18 @@ tag names cannot drift apart.
 
 ```rust
 impl CopperLanterns {
-    fn declaration() -> ContentDeclaration {
+    fn declaration() -> Result<ContentDeclaration, ModError> {
         let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
         let block = declaration
             .entry(ContentKind::Block, "copper_lantern")
-            .expect("legal");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         declaration
             .entry(ContentKind::Item, "copper_lantern")
-            .expect("legal");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         declaration
             .tag(&lanterns(ContentKind::Block), &block)
-            .expect("blocks are taggable");
-        declaration
+            .map_err(|error| ModError::refused(error.to_string()))?;
+        Ok(declaration)
     }
 }
 
@@ -30,11 +30,11 @@ impl Mod for CopperLanterns {
     }
 
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        claim_all(&Self::declaration(), registrar)
+        claim_all(&Self::declaration()?, registrar)
     }
 
     fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        Ok(Some(Self::declaration()))
+        Self::declaration().map(Some)
     }
 }
 ```
@@ -42,6 +42,9 @@ impl Mod for CopperLanterns {
 `lanterns` there is the mod's own helper naming a tag in the convention
 namespace; [`examples/guide-snippets`](../../examples/guide-snippets) writes it
 out.
+
+Declaration builders return `Result` so malformed or conflicting packaged content
+is reported through the fallible hook, rather than panicking during loading.
 
 ## The three kinds of declaration behave differently, on purpose
 

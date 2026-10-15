@@ -41,7 +41,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use ravel_sdk::sides::Side;
-use ravel_sdk::{Declared, LifecycleState, Mod, ModError, declare_mod};
+use ravel_sdk::{LifecycleState, Mod, ModError, declare_mod};
 
 /// The canonical identity this mod is packaged and validated under.
 pub const MOD_ID: &str = "server_only";
@@ -155,7 +155,12 @@ impl ServerOnlyMod {
     /// Returns [`ModError::Refused`] on the client, which holds no ledger to
     /// return and is named in the refusal.
     pub fn ledger(&self) -> Result<&Ledger, ModError> {
-        self.ledger.as_ref().ok_or_else(|| self.refusal())
+        self.ledger.as_ref().ok_or_else(|| {
+            ModError::refused(format!(
+                "`{}` holds no server-only state",
+                self.side.as_str()
+            ))
+        })
     }
 
     /// Records one tick against the ledger.
@@ -165,23 +170,18 @@ impl ServerOnlyMod {
     /// Returns [`ModError::Refused`] on the client, where there is nothing to
     /// record against.
     pub fn record_tick(&mut self) -> Result<(), ModError> {
-        let refusal = self.refusal();
         let log = Arc::clone(&self.log);
-        let ledger = self.ledger.as_mut().ok_or(refusal)?;
+        let ledger = self.ledger.as_mut().ok_or_else(|| {
+            ModError::refused(format!(
+                "`{}` holds no server-only state",
+                self.side.as_str()
+            ))
+        })?;
         ledger.ticks += 1;
         log.lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(RECORDED_A_TICK);
         Ok(())
-    }
-
-    /// The refusal this mod raises where it holds no server-only state.
-    fn refusal(&self) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Running,
-            detail: format!("`{}` holds no server-only state", self.side.name()),
-        }
     }
 }
 
@@ -221,7 +221,7 @@ mod tests {
         let sides = SideSet::new(ServerOnlyMod::SIDES).expect("a non-empty side set");
         assert!(!sides.loads_on(Side::Client));
         for side in Side::ALL.into_iter().filter(|side| side.is_server()) {
-            assert!(sides.loads_on(side), "{}", side.name());
+            assert!(sides.loads_on(side), "{}", side.as_str());
         }
     }
 
@@ -232,17 +232,17 @@ mod tests {
             let host = ServerOnlyMod::new(side, &log);
 
             if side.is_server() {
-                assert_eq!(host.work_done(), [OPENED_THE_LEDGER], "{}", side.name());
-                assert!(host.has_ledger(), "{}", side.name());
+                assert_eq!(host.work_done(), [OPENED_THE_LEDGER], "{}", side.as_str());
+                assert!(host.has_ledger(), "{}", side.as_str());
                 assert_eq!(host.ledger().expect("a server holds one").ticks(), 0);
             } else {
                 assert!(
                     host.work_done().is_empty(),
                     "`{}` ran server-only code",
-                    side.name()
+                    side.as_str()
                 );
-                assert!(!host.has_ledger(), "{}", side.name());
-                assert!(host.ledger().is_err(), "{}", side.name());
+                assert!(!host.has_ledger(), "{}", side.as_str());
+                assert!(host.ledger().is_err(), "{}", side.as_str());
             }
             assert_eq!(host.side(), side);
         }
@@ -254,8 +254,6 @@ mod tests {
         let host = ServerOnlyMod::new(Side::Client, &log);
 
         let error = host.ledger().expect_err("the client holds no ledger");
-        assert_eq!(error.mod_id(), ServerOnlyMod::declared_id());
-        assert_eq!(error.state(), LifecycleState::Running);
         assert!(
             matches!(&error, ModError::Refused { detail, .. } if detail.contains("client")),
             "{error}"
@@ -270,7 +268,7 @@ mod tests {
 
             let recorded = host.record_tick();
 
-            assert_eq!(recorded.is_ok(), side.is_server(), "{}", side.name());
+            assert_eq!(recorded.is_ok(), side.is_server(), "{}", side.as_str());
             if side.is_server() {
                 assert_eq!(host.ledger().expect("a server holds one").ticks(), 1);
                 assert_eq!(host.work_done(), [OPENED_THE_LEDGER, RECORDED_A_TICK]);
@@ -278,7 +276,7 @@ mod tests {
                 assert!(
                     host.work_done().is_empty(),
                     "`{}` did server-only work",
-                    side.name()
+                    side.as_str()
                 );
             }
         }

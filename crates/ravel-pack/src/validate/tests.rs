@@ -152,7 +152,7 @@ fn a_dependency_the_pack_does_not_hold_is_refused_with_the_resolvers_own_reason(
     let text = refused.to_string();
     assert!(text.contains("library_mod"), "{text}");
     assert!(
-        Side::ALL.iter().any(|side| text.contains(side.name())),
+        Side::ALL.iter().any(|side| text.contains(side.as_str())),
         "the refusal names the side it does not resolve on: {text}"
     );
     assert!(std::error::Error::source(&refused).is_some());

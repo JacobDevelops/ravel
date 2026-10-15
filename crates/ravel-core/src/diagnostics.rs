@@ -15,9 +15,7 @@ pub trait StructuredFailure: std::error::Error {
     }
 
     /// Returns whether the message quotes text not authored by Ravel.
-    fn quotes_untrusted_text(&self) -> bool {
-        false
-    }
+    fn quotes_untrusted_text(&self) -> bool;
 
     /// Returns raw failure text; publishing requires a [`RedactionPolicy`].
     fn diagnostic(&self) -> DiagnosticMessage {
@@ -62,7 +60,7 @@ impl FailureKind {
 
     /// Returns the failure kind's canonical serialized name.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::MissingRequiredDependency => "missing-required-dependency",
             Self::IncompatibleVersion => "incompatible-version",
@@ -165,7 +163,7 @@ pub enum FailureSurface {
     /// An event dispatch.
     Event(String),
     /// A registry operation.
-    Registry(String),
+    Registry(crate::RegistryKey),
     /// A network packet.
     Packet(String),
 }
@@ -177,9 +175,9 @@ pub struct FailureEnvironment {
     pub ravel: Version,
     /// The Minecraft version the loader was hosted by.
     pub minecraft: String,
-    /// The running platform, matching the package manifest `platform` value.
+    /// The host operating system reported by the running process.
     pub platform: String,
-    /// The running architecture, matching the package manifest.
+    /// The host architecture reported by the running process.
     pub architecture: String,
 }
 
@@ -275,6 +273,10 @@ mod tests {
         fn failure_kind(&self) -> Option<FailureKind> {
             None
         }
+
+        fn quotes_untrusted_text(&self) -> bool {
+            false
+        }
     }
 
     fn environment() -> FailureEnvironment {
@@ -304,14 +306,14 @@ mod tests {
         assert_eq!(FailureKind::ALL.len(), 6);
         for kind in FailureKind::ALL {
             let encoded = serde_json::to_string(&kind).expect("kind should serialize");
-            assert_eq!(encoded, format!("\"{}\"", kind.name()));
+            assert_eq!(encoded, format!("\"{}\"", kind.as_str()));
             assert_eq!(
                 serde_json::from_str::<FailureKind>(&encoded).expect("kind should deserialize"),
                 kind
             );
         }
         assert_eq!(
-            FailureKind::ConflictingRegistryClaim.name(),
+            FailureKind::ConflictingRegistryClaim.as_str(),
             "conflicting-registry-claim"
         );
     }
@@ -320,8 +322,12 @@ mod tests {
     fn every_spec_failure_surface_round_trips_with_the_name_it_carries() {
         for surface in [
             FailureSurface::Hook("world_load".to_owned()),
-            FailureSurface::Event("player_tick".to_owned()),
-            FailureSurface::Registry("example_mod:block".to_owned()),
+            FailureSurface::Event("server-tick".to_owned()),
+            FailureSurface::Registry(
+                "block:example_mod:block"
+                    .parse()
+                    .expect("valid registry key"),
+            ),
             FailureSurface::Packet("example_mod:sync".to_owned()),
         ] {
             let encoded = serde_json::to_string(&surface).expect("surface should serialize");
@@ -332,9 +338,13 @@ mod tests {
             );
         }
         assert_eq!(
-            serde_json::to_string(&FailureSurface::Registry("example_mod:block".to_owned()))
-                .expect("surface should serialize"),
-            "{\"registry\":\"example_mod:block\"}"
+            serde_json::to_string(&FailureSurface::Registry(
+                "block:example_mod:block"
+                    .parse()
+                    .expect("valid registry key"),
+            ))
+            .expect("surface should serialize"),
+            "{\"registry\":\"block:example_mod:block\"}"
         );
     }
 

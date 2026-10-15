@@ -81,7 +81,7 @@ fn one_member() -> (
     (
         pack,
         vec![manifest(owner, MEMBER_VERSION, None)],
-        vec![ContentMod::new().declaration()],
+        vec![ContentMod::new().declaration().expect("valid declaration")],
     )
 }
 
@@ -117,14 +117,19 @@ fn a_declared_dependency_the_pack_does_not_hold_is_refused_with_the_offender_nam
         Some(("library_mod", "^1.0.0")),
     )];
 
-    let refused = validate(&pack, &manifests, &[ContentMod::new().declaration()], &[])
-        .expect_err("the library is not in the pack");
+    let refused = validate(
+        &pack,
+        &manifests,
+        &[ContentMod::new().declaration().expect("valid declaration")],
+        &[],
+    )
+    .expect_err("the library is not in the pack");
 
     assert!(matches!(refused, ClosureError::Dependency { .. }));
     let text = refused.to_string();
     assert!(text.contains("library_mod"), "{text}");
     assert!(
-        Side::ALL.iter().any(|side| text.contains(side.name())),
+        Side::ALL.iter().any(|side| text.contains(side.as_str())),
         "the refusal names the side it does not resolve on: {text}"
     );
 }
@@ -142,7 +147,7 @@ fn a_dependency_present_at_a_version_the_dependant_refuses_is_refused_with_both(
         manifest(&id("library_mod"), "2.0.0", None),
     ];
     let content = vec![
-        ContentMod::new().declaration(),
+        ContentMod::new().declaration().expect("valid declaration"),
         ContentDeclaration::new(id("library_mod")),
     ];
 
@@ -242,7 +247,7 @@ fn the_namespace_the_pack_allows_unverified_is_spelled_the_way_the_game_spells_i
 fn a_tag_member_in_the_games_namespace_is_allowed_and_deliberately_unverified() {
     // Vanilla entries are allowed without a game registry to verify them against.
     let (pack, manifests, _) = one_member();
-    let mut declaration = ContentMod::new().declaration();
+    let mut declaration = ContentMod::new().declaration().expect("valid declaration");
     declaration
         .tag(
             &ContentMod::lanterns(ContentKind::Item),
@@ -265,7 +270,7 @@ fn a_tag_member_in_the_games_namespace_is_allowed_and_deliberately_unverified() 
 fn a_tag_member_in_a_namespace_the_pack_pins_nothing_for_is_refused() {
     let (pack, manifests, _) = one_member();
     let absent = RegistryKey::new(ContentKind::Item, named("absent_mod", "lantern"));
-    let mut declaration = ContentMod::new().declaration();
+    let mut declaration = ContentMod::new().declaration().expect("valid declaration");
     declaration
         .tag(&ContentMod::lanterns(ContentKind::Item), &absent)
         .expect("a tag is not a claim on its members");
@@ -292,7 +297,7 @@ fn a_tag_member_the_owning_mod_never_declared_is_refused_even_though_the_mod_is_
     let owner = ContentMod::declared_id();
     let (pack, manifests, _) = one_member();
     let phantom = RegistryKey::new(ContentKind::Item, named(owner.as_str(), "phantom_lantern"));
-    let mut declaration = ContentMod::new().declaration();
+    let mut declaration = ContentMod::new().declaration().expect("valid declaration");
     declaration
         .tag(&ContentMod::lanterns(ContentKind::Item), &phantom)
         .expect("a tag is not a claim on its members");
@@ -311,17 +316,23 @@ fn a_tag_member_the_owning_mod_never_declared_is_refused_even_though_the_mod_is_
 
     let real = ContentMod::new()
         .declaration()
+        .expect("valid declaration")
         .entries()
         .iter()
         .find(|key| key.kind() == ContentKind::Item)
         .cloned()
         .expect("the example mod declares an item");
-    let mut legal = ContentMod::new().declaration();
+    let mut legal = ContentMod::new().declaration().expect("valid declaration");
     legal
         .tag(&ContentMod::lanterns(ContentKind::Item), &real)
         .expect_err("the mod already put its own item in that tag");
-    validate(&pack, &manifests, &[ContentMod::new().declaration()], &[])
-        .expect("the shipped declaration holds");
+    validate(
+        &pack,
+        &manifests,
+        &[ContentMod::new().declaration().expect("valid declaration")],
+        &[],
+    )
+    .expect("the shipped declaration holds");
 }
 
 #[test]
@@ -346,7 +357,10 @@ fn two_members_contributing_to_one_tag_are_written_as_one_file_holding_both() {
     let validated = validate(
         &pack,
         &manifests,
-        &[ContentMod::new().declaration(), second],
+        &[
+            ContentMod::new().declaration().expect("valid declaration"),
+            second,
+        ],
         &[],
     )
     .expect("contributions merge rather than contest");
@@ -361,7 +375,7 @@ fn two_members_contributing_to_one_tag_are_written_as_one_file_holding_both() {
 fn two_members_claiming_one_registry_entry_are_both_named() {
     // Declarations cannot claim another namespace; duplicate ownership fails completeness first.
     let (pack, manifests, mut content) = one_member();
-    content.push(ContentMod::new().declaration());
+    content.push(ContentMod::new().declaration().expect("valid declaration"));
 
     assert_eq!(
         validate(&pack, &manifests, &content, &[]),
@@ -446,6 +460,7 @@ fn a_progression_gate_is_held_to_the_same_rule_a_tag_member_is() {
 
     let real = ContentMod::new()
         .declaration()
+        .expect("valid declaration")
         .entries()
         .iter()
         .find(|key| key.kind() == ContentKind::Item)

@@ -7,7 +7,7 @@ use std::process::Command;
 use ravel_core::{LifecycleState, Side};
 use ravel_package::{NonEmptyText, PackageManifest};
 use ravel_test_mod_noop::NoopMod;
-use ravel_testkit::{DiscoveredPackage, Host, PipelineRun, executed_states, run, run_order};
+use ravel_testkit::{Host, PipelineRun, TestPackage, executed_states, run, run_order};
 use serde_json::{Value, json};
 
 // Workspace crates share the loader's running version.
@@ -24,8 +24,8 @@ fn repository_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn package() -> DiscoveredPackage {
-    DiscoveredPackage::read(repository_root().join(PACKAGE_DIRECTORY))
+fn package() -> TestPackage {
+    TestPackage::read(repository_root().join(PACKAGE_DIRECTORY))
         .expect("the no-op package should be readable")
 }
 
@@ -68,7 +68,7 @@ fn run_on(side: Side) -> (PipelineRun, NoopMod) {
 }
 
 fn names(states: &[LifecycleState]) -> Vec<&'static str> {
-    states.iter().map(|state| state.name()).collect()
+    states.iter().map(|state| state.as_str()).collect()
 }
 
 fn record() -> Value {
@@ -92,7 +92,7 @@ fn record() -> Value {
                     .iter()
                     .map(|event| json!({
                         "mod": event.mod_id.to_string(),
-                        "state": event.state.name(),
+                        "state": event.state.as_str(),
                     }))
                     .collect::<Vec<_>>(),
                 "modEntered": names(noop.entered()),
@@ -184,7 +184,7 @@ fn the_no_op_package_is_one_the_published_schemas_validate() {
     assert!(
         validates(
             "schemas/package.schema.json",
-            &root.join(DiscoveredPackage::MANIFEST_FILE)
+            &root.join(TestPackage::MANIFEST_FILE)
         ),
         "the no-op manifest is not one `schemas/package.schema.json` accepts"
     );

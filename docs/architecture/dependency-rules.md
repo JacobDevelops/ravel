@@ -28,8 +28,10 @@ stable contracts toward concrete host internals.
   they generate — is that crate's model, and `ravel-pack` reads the same
   declarations to check a pack's registry closure and to merge its members' tags;
   a model living in the facade would make a feature crate depend on the facade.
-- `ravel-minecraft-generate` depends only on `ravel-core`, `miniz_oxide`, `serde`, `sha2` and
-  `toml`; it is used only by build tooling.
+- `ravel-minecraft-generate` depends only on `ravel-core`, `miniz_oxide`, `serde`,
+  `serde_json`, `sha2` and `toml`; it is used only by build tooling. JVM names and
+  descriptor tokens live in its classfile module, shared by source rendering,
+  hook-shape classification and tooling inventory counts.
 - Version-neutral Minecraft traits are separate from the shared adapter runtime
   and per-version data. M4-W6 discharges this against a second version rather than
   against a promise: `tests/fixtures/public/versions/` holds a synthetic version's
@@ -94,20 +96,22 @@ stable contracts toward concrete host internals.
   the checkout; authorized ignored local fixtures remain runtime test inputs,
   never package or source dependencies.
 
-- `ravel-bootstrap` is the JVM entry crate. It holds no unsafe code — see
-  [`safety-boundary.md`](safety-boundary.md) — it exposes only safe Rust upward, and no other
-  maintained crate depends on it. The SDK never re-exports it, and a mod cannot
-  reach it.
+- `ravel-bootstrap` is the safe JVM runtime library linked by hosts. It holds no
+  unsafe code — see [`safety-boundary.md`](safety-boundary.md). Host composition
+  may depend on it through `ravel-host-runtime`; SDK and mod dependency graphs
+  must not reach either crate.
 
-- **Two crates contradict the sentence above and this record does not resolve
-  it.** `ravel-composed-host` has depended on `ravel-bootstrap` since it was
-  written, and `ravel-host-runtime` — the composition both hosts run — does now.
-  Both are hosts: a host is the binary the JVM loads, which is the one place a
-  JVM entry belongs, and neither is reachable from a mod. So the rule as written
-  is either about *non-host* crates and has always been stated too widely, or the
-  two hosts are a defect. Which of those it is decides whether a third host may
-  exist, and that is an architecture decision rather than an implementation one.
-  It is recorded here rather than edited away.
+- `ravel-composed-host` is the tracked JVM harness fixture, not a generated
+  player host. Its fixed test-mod membership exercises shared admission and
+  startup through `ravel-host-runtime`. It remains under `crates/` to preserve
+  the workspace's crate inventory and harness build paths; its placement does
+  not make test-mod dependencies suitable for other runtime crates. Player
+  hosts are emitted by `ravel-build` with the instance's selected members.
+
+- Loader phase entry points accept borrowed mutable host slices so testkit
+  callers and owning hosts use the same dispatch surface. A lifecycle machine
+  remains independently constructible for admission and lifecycle tests;
+  hosts construct borrow adapters at their ownership boundary.
 
 - `ravel-build` generates a host and links none of it. It depends on
   `ravel-loader`, `ravel-package` and `ravel-core` to read what an instance holds,

@@ -17,7 +17,7 @@ use ravel_sdk::network::{
 use ravel_sdk::resources::RelativePath;
 use ravel_sdk::save::{
     MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan,
-    SavedDataVersion, SavedPayload,
+    SavedDataVersion,
 };
 use ravel_sdk::sides::{ClientOnly, Side};
 use ravel_sdk::tags::TagId;
@@ -158,23 +158,23 @@ impl Packet for LedgerSummary {
 /// version-1 world holds survives; the one version 2 added is filled with the
 /// assumption stated at [`ASSUMED_DIMENSION`], because the alternative is
 /// dropping the record.
-fn to_two(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
+fn to_two(payload: &JsonValue) -> Result<JsonValue, MigrationFailed> {
     let points = payload
         .get("points")
-        .and_then(SavedPayload::as_array)
+        .and_then(JsonValue::as_array)
         .ok_or_else(|| MigrationFailed::new("version 1 held no `points` list"))?;
 
     let mut waystones = Vec::with_capacity(points.len());
     for point in points {
         let name = point
             .get("name")
-            .and_then(SavedPayload::as_str)
+            .and_then(JsonValue::as_str)
             .ok_or_else(|| MigrationFailed::new("a version 1 point held no `name` string"))?;
         let mut coordinates = [0_i64; 3];
         for (axis, slot) in ["x", "y", "z"].iter().zip(&mut coordinates) {
             *slot = point
                 .get(*axis)
-                .and_then(SavedPayload::as_i64)
+                .and_then(JsonValue::as_i64)
                 .ok_or_else(|| {
                     MigrationFailed::new(format!("a version 1 point held no `{axis}` coordinate"))
                 })?;
@@ -345,32 +345,31 @@ impl WaystoneLedger {
 
     /// Declares everything this mod contributes.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if these constant declarations conflict or are invalid.
-    #[must_use]
-    pub fn declaration() -> ContentDeclaration {
+    /// Returns a refusal if the packaged declarations conflict or are invalid.
+    pub fn declaration() -> Result<ContentDeclaration, ModError> {
         let mut declaration = ContentDeclaration::new(Self::declared_id().clone());
 
         let block = declaration
             .entry(ContentKind::Block, WAYSTONE)
-            .expect("the block is declared once");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         let item = declaration
             .entry(ContentKind::Item, WAYSTONE)
-            .expect("an item is a different registry from a block");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         declaration
             .entry(ContentKind::Recipe, &format!("crafting/{WAYSTONE}"))
-            .expect("the recipe is declared once");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         declaration
             .entry(ContentKind::Command, WAYSTONE)
-            .expect("the command is declared once");
+            .map_err(|error| ModError::refused(error.to_string()))?;
 
         declaration
             .tag(&Self::waystones_tag(ContentKind::Block), &block)
-            .expect("a block joins a block tag");
+            .map_err(|error| ModError::refused(error.to_string()))?;
         declaration
             .tag(&Self::waystones_tag(ContentKind::Item), &item)
-            .expect("an item joins an item tag");
+            .map_err(|error| ModError::refused(error.to_string()))?;
 
         for (locale, name) in [("en_us", "Waystone"), ("de_de", "Wegstein")] {
             for prefix in ["block", "item"] {
@@ -380,35 +379,37 @@ impl WaystoneLedger {
                         &format!("{prefix}.{}.{WAYSTONE}", Self::declared_id()),
                         name,
                     )
-                    .expect("each key is named once per locale");
+                    .map_err(|error| ModError::refused(error.to_string()))?;
             }
         }
 
         declaration
             .resource(Self::model_path(), MODEL.to_vec())
-            .expect("the model is supplied once, and nothing generates that path");
+            .map_err(|error| ModError::refused(error.to_string()))?;
 
-        declaration
+        Ok(declaration)
     }
 
     /// Produces the pack this mod ships.
-    #[must_use]
-    pub fn generated() -> GeneratedData {
-        Self::declaration().generate()
+    ///
+    /// # Errors
+    ///
+    /// Returns a refusal if the packaged declarations conflict or are invalid.
+    pub fn generated() -> Result<GeneratedData, ModError> {
+        Ok(Self::declaration()?.generate())
     }
 
     /// Returns the versions this build reads.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if [`VERSIONS`] stops being a non-empty list of non-zero versions.
-    #[must_use]
-    pub fn saved_versions() -> SavedDataDeclaration {
+    /// Returns a refusal if the packaged versions are invalid.
+    pub fn saved_versions() -> Result<SavedDataDeclaration, ModError> {
         SavedDataDeclaration::new(
             Self::declared_id().clone(),
             VERSIONS.into_iter().map(version),
         )
-        .expect("`VERSIONS` is a non-empty list of non-zero versions")
+        .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Returns the step into every version above the oldest.
@@ -451,14 +452,6 @@ impl WaystoneLedger {
         };
         &self.outcome
     }
-
-    fn refuse(state: LifecycleState, detail: String) -> ModError {
-        ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state,
-            detail,
-        }
-    }
 }
 
 // The manifest declares all three sides, and it means all three for different
@@ -493,22 +486,18 @@ impl Mod for WaystoneLedger {
     /// conflict is fatal: a ledger whose command another mod owns is a mod a
     /// player cannot reach.
     fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
-        claim_all(&Self::declaration(), registrar)
+        claim_all(&Self::declaration()?, registrar)
     }
 
     /// Hands the host the declaration the claims above came from, model included.
     fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
-        Ok(Some(Self::declaration()))
+        Self::declaration().map(Some)
     }
 
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(SETTINGS)
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Reads the settings in force.
@@ -518,48 +507,39 @@ impl Mod for WaystoneLedger {
     /// Returns [`ModError::Refused`] when a declared key resolves to something
     /// that is not the shape this mod declared for it.
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let capacity_key = CAPACITY.parse().map_err(|_| {
-            Self::refuse(
-                LifecycleState::Constructed,
-                format!("`{CAPACITY}` is not a legal setting key"),
-            )
-        })?;
+        let capacity_key = CAPACITY
+            .parse()
+            .map_err(|_| ModError::refused(format!("`{CAPACITY}` is not a legal setting key")))?;
         let capacity = resolved
             .value(&capacity_key)
             .and_then(JsonValue::as_u64)
             .ok_or_else(|| {
-                Self::refuse(
-                    LifecycleState::Constructed,
-                    format!("`{CAPACITY}` resolved to something that is not a count"),
-                )
+                ModError::refused(format!(
+                    "`{CAPACITY}` resolved to something that is not a count"
+                ))
             })?;
         self.capacity = usize::try_from(capacity).map_err(|_| {
-            Self::refuse(
-                LifecycleState::Constructed,
-                format!("`{CAPACITY}` resolved to a count this platform cannot hold"),
-            )
+            ModError::refused(format!(
+                "`{CAPACITY}` resolved to a count this platform cannot hold"
+            ))
         })?;
 
-        let overwrite_key = OVERWRITE.parse().map_err(|_| {
-            Self::refuse(
-                LifecycleState::Constructed,
-                format!("`{OVERWRITE}` is not a legal setting key"),
-            )
-        })?;
+        let overwrite_key = OVERWRITE
+            .parse()
+            .map_err(|_| ModError::refused(format!("`{OVERWRITE}` is not a legal setting key")))?;
         self.overwrite = resolved
             .value(&overwrite_key)
             .and_then(JsonValue::as_bool)
             .ok_or_else(|| {
-                Self::refuse(
-                    LifecycleState::Constructed,
-                    format!("`{OVERWRITE}` resolved to something that is not a yes or a no"),
-                )
+                ModError::refused(format!(
+                    "`{OVERWRITE}` resolved to something that is not a yes or a no"
+                ))
             })?;
         Ok(())
     }
 
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
-        Ok(Some(Self::saved_versions()))
+        Self::saved_versions().map(Some)
     }
 
     fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
@@ -584,23 +564,17 @@ impl Mod for WaystoneLedger {
         // crosses the steps the plan names before anything is read.
         let current = Self::migrations()
             .apply(plan, envelope.payload())
-            .map_err(|failed| Self::refuse(LifecycleState::Registered, failed.to_string()))?;
+            .map_err(|failed| ModError::refused(failed.to_string()))?;
         let stored = current
             .get("waystones")
-            .and_then(SavedPayload::as_array)
-            .ok_or_else(|| {
-                Self::refuse(
-                    LifecycleState::Registered,
-                    "the stored ledger holds no waystone list".to_owned(),
-                )
-            })?;
+            .and_then(JsonValue::as_array)
+            .ok_or_else(|| ModError::refused("the stored ledger holds no waystone list"))?;
 
         let mut waystones = Vec::with_capacity(stored.len());
         for value in stored {
             waystones.push(Waystone::from_json(value).ok_or_else(|| {
-                Self::refuse(
-                    LifecycleState::Registered,
-                    "a stored waystone is missing a name, a coordinate or a dimension".to_owned(),
+                ModError::refused(
+                    "a stored waystone is missing a name, a coordinate or a dimension",
                 )
             })?);
         }
@@ -612,12 +586,12 @@ impl Mod for WaystoneLedger {
     ///
     /// # Errors
     ///
-    /// Never returns an error.
+    /// Returns a refusal if the packaged versions are invalid.
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
         let waystones: Vec<JsonValue> = self.waystones.iter().map(Waystone::to_json).collect();
         Ok(Some(SavedDataEnvelope::current(
             Self::declared_id().clone(),
-            Self::saved_versions().current(),
+            Self::saved_versions()?.current(),
             json!({ "waystones": waystones }),
         )))
     }
@@ -681,7 +655,7 @@ mod tests {
         encode,
     };
     use ravel_sdk::resources::RelativePath;
-    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan, SavedPayload};
+    use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan};
     use ravel_sdk::sides::Side;
     use ravel_sdk::tags::TagSet;
     use ravel_sdk::{Declared, JsonValue, LifecycleState, Mod, ModError, ModId, json};
@@ -761,9 +735,9 @@ mod tests {
         }
     }
 
-    fn opened(at: u32, payload: SavedPayload) -> Result<WaystoneLedger, ModError> {
+    fn opened(at: u32, payload: JsonValue) -> Result<WaystoneLedger, ModError> {
         let mut ledger = configured(Side::IntegratedServer);
-        let plan = SavedDataPlan::open(&WaystoneLedger::saved_versions(), Some(version(at)))
+        let plan = SavedDataPlan::open(&WaystoneLedger::saved_versions()?, Some(version(at)))
             .expect("a declared version");
         let envelope =
             SavedDataEnvelope::current(WaystoneLedger::declared_id().clone(), version(at), payload);
@@ -825,8 +799,6 @@ mod tests {
                 .register(&mut registrar)
                 .expect_err("one kind is taken");
 
-            assert_eq!(error.mod_id(), WaystoneLedger::declared_id());
-            assert_eq!(error.state(), LifecycleState::Constructed);
             assert!(
                 matches!(&error, ModError::Refused { detail, .. }
                     if detail.contains(owner.as_str()) && detail.contains(kind.as_str())),
@@ -834,6 +806,7 @@ mod tests {
             );
 
             let refused_at = WaystoneLedger::declaration()
+                .expect("valid declaration")
                 .entries()
                 .iter()
                 .position(|key| key.kind() == kind)
@@ -844,7 +817,7 @@ mod tests {
 
     #[test]
     fn the_block_and_the_item_join_the_shared_tag_for_their_own_registry() {
-        let declaration = WaystoneLedger::declaration();
+        let declaration = WaystoneLedger::declaration().expect("valid declaration");
         let set = TagSet::merged([&declaration]);
         for kind in [ContentKind::Block, ContentKind::Item] {
             let tag = WaystoneLedger::waystones_tag(kind);
@@ -856,7 +829,7 @@ mod tests {
 
     #[test]
     fn a_block_cannot_join_the_item_tag() {
-        let mut declaration = WaystoneLedger::declaration();
+        let mut declaration = WaystoneLedger::declaration().expect("valid declaration");
         let block = declaration
             .entries()
             .iter()
@@ -871,7 +844,7 @@ mod tests {
 
     #[test]
     fn the_generated_pack_holds_the_derived_files_and_the_supplied_model() {
-        let generated = WaystoneLedger::generated();
+        let generated = WaystoneLedger::generated().expect("valid declaration");
         assert_eq!(
             generated.paths().collect::<Vec<_>>(),
             [
@@ -910,7 +883,10 @@ mod tests {
 
     #[test]
     fn generating_the_pack_twice_produces_the_same_bytes() {
-        assert_eq!(WaystoneLedger::generated(), WaystoneLedger::generated());
+        assert_eq!(
+            WaystoneLedger::generated().expect("valid declaration"),
+            WaystoneLedger::generated().expect("valid declaration")
+        );
     }
 
     #[test]
@@ -1013,10 +989,12 @@ mod tests {
     #[test]
     fn the_chain_covers_every_version_the_declaration_admits() {
         WaystoneLedger::migrations()
-            .covers(&WaystoneLedger::saved_versions())
+            .covers(&WaystoneLedger::saved_versions().expect("valid declaration"))
             .expect("every declared version above the oldest has a step");
         assert_eq!(
-            WaystoneLedger::saved_versions().current(),
+            WaystoneLedger::saved_versions()
+                .expect("valid declaration")
+                .current(),
             version(*VERSIONS.last().expect("`VERSIONS` is not empty"))
         );
     }
@@ -1047,8 +1025,6 @@ mod tests {
     fn a_version_one_shape_the_step_cannot_read_refuses_and_leaves_the_ledger_empty() {
         let refusal =
             opened(1, json!({ "waystones": [] })).expect_err("version 1 named its list `points`");
-        assert_eq!(refusal.mod_id(), WaystoneLedger::declared_id());
-        assert_eq!(refusal.state(), LifecycleState::Registered);
         assert!(refusal.to_string().contains("points"), "{refusal}");
 
         let partial = opened(1, json!({ "points": [{ "name": "home", "x": 1, "y": 2 }] }))
@@ -1069,7 +1045,7 @@ mod tests {
 
         let mut reopened = configured(Side::IntegratedServer);
         let plan = SavedDataPlan::open(
-            &WaystoneLedger::saved_versions(),
+            &WaystoneLedger::saved_versions().expect("valid declaration"),
             Some(envelope.data_version()),
         )
         .expect("the current version");
@@ -1083,8 +1059,11 @@ mod tests {
     fn a_world_holding_nothing_this_mod_owns_initializes_fresh() {
         let mut ledger = configured(Side::IntegratedServer);
         ledger.record(waystone("stale"));
-        let plan = SavedDataPlan::open(&WaystoneLedger::saved_versions(), None)
-            .expect("absence initializes");
+        let plan = SavedDataPlan::open(
+            &WaystoneLedger::saved_versions().expect("valid declaration"),
+            None,
+        )
+        .expect("absence initializes");
         ledger
             .open_saved_data(None, &plan)
             .expect("absence is not a refusal");

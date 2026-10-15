@@ -44,18 +44,19 @@ pub fn read_pack(root: &Path) -> Result<BTreeMap<ModId, ValueDocument>, FileErro
         Ok(listing) => listing,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
         Err(error) => {
-            return Err(FileError::Io(format!(
-                "cannot read `{}`: {error}",
-                directory.display()
-            )));
+            return Err(FileError::Io {
+                path: directory,
+                source: error,
+            });
         }
     };
 
     let mut documents = BTreeMap::new();
     for entry in listing {
         let file = entry
-            .map_err(|error| {
-                FileError::Io(format!("cannot read `{}`: {error}", directory.display()))
+            .map_err(|source| FileError::Io {
+                path: directory.clone(),
+                source,
             })?
             .path();
         if file.extension().is_none_or(|extension| extension != "json") {
@@ -101,10 +102,10 @@ pub fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, Fi
         Ok(text) => text,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
-            return Err(FileError::Io(format!(
-                "cannot read `{}`: {error}",
-                file.display()
-            )));
+            return Err(FileError::Io {
+                path: file.to_owned(),
+                source: error,
+            });
         }
     };
 
@@ -132,8 +133,9 @@ pub fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, Fi
 pub fn write(game_directory: &Path, document: &ValueDocument) -> Result<(), FileError> {
     let file = path(game_directory, &document.owner);
     let directory = game_directory.join(DIRECTORY);
-    fs::create_dir_all(&directory).map_err(|error| {
-        FileError::Io(format!("cannot create `{}`: {error}", directory.display()))
+    fs::create_dir_all(&directory).map_err(|source| FileError::Io {
+        path: directory,
+        source,
     })?;
 
     let mut staging = file.clone().into_os_string();
@@ -150,18 +152,26 @@ pub fn write(game_directory: &Path, document: &ValueDocument) -> Result<(), File
 
 /// Writes the staging file and renames it onto the target.
 fn stage(staging: &Path, file: &Path, text: &str) -> Result<(), FileError> {
-    fs::write(staging, text)
-        .map_err(|error| FileError::Io(format!("cannot write `{}`: {error}", staging.display())))?;
-    fs::rename(staging, file).map_err(|error| {
-        FileError::Io(format!("cannot put `{}` in place: {error}", file.display()))
+    fs::write(staging, text).map_err(|source| FileError::Io {
+        path: staging.to_owned(),
+        source,
+    })?;
+    fs::rename(staging, file).map_err(|source| FileError::Io {
+        path: file.to_owned(),
+        source,
     })
 }
 
 /// Why a player's configuration file could not be used.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum FileError {
     /// The file exists but could not be read, or could not be written.
-    Io(String),
+    Io {
+        /// The path whose filesystem operation failed.
+        path: PathBuf,
+        /// The original filesystem error.
+        source: io::Error,
+    },
     /// The file is not a document this crate accepts.
     Document {
         /// The rejected document's location.
@@ -186,7 +196,9 @@ pub enum FileError {
 impl fmt::Display for FileError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io(detail) => formatter.write_str(detail),
+            Self::Io { path, source } => {
+                write!(formatter, "cannot access `{}`: {source}", path.display())
+            }
             Self::Document { path, source } => {
                 write!(formatter, "cannot parse `{}`: {source}", path.display())
             }
@@ -205,8 +217,9 @@ impl fmt::Display for FileError {
 impl std::error::Error for FileError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Io { source, .. } => Some(source),
             Self::Document { source, .. } => Some(source),
-            Self::Io(_) | Self::Name { .. } | Self::Owner { .. } => None,
+            Self::Name { .. } | Self::Owner { .. } => None,
         }
     }
 }
@@ -261,7 +274,11 @@ mod tests {
     fn a_player_who_has_changed_nothing_has_no_file_and_that_is_not_an_error() {
         let game = directory("absent");
 
-        assert_eq!(read(&game, &owner()), Ok(None));
+        assert!(
+            read(&game, &owner())
+                .expect("a missing file is not an error")
+                .is_none()
+        );
     }
 
     #[test]
@@ -301,13 +318,11 @@ mod tests {
         )
         .expect("the file should be writable");
 
-        assert_eq!(
+        assert!(matches!(
             read(&game, &owner()),
-            Err(FileError::Owner {
-                named: owner().to_string(),
-                found: other.to_string(),
-            })
-        );
+            Err(FileError::Owner { named, found })
+                if named == owner().to_string() && found == other.to_string()
+        ));
     }
 
     #[test]
@@ -318,13 +333,11 @@ mod tests {
         std::fs::write(&file, "{ not json").expect("the file should be writable");
         let error = read(&game, &owner()).expect_err("malformed configuration must fail");
         let source = ValueDocument::parse("{ not json").expect_err("malformed document");
-        assert_eq!(
-            error,
-            FileError::Document {
-                path: file.clone(),
-                source: source.clone(),
-            }
-        );
+        assert!(matches!(
+            &error,
+            FileError::Document { path, source: found }
+                if path == &file && found == &source
+        ));
 
         assert!(error.to_string().contains(&file.display().to_string()));
         assert_eq!(
@@ -369,7 +382,11 @@ mod tests {
     fn a_pack_that_states_no_overrides_has_no_directory_and_that_is_not_an_error() {
         let root = directory("pack-absent");
 
-        assert_eq!(super::read_pack(&root), Ok(BTreeMap::new()));
+        assert!(
+            super::read_pack(&root)
+                .expect("an absent layer is empty")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -384,13 +401,11 @@ mod tests {
         )
         .expect("the file should be writable");
 
-        assert_eq!(
+        assert!(matches!(
             super::read_pack(&root),
-            Err(FileError::Owner {
-                named: owner().to_string(),
-                found: other.to_string(),
-            })
-        );
+            Err(FileError::Owner { named, found })
+                if named == owner().to_string() && found == other.to_string()
+        ));
     }
 
     #[test]
@@ -404,12 +419,10 @@ mod tests {
         )
         .expect("the file should be writable");
 
-        assert_eq!(
+        assert!(matches!(
             super::read_pack(&root),
-            Err(FileError::Name {
-                file: "Not A Mod.json".to_owned(),
-            })
-        );
+            Err(FileError::Name { file }) if file == "Not A Mod.json"
+        ));
     }
 
     #[test]
@@ -431,5 +444,19 @@ mod tests {
             .to_string()
             .contains("Not A Mod.json")
         );
+    }
+
+    #[test]
+    fn filesystem_errors_keep_the_path_kind_and_source() {
+        let game = directory("io-context");
+        let file = path(&game, &owner());
+        std::fs::create_dir_all(&file).expect("a directory in place of a file");
+        let error = read(&game, &owner()).expect_err("a directory cannot be read as text");
+        assert!(matches!(
+            &error,
+            FileError::Io { path, source }
+                if path == &file && source.kind() == std::io::ErrorKind::IsADirectory
+        ));
+        assert!(std::error::Error::source(&error).is_some());
     }
 }

@@ -75,6 +75,10 @@ mod tests {
         fn lifecycle_state(&self) -> LifecycleState {
             LifecycleState::Validated
         }
+
+        fn quotes_untrusted_text(&self) -> bool {
+            false
+        }
     }
 
     fn id(name: &str) -> ModId {

@@ -295,7 +295,8 @@ impl Points {
 
     /// Asks mods in declared order, stopping at the first refusal or failure.
     ///
-    /// A failure produces [`Outcome::Refuse`] and remains available through [`Round::failure`].
+    /// A failure produces [`Outcome::Refuse`]; [`Round::failed_by`] identifies the actual
+    /// callback owner independently of the error retained by [`Round::failure`].
     ///
     /// # Errors
     ///
@@ -355,7 +356,7 @@ impl Points {
                 }
                 Err(refused) => {
                     outcome = Outcome::Refuse;
-                    failure = Some(refused);
+                    failure = Some((owner, refused));
                     break;
                 }
             }
@@ -375,7 +376,7 @@ pub struct Round {
     point: Point,
     asked: Vec<ModId>,
     outcome: Outcome,
-    failure: Option<crate::HostError>,
+    failure: Option<(ModId, crate::HostError)>,
 }
 
 impl Round {
@@ -399,8 +400,14 @@ impl Round {
 
     /// Returns the failure that ended the round with [`Outcome::Refuse`], if any.
     #[must_use]
-    pub const fn failure(&self) -> Option<&crate::HostError> {
-        self.failure.as_ref()
+    pub fn failure(&self) -> Option<&crate::HostError> {
+        self.failure.as_ref().map(|(_, failure)| failure)
+    }
+
+    /// Returns the actual callback owner whose failure ended the round, if any.
+    #[must_use]
+    pub fn failed_by(&self) -> Option<&ModId> {
+        self.failure.as_ref().map(|(owner, _)| owner)
     }
 }
 
@@ -570,6 +577,8 @@ mod tests {
 
         assert_eq!(round.asked(), [early]);
         assert_eq!(round.outcome(), Outcome::Refuse);
+        assert_eq!(round.failed_by(), None);
+        assert_eq!(round.failure(), None);
     }
 
     #[test]
@@ -735,5 +744,26 @@ mod tests {
         let rendered = format!("{points:?}");
         assert!(rendered.contains("sample"));
         assert!(rendered.contains("BlockIsBroken"));
+    }
+
+    #[test]
+    fn callback_failure_owner_is_independent_of_the_error_identity() {
+        let owner = id("sample");
+        let foreign = id("probe");
+        let mut points = Points::default();
+        points.answer_at(&owner, "world_is_saved");
+        let failure = crate::HostError::Refused {
+            mod_id: foreign,
+            state: ravel_core::LifecycleState::Running,
+            detail: "foreign error identity".to_owned(),
+        };
+        let round = points
+            .ask("world_is_saved", Side::DedicatedServer, &mut |_, _| {
+                Err(failure.clone())
+            })
+            .expect("published point");
+        assert_eq!(round.failed_by(), Some(&owner));
+        assert_eq!(round.failure(), Some(&failure));
+        assert_eq!(round.outcome(), Outcome::Refuse);
     }
 }

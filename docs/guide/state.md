@@ -72,11 +72,7 @@ impl Mod for CopperLanterns {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(SETTINGS)
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
@@ -84,11 +80,10 @@ impl Mod for CopperLanterns {
         self.capacity = resolved
             .value(&key)
             .and_then(JsonValue::as_u64)
-            .ok_or_else(|| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Constructed,
-                detail: "`lanterns.capacity` resolved to something that is not a count"
-                    .to_owned(),
+            .ok_or_else(|| {
+                ModError::refused(
+                    "`lanterns.capacity` resolved to something that is not a count",
+                )
             })?;
         Ok(())
     }
@@ -115,7 +110,7 @@ Declare every version this build can read. The oldest is what still opens; the
 highest is what you write.
 
 ```rust
-fn read_entries(current: &SavedPayload) -> Vec<String> {
+fn read_entries(current: &JsonValue) -> Vec<String> {
     current
         .get("entries")
         .and_then(|value| value.as_array())
@@ -133,10 +128,10 @@ fn v(raw: u32) -> SavedDataVersion {
 }
 
 /// Version 1 stored one entry; version 2 stores a list.
-fn to_two(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
+fn to_two(payload: &JsonValue) -> Result<JsonValue, MigrationFailed> {
     let entry = payload
         .get("entry")
-        .and_then(SavedPayload::as_str)
+        .and_then(JsonValue::as_str)
         .ok_or_else(|| MigrationFailed::new("version 1 held no `entry` string"))?;
     Ok(json!({ "entries": [entry] }))
 }
@@ -151,11 +146,7 @@ impl Mod for CopperLanterns {
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         SavedDataDeclaration::new(Self::declared_id().clone(), [v(1), v(2)])
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
@@ -179,11 +170,7 @@ impl Mod for CopperLanterns {
             .saved_data_migrations()?
             .expect("this mod declares a chain")
             .apply(plan, envelope.payload())
-            .map_err(|failed| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Registered,
-                detail: failed.to_string(),
-            })?;
+            .map_err(|failed| ModError::refused(failed.to_string()))?;
         self.entries = read_entries(&current);
         Ok(())
     }
@@ -218,7 +205,7 @@ The second is an `Option<String>`, a name you publish for your own payload's
 shape so another reader can recognise it. Ravel does not interpret it and nothing
 validates against it. Pass `None` if you publish no such name.
 
-A `MigrationStep` is a plain `fn(&SavedPayload) -> Result<SavedPayload,
+A `MigrationStep` is a plain `fn(&JsonValue) -> Result<JsonValue,
 MigrationFailed>` — a function item, not a closure — so `to_two` is passed by
 name. `MigrationChain::covers` checks, before any world is opened, that every
 declared version above the oldest has a step; call it in your own tests.
@@ -280,11 +267,7 @@ fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         [landmarks()], // what you use if something answers it
     )
     .map(Some)
-    .map_err(|error| ModError::Refused {
-        mod_id: self.id().clone(),
-        state: LifecycleState::Constructed,
-        detail: error.to_string(),
-    })
+    .map_err(|error| ModError::refused(error.to_string()))
 }
 ```
 
@@ -310,11 +293,7 @@ fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), M
             Ok(())
         }
         // The atlas is installed and said no, which is a different thing.
-        Err(failed) => Err(ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail: failed.to_string(),
-        }),
+        Err(failed) => Err(ModError::refused(failed.to_string())),
     }
 }
 ```

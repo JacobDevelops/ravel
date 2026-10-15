@@ -24,6 +24,8 @@ pub enum HookError {
     },
     /// The observer registry's read lock is poisoned.
     Unavailable,
+    /// A runtime has already been installed for this process.
+    AlreadyInstalled,
     /// Reading a hook argument failed.
     Jvm(jni::errors::Error),
 }
@@ -33,6 +35,9 @@ impl fmt::Display for HookError {
         match self {
             Self::Vetoed { hook, reason } => write!(formatter, "{hook} was refused: {reason}"),
             Self::Unavailable => formatter.write_str("the hook registry is unavailable"),
+            Self::AlreadyInstalled => {
+                formatter.write_str("the loader runtime is already installed")
+            }
             Self::Jvm(error) => write!(formatter, "the JVM refused a hook argument: {error}"),
         }
     }

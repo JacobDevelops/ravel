@@ -57,8 +57,6 @@ public final class Agent {
         transformer = installedTransformer;
         instrumentation.addTransformer(installedTransformer, false);
 
-        // Read profiling once so the disabled crossing path needs no atomic lookup.
-        Hook.ravelEnableProfiling(System.getProperty("ravel.profiling"));
         Runtime.getRuntime().addShutdownHook(new Thread(Agent::report, "ravel-report"));
     }
 
@@ -85,7 +83,7 @@ public final class Agent {
         }
         game = entry.getClassLoader();
         try {
-            Hook.ravelInitialize(named);
+            Hook.ravelInitialize(named, "true".equals(System.getProperty("ravel.profiling")));
             Screens.install();
         } finally {
             installed.countDown();

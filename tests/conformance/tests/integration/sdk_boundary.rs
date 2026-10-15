@@ -52,6 +52,20 @@ fn document(relative: &str) -> Table {
         .unwrap_or_else(|error| panic!("cannot parse {}: {error}", path.display()))
 }
 
+fn rust_import_name(package: &str) -> String {
+    let relative = format!("crates/{package}/Cargo.toml");
+    if !repository_root().join(&relative).is_file() {
+        return package.replace('-', "_");
+    }
+    let manifest = document(&relative);
+    manifest
+        .get("lib")
+        .and_then(Value::as_table)
+        .and_then(|library| library.get("name"))
+        .and_then(Value::as_str)
+        .map_or_else(|| package.replace('-', "_"), str::to_owned)
+}
+
 fn declared(table: &Table, section: &str) -> BTreeSet<String> {
     table
         .get(section)
@@ -435,11 +449,22 @@ fn every_forbidden_crate_this_test_names_still_exists_to_be_forbidden() {
 }
 
 #[test]
+fn rust_import_names_follow_library_targets_rather_than_package_names() {
+    assert_eq!(
+        rust_import_name("ravel-bootstrap"),
+        "ravel_bootstrap_runtime"
+    );
+    assert_eq!(rust_import_name("ravel-composed-host"), "ravel_bootstrap");
+    assert_eq!(rust_import_name("ravel-minecraft"), "ravel_minecraft");
+    assert_eq!(rust_import_name("jni"), "jni");
+}
+
+#[test]
 fn every_forbidden_crate_is_refused_by_a_case_an_author_can_read() {
     // The suite also refuses direct imports of allowed transitive crates.
     let refusals = refusals();
     for (forbidden, reason) in FORBIDDEN {
-        let import = format!("use {}::", forbidden.replace('-', "_"));
+        let import = format!("use {}::", rust_import_name(forbidden));
         assert!(
             refusals.iter().any(|case| case.body.contains(&import)),
             "`{forbidden}` ({reason}) is forbidden by this file but no `compile_fail` case in \

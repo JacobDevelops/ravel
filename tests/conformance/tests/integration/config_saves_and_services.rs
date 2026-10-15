@@ -12,9 +12,9 @@ use ravel_loader::{
 use ravel_save::{
     SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataVersion,
 };
+use ravel_sdk::JsonValue;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration, ValueDocument};
 use ravel_sdk::content::ContentId;
-use ravel_sdk::save::SavedPayload;
 use ravel_sdk::services::{ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest};
 use ravel_sdk::{Declared, Mod, ModError, declare_mod, json};
 use ravel_test_mod_inter_mod_service::{RESTOCK_SIZE, ShopMod, Stock, StockMod, prices};
@@ -23,6 +23,16 @@ const SIDE: Side = Side::DedicatedServer;
 
 fn id(text: &str) -> ModId {
     text.parse().expect("a legal mod id")
+}
+
+fn environment() -> ravel_core::FailureEnvironment {
+    let running = ravel_host_runtime::environment();
+    ravel_core::FailureEnvironment {
+        ravel: running.ravel,
+        minecraft: running.minecraft,
+        platform: std::env::consts::OS.to_owned(),
+        architecture: std::env::consts::ARCH.to_owned(),
+    }
 }
 
 fn version(raw: u32) -> SavedDataVersion {
@@ -42,7 +52,7 @@ fn machine(entries: Vec<LifecycleEntry>) -> LifecycleMachine {
     LifecycleMachine::new(SIDE, entries).expect("a legal plan")
 }
 
-fn world(owner: &ModId, at: u32, payload: SavedPayload) -> Vec<u8> {
+fn world(owner: &ModId, at: u32, payload: JsonValue) -> Vec<u8> {
     let mut aggregate = SavedDataAggregate::fresh();
     aggregate.replace(SavedDataEnvelope::new(
         owner.clone(),
@@ -59,10 +69,16 @@ fn a_world_two_versions_behind_reaches_the_current_shape_through_the_declared_ch
     let owner = StockMod::declared_id();
     let bytes = world(owner, 1, json!({ "stock": 12 }));
     let mut stock = StockMod::new();
-    let machine = machine(vec![entry(owner, &[SIDE])]);
+    let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
-    let aggregate = open_saved_data(&machine, &mut [&mut stock], Some(&bytes), &BTreeMap::new())
-        .expect("both declared steps run");
+    let aggregate = open_saved_data(
+        &mut machine,
+        &environment(),
+        &mut [&mut stock],
+        Some(&bytes),
+        &BTreeMap::new(),
+    )
+    .expect("both declared steps run");
 
     assert_eq!(
         stock.stock(),
@@ -77,7 +93,7 @@ fn a_world_two_versions_behind_reaches_the_current_shape_through_the_declared_ch
             .envelope(owner)
             .expect("the owner is still in the aggregate")
             .data_version(),
-        stock.declaration().current(),
+        stock.declaration().expect("valid declaration").current(),
         "the aggregate a caller saves from is current too"
     );
 }
@@ -87,10 +103,15 @@ fn the_shipped_chain_covers_every_version_the_shipped_declaration_admits() {
     let stock = StockMod::new();
     stock
         .chain()
-        .covers(&stock.declaration())
+        .covers(&stock.declaration().expect("valid declaration"))
         .expect("every declared version has a step into it");
     assert!(
-        stock.declaration().versions().count() > 2,
+        stock
+            .declaration()
+            .expect("valid declaration")
+            .versions()
+            .count()
+            > 2,
         "a chain worth testing is longer than one hop"
     );
 }
@@ -104,10 +125,16 @@ fn a_world_already_at_the_current_version_is_read_without_a_step() {
         json!({ "stock": 4, "currency": "shard", "unitPrice": 7 }),
     );
     let mut stock = StockMod::new();
-    let machine = machine(vec![entry(owner, &[SIDE])]);
+    let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
-    open_saved_data(&machine, &mut [&mut stock], Some(&bytes), &BTreeMap::new())
-        .expect("nothing to migrate");
+    open_saved_data(
+        &mut machine,
+        &environment(),
+        &mut [&mut stock],
+        Some(&bytes),
+        &BTreeMap::new(),
+    )
+    .expect("nothing to migrate");
 
     assert_eq!(stock.stock().currency, "shard", "the stored value was lost");
     assert_eq!(stock.stock().unit_price, 7);
@@ -118,10 +145,16 @@ fn a_world_written_by_a_newer_build_is_refused_rather_than_read_backwards() {
     let owner = StockMod::declared_id();
     let bytes = world(owner, 4, json!({ "anything": true }));
     let mut stock = StockMod::new();
-    let machine = machine(vec![entry(owner, &[SIDE])]);
+    let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
-    let refusal = open_saved_data(&machine, &mut [&mut stock], Some(&bytes), &BTreeMap::new())
-        .expect_err("version 4 is above what this build writes");
+    let refusal = open_saved_data(
+        &mut machine,
+        &environment(),
+        &mut [&mut stock],
+        Some(&bytes),
+        &BTreeMap::new(),
+    )
+    .expect_err("version 4 is above what this build writes");
 
     assert!(matches!(
         refusal,
@@ -295,10 +328,16 @@ fn a_stored_shape_the_chain_cannot_read_withholds_the_world_and_leaves_the_mod_e
     let owner = StockMod::declared_id();
     let bytes = world(owner, 1, json!({ "count": 12 }));
     let mut stock = StockMod::new();
-    let machine = machine(vec![entry(owner, &[SIDE])]);
+    let mut machine = machine(vec![entry(owner, &[SIDE])]);
 
-    let refusal = open_saved_data(&machine, &mut [&mut stock], Some(&bytes), &BTreeMap::new())
-        .expect_err("the first step cannot read this shape");
+    let refusal = open_saved_data(
+        &mut machine,
+        &environment(),
+        &mut [&mut stock],
+        Some(&bytes),
+        &BTreeMap::new(),
+    )
+    .expect_err("the first step cannot read this shape");
 
     assert_eq!(refusal.owner(), Some(owner));
     assert!(refusal.to_string().contains("no `stock`"), "{refusal}");
@@ -316,11 +355,12 @@ fn a_stored_shape_the_chain_cannot_read_withholds_the_world_and_leaves_the_mod_e
 #[test]
 fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_admitted() {
     let owner = StockMod::declared_id();
-    let machine = machine(vec![entry(owner, &[SIDE])]);
+    let mut machine = machine(vec![entry(owner, &[SIDE])]);
     let mut stock = StockMod::new();
 
     open_saved_data(
-        &machine,
+        &mut machine,
+        &environment(),
         &mut [&mut stock],
         Some(&world(owner, 1, json!({ "count": 12 }))),
         &BTreeMap::new(),
@@ -328,7 +368,8 @@ fn a_mod_whose_migration_refuses_does_not_stop_another_worlds_owner_from_being_a
     .expect_err("the first step cannot read this shape");
 
     open_saved_data(
-        &machine,
+        &mut machine,
+        &environment(),
         &mut [&mut stock],
         Some(&world(owner, 1, json!({ "stock": 5 }))),
         &BTreeMap::new(),
@@ -377,10 +418,11 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
     ]);
 
     let refused = open_configuration(
-        &pair,
+        pair.side(),
+        pair.entries(),
         &mut [&mut deaf, &mut shop],
         &BTreeMap::new(),
-        &BTreeMap::new(),
+        |_| Ok(None),
     )
     .expect_err("settings nothing reads are settings a player changes with no effect");
 
@@ -392,9 +434,14 @@ fn a_mod_that_declares_settings_and_never_reads_them_is_refused_rather_than_igno
 
     let mut shop = ShopMod::new();
     let alone = machine(vec![entry(ShopMod::declared_id(), &[SIDE])]);
-    let configured =
-        open_configuration(&alone, &mut [&mut shop], &BTreeMap::new(), &BTreeMap::new())
-            .expect("a mod with no settings has nothing to read");
+    let configured = open_configuration(
+        alone.side(),
+        alone.entries(),
+        &mut [&mut shop],
+        &BTreeMap::new(),
+        |_| Ok(None),
+    )
+    .expect("a mod with no settings has nothing to read");
     assert_eq!(configured.order(), []);
 }
 
@@ -421,10 +468,11 @@ fn the_walk_hands_each_mod_the_layer_in_force_and_reports_what_the_player_lost()
     .expect("a legal player document");
 
     let configured = open_configuration(
-        &machine,
+        machine.side(),
+        machine.entries(),
         &mut [&mut stock],
         &BTreeMap::from([(owner.clone(), pack)]),
-        &BTreeMap::from([(owner.clone(), player)]),
+        |_| Ok(Some(player.clone())),
     )
     .expect("a dropped value is not a refusal");
 
@@ -524,11 +572,7 @@ impl Mod for Fussy {
         directory
             .call(&ServiceRequest::new(prices(), json!(null)))
             .expect("the provider answers before the consumer refuses");
-        Err(ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail: "the answer is not one this mod accepts".to_owned(),
-        })
+        Err(ModError::refused("the answer is not one this mod accepts"))
     }
 }
 
@@ -561,11 +605,12 @@ fn a_consumer_that_refuses_its_answer_refuses_the_whole_set_rather_than_starting
 #[test]
 fn what_the_pair_writes_is_what_the_pair_reads_back() {
     let owner = StockMod::declared_id();
-    let machine = machine(vec![entry(owner, &[SIDE])]);
+    let mut machine = machine(vec![entry(owner, &[SIDE])]);
     let mut stock = StockMod::new();
 
     open_saved_data(
-        &machine,
+        &mut machine,
+        &environment(),
         &mut [&mut stock],
         Some(&world(owner, 1, json!({ "stock": 9 }))),
         &BTreeMap::new(),
@@ -582,7 +627,8 @@ fn what_the_pair_writes_is_what_the_pair_reads_back() {
 
     let mut reopened = StockMod::new();
     open_saved_data(
-        &machine,
+        &mut machine,
+        &environment(),
         &mut [&mut reopened],
         Some(&bytes),
         &BTreeMap::new(),
@@ -620,7 +666,7 @@ fn the_declarations_this_suite_is_written_against_are_the_ones_the_mods_ship() {
             .configuration_declaration()
             .expect("the configuration declaration succeeds")
             .expect("the provider declares settings")
-            .settings
+            .settings()
             .iter()
             .map(|setting| setting.key.as_str().to_owned())
             .collect::<Vec<_>>(),

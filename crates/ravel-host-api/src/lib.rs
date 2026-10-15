@@ -90,7 +90,48 @@ impl CommandInvocation {
     }
 }
 
-/// A mod's refusal of a lifecycle step, attributed to its identity and phase.
+/// A mod's refusal, before the host attributes it to the hook it called.
+///
+/// Mods supply only their explanation. Identity and lifecycle phase are host-owned context.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ModError {
+    /// The mod ran and declined, naming why.
+    Refused {
+        /// The mod's own words, not yet redacted.
+        detail: String,
+    },
+    /// The mod does not implement the hook.
+    Unsupported,
+}
+
+impl ModError {
+    /// Refuses a hook with a mod-authored explanation.
+    #[must_use]
+    pub fn refused(detail: impl Into<String>) -> Self {
+        Self::Refused {
+            detail: detail.into(),
+        }
+    }
+
+    /// Adds the identity and lifecycle phase known by the host.
+    #[must_use]
+    pub fn with_context(self, mod_id: ModId, state: LifecycleState) -> HostError {
+        HostError::from_refusal(mod_id, state, self)
+    }
+}
+
+impl fmt::Display for ModError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Refused { detail } => formatter.write_str(detail),
+            Self::Unsupported => formatter.write_str("this hook is not implemented"),
+        }
+    }
+}
+
+impl std::error::Error for ModError {}
+
+/// A host-hook failure, attributed to its owning mod and current lifecycle phase.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HostError {
     /// The mod ran and declined, naming why.
@@ -109,14 +150,36 @@ pub enum HostError {
         /// The state the mod was asked to enter.
         state: LifecycleState,
     },
+    /// The callback unwound into the loader's panic boundary.
+    Panicked {
+        /// The mod whose callback panicked.
+        mod_id: ModId,
+        /// The owner's lifecycle state when the callback ran.
+        state: LifecycleState,
+    },
 }
 
 impl HostError {
+    /// Attributes a mod's refusal using the identity and phase of the invoked hook.
+    #[must_use]
+    pub fn from_refusal(mod_id: ModId, state: LifecycleState, refusal: ModError) -> Self {
+        match refusal {
+            ModError::Refused { detail } => Self::Refused {
+                mod_id,
+                state,
+                detail,
+            },
+            ModError::Unsupported => Self::Unsupported { mod_id, state },
+        }
+    }
+
     /// The mod this failure is attributed to.
     #[must_use]
     pub const fn mod_id(&self) -> &ModId {
         match self {
-            Self::Refused { mod_id, .. } | Self::Unsupported { mod_id, .. } => mod_id,
+            Self::Refused { mod_id, .. }
+            | Self::Unsupported { mod_id, .. }
+            | Self::Panicked { mod_id, .. } => mod_id,
         }
     }
 
@@ -124,7 +187,9 @@ impl HostError {
     #[must_use]
     pub const fn state(&self) -> LifecycleState {
         match self {
-            Self::Refused { state, .. } | Self::Unsupported { state, .. } => *state,
+            Self::Refused { state, .. }
+            | Self::Unsupported { state, .. }
+            | Self::Panicked { state, .. } => *state,
         }
     }
 }
@@ -139,13 +204,16 @@ impl fmt::Display for HostError {
             } => write!(
                 formatter,
                 "`{mod_id}` refused to enter `{}`: {detail}",
-                state.name()
+                state.as_str()
             ),
             Self::Unsupported { mod_id, state } => write!(
                 formatter,
-                "`{mod_id}` does not implement `{}`",
-                state.name()
+                "`{mod_id}` does not support this step while `{}`",
+                state.as_str()
             ),
+            Self::Panicked { mod_id, state } => {
+                write!(formatter, "`{mod_id}` panicked during `{}`", state.as_str())
+            }
         }
     }
 }
@@ -181,7 +249,7 @@ pub trait HostMod: Send {
     /// # Errors
     ///
     /// Returns an error when the mod declines the step or does not implement it.
-    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError>;
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError>;
 
     /// Claims identifiers while constructed, before the registration barrier closes.
     ///
@@ -190,7 +258,7 @@ pub trait HostMod: Send {
     /// # Errors
     ///
     /// Returns a mod's refusal to register.
-    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
+    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
         let _ = registrar;
         Ok(())
     }
@@ -200,7 +268,7 @@ pub trait HostMod: Send {
     /// # Errors
     ///
     /// Returns a mod's failure and stops the broadcast before later mods are called.
-    fn observe(&mut self, event: GameEvent) -> Result<(), HostError> {
+    fn observe(&mut self, event: GameEvent) -> Result<(), ModError> {
         let _ = event;
         Ok(())
     }
@@ -209,33 +277,27 @@ pub trait HostMod: Send {
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Unsupported`] by default, or an implementation's refusal.
-    fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), HostError> {
+    /// Returns [`ModError::Unsupported`] by default, or an implementation's refusal.
+    fn run_command(&mut self, invocation: &CommandInvocation) -> Result<(), ModError> {
         let _ = invocation;
-        Err(HostError::Unsupported {
-            mod_id: self.id().clone(),
-            state: LifecycleState::Running,
-        })
+        Err(ModError::Unsupported)
     }
 
     /// Receives a packet routed by contract ownership, including its arrival side.
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Unsupported`] by default, or an implementation's decoding or handling refusal.
-    fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), HostError> {
+    /// Returns [`ModError::Unsupported`] by default, or an implementation's decoding or handling refusal.
+    fn receive_packet(&mut self, delivery: &PacketDelivery) -> Result<(), ModError> {
         let _ = delivery;
-        Err(HostError::Unsupported {
-            mod_id: self.id().clone(),
-            state: LifecycleState::Running,
-        })
+        Err(ModError::Unsupported)
     }
 
     /// Declares content and resources layered in resolved load order; defaults to none.
     ///
     /// # Errors
     /// Returns the mod's declaration refusal.
-    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, HostError> {
+    fn content_declaration(&self) -> Result<Option<ContentDeclaration>, ModError> {
         Ok(None)
     }
 
@@ -243,7 +305,7 @@ pub trait HostMod: Send {
     ///
     /// # Errors
     /// Returns the mod's declaration refusal.
-    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, HostError> {
+    fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         Ok(None)
     }
 
@@ -251,30 +313,27 @@ pub trait HostMod: Send {
     ///
     /// # Errors
     /// Returns the mod's migration refusal.
-    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, HostError> {
+    fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
         Ok(None)
     }
 
-    /// Applies admitted saved data, migrating through [`SavedDataPlan::steps`] first.
+    /// Applies saved data already migrated by the loader to the current declared version.
     ///
-    /// The envelope may still have its stored version, not the current version.
+    /// The plan describes the admitted current envelope; mods do not replay migrations.
     /// The default accepts only absence for a mod with no saved-data declaration.
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Unsupported`] by default for other inputs, or a mod's refusal; failure withholds the world.
+    /// Returns [`ModError::Unsupported`] by default for other inputs, or a mod's refusal; failure withholds the world.
     fn open_saved_data(
         &mut self,
         envelope: Option<&SavedDataEnvelope>,
-        plan: &SavedDataPlan,
-    ) -> Result<(), HostError> {
+        _plan: &SavedDataPlan,
+    ) -> Result<(), ModError> {
         if envelope.is_none() && self.saved_data_declaration()?.is_none() {
             return Ok(());
         }
-        Err(HostError::Unsupported {
-            mod_id: plan.owner().clone(),
-            state: LifecycleState::Registered,
-        })
+        Err(ModError::Unsupported)
     }
 
     /// Produces a complete checkpoint envelope; defaults to none.
@@ -282,7 +341,7 @@ pub trait HostMod: Send {
     /// # Errors
     ///
     /// Returns a mod's refusal; failure preserves the previous aggregate without aborting the game save.
-    fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, HostError> {
+    fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
         Ok(None)
     }
 
@@ -295,7 +354,7 @@ pub trait HostMod: Send {
     ///
     /// # Errors
     /// Returns the mod's declaration refusal.
-    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, HostError> {
+    fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         Ok(None)
     }
 
@@ -303,7 +362,7 @@ pub trait HostMod: Send {
     ///
     /// # Errors
     /// Returns the mod's declaration refusal.
-    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, HostError> {
+    fn interception_declaration(&self) -> Result<Option<InterceptionDeclaration>, ModError> {
         Ok(None)
     }
 
@@ -311,39 +370,33 @@ pub trait HostMod: Send {
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Unsupported`] by default if interceptions were declared; otherwise proceeds.
-    fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, HostError> {
+    /// Returns [`ModError::Unsupported`] by default if interceptions were declared; otherwise proceeds.
+    fn intercept(&mut self, occasion: Occasion) -> Result<Outcome, ModError> {
         let _ = occasion;
         if self.interception_declaration()?.is_none() {
             return Ok(Outcome::Proceed);
         }
-        Err(HostError::Unsupported {
-            mod_id: self.id().clone(),
-            state: LifecycleState::Running,
-        })
+        Err(ModError::Unsupported)
     }
 
     /// Applies validated, layered settings for this launch.
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Unsupported`] by default if settings were declared, or an implementation's refusal.
-    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
+    /// Returns [`ModError::Unsupported`] by default if settings were declared, or an implementation's refusal.
+    fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
         let _ = resolved;
         if self.configuration_declaration()?.is_none() {
             return Ok(());
         }
-        Err(HostError::Unsupported {
-            mod_id: self.id().clone(),
-            state: LifecycleState::Constructed,
-        })
+        Err(ModError::Unsupported)
     }
 
     /// Declares the services this mod answers and the ones it needs answered.
     ///
     /// # Errors
     /// Returns the mod's declaration refusal.
-    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, HostError> {
+    fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         Ok(None)
     }
 
@@ -351,13 +404,10 @@ pub trait HostMod: Send {
     ///
     /// # Errors
     ///
-    /// Returns [`HostError::Unsupported`] by default, or an implementation's refusal.
-    fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, HostError> {
+    /// Returns [`ModError::Unsupported`] by default, or an implementation's refusal.
+    fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
         let _ = request;
-        Err(HostError::Unsupported {
-            mod_id: self.id().clone(),
-            state: LifecycleState::Running,
-        })
+        Err(ModError::Unsupported)
     }
 
     /// Uses declared services through already-started providers; defaults to no calls.
@@ -365,7 +415,7 @@ pub trait HostMod: Send {
     /// # Errors
     ///
     /// Returns a mod's refusal, preventing it from starting.
-    fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), HostError> {
+    fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
         let _ = directory;
         Ok(())
     }
@@ -397,7 +447,8 @@ pub trait Registrar {
     /// Returns the identifiers this mod has already claimed, in claim order.
     fn claimed(&self) -> &[RegistryKey];
 
-    /// Returns whether `mod_id` is running; absent, wrong-side, and failed mods return false.
+    /// Returns whether `mod_id` is in this set, loads on this side, and has not failed so far.
+    /// This is provisional: the mod may still fail before running.
     fn loads(&self, mod_id: &ModId) -> bool;
 }
 
@@ -416,6 +467,13 @@ pub enum RegistrationRefused {
         /// The identifier that arrived too late.
         key: RegistryKey,
     },
+    /// The mod tried to declare an identifier in another mod's namespace.
+    ForeignDeclaration {
+        /// The foreign identifier.
+        key: RegistryKey,
+        /// The mod that attempted to declare it.
+        mod_id: ModId,
+    },
 }
 
 impl RegistrationRefused {
@@ -423,7 +481,9 @@ impl RegistrationRefused {
     #[must_use]
     pub const fn key(&self) -> &RegistryKey {
         match self {
-            Self::Conflict { key, .. } | Self::Closed { key } => key,
+            Self::Conflict { key, .. }
+            | Self::Closed { key }
+            | Self::ForeignDeclaration { key, .. } => key,
         }
     }
 }
@@ -438,6 +498,10 @@ impl fmt::Display for RegistrationRefused {
                 formatter,
                 "`{key}` arrived after the registration barrier closed"
             ),
+            Self::ForeignDeclaration { key, mod_id } => write!(
+                formatter,
+                "`{mod_id}` cannot register `{key}` in another mod's namespace"
+            ),
         }
     }
 }
@@ -449,7 +513,7 @@ impl StructuredFailure for RegistrationRefused {
     fn failure_kind(&self) -> Option<FailureKind> {
         match self {
             Self::Conflict { .. } => Some(FailureKind::ConflictingRegistryClaim),
-            Self::Closed { .. } => None,
+            Self::Closed { .. } | Self::ForeignDeclaration { .. } => None,
         }
     }
 
@@ -469,7 +533,7 @@ mod tests {
         ContentKind, FailureKind, LifecycleState, ModId, Redaction, RegistryKey, StructuredFailure,
     };
 
-    use super::{HostError, HostMod, Registrar, RegistrationRefused};
+    use super::{HostError, HostMod, ModError, Registrar, RegistrationRefused};
 
     /// An in-memory registrar for exercising the mod-facing refusal contract.
     #[derive(Default)]
@@ -518,19 +582,15 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, _state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, _state: LifecycleState) -> Result<(), ModError> {
             Ok(())
         }
 
-        fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), HostError> {
+        fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
             for kind in [ContentKind::Block, ContentKind::Item] {
                 registrar
                     .claim(key(kind, "example_mod:copper"))
-                    .map_err(|refused| HostError::Refused {
-                        mod_id: self.id.clone(),
-                        state: LifecycleState::Constructed,
-                        detail: refused.to_string(),
-                    })?;
+                    .map_err(|error| ModError::refused(error.to_string()))?;
             }
             Ok(())
         }
@@ -540,6 +600,71 @@ mod tests {
         Registering {
             id: "example_mod".parse().expect("valid id"),
         }
+    }
+
+    #[test]
+    fn mods_refuse_with_detail_and_hosts_supply_the_context() {
+        let refusal = ModError::refused("not today");
+        assert_eq!(refusal.to_string(), "not today");
+        let owner: ModId = "actual".parse().expect("valid id");
+        let error = refusal.with_context(owner.clone(), LifecycleState::Running);
+        assert_eq!(error.mod_id(), &owner);
+        assert_eq!(error.state(), LifecycleState::Running);
+        assert!(error.quotes_untrusted_text());
+    }
+
+    #[test]
+    fn unsupported_mod_hooks_carry_no_invented_identity_or_phase() {
+        let owner: ModId = "actual".parse().expect("valid id");
+        let error = HostError::from_refusal(
+            owner.clone(),
+            LifecycleState::Running,
+            ModError::Unsupported,
+        );
+        assert_eq!(error.mod_id(), &owner);
+        assert_eq!(error.state(), LifecycleState::Running);
+        assert!(!error.quotes_untrusted_text());
+    }
+
+    #[test]
+    fn refusal_construction_and_host_attribution_preserve_the_detail() {
+        let actual: ModId = "actual".parse().expect("valid id");
+        let error =
+            ModError::refused("not today").with_context(actual.clone(), LifecycleState::Running);
+        assert_eq!(error.mod_id(), &actual);
+        assert_eq!(error.state(), LifecycleState::Running);
+        assert_eq!(
+            error.to_string(),
+            "`actual` refused to enter `running`: not today"
+        );
+    }
+
+    #[test]
+    fn unsupported_steps_receive_the_actual_hook_context() {
+        let actual: ModId = "actual".parse().expect("valid id");
+        let error = ModError::Unsupported.with_context(actual.clone(), LifecycleState::Running);
+        assert_eq!(error.mod_id(), &actual);
+        assert_eq!(error.state(), LifecycleState::Running);
+        assert_eq!(
+            error.to_string(),
+            "`actual` does not support this step while `running`"
+        );
+    }
+
+    #[test]
+    fn foreign_registration_names_the_claimant_and_validated_key() {
+        let key = key(ContentKind::Block, "other_mod:copper");
+        let error = RegistrationRefused::ForeignDeclaration {
+            key: key.clone(),
+            mod_id: "example_mod".parse().expect("valid id"),
+        };
+        assert_eq!(error.key(), &key);
+        assert_eq!(error.failure_kind(), None);
+        assert!(!error.quotes_untrusted_text());
+        assert_eq!(
+            error.to_string(),
+            "`example_mod` cannot register `block:other_mod:copper` in another mod's namespace"
+        );
     }
 
     #[test]
@@ -557,13 +682,7 @@ mod tests {
         let error = counting()
             .receive_packet(&delivery)
             .expect_err("the default reads no packet");
-        assert_eq!(
-            error,
-            HostError::Unsupported {
-                mod_id: "example_mod".parse().expect("valid id"),
-                state: LifecycleState::Running,
-            }
-        );
+        assert_eq!(error, ModError::Unsupported);
     }
 
     #[test]
@@ -603,8 +722,6 @@ mod tests {
         let error = registering()
             .register(&mut table)
             .expect_err("the block is taken");
-        assert_eq!(error.mod_id().as_str(), "example_mod");
-        assert_eq!(error.state(), LifecycleState::Constructed);
         assert!(error.to_string().contains("other_mod"), "{error}");
 
         assert_eq!(table.claimed(), []);
@@ -665,13 +782,9 @@ mod tests {
             &self.id
         }
 
-        fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+        fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
             if state == LifecycleState::Registered {
-                return Err(HostError::Refused {
-                    mod_id: self.id.clone(),
-                    state,
-                    detail: "the registry barrier had already closed".to_owned(),
-                });
+                return Err(ModError::refused("the registry barrier had already closed"));
             }
             self.entered.push(state);
             Ok(())
@@ -689,17 +802,11 @@ mod tests {
     fn the_loader_drives_a_mod_through_states_and_stops_at_the_first_refusal() {
         let mut host: Box<dyn HostMod> = Box::new(counting());
 
-        let id: ModId = "example_mod".parse().expect("valid id");
-
         assert_eq!(host.id().as_str(), "example_mod");
         assert_eq!(host.enter(LifecycleState::Loaded), Ok(()));
         assert_eq!(
             host.enter(LifecycleState::Registered),
-            Err(HostError::Refused {
-                mod_id: id,
-                state: LifecycleState::Registered,
-                detail: "the registry barrier had already closed".to_owned(),
-            })
+            Err(ModError::refused("the registry barrier had already closed"))
         );
     }
 
@@ -718,7 +825,7 @@ mod tests {
 
         assert!(refused.to_string().contains("no service was declared"));
         assert!(refused.to_string().contains("example_mod"));
-        assert!(unsupported.to_string().contains("does not implement"));
+        assert!(unsupported.to_string().contains("does not support"));
         assert_eq!(refused.mod_id(), &id);
         assert_eq!(unsupported.state(), LifecycleState::Stopping);
         assert_ne!(refused, unsupported);

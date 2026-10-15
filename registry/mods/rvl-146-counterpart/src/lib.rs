@@ -470,24 +470,15 @@ impl Mod for Shared {
 
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         Memory::declaration(Self::owner())
-            .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: Self::owner(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map(Some).map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
         if let Some(dropped) = self.dropped() {
-            return Err(ModError::Refused {
-                mod_id: Self::owner(),
-                state: LifecycleState::Registered,
-                detail: format!(
-                    "{dropped} saved memories were not held on the way in, \
-                     so writing this world would delete them"
-                ),
-            });
+            return Err(ModError::refused(format!(
+                "{dropped} saved memories were not held on the way in, \
+                 so writing this world would delete them"
+            )));
         }
         Ok(Some(SavedDataEnvelope::current(
             Self::owner(),

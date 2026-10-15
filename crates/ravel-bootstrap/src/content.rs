@@ -1,6 +1,6 @@
 //! Admitted registry content encoded for the Java registration adapter.
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::PoisonError;
 
 use jni::objects::{JClass, JString};
 use jni::{Env, EnvUnowned};
@@ -10,19 +10,6 @@ use crate::guard::HookError;
 use crate::runtime::LoaderRuntime;
 use crate::wire::{VERSION, count, field, flag};
 
-/// The installed runtime, or nothing before one is installed.
-static RUNTIME: Mutex<Option<Arc<LoaderRuntime>>> = Mutex::new(None);
-
-/// Makes the admitted content readable by the registration adapter.
-pub(crate) fn install(runtime: Arc<LoaderRuntime>) {
-    *lock() = Some(runtime);
-}
-
-// The store holds complete runtimes, so poison recovery cannot expose partial state.
-fn lock() -> std::sync::MutexGuard<'static, Option<Arc<LoaderRuntime>>> {
-    RUNTIME.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 /// Whether a kind names a registry this crossing can commit to.
 const fn is_registrable(kind: ContentKind) -> bool {
     matches!(kind, ContentKind::Block | ContentKind::Item)
@@ -30,7 +17,7 @@ const fn is_registrable(kind: ContentKind) -> bool {
 
 /// Encodes admitted content, or returns nothing before runtime installation.
 fn document() -> Option<String> {
-    document_of(lock().clone().as_deref())
+    document_of(crate::runtime::installed().map(AsRef::as_ref))
 }
 
 /// The payload one runtime answers with, or nothing without one.
@@ -156,10 +143,16 @@ mod tests {
     fn every_admitted_block_and_item_crosses_with_its_namespace_and_owner() {
         let runtime = runtime(&["first_mod", "second_mod"]);
         runtime
-            .claim(&id("second_mod"), "item:second_mod:ingot")
+            .claim(
+                &id("second_mod"),
+                &"item:second_mod:ingot".parse().expect("valid key"),
+            )
             .expect("accepted");
         runtime
-            .claim(&id("first_mod"), "block:first_mod:copper")
+            .claim(
+                &id("first_mod"),
+                &"block:first_mod:copper".parse().expect("valid key"),
+            )
             .expect("accepted");
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");
@@ -195,7 +188,7 @@ mod tests {
         runtime
             .describe(
                 &id("example_mod"),
-                "block:example_mod:obsidian",
+                &"block:example_mod:obsidian".parse().expect("valid key"),
                 ContentBehaviour::Block(BlockBehaviour {
                     hardness: 50.0,
                     explosion_resistance: 1200.0,
@@ -229,13 +222,22 @@ mod tests {
     fn a_claim_naming_a_registry_this_seam_cannot_commit_to_does_not_cross() {
         let runtime = runtime(&["example_mod"]);
         runtime
-            .claim(&id("example_mod"), "command:example_mod:home")
+            .claim(
+                &id("example_mod"),
+                &"command:example_mod:home".parse().expect("valid key"),
+            )
             .expect("accepted");
         runtime
-            .claim(&id("example_mod"), "recipe:example_mod:alloy")
+            .claim(
+                &id("example_mod"),
+                &"recipe:example_mod:alloy".parse().expect("valid key"),
+            )
             .expect("accepted");
         runtime
-            .claim(&id("example_mod"), "block:example_mod:copper")
+            .claim(
+                &id("example_mod"),
+                &"block:example_mod:copper".parse().expect("valid key"),
+            )
             .expect("accepted");
 
         let payload = document_of(Some(&runtime)).expect("an installed set answers");

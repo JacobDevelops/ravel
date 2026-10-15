@@ -5,11 +5,12 @@
 //! Stock data crosses two migrations with distinct shapes before being read.
 //! Failed migrations refuse world opening without partially changing stock.
 
+use ravel_sdk::JsonValue;
 use ravel_sdk::config::{ConfigurationDeclaration, LayeredConfiguration};
 use ravel_sdk::content::ContentId;
 use ravel_sdk::save::{
     MigrationChain, MigrationFailed, SavedDataDeclaration, SavedDataEnvelope, SavedDataPlan,
-    SavedDataVersion, SavedPayload,
+    SavedDataVersion,
 };
 use ravel_sdk::services::{
     ServiceDeclaration, ServiceDirectory, ServiceId, ServiceRequest, ServiceResponse,
@@ -63,23 +64,23 @@ pub fn prices() -> ServiceId {
 }
 
 /// Version 1 held a bare count. Version 2 splits it into a count and a currency.
-fn to_two(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
+fn to_two(payload: &JsonValue) -> Result<JsonValue, MigrationFailed> {
     let stock = payload
         .get("stock")
-        .and_then(SavedPayload::as_u64)
+        .and_then(JsonValue::as_u64)
         .ok_or_else(|| MigrationFailed::new("version 1 held no `stock` count"))?;
     Ok(json!({ "stock": stock, "currency": "coin" }))
 }
 
 /// Version 3 adds the unit price, which version 2 had no room for.
-fn to_three(payload: &SavedPayload) -> Result<SavedPayload, MigrationFailed> {
+fn to_three(payload: &JsonValue) -> Result<JsonValue, MigrationFailed> {
     let stock = payload
         .get("stock")
-        .and_then(SavedPayload::as_u64)
+        .and_then(JsonValue::as_u64)
         .ok_or_else(|| MigrationFailed::new("version 2 held no `stock` count"))?;
     let currency = payload
         .get("currency")
-        .and_then(SavedPayload::as_str)
+        .and_then(JsonValue::as_str)
         .ok_or_else(|| MigrationFailed::new("version 2 held no `currency`"))?;
     Ok(json!({ "stock": stock, "currency": currency, "unitPrice": 1 }))
 }
@@ -110,18 +111,19 @@ pub struct Stock {
 /// // Every version above the oldest has a step into it.
 /// stock
 ///     .chain()
-///     .covers(&stock.declaration())
+///     .covers(&stock.declaration()?)
 ///     .expect("the chain covers every declared version");
 /// assert_eq!(
-///     stock.declaration().current(),
+///     stock.declaration()?.current(),
 ///     SavedDataVersion::new(3).expect("3 is not zero")
 /// );
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct StockMod {
     stock: Stock,
     restock_size: u64,
-    answered: Vec<SavedPayload>,
+    answered: Vec<JsonValue>,
 }
 
 impl StockMod {
@@ -133,16 +135,15 @@ impl StockMod {
 
     /// Returns the versions this build reads.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if [`STOCK_VERSIONS`] is empty or contains zero.
-    #[must_use]
-    pub fn declaration(&self) -> SavedDataDeclaration {
+    /// Returns a refusal if the packaged versions are invalid.
+    pub fn declaration(&self) -> Result<SavedDataDeclaration, ModError> {
         SavedDataDeclaration::new(
             Self::declared_id().clone(),
             STOCK_VERSIONS.into_iter().map(version),
         )
-        .expect("`STOCK_VERSIONS` is a non-empty list of non-zero versions")
+        .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Returns the step into every version above the oldest.
@@ -167,28 +168,23 @@ impl StockMod {
 
     /// Returns every request this mod answered, in the order it did.
     #[must_use]
-    pub fn answered(&self) -> &[SavedPayload] {
+    pub fn answered(&self) -> &[JsonValue] {
         &self.answered
     }
 
-    fn read(&mut self, payload: &SavedPayload) -> Result<(), ModError> {
-        let refuse = |detail: &str| ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Registered,
-            detail: detail.to_owned(),
-        };
+    fn read(&mut self, payload: &JsonValue) -> Result<(), ModError> {
         let stock = payload
             .get("stock")
-            .and_then(SavedPayload::as_u64)
-            .ok_or_else(|| refuse("the stored stock holds no count"))?;
+            .and_then(JsonValue::as_u64)
+            .ok_or_else(|| ModError::refused("the stored stock holds no count"))?;
         let currency = payload
             .get("currency")
-            .and_then(SavedPayload::as_str)
-            .ok_or_else(|| refuse("the stored stock holds no currency"))?;
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| ModError::refused("the stored stock holds no currency"))?;
         let unit_price = payload
             .get("unitPrice")
-            .and_then(SavedPayload::as_u64)
-            .ok_or_else(|| refuse("the stored stock holds no unit price"))?;
+            .and_then(JsonValue::as_u64)
+            .ok_or_else(|| ModError::refused("the stored stock holds no unit price"))?;
 
         self.stock = Stock {
             stock,
@@ -209,32 +205,26 @@ impl Mod for StockMod {
     fn configuration_declaration(&self) -> Result<Option<ConfigurationDeclaration>, ModError> {
         ConfigurationDeclaration::parse(STOCK_SETTINGS)
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), ModError> {
-        let key = RESTOCK_SIZE.parse().map_err(|_| ModError::Refused {
-            mod_id: Self::declared_id().clone(),
-            state: LifecycleState::Constructed,
-            detail: "this mod's own setting key is not a legal key".to_owned(),
-        })?;
+        let key = RESTOCK_SIZE
+            .parse()
+            .map_err(|_| ModError::refused("this mod's own setting key is not a legal key"))?;
         self.restock_size = resolved
             .value(&key)
-            .and_then(SavedPayload::as_u64)
-            .ok_or_else(|| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Constructed,
-                detail: format!("`{RESTOCK_SIZE}` resolved to something that is not a count"),
+            .and_then(JsonValue::as_u64)
+            .ok_or_else(|| {
+                ModError::refused(format!(
+                    "`{RESTOCK_SIZE}` resolved to something that is not a count"
+                ))
             })?;
         Ok(())
     }
 
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
-        Ok(Some(self.declaration()))
+        self.declaration().map(Some)
     }
 
     fn saved_data_migrations(&self) -> Result<Option<MigrationChain>, ModError> {
@@ -257,18 +247,14 @@ impl Mod for StockMod {
         let current = self
             .chain()
             .apply(plan, envelope.payload())
-            .map_err(|refusal| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Registered,
-                detail: refusal.to_string(),
-            })?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
         self.read(&current)
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
         Ok(Some(SavedDataEnvelope::new(
             Self::declared_id().clone(),
-            self.declaration().current(),
+            self.declaration()?.current(),
             Vec::new(),
             None,
             json!({
@@ -282,11 +268,7 @@ impl Mod for StockMod {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::new(Self::declared_id().clone(), [prices()], [])
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn answer_service(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ModError> {
@@ -321,7 +303,7 @@ impl Mod for StockMod {
 /// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ShopMod {
-    prices: Option<SavedPayload>,
+    prices: Option<JsonValue>,
 }
 
 impl ShopMod {
@@ -333,7 +315,7 @@ impl ShopMod {
 
     /// Returns the provider's answer, or `None` before service wiring.
     #[must_use]
-    pub const fn prices(&self) -> Option<&SavedPayload> {
+    pub const fn prices(&self) -> Option<&JsonValue> {
         self.prices.as_ref()
     }
 }
@@ -348,11 +330,7 @@ impl Mod for ShopMod {
     fn service_declaration(&self) -> Result<Option<ServiceDeclaration>, ModError> {
         ServiceDeclaration::new(Self::declared_id().clone(), [], [prices()])
             .map(Some)
-            .map_err(|error| ModError::Refused {
-                mod_id: self.id().clone(),
-                state: LifecycleState::Constructed,
-                detail: error.to_string(),
-            })
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Calls the one service this mod declared, and refuses without an answer.
@@ -363,11 +341,7 @@ impl Mod for ShopMod {
     fn use_services(&mut self, directory: &mut dyn ServiceDirectory) -> Result<(), ModError> {
         let answer = directory
             .call(&ServiceRequest::new(prices(), json!({ "item": "lantern" })))
-            .map_err(|failed| ModError::Refused {
-                mod_id: Self::declared_id().clone(),
-                state: LifecycleState::Constructed,
-                detail: failed.to_string(),
-            })?;
+            .map_err(|error| ModError::refused(error.to_string()))?;
         self.prices = Some(answer.value().clone());
         Ok(())
     }
@@ -378,13 +352,13 @@ mod tests {
     use ravel_sdk::save::{SavedDataEnvelope, SavedDataPlan, SavedDataVersion};
     use ravel_sdk::{Declared, LifecycleState, Mod, ModError, json};
 
-    use ravel_sdk::save::SavedPayload;
+    use ravel_sdk::JsonValue;
 
     use super::{
         SHOP_MOD_ID, STOCK_MOD_ID, STOCK_VERSIONS, ShopMod, Stock, StockMod, prices, version,
     };
 
-    fn envelope(at: u32, payload: SavedPayload) -> SavedDataEnvelope {
+    fn envelope(at: u32, payload: JsonValue) -> SavedDataEnvelope {
         SavedDataEnvelope::new(
             StockMod::declared_id().clone(),
             version(at),
@@ -394,9 +368,9 @@ mod tests {
         )
     }
 
-    fn opened(at: u32, payload: SavedPayload) -> Result<StockMod, ModError> {
+    fn opened(at: u32, payload: JsonValue) -> Result<StockMod, ModError> {
         let mut stock = StockMod::new();
-        let plan = SavedDataPlan::open(&stock.declaration(), Some(version(at)))
+        let plan = SavedDataPlan::open(&stock.declaration()?, Some(version(at)))
             .expect("a declared version");
         stock.open_saved_data(Some(&envelope(at, payload)), &plan)?;
         Ok(stock)
@@ -414,10 +388,10 @@ mod tests {
         let stock = StockMod::new();
         stock
             .chain()
-            .covers(&stock.declaration())
+            .covers(&stock.declaration().expect("valid declaration"))
             .expect("every declared version has a step into it");
         assert_eq!(
-            stock.declaration().current(),
+            stock.declaration().expect("valid declaration").current(),
             version(*STOCK_VERSIONS.last().expect("three versions"))
         );
     }
@@ -452,14 +426,16 @@ mod tests {
     #[test]
     fn a_stored_shape_a_step_cannot_read_refuses_and_leaves_the_mod_empty() {
         let refusal = opened(1, json!({ "count": 12 })).expect_err("version 1 held no `stock`");
-        assert_eq!(refusal.mod_id(), StockMod::declared_id());
         assert!(refusal.to_string().contains("no `stock`"), "{refusal}");
 
         // And nothing was read: a refused world leaves this mod holding nothing,
         // which is what stops a refusal reading as a world that opened empty.
         let mut stock = StockMod::new();
-        let plan = SavedDataPlan::open(&stock.declaration(), Some(version(1)))
-            .expect("a declared version");
+        let plan = SavedDataPlan::open(
+            &stock.declaration().expect("valid declaration"),
+            Some(version(1)),
+        )
+        .expect("a declared version");
         assert!(
             stock
                 .open_saved_data(Some(&envelope(1, json!({ "count": 12 }))), &plan)
@@ -471,7 +447,8 @@ mod tests {
     #[test]
     fn absence_leaves_fresh_state_rather_than_refusing() {
         let mut stock = StockMod::new();
-        let plan = SavedDataPlan::open(&stock.declaration(), None).expect("absence is fresh");
+        let plan = SavedDataPlan::open(&stock.declaration().expect("valid declaration"), None)
+            .expect("absence is fresh");
         stock
             .open_saved_data(None, &plan)
             .expect("absence initializes");
@@ -485,11 +462,17 @@ mod tests {
             .save_saved_data()
             .expect("this mod owns world data")
             .expect("and produces an envelope");
-        assert_eq!(envelope.data_version(), opened.declaration().current());
+        assert_eq!(
+            envelope.data_version(),
+            opened.declaration().expect("valid declaration").current()
+        );
 
         let mut reopened = StockMod::new();
-        let plan = SavedDataPlan::open(&reopened.declaration(), Some(envelope.data_version()))
-            .expect("the current version");
+        let plan = SavedDataPlan::open(
+            &reopened.declaration().expect("valid declaration"),
+            Some(envelope.data_version()),
+        )
+        .expect("the current version");
         reopened
             .open_saved_data(Some(&envelope), &plan)
             .expect("its own shape");
@@ -580,7 +563,7 @@ mod tests {
                 |payload| Ok(payload.clone()),
             );
         let refusal = broken
-            .covers(&stock.declaration())
+            .covers(&stock.declaration().expect("valid declaration"))
             .expect_err("version 2 has no step");
         assert!(refusal.to_string().contains('2'), "{refusal}");
     }

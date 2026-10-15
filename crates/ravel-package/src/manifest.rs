@@ -643,7 +643,7 @@ mod tests {
         for candidate in ["Example", "9lives", "example_", ""] {
             let mut document = minimal();
             document["id"] = json!(candidate);
-            assert!(rejection(&document).contains("mod id"), "{candidate}");
+            assert!(rejection(&document).contains("identifier"), "{candidate}");
         }
     }
 

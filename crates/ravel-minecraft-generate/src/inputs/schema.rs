@@ -196,47 +196,47 @@ pub(crate) struct Reflected {
     pub(crate) members: Vec<ReflectedMember>,
 }
 
-/// One member of a reflected class the agent jar resolves by name.
+/// One member, validated once while reading the reflection declaration.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "RawReflectedMember")]
 pub(crate) struct ReflectedMember {
     pub(crate) name: String,
-    #[serde(default)]
-    pub(crate) descriptor: Option<String>,
-    #[serde(default)]
-    pub(crate) parameters: Option<usize>,
+    pub(crate) lookup: Lookup,
 }
 
 /// How the agent jar asks a class for one of its members.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Lookup<'a> {
-    /// By the parameter types it names, which fix exactly one descriptor.
-    Descriptor(&'a str),
-    /// By name and argument count, which is what the persistence adapter does.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Lookup {
+    Descriptor(String),
     Parameters(usize),
 }
 
-impl ReflectedMember {
-    /// Which of the two ways this member is declared.
-    ///
-    /// # Errors
-    ///
-    /// Returns the detail of a declaration that names both ways or neither.
-    pub(crate) fn lookup(&self) -> Result<Lookup<'_>, String> {
-        match (&self.descriptor, self.parameters) {
-            (Some(descriptor), None) => Ok(Lookup::Descriptor(descriptor)),
-            (None, Some(count)) => Ok(Lookup::Parameters(count)),
-            (Some(_), Some(_)) => Err(format!(
-                "{} is declared by both a descriptor and a parameter count, and a member is \
-                 looked up one way",
-                self.name
-            )),
-            (None, None) => Err(format!(
-                "{} is declared by neither a descriptor nor a parameter count, so nothing says \
-                 which member it is",
-                self.name
-            )),
-        }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawReflectedMember {
+    name: String,
+    descriptor: Option<String>,
+    parameters: Option<usize>,
+}
+
+impl TryFrom<RawReflectedMember> for ReflectedMember {
+    type Error = String;
+
+    fn try_from(raw: RawReflectedMember) -> Result<Self, Self::Error> {
+        let lookup = match (raw.descriptor, raw.parameters) {
+            (Some(descriptor), None) => Lookup::Descriptor(descriptor),
+            (None, Some(parameters)) => Lookup::Parameters(parameters),
+            _ => {
+                return Err(format!(
+                    "{} must declare exactly one of descriptor or parameters",
+                    raw.name
+                ));
+            }
+        };
+        Ok(Self {
+            name: raw.name,
+            lookup,
+        })
     }
 }
 

@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../schemas/runtime-inputs.schema.json",
+  "schemaVersion": 1,
+  "retrievedAt": "2026-10-16",
+  "minecraft": {
+    "version": "1.12.2",
+    "type": "release",
+    "metadata": {
+      "url": "https://piston-meta.mojang.com/v1/packages/832d95b9f40699d4961394dcf6cf549e65f15dc5/1.12.2.json",
+      "sha1": "832d95b9f40699d4961394dcf6cf549e65f15dc5",
+      "sha256": "56dac2e1caa872d7e37a7b5523056cd812dca94f912ad2bd652817bee60edca4"
+    },
+    "minimumLauncherVersion": 18,
+    "assetIndex": "1.12",
+    "javaComponent": "jre-legacy",
+    "javaMajorVersion": 8,
+    "downloads": {
+      "client": {
+        "sha1": "0f275bc1547d01fa5f56ba34bdc87d981ee12daf",
+        "size": 10180113,
+        "url": "https://piston-data.mojang.com/v1/objects/0f275bc1547d01fa5f56ba34bdc87d981ee12daf/client.jar",
+        "sha256": "8ada07da5ee77dad3527bd7278fbd05ee1fc8a597813b216a871a2d7d64cc64f"
+      },
+      "server": {
+        "sha1": "886945bfb2b978778c3a0288fd7fab09d315b25f",
+        "size": 30222121,
+        "url": "https://piston-data.mojang.com/v1/objects/886945bfb2b978778c3a0288fd7fab09d315b25f/server.jar",
+        "sha256": "fe1f9274e6dad9191bf6e6e8e36ee6ebc737f373603df0946aafcded0d53167e"
+      }
+    }
+  },
+  "execution": {
+    "javaMajorVersion": 27,
+    "vendor": "Eclipse Temurin",
+    "version": "27.0.0+35",
+    "purpose": "Ravel execution target, distinct from the publisher legacy Java 8 baseline; not a live-launch attestation",
+    "pinSource": "mise.toml"
+  }
+}

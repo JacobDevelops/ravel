@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../schemas/fixture.schema.json",
+  "schemaVersion": 1,
+  "id": "sevtech-ages-3.2.3",
+  "source": {
+    "kind": "curseforge-client-pack",
+    "projectId": 268208,
+    "fileId": 3569915,
+    "pageUrl": "https://www.curseforge.com/minecraft/modpacks/sevtech-ages/files/3569915",
+    "downloadUrl": "https://mediafilez.forgecdn.net/files/3569/915/SevTech_Ages_3.2.3.zip",
+    "termsUrl": "https://support.curseforge.com/en/support/solutions/articles/9000207877-terms-conditions",
+    "fileName": "SevTech_Ages_3.2.3.zip",
+    "sha256": "f872775f7ac0996fdd1bde177a1517aecc43e9209da97406dcbbe3ac842483b8"
+  },
+  "manifest": {
+    "entry": "manifest.json",
+    "sha256": "16f1ecb9083c720fbf7d2adc9e0ffeea2dfbe9cb2873201cf20d72a6a81edad2",
+    "manifestType": "minecraftModpack",
+    "manifestVersion": 1,
+    "name": "SevTech Ages",
+    "version": "3.2.3",
+    "author": "Darkosto, Firstnecron, RobertDropTable",
+    "minecraft": "1.12.2",
+    "modLoader": "forge-14.23.5.2860",
+    "expectedReferenceCount": 254
+  }
+}

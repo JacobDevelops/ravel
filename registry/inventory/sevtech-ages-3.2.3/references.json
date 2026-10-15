@@ -1,0 +1,5504 @@
+{
+  "corrections": [],
+  "derivation": {
+    "producedBy": "WP0 publisher manifest acquisition",
+    "reads": [
+      "manifest.files[].fileID",
+      "manifest.files[].isLocked",
+      "manifest.files[].projectID",
+      "manifest.files[].required",
+      "referenced archive bytes, hashed",
+      "override jar bytes, hashed"
+    ],
+    "restrictedContentRead": false
+  },
+  "fixture": {
+    "archive": {
+      "path": "tests/fixtures/local/${FIXTURE_ID}/source/${FIXTURE_ID}.zip",
+      "sha256": "f872775f7ac0996fdd1bde177a1517aecc43e9209da97406dcbbe3ac842483b8"
+    },
+    "author": "Darkosto, Firstnecron, RobertDropTable",
+    "expectedReferenceCount": 254,
+    "id": "sevtech-ages-3.2.3",
+    "manifest": {
+      "path": "tests/fixtures/local/${FIXTURE_ID}/extracted/manifest.json",
+      "sha256": "16f1ecb9083c720fbf7d2adc9e0ffeea2dfbe9cb2873201cf20d72a6a81edad2"
+    },
+    "minecraft": "1.12.2",
+    "modLoader": "forge-14.23.5.2860",
+    "name": "SevTech Ages",
+    "publicDescriptor": "tests/fixtures/descriptors/${FIXTURE_ID}.json",
+    "version": "3.2.3"
+  },
+  "inventoryKind": "pinned-reference",
+  "references": [
+    {
+      "fileId": 2483769,
+      "locked": null,
+      "ordinal": 0,
+      "projectId": 274782,
+      "required": true
+    },
+    {
+      "fileId": 3485344,
+      "locked": null,
+      "ordinal": 1,
+      "projectId": 382023,
+      "required": true
+    },
+    {
+      "fileId": 2676791,
+      "locked": null,
+      "ordinal": 2,
+      "projectId": 290433,
+      "required": true
+    },
+    {
+      "fileId": 2700901,
+      "locked": null,
+      "ordinal": 3,
+      "projectId": 285968,
+      "required": true
+    },
+    {
+      "fileId": 2443253,
+      "locked": null,
+      "ordinal": 4,
+      "projectId": 224535,
+      "required": true
+    },
+    {
+      "fileId": 3031687,
+      "locked": null,
+      "ordinal": 5,
+      "projectId": 241291,
+      "required": true
+    },
+    {
+      "fileId": 2586524,
+      "locked": null,
+      "ordinal": 6,
+      "projectId": 225658,
+      "required": true
+    },
+    {
+      "fileId": 2632466,
+      "locked": null,
+      "ordinal": 7,
+      "projectId": 273711,
+      "required": true
+    },
+    {
+      "fileId": 2549462,
+      "locked": null,
+      "ordinal": 8,
+      "projectId": 279311,
+      "required": true
+    },
+    {
+      "fileId": 2607787,
+      "locked": null,
+      "ordinal": 9,
+      "projectId": 248039,
+      "required": true
+    },
+    {
+      "fileId": 2568865,
+      "locked": null,
+      "ordinal": 10,
+      "projectId": 284904,
+      "required": true
+    },
+    {
+      "fileId": 2956823,
+      "locked": null,
+      "ordinal": 11,
+      "projectId": 53686,
+      "required": true
+    },
+    {
+      "fileId": 2460195,
+      "locked": null,
+      "ordinal": 12,
+      "projectId": 246939,
+      "required": true
+    },
+    {
+      "fileId": 2624712,
+      "locked": null,
+      "ordinal": 13,
+      "projectId": 251407,
+      "required": true
+    },
+    {
+      "fileId": 2713386,
+      "locked": null,
+      "ordinal": 14,
+      "projectId": 74924,
+      "required": true
+    },
+    {
+      "fileId": 2954953,
+      "locked": null,
+      "ordinal": 15,
+      "projectId": 250294,
+      "required": true
+    },
+    {
+      "fileId": 2702033,
+      "locked": null,
+      "ordinal": 16,
+      "projectId": 231305,
+      "required": true
+    },
+    {
+      "fileId": 2702034,
+      "locked": null,
+      "ordinal": 17,
+      "projectId": 231307,
+      "required": true
+    },
+    {
+      "fileId": 2702036,
+      "locked": null,
+      "ordinal": 18,
+      "projectId": 231309,
+      "required": true
+    },
+    {
+      "fileId": 2702037,
+      "locked": null,
+      "ordinal": 19,
+      "projectId": 231311,
+      "required": true
+    },
+    {
+      "fileId": 2702038,
+      "locked": null,
+      "ordinal": 20,
+      "projectId": 231312,
+      "required": true
+    },
+    {
+      "fileId": 2702039,
+      "locked": null,
+      "ordinal": 21,
+      "projectId": 231313,
+      "required": true
+    },
+    {
+      "fileId": 2706762,
+      "locked": null,
+      "ordinal": 22,
+      "projectId": 273771,
+      "required": true
+    },
+    {
+      "fileId": 2661187,
+      "locked": null,
+      "ordinal": 23,
+      "projectId": 255902,
+      "required": true
+    },
+    {
+      "fileId": 2525554,
+      "locked": null,
+      "ordinal": 24,
+      "projectId": 277136,
+      "required": true
+    },
+    {
+      "fileId": 2843439,
+      "locked": null,
+      "ordinal": 25,
+      "projectId": 272671,
+      "required": true
+    },
+    {
+      "fileId": 2502492,
+      "locked": null,
+      "ordinal": 26,
+      "projectId": 233577,
+      "required": true
+    },
+    {
+      "fileId": 2861573,
+      "locked": null,
+      "ordinal": 27,
+      "projectId": 224641,
+      "required": true
+    },
+    {
+      "fileId": 2518031,
+      "locked": null,
+      "ordinal": 28,
+      "projectId": 70496,
+      "required": true
+    },
+    {
+      "fileId": 2456231,
+      "locked": null,
+      "ordinal": 29,
+      "projectId": 231347,
+      "required": true
+    },
+    {
+      "fileId": 3093546,
+      "locked": null,
+      "ordinal": 30,
+      "projectId": 415657,
+      "required": true
+    },
+    {
+      "fileId": 2722575,
+      "locked": null,
+      "ordinal": 31,
+      "projectId": 246996,
+      "required": true
+    },
+    {
+      "fileId": 2918455,
+      "locked": null,
+      "ordinal": 32,
+      "projectId": 270457,
+      "required": true
+    },
+    {
+      "fileId": 2686355,
+      "locked": null,
+      "ordinal": 33,
+      "projectId": 245889,
+      "required": true
+    },
+    {
+      "fileId": 2716477,
+      "locked": null,
+      "ordinal": 34,
+      "projectId": 247007,
+      "required": true
+    },
+    {
+      "fileId": 2705433,
+      "locked": null,
+      "ordinal": 35,
+      "projectId": 270466,
+      "required": true
+    },
+    {
+      "fileId": 2730480,
+      "locked": null,
+      "ordinal": 36,
+      "projectId": 250363,
+      "required": true
+    },
+    {
+      "fileId": 2958236,
+      "locked": null,
+      "ordinal": 37,
+      "projectId": 239197,
+      "required": true
+    },
+    {
+      "fileId": 2574880,
+      "locked": null,
+      "ordinal": 38,
+      "projectId": 228027,
+      "required": true
+    },
+    {
+      "fileId": 2647978,
+      "locked": null,
+      "ordinal": 39,
+      "projectId": 286116,
+      "required": true
+    },
+    {
+      "fileId": 2544919,
+      "locked": null,
+      "ordinal": 40,
+      "projectId": 268250,
+      "required": true
+    },
+    {
+      "fileId": 2456802,
+      "locked": null,
+      "ordinal": 41,
+      "projectId": 269377,
+      "required": true
+    },
+    {
+      "fileId": 2706111,
+      "locked": null,
+      "ordinal": 42,
+      "projectId": 299540,
+      "required": true
+    },
+    {
+      "fileId": 2767378,
+      "locked": null,
+      "ordinal": 43,
+      "projectId": 280554,
+      "required": true
+    },
+    {
+      "fileId": 2549332,
+      "locked": null,
+      "ordinal": 44,
+      "projectId": 291727,
+      "required": true
+    },
+    {
+      "fileId": 2926366,
+      "locked": null,
+      "ordinal": 45,
+      "projectId": 250398,
+      "required": true
+    },
+    {
+      "fileId": 2801696,
+      "locked": null,
+      "ordinal": 46,
+      "projectId": 290612,
+      "required": true
+    },
+    {
+      "fileId": 2916368,
+      "locked": null,
+      "ordinal": 47,
+      "projectId": 224712,
+      "required": true
+    },
+    {
+      "fileId": 2512376,
+      "locked": null,
+      "ordinal": 48,
+      "projectId": 283913,
+      "required": true
+    },
+    {
+      "fileId": 2722622,
+      "locked": null,
+      "ordinal": 49,
+      "projectId": 262692,
+      "required": true
+    },
+    {
+      "fileId": 2643976,
+      "locked": null,
+      "ordinal": 50,
+      "projectId": 269398,
+      "required": true
+    },
+    {
+      "fileId": 2469364,
+      "locked": null,
+      "ordinal": 51,
+      "projectId": 225839,
+      "required": true
+    },
+    {
+      "fileId": 2689502,
+      "locked": null,
+      "ordinal": 52,
+      "projectId": 250419,
+      "required": true
+    },
+    {
+      "fileId": 2536317,
+      "locked": null,
+      "ordinal": 53,
+      "projectId": 286170,
+      "required": true
+    },
+    {
+      "fileId": 2516219,
+      "locked": null,
+      "ordinal": 54,
+      "projectId": 223622,
+      "required": true
+    },
+    {
+      "fileId": 2923625,
+      "locked": null,
+      "ordinal": 55,
+      "projectId": 229208,
+      "required": true
+    },
+    {
+      "fileId": 2644034,
+      "locked": null,
+      "ordinal": 56,
+      "projectId": 278359,
+      "required": true
+    },
+    {
+      "fileId": 2705059,
+      "locked": null,
+      "ordinal": 57,
+      "projectId": 268326,
+      "required": true
+    },
+    {
+      "fileId": 2983081,
+      "locked": null,
+      "ordinal": 58,
+      "projectId": 239286,
+      "required": true
+    },
+    {
+      "fileId": 2557675,
+      "locked": null,
+      "ordinal": 59,
+      "projectId": 269452,
+      "required": true
+    },
+    {
+      "fileId": 2652853,
+      "locked": null,
+      "ordinal": 60,
+      "projectId": 237065,
+      "required": true
+    },
+    {
+      "fileId": 2643830,
+      "locked": null,
+      "ordinal": 61,
+      "projectId": 273930,
+      "required": true
+    },
+    {
+      "fileId": 2862651,
+      "locked": null,
+      "ordinal": 62,
+      "projectId": 231484,
+      "required": true
+    },
+    {
+      "fileId": 2694397,
+      "locked": null,
+      "ordinal": 63,
+      "projectId": 246010,
+      "required": true
+    },
+    {
+      "fileId": 2713291,
+      "locked": null,
+      "ordinal": 64,
+      "projectId": 224791,
+      "required": true
+    },
+    {
+      "fileId": 2959100,
+      "locked": null,
+      "ordinal": 65,
+      "projectId": 234851,
+      "required": true
+    },
+    {
+      "fileId": 2555077,
+      "locked": null,
+      "ordinal": 66,
+      "projectId": 290702,
+      "required": true
+    },
+    {
+      "fileId": 2544227,
+      "locked": null,
+      "ordinal": 67,
+      "projectId": 290703,
+      "required": true
+    },
+    {
+      "fileId": 2919737,
+      "locked": null,
+      "ordinal": 68,
+      "projectId": 296289,
+      "required": true
+    },
+    {
+      "fileId": 2564573,
+      "locked": null,
+      "ordinal": 69,
+      "projectId": 227049,
+      "required": true
+    },
+    {
+      "fileId": 2728940,
+      "locked": null,
+      "ordinal": 70,
+      "projectId": 238222,
+      "required": true
+    },
+    {
+      "fileId": 2581578,
+      "locked": null,
+      "ordinal": 71,
+      "projectId": 275086,
+      "required": true
+    },
+    {
+      "fileId": 2777071,
+      "locked": null,
+      "ordinal": 72,
+      "projectId": 268387,
+      "required": true
+    },
+    {
+      "fileId": 2707353,
+      "locked": null,
+      "ordinal": 73,
+      "projectId": 271740,
+      "required": true
+    },
+    {
+      "fileId": 2635317,
+      "locked": null,
+      "ordinal": 74,
+      "projectId": 290734,
+      "required": true
+    },
+    {
+      "fileId": 3049834,
+      "locked": null,
+      "ordinal": 75,
+      "projectId": 294088,
+      "required": true
+    },
+    {
+      "fileId": 2685162,
+      "locked": null,
+      "ordinal": 76,
+      "projectId": 244940,
+      "required": true
+    },
+    {
+      "fileId": 2518667,
+      "locked": null,
+      "ordinal": 77,
+      "projectId": 227083,
+      "required": true
+    },
+    {
+      "fileId": 2676866,
+      "locked": null,
+      "ordinal": 78,
+      "projectId": 223735,
+      "required": true
+    },
+    {
+      "fileId": 2966295,
+      "locked": null,
+      "ordinal": 79,
+      "projectId": 256141,
+      "required": true
+    },
+    {
+      "fileId": 2693496,
+      "locked": null,
+      "ordinal": 80,
+      "projectId": 74072,
+      "required": true
+    },
+    {
+      "fileId": 2542889,
+      "locked": null,
+      "ordinal": 81,
+      "projectId": 275137,
+      "required": true
+    },
+    {
+      "fileId": 2441265,
+      "locked": null,
+      "ordinal": 82,
+      "projectId": 260621,
+      "required": true
+    },
+    {
+      "fileId": 2845668,
+      "locked": null,
+      "ordinal": 83,
+      "projectId": 278494,
+      "required": true
+    },
+    {
+      "fileId": 2718090,
+      "locked": null,
+      "ordinal": 84,
+      "projectId": 281849,
+      "required": true
+    },
+    {
+      "fileId": 2468500,
+      "locked": null,
+      "ordinal": 85,
+      "projectId": 275156,
+      "required": true
+    },
+    {
+      "fileId": 2790210,
+      "locked": null,
+      "ordinal": 86,
+      "projectId": 255053,
+      "required": true
+    },
+    {
+      "fileId": 2974926,
+      "locked": null,
+      "ordinal": 87,
+      "projectId": 296384,
+      "required": true
+    },
+    {
+      "fileId": 2747063,
+      "locked": null,
+      "ordinal": 88,
+      "projectId": 223794,
+      "required": true
+    },
+    {
+      "fileId": 2450900,
+      "locked": null,
+      "ordinal": 89,
+      "projectId": 230497,
+      "required": true
+    },
+    {
+      "fileId": 2711439,
+      "locked": null,
+      "ordinal": 90,
+      "projectId": 74120,
+      "required": true
+    },
+    {
+      "fileId": 2661099,
+      "locked": null,
+      "ordinal": 91,
+      "projectId": 258426,
+      "required": true
+    },
+    {
+      "fileId": 2682853,
+      "locked": null,
+      "ordinal": 92,
+      "projectId": 291936,
+      "required": true
+    },
+    {
+      "fileId": 2876841,
+      "locked": null,
+      "ordinal": 93,
+      "projectId": 245028,
+      "required": true
+    },
+    {
+      "fileId": 2513221,
+      "locked": null,
+      "ordinal": 94,
+      "projectId": 252848,
+      "required": true
+    },
+    {
+      "fileId": 2698094,
+      "locked": null,
+      "ordinal": 95,
+      "projectId": 250617,
+      "required": true
+    },
+    {
+      "fileId": 3046640,
+      "locked": null,
+      "ordinal": 96,
+      "projectId": 402529,
+      "required": true
+    },
+    {
+      "fileId": 2990638,
+      "locked": null,
+      "ordinal": 97,
+      "projectId": 268495,
+      "required": true
+    },
+    {
+      "fileId": 2551739,
+      "locked": null,
+      "ordinal": 98,
+      "projectId": 223815,
+      "required": true
+    },
+    {
+      "fileId": 2821069,
+      "locked": null,
+      "ordinal": 99,
+      "projectId": 284139,
+      "required": true
+    },
+    {
+      "fileId": 2714091,
+      "locked": null,
+      "ordinal": 100,
+      "projectId": 232758,
+      "required": true
+    },
+    {
+      "fileId": 2684413,
+      "locked": null,
+      "ordinal": 101,
+      "projectId": 271856,
+      "required": true
+    },
+    {
+      "fileId": 2779848,
+      "locked": null,
+      "ordinal": 102,
+      "projectId": 242818,
+      "required": true
+    },
+    {
+      "fileId": 2733042,
+      "locked": null,
+      "ordinal": 103,
+      "projectId": 307605,
+      "required": true
+    },
+    {
+      "fileId": 2865090,
+      "locked": null,
+      "ordinal": 104,
+      "projectId": 295319,
+      "required": true
+    },
+    {
+      "fileId": 2553465,
+      "locked": null,
+      "ordinal": 105,
+      "projectId": 251767,
+      "required": true
+    },
+    {
+      "fileId": 2763309,
+      "locked": null,
+      "ordinal": 106,
+      "projectId": 257356,
+      "required": true
+    },
+    {
+      "fileId": 2481890,
+      "locked": null,
+      "ordinal": 107,
+      "projectId": 242838,
+      "required": true
+    },
+    {
+      "fileId": 2864069,
+      "locked": null,
+      "ordinal": 108,
+      "projectId": 241721,
+      "required": true
+    },
+    {
+      "fileId": 2687563,
+      "locked": null,
+      "ordinal": 109,
+      "projectId": 289753,
+      "required": true
+    },
+    {
+      "fileId": 2595310,
+      "locked": null,
+      "ordinal": 110,
+      "projectId": 238372,
+      "required": true
+    },
+    {
+      "fileId": 2952606,
+      "locked": null,
+      "ordinal": 111,
+      "projectId": 223852,
+      "required": true
+    },
+    {
+      "fileId": 2704832,
+      "locked": null,
+      "ordinal": 112,
+      "projectId": 256247,
+      "required": true
+    },
+    {
+      "fileId": 2623090,
+      "locked": null,
+      "ordinal": 113,
+      "projectId": 270789,
+      "required": true
+    },
+    {
+      "fileId": 2664066,
+      "locked": null,
+      "ordinal": 114,
+      "projectId": 270790,
+      "required": true
+    },
+    {
+      "fileId": 2640952,
+      "locked": null,
+      "ordinal": 115,
+      "projectId": 248453,
+      "required": true
+    },
+    {
+      "fileId": 2835175,
+      "locked": null,
+      "ordinal": 116,
+      "projectId": 268560,
+      "required": true
+    },
+    {
+      "fileId": 2691084,
+      "locked": null,
+      "ordinal": 117,
+      "projectId": 238403,
+      "required": true
+    },
+    {
+      "fileId": 2568579,
+      "locked": null,
+      "ordinal": 118,
+      "projectId": 274159,
+      "required": true
+    },
+    {
+      "fileId": 2626135,
+      "locked": null,
+      "ordinal": 119,
+      "projectId": 267458,
+      "required": true
+    },
+    {
+      "fileId": 2737969,
+      "locked": null,
+      "ordinal": 120,
+      "projectId": 228404,
+      "required": true
+    },
+    {
+      "fileId": 2556837,
+      "locked": null,
+      "ordinal": 121,
+      "projectId": 287606,
+      "required": true
+    },
+    {
+      "fileId": 2733508,
+      "locked": null,
+      "ordinal": 122,
+      "projectId": 261924,
+      "required": true
+    },
+    {
+      "fileId": 2684117,
+      "locked": null,
+      "ordinal": 123,
+      "projectId": 235121,
+      "required": true
+    },
+    {
+      "fileId": 2755787,
+      "locked": null,
+      "ordinal": 124,
+      "projectId": 245174,
+      "required": true
+    },
+    {
+      "fileId": 2705813,
+      "locked": null,
+      "ordinal": 125,
+      "projectId": 250763,
+      "required": true
+    },
+    {
+      "fileId": 2632938,
+      "locked": null,
+      "ordinal": 126,
+      "projectId": 275343,
+      "required": true
+    },
+    {
+      "fileId": 2624990,
+      "locked": null,
+      "ordinal": 127,
+      "projectId": 294335,
+      "required": true
+    },
+    {
+      "fileId": 2951840,
+      "locked": null,
+      "ordinal": 128,
+      "projectId": 268655,
+      "required": true
+    },
+    {
+      "fileId": 2634217,
+      "locked": null,
+      "ordinal": 129,
+      "projectId": 282077,
+      "required": true
+    },
+    {
+      "fileId": 2818975,
+      "locked": null,
+      "ordinal": 130,
+      "projectId": 274259,
+      "required": true
+    },
+    {
+      "fileId": 2651482,
+      "locked": null,
+      "ordinal": 131,
+      "projectId": 253043,
+      "required": true
+    },
+    {
+      "fileId": 2698688,
+      "locked": null,
+      "ordinal": 132,
+      "projectId": 229587,
+      "required": true
+    },
+    {
+      "fileId": 2739191,
+      "locked": null,
+      "ordinal": 133,
+      "projectId": 229588,
+      "required": true
+    },
+    {
+      "fileId": 3029768,
+      "locked": null,
+      "ordinal": 134,
+      "projectId": 284331,
+      "required": true
+    },
+    {
+      "fileId": 2718520,
+      "locked": null,
+      "ordinal": 135,
+      "projectId": 287683,
+      "required": true
+    },
+    {
+      "fileId": 2730570,
+      "locked": null,
+      "ordinal": 136,
+      "projectId": 231837,
+      "required": true
+    },
+    {
+      "fileId": 2718584,
+      "locked": null,
+      "ordinal": 137,
+      "projectId": 236307,
+      "required": true
+    },
+    {
+      "fileId": 2733525,
+      "locked": null,
+      "ordinal": 138,
+      "projectId": 241895,
+      "required": true
+    },
+    {
+      "fileId": 2715224,
+      "locked": null,
+      "ordinal": 139,
+      "projectId": 250832,
+      "required": true
+    },
+    {
+      "fileId": 2645984,
+      "locked": null,
+      "ordinal": 140,
+      "projectId": 240783,
+      "required": true
+    },
+    {
+      "fileId": 2827888,
+      "locked": null,
+      "ordinal": 141,
+      "projectId": 283235,
+      "required": true
+    },
+    {
+      "fileId": 2441326,
+      "locked": null,
+      "ordinal": 142,
+      "projectId": 247496,
+      "required": true
+    },
+    {
+      "fileId": 2565709,
+      "locked": null,
+      "ordinal": 143,
+      "projectId": 273187,
+      "required": true
+    },
+    {
+      "fileId": 2642375,
+      "locked": null,
+      "ordinal": 144,
+      "projectId": 267602,
+      "required": true
+    },
+    {
+      "fileId": 2745852,
+      "locked": null,
+      "ordinal": 145,
+      "projectId": 260912,
+      "required": true
+    },
+    {
+      "fileId": 2717168,
+      "locked": null,
+      "ordinal": 146,
+      "projectId": 228525,
+      "required": true
+    },
+    {
+      "fileId": 2852872,
+      "locked": null,
+      "ordinal": 147,
+      "projectId": 228529,
+      "required": true
+    },
+    {
+      "fileId": 2575608,
+      "locked": null,
+      "ordinal": 148,
+      "projectId": 274331,
+      "required": true
+    },
+    {
+      "fileId": 2518265,
+      "locked": null,
+      "ordinal": 149,
+      "projectId": 269863,
+      "required": true
+    },
+    {
+      "fileId": 2745321,
+      "locked": null,
+      "ordinal": 150,
+      "projectId": 266515,
+      "required": true
+    },
+    {
+      "fileId": 2991671,
+      "locked": null,
+      "ordinal": 151,
+      "projectId": 274341,
+      "required": true
+    },
+    {
+      "fileId": 2656683,
+      "locked": null,
+      "ordinal": 152,
+      "projectId": 254241,
+      "required": true
+    },
+    {
+      "fileId": 2550876,
+      "locked": null,
+      "ordinal": 153,
+      "projectId": 274350,
+      "required": true
+    },
+    {
+      "fileId": 2940914,
+      "locked": null,
+      "ordinal": 154,
+      "projectId": 243076,
+      "required": true
+    },
+    {
+      "fileId": 2897369,
+      "locked": null,
+      "ordinal": 155,
+      "projectId": 250898,
+      "required": true
+    },
+    {
+      "fileId": 2448283,
+      "locked": null,
+      "ordinal": 156,
+      "projectId": 235261,
+      "required": true
+    },
+    {
+      "fileId": 2838777,
+      "locked": null,
+      "ordinal": 157,
+      "projectId": 288885,
+      "required": true
+    },
+    {
+      "fileId": 2619468,
+      "locked": null,
+      "ordinal": 158,
+      "projectId": 235279,
+      "required": true
+    },
+    {
+      "fileId": 2893083,
+      "locked": null,
+      "ordinal": 159,
+      "projectId": 229708,
+      "required": true
+    },
+    {
+      "fileId": 2607786,
+      "locked": null,
+      "ordinal": 160,
+      "projectId": 298965,
+      "required": true
+    },
+    {
+      "fileId": 2722372,
+      "locked": null,
+      "ordinal": 161,
+      "projectId": 243121,
+      "required": true
+    },
+    {
+      "fileId": 2974106,
+      "locked": null,
+      "ordinal": 162,
+      "projectId": 231951,
+      "required": true
+    },
+    {
+      "fileId": 2700798,
+      "locked": null,
+      "ordinal": 163,
+      "projectId": 237541,
+      "required": true
+    },
+    {
+      "fileId": 2512819,
+      "locked": null,
+      "ordinal": 164,
+      "projectId": 268819,
+      "required": true
+    },
+    {
+      "fileId": 2508268,
+      "locked": null,
+      "ordinal": 165,
+      "projectId": 264353,
+      "required": true
+    },
+    {
+      "fileId": 2630860,
+      "locked": null,
+      "ordinal": 166,
+      "projectId": 250957,
+      "required": true
+    },
+    {
+      "fileId": 2575349,
+      "locked": null,
+      "ordinal": 167,
+      "projectId": 272190,
+      "required": true
+    },
+    {
+      "fileId": 2810142,
+      "locked": null,
+      "ordinal": 168,
+      "projectId": 262137,
+      "required": true
+    },
+    {
+      "fileId": 2549655,
+      "locked": null,
+      "ordinal": 169,
+      "projectId": 281132,
+      "required": true
+    },
+    {
+      "fileId": 2684561,
+      "locked": null,
+      "ordinal": 170,
+      "projectId": 253211,
+      "required": true
+    },
+    {
+      "fileId": 2745846,
+      "locked": null,
+      "ordinal": 171,
+      "projectId": 233105,
+      "required": true
+    },
+    {
+      "fileId": 2857869,
+      "locked": null,
+      "ordinal": 172,
+      "projectId": 226406,
+      "required": true
+    },
+    {
+      "fileId": 2535057,
+      "locked": null,
+      "ordinal": 173,
+      "projectId": 288959,
+      "required": true
+    },
+    {
+      "fileId": 2996061,
+      "locked": null,
+      "ordinal": 174,
+      "projectId": 285612,
+      "required": true
+    },
+    {
+      "fileId": 2653408,
+      "locked": null,
+      "ordinal": 175,
+      "projectId": 284497,
+      "required": true
+    },
+    {
+      "fileId": 2861235,
+      "locked": null,
+      "ordinal": 176,
+      "projectId": 229769,
+      "required": true
+    },
+    {
+      "fileId": 2613657,
+      "locked": null,
+      "ordinal": 177,
+      "projectId": 267769,
+      "required": true
+    },
+    {
+      "fileId": 2923460,
+      "locked": null,
+      "ordinal": 178,
+      "projectId": 223094,
+      "required": true
+    },
+    {
+      "fileId": 2477566,
+      "locked": null,
+      "ordinal": 179,
+      "projectId": 226447,
+      "required": true
+    },
+    {
+      "fileId": 2987247,
+      "locked": null,
+      "ordinal": 180,
+      "projectId": 248787,
+      "required": true
+    },
+    {
+      "fileId": 2484281,
+      "locked": null,
+      "ordinal": 181,
+      "projectId": 243205,
+      "required": true
+    },
+    {
+      "fileId": 2707509,
+      "locked": null,
+      "ordinal": 182,
+      "projectId": 224218,
+      "required": true
+    },
+    {
+      "fileId": 2689835,
+      "locked": null,
+      "ordinal": 183,
+      "projectId": 282313,
+      "required": true
+    },
+    {
+      "fileId": 2691536,
+      "locked": null,
+      "ordinal": 184,
+      "projectId": 245453,
+      "required": true
+    },
+    {
+      "fileId": 2886150,
+      "locked": null,
+      "ordinal": 185,
+      "projectId": 363856,
+      "required": true
+    },
+    {
+      "fileId": 2755795,
+      "locked": null,
+      "ordinal": 186,
+      "projectId": 247695,
+      "required": true
+    },
+    {
+      "fileId": 2700554,
+      "locked": null,
+      "ordinal": 187,
+      "projectId": 238761,
+      "required": true
+    },
+    {
+      "fileId": 2632834,
+      "locked": null,
+      "ordinal": 188,
+      "projectId": 299080,
+      "required": true
+    },
+    {
+      "fileId": 2643952,
+      "locked": null,
+      "ordinal": 189,
+      "projectId": 285684,
+      "required": true
+    },
+    {
+      "fileId": 2691542,
+      "locked": null,
+      "ordinal": 190,
+      "projectId": 245480,
+      "required": true
+    },
+    {
+      "fileId": 2846217,
+      "locked": null,
+      "ordinal": 191,
+      "projectId": 278993,
+      "required": true
+    },
+    {
+      "fileId": 2689602,
+      "locked": null,
+      "ordinal": 192,
+      "projectId": 223150,
+      "required": true
+    },
+    {
+      "fileId": 2833871,
+      "locked": null,
+      "ordinal": 193,
+      "projectId": 256662,
+      "required": true
+    },
+    {
+      "fileId": 2941010,
+      "locked": null,
+      "ordinal": 194,
+      "projectId": 272302,
+      "required": true
+    },
+    {
+      "fileId": 2574220,
+      "locked": null,
+      "ordinal": 195,
+      "projectId": 251079,
+      "required": true
+    },
+    {
+      "fileId": 2555574,
+      "locked": null,
+      "ordinal": 196,
+      "projectId": 277890,
+      "required": true
+    },
+    {
+      "fileId": 2459131,
+      "locked": null,
+      "ordinal": 197,
+      "projectId": 273430,
+      "required": true
+    },
+    {
+      "fileId": 2632107,
+      "locked": null,
+      "ordinal": 198,
+      "projectId": 254441,
+      "required": true
+    },
+    {
+      "fileId": 2708729,
+      "locked": null,
+      "ordinal": 199,
+      "projectId": 258914,
+      "required": true
+    },
+    {
+      "fileId": 2618264,
+      "locked": null,
+      "ordinal": 200,
+      "projectId": 227639,
+      "required": true
+    },
+    {
+      "fileId": 2671937,
+      "locked": null,
+      "ordinal": 201,
+      "projectId": 60089,
+      "required": true
+    },
+    {
+      "fileId": 2747935,
+      "locked": null,
+      "ordinal": 202,
+      "projectId": 228756,
+      "required": true
+    },
+    {
+      "fileId": 2483393,
+      "locked": null,
+      "ordinal": 203,
+      "projectId": 229876,
+      "required": true
+    },
+    {
+      "fileId": 2560638,
+      "locked": null,
+      "ordinal": 204,
+      "projectId": 237701,
+      "required": true
+    },
+    {
+      "fileId": 2632997,
+      "locked": null,
+      "ordinal": 205,
+      "projectId": 290201,
+      "required": true
+    },
+    {
+      "fileId": 3024234,
+      "locked": null,
+      "ordinal": 206,
+      "projectId": 399669,
+      "required": true
+    },
+    {
+      "fileId": 2704562,
+      "locked": null,
+      "ordinal": 207,
+      "projectId": 246640,
+      "required": true
+    },
+    {
+      "fileId": 2645867,
+      "locked": null,
+      "ordinal": 208,
+      "projectId": 272335,
+      "required": true
+    },
+    {
+      "fileId": 2693544,
+      "locked": null,
+      "ordinal": 209,
+      "projectId": 220954,
+      "required": true
+    },
+    {
+      "fileId": 2558337,
+      "locked": null,
+      "ordinal": 210,
+      "projectId": 281274,
+      "required": true
+    },
+    {
+      "fileId": 2949817,
+      "locked": null,
+      "ordinal": 211,
+      "projectId": 285742,
+      "required": true
+    },
+    {
+      "fileId": 2624732,
+      "locked": null,
+      "ordinal": 212,
+      "projectId": 232131,
+      "required": true
+    },
+    {
+      "fileId": 2712229,
+      "locked": null,
+      "ordinal": 213,
+      "projectId": 252239,
+      "required": true
+    },
+    {
+      "fileId": 2463637,
+      "locked": null,
+      "ordinal": 214,
+      "projectId": 262292,
+      "required": true
+    },
+    {
+      "fileId": 2698971,
+      "locked": null,
+      "ordinal": 215,
+      "projectId": 319264,
+      "required": true
+    },
+    {
+      "fileId": 2800403,
+      "locked": null,
+      "ordinal": 216,
+      "projectId": 279053,
+      "required": true
+    },
+    {
+      "fileId": 2977010,
+      "locked": null,
+      "ordinal": 217,
+      "projectId": 224320,
+      "required": true
+    },
+    {
+      "fileId": 2825547,
+      "locked": null,
+      "ordinal": 218,
+      "projectId": 235492,
+      "required": true
+    },
+    {
+      "fileId": 2813586,
+      "locked": null,
+      "ordinal": 219,
+      "projectId": 242195,
+      "required": true
+    },
+    {
+      "fileId": 2666198,
+      "locked": null,
+      "ordinal": 220,
+      "projectId": 256717,
+      "required": true
+    },
+    {
+      "fileId": 2542709,
+      "locked": null,
+      "ordinal": 221,
+      "projectId": 284648,
+      "required": true
+    },
+    {
+      "fileId": 2662364,
+      "locked": null,
+      "ordinal": 222,
+      "projectId": 266784,
+      "required": true
+    },
+    {
+      "fileId": 2649092,
+      "locked": null,
+      "ordinal": 223,
+      "projectId": 263442,
+      "required": true
+    },
+    {
+      "fileId": 2696448,
+      "locked": null,
+      "ordinal": 224,
+      "projectId": 281316,
+      "required": true
+    },
+    {
+      "fileId": 2645992,
+      "locked": null,
+      "ordinal": 225,
+      "projectId": 228832,
+      "required": true
+    },
+    {
+      "fileId": 2922065,
+      "locked": null,
+      "ordinal": 226,
+      "projectId": 243363,
+      "required": true
+    },
+    {
+      "fileId": 2664449,
+      "locked": null,
+      "ordinal": 227,
+      "projectId": 69118,
+      "required": true
+    },
+    {
+      "fileId": 2708030,
+      "locked": null,
+      "ordinal": 228,
+      "projectId": 283589,
+      "required": true
+    },
+    {
+      "fileId": 2875265,
+      "locked": null,
+      "ordinal": 229,
+      "projectId": 264601,
+      "required": true
+    },
+    {
+      "fileId": 2720655,
+      "locked": null,
+      "ordinal": 230,
+      "projectId": 231095,
+      "required": true
+    },
+    {
+      "fileId": 2630384,
+      "locked": null,
+      "ordinal": 231,
+      "projectId": 245620,
+      "required": true
+    },
+    {
+      "fileId": 2682920,
+      "locked": null,
+      "ordinal": 232,
+      "projectId": 32274,
+      "required": true
+    },
+    {
+      "fileId": 2885190,
+      "locked": null,
+      "ordinal": 233,
+      "projectId": 263498,
+      "required": true
+    },
+    {
+      "fileId": 2568751,
+      "locked": null,
+      "ordinal": 234,
+      "projectId": 253449,
+      "required": true
+    },
+    {
+      "fileId": 2834651,
+      "locked": null,
+      "ordinal": 235,
+      "projectId": 253462,
+      "required": true
+    },
+    {
+      "fileId": 2650398,
+      "locked": null,
+      "ordinal": 236,
+      "projectId": 246760,
+      "required": true
+    },
+    {
+      "fileId": 2580052,
+      "locked": null,
+      "ordinal": 237,
+      "projectId": 254602,
+      "required": true
+    },
+    {
+      "fileId": 2694382,
+      "locked": null,
+      "ordinal": 238,
+      "projectId": 283644,
+      "required": true
+    },
+    {
+      "fileId": 2706321,
+      "locked": null,
+      "ordinal": 239,
+      "projectId": 227795,
+      "required": true
+    },
+    {
+      "fileId": 2644009,
+      "locked": null,
+      "ordinal": 240,
+      "projectId": 278063,
+      "required": true
+    },
+    {
+      "fileId": 2638197,
+      "locked": null,
+      "ordinal": 241,
+      "projectId": 247907,
+      "required": true
+    },
+    {
+      "fileId": 2909295,
+      "locked": null,
+      "ordinal": 242,
+      "projectId": 246795,
+      "required": true
+    },
+    {
+      "fileId": 2928313,
+      "locked": null,
+      "ordinal": 243,
+      "projectId": 298187,
+      "required": true
+    },
+    {
+      "fileId": 2696766,
+      "locked": null,
+      "ordinal": 244,
+      "projectId": 280316,
+      "required": true
+    },
+    {
+      "fileId": 2704839,
+      "locked": null,
+      "ordinal": 245,
+      "projectId": 254629,
+      "required": true
+    },
+    {
+      "fileId": 2541554,
+      "locked": null,
+      "ordinal": 246,
+      "projectId": 261339,
+      "required": true
+    },
+    {
+      "fileId": 2685984,
+      "locked": null,
+      "ordinal": 247,
+      "projectId": 272515,
+      "required": true
+    },
+    {
+      "fileId": 2745657,
+      "locked": null,
+      "ordinal": 248,
+      "projectId": 243478,
+      "required": true
+    },
+    {
+      "fileId": 2686337,
+      "locked": null,
+      "ordinal": 249,
+      "projectId": 317208,
+      "required": true
+    },
+    {
+      "fileId": 3330308,
+      "locked": null,
+      "ordinal": 250,
+      "projectId": 237903,
+      "required": true
+    },
+    {
+      "fileId": 2501030,
+      "locked": null,
+      "ordinal": 251,
+      "projectId": 228969,
+      "required": true
+    },
+    {
+      "fileId": 2617198,
+      "locked": null,
+      "ordinal": 252,
+      "projectId": 270305,
+      "required": true
+    },
+    {
+      "fileId": 2704408,
+      "locked": null,
+      "ordinal": 253,
+      "projectId": 241268,
+      "required": true
+    }
+  ],
+  "schemaVersion": 1,
+  "acquiredArtifacts": [
+    {
+      "projectId": 274782,
+      "fileId": 2483769,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2483/769/NoWorldgen5You-1.12.2-1.0.6.jar"
+      ],
+      "artifact": "NoWorldgen5You-1.12.2-1.0.6.jar",
+      "sha256": "378c83bf51ab0692066a71846e961e91da33539640da98524c6eb59fec09ddce",
+      "sha1": "bab0b07515bc6a50042e051e65f24ea34a9e87fd",
+      "size": 16882,
+      "url": "https://mediafilez.forgecdn.net/files/2483/769/NoWorldgen5You-1.12.2-1.0.6.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/NoWorldgen5You-1.12.2-1.0.6.jar"
+    },
+    {
+      "projectId": 382023,
+      "fileId": 3485344,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/3485/344/sevpatches-1.9-10.jar"
+      ],
+      "artifact": "sevpatches-1.9-10.jar",
+      "sha256": "9f30f0c35388e49b3e7cfd1d2acf34a0a63546655ed0f47ba0407c76334748d0",
+      "sha1": "2621d372c5232454cf0321b5b2008ed1a45616ec",
+      "size": 914090,
+      "url": "https://mediafilez.forgecdn.net/files/3485/344/sevpatches-1.9-10.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/sevpatches-1.9-10.jar"
+    },
+    {
+      "projectId": 290433,
+      "fileId": 2676791,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2676/791/Chargers-1.12.2-1.2.0.4.jar"
+      ],
+      "artifact": "Chargers-1.12.2-1.2.0.4.jar",
+      "sha256": "9a72c6a493993f784466c464a1c3437af5b9141588617496e6f5643e9eea053f",
+      "sha1": "b3f5eaba4259ebdfab3cb3b185d16bb2f9a631c9",
+      "size": 140102,
+      "url": "https://mediafilez.forgecdn.net/files/2676/791/Chargers-1.12.2-1.2.0.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Chargers-1.12.2-1.2.0.4.jar"
+    },
+    {
+      "projectId": 285968,
+      "fileId": 2700901,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2700/901/togetherforever-1.12.2-1.0.12-22.jar"
+      ],
+      "artifact": "togetherforever-1.12.2-1.0.12-22.jar",
+      "sha256": "ff76425359133986341d37f28f8c60804e19706d98f013da5d29aea1ec65cb73",
+      "sha1": "ed5745ae5436969f65e22736582014202fa6cb30",
+      "size": 75451,
+      "url": "https://mediafilez.forgecdn.net/files/2700/901/togetherforever-1.12.2-1.0.12-22.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/togetherforever-1.12.2-1.0.12-22.jar"
+    },
+    {
+      "projectId": 224535,
+      "fileId": 2443253,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2443/253/IvToolkit-1.3.3-1.12.jar"
+      ],
+      "artifact": "IvToolkit-1.3.3-1.12.jar",
+      "sha256": "ffb745111790e27cb7810a2e03d5270265dee7ebd3ef98fde897c409d58b1e59",
+      "sha1": "522e60b48721b558f6dea1fdfa2b235162366649",
+      "size": 455763,
+      "url": "https://mediafilez.forgecdn.net/files/2443/253/IvToolkit-1.3.3-1.12.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/IvToolkit-1.3.3-1.12.jar"
+    },
+    {
+      "projectId": 241291,
+      "fileId": 3031687,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/3031/687/ExtraPlanets-1.12.2-0.7.0.jar"
+      ],
+      "artifact": "ExtraPlanets-1.12.2-0.7.0.jar",
+      "sha256": "313be6c52eaecba539322186fbcce4bccc6664afba9eadc13712bd85fc47e5a3",
+      "sha1": "50005c76a4241c1085043423a2fae0877a787c37",
+      "size": 8557700,
+      "url": "https://mediafilez.forgecdn.net/files/3031/687/ExtraPlanets-1.12.2-0.7.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ExtraPlanets-1.12.2-0.7.0.jar"
+    },
+    {
+      "projectId": 225658,
+      "fileId": 2586524,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2586/524/AromaBackup-1.12.2-2.1.1.4.jar"
+      ],
+      "artifact": "AromaBackup-1.12.2-2.1.1.4.jar",
+      "sha256": "9f9f0c397617d82447876ff7966701db67a96859c0fb60f055d1d66c7864cae8",
+      "sha1": "2e3e04cfe4fe5e2da47e8edf7b9e842d44b8209a",
+      "size": 139446,
+      "url": "https://mediafilez.forgecdn.net/files/2586/524/AromaBackup-1.12.2-2.1.1.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/AromaBackup-1.12.2-2.1.1.4.jar"
+    },
+    {
+      "projectId": 273711,
+      "fileId": 2632466,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2632/466/EmberRootZoo-1.12.2-1.3.10.jar"
+      ],
+      "artifact": "EmberRootZoo-1.12.2-1.3.10.jar",
+      "sha256": "2e36dfae28710e1bbbaa99310474abed8eb34cf82ba194dd61c109743fa98ebf",
+      "sha1": "036d673b7b3fb38ab8f46f3aa3371fa7f1f7d4c4",
+      "size": 1253567,
+      "url": "https://mediafilez.forgecdn.net/files/2632/466/EmberRootZoo-1.12.2-1.3.10.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/EmberRootZoo-1.12.2-1.3.10.jar"
+    },
+    {
+      "projectId": 279311,
+      "fileId": 2549462,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2549/462/trumpetskeleton-1.12-1.0.2.1.jar"
+      ],
+      "artifact": "trumpetskeleton-1.12-1.0.2.1.jar",
+      "sha256": "9d3d96b8013a6697c58afc85b31c401d39516a367b66ecdce7512367d7ff1530",
+      "sha1": "98d55c7b43a2996057e3052337c7d103c74f426c",
+      "size": 42657,
+      "url": "https://mediafilez.forgecdn.net/files/2549/462/trumpetskeleton-1.12-1.0.2.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/trumpetskeleton-1.12-1.0.2.1.jar"
+    },
+    {
+      "projectId": 248039,
+      "fileId": 2607787,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2607/787/NetherEx-1.12.2-2.0.8.jar"
+      ],
+      "artifact": "NetherEx-1.12.2-2.0.8.jar",
+      "sha256": "4d1dfce0746a2ba9e8178785ad70c4cb0cd8e69da3f5d79e00c7a11f4f780a22",
+      "sha1": "69260f0a70d49e5b24ef49a1e83e8f159c530d07",
+      "size": 2558919,
+      "url": "https://mediafilez.forgecdn.net/files/2607/787/NetherEx-1.12.2-2.0.8.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/NetherEx-1.12.2-2.0.8.jar"
+    },
+    {
+      "projectId": 284904,
+      "fileId": 2568865,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2568/865/noRecipeBook_v1.2.2formc1.12.2.jar"
+      ],
+      "artifact": "noRecipeBook_v1.2.2formc1.12.2.jar",
+      "sha256": "32b445216a515a116494118eb0e2d8b25524548860a2a3f1f35f9e6931c59e45",
+      "sha1": "699a1235d426775c87123ea34c5bad3bb51fc03e",
+      "size": 4053,
+      "url": "https://mediafilez.forgecdn.net/files/2568/865/noRecipeBook_v1.2.2formc1.12.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/noRecipeBook_v1.2.2formc1.12.2.jar"
+    },
+    {
+      "projectId": 53686,
+      "fileId": 2956823,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2956/823/AbyssalCraft-1.12.2-1.9.19.1.jar"
+      ],
+      "artifact": "AbyssalCraft-1.12.2-1.9.19.1.jar",
+      "sha256": "1dd3df70eebcacf5d908cb3e6e813f7610e487991f6e9f71a07cfa2b370dbc1f",
+      "sha1": "b8b69b633be2a0ec7c79f37cba95f79eca50fccf",
+      "size": 13778210,
+      "url": "https://mediafilez.forgecdn.net/files/2956/823/AbyssalCraft-1.12.2-1.9.19.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/AbyssalCraft-1.12.2-1.9.19.1.jar"
+    },
+    {
+      "projectId": 246939,
+      "fileId": 2460195,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2460/195/WaterStrainer-1.12-3.2.0.jar"
+      ],
+      "artifact": "WaterStrainer-1.12-3.2.0.jar",
+      "sha256": "2006883a38d50dbfafa73866f7c7e449083e7b766d9e7bd8ed6726ccd34cd892",
+      "sha1": "36dd15194d8242a7a457e376b0f4d62bc1eb2ae9",
+      "size": 122873,
+      "url": "https://mediafilez.forgecdn.net/files/2460/195/WaterStrainer-1.12-3.2.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/WaterStrainer-1.12-3.2.0.jar"
+    },
+    {
+      "projectId": 251407,
+      "fileId": 2624712,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2624/712/ClientTweaks_1.12.2-3.1.11.jar"
+      ],
+      "artifact": "ClientTweaks_1.12.2-3.1.11.jar",
+      "sha256": "ac75e2d505bda70dc3c4f0778d66a79213870ee43b74744e31e37f9c3aaf7654",
+      "sha1": "c6c31bc3e10fe8da49cb37088ec3d0e8d481ad46",
+      "size": 30515,
+      "url": "https://mediafilez.forgecdn.net/files/2624/712/ClientTweaks_1.12.2-3.1.11.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ClientTweaks_1.12.2-3.1.11.jar"
+    },
+    {
+      "projectId": 74924,
+      "fileId": 2713386,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2713/386/Mantle-1.12-1.3.3.55.jar"
+      ],
+      "artifact": "Mantle-1.12-1.3.3.55.jar",
+      "sha256": "0975ad3ef3b8b35fe43461feabe44d406b5521b0a2f3d1965c8d2f6a59ad2e65",
+      "sha1": "a1e5d5c197dae3e92637cafb8cd996185191165b",
+      "size": 843486,
+      "url": "https://mediafilez.forgecdn.net/files/2713/386/Mantle-1.12-1.3.3.55.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Mantle-1.12-1.3.3.55.jar"
+    },
+    {
+      "projectId": 250294,
+      "fileId": 2954953,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2954/953/modular-routers-1.12.2-3.3.0-33.jar"
+      ],
+      "artifact": "modular-routers-1.12.2-3.3.0-33.jar",
+      "sha256": "7a2b32e774341afa54b103599b34ba62a38d4fc6a3164b2090ce322e393c5772",
+      "sha1": "6c163c588258b8d0cf0b3488fc501203ff3b26f6",
+      "size": 754883,
+      "url": "https://mediafilez.forgecdn.net/files/2954/953/modular-routers-1.12.2-3.3.0-33.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/modular-routers-1.12.2-3.3.0-33.jar"
+    },
+    {
+      "projectId": 231305,
+      "fileId": 2702033,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2702/033/buildcraft-core-7.99.24.1.jar",
+        "https://edge.forgecdn.net/files/2702/033/buildcraft-core-7.99.24.1.jar"
+      ],
+      "artifact": "buildcraft-core-7.99.24.1.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "d4a56bae7f04ca40784173bf037795db542fd585c653c2dcf2d59c15431616fc",
+      "sha1": "da7a7ae2397135e6e41d55726eb8aa0b7f9a6850",
+      "size": 2760711,
+      "url": "https://edge.forgecdn.net/files/2702/033/buildcraft-core-7.99.24.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/buildcraft-core-7.99.24.1.jar"
+    },
+    {
+      "projectId": 231307,
+      "fileId": 2702034,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2702/034/buildcraft-builders-7.99.24.1.jar",
+        "https://edge.forgecdn.net/files/2702/034/buildcraft-builders-7.99.24.1.jar"
+      ],
+      "artifact": "buildcraft-builders-7.99.24.1.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "ee204af6c32a0051c40ac09a66691db8f3713c2bbf496770746a70f42184c6d1",
+      "sha1": "b3aa64ad188845d0d1b7250cdb0d888697ef707c",
+      "size": 505801,
+      "url": "https://edge.forgecdn.net/files/2702/034/buildcraft-builders-7.99.24.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/buildcraft-builders-7.99.24.1.jar"
+    },
+    {
+      "projectId": 231309,
+      "fileId": 2702036,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2702/036/buildcraft-factory-7.99.24.1.jar",
+        "https://edge.forgecdn.net/files/2702/036/buildcraft-factory-7.99.24.1.jar"
+      ],
+      "artifact": "buildcraft-factory-7.99.24.1.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "2a7db3fd989513604812ac4a1fb0478ddbd9fbc0147aa36ad2edd39d168e6072",
+      "sha1": "4452171386cecc853d76df5ae455e0ce6aefcab6",
+      "size": 240131,
+      "url": "https://edge.forgecdn.net/files/2702/036/buildcraft-factory-7.99.24.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/buildcraft-factory-7.99.24.1.jar"
+    },
+    {
+      "projectId": 231311,
+      "fileId": 2702037,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2702/037/buildcraft-silicon-7.99.24.1.jar",
+        "https://edge.forgecdn.net/files/2702/037/buildcraft-silicon-7.99.24.1.jar"
+      ],
+      "artifact": "buildcraft-silicon-7.99.24.1.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "863373cb55ccfde79c69cf7e398a9bfb0f8efa79c93bdf60af491e4f624d02fd",
+      "sha1": "52e5271c07170a6ddb14e513406dc92c79459919",
+      "size": 286910,
+      "url": "https://edge.forgecdn.net/files/2702/037/buildcraft-silicon-7.99.24.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/buildcraft-silicon-7.99.24.1.jar"
+    },
+    {
+      "projectId": 231312,
+      "fileId": 2702038,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2702/038/buildcraft-transport-7.99.24.1.jar",
+        "https://edge.forgecdn.net/files/2702/038/buildcraft-transport-7.99.24.1.jar"
+      ],
+      "artifact": "buildcraft-transport-7.99.24.1.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "478275de686836baac7b8f0758843a6d854e688f61704c0e4c8bb7881235972f",
+      "sha1": "6d993d9eb6c164dd9e5a1b878903994be6e5c694",
+      "size": 502364,
+      "url": "https://edge.forgecdn.net/files/2702/038/buildcraft-transport-7.99.24.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/buildcraft-transport-7.99.24.1.jar"
+    },
+    {
+      "projectId": 231313,
+      "fileId": 2702039,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2702/039/buildcraft-robotics-7.99.24.1.jar",
+        "https://edge.forgecdn.net/files/2702/039/buildcraft-robotics-7.99.24.1.jar"
+      ],
+      "artifact": "buildcraft-robotics-7.99.24.1.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "8d09e20cc88941bf84c664ed259366f7a97507e892d96a273de761b79f0d17e7",
+      "sha1": "41d7884355ba33ffd6aed86dafbef767b18465fb",
+      "size": 114902,
+      "url": "https://edge.forgecdn.net/files/2702/039/buildcraft-robotics-7.99.24.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/buildcraft-robotics-7.99.24.1.jar"
+    },
+    {
+      "projectId": 273771,
+      "fileId": 2706762,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2706/762/astikorcarts-1.12.2-0.1.2.7.jar"
+      ],
+      "artifact": "astikorcarts-1.12.2-0.1.2.7.jar",
+      "sha256": "4c04740517341c55978500344c63b412e47ed33cddba561c193665b3b0cfeb97",
+      "sha1": "bd04f75a7942976e4580f48683f80d48af39e3fb",
+      "size": 102399,
+      "url": "https://mediafilez.forgecdn.net/files/2706/762/astikorcarts-1.12.2-0.1.2.7.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/astikorcarts-1.12.2-0.1.2.7.jar"
+    },
+    {
+      "projectId": 255902,
+      "fileId": 2661187,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2661/187/WitherSkeletonTweaks-1.12.2-2.6.3.jar"
+      ],
+      "artifact": "WitherSkeletonTweaks-1.12.2-2.6.3.jar",
+      "sha256": "897f463b6d6cc1d0441a013eb39866b751d7f9bbdf2a189314d9b81c9e2895e8",
+      "sha1": "a67cf5cf71cbfacad28b6c8caf280c7196c82bfb",
+      "size": 27026,
+      "url": "https://mediafilez.forgecdn.net/files/2661/187/WitherSkeletonTweaks-1.12.2-2.6.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/WitherSkeletonTweaks-1.12.2-2.6.3.jar"
+    },
+    {
+      "projectId": 277136,
+      "fileId": 2525554,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2525/554/spatialservermod-1.3.jar"
+      ],
+      "artifact": "spatialservermod-1.3.jar",
+      "sha256": "80365ac00ad04d36e54a3a10e2ea96f717584d2962cdf0ebf319a69bfb1967c9",
+      "sha1": "d6d78ba9980563f80f167eaa2c237945395208b4",
+      "size": 7815,
+      "url": "https://mediafilez.forgecdn.net/files/2525/554/spatialservermod-1.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/spatialservermod-1.3.jar"
+    },
+    {
+      "projectId": 272671,
+      "fileId": 2843439,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2843/439/TinkersComplement-1.12.2-0.4.3.jar"
+      ],
+      "artifact": "TinkersComplement-1.12.2-0.4.3.jar",
+      "sha256": "09f3ff16c8204d6ed065c9ed1a717f56c824e45c12e6eda451aae3523262656c",
+      "sha1": "fa890e49c131e8ff93d8a4e6de0a5476083df6c3",
+      "size": 998411,
+      "url": "https://mediafilez.forgecdn.net/files/2843/439/TinkersComplement-1.12.2-0.4.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/TinkersComplement-1.12.2-0.4.3.jar"
+    },
+    {
+      "projectId": 233577,
+      "fileId": 2502492,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2502/492/simpleautorun-1.12.2-1.2.0.jar"
+      ],
+      "artifact": "simpleautorun-1.12.2-1.2.0.jar",
+      "sha256": "4444de454a6489c48355f54a06ee899995eec90f85f8d18b3c6901e46a930fe3",
+      "sha1": "04fe57452eac271885472b2d08702cf26ca5e58a",
+      "size": 5538,
+      "url": "https://mediafilez.forgecdn.net/files/2502/492/simpleautorun-1.12.2-1.2.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/simpleautorun-1.12.2-1.2.0.jar"
+    },
+    {
+      "projectId": 224641,
+      "fileId": 2861573,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2861/573/rftools-1.12-7.73.jar"
+      ],
+      "artifact": "rftools-1.12-7.73.jar",
+      "sha256": "558c38d0f7852d17a03aef81e4bd6cc2f28e60db8a8749c710c9ee829f2de0a4",
+      "sha1": "16a4e8c1907bdaac546ab3fd56904d202da427f3",
+      "size": 2895803,
+      "url": "https://mediafilez.forgecdn.net/files/2861/573/rftools-1.12-7.73.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/rftools-1.12-7.73.jar"
+    },
+    {
+      "projectId": 70496,
+      "fileId": 2518031,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2518/031/bdlib-1.14.3.12-mc1.12.2.jar",
+        "https://edge.forgecdn.net/files/2518/031/bdlib-1.14.3.12-mc1.12.2.jar"
+      ],
+      "artifact": "bdlib-1.14.3.12-mc1.12.2.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "af43cc43c4f7775fbbaa50d63cf1f933911b768ca5e10378a106fdfc0dfe76ef",
+      "sha1": "96d4142448fe2fd1245caa4dcfde3cf73a00132d",
+      "size": 1962731,
+      "url": "https://edge.forgecdn.net/files/2518/031/bdlib-1.14.3.12-mc1.12.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/bdlib-1.14.3.12-mc1.12.2.jar"
+    },
+    {
+      "projectId": 231347,
+      "fileId": 2456231,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2456/231/mobends-0.24_for_MC-1.12.jar"
+      ],
+      "artifact": "mobends-0.24_for_MC-1.12.jar",
+      "sha256": "a4343879ee8dbb9d65b8d79e371c69c4f749eeb5b855546eb54df629e82eab85",
+      "sha1": "e8fe489798543bdecc4506b8b3a739ef3179a613",
+      "size": 669015,
+      "url": "https://mediafilez.forgecdn.net/files/2456/231/mobends-0.24_for_MC-1.12.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/mobends-0.24_for_MC-1.12.jar"
+    },
+    {
+      "projectId": 415657,
+      "fileId": 3093546,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/3093/546/zenloot-0.1-1.jar"
+      ],
+      "artifact": "zenloot-0.1-1.jar",
+      "sha256": "1559220b51970b7f687728b74c1c7a07cfc1c3e26816ab35b0c911ac93c4490c",
+      "sha1": "a7d3e9210eaad6000b0dc86406af426ad4640e31",
+      "size": 33863,
+      "url": "https://mediafilez.forgecdn.net/files/3093/546/zenloot-0.1-1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/zenloot-0.1-1.jar"
+    },
+    {
+      "projectId": 246996,
+      "fileId": 2722575,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2722/575/base-1.12.2-3.13.0.jar"
+      ],
+      "artifact": "base-1.12.2-3.13.0.jar",
+      "sha256": "8505982eb3204997dc965d1a6e22a6d0bc5df04de45d8ea6eb2b154426a9f591",
+      "sha1": "87780cd8fc5b276c09ba92f3614e7b4a704a006e",
+      "size": 685028,
+      "url": "https://mediafilez.forgecdn.net/files/2722/575/base-1.12.2-3.13.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/base-1.12.2-3.13.0.jar"
+    },
+    {
+      "projectId": 270457,
+      "fileId": 2918455,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2918/455/ImprovedBackpacks-1.12.2-1.5.0.0.jar"
+      ],
+      "artifact": "ImprovedBackpacks-1.12.2-1.5.0.0.jar",
+      "sha256": "64efbc5c71773ef97da3b549c2852a9224f6691530907f5582cf961a244804a6",
+      "sha1": "021f50ce1abe2d504f8111df75cf845e03efd3fa",
+      "size": 167649,
+      "url": "https://mediafilez.forgecdn.net/files/2918/455/ImprovedBackpacks-1.12.2-1.5.0.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ImprovedBackpacks-1.12.2-1.5.0.0.jar"
+    },
+    {
+      "projectId": 245889,
+      "fileId": 2686355,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2686/355/mpbasic-1.12.2-1.4.11.jar"
+      ],
+      "artifact": "mpbasic-1.12.2-1.4.11.jar",
+      "sha256": "a3d0c5761aaccbf947771adadf412e3dc5ff8a96c46b8b855d0290a347c0238f",
+      "sha1": "d033d21e0806203e5daa173259691f0f1c8e6255",
+      "size": 108871,
+      "url": "https://mediafilez.forgecdn.net/files/2686/355/mpbasic-1.12.2-1.4.11.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/mpbasic-1.12.2-1.4.11.jar"
+    },
+    {
+      "projectId": 247007,
+      "fileId": 2716477,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2716/477/CommonCapabilities-1.12.2-2.4.1.jar"
+      ],
+      "artifact": "CommonCapabilities-1.12.2-2.4.1.jar",
+      "sha256": "b73ec60fae135da01b00ef8040c6f94cad495ec84a1ac9db64f9ea079b5c3733",
+      "sha1": "752b5adbf240203562ad551bbd162c427613b1d1",
+      "size": 357492,
+      "url": "https://mediafilez.forgecdn.net/files/2716/477/CommonCapabilities-1.12.2-2.4.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/CommonCapabilities-1.12.2-2.4.1.jar"
+    },
+    {
+      "projectId": 270466,
+      "fileId": 2705433,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2705/433/HorsePower-1.12.2-2.6.4.74.jar"
+      ],
+      "artifact": "HorsePower-1.12.2-2.6.4.74.jar",
+      "sha256": "6682f71b0a8b548f4016eeba1823b591fa5b19a5a544c3654574355aac556947",
+      "sha1": "03b2f622eef1f47d01aa6237f9e7050347dee28b",
+      "size": 414153,
+      "url": "https://mediafilez.forgecdn.net/files/2705/433/HorsePower-1.12.2-2.6.4.74.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/HorsePower-1.12.2-2.6.4.74.jar"
+    },
+    {
+      "projectId": 250363,
+      "fileId": 2730480,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2730/480/AutoRegLib-1.3-31.jar"
+      ],
+      "artifact": "AutoRegLib-1.3-31.jar",
+      "sha256": "cf0a7d8026cc8eeb8746c7b69a7cb7c77eafae3a47fd6e4bc52815310df8cbe0",
+      "sha1": "0f7c4f68bb3ce575bac9d02a02a2d8961c6fa692",
+      "size": 106200,
+      "url": "https://mediafilez.forgecdn.net/files/2730/480/AutoRegLib-1.3-31.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/AutoRegLib-1.3-31.jar"
+    },
+    {
+      "projectId": 239197,
+      "fileId": 2958236,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2958/236/CraftTweaker2-1.12-4.1.20.574.jar"
+      ],
+      "artifact": "CraftTweaker2-1.12-4.1.20.574.jar",
+      "sha256": "c832d6e31a7e4f99f8236469f45dcbcda531ed533312745cd2025c2b7f3781e1",
+      "sha1": "1c6969ec2a7497b40051b6dab8a958c90f2f2476",
+      "size": 1431822,
+      "url": "https://mediafilez.forgecdn.net/files/2958/236/CraftTweaker2-1.12-4.1.20.574.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/CraftTweaker2-1.12-4.1.20.574.jar"
+    },
+    {
+      "projectId": 228027,
+      "fileId": 2574880,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2574/880/BiblioCraft%5Bv2.4.5%5D%5BMC1.12.2%5D.jar"
+      ],
+      "artifact": "BiblioCraft[v2.4.5][MC1.12.2].jar",
+      "sha256": "b3aab967cf9a2fcaf1330b5a5997f8d31e7a73884eac7451f1f31b2fa1394add",
+      "sha1": "74d9f70c5fead2c17054953fae26af8d9fb7fd84",
+      "size": 5122856,
+      "url": "https://mediafilez.forgecdn.net/files/2574/880/BiblioCraft%5Bv2.4.5%5D%5BMC1.12.2%5D.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BiblioCraft[v2.4.5][MC1.12.2].jar"
+    },
+    {
+      "projectId": 286116,
+      "fileId": 2647978,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2647/978/GalacticraftTweaker-1.12.2-1.0.3.jar"
+      ],
+      "artifact": "GalacticraftTweaker-1.12.2-1.0.3.jar",
+      "sha256": "21608e790f3c9e625531da42264a2dae763b5868c2234fba42b8155056fe7f06",
+      "sha1": "fd5cc679a2fb81b617e3baf17ef00b5bcc9f18af",
+      "size": 18481,
+      "url": "https://mediafilez.forgecdn.net/files/2647/978/GalacticraftTweaker-1.12.2-1.0.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/GalacticraftTweaker-1.12.2-1.0.3.jar"
+    },
+    {
+      "projectId": 268250,
+      "fileId": 2544919,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2544/919/immersivepetroleum-1.12.2-1.1.9.jar"
+      ],
+      "artifact": "immersivepetroleum-1.12.2-1.1.9.jar",
+      "sha256": "6e6b7bcd22966ef6362eec013ef915521c22232f847c3153b57189b5a4011823",
+      "sha1": "cb9365f335ee7f50262eca1dfb703dab64ab9d10",
+      "size": 906018,
+      "url": "https://mediafilez.forgecdn.net/files/2544/919/immersivepetroleum-1.12.2-1.1.9.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/immersivepetroleum-1.12.2-1.1.9.jar"
+    },
+    {
+      "projectId": 269377,
+      "fileId": 2456802,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2456/802/Wopper-1.12-r5.jar"
+      ],
+      "artifact": "Wopper-1.12-r5.jar",
+      "sha256": "d1dddb39acb8893911628480d9b19857401c5d7a57a888f779eeb4482aa76c83",
+      "sha1": "e41c01a84e508dea95ebe1e62044095e2532ce50",
+      "size": 17054,
+      "url": "https://mediafilez.forgecdn.net/files/2456/802/Wopper-1.12-r5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Wopper-1.12-r5.jar"
+    },
+    {
+      "projectId": 299540,
+      "fileId": 2706111,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2706/111/FastFurnace-1.12.2-1.3.1.jar"
+      ],
+      "artifact": "FastFurnace-1.12.2-1.3.1.jar",
+      "sha256": "61362af8dd5de20a6f5b7ab9c2f95cfaec911a0ab428c7b469e8d2a7ff89c89d",
+      "sha1": "3091f2d5cb91c384b39729102e30abbda909b880",
+      "size": 10035,
+      "url": "https://mediafilez.forgecdn.net/files/2706/111/FastFurnace-1.12.2-1.3.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/FastFurnace-1.12.2-1.3.1.jar"
+    },
+    {
+      "projectId": 280554,
+      "fileId": 2767378,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2767/378/RecipeStages-1.1.3.jar"
+      ],
+      "artifact": "RecipeStages-1.1.3.jar",
+      "sha256": "55b302be828aaf3b545446207f2eee27218ff78ff0d0444c20792ecfb5e8a33a",
+      "sha1": "6d95c8036d4eea0fae8fd90b458270732294cd92",
+      "size": 43662,
+      "url": "https://mediafilez.forgecdn.net/files/2767/378/RecipeStages-1.1.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/RecipeStages-1.1.3.jar"
+    },
+    {
+      "projectId": 291727,
+      "fileId": 2549332,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2549/332/JustEnoughPetroleum-0.1.jar"
+      ],
+      "artifact": "JustEnoughPetroleum-0.1.jar",
+      "sha256": "26f60a6549f5167aa10e03a25f3180a310d4cb7f1521d6ee04fcb0db2fefd5e3",
+      "sha1": "5c53e70b61328eaee4631529b0a46efc911e4c06",
+      "size": 18945,
+      "url": "https://mediafilez.forgecdn.net/files/2549/332/JustEnoughPetroleum-0.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/JustEnoughPetroleum-0.1.jar"
+    },
+    {
+      "projectId": 250398,
+      "fileId": 2926366,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2926/366/Controlling-3.0.9.jar"
+      ],
+      "artifact": "Controlling-3.0.9.jar",
+      "sha256": "c08ad2aa480f3fec84322aa4b9db2ba2eeb24b8d8ee6ee31ac9d210edeffb0ec",
+      "sha1": "0caea6e4b377d189215c88cce708fc1f6d45f4a7",
+      "size": 29057,
+      "url": "https://mediafilez.forgecdn.net/files/2926/366/Controlling-3.0.9.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Controlling-3.0.9.jar"
+    },
+    {
+      "projectId": 290612,
+      "fileId": 2801696,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2801/696/PrimalTech-0.3.5.jar"
+      ],
+      "artifact": "PrimalTech-0.3.5.jar",
+      "sha256": "afd8c56522ad6286c02601d6311335740294926bbf09dd8bfa525869bc3f5353",
+      "sha1": "5a94c311a29b41b694b6d996649c65caec0a49ab",
+      "size": 681345,
+      "url": "https://mediafilez.forgecdn.net/files/2801/696/PrimalTech-0.3.5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/PrimalTech-0.3.5.jar"
+    },
+    {
+      "projectId": 224712,
+      "fileId": 2916368,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2916/368/Wawla-1.12.2-2.6.275.jar"
+      ],
+      "artifact": "Wawla-1.12.2-2.6.275.jar",
+      "sha256": "272a3229f669bfe1bc1af748bf8f5fe312c2efa11f6798584f1029b899d95453",
+      "sha1": "783157c607149875de1e045d72382d370256257c",
+      "size": 94115,
+      "url": "https://mediafilez.forgecdn.net/files/2916/368/Wawla-1.12.2-2.6.275.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Wawla-1.12.2-2.6.275.jar"
+    },
+    {
+      "projectId": 283913,
+      "fileId": 2512376,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2512/376/TallGates-1.12.2-1.0.0.1.jar"
+      ],
+      "artifact": "TallGates-1.12.2-1.0.0.1.jar",
+      "sha256": "6e20dbf7ae41325e51f451cd516d4a2b92c619c97e481592b103dbcc91ceafe8",
+      "sha1": "31a6dec3ad2e6190e5719c595ee7bf23163d1b99",
+      "size": 69808,
+      "url": "https://mediafilez.forgecdn.net/files/2512/376/TallGates-1.12.2-1.0.0.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/TallGates-1.12.2-1.0.0.1.jar"
+    },
+    {
+      "projectId": 262692,
+      "fileId": 2722622,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2722/622/yoyos_1.12.2-1.3.0.21.jar"
+      ],
+      "artifact": "yoyos_1.12.2-1.3.0.21.jar",
+      "sha256": "09bff0f89ebf0cd38b7446a155904559b0452514eb0beb6a0955b5e7a7dbf05e",
+      "sha1": "fa07c0990db1ab668b6dc6660d2e7e2e0f9eb37a",
+      "size": 329799,
+      "url": "https://mediafilez.forgecdn.net/files/2722/622/yoyos_1.12.2-1.3.0.21.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/yoyos_1.12.2-1.3.0.21.jar"
+    },
+    {
+      "projectId": 269398,
+      "fileId": 2643976,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2643/976/DimensionStages-1.12.2-2.0.23.jar"
+      ],
+      "artifact": "DimensionStages-1.12.2-2.0.23.jar",
+      "sha256": "afbbce57c1cff94ae60c976383de5af828aa00005070e9909303e15040f07bb9",
+      "sha1": "ddb44d2c4fd6a6994ce50537a723cc18c8ceed16",
+      "size": 18251,
+      "url": "https://mediafilez.forgecdn.net/files/2643/976/DimensionStages-1.12.2-2.0.23.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/DimensionStages-1.12.2-2.0.23.jar"
+    },
+    {
+      "projectId": 225839,
+      "fileId": 2469364,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2469/364/QuickLeafDecay-MC1.12.1-1.2.4.jar"
+      ],
+      "artifact": "QuickLeafDecay-MC1.12.1-1.2.4.jar",
+      "sha256": "5aaa4fb7e0056d9fc7624b5bc9f39b9d00ad0eef39ab7f2617540e9184e9f690",
+      "sha1": "0e4a3a3d477a12d2c1baee3447fde47bbe36a9e5",
+      "size": 7074,
+      "url": "https://mediafilez.forgecdn.net/files/2469/364/QuickLeafDecay-MC1.12.1-1.2.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/QuickLeafDecay-MC1.12.1-1.2.4.jar"
+    },
+    {
+      "projectId": 250419,
+      "fileId": 2689502,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2689/502/EnchantmentDescriptions-1.12.2-1.1.15.jar"
+      ],
+      "artifact": "EnchantmentDescriptions-1.12.2-1.1.15.jar",
+      "sha256": "c965169400f34ff869f2af9cc645e86d9e0e3d3c46a8edadd63db4a8f9c43b91",
+      "sha1": "51ba50251c2821c8fe22a6918bab8f87cb7a75c0",
+      "size": 17073,
+      "url": "https://mediafilez.forgecdn.net/files/2689/502/EnchantmentDescriptions-1.12.2-1.1.15.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/EnchantmentDescriptions-1.12.2-1.1.15.jar"
+    },
+    {
+      "projectId": 286170,
+      "fileId": 2536317,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2536/317/SimplyArrows-1.12.2-1.0.4.jar"
+      ],
+      "artifact": "SimplyArrows-1.12.2-1.0.4.jar",
+      "sha256": "5206bf3d7340850514fff48719836fd1d4c20bf2b1cadab179ffe12b9648aafa",
+      "sha1": "bf25c9f7a09ba9e54077a9f9e6568d57f9406ab6",
+      "size": 34737,
+      "url": "https://mediafilez.forgecdn.net/files/2536/317/SimplyArrows-1.12.2-1.0.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/SimplyArrows-1.12.2-1.0.4.jar"
+    },
+    {
+      "projectId": 223622,
+      "fileId": 2516219,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2516/219/generators-0.9.20.12-mc1.12.2.jar"
+      ],
+      "artifact": "generators-0.9.20.12-mc1.12.2.jar",
+      "sha256": "b691c1413be669b83e83c4ab9c3d0248e9a1a9214155b7b5d065bfe3bfc05d36",
+      "sha1": "f4914a0231adeca5d1cab5569a5803ed20e5806a",
+      "size": 1674251,
+      "url": "https://mediafilez.forgecdn.net/files/2516/219/generators-0.9.20.12-mc1.12.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/generators-0.9.20.12-mc1.12.2.jar"
+    },
+    {
+      "projectId": 229208,
+      "fileId": 2923625,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2923/625/CD4017BE_lib-1.12.2-6.4.18.jar"
+      ],
+      "artifact": "CD4017BE_lib-1.12.2-6.4.18.jar",
+      "sha256": "868c3a0de38c200a8a1f395085317efec4a6d946dc318bd27507c3771067c218",
+      "sha1": "fd92c50066890ede2e75c168b38c5b6a0e8daf7c",
+      "size": 636153,
+      "url": "https://mediafilez.forgecdn.net/files/2923/625/CD4017BE_lib-1.12.2-6.4.18.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/CD4017BE_lib-1.12.2-6.4.18.jar"
+    },
+    {
+      "projectId": 278359,
+      "fileId": 2644034,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2644/034/MobStages-1.12.2-2.0.13.jar",
+        "https://edge.forgecdn.net/files/2644/034/MobStages-1.12.2-2.0.13.jar"
+      ],
+      "artifact": "MobStages-1.12.2-2.0.13.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "25983aec2442255ea1562d4fa32b65d5084de2b30dcf557f0991e03606d7b35b",
+      "sha1": "44751d75268438accb1581fffccad6e1c8ab6a2f",
+      "size": 24847,
+      "url": "https://edge.forgecdn.net/files/2644/034/MobStages-1.12.2-2.0.13.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MobStages-1.12.2-2.0.13.jar"
+    },
+    {
+      "projectId": 268326,
+      "fileId": 2705059,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2705/059/Better%20With%20Addons-0.50-hotfix.jar",
+        "https://edge.forgecdn.net/files/2705/059/Better%20With%20Addons-0.50-hotfix.jar"
+      ],
+      "artifact": "Better With Addons-0.50-hotfix.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "7ff41aa102c418da2fefa1433b0fdea6b65e13795df36ec690aeca72367a2867",
+      "sha1": "934bfe5f1b9f5eacaf457f023470dff62e6ac35c",
+      "size": 2028481,
+      "url": "https://edge.forgecdn.net/files/2705/059/Better%20With%20Addons-0.50-hotfix.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Better With Addons-0.50-hotfix.jar"
+    },
+    {
+      "projectId": 239286,
+      "fileId": 2983081,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2983/081/Cyclic-1.12.2-1.20.3.jar",
+        "https://edge.forgecdn.net/files/2983/081/Cyclic-1.12.2-1.20.3.jar"
+      ],
+      "artifact": "Cyclic-1.12.2-1.20.3.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "408684774a20d9396ecd0beb5ec38dba69373b73fd5a92b64d1c9605932563f6",
+      "sha1": "c44ec9531bffff6cda95c3927813411e9fb3076d",
+      "size": 3992727,
+      "url": "https://edge.forgecdn.net/files/2983/081/Cyclic-1.12.2-1.20.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Cyclic-1.12.2-1.20.3.jar"
+    },
+    {
+      "projectId": 269452,
+      "fileId": 2557675,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2557/675/WailaStages-1.12.2-2.0.23.jar"
+      ],
+      "artifact": "WailaStages-1.12.2-2.0.23.jar",
+      "sha256": "4e0654ce661e5b87ec8549e258eef1264d2f948639fc41a31cee4af391ccaf50",
+      "sha1": "1437d9dbfad268c1c21f05e0355e0132ed43bef8",
+      "size": 18422,
+      "url": "https://mediafilez.forgecdn.net/files/2557/675/WailaStages-1.12.2-2.0.23.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/WailaStages-1.12.2-2.0.23.jar"
+    },
+    {
+      "projectId": 237065,
+      "fileId": 2652853,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2652/853/ContentTweaker-1.12.2-4.9.1.jar"
+      ],
+      "artifact": "ContentTweaker-1.12.2-4.9.1.jar",
+      "sha256": "f8b1919ac7f4e191d2c81ccba28d0a01fc5523b8aa905e0df7230e0ff8293e5a",
+      "sha1": "a6da81d9730274d468ee14a09ef33c7fdab6c160",
+      "size": 274895,
+      "url": "https://mediafilez.forgecdn.net/files/2652/853/ContentTweaker-1.12.2-4.9.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ContentTweaker-1.12.2-4.9.1.jar"
+    },
+    {
+      "projectId": 273930,
+      "fileId": 2643830,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2643/830/MundaneRedstone-1.1.4.jar"
+      ],
+      "artifact": "MundaneRedstone-1.1.4.jar",
+      "sha256": "95ad08ec4242fdad79fa6d15eb0048bf0b367c3671c54e42b06054492ab5c523",
+      "sha1": "f7e85e4c7ff25cf36b220333c65d638d4ea681c6",
+      "size": 19571,
+      "url": "https://mediafilez.forgecdn.net/files/2643/830/MundaneRedstone-1.1.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MundaneRedstone-1.1.4.jar"
+    },
+    {
+      "projectId": 231484,
+      "fileId": 2862651,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2862/651/CookingForBlockheads_1.12.2-6.5.0.jar"
+      ],
+      "artifact": "CookingForBlockheads_1.12.2-6.5.0.jar",
+      "sha256": "3a8ed073a9d84213d6a1f2947bf9e8a4e70730fa123e3ca53769fdc99ef4db9b",
+      "sha1": "8e7b73b39c0bdae84a4be445027747c9bae935c4",
+      "size": 595301,
+      "url": "https://mediafilez.forgecdn.net/files/2862/651/CookingForBlockheads_1.12.2-6.5.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/CookingForBlockheads_1.12.2-6.5.0.jar"
+    },
+    {
+      "projectId": 246010,
+      "fileId": 2694397,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2694/397/simplegenerators-1.12.2-2.0.20.2.jar"
+      ],
+      "artifact": "simplegenerators-1.12.2-2.0.20.2.jar",
+      "sha256": "80509f917997acd9cc5f9d1ef9f15d7e48615105429323ce22111b2437497280",
+      "sha1": "9a1511f1648d72fca62a4bb854eb9aa682ee72d7",
+      "size": 263076,
+      "url": "https://mediafilez.forgecdn.net/files/2694/397/simplegenerators-1.12.2-2.0.20.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/simplegenerators-1.12.2-2.0.20.2.jar"
+    },
+    {
+      "projectId": 224791,
+      "fileId": 2713291,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2713/291/BloodMagic-1.12.2-2.4.1-103.jar"
+      ],
+      "artifact": "BloodMagic-1.12.2-2.4.1-103.jar",
+      "sha256": "6ebc99e3f1448ce415d8afc4ba19caadded61528e30572cb44954e6485f7b4b9",
+      "sha1": "3aa794ba70e89254467645cd55e9833eed8b1782",
+      "size": 7202892,
+      "url": "https://mediafilez.forgecdn.net/files/2713/291/BloodMagic-1.12.2-2.4.1-103.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BloodMagic-1.12.2-2.4.1-103.jar"
+    },
+    {
+      "projectId": 234851,
+      "fileId": 2959100,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2959/100/AbyssalCraft%20Integration-1.12.2-1.11.2.jar"
+      ],
+      "artifact": "AbyssalCraft Integration-1.12.2-1.11.2.jar",
+      "sha256": "b5e527a2dfa259f85671c303bf5a607d0f3244bcdb0fa1db1307dd4715fe484b",
+      "sha1": "7b3058b7c90bcc062c71022a9ab29219089640d3",
+      "size": 503902,
+      "url": "https://mediafilez.forgecdn.net/files/2959/100/AbyssalCraft%20Integration-1.12.2-1.11.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/AbyssalCraft Integration-1.12.2-1.11.2.jar"
+    },
+    {
+      "projectId": 290702,
+      "fileId": 2555077,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2555/077/DeathCompass-0.0.3.jar",
+        "https://edge.forgecdn.net/files/2555/077/DeathCompass-0.0.3.jar"
+      ],
+      "artifact": "DeathCompass-0.0.3.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "5dad0d5602105978e163cf53de63d03df1ffa46842eef40ea9744c0084e89d8f",
+      "sha1": "ea1bec31d49e00b6ddbfa0a3af67839f0d35725f",
+      "size": 152017,
+      "url": "https://edge.forgecdn.net/files/2555/077/DeathCompass-0.0.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/DeathCompass-0.0.3.jar"
+    },
+    {
+      "projectId": 290703,
+      "fileId": 2544227,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2544/227/FatCat-0.0.5.jar"
+      ],
+      "artifact": "FatCat-0.0.5.jar",
+      "sha256": "e973d64a7309eaedfdd5988c2c6584608a078de8a82886efd1e5a9e917136e72",
+      "sha1": "f21649bb39d2744c8cc282a49d3a8ef1b65b25a5",
+      "size": 41190,
+      "url": "https://mediafilez.forgecdn.net/files/2544/227/FatCat-0.0.5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/FatCat-0.0.5.jar"
+    },
+    {
+      "projectId": 296289,
+      "fileId": 2919737,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2919/737/JustEnoughIDs-1.0.3-55.jar"
+      ],
+      "artifact": "JustEnoughIDs-1.0.3-55.jar",
+      "sha256": "04ab3865d33987bc390008d6668896a635dc16b252c85918b4bda85d67cbf452",
+      "sha1": "ed63fd63fada30b9ab4655b4f407f937ce950c2f",
+      "size": 982320,
+      "url": "https://mediafilez.forgecdn.net/files/2919/737/JustEnoughIDs-1.0.3-55.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/JustEnoughIDs-1.0.3-55.jar"
+    },
+    {
+      "projectId": 227049,
+      "fileId": 2564573,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2564/573/IronBackpacks-1.12.2-3.0.8-12.jar"
+      ],
+      "artifact": "IronBackpacks-1.12.2-3.0.8-12.jar",
+      "sha256": "5c9e680279ca009ab3ea114c22cd869cadb41cc0bae834b7857fee709c79075e",
+      "sha1": "50758105dabe8f0d4c6e311e14ad2c1f5673d2cd",
+      "size": 465363,
+      "url": "https://mediafilez.forgecdn.net/files/2564/573/IronBackpacks-1.12.2-3.0.8-12.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/IronBackpacks-1.12.2-3.0.8-12.jar"
+    },
+    {
+      "projectId": 238222,
+      "fileId": 2728940,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2728/940/jei_1.12.2-4.15.0.283.jar"
+      ],
+      "artifact": "jei_1.12.2-4.15.0.283.jar",
+      "sha256": "8bc529749b93de5c30cfd434cfd2db3687e53424cd3b73e494246daf7cdbd5d4",
+      "sha1": "e0ed64e12612bf50319dd658403f3a781b7fa686",
+      "size": 650304,
+      "url": "https://mediafilez.forgecdn.net/files/2728/940/jei_1.12.2-4.15.0.283.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/jei_1.12.2-4.15.0.283.jar"
+    },
+    {
+      "projectId": 275086,
+      "fileId": 2581578,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2581/578/prospectors-1.0.2.jar"
+      ],
+      "artifact": "prospectors-1.0.2.jar",
+      "sha256": "8bda5b5c32d792ac93eb086e37f3de6495c8768d4cffa947067c333b8608a8ab",
+      "sha1": "57c1c05c73f6e5a159ed7f3a218638ed605c505b",
+      "size": 20366,
+      "url": "https://mediafilez.forgecdn.net/files/2581/578/prospectors-1.0.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/prospectors-1.0.2.jar"
+    },
+    {
+      "projectId": 268387,
+      "fileId": 2777071,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2777/071/ExtendedCrafting-1.12.2-1.5.6.jar",
+        "https://edge.forgecdn.net/files/2777/071/ExtendedCrafting-1.12.2-1.5.6.jar"
+      ],
+      "artifact": "ExtendedCrafting-1.12.2-1.5.6.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "b3caad740f08c8cba8c9761213085e5899d89882fe1ff8b3cdb23d4307206a3f",
+      "sha1": "fa76962c44c0f445c6f0022ff539dc57d67db27d",
+      "size": 446452,
+      "url": "https://edge.forgecdn.net/files/2777/071/ExtendedCrafting-1.12.2-1.5.6.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ExtendedCrafting-1.12.2-1.5.6.jar"
+    },
+    {
+      "projectId": 271740,
+      "fileId": 2707353,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2707/353/Toast%20Control-1.12.2-1.8.1.jar"
+      ],
+      "artifact": "Toast Control-1.12.2-1.8.1.jar",
+      "sha256": "def0569f7098beeda519118ab1c3c53d8d5e411330ea6f669758681e2a7b23b6",
+      "sha1": "7365b5415d5f1a39997fe142ccc42ae732e31c01",
+      "size": 21668,
+      "url": "https://mediafilez.forgecdn.net/files/2707/353/Toast%20Control-1.12.2-1.8.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Toast Control-1.12.2-1.8.1.jar"
+    },
+    {
+      "projectId": 290734,
+      "fileId": 2635317,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2635/317/Prestige-1.12.2-1.1.30.jar"
+      ],
+      "artifact": "Prestige-1.12.2-1.1.30.jar",
+      "sha256": "d6c15f632567427c81dcb36a64c029dc1f3413677b14fb05bc12b9fdbaa83f4c",
+      "sha1": "636d4dde7de48e3028badd054755e6a32d3e1d30",
+      "size": 976740,
+      "url": "https://mediafilez.forgecdn.net/files/2635/317/Prestige-1.12.2-1.1.30.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Prestige-1.12.2-1.1.30.jar"
+    },
+    {
+      "projectId": 294088,
+      "fileId": 3049834,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/3049/834/SevTweaks-0.4.0-1.jar"
+      ],
+      "artifact": "SevTweaks-0.4.0-1.jar",
+      "sha256": "69eb6692db9990494f1724c87d1559bcde33bb3c796f98a3686d9cecff6d9d7d",
+      "sha1": "e0588487b71d425055c68c0e713732f8f2afaf01",
+      "size": 53257,
+      "url": "https://mediafilez.forgecdn.net/files/3049/834/SevTweaks-0.4.0-1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/SevTweaks-0.4.0-1.jar"
+    },
+    {
+      "projectId": 244940,
+      "fileId": 2685162,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2685/162/MPUtils-1.12.2-1.5.7.jar"
+      ],
+      "artifact": "MPUtils-1.12.2-1.5.7.jar",
+      "sha256": "d1436ccef0a0868cb3dcc32eaf014492a31e3dcd9b0a138f195294d9e0d41597",
+      "sha1": "5c034b16d420af6d8b935f3416608f1cd1378ea9",
+      "size": 250663,
+      "url": "https://mediafilez.forgecdn.net/files/2685/162/MPUtils-1.12.2-1.5.7.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MPUtils-1.12.2-1.5.7.jar"
+    },
+    {
+      "projectId": 227083,
+      "fileId": 2518667,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2518/667/Baubles-1.12-1.5.2.jar"
+      ],
+      "artifact": "Baubles-1.12-1.5.2.jar",
+      "sha256": "b32010b2f2778aa1188585e7ead91ad46d4cb2c715f9c778a61848ba7fe51f8d",
+      "sha1": "cb13fcfb18a9cb0cbd825fd5fe8d813c77368549",
+      "size": 108450,
+      "url": "https://mediafilez.forgecdn.net/files/2518/667/Baubles-1.12-1.5.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Baubles-1.12-1.5.2.jar"
+    },
+    {
+      "projectId": 223735,
+      "fileId": 2676866,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2676/866/Aroma1997Core-1.12.2-2.0.0.2.jar"
+      ],
+      "artifact": "Aroma1997Core-1.12.2-2.0.0.2.jar",
+      "sha256": "75cc65a0b352d8d44e30fd20c6a7811c9bc42ca2ddca75f79a955675960b58a8",
+      "sha1": "2bfed460f229174b4eb1dd823fbd73b0b940d2ab",
+      "size": 398634,
+      "url": "https://mediafilez.forgecdn.net/files/2676/866/Aroma1997Core-1.12.2-2.0.0.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Aroma1997Core-1.12.2-2.0.0.2.jar"
+    },
+    {
+      "projectId": 256141,
+      "fileId": 2966295,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2966/295/rustic-1.1.4.jar"
+      ],
+      "artifact": "rustic-1.1.4.jar",
+      "sha256": "bf9f0ad0d9a12e7885ae165792e8aff9df590ca25d280adc978eeff8cdbb259f",
+      "sha1": "ad5d84fc26164c4a9329c5435c9617d2035b4420",
+      "size": 1361675,
+      "url": "https://mediafilez.forgecdn.net/files/2966/295/rustic-1.1.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/rustic-1.1.4.jar"
+    },
+    {
+      "projectId": 74072,
+      "fileId": 2693496,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2693/496/TConstruct-1.12.2-2.12.0.135.jar"
+      ],
+      "artifact": "TConstruct-1.12.2-2.12.0.135.jar",
+      "sha256": "3412caef8eb999eb80a91606e97d4ebd06650f0b88ec25d8d0e8c6e3058a7008",
+      "sha1": "db19a4278ae8b60503e9f410491ca42a71e8006c",
+      "size": 3997455,
+      "url": "https://mediafilez.forgecdn.net/files/2693/496/TConstruct-1.12.2-2.12.0.135.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/TConstruct-1.12.2-2.12.0.135.jar"
+    },
+    {
+      "projectId": 275137,
+      "fileId": 2542889,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2542/889/PrimalChests-1.0.3.jar"
+      ],
+      "artifact": "PrimalChests-1.0.3.jar",
+      "sha256": "6aacd5b6cc4504cb0a853b96a3221a74d95ad8f7b24625bda55588bfce2edfe0",
+      "sha1": "a8c6c71f214824a30f8683b4051fd8779474f17d",
+      "size": 55775,
+      "url": "https://mediafilez.forgecdn.net/files/2542/889/PrimalChests-1.0.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/PrimalChests-1.0.3.jar"
+    },
+    {
+      "projectId": 260621,
+      "fileId": 2441265,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2441/265/VillagerTrades-1.12-0.6.4.jar"
+      ],
+      "artifact": "VillagerTrades-1.12-0.6.4.jar",
+      "sha256": "de2150565d370804aa85cd3b6e02c5bf8a3c8cabeca9961effe2483617a1990b",
+      "sha1": "cfee49986232150b46c07a14e2f5bda11627e7c2",
+      "size": 78202,
+      "url": "https://mediafilez.forgecdn.net/files/2441/265/VillagerTrades-1.12-0.6.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/VillagerTrades-1.12-0.6.4.jar"
+    },
+    {
+      "projectId": 278494,
+      "fileId": 2845668,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2845/668/foamfix-0.10.10-1.12.2.jar"
+      ],
+      "artifact": "foamfix-0.10.10-1.12.2.jar",
+      "sha256": "9429d2680f38bc1e3e2c87c98e95d4896241f5ee0f2e627d15610c68c473a2e8",
+      "sha1": "bcb36ec39c39d6b97252d68f379ddeb20de539ef",
+      "size": 201683,
+      "url": "https://mediafilez.forgecdn.net/files/2845/668/foamfix-0.10.10-1.12.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/foamfix-0.10.10-1.12.2.jar"
+    },
+    {
+      "projectId": 281849,
+      "fileId": 2718090,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2718/090/pneumaticcraft-repressurized-1.12.2-0.11.1-361.jar",
+        "https://edge.forgecdn.net/files/2718/090/pneumaticcraft-repressurized-1.12.2-0.11.1-361.jar"
+      ],
+      "artifact": "pneumaticcraft-repressurized-1.12.2-0.11.1-361.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "e0275b217daca3e24d37d0f01492eea22bc2975a9a0c9400d0cb19f71a5d193f",
+      "sha1": "4bb95be5484030e736f246608c1a2e8e588eb103",
+      "size": 9404312,
+      "url": "https://edge.forgecdn.net/files/2718/090/pneumaticcraft-repressurized-1.12.2-0.11.1-361.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/pneumaticcraft-repressurized-1.12.2-0.11.1-361.jar"
+    },
+    {
+      "projectId": 275156,
+      "fileId": 2468500,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2468/500/roadrunner-1.0.1.jar"
+      ],
+      "artifact": "roadrunner-1.0.1.jar",
+      "sha256": "d67da1ef7ced177e9c62f05c9eff7b64add490c2494438a961416c50b2c9cfa3",
+      "sha1": "83c3fd831c764a184245030d38b02b6ceeee9865",
+      "size": 10346,
+      "url": "https://mediafilez.forgecdn.net/files/2468/500/roadrunner-1.0.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/roadrunner-1.0.1.jar"
+    },
+    {
+      "projectId": 255053,
+      "fileId": 2790210,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2790/210/BetterBedrock-1.12.2-5.1.11.jar"
+      ],
+      "artifact": "BetterBedrock-1.12.2-5.1.11.jar",
+      "sha256": "7bbd573b91c080c9092545dad66d11f38a4f36b15ddafa3908a6651602c6e6e9",
+      "sha1": "c1a1f7322a40b4c471b126e24c06f898ccd8b22a",
+      "size": 16467,
+      "url": "https://mediafilez.forgecdn.net/files/2790/210/BetterBedrock-1.12.2-5.1.11.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BetterBedrock-1.12.2-5.1.11.jar"
+    },
+    {
+      "projectId": 296384,
+      "fileId": 2974926,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2974/926/zenstages-0.5.0.jar"
+      ],
+      "artifact": "zenstages-0.5.0.jar",
+      "sha256": "022dfda254349d740bc26520a8e809cd4ae8855556d4366086b5f0d860305b08",
+      "sha1": "8309d6067a50d29c45cde4c6fd9d2316147b4b8c",
+      "size": 48338,
+      "url": "https://mediafilez.forgecdn.net/files/2974/926/zenstages-0.5.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/zenstages-0.5.0.jar"
+    },
+    {
+      "projectId": 223794,
+      "fileId": 2747063,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2747/063/appliedenergistics2-rv6-stable-7.jar",
+        "https://edge.forgecdn.net/files/2747/063/appliedenergistics2-rv6-stable-7.jar"
+      ],
+      "artifact": "appliedenergistics2-rv6-stable-7.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "e7f7fbf6caaf6206dbd958fb8f9185f874a405289e62ae3e97209b455a89fb1a",
+      "sha1": "e5c3c11eafc5daf73652a2dabe855e3759caa8b5",
+      "size": 4062630,
+      "url": "https://edge.forgecdn.net/files/2747/063/appliedenergistics2-rv6-stable-7.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/appliedenergistics2-rv6-stable-7.jar"
+    },
+    {
+      "projectId": 230497,
+      "fileId": 2450900,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2450/900/Chameleon-1.12-4.1.3.jar"
+      ],
+      "artifact": "Chameleon-1.12-4.1.3.jar",
+      "sha256": "238416f801acda67b90fba9e0e572dbd6e7631b7e64c3eb3d6226f45ae536c87",
+      "sha1": "5ed3dd5fd1ebded57bfe525b4ece11232bd14e5e",
+      "size": 96859,
+      "url": "https://mediafilez.forgecdn.net/files/2450/900/Chameleon-1.12-4.1.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Chameleon-1.12-4.1.3.jar"
+    },
+    {
+      "projectId": 74120,
+      "fileId": 2711439,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2711/439/natura-1.12.2-4.3.2.69.jar"
+      ],
+      "artifact": "natura-1.12.2-4.3.2.69.jar",
+      "sha256": "7663b57daf6ca0b36fbc8dd8ed06dc64447648237579b0c08910e15434ce36b2",
+      "sha1": "1485d9f3378eae092fb6ba690f1cb4484a1ce42c",
+      "size": 1142687,
+      "url": "https://mediafilez.forgecdn.net/files/2711/439/natura-1.12.2-4.3.2.69.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/natura-1.12.2-4.3.2.69.jar"
+    },
+    {
+      "projectId": 258426,
+      "fileId": 2661099,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2661/099/ForgeMultipart-1.12.2-2.6.1.81-universal.jar",
+        "https://edge.forgecdn.net/files/2661/099/ForgeMultipart-1.12.2-2.6.1.81-universal.jar"
+      ],
+      "artifact": "ForgeMultipart-1.12.2-2.6.1.81-universal.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "53cc0991a134ab0c4bb5bc167b0fe20207317ea1b15f7db1bc8b60e3384eaf01",
+      "sha1": "4fe28a1be2e3ae7b4b919ca5c0a3385b204c6b95",
+      "size": 1304914,
+      "url": "https://edge.forgecdn.net/files/2661/099/ForgeMultipart-1.12.2-2.6.1.81-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ForgeMultipart-1.12.2-2.6.1.81-universal.jar"
+    },
+    {
+      "projectId": 291936,
+      "fileId": 2682853,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2682/853/findme-1.12.2-1.1.0-8.jar"
+      ],
+      "artifact": "findme-1.12.2-1.1.0-8.jar",
+      "sha256": "ac70fb3c98f3194f1ff50cf5fba193f04cb10df693a43057cc93a44802058d4f",
+      "sha1": "7c283c18b3a6f2567c2f4cbf49b4bafafbb1dc82",
+      "size": 17601,
+      "url": "https://mediafilez.forgecdn.net/files/2682/853/findme-1.12.2-1.1.0-8.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/findme-1.12.2-1.1.0-8.jar"
+    },
+    {
+      "projectId": 245028,
+      "fileId": 2876841,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2876/841/tumbleweed-1.12-0.4.7.jar"
+      ],
+      "artifact": "tumbleweed-1.12-0.4.7.jar",
+      "sha256": "ff78f5ac00574912d60022b4a4208cc00f9d4fccfa444efcea38cf1cbb76bcce",
+      "sha1": "22d151086fde79a7d34b5bc191a4d90ef1b24890",
+      "size": 87400,
+      "url": "https://mediafilez.forgecdn.net/files/2876/841/tumbleweed-1.12-0.4.7.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/tumbleweed-1.12-0.4.7.jar"
+    },
+    {
+      "projectId": 252848,
+      "fileId": 2513221,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2513/221/NaturesCompass-1.12.2-1.5.1.jar"
+      ],
+      "artifact": "NaturesCompass-1.12.2-1.5.1.jar",
+      "sha256": "55b8c0f0a440bfe3570f44bbc8a2d269ec8167d186e6f9577ee978bda071577d",
+      "sha1": "018b06b15890d400072d0d5b1d3aa79124b303bf",
+      "size": 180209,
+      "url": "https://mediafilez.forgecdn.net/files/2513/221/NaturesCompass-1.12.2-1.5.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/NaturesCompass-1.12.2-1.5.1.jar"
+    },
+    {
+      "projectId": 250617,
+      "fileId": 2698094,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2698/094/Ceramics-1.12-1.3.7.jar",
+        "https://edge.forgecdn.net/files/2698/094/Ceramics-1.12-1.3.7.jar"
+      ],
+      "artifact": "Ceramics-1.12-1.3.7.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "a8fb9f36d8efd5f8d21ed8d84cb8dfacefc3d92f06f4f459b0a618b830c8ee2b",
+      "sha1": "c2a3324d41be23e6cdf6ce781ebdf5409c10eef3",
+      "size": 400538,
+      "url": "https://edge.forgecdn.net/files/2698/094/Ceramics-1.12-1.3.7.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Ceramics-1.12-1.3.7.jar"
+    },
+    {
+      "projectId": 402529,
+      "fileId": 3046640,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/3046/640/BringBedrockBack-0.0.4.jar"
+      ],
+      "artifact": "BringBedrockBack-0.0.4.jar",
+      "sha256": "a9465bef507748cbba258743454fae1b8188f3195f2e8d3c091db30fdc9f9919",
+      "sha1": "e018685ecadf22f7349f223036813866e90395e0",
+      "size": 9424,
+      "url": "https://mediafilez.forgecdn.net/files/3046/640/BringBedrockBack-0.0.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BringBedrockBack-0.0.4.jar"
+    },
+    {
+      "projectId": 268495,
+      "fileId": 2990638,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2990/638/SimpleStorageNetwork-1.12.2-1.7.11.jar"
+      ],
+      "artifact": "SimpleStorageNetwork-1.12.2-1.7.11.jar",
+      "sha256": "fb2f3af2c46163e6c8bf87c25112252281a30ce16da5c07b8200fc3c3215e214",
+      "sha1": "cfdd215fbea52c5b8427f99cdfdf3878742aec5d",
+      "size": 417217,
+      "url": "https://mediafilez.forgecdn.net/files/2990/638/SimpleStorageNetwork-1.12.2-1.7.11.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/SimpleStorageNetwork-1.12.2-1.7.11.jar"
+    },
+    {
+      "projectId": 223815,
+      "fileId": 2551739,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2551/739/IGW-Mod-1.12.2-1.4.4-15-universal.jar"
+      ],
+      "artifact": "IGW-Mod-1.12.2-1.4.4-15-universal.jar",
+      "sha256": "f57542e7cfb62ffbaeafc1f4ce8d1cf399eabd2169cce17e245f4c456923f2a2",
+      "sha1": "1d5ed04375f2e3c4fe7486279813191566c1528c",
+      "size": 285402,
+      "url": "https://mediafilez.forgecdn.net/files/2551/739/IGW-Mod-1.12.2-1.4.4-15-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/IGW-Mod-1.12.2-1.4.4-15-universal.jar"
+    },
+    {
+      "projectId": 284139,
+      "fileId": 2821069,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2821/069/multiblockstages-1.2.0.jar",
+        "https://edge.forgecdn.net/files/2821/069/multiblockstages-1.2.0.jar"
+      ],
+      "artifact": "multiblockstages-1.2.0.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "7126bb0daedaf3db43bdbeda9243b3a29e5ff0be6fcd024720465281dcb9c17b",
+      "sha1": "7e4a5a711ade35247dfd04632f2255da659ec807",
+      "size": 16601,
+      "url": "https://edge.forgecdn.net/files/2821/069/multiblockstages-1.2.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/multiblockstages-1.2.0.jar"
+    },
+    {
+      "projectId": 232758,
+      "fileId": 2714091,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2714/091/CyclopsCore-1.12.2-1.3.0.jar",
+        "https://edge.forgecdn.net/files/2714/091/CyclopsCore-1.12.2-1.3.0.jar"
+      ],
+      "artifact": "CyclopsCore-1.12.2-1.3.0.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "64aed6eba4a22cb511648c05d6772da0e64cb5d6258dffe571eeebbb212f5a9e",
+      "sha1": "101d77fc899cb1c63099aaa2c4b4afb18132dea1",
+      "size": 1037940,
+      "url": "https://edge.forgecdn.net/files/2714/091/CyclopsCore-1.12.2-1.3.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/CyclopsCore-1.12.2-1.3.0.jar"
+    },
+    {
+      "projectId": 271856,
+      "fileId": 2684413,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2684/413/Geolosys-1.12.2-2.2.6.jar"
+      ],
+      "artifact": "Geolosys-1.12.2-2.2.6.jar",
+      "sha256": "0d182c9bb97056aa3e562f8e5f48f4c9449b44e6f20d66643d8592bf77a48930",
+      "sha1": "87f9e604a08194b2b25addd0faeb51870dc34d74",
+      "size": 303521,
+      "url": "https://mediafilez.forgecdn.net/files/2684/413/Geolosys-1.12.2-2.2.6.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Geolosys-1.12.2-2.2.6.jar"
+    },
+    {
+      "projectId": 242818,
+      "fileId": 2779848,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2779/848/CodeChickenLib-1.12.2-3.2.3.358-universal.jar"
+      ],
+      "artifact": "CodeChickenLib-1.12.2-3.2.3.358-universal.jar",
+      "sha256": "5f8499f7ee2590e45110bbf296b2bf101aec15897e28d5e9759cf8f2387d8a74",
+      "sha1": "b6a7e3b889c354216059a3bfad298e30a1e46a2d",
+      "size": 704330,
+      "url": "https://mediafilez.forgecdn.net/files/2779/848/CodeChickenLib-1.12.2-3.2.3.358-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/CodeChickenLib-1.12.2-3.2.3.358-universal.jar"
+    },
+    {
+      "projectId": 307605,
+      "fileId": 2733042,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2733/042/playerbosses-1.12.2-1.1.0.jar",
+        "https://edge.forgecdn.net/files/2733/042/playerbosses-1.12.2-1.1.0.jar"
+      ],
+      "artifact": "playerbosses-1.12.2-1.1.0.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "3a185b0f3b1d136c12601645ccaf46ac5ec69f66df8f3eb74f8633c409b1d779",
+      "sha1": "f96f0a60e9d3e81fabca03da4f9f8607e24e57c5",
+      "size": 109193,
+      "url": "https://edge.forgecdn.net/files/2733/042/playerbosses-1.12.2-1.1.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/playerbosses-1.12.2-1.1.0.jar"
+    },
+    {
+      "projectId": 295319,
+      "fileId": 2865090,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2865/090/walljump-1.12.2-1.3.2.jar",
+        "https://edge.forgecdn.net/files/2865/090/walljump-1.12.2-1.3.2.jar"
+      ],
+      "artifact": "walljump-1.12.2-1.3.2.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "57c18fd640adedec5e251cf946314916b036b0168361cb7e9b7869e0c3e44ba5",
+      "sha1": "5721af09ca9201f9cfe23abd787e0b5e3375fb3e",
+      "size": 83768,
+      "url": "https://edge.forgecdn.net/files/2865/090/walljump-1.12.2-1.3.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/walljump-1.12.2-1.3.2.jar"
+    },
+    {
+      "projectId": 251767,
+      "fileId": 2553465,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2553/465/Waddles-1.12.2-0.6.0.jar"
+      ],
+      "artifact": "Waddles-1.12.2-0.6.0.jar",
+      "sha256": "e6383747190cca4bbd8bdcc508a74cc0812279df1238dead485ad09de93ec2a1",
+      "sha1": "4a600774f74e6f834241cb6327b9ddbd9ac8362f",
+      "size": 234934,
+      "url": "https://mediafilez.forgecdn.net/files/2553/465/Waddles-1.12.2-0.6.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Waddles-1.12.2-0.6.0.jar"
+    },
+    {
+      "projectId": 257356,
+      "fileId": 2763309,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2763/309/incontrol-1.12-3.9.16.jar"
+      ],
+      "artifact": "incontrol-1.12-3.9.16.jar",
+      "sha256": "e9b8e1fedc8889dad768fa328572def068f4d8b6081c54cf9331abd90dad9974",
+      "sha1": "c8283a3997bd1867532c5b2f4235285ca1e1255b",
+      "size": 153207,
+      "url": "https://mediafilez.forgecdn.net/files/2763/309/incontrol-1.12-3.9.16.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/incontrol-1.12-3.9.16.jar"
+    },
+    {
+      "projectId": 242838,
+      "fileId": 2481890,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2481/890/Mercurius-1.12.2.jar"
+      ],
+      "artifact": "Mercurius-1.12.2.jar",
+      "sha256": "ca01771b3677d5b138580874f7f5925b276a58781667107720478c1d1b44d499",
+      "sha1": "209cca3dac6315961f0c891ae58ad1d63ef9bf4b",
+      "size": 38808,
+      "url": "https://mediafilez.forgecdn.net/files/2481/890/Mercurius-1.12.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Mercurius-1.12.2.jar"
+    },
+    {
+      "projectId": 241721,
+      "fileId": 2864069,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2864/069/astralsorcery-1.12.2-1.10.21.jar",
+        "https://edge.forgecdn.net/files/2864/069/astralsorcery-1.12.2-1.10.21.jar"
+      ],
+      "artifact": "astralsorcery-1.12.2-1.10.21.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "09d0ed0ac9bcf4ad7ba43a111a8d14a26d4af2f294bc53e28de13aaa8597aebf",
+      "sha1": "6e97ea81ed4d2ecae7528a99ce6d4ecb2d0ba15f",
+      "size": 24974820,
+      "url": "https://edge.forgecdn.net/files/2864/069/astralsorcery-1.12.2-1.10.21.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/astralsorcery-1.12.2-1.10.21.jar"
+    },
+    {
+      "projectId": 289753,
+      "fileId": 2687563,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2687/563/JourneyMapStages-1.12.2-2.0.9.jar"
+      ],
+      "artifact": "JourneyMapStages-1.12.2-2.0.9.jar",
+      "sha256": "b7908f8169e35c04480835b701a154925d1e5cb8e44328a2470dab5873560841",
+      "sha1": "7bf27633a3f56e5518e621bbb2317d9965b0d388",
+      "size": 21618,
+      "url": "https://mediafilez.forgecdn.net/files/2687/563/JourneyMapStages-1.12.2-2.0.9.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/JourneyMapStages-1.12.2-2.0.9.jar"
+    },
+    {
+      "projectId": 238372,
+      "fileId": 2595310,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2595/310/Neat%201.4-17.jar"
+      ],
+      "artifact": "Neat 1.4-17.jar",
+      "sha256": "2062c99a371921fb2eb7cf6833d682c05244ca5a527db8f0c36e7f12c8ca1379",
+      "sha1": "831c286d99fe78503e966ef80ad27f54ae6a81cb",
+      "size": 18527,
+      "url": "https://mediafilez.forgecdn.net/files/2595/310/Neat%201.4-17.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Neat 1.4-17.jar"
+    },
+    {
+      "projectId": 223852,
+      "fileId": 2952606,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2952/606/StorageDrawers-1.12.2-5.4.2.jar"
+      ],
+      "artifact": "StorageDrawers-1.12.2-5.4.2.jar",
+      "sha256": "563f40aad42d43612b799b5fdf89b00e379e6c64eeb8b01cb0c68c66635c6df5",
+      "sha1": "c3f370ed6c158726061211334cbb72fd53f30364",
+      "size": 605947,
+      "url": "https://mediafilez.forgecdn.net/files/2952/606/StorageDrawers-1.12.2-5.4.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/StorageDrawers-1.12.2-5.4.2.jar"
+    },
+    {
+      "projectId": 256247,
+      "fileId": 2704832,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2704/832/MysticalAgradditions-1.12.2-1.3.2.jar"
+      ],
+      "artifact": "MysticalAgradditions-1.12.2-1.3.2.jar",
+      "sha256": "58094bdace050ce943bc4b14033abc63e91e705233fc24c2d7f8d786c714884f",
+      "sha1": "7387a2976cafec35222e6549b3c447e7972dc4aa",
+      "size": 134055,
+      "url": "https://mediafilez.forgecdn.net/files/2704/832/MysticalAgradditions-1.12.2-1.3.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MysticalAgradditions-1.12.2-1.3.2.jar"
+    },
+    {
+      "projectId": 270789,
+      "fileId": 2623090,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2623/090/RedstoneFlux-1.12-2.1.0.6-universal.jar",
+        "https://edge.forgecdn.net/files/2623/090/RedstoneFlux-1.12-2.1.0.6-universal.jar"
+      ],
+      "artifact": "RedstoneFlux-1.12-2.1.0.6-universal.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "7d8063471243e161f624abe4ba311d490bd7719aedbcfcf84e555358e19c3e89",
+      "sha1": "ed67a4ce69c8831b7536b2623a857fefc8257e62",
+      "size": 36278,
+      "url": "https://edge.forgecdn.net/files/2623/090/RedstoneFlux-1.12-2.1.0.6-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/RedstoneFlux-1.12-2.1.0.6-universal.jar"
+    },
+    {
+      "projectId": 270790,
+      "fileId": 2664066,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2664/066/modularmachinery-1.9.5.jar",
+        "https://edge.forgecdn.net/files/2664/066/modularmachinery-1.9.5.jar"
+      ],
+      "artifact": "modularmachinery-1.9.5.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "99d3c4f2747b408330a0631bc5d65b7426e67749f0f30ab6453fd8739827ffd1",
+      "sha1": "d355b3fd38849a2e454d304e4888c88fcc6ed126",
+      "size": 561440,
+      "url": "https://edge.forgecdn.net/files/2664/066/modularmachinery-1.9.5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/modularmachinery-1.9.5.jar"
+    },
+    {
+      "projectId": 248453,
+      "fileId": 2640952,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2640/952/Forgelin-1.8.2.jar"
+      ],
+      "artifact": "Forgelin-1.8.2.jar",
+      "sha256": "4192515f03b7c7132cca8adfcb9dc6bc0c3d50714582f2c5290d673485b8737d",
+      "sha1": "fea646ff3ff08026c0185b04906eeedd170e79ff",
+      "size": 5124663,
+      "url": "https://mediafilez.forgecdn.net/files/2640/952/Forgelin-1.8.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Forgelin-1.8.2.jar"
+    },
+    {
+      "projectId": 268560,
+      "fileId": 2835175,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2835/175/Mekanism-1.12.2-9.8.3.390.jar"
+      ],
+      "artifact": "Mekanism-1.12.2-9.8.3.390.jar",
+      "sha256": "17573e0c3b2ff9d071a719a06a84c8cd89ca26d1ea3bd7f6e9f3842c4df88ea1",
+      "sha1": "1d5b531b7c107d6946b3e957f4554e2cb7686320",
+      "size": 7863657,
+      "url": "https://mediafilez.forgecdn.net/files/2835/175/Mekanism-1.12.2-9.8.3.390.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Mekanism-1.12.2-9.8.3.390.jar"
+    },
+    {
+      "projectId": 238403,
+      "fileId": 2691084,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2691/084/BetterBuildersWands-1.12.2-0.13.2.271%2B5997513.jar",
+        "https://edge.forgecdn.net/files/2691/084/BetterBuildersWands-1.12.2-0.13.2.271%2B5997513.jar"
+      ],
+      "artifact": "BetterBuildersWands-1.12.2-0.13.2.271+5997513.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "0bb50f545b87f19087d9dbdb9930d6be2d66ee8c76d2a1982eef9e3d2bb43108",
+      "sha1": "3505169dfeea40d726b23072cb695d3c0e5014da",
+      "size": 77866,
+      "url": "https://edge.forgecdn.net/files/2691/084/BetterBuildersWands-1.12.2-0.13.2.271%2B5997513.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BetterBuildersWands-1.12.2-0.13.2.271+5997513.jar"
+    },
+    {
+      "projectId": 274159,
+      "fileId": 2568579,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2568/579/immersivetech-1.12-1.3.10.jar"
+      ],
+      "artifact": "immersivetech-1.12-1.3.10.jar",
+      "sha256": "f961cea153087577d32c435691dd462c71ca9c717e51ceeb61696bdc7f5165f7",
+      "sha1": "db87cdb932c62354851bb9391614897c10ef07c7",
+      "size": 522502,
+      "url": "https://mediafilez.forgecdn.net/files/2568/579/immersivetech-1.12-1.3.10.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/immersivetech-1.12-1.3.10.jar"
+    },
+    {
+      "projectId": 267458,
+      "fileId": 2626135,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2626/135/car-1.12.2-1.2.12.jar"
+      ],
+      "artifact": "car-1.12.2-1.2.12.jar",
+      "sha256": "000ad4daa7d17f68ed031071571a42acfa0449558d07eddbf75ed3643f6c50b1",
+      "sha1": "c7cc06a70b70a29cd114555743a145110f56e766",
+      "size": 2019213,
+      "url": "https://mediafilez.forgecdn.net/files/2626/135/car-1.12.2-1.2.12.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/car-1.12.2-1.2.12.jar"
+    },
+    {
+      "projectId": 228404,
+      "fileId": 2737969,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2737/969/ActuallyAdditions-1.12.2-r149.jar"
+      ],
+      "artifact": "ActuallyAdditions-1.12.2-r149.jar",
+      "sha256": "bd1b1e9c58297998f39cf9b353dc283ca57f5acbe2f28ff109f890ea0e0bc9db",
+      "sha1": "f5e7bd2c7ff9f122d38a0a587bd40cfb1ced4b95",
+      "size": 2938815,
+      "url": "https://mediafilez.forgecdn.net/files/2737/969/ActuallyAdditions-1.12.2-r149.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ActuallyAdditions-1.12.2-r149.jar"
+    },
+    {
+      "projectId": 287606,
+      "fileId": 2556837,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2556/837/PowerAdapters-1.12.2-1.0.9.jar"
+      ],
+      "artifact": "PowerAdapters-1.12.2-1.0.9.jar",
+      "sha256": "8a42d03e1dd969245d92840e41ffb053e66fb3279e5ca14736e19d3fca801cdf",
+      "sha1": "9ffe050ef271c9b8b1f8b4be4c974a22c1a4048a",
+      "size": 37548,
+      "url": "https://mediafilez.forgecdn.net/files/2556/837/PowerAdapters-1.12.2-1.0.9.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/PowerAdapters-1.12.2-1.0.9.jar"
+    },
+    {
+      "projectId": 261924,
+      "fileId": 2733508,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2733/508/FarmingForBlockheads_1.12.2-3.1.28.jar"
+      ],
+      "artifact": "FarmingForBlockheads_1.12.2-3.1.28.jar",
+      "sha256": "d696ac6efd28368a3661131d06f0cf1cdbca1e8ac45f16e5ec2aa859e7d14911",
+      "sha1": "59b2ad2017daaab5b73f2c6851a06b898bcb049b",
+      "size": 246686,
+      "url": "https://mediafilez.forgecdn.net/files/2733/508/FarmingForBlockheads_1.12.2-3.1.28.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/FarmingForBlockheads_1.12.2-3.1.28.jar"
+    },
+    {
+      "projectId": 235121,
+      "fileId": 2684117,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2684/117/QuantumStorage-1.12-4.6.8.jar"
+      ],
+      "artifact": "QuantumStorage-1.12-4.6.8.jar",
+      "sha256": "d86ddb4bf797f0682e899cbb32ed07f0c1d98e78c4c0a440002775b0927bc5c9",
+      "sha1": "ec19caf93267cdc8390ac6542c84ca02e638c37e",
+      "size": 220788,
+      "url": "https://mediafilez.forgecdn.net/files/2684/117/QuantumStorage-1.12-4.6.8.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/QuantumStorage-1.12-4.6.8.jar"
+    },
+    {
+      "projectId": 245174,
+      "fileId": 2755787,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2755/787/EnderStorage-1.12.2-2.4.6.137-universal.jar"
+      ],
+      "artifact": "EnderStorage-1.12.2-2.4.6.137-universal.jar",
+      "sha256": "06e2357019f4e0836bfb9202af013adc125252f610b198a7a547d4596d2934c0",
+      "sha1": "7a872baf72b1da038704056a0cf7bbcc40bfa4d6",
+      "size": 223250,
+      "url": "https://mediafilez.forgecdn.net/files/2755/787/EnderStorage-1.12.2-2.4.6.137-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/EnderStorage-1.12.2-2.4.6.137-universal.jar"
+    },
+    {
+      "projectId": 250763,
+      "fileId": 2705813,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2705/813/rftoolsctrl-1.12-2.0.2.jar"
+      ],
+      "artifact": "rftoolsctrl-1.12-2.0.2.jar",
+      "sha256": "77a4c5f23f73cb4597ea6ee97e6ff5dd0a5eb94d1f25bfd031516b335dc92efe",
+      "sha1": "1f69d5554351998c9df8a8bbc6ac139c4f6a10da",
+      "size": 600728,
+      "url": "https://mediafilez.forgecdn.net/files/2705/813/rftoolsctrl-1.12-2.0.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/rftoolsctrl-1.12-2.0.2.jar"
+    },
+    {
+      "projectId": 275343,
+      "fileId": 2632938,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2632/938/TinkerStages-1.12.2-2.0.17.jar"
+      ],
+      "artifact": "TinkerStages-1.12.2-2.0.17.jar",
+      "sha256": "b97159c976c67e64a0bf58de6776f956d122e4d1307f2618fea812465cc28700",
+      "sha1": "06650a1d9cdd66ecec0eb9878739aa6a7d86caf1",
+      "size": 20881,
+      "url": "https://mediafilez.forgecdn.net/files/2632/938/TinkerStages-1.12.2-2.0.17.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/TinkerStages-1.12.2-2.0.17.jar"
+    },
+    {
+      "projectId": 294335,
+      "fileId": 2624990,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2624/990/BetterWithLib-1.12-1.5.jar"
+      ],
+      "artifact": "BetterWithLib-1.12-1.5.jar",
+      "sha256": "dc55dc18b2b06a6404cf4b8efa3191845a963a86cdc411f6c5bf892780cbdde9",
+      "sha1": "5bdf3c80660753158f4a92ab063a9799341813d5",
+      "size": 21003,
+      "url": "https://mediafilez.forgecdn.net/files/2624/990/BetterWithLib-1.12-1.5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BetterWithLib-1.12-1.5.jar"
+    },
+    {
+      "projectId": 268655,
+      "fileId": 2951840,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2951/840/GameStages-1.12.2-2.0.123.jar"
+      ],
+      "artifact": "GameStages-1.12.2-2.0.123.jar",
+      "sha256": "b37fcec582a97dd65a0b795b135886efcd1d59a39f2cd7cb3b17029ecb5fda45",
+      "sha1": "83b6e36d415f6679495b2c04ffe453817d43419e",
+      "size": 54375,
+      "url": "https://mediafilez.forgecdn.net/files/2951/840/GameStages-1.12.2-2.0.123.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/GameStages-1.12.2-2.0.123.jar"
+    },
+    {
+      "projectId": 282077,
+      "fileId": 2634217,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2634/217/Ferdinand%27s%20Flowers-1.12.x-1.10.4.1.jar"
+      ],
+      "artifact": "Ferdinand's Flowers-1.12.x-1.10.4.1.jar",
+      "sha256": "e6e447d63dc7e1a0a76893f4004edcdea80cf2eb05c183466a4c53b280a6825c",
+      "sha1": "973f2ad2cfb601ce8cf879778a7462feaee57888",
+      "size": 1840731,
+      "url": "https://mediafilez.forgecdn.net/files/2634/217/Ferdinand%27s%20Flowers-1.12.x-1.10.4.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Ferdinand's Flowers-1.12.x-1.10.4.1.jar"
+    },
+    {
+      "projectId": 274259,
+      "fileId": 2818975,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2818/975/CarryOn%20MC1.12.2%20v1.12.3.jar"
+      ],
+      "artifact": "CarryOn MC1.12.2 v1.12.3.jar",
+      "sha256": "e428c6fc8f705e7dcd4ddd690eac4d94c1ad6fc12083e40bec7dec7fc509b442",
+      "sha1": "7b299c131d0ace1fff960946ad129eaf8f3d92a8",
+      "size": 317135,
+      "url": "https://mediafilez.forgecdn.net/files/2818/975/CarryOn%20MC1.12.2%20v1.12.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/CarryOn MC1.12.2 v1.12.3.jar"
+    },
+    {
+      "projectId": 253043,
+      "fileId": 2651482,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2651/482/WanionLib-1.12.2-2.2.jar"
+      ],
+      "artifact": "WanionLib-1.12.2-2.2.jar",
+      "sha256": "3a96855db2e669d486409e67571a9b16f594de7b1032fafe859b7f983d0e55f0",
+      "sha1": "bbee84cafbbc72b24ee987fda668b3ee48ced74a",
+      "size": 129188,
+      "url": "https://mediafilez.forgecdn.net/files/2651/482/WanionLib-1.12.2-2.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/WanionLib-1.12.2-2.2.jar"
+    },
+    {
+      "projectId": 229587,
+      "fileId": 2698688,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2698/688/BNBGamingLib-1.12.2-2.17.6.jar"
+      ],
+      "artifact": "BNBGamingLib-1.12.2-2.17.6.jar",
+      "sha256": "868c7810de85e43913dc42d8b1443d5316a71ecc19e5983e5aa6cda69ed4db5d",
+      "sha1": "06f0da5cf79645437ee5e666be23176eea1dfb94",
+      "size": 132644,
+      "url": "https://mediafilez.forgecdn.net/files/2698/688/BNBGamingLib-1.12.2-2.17.6.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BNBGamingLib-1.12.2-2.17.6.jar"
+    },
+    {
+      "projectId": 229588,
+      "fileId": 2739191,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2739/191/DimensionalControl-1.12.2-2.13.0.jar"
+      ],
+      "artifact": "DimensionalControl-1.12.2-2.13.0.jar",
+      "sha256": "d713b072566ac4d6c98362a4ff222065ad43291ad072f667d63eb60f89ad94a7",
+      "sha1": "c37cc10e4c76885a2dc4cabd1e7f5a7e29f79acb",
+      "size": 341657,
+      "url": "https://mediafilez.forgecdn.net/files/2739/191/DimensionalControl-1.12.2-2.13.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/DimensionalControl-1.12.2-2.13.0.jar"
+    },
+    {
+      "projectId": 284331,
+      "fileId": 3029768,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/3029/768/MJRLegendsLib-1.12.2-1.2.0.jar"
+      ],
+      "artifact": "MJRLegendsLib-1.12.2-1.2.0.jar",
+      "sha256": "5da77f3a350483030a54d0f6486a4f28dba94967f0453f17ebf9a00cc91ad334",
+      "sha1": "e37ff95a23009a41862815277daca7385eb18fe1",
+      "size": 116770,
+      "url": "https://mediafilez.forgecdn.net/files/3029/768/MJRLegendsLib-1.12.2-1.2.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MJRLegendsLib-1.12.2-1.2.0.jar"
+    },
+    {
+      "projectId": 287683,
+      "fileId": 2718520,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2718/520/conarm-1.12.2-1.2.4.jar"
+      ],
+      "artifact": "conarm-1.12.2-1.2.4.jar",
+      "sha256": "76f362a0f697e9b76234575ee6ac16e37439cfd3a4ac8cd561058acb4adbd925",
+      "sha1": "5bf1910ef1b8a68d4835ae6e84b2e5dcd1ee7c25",
+      "size": 891955,
+      "url": "https://mediafilez.forgecdn.net/files/2718/520/conarm-1.12.2-1.2.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/conarm-1.12.2-1.2.4.jar"
+    },
+    {
+      "projectId": 231837,
+      "fileId": 2730570,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2730/570/OceanFloor-1.12.2-1.0.2.jar"
+      ],
+      "artifact": "OceanFloor-1.12.2-1.0.2.jar",
+      "sha256": "06e7fff4b5257a0ee1ac213fc835783cd95d9f1ea12b789bcd3d425b72f2686e",
+      "sha1": "93373df6acf28093a9d483393a64ca2997652bce",
+      "size": 8334,
+      "url": "https://mediafilez.forgecdn.net/files/2730/570/OceanFloor-1.12.2-1.0.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/OceanFloor-1.12.2-1.0.2.jar"
+    },
+    {
+      "projectId": 236307,
+      "fileId": 2718584,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2718/584/IntegratedDynamics-1.12.2-1.0.14.jar"
+      ],
+      "artifact": "IntegratedDynamics-1.12.2-1.0.14.jar",
+      "sha256": "cdf67a3a017ce87ebf3e69466e46a387b6bcfbffa0ad9c9749f5e7250e74a5fc",
+      "sha1": "fdf1510a4135cd5eadc520d44ec084b254f3b77d",
+      "size": 3003214,
+      "url": "https://mediafilez.forgecdn.net/files/2718/584/IntegratedDynamics-1.12.2-1.0.14.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/IntegratedDynamics-1.12.2-1.0.14.jar"
+    },
+    {
+      "projectId": 241895,
+      "fileId": 2733525,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2733/525/KleeSlabs_1.12.2-5.4.12.jar"
+      ],
+      "artifact": "KleeSlabs_1.12.2-5.4.12.jar",
+      "sha256": "597c21ab6f0d701ec2d7d9e6abdd9e4e3d949af1a9635ef018cef7df4c126e57",
+      "sha1": "ed95352b5c4a8dd72366cc25dc48e249cf5cbe2b",
+      "size": 23967,
+      "url": "https://mediafilez.forgecdn.net/files/2733/525/KleeSlabs_1.12.2-5.4.12.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/KleeSlabs_1.12.2-5.4.12.jar"
+    },
+    {
+      "projectId": 250832,
+      "fileId": 2715224,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2715/224/ElevatorMod-1.12.2-1.4.2.jar"
+      ],
+      "artifact": "ElevatorMod-1.12.2-1.4.2.jar",
+      "sha256": "19b838f3d5d23ef7d95fd3733315f9fa8c100e0c197930114136d3e528eecc29",
+      "sha1": "2aef30c410cecc38be91c822d1b37ca74bcce57e",
+      "size": 114056,
+      "url": "https://mediafilez.forgecdn.net/files/2715/224/ElevatorMod-1.12.2-1.4.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ElevatorMod-1.12.2-1.4.2.jar"
+    },
+    {
+      "projectId": 240783,
+      "fileId": 2645984,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2645/984/Harvest-1.12-1.2.7-20.jar"
+      ],
+      "artifact": "Harvest-1.12-1.2.7-20.jar",
+      "sha256": "67292e8aac947478b983ffc0e6b03ef390a68d4f84362089da25cfba44eefa1b",
+      "sha1": "6b5a59fdf03e7b9b0f02d4310c24f1df5c9a7f0f",
+      "size": 17988,
+      "url": "https://mediafilez.forgecdn.net/files/2645/984/Harvest-1.12-1.2.7-20.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Harvest-1.12-1.2.7-20.jar"
+    },
+    {
+      "projectId": 283235,
+      "fileId": 2827888,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2827/888/HuntingDimension-1.12.2-1.0.42.jar"
+      ],
+      "artifact": "HuntingDimension-1.12.2-1.0.42.jar",
+      "sha256": "fa3b8172306aead98888c7aeb3aa091e339f29418ef16de4153aeb0193a5b4e3",
+      "sha1": "33c8f8975c52e9fbd6d13772599ac595724dde29",
+      "size": 88822,
+      "url": "https://mediafilez.forgecdn.net/files/2827/888/HuntingDimension-1.12.2-1.0.42.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/HuntingDimension-1.12.2-1.0.42.jar"
+    },
+    {
+      "projectId": 247496,
+      "fileId": 2441326,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2441/326/rangedpumps-0.5.jar"
+      ],
+      "artifact": "rangedpumps-0.5.jar",
+      "sha256": "9329ee1bcb377849db089c7029d7f393897e0ca8efb9c4510268692bf332c530",
+      "sha1": "839d16b7fffaf5d3de561ca4356f08fb916b403a",
+      "size": 21519,
+      "url": "https://mediafilez.forgecdn.net/files/2441/326/rangedpumps-0.5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/rangedpumps-0.5.jar"
+    },
+    {
+      "projectId": 273187,
+      "fileId": 2565709,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2565/709/Dung%20Pipe-1.2.jar"
+      ],
+      "artifact": "Dung Pipe-1.2.jar",
+      "sha256": "d58c9a37edaddca53f7045def03da117037777a3241011c460b73c285f39449f",
+      "sha1": "0eef6e30e71f88371ec80c7a088090d4b0a2b18b",
+      "size": 21460,
+      "url": "https://mediafilez.forgecdn.net/files/2565/709/Dung%20Pipe-1.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Dung Pipe-1.2.jar"
+    },
+    {
+      "projectId": 267602,
+      "fileId": 2642375,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2642/375/CTM-MC1.12.2-0.3.3.22.jar"
+      ],
+      "artifact": "CTM-MC1.12.2-0.3.3.22.jar",
+      "sha256": "9b2882c33509c746bb0770d608944078cb94a75ede8e68c87a9e8e673a5db2e4",
+      "sha1": "03be3e20dacf6b52abcee09436b2d06c06f2add0",
+      "size": 194281,
+      "url": "https://mediafilez.forgecdn.net/files/2642/375/CTM-MC1.12.2-0.3.3.22.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/CTM-MC1.12.2-0.3.3.22.jar"
+    },
+    {
+      "projectId": 260912,
+      "fileId": 2745852,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2745/852/xnet-1.12-1.8.2.jar"
+      ],
+      "artifact": "xnet-1.12-1.8.2.jar",
+      "sha256": "37b39fb2e10bf3a991952317d68cf137c7470060197ce74a5826699fac0326fc",
+      "sha1": "085f5aef1d407f815028e5ecc87265cc5d8142e6",
+      "size": 496307,
+      "url": "https://mediafilez.forgecdn.net/files/2745/852/xnet-1.12-1.8.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/xnet-1.12-1.8.2.jar"
+    },
+    {
+      "projectId": 228525,
+      "fileId": 2717168,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2717/168/Bookshelf-1.12.2-2.3.581.jar"
+      ],
+      "artifact": "Bookshelf-1.12.2-2.3.581.jar",
+      "sha256": "fb119f2675a9435fc8a61d8e4468f0a9e849cc9d54068a75096f3a58c7696b90",
+      "sha1": "bf78ed79d17151a6fb1ec739c6a21ffdb8de3822",
+      "size": 264624,
+      "url": "https://mediafilez.forgecdn.net/files/2717/168/Bookshelf-1.12.2-2.3.581.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Bookshelf-1.12.2-2.3.581.jar"
+    },
+    {
+      "projectId": 228529,
+      "fileId": 2852872,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2852/872/BetterFoliage-MC1.12-2.3.1.jar"
+      ],
+      "artifact": "BetterFoliage-MC1.12-2.3.1.jar",
+      "sha256": "1c17599b7682cc6df47c7c31920dd3287ab5cda561f01fa02122c002d6a29b36",
+      "sha1": "93c60418d6d0f59548a14eb4323872a4d0ab1b73",
+      "size": 937680,
+      "url": "https://mediafilez.forgecdn.net/files/2852/872/BetterFoliage-MC1.12-2.3.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BetterFoliage-MC1.12-2.3.1.jar"
+    },
+    {
+      "projectId": 274331,
+      "fileId": 2575608,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2575/608/despawningspawners-1.12-1.2.0-2.jar"
+      ],
+      "artifact": "despawningspawners-1.12-1.2.0-2.jar",
+      "sha256": "dacf82e514b6901fb075d13cc382c9289e9697a51e6541545324755bbf1a75fe",
+      "sha1": "a9ded5b339ecaf6e3e399419a746fbbcbccff8a9",
+      "size": 12389,
+      "url": "https://mediafilez.forgecdn.net/files/2575/608/despawningspawners-1.12-1.2.0-2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/despawningspawners-1.12-1.2.0-2.jar"
+    },
+    {
+      "projectId": 269863,
+      "fileId": 2518265,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2518/265/GobbleCore-1.12-0.1.6.35.jar"
+      ],
+      "artifact": "GobbleCore-1.12-0.1.6.35.jar",
+      "sha256": "e9a48143c0de9640df9d18091ab636292f5b478d12b451af28a666b5de8fd5f8",
+      "sha1": "46f71df7e8f97f599776a9b0df9a7b4491c9d11c",
+      "size": 62738,
+      "url": "https://mediafilez.forgecdn.net/files/2518/265/GobbleCore-1.12-0.1.6.35.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/GobbleCore-1.12-0.1.6.35.jar"
+    },
+    {
+      "projectId": 266515,
+      "fileId": 2745321,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2745/321/industrialforegoing-1.12.2-1.12.13-237.jar"
+      ],
+      "artifact": "industrialforegoing-1.12.2-1.12.13-237.jar",
+      "sha256": "8b6e1aa820d7d02571aeae818b4ab9aa2d78e0d3b277d7be6df53e3153ae9ea7",
+      "sha1": "4f44934b392d7bf1713707a93b29006e98bd7cff",
+      "size": 1603134,
+      "url": "https://mediafilez.forgecdn.net/files/2745/321/industrialforegoing-1.12.2-1.12.13-237.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/industrialforegoing-1.12.2-1.12.13-237.jar"
+    },
+    {
+      "projectId": 274341,
+      "fileId": 2991671,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2991/671/BNBGamingCore-1.12.2-0.12.0.jar"
+      ],
+      "artifact": "BNBGamingCore-1.12.2-0.12.0.jar",
+      "sha256": "ca3ca764e2821c4db3a1e2fd0ccfffe32837d2bdb11a8f945e493cd267a1d137",
+      "sha1": "01ebef5842e54d368908d66f55fa45bc4ed3b1dd",
+      "size": 139568,
+      "url": "https://mediafilez.forgecdn.net/files/2991/671/BNBGamingCore-1.12.2-0.12.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BNBGamingCore-1.12.2-0.12.0.jar"
+    },
+    {
+      "projectId": 254241,
+      "fileId": 2656683,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2656/683/MobGrindingUtils-0.3.13.jar"
+      ],
+      "artifact": "MobGrindingUtils-0.3.13.jar",
+      "sha256": "7b10f754481e3813b8c8e11daed9392257e722c2af24042d7a35ccca42672594",
+      "sha1": "3877e973f9363878956ac43f51875d9e82b1f499",
+      "size": 951922,
+      "url": "https://mediafilez.forgecdn.net/files/2656/683/MobGrindingUtils-0.3.13.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MobGrindingUtils-0.3.13.jar"
+    },
+    {
+      "projectId": 274350,
+      "fileId": 2550876,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2550/876/Just%20A%20Raft%20Mod-1.1.2.jar"
+      ],
+      "artifact": "Just A Raft Mod-1.1.2.jar",
+      "sha256": "94dfdfb697a65f362cfd7a663b936832ac28dcb68f4102eb06f49a27dbb79235",
+      "sha1": "7c7964f9c1cba784a5c3aae3569bbcdd95550268",
+      "size": 70744,
+      "url": "https://mediafilez.forgecdn.net/files/2550/876/Just%20A%20Raft%20Mod-1.1.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Just A Raft Mod-1.1.2.jar"
+    },
+    {
+      "projectId": 243076,
+      "fileId": 2940914,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2940/914/refinedstorage-1.6.16.jar"
+      ],
+      "artifact": "refinedstorage-1.6.16.jar",
+      "sha256": "ebdf868db673b2a22233e5e08e7c14ad937b10e2997c4c28a4511ffdd2544f8d",
+      "sha1": "007c8fb5bcc2bb99b7bbb055440e20b276251d77",
+      "size": 1912377,
+      "url": "https://mediafilez.forgecdn.net/files/2940/914/refinedstorage-1.6.16.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/refinedstorage-1.6.16.jar"
+    },
+    {
+      "projectId": 250898,
+      "fileId": 2897369,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2897/369/OreExcavation-1.4.150.jar"
+      ],
+      "artifact": "OreExcavation-1.4.150.jar",
+      "sha256": "535c5a8e2d708fa810687698425f982f16c326c0cc91fa5eec08194d65ef2c28",
+      "sha1": "d5e32554a78d95e40ecb85c32138531cb433f19f",
+      "size": 184743,
+      "url": "https://mediafilez.forgecdn.net/files/2897/369/OreExcavation-1.4.150.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/OreExcavation-1.4.150.jar"
+    },
+    {
+      "projectId": 235261,
+      "fileId": 2448283,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2448/283/JustAFewFish-1.7_for_1.12.jar"
+      ],
+      "artifact": "JustAFewFish-1.7_for_1.12.jar",
+      "sha256": "7ecfaaf0d407c694d87a111f1dbd62a29a9924c10c9141d072a5a57462d7a3f2",
+      "sha1": "b843ae27c83073f02664488a432625c5394ae610",
+      "size": 238863,
+      "url": "https://mediafilez.forgecdn.net/files/2448/283/JustAFewFish-1.7_for_1.12.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/JustAFewFish-1.7_for_1.12.jar"
+    },
+    {
+      "projectId": 288885,
+      "fileId": 2838777,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2838/777/FastWorkbench-1.12.2-1.7.3.jar"
+      ],
+      "artifact": "FastWorkbench-1.12.2-1.7.3.jar",
+      "sha256": "0a8e4f341a80263e58f348fc980a813de1d22ec455d2606486e8e03e8c9e5d16",
+      "sha1": "e40e850c8fb065e805538c8bf275d64b6cd5d6a7",
+      "size": 26515,
+      "url": "https://mediafilez.forgecdn.net/files/2838/777/FastWorkbench-1.12.2-1.7.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/FastWorkbench-1.12.2-1.7.3.jar"
+    },
+    {
+      "projectId": 235279,
+      "fileId": 2619468,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2619/468/Chisel-MC1.12.2-0.2.1.35.jar"
+      ],
+      "artifact": "Chisel-MC1.12.2-0.2.1.35.jar",
+      "sha256": "fb99eff1e1389d88054b1d28245e802becb815388c5bb1946fbbdb60a34c297d",
+      "sha1": "1dda45074e17128451b3c8f66172bfaddf84f443",
+      "size": 4310011,
+      "url": "https://mediafilez.forgecdn.net/files/2619/468/Chisel-MC1.12.2-0.2.1.35.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Chisel-MC1.12.2-0.2.1.35.jar"
+    },
+    {
+      "projectId": 229708,
+      "fileId": 2893083,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2893/083/Farseek-1.12-2.5.jar",
+        "https://edge.forgecdn.net/files/2893/083/Farseek-1.12-2.5.jar"
+      ],
+      "artifact": "Farseek-1.12-2.5.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "27e9fae4b5d419a0f82798f541cb74c32119a601497712c35475d1cbca116a89",
+      "sha1": "27b8be41fc3e5ffe3069d0efe51edaeb5c1d4616",
+      "size": 531566,
+      "url": "https://edge.forgecdn.net/files/2893/083/Farseek-1.12-2.5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Farseek-1.12-2.5.jar"
+    },
+    {
+      "projectId": 298965,
+      "fileId": 2607786,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2607/786/LibEx-1.12.2-1.0.8.jar"
+      ],
+      "artifact": "LibEx-1.12.2-1.0.8.jar",
+      "sha256": "4780b369b569952610ac2e405fc3764586d7a6610c560d0d76d4db97ffda224c",
+      "sha1": "dc9c3378be34b5e0c1f981d0a6925d224de20b75",
+      "size": 154500,
+      "url": "https://mediafilez.forgecdn.net/files/2607/786/LibEx-1.12.2-1.0.8.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/LibEx-1.12.2-1.0.8.jar"
+    },
+    {
+      "projectId": 243121,
+      "fileId": 2722372,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2722/372/Quark-r1.5-158.jar"
+      ],
+      "artifact": "Quark-r1.5-158.jar",
+      "sha256": "1447a392973b511fef66a9fce2c8d58981c6d7e20a34836473de5fc222022e63",
+      "sha1": "c07992e2d303145e3ef3e8b572538c363fb8085f",
+      "size": 2578643,
+      "url": "https://mediafilez.forgecdn.net/files/2722/372/Quark-r1.5-158.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Quark-r1.5-158.jar"
+    },
+    {
+      "projectId": 231951,
+      "fileId": 2974106,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2974/106/ImmersiveEngineering-0.12-98.jar"
+      ],
+      "artifact": "ImmersiveEngineering-0.12-98.jar",
+      "sha256": "1dceb974d037dae7161f9a8e9f78cb33dfaad9e3adf02d14d52a3024eb961e58",
+      "sha1": "633070d9c447fdaf6a9ead59425017815c890c63",
+      "size": 6360959,
+      "url": "https://mediafilez.forgecdn.net/files/2974/106/ImmersiveEngineering-0.12-98.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ImmersiveEngineering-0.12-98.jar"
+    },
+    {
+      "projectId": 237541,
+      "fileId": 2700798,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2700/798/Totemic-1.12.2-0.11.6.jar"
+      ],
+      "artifact": "Totemic-1.12.2-0.11.6.jar",
+      "sha256": "172dab78e910a2ad317a377aff5c9659ff43435a22ecfa5a669a3620b8ae4f8a",
+      "sha1": "88383e82c5862be7c4d2e3c6606b1856b372bec4",
+      "size": 1112095,
+      "url": "https://mediafilez.forgecdn.net/files/2700/798/Totemic-1.12.2-0.11.6.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Totemic-1.12.2-0.11.6.jar"
+    },
+    {
+      "projectId": 268819,
+      "fileId": 2512819,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2512/819/WildCrops-1.12-1.0.1.jar"
+      ],
+      "artifact": "WildCrops-1.12-1.0.1.jar",
+      "sha256": "8a14f5ac376dc55d62bbfddba1e692e9580325c4433064ede4e0149df3482d91",
+      "sha1": "e693394dcfe97cae3f13bde5d7f829ba4462ab7f",
+      "size": 10296,
+      "url": "https://mediafilez.forgecdn.net/files/2512/819/WildCrops-1.12-1.0.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/WildCrops-1.12-1.0.1.jar"
+    },
+    {
+      "projectId": 264353,
+      "fileId": 2508268,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2508/268/stg-1.12.2-1.2.3.jar"
+      ],
+      "artifact": "stg-1.12.2-1.2.3.jar",
+      "sha256": "0ab0cb80822dd58ed83393edff83ac0497e1f12cbf4ceb9dacd963e2a949d2cb",
+      "sha1": "d79494b27d6b9193714fbad2f054951dc9c2320f",
+      "size": 24024,
+      "url": "https://mediafilez.forgecdn.net/files/2508/268/stg-1.12.2-1.2.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/stg-1.12.2-1.2.3.jar"
+    },
+    {
+      "projectId": 250957,
+      "fileId": 2630860,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2630/860/TinkerToolLeveling-1.12.2-1.1.0.jar"
+      ],
+      "artifact": "TinkerToolLeveling-1.12.2-1.1.0.jar",
+      "sha256": "87e2702152d795efd8548b3a1ec9471469d7c705db1ec199a465807720ddcdcd",
+      "sha1": "69705dd5de7c9cd54f6fdb8198b959f93b7d1400",
+      "size": 95850,
+      "url": "https://mediafilez.forgecdn.net/files/2630/860/TinkerToolLeveling-1.12.2-1.1.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/TinkerToolLeveling-1.12.2-1.1.0.jar"
+    },
+    {
+      "projectId": 272190,
+      "fileId": 2575349,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2575/349/tothebatpoles-1.12.2-1.1.0.1.jar"
+      ],
+      "artifact": "tothebatpoles-1.12.2-1.1.0.1.jar",
+      "sha256": "cbb0c3ecb3d79cfc55681f5e7cfc7cac41c5e5c681f2468805e90f4de8d8a3f1",
+      "sha1": "5d21fe498ab9979641794d727e404b0aa96e5fa8",
+      "size": 17502,
+      "url": "https://mediafilez.forgecdn.net/files/2575/349/tothebatpoles-1.12.2-1.1.0.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/tothebatpoles-1.12.2-1.1.0.1.jar"
+    },
+    {
+      "projectId": 262137,
+      "fileId": 2810142,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2810/142/StuffASockInIt-1.12.2-1.1.32.jar"
+      ],
+      "artifact": "StuffASockInIt-1.12.2-1.1.32.jar",
+      "sha256": "c0654adf031cb1b9d9622950c145c238952682a2b584b0c09125bc482a901387",
+      "sha1": "4041607128a3cea77d72d0bc7dcea90df6836c7f",
+      "size": 20713,
+      "url": "https://mediafilez.forgecdn.net/files/2810/142/StuffASockInIt-1.12.2-1.1.32.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/StuffASockInIt-1.12.2-1.1.32.jar"
+    },
+    {
+      "projectId": 281132,
+      "fileId": 2549655,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2549/655/playerskin-1.12.2-1.0.5.jar"
+      ],
+      "artifact": "playerskin-1.12.2-1.0.5.jar",
+      "sha256": "2558ff5445bf252c99302029f4f4ae0d9d687d26607c6110bb47d647567b7f8d",
+      "sha1": "eac077dcf2fd92367751f1758d6dba27827ab929",
+      "size": 51223,
+      "url": "https://mediafilez.forgecdn.net/files/2549/655/playerskin-1.12.2-1.0.5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/playerskin-1.12.2-1.0.5.jar"
+    },
+    {
+      "projectId": 253211,
+      "fileId": 2684561,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2684/561/MTLib-3.0.6.jar"
+      ],
+      "artifact": "MTLib-3.0.6.jar",
+      "sha256": "298fc0109614f567db4759a9709436924aa2ed20c55a8370a139f0af1ad9f109",
+      "sha1": "a4625a61c9ef53412e0e467d23f25c5543658677",
+      "size": 30002,
+      "url": "https://mediafilez.forgecdn.net/files/2684/561/MTLib-3.0.6.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MTLib-3.0.6.jar"
+    },
+    {
+      "projectId": 233105,
+      "fileId": 2745846,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2745/846/mcjtylib-1.12-3.5.4.jar"
+      ],
+      "artifact": "mcjtylib-1.12-3.5.4.jar",
+      "sha256": "af7d2b3c421329e7b97202302a072867e7c9bd73c5b8fab9bdb3a76fbfe474e3",
+      "sha1": "8f3e381c4aea651f55ed1cd35fd69613fcd7f9da",
+      "size": 544856,
+      "url": "https://mediafilez.forgecdn.net/files/2745/846/mcjtylib-1.12-3.5.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/mcjtylib-1.12-3.5.4.jar"
+    },
+    {
+      "projectId": 226406,
+      "fileId": 2857869,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2857/869/CustomMainMenu-MC1.12.2-2.0.9.1.jar"
+      ],
+      "artifact": "CustomMainMenu-MC1.12.2-2.0.9.1.jar",
+      "sha256": "63b8e4d86b336739c9df8275d28e61519c73c815d0ba9ec18fb8d0cf8a218488",
+      "sha1": "9aad10a13bed75b6061a33219ab4f2f39e0ccc12",
+      "size": 91121,
+      "url": "https://mediafilez.forgecdn.net/files/2857/869/CustomMainMenu-MC1.12.2-2.0.9.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/CustomMainMenu-MC1.12.2-2.0.9.1.jar"
+    },
+    {
+      "projectId": 288959,
+      "fileId": 2535057,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2535/057/mystagradcompat-1.2.jar",
+        "https://edge.forgecdn.net/files/2535/057/mystagradcompat-1.2.jar"
+      ],
+      "artifact": "mystagradcompat-1.2.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "5c85f184fd328473b8ea4b8725db58f49b6768a396c341a43a8654cf6bc32306",
+      "sha1": "2cad6b1b16571040786c24320efc423653336cb6",
+      "size": 8943,
+      "url": "https://edge.forgecdn.net/files/2535/057/mystagradcompat-1.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/mystagradcompat-1.2.jar"
+    },
+    {
+      "projectId": 285612,
+      "fileId": 2996061,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2996/061/randompatches-1.12.2-1.22.0.0.jar",
+        "https://edge.forgecdn.net/files/2996/061/randompatches-1.12.2-1.22.0.0.jar"
+      ],
+      "artifact": "randompatches-1.12.2-1.22.0.0.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "aa631549909245796a2bf2e58f5fc0397f0eb55a9607b9f4ed3d54c8dd7f7603",
+      "sha1": "bc004d2914c52f9423d63fa7fb246f34cc43f282",
+      "size": 292835,
+      "url": "https://edge.forgecdn.net/files/2996/061/randompatches-1.12.2-1.22.0.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/randompatches-1.12.2-1.22.0.0.jar"
+    },
+    {
+      "projectId": 284497,
+      "fileId": 2653408,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2653/408/IronJetpacks-1.12-2-1.1.0.jar"
+      ],
+      "artifact": "IronJetpacks-1.12-2-1.1.0.jar",
+      "sha256": "3007220a56179c5665faa68077372cc99fb91f8f7bd6a88f7fe497a7db15e00f",
+      "sha1": "0cd6350d3b42166ce941f78d8a8a58f687a1c1cd",
+      "size": 153351,
+      "url": "https://mediafilez.forgecdn.net/files/2653/408/IronJetpacks-1.12-2-1.1.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/IronJetpacks-1.12-2-1.1.0.jar"
+    },
+    {
+      "projectId": 229769,
+      "fileId": 2861235,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2861/235/Streams-1.12-0.4.8.jar"
+      ],
+      "artifact": "Streams-1.12-0.4.8.jar",
+      "sha256": "ed4beaa1536ac5631c6fcb317f1ca9bbfab1e7b0dd3e0f1fbf7676983a27b79a",
+      "sha1": "9ee62e24b308a4f05fbd73094deb761f11c20bb9",
+      "size": 270338,
+      "url": "https://mediafilez.forgecdn.net/files/2861/235/Streams-1.12-0.4.8.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Streams-1.12-0.4.8.jar"
+    },
+    {
+      "projectId": 267769,
+      "fileId": 2613657,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2613/657/Traverse-1.12.2-1.6.0-69.jar"
+      ],
+      "artifact": "Traverse-1.12.2-1.6.0-69.jar",
+      "sha256": "be89ff855b55d10469779660089cbb13f1f438a9a934724ebffa49982f269414",
+      "sha1": "b16aaff09a6e77ba193e42f88f5d5bb8a85e063a",
+      "size": 270133,
+      "url": "https://mediafilez.forgecdn.net/files/2613/657/Traverse-1.12.2-1.6.0-69.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Traverse-1.12.2-1.6.0-69.jar"
+    },
+    {
+      "projectId": 223094,
+      "fileId": 2923460,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2923/460/InventoryTweaks-1.64%2Bdev.151.jar"
+      ],
+      "artifact": "InventoryTweaks-1.64+dev.151.jar",
+      "sha256": "8b3d8f2392e3e455de6c99fac30740f558908c6896adc7dd7948be009b418f52",
+      "sha1": "3ba1e59a5109f3e94a4a0170877006b72fa77b1e",
+      "size": 286144,
+      "url": "https://mediafilez.forgecdn.net/files/2923/460/InventoryTweaks-1.64%2Bdev.151.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/InventoryTweaks-1.64+dev.151.jar"
+    },
+    {
+      "projectId": 226447,
+      "fileId": 2477566,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2477/566/ResourceLoader-MC1.12.1-1.5.3.jar"
+      ],
+      "artifact": "ResourceLoader-MC1.12.1-1.5.3.jar",
+      "sha256": "5c5ee114dccab5caca1772e3487eca04e161c494baca4d53c8fddf5cf8722e56",
+      "sha1": "d8c10e6e29df5f9bc51e468642d9b3cae5f2f8e4",
+      "size": 16612,
+      "url": "https://mediafilez.forgecdn.net/files/2477/566/ResourceLoader-MC1.12.1-1.5.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ResourceLoader-MC1.12.1-1.5.3.jar"
+    },
+    {
+      "projectId": 248787,
+      "fileId": 2987247,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2987/247/AppleSkin-mc1.12-1.0.14.jar"
+      ],
+      "artifact": "AppleSkin-mc1.12-1.0.14.jar",
+      "sha256": "4bbd37edecff0b420ab0eea166b5d7b4b41a9870bfb8647bf243140dc57f101e",
+      "sha1": "d798af79de48be0f00c772943e5ec5a2fb5659fa",
+      "size": 33683,
+      "url": "https://mediafilez.forgecdn.net/files/2987/247/AppleSkin-mc1.12-1.0.14.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/AppleSkin-mc1.12-1.0.14.jar"
+    },
+    {
+      "projectId": 243205,
+      "fileId": 2484281,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2484/281/%5B1.12%5DMoVillages-1.5.4.jar"
+      ],
+      "artifact": "[1.12]MoVillages-1.5.4.jar",
+      "sha256": "4a665592e18bc5527440a87ecffab6dfb7889aacad77cae6ee41976c11743a3f",
+      "sha1": "c354147d4743fba7d1727e073cb9fb8ef91b2962",
+      "size": 35549,
+      "url": "https://mediafilez.forgecdn.net/files/2484/281/%5B1.12%5DMoVillages-1.5.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/[1.12]MoVillages-1.5.4.jar"
+    },
+    {
+      "projectId": 224218,
+      "fileId": 2707509,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2707/509/compactmachines3-1.12.2-3.0.18-b278.jar"
+      ],
+      "artifact": "compactmachines3-1.12.2-3.0.18-b278.jar",
+      "sha256": "61d9bb9eb409f3a3e0ded5870aa6cbb101cedc81f5fbb1ab6bfcd65b3ff51de1",
+      "sha1": "aca4d439b8a7c480217c43ebda60772ef6eb392e",
+      "size": 730062,
+      "url": "https://mediafilez.forgecdn.net/files/2707/509/compactmachines3-1.12.2-3.0.18-b278.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/compactmachines3-1.12.2-3.0.18-b278.jar"
+    },
+    {
+      "projectId": 282313,
+      "fileId": 2689835,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2689/835/TipTheScales-1.12.2-1.0.4.jar"
+      ],
+      "artifact": "TipTheScales-1.12.2-1.0.4.jar",
+      "sha256": "91eab825f0730d412a05a40136e9f0755b9a2b9483fc92255cba08e282a1e146",
+      "sha1": "e63241c7fa81c7fce9f3df0121682bcdcb63929c",
+      "size": 11641,
+      "url": "https://mediafilez.forgecdn.net/files/2689/835/TipTheScales-1.12.2-1.0.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/TipTheScales-1.12.2-1.0.4.jar"
+    },
+    {
+      "projectId": 245453,
+      "fileId": 2691536,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2691/536/environmentaltech-1.12.2-2.0.20.1.jar"
+      ],
+      "artifact": "environmentaltech-1.12.2-2.0.20.1.jar",
+      "sha256": "3331ac0d0f9093433b65ca7b18a8f2bca57bc45fef2d444267e7d7fc6b7bb3a1",
+      "sha1": "2505c74c38e7083448a9473a7fba4713d9d620c1",
+      "size": 1001848,
+      "url": "https://mediafilez.forgecdn.net/files/2691/536/environmentaltech-1.12.2-2.0.20.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/environmentaltech-1.12.2-2.0.20.1.jar"
+    },
+    {
+      "projectId": 363856,
+      "fileId": 2886150,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2886/150/supersoundmuffler-revived_1.12.2_1.0.2.10.jar"
+      ],
+      "artifact": "supersoundmuffler-revived_1.12.2_1.0.2.10.jar",
+      "sha256": "2faf6423756b3c4af3a83424a931122d18ee16dfaf1fff5058baaee923522312",
+      "sha1": "dbd647ab54a365b6f1a67d569fca20ee33fb958a",
+      "size": 80841,
+      "url": "https://mediafilez.forgecdn.net/files/2886/150/supersoundmuffler-revived_1.12.2_1.0.2.10.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/supersoundmuffler-revived_1.12.2_1.0.2.10.jar"
+    },
+    {
+      "projectId": 247695,
+      "fileId": 2755795,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2755/795/Translocators-1.12.2-2.5.2.81-universal.jar"
+      ],
+      "artifact": "Translocators-1.12.2-2.5.2.81-universal.jar",
+      "sha256": "f527ba59d8ab56d936b7edcd9ef0f42232dac436864603a016b83bfbb53c2384",
+      "sha1": "b008cc099c15e0cb121c43c889504fc367b3dedd",
+      "size": 446678,
+      "url": "https://mediafilez.forgecdn.net/files/2755/795/Translocators-1.12.2-2.5.2.81-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Translocators-1.12.2-2.5.2.81-universal.jar"
+    },
+    {
+      "projectId": 238761,
+      "fileId": 2700554,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2700/554/PickleTweaks-1.12.2-2.1.3.jar"
+      ],
+      "artifact": "PickleTweaks-1.12.2-2.1.3.jar",
+      "sha256": "ca89ee327a18cec9b392cec597b6053334d7e23d094faaeaa8589afba53900ae",
+      "sha1": "951f1f67edf773956722762aacc6bcf544f9deab",
+      "size": 252072,
+      "url": "https://mediafilez.forgecdn.net/files/2700/554/PickleTweaks-1.12.2-2.1.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/PickleTweaks-1.12.2-2.1.3.jar"
+    },
+    {
+      "projectId": 299080,
+      "fileId": 2632834,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2632/834/ProportionalDestructionParticles-1.12.2-1.2.4.jar"
+      ],
+      "artifact": "ProportionalDestructionParticles-1.12.2-1.2.4.jar",
+      "sha256": "3ea21326d93eec03927a1115484c2fd80cebac0fa5596c86376b2f28d86b3df1",
+      "sha1": "67f4a97730f5862566637cda03bf0c0ecb39dc7d",
+      "size": 195013,
+      "url": "https://mediafilez.forgecdn.net/files/2632/834/ProportionalDestructionParticles-1.12.2-1.2.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ProportionalDestructionParticles-1.12.2-1.2.4.jar"
+    },
+    {
+      "projectId": 285684,
+      "fileId": 2643952,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2643/952/ColouredTooltips-1.12.2-1.0.7.jar"
+      ],
+      "artifact": "ColouredTooltips-1.12.2-1.0.7.jar",
+      "sha256": "8d7455bbcaded277b7d0497d10c115fce68765ea81999c66a72c3725b60a5066",
+      "sha1": "852b36f025dad49d74894dcffd198292e50ae15e",
+      "size": 7386,
+      "url": "https://mediafilez.forgecdn.net/files/2643/952/ColouredTooltips-1.12.2-1.0.7.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ColouredTooltips-1.12.2-1.0.7.jar"
+    },
+    {
+      "projectId": 245480,
+      "fileId": 2691542,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2691/542/valkyrielib-1.12.2-2.0.20.1.jar"
+      ],
+      "artifact": "valkyrielib-1.12.2-2.0.20.1.jar",
+      "sha256": "24a72428d22c04040e8a60899a395283ca8512f39bfb0cec62ecf9109bf891e0",
+      "sha1": "e640e231cb83ea9ff7cda8710e6d7c44467b9658",
+      "size": 733580,
+      "url": "https://mediafilez.forgecdn.net/files/2691/542/valkyrielib-1.12.2-2.0.20.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/valkyrielib-1.12.2-2.0.20.1.jar"
+    },
+    {
+      "projectId": 278993,
+      "fileId": 2846217,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2846/217/bonsaitrees-1.1.4-b170.jar"
+      ],
+      "artifact": "bonsaitrees-1.1.4-b170.jar",
+      "sha256": "c56c407c3e157f2e2d831d415938b0393d7d11aa5248bdbe584847d98b9d2a30",
+      "sha1": "7bab0859525fb9f2f64e81eb47b19ffa190feb3c",
+      "size": 658780,
+      "url": "https://mediafilez.forgecdn.net/files/2846/217/bonsaitrees-1.1.4-b170.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/bonsaitrees-1.1.4-b170.jar"
+    },
+    {
+      "projectId": 223150,
+      "fileId": 2689602,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2689/602/RecurrentComplex-1.4.8.2.jar"
+      ],
+      "artifact": "RecurrentComplex-1.4.8.2.jar",
+      "sha256": "ed7cd329571fa96aef64a9ce2c490139fbc0acb1548ac64cc5eefd32ce6fc063",
+      "sha1": "b9dff4716409bd622b4fc160f2446a124da5c3a2",
+      "size": 7076645,
+      "url": "https://mediafilez.forgecdn.net/files/2689/602/RecurrentComplex-1.4.8.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/RecurrentComplex-1.4.8.2.jar"
+    },
+    {
+      "projectId": 256662,
+      "fileId": 2833871,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2833/871/RebornStorage-1.12.2-3.3.4.1.jar"
+      ],
+      "artifact": "RebornStorage-1.12.2-3.3.4.1.jar",
+      "sha256": "c7d7ab55309f1238309fd6239899c3d8eeb4db4be36b0a96111009a0e459cb92",
+      "sha1": "bd552b80659b1b13072cf416ea4aa391d8061fae",
+      "size": 80178,
+      "url": "https://mediafilez.forgecdn.net/files/2833/871/RebornStorage-1.12.2-3.3.4.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/RebornStorage-1.12.2-3.3.4.1.jar"
+    },
+    {
+      "projectId": 272302,
+      "fileId": 2941010,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2941/010/refinedstorageaddons-0.4.5.jar",
+        "https://edge.forgecdn.net/files/2941/010/refinedstorageaddons-0.4.5.jar"
+      ],
+      "artifact": "refinedstorageaddons-0.4.5.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "5af385ab60ffa2ab5fdfb8f20d4fc0c70bc6c000439edaa023e7c431fd1d76cf",
+      "sha1": "61cd5c8a76ab157cb4f4633e9de9ddfa68366948",
+      "size": 26804,
+      "url": "https://edge.forgecdn.net/files/2941/010/refinedstorageaddons-0.4.5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/refinedstorageaddons-0.4.5.jar"
+    },
+    {
+      "projectId": 251079,
+      "fileId": 2574220,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2574/220/A%20Block%20of%20Charcoal-1.2.jar"
+      ],
+      "artifact": "A Block of Charcoal-1.2.jar",
+      "sha256": "d0c3475e4cbe03dff9607ae35878df588f6a265a6e3266a97c40b4f97570877d",
+      "sha1": "410045a2d24fae80451a40b46306dfa567c6a46f",
+      "size": 7736,
+      "url": "https://mediafilez.forgecdn.net/files/2574/220/A%20Block%20of%20Charcoal-1.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/A Block of Charcoal-1.2.jar"
+    },
+    {
+      "projectId": 277890,
+      "fileId": 2555574,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2555/574/WaterControlExtreme-1.0.2.jar"
+      ],
+      "artifact": "WaterControlExtreme-1.0.2.jar",
+      "sha256": "fc6477d869b8a9a36aeeb4f303414ab6fe46d9f5dfcf23236a091872a6673df7",
+      "sha1": "d8664047fd14bf39cc075abe88638e78676f0814",
+      "size": 5744,
+      "url": "https://mediafilez.forgecdn.net/files/2555/574/WaterControlExtreme-1.0.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/WaterControlExtreme-1.0.2.jar"
+    },
+    {
+      "projectId": 273430,
+      "fileId": 2459131,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2459/131/ActuallyBaubles-1.12-1.1.jar"
+      ],
+      "artifact": "ActuallyBaubles-1.12-1.1.jar",
+      "sha256": "69817c09c8f0252098142383036062ca2e91d05bd1e422e3ae6682e8423e4bc1",
+      "sha1": "f9ff7eff30f5de77a67ddf3ff965e51b1d9e0616",
+      "size": 11604,
+      "url": "https://mediafilez.forgecdn.net/files/2459/131/ActuallyBaubles-1.12-1.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ActuallyBaubles-1.12-1.1.jar"
+    },
+    {
+      "projectId": 254441,
+      "fileId": 2632107,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2632/107/FancyBlockParticles-1.12.x-2.4.1.jar"
+      ],
+      "artifact": "FancyBlockParticles-1.12.x-2.4.1.jar",
+      "sha256": "ba46a592a9e51d32d3b2fbdfa167690365ba0c8ea0d0d2a80ddaefea550e8ed0",
+      "sha1": "256b53b26298c2f59590f02ba67889821afd79b1",
+      "size": 177413,
+      "url": "https://mediafilez.forgecdn.net/files/2632/107/FancyBlockParticles-1.12.x-2.4.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/FancyBlockParticles-1.12.x-2.4.1.jar"
+    },
+    {
+      "projectId": 258914,
+      "fileId": 2708729,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2708/729/weirdinggadget-1.12.2-2.1.16-universal.jar"
+      ],
+      "artifact": "weirdinggadget-1.12.2-2.1.16-universal.jar",
+      "sha256": "a04d392c436703b8258c6f94f76e5a024350bd34cb3033ef70c646b071d4b514",
+      "sha1": "b21a3cbb5bcecac448c471a438c17febe8d1f953",
+      "size": 181054,
+      "url": "https://mediafilez.forgecdn.net/files/2708/729/weirdinggadget-1.12.2-2.1.16-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/weirdinggadget-1.12.2-2.1.16-universal.jar"
+    },
+    {
+      "projectId": 227639,
+      "fileId": 2618264,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2618/264/twilightforest-1.12.2-3.8.689-universal.jar"
+      ],
+      "artifact": "twilightforest-1.12.2-3.8.689-universal.jar",
+      "sha256": "b691647229a66afe60807fdb9db706ed253d9b819df6dc374d28a4a7e69c1794",
+      "sha1": "418e55d39800696341d888dd9f407daee3748276",
+      "size": 7296016,
+      "url": "https://mediafilez.forgecdn.net/files/2618/264/twilightforest-1.12.2-3.8.689-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/twilightforest-1.12.2-3.8.689-universal.jar"
+    },
+    {
+      "projectId": 60089,
+      "fileId": 2671937,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2671/937/MouseTweaks-2.10-mc1.12.2.jar"
+      ],
+      "artifact": "MouseTweaks-2.10-mc1.12.2.jar",
+      "sha256": "77969c0e7f76c078ebb7004642e86746d57f47b7a46237fcb1c06d4a55679448",
+      "sha1": "0d3b0589021905b2eab8ba93805e9fdef463288e",
+      "size": 75170,
+      "url": "https://mediafilez.forgecdn.net/files/2671/937/MouseTweaks-2.10-mc1.12.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MouseTweaks-2.10-mc1.12.2.jar"
+    },
+    {
+      "projectId": 228756,
+      "fileId": 2747935,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2747/935/ironchest-1.12.2-7.0.72.847.jar"
+      ],
+      "artifact": "ironchest-1.12.2-7.0.72.847.jar",
+      "sha256": "29d3a4115d67b83eb542b618eb64db40db23a7f009a0f4dc9a396101d6f8491f",
+      "sha1": "adc4c785a484c5d5a4ab9a29e1937faeed4312dd",
+      "size": 956692,
+      "url": "https://mediafilez.forgecdn.net/files/2747/935/ironchest-1.12.2-7.0.72.847.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ironchest-1.12.2-7.0.72.847.jar"
+    },
+    {
+      "projectId": 229876,
+      "fileId": 2483393,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2483/393/BetterFps-1.4.8.jar"
+      ],
+      "artifact": "BetterFps-1.4.8.jar",
+      "sha256": "93f2496bded8f622d31d7b4b634766166c8d52dfca6e21cd9f46c445a468a381",
+      "sha1": "245235d5c67daff00ee658ee1f88ae8c3e4584b8",
+      "size": 155196,
+      "url": "https://mediafilez.forgecdn.net/files/2483/393/BetterFps-1.4.8.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BetterFps-1.4.8.jar"
+    },
+    {
+      "projectId": 237701,
+      "fileId": 2560638,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2560/638/reauth-3.6.0.jar"
+      ],
+      "artifact": "reauth-3.6.0.jar",
+      "sha256": "2264ebdb4d29fe4105d8940f1fd14720ada023d059879c41374b44cbb3b7ac7b",
+      "sha1": "be3dedc6a808f13828373176d653d2e0bb629eeb",
+      "size": 30446,
+      "url": "https://mediafilez.forgecdn.net/files/2560/638/reauth-3.6.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/reauth-3.6.0.jar"
+    },
+    {
+      "projectId": 290201,
+      "fileId": 2632997,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2632/997/OreStages-1.12.2-2.0.37.jar"
+      ],
+      "artifact": "OreStages-1.12.2-2.0.37.jar",
+      "sha256": "bbd03b83e3860b9914262d0d9c1e3c8228c122dbbb711761bb64b18190fc5056",
+      "sha1": "155bcb1784e4ed57614c130cd2f009596881548f",
+      "size": 31806,
+      "url": "https://mediafilez.forgecdn.net/files/2632/997/OreStages-1.12.2-2.0.37.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/OreStages-1.12.2-2.0.37.jar"
+    },
+    {
+      "projectId": 399669,
+      "fileId": 3024234,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/3024/234/simpletomb-1.12.2-1.0.0.jar"
+      ],
+      "artifact": "simpletomb-1.12.2-1.0.0.jar",
+      "sha256": "6a71bc2327eb6856c24cfcefc2e1f8ca5f26bb7782e3acd058e9be4d8c58fa9b",
+      "sha1": "68464990f46ce2ca1f9b36e4cd7ff72c1f28b165",
+      "size": 285294,
+      "url": "https://mediafilez.forgecdn.net/files/3024/234/simpletomb-1.12.2-1.0.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/simpletomb-1.12.2-1.0.0.jar"
+    },
+    {
+      "projectId": 246640,
+      "fileId": 2704562,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2704/562/MysticalAgriculture-1.12.2-1.7.5.jar"
+      ],
+      "artifact": "MysticalAgriculture-1.12.2-1.7.5.jar",
+      "sha256": "e84a70bbcb5dc559d28c7bc65f1ef1af512485097ad89c6748249b173019975c",
+      "sha1": "dd7b50ccebda09f8cb44d35997827ae3450455d1",
+      "size": 1536124,
+      "url": "https://mediafilez.forgecdn.net/files/2704/562/MysticalAgriculture-1.12.2-1.7.5.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MysticalAgriculture-1.12.2-1.7.5.jar"
+    },
+    {
+      "projectId": 272335,
+      "fileId": 2645867,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2645/867/Cucumber-1.12.2-1.1.3.jar"
+      ],
+      "artifact": "Cucumber-1.12.2-1.1.3.jar",
+      "sha256": "0475ba0f0964c4a56afd1c2765b7063849ca2b77a91d80d7f612fb15354c27e5",
+      "sha1": "8be30f1977cd9df566dfbae2977793335e576591",
+      "size": 126699,
+      "url": "https://mediafilez.forgecdn.net/files/2645/867/Cucumber-1.12.2-1.1.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Cucumber-1.12.2-1.1.3.jar"
+    },
+    {
+      "projectId": 220954,
+      "fileId": 2693544,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2693/544/modtweaker-4.0.17.jar"
+      ],
+      "artifact": "modtweaker-4.0.17.jar",
+      "sha256": "d13d8dd6318eedffc046f0633371f72b93c4f4e5a92f9147b706ada7e27f2f6d",
+      "sha1": "22ee29d400d3843dd61cf4162a572e69f6ba247c",
+      "size": 447874,
+      "url": "https://mediafilez.forgecdn.net/files/2693/544/modtweaker-4.0.17.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/modtweaker-4.0.17.jar"
+    },
+    {
+      "projectId": 281274,
+      "fileId": 2558337,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2558/337/Uppers-0.0.6.jar"
+      ],
+      "artifact": "Uppers-0.0.6.jar",
+      "sha256": "31c4f1591fa4b9f3f272703a3e232562318b5aacb62d99a65e0f3b6b0d532885",
+      "sha1": "1c7e77d0e2f6667680e861c8c7cfac740b2c3f01",
+      "size": 28927,
+      "url": "https://mediafilez.forgecdn.net/files/2558/337/Uppers-0.0.6.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Uppers-0.0.6.jar"
+    },
+    {
+      "projectId": 285742,
+      "fileId": 2949817,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2949/817/SmoothFont-mc1.12.2-2.1.2.jar"
+      ],
+      "artifact": "SmoothFont-mc1.12.2-2.1.2.jar",
+      "sha256": "96ac76c1085b12cb62c96aeff004672c8f36cb08df46de016049b4bd92cd03ee",
+      "sha1": "f904ba15339103acb898b6a618b87f6498b3d8bc",
+      "size": 283513,
+      "url": "https://mediafilez.forgecdn.net/files/2949/817/SmoothFont-mc1.12.2-2.1.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/SmoothFont-mc1.12.2-2.1.2.jar"
+    },
+    {
+      "projectId": 232131,
+      "fileId": 2624732,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2624/732/DefaultOptions_1.12.2-9.2.8.jar"
+      ],
+      "artifact": "DefaultOptions_1.12.2-9.2.8.jar",
+      "sha256": "1a4007ec8c503fe75faf7429b66c0ffe1555fa7a7d43147386049913ce6ebf4a",
+      "sha1": "e3197fc44aa2f59897713a8889a5a56c0f8ccbf3",
+      "size": 15056,
+      "url": "https://mediafilez.forgecdn.net/files/2624/732/DefaultOptions_1.12.2-9.2.8.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/DefaultOptions_1.12.2-9.2.8.jar"
+    },
+    {
+      "projectId": 252239,
+      "fileId": 2712229,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2712/229/SpartanShields-1.12.2-1.5.4.jar"
+      ],
+      "artifact": "SpartanShields-1.12.2-1.5.4.jar",
+      "sha256": "9b8eb232a035987d57b4bf285e619ef9610ac4afce033e6d9d8faced1bbb415f",
+      "sha1": "3da2ffb767146e872eac0ceb510edd512c173f7f",
+      "size": 430944,
+      "url": "https://mediafilez.forgecdn.net/files/2712/229/SpartanShields-1.12.2-1.5.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/SpartanShields-1.12.2-1.5.4.jar"
+    },
+    {
+      "projectId": 262292,
+      "fileId": 2463637,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2463/637/MagmaMonsters-0.3.0.jar"
+      ],
+      "artifact": "MagmaMonsters-0.3.0.jar",
+      "sha256": "50804d866a25542da1ebc6b53243a12e6a5ef25df76a7fe89a7db5756c3d4f87",
+      "sha1": "a5ae56b0d1cc410c4c90fca772fbdb395bddb8bb",
+      "size": 157133,
+      "url": "https://mediafilez.forgecdn.net/files/2463/637/MagmaMonsters-0.3.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/MagmaMonsters-0.3.0.jar"
+    },
+    {
+      "projectId": 319264,
+      "fileId": 2698971,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2698/971/LoadingScreens-1.12.2-0.3.1.jar"
+      ],
+      "artifact": "LoadingScreens-1.12.2-0.3.1.jar",
+      "sha256": "6df26be8acc4a1224a9ba8d3d31709a5065d3c1fcce939cb4a5b830782f0f923",
+      "sha1": "53129de47388d323b76f5d50e0ba01ade7e0e9b5",
+      "size": 42647,
+      "url": "https://mediafilez.forgecdn.net/files/2698/971/LoadingScreens-1.12.2-0.3.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/LoadingScreens-1.12.2-0.3.1.jar"
+    },
+    {
+      "projectId": 279053,
+      "fileId": 2800403,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2800/403/InductiveLogistics-1.12.2-1.3.4.jar"
+      ],
+      "artifact": "InductiveLogistics-1.12.2-1.3.4.jar",
+      "sha256": "90ed3b67ad4d8d021f679eeb72eb00e68343c8ef49e50d2eb7b6b6715465fa50",
+      "sha1": "0e4db3323d2e1155df5992ef1c28d1dce2337dd5",
+      "size": 322066,
+      "url": "https://mediafilez.forgecdn.net/files/2800/403/InductiveLogistics-1.12.2-1.3.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/InductiveLogistics-1.12.2-1.3.4.jar"
+    },
+    {
+      "projectId": 224320,
+      "fileId": 2977010,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2977/010/enderutilities-1.12.2-0.7.15.jar",
+        "https://edge.forgecdn.net/files/2977/010/enderutilities-1.12.2-0.7.15.jar"
+      ],
+      "artifact": "enderutilities-1.12.2-0.7.15.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "c0a604aac57853f76f16e21958b02f4d6adbc543c20dda67eb1088ca91ba618c",
+      "sha1": "cf80a6629d04876090890d6417ba4685c9aedc08",
+      "size": 1730192,
+      "url": "https://edge.forgecdn.net/files/2977/010/enderutilities-1.12.2-0.7.15.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/enderutilities-1.12.2-0.7.15.jar"
+    },
+    {
+      "projectId": 235492,
+      "fileId": 2825547,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2825/547/Triumph-1.12.2-3.19.2.jar"
+      ],
+      "artifact": "Triumph-1.12.2-3.19.2.jar",
+      "sha256": "60b7e185a7d830841df7849c014bec4945f7afd83cfbb533ad3af19204fe787c",
+      "sha1": "2741423e8aeba105d4f9877aacc152ec611b8959",
+      "size": 367437,
+      "url": "https://mediafilez.forgecdn.net/files/2825/547/Triumph-1.12.2-3.19.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Triumph-1.12.2-3.19.2.jar"
+    },
+    {
+      "projectId": 242195,
+      "fileId": 2813586,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2813/586/DarkUtils-1.12.2-1.8.230.jar"
+      ],
+      "artifact": "DarkUtils-1.12.2-1.8.230.jar",
+      "sha256": "62ef749c6c4acd3b057a9d13e46626910fe4a4b877603d50c82af58a73485d33",
+      "sha1": "3f34c35903ca09e637dc3426eb81ca64ced0429a",
+      "size": 426515,
+      "url": "https://mediafilez.forgecdn.net/files/2813/586/DarkUtils-1.12.2-1.8.230.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/DarkUtils-1.12.2-1.8.230.jar"
+    },
+    {
+      "projectId": 256717,
+      "fileId": 2666198,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2666/198/Clumps-3.1.2.jar"
+      ],
+      "artifact": "Clumps-3.1.2.jar",
+      "sha256": "f3ce670e0087f4c6b770fd05ae5c3dfd8462f74c62397932ea72954d1c6c8df4",
+      "sha1": "6ea78bea8006e3924bc37c2aef0115134c8af07b",
+      "size": 13792,
+      "url": "https://mediafilez.forgecdn.net/files/2666/198/Clumps-3.1.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Clumps-3.1.2.jar"
+    },
+    {
+      "projectId": 284648,
+      "fileId": 2542709,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2542/709/ProgressionTweaks-1.12.2-0.3.40.jar"
+      ],
+      "artifact": "ProgressionTweaks-1.12.2-0.3.40.jar",
+      "sha256": "a2ce396b68dc65f9853bffc0d4ca2439174ca4819ab7b6ea28bee4c87884c32b",
+      "sha1": "9e17cab711f077df305377ab1f573ebe4dc10aae",
+      "size": 91560,
+      "url": "https://mediafilez.forgecdn.net/files/2542/709/ProgressionTweaks-1.12.2-0.3.40.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ProgressionTweaks-1.12.2-0.3.40.jar"
+    },
+    {
+      "projectId": 266784,
+      "fileId": 2662364,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2662/364/Scannable-MC1.12.2-1.6.3.24.jar"
+      ],
+      "artifact": "Scannable-MC1.12.2-1.6.3.24.jar",
+      "sha256": "ccddfeb17ccaf53acacedf6b0f323d2a24561825a47e247f1dba06bc00874e8e",
+      "sha1": "b10db32099548a6297f0bd883159b7ded124392c",
+      "size": 252687,
+      "url": "https://mediafilez.forgecdn.net/files/2662/364/Scannable-MC1.12.2-1.6.3.24.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Scannable-MC1.12.2-1.6.3.24.jar"
+    },
+    {
+      "projectId": 263442,
+      "fileId": 2649092,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2649/092/Animalium-0.3.8.jar",
+        "https://edge.forgecdn.net/files/2649/092/Animalium-0.3.8.jar"
+      ],
+      "artifact": "Animalium-0.3.8.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "9509e8c7c03e0e2b579176ad3b67355db2b2dee7b16a7d19345b9e39a2e84ffe",
+      "sha1": "0bbc75641ebe6a6e621fa90379173c69d8e90605",
+      "size": 318527,
+      "url": "https://edge.forgecdn.net/files/2649/092/Animalium-0.3.8.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Animalium-0.3.8.jar"
+    },
+    {
+      "projectId": 281316,
+      "fileId": 2696448,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2696/448/armoreablemobs-1.12.2-1.1.8.jar"
+      ],
+      "artifact": "armoreablemobs-1.12.2-1.1.8.jar",
+      "sha256": "3e1125ebc1cf5cb659e8548552460dfbbb85c866d8df13f0f780d3a1f4adb1f1",
+      "sha1": "646b49f2db0eb2d9f4e17ec65b6aa6d7a16b72e4",
+      "size": 21855,
+      "url": "https://mediafilez.forgecdn.net/files/2696/448/armoreablemobs-1.12.2-1.1.8.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/armoreablemobs-1.12.2-1.1.8.jar"
+    },
+    {
+      "projectId": 228832,
+      "fileId": 2645992,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2645/992/Guide-API-1.12-2.1.8-63.jar"
+      ],
+      "artifact": "Guide-API-1.12-2.1.8-63.jar",
+      "sha256": "e201712ef8fadc6c4b6380939751e92fe32cad2ba2dcb717e1acb3b07e0c2125",
+      "sha1": "095b3b85d05118602c7678beb1e56d26930fd0e7",
+      "size": 169528,
+      "url": "https://mediafilez.forgecdn.net/files/2645/992/Guide-API-1.12-2.1.8-63.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Guide-API-1.12-2.1.8-63.jar"
+    },
+    {
+      "projectId": 243363,
+      "fileId": 2922065,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2922/065/TheBetweenlands-3.5.10-universal.jar",
+        "https://edge.forgecdn.net/files/2922/065/TheBetweenlands-3.5.10-universal.jar"
+      ],
+      "artifact": "TheBetweenlands-3.5.10-universal.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "385201fa2beca31813c0c1f89d6388368e0b44d816d53e3db494163c2d9f143c",
+      "sha1": "b62f1992f3f31b5cbbdff532a4c079919357a5ee",
+      "size": 89428868,
+      "url": "https://edge.forgecdn.net/files/2922/065/TheBetweenlands-3.5.10-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/TheBetweenlands-3.5.10-universal.jar"
+    },
+    {
+      "projectId": 69118,
+      "fileId": 2664449,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2664/449/Morpheus-1.12.2-3.5.106.jar"
+      ],
+      "artifact": "Morpheus-1.12.2-3.5.106.jar",
+      "sha256": "1904c32a8e0077e005bfefe005c26834c2df09881bc075a7deadce8da97fb457",
+      "sha1": "c948341a1b2243d4f8081c4db2cd727c2c4a7ed0",
+      "size": 21508,
+      "url": "https://mediafilez.forgecdn.net/files/2664/449/Morpheus-1.12.2-3.5.106.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Morpheus-1.12.2-3.5.106.jar"
+    },
+    {
+      "projectId": 283589,
+      "fileId": 2708030,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2708/030/YNot-0.2.4.jar",
+        "https://edge.forgecdn.net/files/2708/030/YNot-0.2.4.jar"
+      ],
+      "artifact": "YNot-0.2.4.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "6c08b67e83c67c9a1b3b1be3ffcacaf636dc51c2e3ecec8fcfe94d41b06556b0",
+      "sha1": "7192f98116899b6755fbd631bff2721c40f65bea",
+      "size": 63867,
+      "url": "https://edge.forgecdn.net/files/2708/030/YNot-0.2.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/YNot-0.2.4.jar"
+    },
+    {
+      "projectId": 264601,
+      "fileId": 2875265,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2875/265/Overloaded-1.12.2-0.0.59.jar"
+      ],
+      "artifact": "Overloaded-1.12.2-0.0.59.jar",
+      "sha256": "a998b6e223cf79ceaf89b08d610816ef1e8b1226a9eb8a57368e81adacb8c49c",
+      "sha1": "b281c3f6322a42b459e09579ee6656ac4e8697fa",
+      "size": 12729930,
+      "url": "https://mediafilez.forgecdn.net/files/2875/265/Overloaded-1.12.2-0.0.59.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Overloaded-1.12.2-0.0.59.jar"
+    },
+    {
+      "projectId": 231095,
+      "fileId": 2720655,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2720/655/chiselsandbits-14.33.jar"
+      ],
+      "artifact": "chiselsandbits-14.33.jar",
+      "sha256": "0b086aced1beca90ed5bb25fe6951a4d191d9b49f221af1074d1f9ff4f364b74",
+      "sha1": "0e6f159254e6899651087e5b1464bac91698d1d3",
+      "size": 737407,
+      "url": "https://mediafilez.forgecdn.net/files/2720/655/chiselsandbits-14.33.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/chiselsandbits-14.33.jar"
+    },
+    {
+      "projectId": 245620,
+      "fileId": 2630384,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2630/384/RealisticItemDrops-1.2.14.jar"
+      ],
+      "artifact": "RealisticItemDrops-1.2.14.jar",
+      "sha256": "e5db48125ae36cc503ed66ccc9d0d1130b1387851551675a4816810bbe202051",
+      "sha1": "b9ab3f37a13c78d8c3c3fb4257374ad4ae90ae1b",
+      "size": 65733,
+      "url": "https://mediafilez.forgecdn.net/files/2630/384/RealisticItemDrops-1.2.14.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/RealisticItemDrops-1.2.14.jar"
+    },
+    {
+      "projectId": 32274,
+      "fileId": 2682920,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2682/920/journeymap-1.12.2-5.5.4.jar"
+      ],
+      "artifact": "journeymap-1.12.2-5.5.4.jar",
+      "sha256": "6a41be74ccf576583d2c935385e7236725e6ff72f1c3c445dab9997535b9b10f",
+      "sha1": "3806146879daf4dcb68bacbef89a441ab4e37e5c",
+      "size": 1845450,
+      "url": "https://mediafilez.forgecdn.net/files/2682/920/journeymap-1.12.2-5.5.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/journeymap-1.12.2-5.5.4.jar"
+    },
+    {
+      "projectId": 263498,
+      "fileId": 2885190,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2885/190/ThirstyBottles-1.12.2-2.0.1.jar"
+      ],
+      "artifact": "ThirstyBottles-1.12.2-2.0.1.jar",
+      "sha256": "1fa59f5db67ca71d7bf4b3ac7dec9034e86971c32d27c09ed68009ac9a7cea22",
+      "sha1": "c4be60c50e5218d57afb14271ae3f844fead35f1",
+      "size": 7564,
+      "url": "https://mediafilez.forgecdn.net/files/2885/190/ThirstyBottles-1.12.2-2.0.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ThirstyBottles-1.12.2-2.0.1.jar"
+    },
+    {
+      "projectId": 253449,
+      "fileId": 2568751,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2568/751/Hwyla-1.8.26-B41_1.12.2.jar"
+      ],
+      "artifact": "Hwyla-1.8.26-B41_1.12.2.jar",
+      "sha256": "e9ddecd4920ee9a57e11e4b43fb1dd395bbf37e276be726a99a2590272304124",
+      "sha1": "7280d5c0dab42436549bcefc63ff64a1049e5501",
+      "size": 453778,
+      "url": "https://mediafilez.forgecdn.net/files/2568/751/Hwyla-1.8.26-B41_1.12.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Hwyla-1.8.26-B41_1.12.2.jar"
+    },
+    {
+      "projectId": 253462,
+      "fileId": 2834651,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2834/651/StevesCarts-1.12.2-2.4.32.137.jar"
+      ],
+      "artifact": "StevesCarts-1.12.2-2.4.32.137.jar",
+      "sha256": "df8b6999b59cacd90a94fa1eff5da0cdf0b5d3a3c72c0a9e6b50c12836950de9",
+      "sha1": "4b51d6abd0236f7b4df39a897e91577ff415c355",
+      "size": 2475522,
+      "url": "https://mediafilez.forgecdn.net/files/2834/651/StevesCarts-1.12.2-2.4.32.137.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/StevesCarts-1.12.2-2.4.32.137.jar"
+    },
+    {
+      "projectId": 246760,
+      "fileId": 2650398,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2650/398/BetterWithMods-1.12-2.3.20-1027.jar"
+      ],
+      "artifact": "BetterWithMods-1.12-2.3.20-1027.jar",
+      "sha256": "c52f0ad68f1ada5148fa2111c38d2797614b011a6e19e98d50f322246d2a5cea",
+      "sha1": "94cd312cdf670d4f88737b17cd7b0ff4ba9e84a9",
+      "size": 5074707,
+      "url": "https://mediafilez.forgecdn.net/files/2650/398/BetterWithMods-1.12-2.3.20-1027.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BetterWithMods-1.12-2.3.20-1027.jar"
+    },
+    {
+      "projectId": 254602,
+      "fileId": 2580052,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2580/052/tesla-core-lib-1.12.2-1.0.15.jar",
+        "https://edge.forgecdn.net/files/2580/052/tesla-core-lib-1.12.2-1.0.15.jar"
+      ],
+      "artifact": "tesla-core-lib-1.12.2-1.0.15.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "7e0dc8289acdf4451b2fa783bf33f52fb79495aded15fbad67c0b693087bae3a",
+      "sha1": "3e8b6133163f44644b7911027a986f4a2bf3c100",
+      "size": 1140374,
+      "url": "https://edge.forgecdn.net/files/2580/052/tesla-core-lib-1.12.2-1.0.15.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/tesla-core-lib-1.12.2-1.0.15.jar"
+    },
+    {
+      "projectId": 283644,
+      "fileId": 2694382,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2694/382/Placebo-1.12.2-1.6.0.jar"
+      ],
+      "artifact": "Placebo-1.12.2-1.6.0.jar",
+      "sha256": "c2110db8b8abec23d9e2e9c4a89be010f6fe1150d52595397179c8804d942ee3",
+      "sha1": "0fbf049b5b431d52f18607fa1f1df09b3584aa6f",
+      "size": 76902,
+      "url": "https://mediafilez.forgecdn.net/files/2694/382/Placebo-1.12.2-1.6.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/Placebo-1.12.2-1.6.0.jar"
+    },
+    {
+      "projectId": 227795,
+      "fileId": 2706321,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2706/321/antiqueatlas-1.12.2-4.5.1.jar"
+      ],
+      "artifact": "antiqueatlas-1.12.2-4.5.1.jar",
+      "sha256": "cf2003c67b75b9f2384089de55331829d9711e0352a3616812739dffce292076",
+      "sha1": "b5f2acd30d6aa5be68c688fb46cc0da68abbf83e",
+      "size": 1270824,
+      "url": "https://mediafilez.forgecdn.net/files/2706/321/antiqueatlas-1.12.2-4.5.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/antiqueatlas-1.12.2-4.5.1.jar"
+    },
+    {
+      "projectId": 278063,
+      "fileId": 2644009,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2644/009/InfoAccessories-1.12.2-1.0.11.jar",
+        "https://edge.forgecdn.net/files/2644/009/InfoAccessories-1.12.2-1.0.11.jar"
+      ],
+      "artifact": "InfoAccessories-1.12.2-1.0.11.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "2ba34d1a8831d646f78ebbb4f9ff4a1f57f184e572800632c0c6a8cb4f7cde81",
+      "sha1": "9bf3824eb4d474eedd455f648fb16c3d4279ad4d",
+      "size": 85973,
+      "url": "https://edge.forgecdn.net/files/2644/009/InfoAccessories-1.12.2-1.0.11.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/InfoAccessories-1.12.2-1.0.11.jar"
+    },
+    {
+      "projectId": 247907,
+      "fileId": 2638197,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2638/197/PrimalCore-1.12.2-0.6.104.jar"
+      ],
+      "artifact": "PrimalCore-1.12.2-0.6.104.jar",
+      "sha256": "0680781e1f1447b409cfe68273a2c67029c29ad74072a5c0a922b637ef50ba65",
+      "sha1": "3733c17e167cc8ea00d5a5a7d5def561d80f2f7a",
+      "size": 5683907,
+      "url": "https://mediafilez.forgecdn.net/files/2638/197/PrimalCore-1.12.2-0.6.104.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/PrimalCore-1.12.2-0.6.104.jar"
+    },
+    {
+      "projectId": 246795,
+      "fileId": 2909295,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2909/295/ViesCraft-1.12.2-5.9.16.jar"
+      ],
+      "artifact": "ViesCraft-1.12.2-5.9.16.jar",
+      "sha256": "7ea8ddc2ef85a695af4fb1a44a8d124fdbfb5e52095a0677c0f06a005229636c",
+      "sha1": "c8b077768029f807f97b4edf806fa58f0df6ca91",
+      "size": 17112492,
+      "url": "https://mediafilez.forgecdn.net/files/2909/295/ViesCraft-1.12.2-5.9.16.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ViesCraft-1.12.2-5.9.16.jar"
+    },
+    {
+      "projectId": 298187,
+      "fileId": 2928313,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2928/313/BuildingGadgets-2.8.3.jar"
+      ],
+      "artifact": "BuildingGadgets-2.8.3.jar",
+      "sha256": "b24498b3215e657218176d9fd83d59e16c35819ca7dc446789a49ddb04bb223f",
+      "sha1": "37d89ec4d0a92398321ff78dddc491fef6186f31",
+      "size": 718540,
+      "url": "https://mediafilez.forgecdn.net/files/2928/313/BuildingGadgets-2.8.3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BuildingGadgets-2.8.3.jar"
+    },
+    {
+      "projectId": 280316,
+      "fileId": 2696766,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2696/766/ItemStages-1.12.2-2.0.49.jar"
+      ],
+      "artifact": "ItemStages-1.12.2-2.0.49.jar",
+      "sha256": "018b92836d4993f8038f82a668fcd4dca32e1b62459406c8e6d7047cebc160e5",
+      "sha1": "be27b327fc7fc47c71a0a296ad0a2a3571f24318",
+      "size": 43129,
+      "url": "https://mediafilez.forgecdn.net/files/2696/766/ItemStages-1.12.2-2.0.49.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/ItemStages-1.12.2-2.0.49.jar"
+    },
+    {
+      "projectId": 254629,
+      "fileId": 2704839,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2704/839/The%20Beneath-1.12.2-1.5.1.jar"
+      ],
+      "artifact": "The Beneath-1.12.2-1.5.1.jar",
+      "sha256": "3664aaa9b778cb85953e2050eceb65a8d2a498ab216666824e79a54a3c59fd61",
+      "sha1": "841c10c87e73045e62903ae6c2de4c824d7680e8",
+      "size": 6128483,
+      "url": "https://mediafilez.forgecdn.net/files/2704/839/The%20Beneath-1.12.2-1.5.1.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/The Beneath-1.12.2-1.5.1.jar"
+    },
+    {
+      "projectId": 261339,
+      "fileId": 2541554,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2541/554/LootTableTweaker-1.12.2-1.1.14.jar"
+      ],
+      "artifact": "LootTableTweaker-1.12.2-1.1.14.jar",
+      "sha256": "1016dd40d52e2e64628970e916b6506800996e62b0978bff7cebdd9db28897ae",
+      "sha1": "80b697c8d8cf49ca8cac6a0a30b8743d3b4891e0",
+      "size": 25043,
+      "url": "https://mediafilez.forgecdn.net/files/2541/554/LootTableTweaker-1.12.2-1.1.14.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/LootTableTweaker-1.12.2-1.1.14.jar"
+    },
+    {
+      "projectId": 272515,
+      "fileId": 2685984,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2685/984/BetterAdvancements-1.12.2-0.1.0.77.jar"
+      ],
+      "artifact": "BetterAdvancements-1.12.2-0.1.0.77.jar",
+      "sha256": "c70cda15d9c76cc79423399c1002977d6dfcc229128b33b87f25d5b4238bea34",
+      "sha1": "13948f45e69059c3714266a1549bf643fee6ebc3",
+      "size": 62668,
+      "url": "https://mediafilez.forgecdn.net/files/2685/984/BetterAdvancements-1.12.2-0.1.0.77.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/BetterAdvancements-1.12.2-0.1.0.77.jar"
+    },
+    {
+      "projectId": 243478,
+      "fileId": 2745657,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2745/657/moreoverlays-1.15.1-mc1.12.2.jar"
+      ],
+      "artifact": "moreoverlays-1.15.1-mc1.12.2.jar",
+      "sha256": "428542f8e4e9a683826058fd113d6e74121a3d47c7e796d7cb96ceed801102ad",
+      "sha1": "b308fe363f23343d0b073d04883c5fca63b08d0b",
+      "size": 51284,
+      "url": "https://mediafilez.forgecdn.net/files/2745/657/moreoverlays-1.15.1-mc1.12.2.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/moreoverlays-1.15.1-mc1.12.2.jar"
+    },
+    {
+      "projectId": 317208,
+      "fileId": 2686337,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2686/337/mekatweaks-1.0.0-3.jar"
+      ],
+      "artifact": "mekatweaks-1.0.0-3.jar",
+      "sha256": "257bfb62ba4bf09ffadc08afb91c0b231eb4b01ca5069f60ef7e18462fd6a768",
+      "sha1": "7662a962fd2f98949c12500de501dd490a2ef8a3",
+      "size": 14638,
+      "url": "https://mediafilez.forgecdn.net/files/2686/337/mekatweaks-1.0.0-3.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/mekatweaks-1.0.0-3.jar"
+    },
+    {
+      "projectId": 237903,
+      "fileId": 3330308,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/3330/308/RebornCore-1.12.2-3.19.5-universal.jar"
+      ],
+      "artifact": "RebornCore-1.12.2-3.19.5-universal.jar",
+      "sha256": "31571a6c01b9fd8daf481fa2f22615bbc99335c21f5e474a5607ea149bf2b9aa",
+      "sha1": "7a296b3ea8cbffce723b9949bf3726af3a4e8215",
+      "size": 2285146,
+      "url": "https://mediafilez.forgecdn.net/files/3330/308/RebornCore-1.12.2-3.19.5-universal.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/RebornCore-1.12.2-3.19.5-universal.jar"
+    },
+    {
+      "projectId": 228969,
+      "fileId": 2501030,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2501/030/PlayerAPI-1.12.1-1.0.jar",
+        "https://edge.forgecdn.net/files/2501/030/PlayerAPI-1.12.1-1.0.jar"
+      ],
+      "artifact": "PlayerAPI-1.12.1-1.0.jar",
+      "error": "HTTP Error 403: Forbidden",
+      "sha256": "d2c0d8edd78d2e1e0ae4174c3b8762313defa704e7773e629669d2d5b2082d29",
+      "sha1": "45be6effdc0f96c266c5c7a2bd46ab80e440bd79",
+      "size": 277472,
+      "url": "https://edge.forgecdn.net/files/2501/030/PlayerAPI-1.12.1-1.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/PlayerAPI-1.12.1-1.0.jar"
+    },
+    {
+      "projectId": 270305,
+      "fileId": 2617198,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2617/198/oeintegration-2.3.4.jar"
+      ],
+      "artifact": "oeintegration-2.3.4.jar",
+      "sha256": "b2b8831cf520e6f5e75b256b7fd7faa75e04196f79a3ca4e98b3daeb557720c8",
+      "sha1": "e40401891aec2dd98e4ed705e80393719d403e13",
+      "size": 25526,
+      "url": "https://mediafilez.forgecdn.net/files/2617/198/oeintegration-2.3.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/oeintegration-2.3.4.jar"
+    },
+    {
+      "projectId": 241268,
+      "fileId": 2704408,
+      "status": "fetched",
+      "attempts": [
+        "https://mediafilez.forgecdn.net/files/2704/408/immcraft-1.12-1.6.0.jar"
+      ],
+      "artifact": "immcraft-1.12-1.6.0.jar",
+      "sha256": "a0c0f5be1a1bcbc584dbbb14a39f81735fd39309546a579944b889beaa71740f",
+      "sha1": "1a3b1306838152d4bed38688844ffd8218878fa4",
+      "size": 1022155,
+      "url": "https://mediafilez.forgecdn.net/files/2704/408/immcraft-1.12-1.6.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/jars/immcraft-1.12-1.6.0.jar"
+    }
+  ],
+  "bundledArtifacts": [
+    {
+      "artifact": "Galacticraft-Planets-1.12.2-4.0.2.280.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/extracted/overrides/mods/Galacticraft-Planets-1.12.2-4.0.2.280.jar",
+      "archiveEntry": "overrides/mods/Galacticraft-Planets-1.12.2-4.0.2.280.jar",
+      "status": "fetched",
+      "sha256": "e8e8c0fe8fe5f4ad4669bdd567d4397d78e893b106a4780101796747e292102d",
+      "sha1": "327c7efe184f43b091788e15cbbee5409fabf79b",
+      "size": 3975978,
+      "acquisition": "publisher-override"
+    },
+    {
+      "artifact": "GalacticraftCore-1.12.2-4.0.2.280.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/extracted/overrides/mods/GalacticraftCore-1.12.2-4.0.2.280.jar",
+      "archiveEntry": "overrides/mods/GalacticraftCore-1.12.2-4.0.2.280.jar",
+      "status": "fetched",
+      "sha256": "405f0bd7fb6ccb52512a6823d4b9eb288bbb9c1ac36ceba651738a85484f2fce",
+      "sha1": "7e15210ac47a4c96454fe664bc927ce3b95097dd",
+      "size": 10610662,
+      "acquisition": "publisher-override"
+    },
+    {
+      "artifact": "MicdoodleCore-1.12.2-4.0.2.280.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/extracted/overrides/mods/MicdoodleCore-1.12.2-4.0.2.280.jar",
+      "archiveEntry": "overrides/mods/MicdoodleCore-1.12.2-4.0.2.280.jar",
+      "status": "fetched",
+      "sha256": "a8dcb698eefe4f70ee1ff920227f261434e36a582a2752a057fd692161ad125d",
+      "sha1": "906b6088c54a428d7a383796e7b77283cca7e573",
+      "size": 53300,
+      "acquisition": "publisher-override"
+    },
+    {
+      "artifact": "Nutrition-1.12.2-4.3.0.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/extracted/overrides/mods/Nutrition-1.12.2-4.3.0.jar",
+      "archiveEntry": "overrides/mods/Nutrition-1.12.2-4.3.0.jar",
+      "status": "fetched",
+      "sha256": "1f5f69af7944de19e4c2662c3079115d45e60f4f464ed5c04d83e6fc58d8d00f",
+      "sha1": "d0a1a14761846ce367e85367db34f69b81b58a8a",
+      "size": 110618,
+      "acquisition": "publisher-override"
+    },
+    {
+      "artifact": "SevTweaksNPC-0.0.4.jar",
+      "path": "tests/fixtures/local/${FIXTURE_ID}/extracted/overrides/mods/SevTweaksNPC-0.0.4.jar",
+      "archiveEntry": "overrides/mods/SevTweaksNPC-0.0.4.jar",
+      "status": "fetched",
+      "sha256": "924b6f9cd11592bb0944dc4baaf64b826c4f21fd2ccf8628b6cb18659886339e",
+      "sha1": "5baf509cf2a9107e760e56c2fe0705fa897db12f",
+      "size": 380618,
+      "acquisition": "publisher-override"
+    }
+  ],
+  "totals": {
+    "references": 254,
+    "bundledJars": 5,
+    "jarInputs": 259,
+    "fetchedReferences": 254,
+    "unfetchedReferences": 0,
+    "fetchedBundledJars": 5,
+    "loadedContainers": null
+  }
+}

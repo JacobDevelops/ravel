@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "kind": "fixture",
+    "id": "sevtech-ages-3.2.3",
+    "version": "3.2.3",
+    "originalProject": "SevTech: Ages",
+    "originalAuthor": "Darkosto, Firstnecron, RobertDropTable"
+  },
+  "implementationMethod": "metadata-only",
+  "sources": [
+    {
+      "category": "metadata",
+      "locator": "tests/fixtures/descriptors/sevtech-ages-3.2.3.json",
+      "revision": "public repository, tracked",
+      "use": "Pins publisher identity, archive digest, manifest digest, Minecraft and Forge version, and 254 file references.",
+      "producedBy": "WP0 local publisher acquisition"
+    },
+    {
+      "category": "metadata",
+      "locator": "tests/fixtures/local/${FIXTURE_ID}/source/${FIXTURE_ID}.zip",
+      "revision": "sha256:f872775f7ac0996fdd1bde177a1517aecc43e9209da97406dcbbe3ac842483b8",
+      "use": "Publisher release file 3569915. Verified and extracted locally, including manifest.json, modlist.html and overrides; five bundled jars are hashed separately. Pack material remains ignored and is not redistributed.",
+      "producedBy": "WP0 local publisher acquisition"
+    },
+    {
+      "category": "metadata",
+      "locator": "tests/fixtures/local/${FIXTURE_ID}/extracted/manifest.json",
+      "revision": "sha256:16f1ecb9083c720fbf7d2adc9e0ffeea2dfbe9cb2873201cf20d72a6a81edad2",
+      "use": "Exact 254 projectID/fileID/required/isLocked reference identities. Missing isLocked is preserved as null rather than fabricated false.",
+      "producedBy": "WP0 local publisher acquisition"
+    },
+    {
+      "category": "metadata",
+      "locator": "tests/fixtures/local/${FIXTURE_ID}/extracted/modlist.html",
+      "revision": "sha256:6846147277dbfeaef17f84c5286a877899494f59b6ec236b4f7bc419bb2a036c",
+      "use": "Publisher mod project links and display labels, not an independently verified loaded-container count.",
+      "producedBy": "WP0 local publisher acquisition"
+    },
+    {
+      "category": "metadata",
+      "locator": "259 files in the ignored fixture tree: 259 mods classified as mod-jar input artifacts, 0 shaderpacks; loaded mod-container count is unmeasured",
+      "revision": "sha256:f18dece0e1c6d22a7929753b8c662f857eb0abaed2329e2ec02fdda1a2e5207a",
+      "use": "254 CDN reference jars plus five publisher-bundled override jars. Artifact-set digest is SHA256 of mod TAB filename TAB lowercase SHA256 LF records, filename-sorted, matching the existing artifact-set row encoding. Reference/bundled/runtime counts stay separate; nested/game/runtime jars are not input artifacts in this set. Jar legal metadata and dependency declarations may be read; class method bodies are not decompiled or disassembled.",
+      "producedBy": "WP0 local publisher acquisition"
+    },
+    {
+      "category": "metadata",
+      "locator": "registry/inventory/sevtech-ages-3.2.3/rights.json and registry/inventory/sevtech-ages-3.2.3/rights-evidence.json",
+      "revision": "public repository, tracked",
+      "use": "rights.json has the ATM10 rights-triage shape: per-input licence family, surface statuses, source use and publication verdicts. rights-evidence.json, keyed by graph node id, holds the jar-level legal-metadata digests, cfwidget responses, and for every input whose jar declares no licence the source-repository LICENSE or README citation (repository, tag or commit, path, SHA-256), the Modrinth exact-file licence where used, or the search trail behind an absent finding. 163 of the 235 jar-undeclared inputs resolved to a cited grant; 72 remain absent. Pack licensing is not inherited by its mods.",
+      "producedBy": "WP0 local publisher acquisition plus a repository licence resolution pass (GitHub REST API, Modrinth API)"
+    },
+    {
+      "category": "metadata",
+      "locator": "registry/inventory/sevtech-ages-3.2.3/graph.json and registry/inventory/sevtech-ages-3.2.3/graph-evidence.json",
+      "revision": "public working-tree records",
+      "use": "Declared dependencies from mcmod.info and class-level Forge @Mod annotations. graph.json has the ATM10 dependency-graph shape; graph-evidence.json holds an index-aligned declaration source (mcmod.info entry or annotation attribute, named by artifact filename) for every graph edge, the three wildcard ordering declarations excluded from the graph, and per-jar declaration records. Class bytes were opened for constant pools and annotation attributes only; method bodies were skipped by attribute length, not decompiled, disassembled or interpreted. The graph conservatively declares restrictedContentRead true for this binary access. Metadata-only describes the evidence used, not an assertion that no class bytes were opened. Missing sources, nested inputs, invalid strict JSON and no-declared-dependency jars are explicit in the evidence. Identity presence is not version compatibility or runtime load success.",
+      "producedBy": "WP0 one-off legacy declaration extraction (untracked)"
+    },
+    {
+      "category": "metadata",
+      "locator": "tests/fixtures/descriptors/runtime-inputs-1.12.2.json",
+      "revision": "public repository, tracked",
+      "use": "Official Mojang metadata, client and server bytes, publisher SHA1 and locally recomputed SHA256. Mojang Java 8 baseline is distinct from the pinned JDK27 execution target; no live launch is claimed.",
+      "producedBy": "WP0 local publisher acquisition"
+    }
+  ],
+  "rights": [
+    {
+      "surface": "code",
+      "status": "prohibited",
+      "basis": "91 cleared, 64 permission-required, 22 prohibited, 82 unresolved. Per-input records are in inventory/sevtech-ages-3.2.3/rights.json and their evidence, repository citations and search trails in rights-evidence.json; this is the strictest aggregate status, not a grant for every input."
+    },
+    {
+      "surface": "textures",
+      "status": "prohibited",
+      "basis": "64 cleared, 96 not-applicable, 38 permission-required, 18 prohibited, 43 unresolved. Per-input records are in inventory/sevtech-ages-3.2.3/rights.json and their evidence, repository citations and search trails in rights-evidence.json; this is the strictest aggregate status, not a grant for every input."
+    },
+    {
+      "surface": "models",
+      "status": "prohibited",
+      "basis": "52 cleared, 121 not-applicable, 32 permission-required, 13 prohibited, 41 unresolved. Per-input records are in inventory/sevtech-ages-3.2.3/rights.json and their evidence, repository citations and search trails in rights-evidence.json; this is the strictest aggregate status, not a grant for every input."
+    },
+    {
+      "surface": "sounds",
+      "status": "prohibited",
+      "basis": "22 cleared, 208 not-applicable, 8 permission-required, 6 prohibited, 15 unresolved. Per-input records are in inventory/sevtech-ages-3.2.3/rights.json and their evidence, repository citations and search trails in rights-evidence.json; this is the strictest aggregate status, not a grant for every input."
+    },
+    {
+      "surface": "names",
+      "status": "unresolved",
+      "basis": "259 unresolved. Per-input records are in inventory/sevtech-ages-3.2.3/rights.json and their evidence, repository citations and search trails in rights-evidence.json; this is the strictest aggregate status, not a grant for every input."
+    },
+    {
+      "surface": "branding",
+      "status": "prohibited",
+      "basis": "199 not-applicable, 60 prohibited. Per-input records are in inventory/sevtech-ages-3.2.3/rights.json and their evidence, repository citations and search trails in rights-evidence.json; this is the strictest aggregate status, not a grant for every input."
+    },
+    {
+      "surface": "behaviour",
+      "status": "cleared",
+      "basis": "Observation and independent respecification only; no permission to copy code, assets, branding, progression scripts or quests is inferred. This is a method constraint, not evidence of observed gameplay."
+    },
+    {
+      "surface": "quests",
+      "status": "prohibited",
+      "basis": "No authorization to reproduce the pack progression/advancement material is asserted. Release overrides are extracted only under the ignored local fixture directory and none are copied into tracked files."
+    },
+    {
+      "surface": "scripts",
+      "status": "prohibited",
+      "basis": "No authorization to reproduce pack-owned scripts is asserted. Local extraction preserves the immutable release for authorized evidence work; no script content is tracked or used as an implementation."
+    },
+    {
+      "surface": "other",
+      "status": "cleared",
+      "basis": "Numeric project/file IDs and cryptographic digests are factual identification metadata; this status does not authorize the source content."
+    }
+  ],
+  "attribution": [
+    {
+      "name": "Darkosto, Firstnecron, RobertDropTable",
+      "notice": "SevTech: Ages 3.2.3 is a publisher compatibility reference, not a Ravel implementation. Ravel is not affiliated with or endorsed by its authors. No bundled mod or pack content is redistributed.",
+      "url": "https://www.curseforge.com/minecraft/modpacks/sevtech-ages"
+    },
+    {
+      "name": "CurseForge",
+      "notice": "Publisher archive and referenced jars are acquired from the distribution URLs; use remains subject to the recorded platform terms.",
+      "url": "https://support.curseforge.com/en/support/solutions/articles/9000207877-terms-conditions"
+    },
+    {
+      "name": "Mojang Studios",
+      "notice": "Official Minecraft runtime files remain local and subject to Minecraft terms; hashes identify them without redistributing them.",
+      "url": "https://www.minecraft.net/eula"
+    }
+  ],
+  "publication": {
+    "status": "private-only",
+    "reviewedBy": "unreviewed; WP0 input and rights ledger only",
+    "notes": "No counterpart or redistributed pack content is authorized. Per-input source use is permitted for 91 inputs under a cited permissive grant, conditional for 64, prohibited for 22 and unresolved for 82; every input stays blocked for publication, and inputs with no located grant remain unresolved. No full SevTech support, progression parity, world compatibility, loaded-container taxonomy or live performance result is established."
+  }
+}

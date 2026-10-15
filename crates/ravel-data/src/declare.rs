@@ -9,31 +9,10 @@ use crate::generate::{
 };
 use crate::tags::TagId;
 
-/// Everything one mod contributes to the game's content, declared in one place.
+/// One mod's registry entries, tag memberships, translations, and supplied resources.
 ///
-/// A mod declares three kinds of thing and they behave differently once several
-/// mods are installed, which is why they are one type here rather than three
-/// unrelated calls:
-///
-/// - a **registry entry** has exactly one owner, so declaring it is a claim and
-///   the second claim on it is a conflict the registration barrier refuses;
-/// - a **tag membership** has no owner, so every mod's contributions to
-///   `c:ingots` are kept and merged by [`crate::TagSet`];
-/// - a **resource** has one supplier per path, so the last mod to declare a path
-///   supplies it and [`crate::ResourceSet`] records which mods it shadowed.
-///
-/// Declaring is separate from claiming. This type refuses what one mod can get
-/// wrong on its own — the same entry twice, a member of the wrong kind, a
-/// translation the mod already wrote, a file two of its own declarations would
-/// both produce — and it does so at the point the mistake is made, with no
-/// loader and no game involved. What it cannot know is what *other* mods
-/// declared, so every cross-mod decision stays with the barrier and the layered
-/// sets, and nothing here second-guesses them.
-///
-/// Every refusal names the identifier or path the mod itself declared. A mod
-/// that turns one into a [`ravel_core::StructuredFailure`] does so through the
-/// host error whose detail is already marked as text a mod wrote, so the report
-/// surface redacts it on the way in rather than trusting this crate's wording.
+/// Duplicate entries and output paths are refused locally; cross-mod claims and layering
+/// are resolved by the registration barrier, [`crate::TagSet`], and [`crate::ResourceSet`].
 ///
 /// # Examples
 ///
@@ -64,9 +43,7 @@ use crate::tags::TagId;
 /// // A name for it, in one locale.
 /// declaration.translation("en_us", "block.example_mod.copper_lantern", "Copper Lantern")?;
 ///
-/// // The tag and the translation, plus the files a version needs for a block and
-/// // its item that nobody supplied: where the block's model is, what its item
-/// // looks like in a hand, and what breaking it drops.
+/// // Generate tag, translation, and conventional block/item files.
 /// let generated = declaration.generate();
 /// assert_eq!(
 ///     generated.paths().collect::<Vec<_>>(),
@@ -91,14 +68,7 @@ pub struct ContentDeclaration {
     produced: BTreeMap<RelativePath, Producer>,
 }
 
-/// What a declaration would write one output path from.
-///
-/// The declaration keeps one table of output paths across all three kinds of
-/// declaration, because the question "does something already write this file"
-/// has one answer and asking it three times is how the answers disagree. The
-/// producer is compared rather than merely counted, so a second translation in a
-/// locale the mod already writes finds its own claim and a supplied resource on
-/// the same path does not.
+/// The producer claiming an output path; one tag or locale may add to its own claim.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Producer {
     /// The members of one tag.
@@ -141,19 +111,9 @@ impl ContentDeclaration {
 
     /// Declares one registry entry of `kind`, at `path` in the owner's namespace.
     ///
-    /// The namespace is the owner's rather than an argument, which is what stops
-    /// a mod declaring content into a namespace it does not own by accident. A
-    /// pack that deliberately replaces another mod's entry is a pack-authoring
-    /// question M4-W5 answers with `ravel-pack`, not something a mod does by
-    /// spelling a different namespace here.
-    ///
     /// # Errors
     ///
-    /// Returns [`DeclarationError::Path`] when `path` is not a legal content
-    /// path, and [`DeclarationError::DuplicateEntry`] when this declaration
-    /// already holds the same kind and path. A duplicate is refused here rather
-    /// than at the barrier because the barrier would report it as a conflict
-    /// with the mod itself, which names no one to act on it.
+    /// Returns an invalid-path or duplicate-entry error.
     pub fn entry(
         &mut self,
         kind: ContentKind,
@@ -170,10 +130,6 @@ impl ContentDeclaration {
     }
 
     /// Returns every entry this mod claims, in declaration order.
-    ///
-    /// Declaration order rather than sorted order, because this is the order the
-    /// keys reach [`ravel_core::RegistryKey`]'s barrier and a mod that reads its
-    /// own refusal wants the sequence it wrote.
     #[must_use]
     pub fn entries(&self) -> &[RegistryKey] {
         &self.entries
@@ -181,17 +137,11 @@ impl ContentDeclaration {
 
     /// Declares `member` a member of `tag`.
     ///
-    /// The member may be an entry this mod did not declare. Adding a vanilla
-    /// item to a tag is the ordinary case, and requiring membership to be
-    /// declared locally would forbid it.
+    /// Members may belong to other mods.
     ///
     /// # Errors
     ///
-    /// Returns [`DeclarationError::TagKind`] when the member is not of the kind
-    /// the tag groups, [`DeclarationError::DuplicateTagMember`] when this mod
-    /// already put the member in the tag, and
-    /// [`DeclarationError::ProducedPath`] when something else this mod declared
-    /// already writes the file the tag would be generated into.
+    /// Returns kind mismatch, duplicate membership, or output-path collision errors.
     pub fn tag(&mut self, tag: &TagId, member: &RegistryKey) -> Result<(), DeclarationError> {
         if !tag.admits(member) {
             return Err(DeclarationError::TagKind {
@@ -209,8 +159,7 @@ impl ContentDeclaration {
                 member: member.clone(),
             });
         }
-        // Every refusal happens before anything is recorded, so a refused
-        // declaration leaves no half-declared group behind.
+        // Claim before mutation so refusal leaves the declaration unchanged.
         Self::claim(
             &mut self.produced,
             tag.generated_path(),
@@ -236,20 +185,11 @@ impl ContentDeclaration {
 
     /// Declares the text one translation key has in one locale.
     ///
-    /// The key is the author's, not Ravel's. A translation key's shape is a
-    /// convention the game decides — `block.<namespace>.<path>` today — and
-    /// deriving it here would put a version's convention in a version-neutral
-    /// crate and be wrong the first time the game changed it.
+    /// Translation keys are supplied by the author, not derived from version conventions.
     ///
     /// # Errors
     ///
-    /// Returns [`DeclarationError::Locale`] for a locale outside the lowercase
-    /// `language` or `language_region` shape the pack format uses — the shape
-    /// [`is_locale`] states and enforces —
-    /// [`DeclarationError::EmptyTranslationKey`] for an unnamed key,
-    /// [`DeclarationError::DuplicateTranslation`] when this mod already gave the
-    /// key text in that locale, and [`DeclarationError::ProducedPath`] when
-    /// something else this mod declared already writes the locale's file.
+    /// Returns invalid locale, empty/duplicate key, or output-path collision errors.
     pub fn translation(
         &mut self,
         locale: &str,
@@ -303,19 +243,9 @@ impl ContentDeclaration {
 
     /// Supplies `bytes` as the content of `path` in the generated pack.
     ///
-    /// This is the escape hatch for content Ravel does not model — a model, a
-    /// texture, a recipe body whose shape a version decides. The bytes are
-    /// carried into the same output the derived files land in, so a mod's pack
-    /// is one deterministic set rather than a generated half and a hand-written
-    /// half that can disagree about a path.
-    ///
     /// # Errors
     ///
-    /// Returns [`DeclarationError::DuplicateResource`] when this mod already
-    /// supplied the path, and [`DeclarationError::ProducedPath`] when a tag or a
-    /// locale this mod declared already writes it. Two mods supplying one path
-    /// is not refused anywhere: that is an override, and
-    /// [`crate::ResourceSet`] records it.
+    /// Returns duplicate-resource or output-path collision errors within this declaration.
     pub fn resource(&mut self, path: RelativePath, bytes: Vec<u8>) -> Result<(), DeclarationError> {
         if self.resources.contains_key(&path) {
             return Err(DeclarationError::DuplicateResource { path });
@@ -330,22 +260,12 @@ impl ContentDeclaration {
         self.resources.keys()
     }
 
-    /// Produces the pack this declaration describes.
-    ///
-    /// The result is a pure function of what was declared and not of the order
-    /// it was declared in: every collection read here is keyed or sorted by
-    /// content, and [`GeneratedData`] orders its files by path. That is what
-    /// makes generating twice — in one process or in two — produce the same
-    /// bytes, which `tests/conformance/tests/content_declarations.rs` shows by
-    /// declaring the same content in two orders and comparing the output.
+    /// Generates the same path-ordered files regardless of declaration order.
     #[must_use]
     pub fn generate(&self) -> GeneratedData {
         let mut data = GeneratedData::default();
 
-        // First, so that anything the author supplied at the same path replaces
-        // it below. That ordering is the whole of the precedence rule: a default
-        // is what an author did not write, and `GeneratedData::insert` keeps the
-        // last bytes recorded for a path.
+        // Supplied resources replace conventional defaults below.
         for (path, bytes) in self.conventional() {
             data.insert(path, bytes);
         }
@@ -369,32 +289,9 @@ impl ContentDeclaration {
         data
     }
 
-    /// The files a version needs for the declared content that nobody supplied.
+    /// Conventional block/item files, including both supported item-model layouts.
     ///
-    /// A block is three files, not one. The author writes the block model,
-    /// because its shape is theirs; what a version needs beside it is a
-    /// blockstates file mapping the block's one variant to that model, an item
-    /// model so the block can be held and seen in an inventory, and a loot table
-    /// so breaking it drops something. None of those has a choice in it for a
-    /// block with one state, so an author writing them by hand would be writing
-    /// the same four lines every time and getting a placeholder texture and an
-    /// empty drop when they forgot. Ravel writes them, and a declaration stays a
-    /// declaration.
-    ///
-    /// Every path here is one an author may take back simply by supplying it:
-    /// these are inserted before the supplied resources, so the author's bytes
-    /// replace them. [`ContentDeclaration::supplied_defaults`] says which.
-    ///
-    /// # Two spellings of an item's model, on purpose
-    ///
-    /// The tracked versions disagree about how an item finds its model. The
-    /// older reads `models/item/<name>.json` directly; the newer reads an item
-    /// definition at `items/<name>.json` that names a model. Both are written,
-    /// because this crate is version-neutral and has no way to ask which version
-    /// is running — `docs/architecture/dependency-rules.md` is what keeps it that
-    /// way. The cost is one file the running version never looks up, which is a
-    /// path nothing resolves rather than a wrong answer; the alternative was
-    /// threading version data into the crate a mod's declaration lives in.
+    /// Authors may replace any of these defaults with supplied resources.
     fn conventional(&self) -> Vec<(RelativePath, Vec<u8>)> {
         let namespace = &self.owner;
         let blocks: BTreeSet<&str> = self
@@ -443,11 +340,7 @@ impl ContentDeclaration {
         files
     }
 
-    /// Returns the conventional paths the author supplied rather than inherited.
-    ///
-    /// A default nobody took back is invisible and a default an author replaced
-    /// is a decision they made, so a pack that ships one of each can say which is
-    /// which rather than leaving a reader to diff the bytes.
+    /// Returns the conventional paths replaced by supplied resources.
     #[must_use]
     pub fn supplied_defaults(&self) -> Vec<RelativePath> {
         self.conventional()
@@ -457,35 +350,19 @@ impl ContentDeclaration {
             .collect()
     }
 
-    /// One path below this pack's `assets` half, in the owner's namespace.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the derived path is not a legal [`RelativePath`], which cannot
-    /// happen: a [`ModId`] and a validated content path hold no backslash, no
-    /// line terminator and no `..` component.
+    /// Builds an asset path from validated namespace and content components.
     fn asset(owner: &ModId, rest: &str) -> RelativePath {
         RelativePath::try_from(format!("assets/{owner}/{rest}"))
             .expect("a mod id and a content path cannot spell an illegal path")
     }
 
-    /// One path below this pack's `data` half, in the owner's namespace.
-    ///
-    /// # Panics
-    ///
-    /// Panics for the reason [`ContentDeclaration::asset`] does, and as rarely.
+    /// Builds a data path from validated namespace and content components.
     fn data(owner: &ModId, rest: &str) -> RelativePath {
         RelativePath::try_from(format!("data/{owner}/{rest}"))
             .expect("a mod id and a content path cannot spell an illegal path")
     }
 
-    /// Returns the path a locale's translations are generated into.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the derived path is not a legal [`RelativePath`], which cannot
-    /// happen: a [`ModId`] and a validated locale hold no backslash, no line
-    /// terminator and no `..` component.
+    /// Builds a translation path from a validated owner and locale.
     fn translation_path(owner: &ModId, locale: &str) -> RelativePath {
         RelativePath::try_from(format!("assets/{owner}/lang/{locale}.json"))
             .expect("a mod id and a locale cannot spell an illegal path")
@@ -512,12 +389,7 @@ impl ContentDeclaration {
     }
 }
 
-/// Why a mod's own declaration was refused.
-///
-/// Every variant is something one mod can get wrong without another mod
-/// existing. Nothing here is a cross-mod outcome: a contested registry entry is
-/// the barrier's [`ravel_core::FailureKind::ConflictingRegistryClaim`], and a
-/// contested resource path is an override rather than a failure.
+/// Invalid or conflicting declarations within one mod.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DeclarationError {
     /// The declared path is not a legal content path.
@@ -629,19 +501,7 @@ impl std::error::Error for DeclarationError {
     }
 }
 
-/// Returns whether `candidate` is a locale of the shape the pack format names
-/// its language files after.
-///
-/// A language, optionally followed by `_` and a region: the language is ASCII
-/// lowercase letters and the region is ASCII lowercase letters or digits, so
-/// `en_us`, `lzh` and `es_419` are locales and `en_us_extra`, `___`, `en-US` and
-/// `en1` are not.
-///
-/// The region admits digits and neither segment carries a length, because both
-/// are the pack format's decisions rather than this crate's: a rule tighter than
-/// the format's would refuse a locale the game ships. What this refuses is a
-/// spelling the format has no reading for at all — an extra segment, an empty
-/// one, or a character that cannot appear in either.
+/// Accepts ASCII lowercase language names with an optional lowercase/digit region.
 fn is_locale(candidate: &str) -> bool {
     let mut segments = candidate.split('_');
     let language = segments.next().unwrap_or_default();
@@ -863,10 +723,7 @@ mod tests {
 
     #[test]
     fn every_locale_shape_the_pack_format_ships_is_accepted() {
-        // The negative control for the test above: the refusals are a shape check
-        // rather than a list of two spellings. A region carries digits and a
-        // locale need not carry a region at all, so a rule tighter than this one
-        // would refuse a language file the game itself ships.
+        // Cover digit regions and language-only names, not just `en_us`.
         for candidate in ["en_us", "fr_fr", "pt_br", "es_419", "lzh", "enws", "nds_de"] {
             declaration()
                 .translation(candidate, "block.example_mod.lantern", "Lantern")
@@ -1032,11 +889,6 @@ mod tests {
         );
     }
 
-    /// A default an author supplied is the author's, and is named as such.
-    ///
-    /// The precedence is the point. A mod that ships a blockstates file with two
-    /// variants has decided something Ravel cannot, so the generated one must not
-    /// be what lands in the pack.
     #[test]
     fn an_author_supplied_default_replaces_the_generated_one_and_is_recorded() {
         let owner: ModId = "example_mod".parse().expect("a legal mod id");
@@ -1066,7 +918,6 @@ mod tests {
         assert!(generated.file(&loot).is_some());
     }
 
-    /// An item nothing else claims is a flat sprite rather than a block.
     #[test]
     fn a_plain_item_is_generated_as_a_sprite_and_a_blocks_item_as_the_block() {
         let owner: ModId = "example_mod".parse().expect("a legal mod id");
@@ -1114,7 +965,6 @@ mod tests {
         );
     }
 
-    /// A recipe entry writes no file, and that is the decision rather than a gap.
     #[test]
     fn a_declared_recipe_generates_nothing_because_its_body_is_a_versions_shape() {
         let owner: ModId = "example_mod".parse().expect("a legal mod id");

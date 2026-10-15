@@ -14,15 +14,7 @@ use crate::schema::{ValueError, ValueSchema};
 /// The separators `configuration.schema.json`'s `key` pattern admits.
 const SEPARATORS: [char; 3] = ['.', '_', '-'];
 
-/// One setting's key within its owner's declaration.
-///
-/// The grammar is `configuration.schema.json`'s `key` pattern,
-/// `^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$`, implemented here rather than matched
-/// so the crate needs no regex engine, exactly as [`ravel_core::ModId`] does for
-/// the pattern it carries. The two accept the same strings and are still
-/// separate types: a key names a setting inside one owner's document and an id
-/// names a mod across the whole installation, so a value that is one is never
-/// the other and a refusal has to say which it was reading.
+/// A setting key matching `^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$`.
 ///
 /// # Examples
 ///
@@ -158,12 +150,7 @@ impl fmt::Display for SettingKeyError {
 
 impl std::error::Error for SettingKeyError {}
 
-/// Where a setting applies (`configuration.schema.json`'s `side`).
-///
-/// Deliberately not [`ravel_core::Side`]. The schema admits a fourth value,
-/// `common`, which is not a role a process runs as but a statement that the
-/// setting belongs to every role there is, so mapping the four onto the three
-/// running sides is what [`SettingSide::applies_to`] exists for.
+/// The process sides a setting applies to, including `common` for every side.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SettingSide {
@@ -198,10 +185,6 @@ impl SettingSide {
     }
 
     /// Returns whether a process running as `side` owns this setting.
-    ///
-    /// Screen contents follow ownership: a
-    /// `dedicated-server` setting has no client screen, so a client asking for
-    /// its own settings never sees one.
     #[must_use]
     pub const fn applies_to(self, side: Side) -> bool {
         match self {
@@ -214,10 +197,6 @@ impl SettingSide {
 }
 
 /// Who has the last word on a setting when a pack states a value for it.
-///
-/// Pack overrides apply per setting, and the three values carry the policy: `allowed`
-/// lets the player change what the pack stated, `locked` does not where the pack
-/// stated anything, and `required` obliges the pack to state a value at all.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PackOverride {
@@ -235,9 +214,6 @@ impl PackOverride {
     pub const ALL: [Self; 3] = [Self::Allowed, Self::Locked, Self::Required];
 
     /// Returns whether a pack that stated a value overrules the player's.
-    ///
-    /// This rule reads `packOverride` alone and never looks at `side`, so it
-    /// permits a pack to lock a client-side setting.
     #[must_use]
     pub const fn overrules_player(self) -> bool {
         matches!(self, Self::Locked | Self::Required)
@@ -252,11 +228,6 @@ impl PackOverride {
 }
 
 /// One setting a mod declares (`configuration.schema.json`'s `setting`).
-///
-/// Every field is the schema's, including the camel-case names and the refusal
-/// of anything else: a setting that parses here has to be one the schema
-/// validates. Nothing about presentation beyond `title` and `description` lives
-/// here, because widgets live in Java and this crate supplies values.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Setting {
@@ -331,17 +302,7 @@ impl ConfigurationDeclaration {
     ///
     /// # Errors
     ///
-    /// Returns [`DeclarationError::Syntax`] when the bytes are not JSON and
-    /// [`DeclarationError::Schema`] when they are JSON the configuration schema
-    /// refuses, which includes a settings array that names one key twice: the
-    /// schema cannot express uniqueness over a field of an item, and two
-    /// settings under one key give every layer two answers.
-    ///
-    /// Returns [`DeclarationError::Default`] for a setting whose own `default`
-    /// its own `valueSchema` refuses. The schema cannot express that either —
-    /// the two are siblings and neither describes the other — and an author
-    /// whose default is illegal has declared a setting with no legal bottom
-    /// layer for anything above it to fall back to.
+    /// Returns syntax/schema errors, or [`DeclarationError::Default`] for an invalid default.
     pub fn parse(document: &str) -> Result<Self, DeclarationError> {
         let declaration: Self =
             serde_json::from_str(document).map_err(|error| DeclarationError::from_json(&error))?;
@@ -360,9 +321,7 @@ impl ConfigurationDeclaration {
     ///
     /// # Panics
     ///
-    /// Never. Every field is a string, a number, a sequence, or a struct with
-    /// string keys, so the only way this fires is a serializer that has stopped
-    /// being one.
+    /// Panics if serialization of the declaration's JSON-compatible fields fails.
     #[must_use]
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("a parsed declaration always serializes")
@@ -445,8 +404,7 @@ impl StructuredFailure for DeclarationError {
         None
     }
 
-    /// The detail is the deserializer's sentence or a key the author wrote, so
-    /// a report attributes the words to the mod rather than to Ravel.
+    /// Deserializer details and rejected keys can quote mod input.
     fn quotes_untrusted_text(&self) -> bool {
         true
     }
@@ -609,8 +567,6 @@ mod tests {
             },
         ] {
             assert_eq!(error.failure_kind(), None);
-            // Nothing has been admitted yet, which is where a metadata refusal
-            // leaves the package.
             assert_eq!(error.lifecycle_state(), LifecycleState::Discovered);
             assert!(error.quotes_untrusted_text());
             assert_ne!(error.diagnostic().text(), "");

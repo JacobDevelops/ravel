@@ -1,29 +1,6 @@
-//! The crossing an action a mod asked for leaves Ravel by.
+//! Queues mod-requested actions for the Java adapter to drain.
 //!
-//! An action crosses outward as data and the Java adapter makes the call; see
-//! `docs/architecture/overview.md#mechanisms`. `content.rs` applies this to one
-//! verb, with the verb's shape written into the payload:
-//! a row is a kind and the behaviour fields that kind declares, so the reader
-//! must know every kind to read any row. This module is the same crossing with
-//! the verb left open, which is the whole of what it adds — an action states how
-//! many arguments it carries, so the adapter can step over a verb it does not
-//! know instead of losing the rest of the payload with it.
-//!
-//! That is the only reason this exists rather than a second `content.rs`. Audio
-//! is the first verb and packets are meant to be the second, and a mechanism
-//! that has to be re-derived per verb is the shape `ROADMAP.md`'s M8-W0 prose
-//! refuses: "the mechanism is built once and reused".
-//!
-//! # What reaches this queue
-//!
-//! [`HostMod::take_play_requests`] is the near end. `runtime.rs` asks every mod
-//! for what it asked the game for after each delivery and queues the answers
-//! here, so a request is attributable to the mod that made it and no mod holds
-//! a channel into this module. What is still unobserved is the far end in a
-//! real game: no launched Minecraft has performed one of these, and
-//! `docs/guide/limits.md` says so where an author reads it.
-//!
-//! [`HostMod::take_play_requests`]: ravel_host_api::HostMod::take_play_requests
+//! Each verb carries an argument count so readers can skip unknown verbs.
 
 use std::sync::{Mutex, PoisonError};
 
@@ -34,26 +11,13 @@ use crate::guard::HookError;
 use crate::wire::{VERSION, count, field};
 
 /// Actions queued since the adapter last drained them.
-///
-/// A `Vec` rather than a bounded queue because a drain empties it whole and the
-/// only thing that fills it is a mod asking for something between two drains.
-/// The ceiling is therefore one client tick of requests; if a verb ever arrives
-/// that a mod can ask for in an unbounded loop, this is where the bound goes.
 static PENDING: Mutex<Vec<Action>> = Mutex::new(Vec::new());
 
-/// Held by every test that reads or writes [`PENDING`].
-///
-/// The queue is process-wide and the test harness runs threads, so two tests
-/// that both drain would otherwise take each other's actions. Not a lock the
-/// running loader needs: one drain per client tick is already serialised by the
-/// tick.
+/// Serializes tests sharing the process-wide action queue.
 #[cfg(test)]
 pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 
-/// The verb that plays a sound a mod declared.
-///
-/// A constant rather than a literal at the call site, because the adapter
-/// switches on the same word and the two have to agree exactly.
+/// Adapter verb for a declared sound.
 const PLAY: &str = "audio.play";
 
 /// One thing the game should do, in the shape the adapter performs it.
@@ -64,10 +28,6 @@ struct Action {
 }
 
 /// Asks for a declared sound to be played on the client.
-///
-/// The pitch is stated here rather than defaulted on the other side, because
-/// `PlayRequest` carries no pitch and something has to decide one. Rust decides
-/// and Java performs, including for a value a mod did not give.
 pub fn play(owner: &str, entry: &str) {
     queue(Action {
         verb: PLAY,
@@ -82,15 +42,7 @@ fn queue(action: Action) {
         .push(action);
 }
 
-/// Encodes everything queued and clears it.
-///
-/// Public because it is what the crossing answers, and a test that cannot ask
-/// what an instruction encodes to can only prove the queue accepted it.
-///
-/// Answers an empty payload when nothing is queued rather than a payload
-/// declaring nothing. The adapter runs once per client tick and a mod asks for
-/// something on almost none of them, so the common case is a string the other
-/// side can reject on its length.
+/// Encodes and clears queued actions; an empty queue returns an empty string.
 pub fn drain() -> String {
     let taken = std::mem::take(&mut *PENDING.lock().unwrap_or_else(PoisonError::into_inner));
     if taken.is_empty() {
@@ -100,9 +52,6 @@ pub fn drain() -> String {
 }
 
 /// Writes the payload the adapter reads.
-///
-/// The framing is `wire.rs`'s, for the reason that module gives: an argument is
-/// free-form text a mod wrote, so a length is what says where one ends.
 fn encode(actions: &[Action]) -> String {
     let mut out = String::new();
     field(&mut out, VERSION);
@@ -121,8 +70,7 @@ fn encode(actions: &[Action]) -> String {
 ///
 /// # Panics
 ///
-/// Does not panic. The guard around the body turns a panic into a thrown
-/// `RuntimeException` rather than an unwind into the JVM.
+/// Panics become Java `RuntimeException`s rather than unwinding into the JVM.
 #[must_use]
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelOutwardActions")]
 pub fn ravel_outward_actions<'local>(
@@ -153,11 +101,7 @@ mod tests {
         }
     }
 
-    /// The payload `jvm/harness/template/driver/OutwardMain.java.in` decodes, byte for byte.
-    ///
-    /// Written out rather than computed, because the two sides of this crossing
-    /// are two languages and a shared helper would only prove this side agrees
-    /// with itself. Changing it means changing the literal in that harness too.
+    // Keep this literal in sync with jvm/harness/template/driver/OutwardMain.java.in.
     #[test]
     fn one_action_encodes_to_the_payload_the_adapter_is_written_against() {
         let payload = encode(&[action(PLAY, &["audio", "door_opens", "1"])]);

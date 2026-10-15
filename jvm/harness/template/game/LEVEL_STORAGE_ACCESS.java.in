@@ -3,7 +3,6 @@
 import java.nio.file.Path;
 {{import LEVEL_RESOURCE}}
 
-/** The selected world's directory handle, and the thing that holds its lock. */
 public final class {{LEVEL_STORAGE_ACCESS}} implements AutoCloseable {
 
     private final String world;
@@ -17,7 +16,6 @@ public final class {{LEVEL_STORAGE_ACCESS}} implements AutoCloseable {
         return Path.of(world, resource.id());
     }
 
-    /** Whether a refusal released the world lock, which is what closing means here. */
     public boolean isClosed() {
         return closed;
     }

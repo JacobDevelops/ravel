@@ -1,12 +1,4 @@
-//! Measures what a linked pack costs to build.
-//!
-//! ADG-2 deferred the mod execution model to M3 and named the numbers the
-//! distribution question turns on: link time, binary growth, and compile time
-//! for a pack-sized set. It measured none of them, because its linked trial
-//! linked one mod. This measures all three, and selects nothing: every crate it
-//! generates is ordinary safe Rust behind the same `HostMod` contract the
-//! in-process no-op package already uses, and nothing here loads a library,
-//! starts a guest runtime, spawns a mod process, or exports a foreign symbol.
+//! Measures linked-pack compile time, relink time, and binary size.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -15,9 +7,6 @@ use std::process::Command;
 use std::time::Instant;
 
 /// Mods in the pack-sized set.
-///
-/// A large modpack is a few hundred mods; ATM11 0.2.1, the pinned M0 fixture,
-/// is that scale. 256 is inside it and is a round number to divide by.
 pub const PACK_SIZE: usize = 256;
 
 /// What building a pack cost.
@@ -25,13 +14,11 @@ pub const PACK_SIZE: usize = 256;
 pub struct BuildCost {
     /// Mods in the measured pack.
     pub pack_size: usize,
-    /// Cold build of the host with no mods linked: the shared cost of the
-    /// loader and its dependencies.
+    /// Cold build of the host and shared dependencies without mods.
     pub baseline_build_ms: u64,
     /// Cold build of the host with the whole pack linked.
     pub pack_build_ms: u64,
-    /// Rebuilding after one mod's source changed, which is the iterate-on-a-mod
-    /// cost ADG-2 put on M2's tooling.
+    /// Rebuild after one mod's source changes.
     pub relink_ms: u64,
     /// The host binary with no mods linked.
     pub baseline_bytes: u64,
@@ -69,8 +56,7 @@ impl BuildCost {
 ///
 /// # Errors
 ///
-/// Returns a message when a generated workspace cannot be written or cargo
-/// refuses to build one.
+/// Returns a message when workspace generation or a cargo build fails.
 pub fn measure(root: &Path, work: &Path) -> Result<BuildCost, String> {
     let baseline = generate(root, work, 0)?;
     let (baseline_build_ms, baseline_bytes) = cold_build(&baseline)?;
@@ -78,8 +64,7 @@ pub fn measure(root: &Path, work: &Path) -> Result<BuildCost, String> {
     let pack = generate(root, work, PACK_SIZE)?;
     let (pack_build_ms, pack_bytes) = cold_build(&pack)?;
 
-    // One mod's source changes and the set is rebuilt. This is the whole cost of
-    // editing a mod under a linked model: recompile the crate, relink the host.
+    // Measure recompilation and host relinking after one mod changes.
     touch(&pack.join("mods/mod-000/src/lib.rs"))?;
     let relink_ms = build(&pack)?;
 
@@ -137,12 +122,7 @@ fn touch(path: &Path) -> Result<(), String> {
     fs::write(path, text).map_err(|error| format!("cannot edit a generated mod: {error}"))
 }
 
-/// Writes a workspace holding `count` mod crates and one host binary.
-///
-/// The mods are generated rather than tracked because the measurement is about
-/// the count, and 256 hand-written no-op crates would be 256 files saying the
-/// same thing. Nothing generated here is tracked, and nothing production reads
-/// it.
+/// Writes an untracked workspace of generated no-op mods and one host.
 fn generate(root: &Path, work: &Path, count: usize) -> Result<PathBuf, String> {
     let workspace = work.join(format!("pack-{count}"));
     let mods = workspace.join("mods");
@@ -150,20 +130,16 @@ fn generate(root: &Path, work: &Path, count: usize) -> Result<PathBuf, String> {
         fs::remove_dir_all(&mods)
             .map_err(|error| format!("cannot clear generated mods: {error}"))?;
     }
-    // The directory exists even when the pack is empty, because the workspace's
-    // `mods/*` member glob is an error against a missing directory and matches
-    // nothing against an empty one.
+    // Cargo's member glob needs the directory even for an empty pack.
     fs::create_dir_all(&mods).map_err(|error| format!("cannot create generated mods: {error}"))?;
     fs::create_dir_all(workspace.join("host/src"))
         .map_err(|error| format!("cannot create a generated workspace: {error}"))?;
 
-    // The repository's lock file, so the generated workspace resolves to the
-    // same dependency versions the loader itself was built against.
+    // Keep generated dependencies aligned with the measured loader.
     let lock = fs::read(root.join("Cargo.lock"))
         .map_err(|error| format!("cannot read the workspace lock file: {error}"))?;
     write(&workspace.join("Cargo.lock"), &lock)?;
-    // Cargo refuses a member glob that matches nothing, so an empty pack names
-    // only the host.
+    // An empty pack must avoid an unmatched member glob.
     let members = if count == 0 {
         "\"host\""
     } else {

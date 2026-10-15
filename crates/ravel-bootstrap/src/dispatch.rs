@@ -1,8 +1,4 @@
-//! Who a hook invocation is shown to.
-//!
-//! This is a registry of safe Rust trait objects and nothing more. Mods arrive
-//! through static source composition; this registry names no binary format,
-//! dynamic library, or foreign calling convention.
+//! Process-wide hook observer registration and delivery.
 
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,18 +7,8 @@ use ravel_minecraft::{HookObserver, HookOutcome, HookTarget, HookValue};
 
 use crate::guard::HookError;
 
-/// Everything one process shows its hook invocations to.
-///
-/// A registry is a value rather than a set of statics so that what is
-/// registered belongs to whoever holds it. The process has one, installed at
-/// premain and read by the guard; a test holds its own and is unaffected by
-/// what any other observer registered.
 struct Observers {
-    /// Whether anything is listening.
-    ///
-    /// Kept beside the registry rather than inside it so the hot path can ask
-    /// without taking a lock, and so the answer is one relaxed load in the
-    /// common case where nothing is registered.
+    // The empty-registry fast path must not acquire the lock.
     observed: AtomicBool,
     registry: RwLock<Vec<Box<dyn HookObserver>>>,
 }
@@ -61,15 +47,13 @@ impl Observers {
     }
 }
 
-/// The one registry a launch installs into and the guard delivers through.
 static OBSERVERS: Observers = Observers::new();
 
-/// Registers something to be shown every hook invocation from now on.
+/// Registers an observer for subsequent hook invocations.
 ///
 /// # Errors
 ///
-/// Returns an error when the registry cannot be written, which happens only
-/// after a previous holder panicked while inside it.
+/// Returns an error if the registry's write lock is poisoned.
 pub fn register(observer: Box<dyn HookObserver>) -> Result<(), HookError> {
     OBSERVERS.register(observer)
 }

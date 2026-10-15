@@ -1,35 +1,6 @@
-//! Rendering the Ravel-owned screen sources in the name space one version links.
+//! Renders screen and harness templates using a version's linked class and member roles.
 //!
-//! Ravel draws its own screens in Java, and a screen extends the game's
-//! `Screen` and overrides its methods. A compile-time reference is a constant
-//! pool entry, so those names cannot be resolved at runtime the way the agent
-//! jar's adapters resolve theirs through `GameNames`: what javac writes is what
-//! the JVM links. Under an unobfuscated version the reviewed name is that name;
-//! under an obfuscated one it is not, and a hand-written source is then a jar
-//! that compiles and links nothing.
-//!
-//! So the sources are generated. The tracked half is a template that names roles
-//! inside `{{…}}` — never a game class, because a template is shared by every
-//! version and a class name is one version's spelling asserted over the rest.
-//! Which class a role means is read from all three of the version's admission
-//! lists together — `stubs.toml`, `reflection.toml` and `hooks.toml` — while a
-//! member role is bound by `stubs.toml` alone, and this module rewrites each
-//! placeholder into the name that version links. That indirection is what carries a template across a
-//! rename: one version's `Identifier` is another's `ResourceLocation`, and one
-//! version's `splitIgnoringLanguage` is another's `split`, and neither costs
-//! the template a word.
-//! Everything outside a placeholder is copied through byte for byte, which is
-//! what keeps a template reviewable as the Java it is and what makes an
-//! unobfuscated version's output the same source it was before it was
-//! generated.
-//!
-//! The same reader renders the JVM harness's stand-in game, for the same reason
-//! one step further in: a stand-in exists to be resolved against a generated
-//! name, so under an obfuscated version it has to *be* that name. What differs
-//! there is who names the file — a stand-in declares a game class, so its
-//! package and its simple name are the role's linked name rather than the
-//! template's own word — and [`Purpose`] is where the three cases are written
-//! down.
+//! Non-placeholder text is copied byte for byte; overrides handle API changes, not renames.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -45,11 +16,7 @@ use super::{GenerateError, SCREEN_PACKAGE};
 /// The suffix a template carries, over the name of the source it renders.
 const TEMPLATE_SUFFIX: &str = ".in";
 
-/// What one template tree renders, which decides three things about it.
-///
-/// Each case answers the same three questions differently: what names a rendered
-/// source and where it lands, whether a role it references has to be stubbed,
-/// and whether a version may hold a template no other version does.
+/// Controls source naming, stub requirements, and version-only additions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Purpose {
     /// The screen jar's sources: Ravel's own classes, named by their templates,
@@ -96,10 +63,7 @@ impl Purpose {
     }
 }
 
-/// Everything a placeholder resolves against, which is one version's data.
-///
-/// Gathered rather than passed one by one because every one of these is read on
-/// every placeholder and none of them varies within a run.
+/// The shared resolution context for one version's placeholders.
 struct Version<'a> {
     /// What the tree being rendered is for.
     purpose: Purpose,
@@ -139,13 +103,7 @@ pub(super) struct Tree<'a> {
     pub(super) stand_ins: bool,
 }
 
-/// Where one version's linked names fall, answered once for every tree it
-/// renders.
-///
-/// One answer rather than four, because the four are read together: the name the
-/// agent jar publishes for a screen is the name the sibling half compiled beside
-/// the stand-ins has to have been written under, and a tree that reached its own
-/// answer from its own roles would publish one and write the other.
+/// One namespace shared by all trees compiled together.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct NameSpace {
     /// Whether Ravel's own classes are written in the unnamed package.
@@ -321,23 +279,11 @@ pub(super) fn render(
     })
 }
 
-/// Every template a version added rather than replaced has to be reached.
-///
-/// A version-only template is legitimate: the game itself gained a class between
-/// two versions, and a harness that could not say so would have to pretend the
-/// older one has it. What is not legitimate is one that shadows nothing and that
-/// nothing names — an override left behind after the source that reached for it
-/// was deleted or renamed, which renders a class into the tree on one version and
-/// is read by no compiler.
-///
-/// Asked across every tree at once, because the trees are rendered for each
-/// other: the harness's stand-in game exists so the screen jar's generated
-/// sources have something to compile against, so the source that reaches for a
-/// stand-in is often not in the stand-in's own tree.
+/// Rejects version-only additions that no rendered tree references.
 ///
 /// # Errors
 ///
-/// Returns an error naming the file and the role nothing reaches.
+/// Returns an error naming an unreachable addition and its role.
 pub(super) fn every_added_template_is_reached(rendered: &[&Sources]) -> Result<(), GenerateError> {
     let mut reached = BTreeSet::new();
     for sources in rendered {
@@ -365,17 +311,7 @@ fn unresolved_role(template: &Template, role: &str) -> GenerateError {
     )
 }
 
-/// Refuses a template that reaches past the stand-in game's name space.
-///
-/// The one answer every tree renders under comes from the stand-in game, and
-/// this is the case it does not cover: a version whose game is in packages puts
-/// Ravel's own sources in one too, and a source in a package can name nothing
-/// outside every package. Said here, where the template that asked is still in
-/// hand, rather than by javac a compilation later.
-///
-/// # Errors
-///
-/// Returns an error naming the first such class and the template that names it.
+/// Rejects unnamed-package references from packaged sources.
 fn every_name_is_nameable(
     read: &[Template],
     purpose: Purpose,
@@ -413,11 +349,7 @@ fn every_name_is_nameable(
     Ok(())
 }
 
-/// One template's failure, said with the template that carries it.
-///
-/// A placeholder resolves against version data rather than against the file it
-/// sits in, so a refusal that named only the role left a reader grepping every
-/// template for the word. The file is what they open.
+/// Adds the template path to a version-data resolution error.
 fn in_template(template: &Template, error: GenerateError) -> GenerateError {
     let named = |detail: String| format!("{}: {detail}", template.path.display());
     match error {
@@ -429,32 +361,9 @@ fn in_template(template: &Template, error: GenerateError) -> GenerateError {
     }
 }
 
-/// Every template one version renders, in a stable order.
+/// Reads shared templates in order, applying same-named version overrides.
 ///
-/// [`Tree::shared`] holds the sources every version renders the same way and
-/// [`Tree::overrides`] the ones this version cannot. An override replaces the
-/// shared template of its own name. Returns every template this version renders
-/// and, beside it, the ones it added rather than replaced.
-///
-/// The two are deliberately not the same tool. A role binding in `stubs.toml`
-/// answers a rename, which is what almost every drift between two versions is,
-/// and it costs a template no words. An override is for the case a rename cannot
-/// reach: a version that registers saved data through a factory over a tag,
-/// where another takes a codec-era type, needs a different source and not a
-/// differently-spelled one. Reaching for an
-/// override where a binding would do buys a second copy of a screen that then
-/// has to be maintained twice, so an override that only renames is a mistake
-/// this mechanism cannot detect and a reviewer has to.
-///
-/// Whether an override has to replace something is
-/// [`Purpose::no_addition_reason`]'s answer. A version-only screen would give one
-/// version a screen the agent jar cannot count on finding, and the constants the
-/// jar opens screens by are the same set under every version. A version-only
-/// stand-in is the opposite: the game itself gained a class between two versions,
-/// and a harness that could not say so would have to pretend the older one has
-/// it. A driver sits with the screen rather than the stand-in, because the check
-/// that retires an outlived override reads the roles a version's sources name and
-/// a driver is named by none of them.
+/// Only stand-in trees permit additions; bindings handle class and member renames.
 fn templates(tree: &Tree<'_>) -> Result<Templates, GenerateError> {
     let overrides = &tree.overrides;
     let mut found = in_directory(tree.shared)?;
@@ -623,18 +532,11 @@ struct Template {
     placeholders: Vec<Placeholder>,
 }
 
-/// Reads that answer off the stand-in game, which is the tree that holds it.
-///
-/// The stand-in game is asked rather than each tree in turn because it is the
-/// game: what the other three name is a subset of it, and the harness compiles
-/// all three in one javac invocation, so one class has to have one name across
-/// them. Every refusal here is one [`render`] would reach on the same template,
-/// said the same way, because it reads the templates the same way.
+/// Derives the shared namespace from the stand-in game.
 ///
 /// # Errors
 ///
-/// Returns an error when a template is unreadable or not named after the Java
-/// source it renders, or when nothing binds the role it is named after.
+/// Returns an error for unreadable or misnamed templates, or unbound roles.
 pub(super) fn name_space(
     tree: &Tree<'_>,
     roles: &Roles,
@@ -696,15 +598,7 @@ fn template(path: &Path) -> Result<Template, GenerateError> {
     })
 }
 
-/// The linked internal name of every class the templates reference.
-///
-/// A role is only rendered where the version's admission lists bind it, and, for
-/// the screen jar, only where the stub tree carries the class they bind to,
-/// because that tree is what the screen jar compiles against: a name outside it
-/// would compile against nothing. The harness compiles against the stand-ins
-/// themselves, so nothing there is asked to be stubbed. Resolution reads all
-/// three lists either way, so a role a source shares with the agent jar's
-/// surface is one class rather than two.
+/// Resolves class roles, requiring screen references to exist in the stub tree.
 fn linked_classes(
     referenced: &BTreeSet<String>,
     roles: &Roles,
@@ -742,19 +636,11 @@ fn linked_classes(
     Ok(linked)
 }
 
-/// Every seeded member has to name exactly one linked member.
-///
-/// Checked over the whole seed list rather than over the members templates
-/// happen to name, because the alternative hides the defect until someone writes
-/// the placeholder. An obfuscated version can link two overloads under different
-/// names, and a seed that does not say which one it means is ambiguous the day
-/// it is written — not the day it is first referenced. `SavedData#setDirty` was
-/// exactly that: two linked names, invisible because no template reached it.
+/// Checks every seeded member, including members no template currently references.
 ///
 /// # Errors
 ///
-/// Returns an error when a seeded member resolves to no linked member or to
-/// more than one.
+/// Returns an error when a seeded member has zero or multiple linked names.
 pub(super) fn every_seeded_member_resolves(
     roles: &Roles,
     stubs: &[Stub],
@@ -768,10 +654,7 @@ pub(super) fn every_seeded_member_resolves(
     Ok(())
 }
 
-/// Rewrites one template into the source the version compiles.
-///
-/// Everything outside a placeholder is copied through, so a template's own line
-/// structure is the generated source's.
+/// Expands placeholders without changing surrounding source text.
 fn expand(
     template: &Template,
     version: &Version<'_>,
@@ -855,20 +738,7 @@ fn resolve(
     }
 }
 
-/// The linked name of the member one version binds a member role to.
-///
-/// Two bindings cross here, and a version may carry either or both. The stub
-/// seeds say which member of this version's class the template's word means and
-/// the stub tree says which overloads that name covers; the runtime lists say it
-/// with a descriptor of their own and need no tree. The mapping is what turns
-/// each into the name the JVM links, and where both answer they have to answer
-/// the same thing — a stand-in whose declaration and the agent jar's lookup
-/// disagreed would be exactly the mismatch this whole tree exists to remove.
-///
-/// A template names a member and never a descriptor, for the reason `stubs.toml`
-/// does not: writing one down is the transcription the generated stubs exist to
-/// avoid. Two overloads that link under different names cannot be written as one
-/// reference, so that is a refusal rather than a choice made here.
+/// Reconciles seeded and runtime member roles, rejecting ambiguous linked names.
 fn member_name(
     role: &str,
     member_role: &str,
@@ -906,11 +776,7 @@ fn member_name(
     }
 }
 
-/// The linked name the stub seeds bind a member role to, where they bind one.
-///
-/// `None` where the seeds bind no class to the role or no member of it to the
-/// member role, which leaves the answer to the runtime lists rather than
-/// deciding there is none.
+/// Resolves a seeded member role, leaving unseeded roles to the runtime declarations.
 fn seeded_member_name(
     class: &str,
     role: &str,
@@ -978,12 +844,7 @@ fn seeded_member_name(
     }
 }
 
-/// The constant one screen class is reached by.
-///
-/// The agent jar loads every screen reflectively and by name, so the name it
-/// passes is version data exactly as a game class name is: the screens move to
-/// the unnamed package under a version that puts the game there. The constant is
-/// the class's own name, which is what survives that move.
+/// The stable constant used to load a screen reflectively.
 fn constant(name: &str) -> String {
     let mut text = String::with_capacity(name.len() + 4);
     for (index, character) in name.char_indices() {

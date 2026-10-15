@@ -1,8 +1,4 @@
-//! Generates the pinned Minecraft binding before the adapter compiles.
-//!
-//! The generator is the crate's own module, included here rather than depended
-//! on: a build script cannot depend on the library it is building, and ADG-3's
-//! logic belongs in one place regardless of which of the two compiles it.
+//! Generates pinned bindings using the shared generator before the adapter compiles.
 
 #[path = "src/generate/mod.rs"]
 mod generate;
@@ -25,16 +21,9 @@ fn main() {
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=src/generate");
     println!("cargo::rerun-if-env-changed={REGENERATE}");
-    // Selection is a build-time choice, so a build that changes it has to
-    // generate again rather than serve the previous version's tree from cache.
     println!("cargo::rerun-if-env-changed={}", generate::SELECTION);
 
-    // Rewriting a lock happens here because the generator refuses to build
-    // against a lock it has drifted from, so nothing that depends on this crate
-    // could run the writer. Asking for it is an explicit environment variable
-    // and a cargo-make task rather than a flag some ordinary build could set.
-    // The version data may hold several versions; this build emits one. Where
-    // it holds exactly one, nothing has to be set.
+    // Regeneration must precede the build that would otherwise reject stale locks.
     let selected = match generate::selection(std::env::var_os(generate::SELECTION)) {
         Ok(selected) => selected,
         Err(error) => {
@@ -59,15 +48,12 @@ fn main() {
         }
     };
 
-    // The client jar is named here even though most machines do not hold it, so
-    // that a machine which does notices the moment it changes.
+    // Watch pinned jars even when absent locally.
     for path in &generated.watched {
         println!("cargo::rerun-if-changed={}", path.display());
     }
 
-    // `links` in the manifest is what makes Cargo forward these to the build
-    // script of every direct dependant, which is how `ravel-bootstrap` finds the
-    // exports without reading this crate's `OUT_DIR` by hand.
+    // Cargo forwards `links` metadata to direct dependants' build scripts.
     println!("cargo::metadata=bindings={}", generated.bindings.display());
     println!("cargo::metadata=exports={}", generated.exports.display());
     println!("cargo::metadata=java={}", generated.java.display());

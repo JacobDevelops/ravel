@@ -10,60 +10,15 @@ use ravel_save::{
 
 use crate::lifecycle::LifecycleMachine;
 
-/// Admits the world's saved data, migrates it, and hands each owner its entry.
+/// Validates and migrates all saved data before handing entries to owners in load order.
 ///
-/// This composes persistence admission in order:
-/// `ravel-save` admits the aggregate and owns the migrations, the
-/// mods own their shapes, and this decides nothing about either. What it owns is
-/// the sequence, and the sequence is what makes a refusal closed.
-///
-/// 1. Every mod running on this side declares the versions it reads. A mod the
-///    machine parks declares nothing, because it will not run and cannot own a
-///    world's data this session.
-/// 2. Every declared version above the oldest must have a migration step into it.
-///    This is checked **before** any payload is read, so a build with a missing
-///    link refuses without having touched a mod.
-/// 3. The aggregate is admitted, which is where the size ceiling, the format
-///    marker, the required packages and the future-version rule apply.
-/// 4. Every owner's payload is migrated, all of them or none of them.
-/// 5. Each owner is handed its entry and its [`SavedDataPlan`], in resolved load
-///    order.
-///
-/// # Who applies a migration chain
-///
-/// The mod does, from the steps its plan names. That is the contract
-/// [`HostMod::open_saved_data`] states and the only one an implementor is under;
-/// `ravel-bootstrap`'s launch crossing hands over the stored envelope and the
-/// steps and migrates nothing itself.
-///
-/// Step 4 above is therefore a *strengthening* and not a second contract: on this
-/// path the aggregate is already current when step 5 runs, so the plan names no
-/// steps and the mod's own chain is a no-op. It is done here because the returned
-/// aggregate is what a caller saves from, and an aggregate holding an old envelope
-/// is one an unlucky write puts back on disk at its old version. No mod may rely
-/// on it — a mod that reads the payload without applying `plan.steps()` is
-/// correct here and silently wrong on the launch path, which is exactly the shape
-/// this section exists to forbid.
-///
-/// # Failure closure
-///
-/// Nothing is returned on any refusal, and the returned aggregate is the only
-/// thing a caller can save from — so a refused world has no bytes to write and no
-/// state bound to emission. Steps 2, 3 and 4 all refuse before a single mod has
-/// been handed anything. Step 5 can refuse after an earlier mod has read its own
-/// entry; that mod holds its own state and the world does not open. The
-/// refusal withholds the world rather than opening
-/// it half-applied, and `LifecycleMachine::request_save` is what stops a halted set
-/// producing bytes.
+/// Parked mods are skipped. The returned aggregate is current; mods must still honor
+/// [`SavedDataPlan::steps`] on paths that do not migrate before delivery.
+/// Any refusal withholds the aggregate and must prevent the world from opening.
 ///
 /// # Errors
 ///
-/// Returns [`SaveRefused::Data`] for anything `ravel-save` refuses — an oversized
-/// or invalid aggregate, an uninstalled owner, a future version, a gap in the
-/// declared versions, a missing migration step, or a step that could not read its
-/// payload — [`SaveRefused::ForeignDeclaration`] when a mod declares data owned by
-/// another identity, and [`SaveRefused::Owner`] when a mod refused the entry it was
-/// handed.
+/// Returns [`SaveRefused`] for invalid data or migrations, foreign ownership, or owner refusal.
 pub fn open_saved_data(
     machine: &LifecycleMachine,
     mods: &mut [&mut dyn HostMod],
@@ -89,8 +44,6 @@ pub fn open_saved_data(
             chain.covers(&declaration).map_err(SaveRefused::Data)?;
             chains.push(chain);
         } else if declaration.versions().count() > 1 {
-            // More than one version and no chain: the older ones are declared
-            // readable and nothing can read them.
             return Err(SaveRefused::Data(SavedDataError::MissingMigration {
                 owner: declaration.owner().clone(),
                 to: declaration.current(),
@@ -140,10 +93,6 @@ pub enum SaveRefused {
     /// The aggregate, a version, or a migration was refused.
     Data(SavedDataError),
     /// A mod declared saved data owned by another identity.
-    ///
-    /// The same boundary check `open_services` makes, for the same reason: a
-    /// declaration names its owner, and a mod that names somebody else would have
-    /// another mod's envelope routed to it.
     ForeignDeclaration {
         /// The mod that returned it.
         mod_id: ModId,
@@ -197,8 +146,6 @@ impl std::error::Error for SaveRefused {
 }
 
 impl StructuredFailure for SaveRefused {
-    /// Neither half is one of `SPEC.md` §9.2's dependency-graph outcomes: the
-    /// graph resolved and the world is what was refused.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
@@ -255,7 +202,6 @@ mod tests {
         Ok(json!({ "counts": counts, "total": 0 }))
     }
 
-    /// A mod that reads three versions and records only the current shape.
     struct Storing {
         id: ModId,
         versions: Vec<SavedDataVersion>,
@@ -281,7 +227,6 @@ mod tests {
             }
         }
 
-        /// Declares world data owned by `other` rather than by this mod.
         fn declaring_for(mut self, other: &str) -> Self {
             self.declares_as = Some(id(other));
             self
@@ -292,7 +237,6 @@ mod tests {
             self
         }
 
-        /// A chain that can reach version 3 and not version 2.
         fn without_the_first_link(mut self) -> Self {
             self.chain = Some(MigrationChain::new(self.id.clone()).reaching(version(3), to_three));
             self
@@ -352,7 +296,6 @@ mod tests {
         LifecycleMachine::new(Side::DedicatedServer, entries).expect("a legal plan")
     }
 
-    /// The bytes a world written by an older build holds.
     fn world(owners: &[(&str, u32, Value)]) -> Vec<u8> {
         let mut aggregate = SavedDataAggregate::fresh();
         for (owner, at, payload) in owners {
@@ -390,8 +333,6 @@ mod tests {
 
     #[test]
     fn a_mod_declaring_another_mods_world_data_is_refused_before_the_aggregate_is_opened() {
-        // Without the owner check the envelope routed to `thief` is `stored`'s,
-        // and the mismatch surfaces as one mod reading another's state.
         let bytes = world(&[("stored", 3, json!({ "counts": [7], "total": 0 }))]);
         let mut host = Storing::new("thief").declaring_for("stored");
         let machine = machine(vec![entry("thief", &[Side::DedicatedServer])]);
@@ -430,12 +371,7 @@ mod tests {
 
     #[test]
     fn a_missing_link_refuses_a_world_that_would_never_have_crossed_it() {
-        // The chain cannot reach version 2, and the world is already at version 3,
-        // so no step would have run and the migration alone would have found
-        // nothing wrong. The build still says it reads version 1 and cannot, and a
-        // build that refuses only the players whose worlds are old is a build that
-        // ships broken. This is the case the pre-read check exists for, and the only
-        // one that distinguishes it from the refusal the migration itself raises.
+        // Validate declared coverage even when this world's current version needs no migration.
         let bytes = world(&[("stored", 3, json!({ "counts": [7], "total": 0 }))]);
         let mut host = Storing::new("stored").without_the_first_link();
         let machine = machine(vec![entry("stored", &[Side::DedicatedServer])]);
@@ -449,8 +385,6 @@ mod tests {
         );
         assert!(host.read.is_none(), "a mod read a world that was refused");
 
-        // The same world opens against the whole chain, so the refusal is about the
-        // gap and not about the world.
         let mut whole = Storing::new("stored");
         open_saved_data(&machine, &mut [&mut whole], Some(&bytes), &BTreeMap::new())
             .expect("the chain covers every declared version");
@@ -459,9 +393,6 @@ mod tests {
 
     #[test]
     fn one_owner_refusing_withholds_the_world_from_every_owner() {
-        // Two owners, and `zeta` refuses. `alpha` comes first in resolved order and
-        // would already have read its own entry, so what has to hold is that no
-        // aggregate comes back: there is nothing to save and no world to open.
         let bytes = world(&[
             ("alpha", 3, json!({ "counts": [1], "total": 0 })),
             ("zeta", 3, json!({ "counts": [2], "total": 0 })),
@@ -514,8 +445,6 @@ mod tests {
 
     #[test]
     fn a_mod_this_side_parks_owns_no_world_data_this_session() {
-        // The parked mod declares three versions and no chain, which would refuse
-        // the world if it were consulted. It is not, because it will not run.
         let mut parked = Storing::new("parked");
         parked.chain = None;
         let mut host = Storing::new("stored");

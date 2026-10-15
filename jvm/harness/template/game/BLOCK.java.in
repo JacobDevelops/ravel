@@ -5,16 +5,8 @@
 {{import STATE_DEFINITION}}
 {{import BlockBehaviour$Properties}}
 
-/** One block, which exists only once its properties describe it. */
 public class {{BLOCK}} {
 
-    /**
-     * Where every registered block's states have to end up.
-     *
-     * <p>Static and shared, because the game's is: a block update is written as
-     * an index into this one mapper, and a state that never reached it cannot be
-     * encoded at all.
-     */
     public static final {{ID_MAPPER}} {{BLOCK#BLOCK_STATE_REGISTRY}} = new {{ID_MAPPER}}();
 
     private final String applied;
@@ -23,21 +15,9 @@ public class {{BLOCK}} {
 
     public {{BLOCK}}({{BlockBehaviour$Properties}} properties) {
         this.applied = properties.applied();
-        // Two states rather than one, so a walk that adds the first and stops
-        // reads differently from one that adds them all.
         this.states = new {{STATE_DEFINITION}}("default", "alternate");
     }
 
-    /**
-     * This block's states, or a refusal for the one name that stands for a walk
-     * that cannot run.
-     *
-     * <p>Deliberately hostile. Registration and the state walk are two steps and
-     * the second can fail on its own, which used to be reported as a block that
-     * did not register — a block that had, in no id mapper, whose item then
-     * degraded to one that places nothing. A stand-in that could not fail here
-     * would pass either behaviour.
-     */
     public {{STATE_DEFINITION}} {{BLOCK#getStateDefinition}}() {
         if (String.valueOf(identifier).endsWith("unmappable")) {
             throw new IllegalStateException("this block's states cannot be listed");
@@ -45,7 +25,6 @@ public class {{BLOCK}} {
         return states;
     }
 
-    /** What this block was registered under, which is where its name comes from. */
     public void named({{IDENTIFIER}} identifier) {
         this.identifier = identifier;
     }
@@ -54,7 +33,6 @@ public class {{BLOCK}} {
         return identifier;
     }
 
-    /** How this block behaves, as the properties it was built from describe it. */
     public String applied() {
         return applied;
     }

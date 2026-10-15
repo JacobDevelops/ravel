@@ -4,7 +4,6 @@
 {{import Component}}
 {{import Font}}
 
-/** Everything a slider or a choice cannot constrain is typed into one of these. */
 public final class {{EditBox}} extends {{AbstractWidget}} {
 
     private final {{Font}} font;
@@ -35,16 +34,10 @@ public final class {{EditBox}} extends {{AbstractWidget}} {
     public void {{EditBox#setMaxLength}}(int maximum) {
     }
 
-    /**
-     * How much of this box's width its text has, which is its width less its
-     * border. The pinned class computes it the same way for a bordered box, and
-     * every box this harness builds is one.
-     */
     public int innerWidth() {
         return width - 8;
     }
 
-    /** Whether the value would render whole rather than scrolled to its tail. */
     public boolean fits() {
         return font.{{Font#width}}(value) <= innerWidth();
     }

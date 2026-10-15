@@ -1,71 +1,16 @@
 #![forbid(unsafe_code)]
 
-//! The version-neutral model for an agentic acceptance run.
+//! Version-neutral acceptance scenarios, observations, and transcript verdicts.
 //!
-//! An acceptance run is how M8-W4's fresh-world scenarios and M10's progression
-//! walk are driven by software rather than by a person at the keyboard: a
-//! [`Scenario`] is a named sequence of [`Step`]s, each step observes the game
-//! through the events the loader already reports and asks the game to do
-//! something through the crossing the loader already carries, and a step's
-//! success is an [`Assertion`] over an [`Observation`] the run captured. A
-//! [`ProgressionCheckpoint`] is the coarse, ordered spine M10 asks a walk to
-//! reach — the milestones a pack's intended progression passes through — and a
-//! [`Transcript`] is the ordered record of what a run did and decided, which is
-//! the evidence a gate reads.
-//!
-//! # What this crate is and is not
-//!
-//! Everything here is decidable without a game, exactly as
-//! [`ravel_host_api::GameEvent`] ships the declaration of an event and no
-//! payload and [`ravel_host_api::Point`] ships a place a host may call out from
-//! and no call. This crate models the *shape* of an acceptance run — the steps,
-//! the ordering, the assertions, the checkpoint spine, the verdict arithmetic —
-//! and holds none of the two things a run needs that only a running game
-//! supplies: a real [`Observation`] of live world state, and a driver that
-//! turns a [`Directive`] into the outward instruction the Java adapter performs.
-//!
-//! Those two are not this crate's to hold, and the reason is the same one
-//! `docs/architecture/dependency-rules.md` gives for every version boundary. A
-//! live observation is a projection from a hook's value, and the wiring that
-//! connects a hook to the loader has landed without making one possible: no hook
-//! `crates/ravel-bootstrap/src/runtime.rs` binds carries world state a
-//! projection could read, because every reference parameter crosses as a
-//! `HookValue::Handle` offering a declared class and a null check, which is what
-//! `ROADMAP.md` records as the open question a reviewed hook target has to
-//! close; a directive becomes an effect when the Java adapter performs it. The
-//! outbound leg has not been performed by a launched game. This crate names both
-//! boundaries as traits a driver implements — [`GameView`] and [`GameDriver`] —
-//! so a run is written, ordered and asserted against them now.
-//! The driver can be built against a launched game without changing this model.
-//! [`run`] is the loop that drives a scenario against them, so what a live driver
-//! has to supply is the two traits and nothing else: the order of carry, observe,
-//! evaluate and record is decided here rather than re-derived by each caller.
-//!
-//! # What the run never does
-//!
-//! A run answers the game the way a mod does and no other way. It never calls a
-//! game method: a [`Directive`] is data a [`GameDriver`] hands to the adapter,
-//! which the Java adapter performs, so no `#![forbid(unsafe_code)]` is weakened
-//! and no new crossing is opened. It reads the modded world through structured
-//! observations rather than by parsing rendered pixels, so a scenario names a
-//! condition by its meaning rather than by what it looks like on a screen; see
-//! `docs/architecture/overview.md#mechanisms`. It decides a
-//! verdict from the transcript it recorded rather than from a claim, because a
-//! green that measures the harness rather than the game is the failure
-//! `ROADMAP.md`'s M8-W0 note exists to prevent.
+//! Drivers supply live state and carry directives to the Java adapter; this
+//! crate orders steps and evaluates their assertions without waiting for events.
 
 use core::fmt;
 
 use ravel_core::{RegistryKey, Side};
 use ravel_host_api::GameEvent;
 
-/// A named acceptance scenario: an ordered sequence of steps and the spine of
-/// progression checkpoints it is expected to reach.
-///
-/// A scenario carries no game state and performs nothing on construction. It is
-/// the written plan a [`GameDriver`] runs and a [`Transcript`] records against,
-/// and it is `Clone` so a suite may run the same plan against more than one
-/// world without a second author.
+/// A named, single-sided sequence of steps and expected progression checkpoints.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Scenario {
     name: String,
@@ -75,13 +20,7 @@ pub struct Scenario {
 }
 
 impl Scenario {
-    /// Names a scenario that runs on `side` with no steps and no checkpoints.
-    ///
-    /// The empty scenario is a valid plan: it reaches every checkpoint it names
-    /// (none) and every step it holds passes (none), so an empty run is a
-    /// [`Verdict::Passed`] over nothing rather than a special case. A suite that
-    /// wants an empty scenario to mean "unwritten" records that as a checkpoint
-    /// it fails to reach, not as a property of the empty plan.
+    /// Creates a scenario with no steps or checkpoints; an empty run passes.
     #[must_use]
     pub fn new(name: impl Into<String>, side: Side) -> Self {
         Self {
@@ -92,20 +31,14 @@ impl Scenario {
         }
     }
 
-    /// Appends `step` and returns the scenario, so a plan reads as the order it
-    /// runs in.
+    /// Appends a step in execution order.
     #[must_use]
     pub fn with_step(mut self, step: Step) -> Self {
         self.steps.push(step);
         self
     }
 
-    /// Appends `checkpoint` to the progression spine and returns the scenario.
-    ///
-    /// Checkpoints are the coarse ordered milestones M10 asks a walk to reach,
-    /// and their order here is the order they must be reached in. A checkpoint
-    /// reached out of order is a run that did something the plan did not expect,
-    /// which [`Transcript::verdict`] reports rather than tolerates.
+    /// Appends an expected progression checkpoint in arrival order.
     #[must_use]
     pub fn with_checkpoint(mut self, checkpoint: ProgressionCheckpoint) -> Self {
         self.checkpoints.push(checkpoint);
@@ -119,12 +52,6 @@ impl Scenario {
     }
 
     /// The side the scenario runs on.
-    ///
-    /// A scenario is single-sided because a step's observation and directive are
-    /// both a side's, and the side an event happens on is
-    /// [`GameEvent::happens_on`]'s to say. A walk that needs both sides is two
-    /// scenarios whose ordering a suite owns, not one scenario that straddles a
-    /// boundary the loader keeps.
     #[must_use]
     pub const fn side(&self) -> Side {
         self.side
@@ -143,13 +70,7 @@ impl Scenario {
     }
 }
 
-/// One step of a scenario: wait for an occasion, ask the game to do something,
-/// then assert over what the game then showed.
-///
-/// A step is the smallest unit a transcript records a verdict for. Its three
-/// parts map onto the three things an acceptance run is allowed to do — observe
-/// through [`GameEvent`], act through a [`Directive`], and decide through an
-/// [`Assertion`] — and a step never does a fourth.
+/// An optional directive followed by an assertion, labelled with its intended event.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Step {
     label: String,
@@ -159,14 +80,7 @@ pub struct Step {
 }
 
 impl Step {
-    /// Records a step labelled `label` that waits for `await_event`, optionally
-    /// issues `directive`, and passes when `assertion` holds over the
-    /// observation captured after the directive.
-    ///
-    /// A step with no directive is an observation-only step: it waits for the
-    /// occasion and asserts over the world as it then is, asking the game to do
-    /// nothing. That is how a scenario checks a precondition or a settling state
-    /// without perturbing it.
+    /// Creates a step; `None` makes it observation-only.
     #[must_use]
     pub fn new(
         label: impl Into<String>,
@@ -207,62 +121,32 @@ impl Step {
     }
 }
 
-/// A thing a step asks the game to do, carried outward as data.
-///
-/// A directive is data carried by a [`GameDriver`] to the receiver-aware Java adapter,
-/// which decodes it and performs it against the game. No variant is a call Rust
-/// makes, and every variant names its target by the key a pack declared it under
-/// rather than by a game type this crate may not name.
-///
-/// The set is small on purpose. It holds the actions M10's progression walk is
-/// written in terms of, and a walk that needs an action this does not name is a
-/// gap this enum grows to admit under the same review a hook target gets, not a
-/// pixel a driver clicks.
+/// An instruction carried by a [`GameDriver`] to the Java adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Directive {
-    /// Run a command a mod owns, by the claimed key of its root literal and the
-    /// arguments that follow it.
-    ///
-    /// The arguments are text the way [`ravel_host_api::CommandInvocation`]'s
-    /// are: split on whitespace and not otherwise interpreted, because the
-    /// command's grammar is the mod's and not this crate's.
+    /// Runs a mod-owned command with uninterpreted, whitespace-split arguments.
     RunCommand {
         /// The claimed key whose root literal is invoked.
         key: RegistryKey,
         /// What follows the root literal.
         arguments: Vec<String>,
     },
-    /// Place the item a pack declared under `key` into the acting player's
-    /// inventory, in the given count, so a scenario can reach a progression
-    /// state its walk depends on without re-walking every prior step.
-    ///
-    /// This is a test affordance rather than a game mechanic, which is why it is
-    /// a directive a driver may refuse: a run that must prove the walk itself
-    /// declares no `GrantItem` and reaches the item by playing, and a run that
-    /// only needs to reach a *later* state grants the prerequisite and says so
-    /// in its transcript.
+    /// Grants prerequisite items without requiring the walk to obtain them.
     GrantItem {
         /// The declared key of the item to grant.
         key: RegistryKey,
-        /// How many to grant. Zero grants nothing and is a no-op the driver
-        /// still records, so a transcript never has a silent gap where a count
-        /// was meant.
+        /// How many to grant; zero is a recorded no-op.
         count: u32,
     },
-    /// Wait for `ticks` server ticks to elapse before the step asserts, so a
-    /// scenario can let a machine or a world settle without asserting on the
-    /// exact tick an effect lands.
+    /// Advances server ticks before the step asserts.
     AdvanceTicks {
-        /// How many ticks to let elapse. This is a count, not a duration: a
-        /// tick is the game's unit and a wall-clock time would drift with the
-        /// host's speed, which M9 measures and this crate must not assume.
+        /// How many game ticks to advance, independent of wall-clock time.
         ticks: u32,
     },
 }
 
 impl Directive {
-    /// A short, stable kind name for the directive, as a transcript and a report
-    /// group by.
+    /// The stable directive kind used by transcripts and reports.
     #[must_use]
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -273,12 +157,7 @@ impl Directive {
     }
 }
 
-/// What a step asserts over the observation it captured.
-///
-/// An assertion is a decidable predicate over an [`Observation`], evaluated by
-/// [`Assertion::evaluate`], which is the whole of how a step decides a verdict.
-/// It names what it checks by a declared key so it reads against the modded
-/// content a pack declared, and it holds no game type.
+/// A predicate over a captured [`Observation`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Assertion {
     /// The player holds at least `count` of the item declared under `key`.
@@ -288,33 +167,22 @@ pub enum Assertion {
         /// The minimum acceptable count.
         count: u32,
     },
-    /// The world reports the block declared under `key` present at least once,
-    /// which is how a scenario checks that a placement or a generation happened
-    /// without naming a coordinate a version's world does not promise.
+    /// The declared block is present at least once, without specifying a coordinate.
     BlockPresent {
         /// The declared key of the block to look for.
         key: RegistryKey,
     },
-    /// The progression checkpoint named by `checkpoint` is reached in the
-    /// observation, which is how a walk asserts it arrived rather than inferring
-    /// arrival from an item it happens to hold.
+    /// The observation explicitly reports the checkpoint as reached.
     CheckpointReached {
         /// The checkpoint the observation must report reached.
         checkpoint: ProgressionCheckpoint,
     },
-    /// Every one of the inner assertions holds. An empty `All` holds, so it is
-    /// the identity a builder can start from rather than a special case a caller
-    /// guards.
+    /// Every inner assertion holds; an empty list holds.
     All(Vec<Assertion>),
 }
 
 impl Assertion {
-    /// Evaluates the assertion against `observation`, returning whether it holds.
-    ///
-    /// This is total and side-effect-free: it reads the observation and decides,
-    /// and it neither waits nor acts. A driver evaluates it after the step's
-    /// directive has been carried and the awaited event has been seen, so what
-    /// it reads is the world as the step left it.
+    /// Evaluates the assertion without waiting or changing the observation.
     #[must_use]
     pub fn evaluate(&self, observation: &Observation) -> bool {
         match self {
@@ -326,16 +194,7 @@ impl Assertion {
     }
 }
 
-/// A coarse, ordered progression milestone a walk is expected to reach.
-///
-/// The set is a spine rather than an inventory: it names the milestones M10's
-/// progression acceptance asks a walk to pass through, in the order a pack's
-/// intended progression passes them, and a pack that reaches a milestone the
-/// spine names out of order has done something the plan did not expect. The
-/// concrete pack-specific milestones a pack adds live in the pack's own
-/// declaration, not in this crate; what is here is the shape every pack's spine
-/// shares — a start, a first machine, a first automation, the dimension the pack
-/// is named for, and an end-state the walk is complete at.
+/// A coarse milestone in a pack's ordered progression.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ProgressionCheckpoint {
     /// A fresh world has been entered and the walk has begun.
@@ -360,8 +219,7 @@ impl ProgressionCheckpoint {
         Self::ProgressionComplete,
     ];
 
-    /// The checkpoint's canonical lowercase name, as a transcript and an
-    /// evidence record refer to it.
+    /// The checkpoint's canonical lowercase evidence name.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -373,8 +231,7 @@ impl ProgressionCheckpoint {
         }
     }
 
-    /// This checkpoint's position on the spine, counting from zero, so an
-    /// ordering check reads as a comparison rather than a table lookup.
+    /// The checkpoint's zero-based position on the progression spine.
     #[must_use]
     pub const fn order(self) -> u8 {
         match self {
@@ -393,15 +250,7 @@ impl fmt::Display for ProgressionCheckpoint {
     }
 }
 
-/// A structured reading of the game's state at a moment, as a driver captures it
-/// and an [`Assertion`] reads it.
-///
-/// An observation is what a live [`GameView`] produces and what this crate lets
-/// a test build directly so a scenario is decidable without a game. It holds
-/// declared keys and counts rather than game objects, which is what keeps this
-/// crate version-neutral: a real driver projects a hook's value onto these
-/// fields, and the projection — not this type — is the part `ravel-host-api`
-/// records as unstarted.
+/// A snapshot of declared item counts, present blocks, and reached checkpoints.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Observation {
     held: Vec<(RegistryKey, u32)>,
@@ -410,21 +259,13 @@ pub struct Observation {
 }
 
 impl Observation {
-    /// An empty observation: nothing held, no block present, no checkpoint
-    /// reached. This is a fresh world's floor, not a missing reading — a driver
-    /// that failed to read reports that as a driver error rather than as an
-    /// empty observation.
+    /// An empty reading, distinct from a driver failing to read state.
     #[must_use]
     pub fn empty() -> Self {
         Self::default()
     }
 
-    /// Records that the player holds `count` of the item declared under `key`.
-    ///
-    /// A second record for the same key replaces the first rather than adding to
-    /// it, because an observation is a snapshot of a count and not a running
-    /// tally: two readings of the same inventory are two observations, not one
-    /// that accumulates.
+    /// Sets the held count for `key`, replacing any previous count.
     #[must_use]
     pub fn holding(mut self, key: RegistryKey, count: u32) -> Self {
         if let Some(entry) = self.held.iter_mut().find(|(k, _)| *k == key) {
@@ -481,13 +322,7 @@ impl Observation {
     }
 }
 
-/// The verdict a step or a whole run resolves to.
-///
-/// A verdict is decided from a transcript, never claimed. `Passed` and `Failed`
-/// are a decided outcome; `Errored` is a run that could not decide, which is a
-/// distinct thing from a decided failure because it names a fault in the harness
-/// or the driver rather than in the game — a gate that cannot tell the two apart
-/// would count a broken driver as a passing game.
+/// A decided pass or failure, or a harness fault that prevented a decision.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Verdict {
     /// The step or run met every assertion it was decided against.
@@ -507,13 +342,7 @@ impl Verdict {
     }
 }
 
-/// The ordered record of what a run did and decided, and the evidence a gate
-/// reads.
-///
-/// A transcript is append-only through [`Transcript::record`] and decides its
-/// verdict from what it holds through [`Transcript::verdict`]. It is the one
-/// place a run's outcome is computed, so a report and a gate read the same
-/// arithmetic rather than two that can disagree.
+/// An append-only record of step outcomes that determines the run verdict.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Transcript {
     entries: Vec<StepOutcome>,
@@ -546,14 +375,7 @@ impl Transcript {
         &self.entries
     }
 
-    /// The run's verdict, decided from the recorded outcomes.
-    ///
-    /// A run errors if any step errored — a harness fault dominates, because a
-    /// run that could not decide a step cannot honestly claim the steps after
-    /// it. Otherwise a run fails at the first failing step, and passes only when
-    /// every step passed. This is deliberately not "most steps passed": a walk
-    /// with one broken checkpoint is a walk that did not complete, which is the
-    /// verdict M10 asks for.
+    /// Returns the first error, otherwise the first failure, otherwise a pass.
     #[must_use]
     pub fn verdict(&self) -> Verdict {
         if let Some(err) = self
@@ -573,84 +395,40 @@ impl Transcript {
         Verdict::Passed
     }
 
-    /// Whether the recorded checkpoints were reached in the spine's order,
-    /// against the `expected` spine a scenario declared.
-    ///
-    /// A walk may reach a checkpoint later than the plan hoped, but it may not
-    /// reach a *later* checkpoint before an earlier one it also claims: that is
-    /// a progression that happened in an order the pack's intended progression
-    /// does not, which M10 treats as a failure to walk the progression rather
-    /// than as a walk that finished early. An expected spine the run reached
-    /// none of is vacuously in order.
+    /// Whether reached checkpoints are nondecreasing; empty and partial spines qualify.
     #[must_use]
     pub fn checkpoints_in_order(reached: &[ProgressionCheckpoint]) -> bool {
         reached.windows(2).all(|w| w[0].order() <= w[1].order())
     }
 }
 
-/// A read-only view of live game state a driver projects for a step to assert
-/// over.
-///
-/// This is one of the two boundaries this crate names and does not cross. A real
-/// implementation projects a hook's value — `ravel-host-api` records that
-/// projection as the unstarted work that lands with hook-to-loader wiring — onto
-/// an [`Observation`]. A test implements it directly by returning a built
-/// observation, which is how a scenario is exercised without a game.
+/// Captures structured game state for assertions.
 pub trait GameView {
-    /// Captures the current game state as a structured observation, or returns
-    /// why it could not. A failure here is a driver fault, and a run turns it
-    /// into a [`Verdict::Errored`] rather than a [`Verdict::Failed`].
+    /// Captures state; a read failure becomes [`Verdict::Errored`].
     ///
     /// # Errors
     ///
-    /// Returns a message describing why the state could not be read — the view
-    /// was asked on a side the run does not observe, or a projection a live
-    /// driver needs is one the loader does not yet carry.
+    /// Returns the reason state could not be read.
     fn observe(&self) -> Result<Observation, String>;
 }
 
-/// A driver that carries a directive outward and lets the game advance.
-///
-/// This is the second boundary this crate names and does not cross. A directive
-/// leaves as an instruction for the Java adapter to perform; the outbound leg is
-/// not yet implemented by a host. The only implementations that exist are tests.
-/// The trait is here so a scenario is written and ordered against it now.
+/// Carries directives outward and lets the game advance.
 pub trait GameDriver {
-    /// Carries `directive` outward as an instruction the adapter performs, or
-    /// returns why it could not.
+    /// Carries an instruction; success does not imply its effect is visible yet.
     ///
-    /// An action happens after the answer, not during it. A successful return
-    /// means the instruction was carried, not that its effect is already
-    /// visible. A step that needs the effect to have landed waits for it with a
-    /// following [`Directive::AdvanceTicks`] step and asserts then.
+    /// Use a following [`Directive::AdvanceTicks`] step to allow effects to settle.
     ///
     /// # Errors
     ///
-    /// Returns a message describing why the directive could not be carried,
-    /// which a run turns into a [`Verdict::Errored`].
+    /// Returns the delivery failure, which becomes [`Verdict::Errored`].
     fn carry(&mut self, directive: &Directive) -> Result<(), String>;
 }
 
-/// Runs `scenario` against `world`, returning the [`Transcript`] of what it did
-/// and decided.
+/// Carries, observes, evaluates, and records each step in order.
 ///
-/// For each step in order: carry its directive if it has one, capture an
-/// [`Observation`], evaluate the step's [`Assertion`] over it, and record the
-/// verdict. A driver or view fault becomes [`Verdict::Errored`] and stops the
-/// run there, because a run that could not decide one step cannot honestly
-/// claim the steps after it. An assertion that simply does not hold becomes
-/// [`Verdict::Failed`] and the run continues, so a transcript shows every step's
-/// verdict rather than only the first disappointment; [`Transcript::verdict`] is
-/// what reduces them to one.
-///
-/// One type supplies both halves rather than two, because the thing that can
-/// carry a directive outward is the thing that can read what came back: a live
-/// driver holds one connection to the running game, and splitting the arguments
-/// would only let a caller pair a view of one game with a driver of another.
-///
-/// This does not wait. A step names the [`GameEvent`] it waits for and this
-/// asserts immediately after the directive, so a scenario that needs an effect
-/// to have landed says so with a following [`Directive::AdvanceTicks`] step.
+/// Driver or view errors stop the run; failed assertions do not. This does not
+/// wait for a step's event: assertions run immediately after its directive.
+/// Use [`Directive::AdvanceTicks`] when an effect needs time to settle.
 pub fn run<W>(scenario: &Scenario, world: &mut W) -> Transcript
 where
     W: GameView + GameDriver,
@@ -694,7 +472,6 @@ mod tests {
     use super::*;
     use core::str::FromStr;
 
-    /// Builds a key from `<kind>:<namespace>:<path>`, e.g. `item:ravel_test:ingot`.
     fn key(kind: &str, path: &str) -> RegistryKey {
         RegistryKey::from_str(&format!("{kind}:ravel_test:{path}")).expect("valid registry key")
     }

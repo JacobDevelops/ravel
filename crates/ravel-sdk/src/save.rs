@@ -1,61 +1,8 @@
-//! Versioned world data a mod owns.
+//! Versioned world data and atomic migration chains.
 //!
-//! `SPEC.md` §14 requires persistent data to be versioned, so a mod that owns
-//! any declares every version this build can read. The loader resolves the
-//! declaration against what the world holds and produces a [`SavedDataPlan`]:
-//! either the version is current, or there is an ordered list of migration steps
-//! to run, or the world is refused. A refusal withholds the world rather than
-//! opening it half-applied.
-//!
-//! **The mod crosses those steps, not the host.** The payload a mod is handed is
-//! at whatever version the world stored, so an implementation reads
-//! [`SavedDataPlan::steps`] and applies its chain to them; one that reads the
-//! payload as though it were already current loses every field a later version
-//! added. A host is free to hand over an already-current payload, and one of them
-//! does, but that is a stronger guarantee than the contract rather than the
-//! contract itself.
-//!
-//! [`SavedDataPlan`] decides which versions a world has to cross and
-//! [`MigrationChain`] is what crosses them: one [`MigrationStep`] per version, run
-//! in order, producing a new payload rather than editing the stored one. Every
-//! step or none — a chain that refuses partway leaves the world holding exactly
-//! what it held, which is what makes a refusal a withheld world rather than a
-//! half-migrated one.
-//!
-//! A mod never reads or writes the world file. It answers with one
-//! [`SavedDataEnvelope`] and the loader owns the aggregate those envelopes go
-//! into, which is what keeps [`MAX_AGGREGATE_BYTES`] a property of the whole
-//! world rather than of one mod's good behaviour.
-//!
-//! [`SavedDataEnvelope::current`] builds that answer from the three things a mod
-//! that owns its data alone has to say — itself, the version it writes, and the
-//! payload. [`SavedDataEnvelope::new`] takes the other two as well, and is what
-//! a mod whose payload needs another package installed, or which publishes a
-//! schema name for its own payload, reaches for.
-//!
-//! # The two arguments `new` adds
-//!
-//! **`required_packages`** is a `Vec<`[`RequiredPackage`]`>`, and a
-//! [`RequiredPackage`] is two public fields — `id`, the package, and `version`,
-//! the version of it this payload was written against. It is a statement about
-//! the *payload*: "the world cannot be read back without that package at that
-//! version". A mod whose payload stands alone passes an empty vector, which is
-//! what [`SavedDataEnvelope::current`] does for it. The order does not matter —
-//! `new` sorts the list, so two runs that name the same packages write the same
-//! bytes.
-//!
-//! **`payload_schema`** is an `Option<String>`, a name a mod publishes for its
-//! own payload's shape so another reader can recognise it. Ravel does not
-//! interpret it and nothing validates against it; a mod that publishes no such
-//! name passes `None`.
-//!
-//! On the way back in, an unmet requirement is refused rather than opened.
-//! [`SavedDataError::MissingPackage`] is a required package that is not installed
-//! at all, and [`SavedDataError::IncompatiblePackage`] carries a
-//! [`PackageConflict`] — the `owner` whose data asked, the `package` it asked
-//! for, the `required` version and the `installed` one — so the refusal names
-//! both versions rather than saying only that they differ. A mod never constructs
-//! a [`PackageConflict`]; it reads one out of a refusal it is reporting.
+//! A mod runs its [`MigrationChain`] over the stored payload using the host's
+//! [`SavedDataPlan`], then reads current data and returns a [`SavedDataEnvelope`].
+//! The host owns file I/O; unmet package requirements refuse opening.
 //!
 //! # Examples
 //!
@@ -91,12 +38,7 @@
 //! # Ok::<(), ravel_sdk::save::SavedDataError>(())
 //! ```
 
-/// The payload an envelope carries.
-///
-/// A mod's state is its own to shape, so this is an open JSON value rather than
-/// a type Ravel defines. The version in the envelope beside it is what makes an
-/// old shape readable, and the migration steps in a [`SavedDataPlan`] are what
-/// make it current.
+/// The mod-defined JSON payload stored in a versioned envelope.
 pub use serde_json::Value as SavedPayload;
 
 pub use ravel_save::{

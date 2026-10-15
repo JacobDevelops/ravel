@@ -2,19 +2,6 @@
 
 {{import ResourceKey}}
 
-/**
- * A block's properties, which refuse to describe a block that has no id.
- *
- * <p>Deliberately hostile, for the reason the item's are: this version's
- * constructor reads the id back out, so a properties object that never had one
- * fails before the block exists.
- *
- * <p>What was applied leads with that key rather than only requiring one,
- * because the key is the whole of what the adapter had to build here: the root
- * the registry is named by and the identifier under it. A stand-in that only
- * checked it was not null passed an adapter that stamped the item root, or a
- * neighbouring block's name, on every block it registered.
- */
 public final class {{BlockBehaviour$Properties}} {
 
     private {{ResourceKey}} id;
@@ -52,7 +39,6 @@ public final class {{BlockBehaviour$Properties}} {
         return this;
     }
 
-    /** What was applied, as the harness reads it back. */
     public String applied() {
         if (id == null) {
             throw new IllegalStateException("Block id not set");

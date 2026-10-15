@@ -1,10 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Procedural macros for declarative Ravel mod definitions.
-//!
-//! This crate holds one attribute, [`declare_mod`], and it is never named by a
-//! mod author: `ravel-sdk` re-exports it, and an author's manifest lists that
-//! one crate. Nothing here is part of the public surface on its own.
+//! Mod identity attributes, re-exported by `ravel-sdk`.
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Tokens};
@@ -13,50 +9,31 @@ use ravel_core::ModId;
 use syn::spanned::Spanned as _;
 use syn::{Error, Expr, ExprLit, ImplItem, ItemImpl, Lit, LitStr, MetaNameValue, Result, parse2};
 
-/// The attribute was given nothing to bind.
 const MISSING_ID: &str = "`declare_mod` needs the mod's declared identity, as `id = \"example\"`";
 
-/// The attribute was given something other than `id`.
 const UNKNOWN_OPTION: &str = "`declare_mod` takes one option, `id = \"example\"`";
 
-/// The attribute's `id` was not a string literal.
 const ID_NOT_A_STRING: &str = "`declare_mod`'s `id` is a string literal, as `id = \"example\"`";
 
-/// The attribute's `id` was a string literal the mod id grammar refuses.
 const ILLEGAL_ID: &str = "`declare_mod`'s `id` is not a legal mod id";
 
-/// The attribute was applied to something other than an `impl` block.
 const NOT_AN_IMPL: &str =
     "`declare_mod` goes on the `impl Mod for` block that carries the mod's behaviour";
 
-/// The attribute was applied to an inherent `impl` block.
 const INHERENT_IMPL: &str = "`declare_mod` goes on a trait `impl`, as `impl Mod for Example`, because what it generates is \
      that trait's `id` method";
 
-/// The `impl` block implemented some other trait, or named `Mod` under an alias.
-///
-/// The second half of the message is there because the first half is wrong advice
-/// for `use ravel_sdk::Mod as M; impl M for Example`: that block *does* implement
-/// `Mod`, and this refuses it because a macro sees the path as written and cannot
-/// resolve an import alias.
 const NOT_MOD: &str = "`declare_mod` goes on the `impl Mod for` block, because the `id` method it generates belongs \
      to that trait and to no other. This reads the trait path as written, and a macro cannot \
      resolve an import alias, so spell it `Mod` here even where it is in scope under another name";
 
-/// The `impl` block already wrote the method the attribute generates.
 const GENERATED_ID: &str = "`declare_mod` generates `id` from the identity it was given, so the block cannot also define \
      it";
 
-/// The `impl` block was generic, so no single identity names the type.
 const GENERIC_IMPL: &str = "`declare_mod` binds one identity to one concrete type, so the `impl` block takes no generic \
      parameters";
 
-/// Binds a mod's declared identity to the behaviour it implements.
-///
-/// The attribute goes on the `impl ravel_sdk::Mod for` block. It generates the
-/// trait's `id` method and the `ravel_sdk::Declared` implementation that stores
-/// the parsed identity, so an author writes the identity once, beside the
-/// behaviour, and never writes the parse or the storage by hand.
+/// Binds an identity to an `impl Mod` block and generates its identity accessors.
 ///
 /// ```ignore
 /// #[ravel_sdk::declare_mod(id = "example")]
@@ -75,11 +52,7 @@ pub fn declare_mod(attribute: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Reads the attribute's identity and rewrites the block it was applied to.
-///
-/// The whole macro lives here rather than in [`declare_mod`] so it is reachable
-/// from a test: `proc_macro::TokenStream` cannot be constructed outside a real
-/// macro expansion, and `proc_macro2::TokenStream` can.
+// proc_macro2 keeps expansion testable outside a compiler invocation.
 fn expand(attribute: Tokens, item: Tokens) -> Result<Tokens> {
     let id = parse_id(attribute)?;
     let mut block: ItemImpl =
@@ -88,9 +61,7 @@ fn expand(attribute: Tokens, item: Tokens) -> Result<Tokens> {
     let Some((implemented, _)) = block.trait_.as_ref() else {
         return Err(Error::new(block.self_ty.span(), INHERENT_IMPL));
     };
-    // Without this the attribute inserts `id` into whatever trait it was put on
-    // and the author reads `E0407: method `id` is not a member of trait
-    // `Display`` — a complaint about a method they never wrote.
+    // Reject unrelated traits before generating an invalid `id` method.
     if implemented
         .segments
         .last()
@@ -138,7 +109,6 @@ fn expand(attribute: Tokens, item: Tokens) -> Result<Tokens> {
     })
 }
 
-/// Reads `id = "example"` out of the attribute's own tokens.
 fn parse_id(attribute: Tokens) -> Result<LitStr> {
     if attribute.is_empty() {
         return Err(Error::new(Span::call_site(), MISSING_ID));
@@ -154,12 +124,6 @@ fn parse_id(attribute: Tokens) -> Result<LitStr> {
         Expr::Lit(ExprLit {
             lit: Lit::Str(id), ..
         }) => match id.value().parse::<ModId>() {
-            // The literal is here at expansion time and the grammar is
-            // `ravel-core`'s own parser, so an author who typos an id reads it
-            // from rustc at their own call site rather than from a panic the
-            // first time the loader asks for the identity. The parser is called
-            // rather than restated: a second grammar in this crate is a grammar
-            // that can drift from the one the loader enforces.
             Ok(_) => Ok(id),
             Err(error) => Err(Error::new(id.span(), format!("{ILLEGAL_ID}: {error}"))),
         },
@@ -167,7 +131,6 @@ fn parse_id(attribute: Tokens) -> Result<LitStr> {
     }
 }
 
-/// Whether an `impl` item is the `id` method the attribute generates.
 fn declares_id(item: &ImplItem) -> bool {
     matches!(item, ImplItem::Fn(function) if function.sig.ident == "id")
 }
@@ -182,17 +145,13 @@ mod tests {
         NOT_AN_IMPL, NOT_MOD, UNKNOWN_OPTION, expand,
     };
 
-    /// Renders an expansion as one line of source-shaped text.
-    ///
-    /// Token streams do not compare usefully and do not print stably across
-    /// whitespace, so every assertion below is about a substring of this.
+    // Compare token text without depending on whitespace.
     fn expanded(attribute: Tokens, item: Tokens) -> String {
         expand(attribute, item)
             .expect("the expansion should succeed")
             .to_string()
     }
 
-    /// Returns the message a refused expansion reports.
     fn refusal(attribute: Tokens, item: Tokens) -> String {
         expand(attribute, item)
             .expect_err("the expansion should be refused")

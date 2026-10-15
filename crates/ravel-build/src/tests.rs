@@ -1,0 +1,775 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+use ravel_core::{LifecycleState, MINECRAFT_VERSION_SELECTION, StructuredFailure};
+use ravel_loader::{MANIFEST_FILE, PACKAGES_DIRECTORY, discover};
+use ravel_package::Sha256Digest;
+use sha2::{Digest as _, Sha256};
+
+use super::generate::crate_ident;
+use super::{BuildRefused, HOST_LIBRARY, WORKSPACE_DIRECTORY, build, plan};
+
+const ENTRY_SYMBOL: &str = "Java_dev_ravel_jvm_Hook_ravelInitialize";
+
+const EXPORTING_SOURCE: &str = r#"#![forbid(unsafe_code)]
+
+//! A mod a player installed, built on the player's machine.
+
+use ravel_sdk::prelude::*;
+use ravel_sdk::{LifecycleState, Mod, ModError, declare_mod, export_mod};
+
+/// The mod this package builds.
+#[derive(Default)]
+pub struct Installed;
+
+/// Records, from inside this mod's own body, that it was entered.
+fn record(mark: &str) {
+    use std::io::Write as _;
+
+    let Ok(path) = std::env::var("RAVEL_PROOF") else {
+        return;
+    };
+    let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) else {
+        return;
+    };
+    let _ = writeln!(file, "{mark}");
+}
+
+#[declare_mod(id = "{id}")]
+impl Mod for Installed {
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+        if state == LifecycleState::Running {
+            record("running");
+        }
+        Ok(())
+    }
+
+    fn register(&mut self, registrar: &mut dyn Registrar) -> Result<(), ModError> {
+        let _ = registrar;
+        record("register");
+        Ok(())
+    }
+}
+
+export_mod!(Installed::default());
+"#;
+
+const SILENT_SOURCE: &str = r#"#![forbid(unsafe_code)]
+
+//! A mod that never says what a host should construct.
+
+use ravel_sdk::{LifecycleState, Mod, ModError, declare_mod};
+
+/// The mod this package builds.
+#[derive(Default)]
+pub struct Silent;
+
+#[declare_mod(id = "{id}")]
+impl Mod for Silent {
+    fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
+        let _ = state;
+        Ok(())
+    }
+}
+"#;
+
+const HOST_API_SOURCE: &str = r#"#![forbid(unsafe_code)]
+
+//! A mod that reaches the host-facing surface, built on the player's machine.
+
+use ravel_core::{LifecycleState, ModId};
+use ravel_host_api::{HostError, HostMod};
+
+/// The mod this package builds.
+pub struct Installed {
+    id: ModId,
+}
+
+impl Default for Installed {
+    fn default() -> Self {
+        Self {
+            id: "{id}".parse().expect("the packaged identity is a legal mod id"),
+        }
+    }
+}
+
+/// Records, from inside this mod's own body, that it was entered.
+fn record(mark: &str) {
+    use std::io::Write as _;
+
+    let Ok(path) = std::env::var("RAVEL_PROOF") else {
+        return;
+    };
+    let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) else {
+        return;
+    };
+    let _ = writeln!(file, "{mark}");
+}
+
+impl HostMod for Installed {
+    fn id(&self) -> &ModId {
+        &self.id
+    }
+
+    fn enter(&mut self, state: LifecycleState) -> Result<(), HostError> {
+        if state == LifecycleState::Running {
+            record("host-api running");
+        }
+        Ok(())
+    }
+}
+
+ravel_sdk::export_mod!(Installed::default());
+"#;
+
+const RECORD: &[u8] = br#"{"origin":"example"}"#;
+
+fn game() -> String {
+    ravel_host_runtime::environment().minecraft
+}
+
+static NEXT: AtomicU32 = AtomicU32::new(0);
+
+fn source(template: &str, id: &str) -> String {
+    template.replace("{id}", id)
+}
+
+fn digest_of(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let mut digest = [0_u8; 32];
+    digest.copy_from_slice(&hasher.finalize());
+    Sha256Digest::from_bytes(digest).to_string()
+}
+
+fn instance(label: &str) -> PathBuf {
+    let unique = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "ravel-build-{label}-{}-{unique}",
+        std::process::id()
+    ));
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("a stale instance is removable");
+    }
+    fs::create_dir_all(root.join(PACKAGES_DIRECTORY)).expect("an instance is creatable");
+    root
+}
+
+fn ravel_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("the crate sits two levels under the repository")
+        .to_owned()
+}
+
+fn install(instance: &Path, directory: &str, id: &str, crate_name: &str, template: &str) {
+    install_with(
+        instance,
+        directory,
+        id,
+        crate_name,
+        template,
+        "ravel-sdk.workspace = true\n",
+    );
+}
+
+fn install_example(instance: &Path, name: &str) {
+    let from = ravel_root().join("examples").join(name);
+    let into = instance.join(PACKAGES_DIRECTORY).join(name);
+    copy_tree(&from, &into);
+}
+
+fn install_with(
+    instance: &Path,
+    directory: &str,
+    id: &str,
+    crate_name: &str,
+    template: &str,
+    dependencies: &str,
+) {
+    let root = instance.join(PACKAGES_DIRECTORY).join(directory);
+    fs::create_dir_all(root.join("src")).expect("a package directory is creatable");
+    let source = source(template, id);
+    let digest = digest_of(source.as_bytes());
+    let record = digest_of(RECORD);
+    fs::write(
+        root.join(MANIFEST_FILE),
+        format!(
+            r#"{{
+              "schemaVersion": 1,
+              "id": "{id}",
+              "version": "1.0.0",
+              "compatibility": {{ "ravel": ">=0.0.0", "minecraft": ["{game}"] }},
+              "sides": ["client"],
+              "authors": [{{ "name": "Ravel" }}],
+              "license": "MIT",
+              "source": {{
+                "repository": "https://example.invalid/{id}",
+                "files": [{{ "path": "src/lib.rs", "sha256": "{digest}" }}]
+              }},
+              "provenance": {{ "record": "provenance.json", "sha256": "{record}" }}
+            }}"#,
+            game = game()
+        ),
+    )
+    .expect("manifest written");
+    fs::write(root.join("src/lib.rs"), &source).expect("source written");
+    fs::write(root.join("provenance.json"), RECORD).expect("record written");
+    fs::write(
+        root.join("Cargo.toml"),
+        format!(
+            "[package]\n\
+             name = \"{crate_name}\"\n\
+             version = \"1.0.0\"\n\
+             edition.workspace = true\n\
+             license.workspace = true\n\
+             publish.workspace = true\n\
+             rust-version.workspace = true\n\
+             \n\
+             [dependencies]\n\
+             {dependencies}\n\
+             [lints]\n\
+             workspace = true\n"
+        ),
+    )
+    .expect("cargo manifest written");
+}
+
+fn planned(instance: &Path) -> super::HostPlan {
+    let discovered = discover(instance).expect("intact packages");
+    plan(&discovered, &ravel_root()).expect("a plannable set")
+}
+
+#[test]
+fn a_plan_over_one_instance_is_the_same_bytes_every_time() {
+    let instance = instance("deterministic");
+    install(
+        &instance,
+        "installed-1.0.0",
+        "installed_mod",
+        "installed-mod",
+        EXPORTING_SOURCE,
+    );
+    install(
+        &instance,
+        "another-1.0.0",
+        "another_mod",
+        "another-mod",
+        EXPORTING_SOURCE,
+    );
+
+    let first = planned(&instance);
+    let second = planned(&instance);
+
+    assert_eq!(first, second);
+    assert_eq!(first.fingerprint(), second.fingerprint());
+    assert_eq!(first.fingerprint().len(), 64);
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn the_generated_host_names_every_installed_package_in_mod_id_order() {
+    let instance = instance("members");
+    install(&instance, "zzz", "alpha_mod", "alpha-mod", EXPORTING_SOURCE);
+    install(&instance, "aaa", "beta_mod", "beta-mod", EXPORTING_SOURCE);
+
+    let plan = planned(&instance);
+    let ids: Vec<&str> = plan
+        .members()
+        .iter()
+        .map(|member| member.mod_id.as_str())
+        .collect();
+    assert_eq!(ids, ["alpha_mod", "beta_mod"]);
+
+    let source = &plan.files()["host/src/lib.rs"];
+    assert!(
+        source.contains("alpha_mod::__ravel_entry(side)"),
+        "{source}"
+    );
+    assert!(source.contains("beta_mod::__ravel_entry(side)"), "{source}");
+    assert!(
+        source.find("alpha_mod::").expect("named") < source.find("beta_mod::").expect("named"),
+        "the member list is not in the order discovery answered in"
+    );
+    assert!(
+        source.contains("include_str!(\"../../mods/zzz/package.json\")"),
+        "{source}"
+    );
+
+    let workspace = &plan.files()["Cargo.toml"];
+    assert!(workspace.contains("\"mods/zzz\""), "{workspace}");
+    assert!(workspace.contains("\"mods/aaa\""), "{workspace}");
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn a_package_carrying_no_cargo_manifest_refuses_the_build() {
+    let instance = instance("no-cargo");
+    install(
+        &instance,
+        "installed-1.0.0",
+        "installed_mod",
+        "installed-mod",
+        EXPORTING_SOURCE,
+    );
+    fs::remove_file(
+        instance
+            .join(PACKAGES_DIRECTORY)
+            .join("installed-1.0.0/Cargo.toml"),
+    )
+    .expect("the manifest is removable");
+
+    let discovered = discover(&instance).expect("an intact package");
+    let refused = plan(&discovered, &ravel_root()).expect_err("nothing says what to build");
+    assert_eq!(
+        refused,
+        BuildRefused::MissingCargoManifest {
+            directory: "installed-1.0.0".to_owned()
+        }
+    );
+    assert!(refused.to_string().contains("Cargo.toml"));
+    assert_eq!(refused.lifecycle_state(), LifecycleState::Validated);
+    assert_eq!(refused.failure_kind(), None);
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn a_cargo_manifest_that_names_no_crate_refuses_the_build() {
+    let instance = instance("nameless");
+    install(
+        &instance,
+        "installed-1.0.0",
+        "installed_mod",
+        "installed-mod",
+        EXPORTING_SOURCE,
+    );
+    fs::write(
+        instance
+            .join(PACKAGES_DIRECTORY)
+            .join("installed-1.0.0/Cargo.toml"),
+        "[dependencies]\nravel-sdk.workspace = true\n",
+    )
+    .expect("the manifest is writable");
+
+    let discovered = discover(&instance).expect("an intact package");
+    let refused = plan(&discovered, &ravel_root()).expect_err("no crate is named");
+    assert!(
+        matches!(refused, BuildRefused::CargoManifest { .. }),
+        "{refused:?}"
+    );
+    assert!(refused.to_string().contains("package.name"), "{refused}");
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn two_packages_building_one_crate_refuse_the_build() {
+    let instance = instance("clash");
+    install(
+        &instance,
+        "first",
+        "first_mod",
+        "shared-name",
+        EXPORTING_SOURCE,
+    );
+    install(
+        &instance,
+        "second",
+        "second_mod",
+        "shared-name",
+        EXPORTING_SOURCE,
+    );
+
+    let discovered = discover(&instance).expect("two intact packages");
+    let refused = plan(&discovered, &ravel_root()).expect_err("one crate name, two packages");
+    let BuildRefused::DuplicateCrate {
+        crate_name,
+        directory,
+        first,
+    } = &refused
+    else {
+        panic!("the refusal should name the clash: {refused:?}");
+    };
+    assert_eq!(crate_name, "shared-name");
+    assert_eq!(directory, "second");
+    assert_eq!(first, "first");
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+#[test]
+fn the_installed_set_is_compiled_into_a_host_that_runs_the_packages_it_names() {
+    let cache = std::env::temp_dir().join(format!("ravel-build-cache-{}", std::process::id()));
+    let outcome = std::panic::catch_unwind(|| compiling_proof(&cache));
+    let _ = fs::remove_dir_all(&cache);
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+fn compiling_proof(cache: &Path) {
+    let instance = instance("built");
+    install(
+        &instance,
+        "installed-1.0.0",
+        "installed_mod",
+        "installed-mod",
+        EXPORTING_SOURCE,
+    );
+    install_with(
+        &instance,
+        "host-api-1.0.0",
+        "host_api_mod",
+        "host-api-mod",
+        HOST_API_SOURCE,
+        "ravel-core.workspace = true\n\
+         ravel-host-api.workspace = true\n\
+         ravel-sdk.workspace = true\n",
+    );
+
+    install_example(&instance, "content-mod");
+
+    let plan = planned(&instance);
+    let library = build(&plan, &instance, cache, &game()).expect("the installed package compiles");
+
+    assert!(library.is_file(), "{}", library.display());
+    assert_eq!(
+        library.file_name().and_then(std::ffi::OsStr::to_str),
+        Some(format!("lib{HOST_LIBRARY}.so").as_str())
+    );
+
+    let bytes = fs::read(&library).expect("the built library is readable");
+    assert!(
+        holds(&bytes, ENTRY_SYMBOL),
+        "the built host exports no `{ENTRY_SYMBOL}`"
+    );
+
+    drives_the_package_it_was_built_from(&instance, cache);
+
+    let written = generated_times(&plan, &instance);
+    let again = build(&plan, &instance, cache, &game()).expect("an unchanged instance rebuilds");
+    assert_eq!(again, library);
+    assert_eq!(
+        written,
+        generated_times(&plan, &instance),
+        "an unchanged instance rewrote its generated source, which makes every launch cold"
+    );
+
+    a_second_instance_keeps_its_own_host(&library, cache);
+    the_examples_this_repository_ships_install_and_compile(cache);
+    a_package_that_names_no_value_refuses(cache);
+    a_version_naming_no_tracked_directory_refuses(&plan, &instance, cache);
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+fn the_examples_this_repository_ships_install_and_compile(cache: &Path) {
+    let instance = instance("examples");
+    let examples = ravel_root().join("examples");
+    let mut installed = Vec::new();
+    let mut entries = fs::read_dir(&examples)
+        .expect("the repository has an examples directory")
+        .map(|entry| entry.expect("a readable directory entry").path())
+        .filter(|path| path.join(MANIFEST_FILE).is_file())
+        .collect::<Vec<_>>();
+    entries.sort();
+    for source in &entries {
+        let name = source
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .expect("an example with a portable name")
+            .to_owned();
+        copy_tree(source, &instance.join(PACKAGES_DIRECTORY).join(&name));
+        installed.push(name);
+    }
+    assert!(
+        installed.len() >= 3,
+        "the examples that ship a manifest are {installed:?}, which is fewer than the three \
+         the guide names"
+    );
+
+    let plan = planned(&instance);
+    let library = build(&plan, &instance, cache, &game())
+        .expect("every example this repository ships compiles as an installed package");
+
+    let bytes = fs::read(&library).expect("the built library is readable");
+    for member in plan.members() {
+        assert!(
+            holds(&bytes, &crate_ident(&member.crate_name)),
+            "the built host does not name `{}`",
+            member.crate_name
+        );
+    }
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+const DRIVER_SOURCE: &str = "fn main() {\n\
+         \x20   let game = std::env::args().nth(1).expect(\"a game directory\");\n\
+         \x20   // The library name the generated host declares, which is the\n\
+         \x20   // name the JVM loads and therefore the name a dependent links.\n\
+         \x20   let members = ravel_bootstrap::members(ravel_core::Side::Client);\n\
+         \x20   let (machine, _, _, resources) = ravel_host_runtime::compose(\n\
+         \x20       std::path::Path::new(&game),\n\
+         \x20       ravel_core::Side::Client,\n\
+         \x20       members,\n\
+         \x20   )\n\
+         \x20   .expect(\"the generated host composes\");\n\
+         \x20   for id in machine.order() {\n\
+         \x20       println!(\"{id}\");\n\
+         \x20   }\n\
+         \x20   // The rest of what a launch does with the composed set. Written\n\
+         \x20   // here rather than asserted in the parent process, because the\n\
+         \x20   // point is that the generated host reaches it.\n\
+         \x20   let game = std::path::Path::new(&game);\n\
+         \x20   ravel_host_runtime::write_resource_pack(game, &resources)\n\
+         \x20       .expect(\"the generated host writes its pack\");\n\
+         \x20   ravel_host_runtime::install_packs(resources);\n\
+         \x20   let world = game.join(\"saves\").join(\"Driven\");\n\
+         \x20   std::fs::create_dir_all(&world).expect(\"a world directory\");\n\
+         \x20   ravel_host_runtime::write_world_pack(&world)\n\
+         \x20       .expect(\"the generated host writes a world pack\")\n\
+         \x20       .expect(\"a host that installed a set writes one\");\n\
+         }\n";
+
+fn the_written_packs_hold_the_examples_content(instance: &Path) {
+    let assets = instance.join("resourcepacks/ravel/assets/content");
+    assert_eq!(
+        fs::read_to_string(assets.join("models/block/copper_lantern.json"))
+            .unwrap_or_else(|error| panic!("the model reached no pack: {error}")),
+        "{\n  \"parent\": \"minecraft:block/lantern\"\n}\n"
+    );
+    for (path, expected) in [
+        (
+            "blockstates/copper_lantern.json",
+            "\"model\": \"content:block/copper_lantern\"",
+        ),
+        (
+            "models/item/copper_lantern.json",
+            "\"parent\": \"content:block/copper_lantern\"",
+        ),
+        ("items/copper_lantern.json", "\"type\": \"minecraft:model\""),
+    ] {
+        let written = fs::read_to_string(assets.join(path))
+            .unwrap_or_else(|error| panic!("`{path}` reached no pack: {error}"));
+        assert!(written.contains(expected), "`{path}`: {written}");
+    }
+
+    let english = fs::read_to_string(assets.join("lang/en_us.json"))
+        .unwrap_or_else(|error| panic!("the translations reached no pack: {error}"));
+    assert!(english.contains("Copper Lantern"), "{english}");
+    assert!(
+        assets.join("lang/fr_fr.json").is_file(),
+        "one locale reached the pack and the other did not"
+    );
+
+    let data = instance.join("saves/Driven/datapacks/ravel/data");
+    for tag in ["block/lanterns.json", "item/lanterns.json"] {
+        let written = fs::read_to_string(data.join("c/tags").join(tag))
+            .unwrap_or_else(|error| panic!("`{tag}` reached no world pack: {error}"));
+        assert!(written.contains("content:copper_lantern"), "{written}");
+    }
+    let loot = fs::read_to_string(data.join("content/loot_table/blocks/copper_lantern.json"))
+        .unwrap_or_else(|error| panic!("the loot table reached no world pack: {error}"));
+    assert!(loot.contains("minecraft:survives_explosion"), "{loot}");
+    assert!(loot.contains("content:copper_lantern"), "{loot}");
+    let recipe = fs::read_to_string(data.join("content/recipe/crafting/copper_lantern.json"))
+        .unwrap_or_else(|error| panic!("the recipe reached no world pack: {error}"));
+    assert!(recipe.contains("minecraft:crafting_shaped"), "{recipe}");
+}
+
+fn copy_tree(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).expect("a package directory is creatable");
+    for entry in fs::read_dir(source).expect("a readable package directory") {
+        let entry = entry.expect("a readable directory entry");
+        let target = destination.join(entry.file_name());
+        if entry.file_type().expect("a readable entry kind").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).expect("a readable package file");
+        }
+    }
+}
+
+fn a_version_naming_no_tracked_directory_refuses(
+    plan: &super::HostPlan,
+    instance: &Path,
+    cache: &Path,
+) {
+    let refused = build(plan, instance, cache, "no-tracked-directory-carries-this")
+        .expect_err("the selected version names no tracked directory");
+    let BuildRefused::Compile { detail } = &refused else {
+        panic!("the refusal should be the toolchain's: {refused:?}");
+    };
+    assert!(
+        detail.contains(MINECRAFT_VERSION_SELECTION),
+        "the refusal does not name the selection: {detail}"
+    );
+    assert!(
+        detail.contains("no-tracked-directory-carries-this"),
+        "the refusal does not name the version that was asked for: {detail}"
+    );
+    assert!(
+        detail.contains(&game()),
+        "the refusal does not name a version that is tracked: {detail}"
+    );
+}
+
+fn drives_the_package_it_was_built_from(instance: &Path, cache: &Path) {
+    let driver = instance.join("driver");
+    fs::create_dir_all(driver.join("src")).expect("a driver directory is creatable");
+    let root = ravel_root();
+    fs::write(
+        driver.join("Cargo.toml"),
+        format!(
+            "[workspace]\n\
+             \n\
+             [package]\n\
+             name = \"ravel-build-driver\"\n\
+             version = \"0.0.0\"\n\
+             edition = \"2024\"\n\
+             \n\
+             [dependencies]\n\
+             ravel-core = {{ path = \"{root}/crates/ravel-core\" }}\n\
+             ravel-generated-host = {{ path = \"../ravel/host\" }}\n\
+             ravel-host-runtime = {{ path = \"{root}/crates/ravel-host-runtime\" }}\n",
+            root = root.display()
+        ),
+    )
+    .expect("the driver manifest is writable");
+    fs::write(driver.join("src/main.rs"), DRIVER_SOURCE).expect("the driver source is writable");
+
+    let built = Command::new("cargo")
+        .arg("build")
+        .arg("--release")
+        .arg("--manifest-path")
+        .arg(driver.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(cache)
+        .output()
+        .expect("cargo runs");
+    assert!(
+        built.status.success(),
+        "the driver did not build: {}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+
+    let marks = instance.join("marks");
+    let run = Command::new(cache.join("release/ravel-build-driver"))
+        .arg(instance)
+        .env("RAVEL_PROOF", &marks)
+        .output()
+        .expect("the driver runs");
+    assert!(
+        run.status.success(),
+        "the generated host refused to compose: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&run.stdout).contains("installed_mod"),
+        "the driven set does not hold the installed package: {}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&run.stdout).contains("host_api_mod"),
+        "the driven set does not hold the package naming `ravel-host-api`: {}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+
+    assert!(
+        String::from_utf8_lossy(&run.stdout).contains("content"),
+        "the driven set does not hold the installed example: {}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+
+    the_written_packs_hold_the_examples_content(instance);
+
+    let recorded = fs::read_to_string(&marks).expect("the installed mod recorded nothing");
+    assert!(
+        recorded.contains("register"),
+        "a package no Ravel developer compiled never reached `register`: {recorded}"
+    );
+    assert!(
+        recorded.contains("running"),
+        "a package no Ravel developer compiled never reached `running`: {recorded}"
+    );
+    assert!(
+        recorded.contains("host-api running"),
+        "the package naming `ravel-host-api` never reached `running`: {recorded}"
+    );
+}
+
+fn a_second_instance_keeps_its_own_host(first: &Path, cache: &Path) {
+    let second = instance("second-instance");
+    install(
+        &second,
+        "beta-1.0.0",
+        "beta_mod",
+        "beta-mod",
+        EXPORTING_SOURCE,
+    );
+
+    let beta =
+        build(&planned(&second), &second, cache, &game()).expect("the second instance builds");
+    assert_ne!(first, beta);
+
+    let bytes = fs::read(first).expect("the first instance's host is readable");
+    assert!(
+        holds(&bytes, "installed_mod"),
+        "the first host lost its own mod"
+    );
+    assert!(
+        !holds(&bytes, "beta_mod"),
+        "the first instance was handed the second instance's host"
+    );
+    fs::remove_dir_all(&second).expect("cleanup");
+}
+
+fn a_package_that_names_no_value_refuses(cache: &Path) {
+    let instance = instance("silent");
+    install(
+        &instance,
+        "installed-1.0.0",
+        "installed_mod",
+        "installed-mod",
+        EXPORTING_SOURCE,
+    );
+    install(
+        &instance,
+        "silent-1.0.0",
+        "silent_mod",
+        "silent-mod",
+        SILENT_SOURCE,
+    );
+
+    let plan = planned(&instance);
+    let refused = build(&plan, &instance, cache, &game()).expect_err("one package names no value");
+    let BuildRefused::Compile { detail } = &refused else {
+        panic!("the refusal should be the compiler's: {refused:?}");
+    };
+    assert!(detail.contains("__ravel_entry"), "{detail}");
+    assert!(detail.contains("silent_mod"), "{detail}");
+    assert!(
+        !detail.contains(&instance.display().to_string()),
+        "the refusal names the instance path"
+    );
+    assert!(detail.contains("<instance>"), "{detail}");
+    assert!(refused.quotes_untrusted_text());
+    fs::remove_dir_all(&instance).expect("cleanup");
+}
+
+fn holds(bytes: &[u8], needle: &str) -> bool {
+    bytes
+        .windows(needle.len())
+        .any(|window| window == needle.as_bytes())
+}
+
+fn generated_times(plan: &super::HostPlan, instance: &Path) -> Vec<std::time::SystemTime> {
+    plan.files()
+        .keys()
+        .map(|path| {
+            fs::metadata(instance.join(WORKSPACE_DIRECTORY).join(path))
+                .and_then(|meta| meta.modified())
+                .expect("a generated file was written")
+        })
+        .collect()
+}

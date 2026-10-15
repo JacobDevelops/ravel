@@ -11,19 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::values::{NonEmptyText, RelativePath, SchemaVersion, Sha256Digest};
 
-/// Everything `schemas/package.schema.json` declares about one package.
-///
-/// The field order, the camel-case names, the optional fields, and the refusal
-/// of anything else are the schema's, not this crate's: the schema is the
-/// contract a package is admitted against, and a manifest that parses here must
-/// be one the schema validates. `additionalProperties: false` appears on every
-/// object in the document, so every struct here carries `deny_unknown_fields`,
-/// and a typo in a field name is a rejection rather than a silently dropped
-/// declaration.
-///
-/// Parsing establishes identity, compatibility, and the integrity claims a
-/// source-only package makes. It accepts portable source declarations and no
-/// compiled target or artifact model.
+/// A source package manifest conforming to `schemas/package.schema.json`.
 ///
 /// # Examples
 ///
@@ -106,51 +94,31 @@ pub struct PackageManifest {
 impl PackageManifest {
     /// Parses a package manifest.
     ///
-    /// The document is accepted only when it satisfies
-    /// `schemas/package.schema.json` in full, which is what admits a package to
-    /// [`ravel_core::LifecycleState::Validated`] alongside its integrity check.
-    /// No mod code has run at this point and none may: `SPEC.md` §14 requires
-    /// schema and metadata acceptance to precede everything else.
-    ///
     /// # Errors
     ///
-    /// Returns [`ManifestError::Syntax`] when the bytes are not JSON, and
-    /// [`ManifestError::Schema`] when they are JSON that the package schema
-    /// refuses.
+    /// Returns [`ManifestError::Syntax`] for invalid JSON or [`ManifestError::Schema`] for metadata.
     pub fn parse(document: &str) -> Result<Self, ManifestError> {
         serde_json::from_str(document).map_err(|error| ManifestError::from_json(&error))
     }
 
-    /// Renders the manifest back into the JSON document form it parses from.
-    ///
-    /// Absent optional fields stay absent and an empty array is written as the
-    /// omission the schema defaults it to, so a manifest that parses from a
-    /// document renders back to an equivalent one.
+    /// Renders equivalent JSON, omitting absent optional fields and empty defaulted arrays.
     ///
     /// # Panics
     ///
-    /// Panics if the manifest cannot be written as JSON. Every field is a
-    /// string, a number, a sequence, or a struct with string keys, so the only
-    /// way this fires is a serializer that has stopped being one.
+    /// Panics if a manifest field cannot be serialized as JSON.
     #[must_use]
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("a parsed manifest always serializes")
     }
 }
 
-/// What a package will run against (`SPEC.md` §3.4).
+/// The host versions a package supports.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Compatibility {
     /// The Ravel versions this package supports, as a range.
     pub ravel: VersionRange,
-    /// The Minecraft versions this package supports.
-    ///
-    /// Each entry is either an exact version string or an explicit version
-    /// range (for example `>=26.1, <26.2`). A range is the author's declared,
-    /// tested span and is only ever evaluated against a semver-shaped running
-    /// version; a non-semver release (a snapshot) is matched by exact string and
-    /// never ordered. See [`Compatibility::check_minecraft`].
+    /// Exact Minecraft version strings or explicit ranges for semver-shaped releases.
     #[serde(deserialize_with = "deserialize_unique_non_empty")]
     pub minecraft: Vec<NonEmptyText>,
 }
@@ -193,10 +161,7 @@ pub enum DependencyOrder {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Source {
-    /// Where the source release came from.
-    ///
-    /// JSON Schema draft 2020-12 treats `format: uri` as an annotation, so the
-    /// declared text is retained exactly as written.
+    /// Repository text, retained verbatim because the schema's URI format is an annotation.
     pub repository: String,
     /// Every source file the package declares and integrity-protects.
     #[serde(deserialize_with = "deserialize_non_empty")]
@@ -224,7 +189,7 @@ pub struct Author {
     pub url: Option<String>,
 }
 
-/// The provenance record required by `SPEC.md` §3.4 and its digest.
+/// The provenance record and its digest.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Provenance {
@@ -301,12 +266,6 @@ where
 }
 
 /// Why a document is not a package manifest.
-///
-/// The two variants separate a document that is not JSON from a document that
-/// is JSON and breaks the package contract, because they are different author
-/// mistakes and `SPEC.md` §9.2 requires a report a mod author can act on.
-/// Neither carries a filesystem path: the detail comes from the deserializer,
-/// which reports a line and a column rather than a location on disk.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ManifestError {
     /// The bytes are not a JSON document.
@@ -341,20 +300,11 @@ impl fmt::Display for ManifestError {
 impl std::error::Error for ManifestError {}
 
 impl StructuredFailure for ManifestError {
-    /// A malformed manifest has no `SPEC.md` §9.2 kind.
-    ///
-    /// That list names the dependency-graph outcomes a player is shown before
-    /// world access. A manifest that never parsed has no identity to attribute
-    /// a graph failure to, so this reports no kind rather than borrowing one
-    /// that would misdescribe it.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
 
-    /// The detail is the deserializer's own sentence rather than one this crate
-    /// wrote, so a report attributes it accordingly. It reports a line and a
-    /// column and never a location on disk, but that is `serde_json`'s promise
-    /// to keep, not this crate's to make on its behalf.
+    // Deserializer error details are untrusted text.
     fn quotes_untrusted_text(&self) -> bool {
         true
     }
@@ -368,8 +318,8 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{DependencyOrder, ManifestError, PackageManifest};
+    use crate::test_support::DIGEST;
 
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const OTHER_DIGEST: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
 
     const REQUIRED_FIELDS: [&str; 9] = [
@@ -384,7 +334,6 @@ mod tests {
         "provenance",
     ];
 
-    /// A manifest that declares every required field and nothing else.
     fn minimal() -> Value {
         json!({
             "schemaVersion": 1,
@@ -402,7 +351,6 @@ mod tests {
         })
     }
 
-    /// A manifest that declares every field the schema defines.
     fn complete() -> Value {
         json!({
             "schemaVersion": 1,

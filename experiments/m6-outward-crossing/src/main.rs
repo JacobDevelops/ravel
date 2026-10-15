@@ -1,20 +1,4 @@
-//! Measures what carrying a mod's game action outward costs, three ways.
-//!
-//! `ADG-6` rejected drawing a screen from Rust and said what would reopen the
-//! question: "if Ravel ever needs to call into the game for another reason,
-//! that is a new gate with its own measurement, and this decision should be
-//! revisited then rather than assumed". Playing a sound a mod declared is that
-//! other reason, and this is that measurement.
-//!
-//! It differs from ADG-6's own gate in the way that matters. ADG-6 recorded
-//! that it could not measure, because one of its two candidates did not exist
-//! and building it would have been the decision rather than evidence for it.
-//! Both candidates here exist: JNI provides the outward call, and ADG-7's
-//! persistence adapter already carries an instruction the other way. So this
-//! gate is measurable, and a decision taken without measuring it would be a
-//! choice rather than a finding.
-//!
-//! The runner itself needs no unsafe.
+//! Measures outward game-action costs through lookup, cached JNI calls, and deferred instructions.
 
 #![forbid(unsafe_code)]
 
@@ -41,11 +25,7 @@ const WARMUP: u64 = 100_000;
 const SAMPLES: u64 = 20_000;
 /// Requests per timed batch.
 const BATCH: u64 = 64;
-/// Actions per request, measured at both ends of the range that matters.
-///
-/// One is a mod asking for a single thing, where a deferred instruction pays
-/// for an array it did not need. Eight is a mod asking for several in one tick,
-/// where the direct candidates pay per action and the deferred one does not.
+/// Single-action requests and batches that amortize deferred-array allocation.
 const ACTION_COUNTS: [u64; 2] = [1, 8];
 /// The hardware profile every Ravel Linux measurement is compared on.
 const HARDWARE_PROFILE: &str = "tests/performance/hardware/linux-reference.toml";

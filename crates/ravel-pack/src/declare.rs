@@ -6,12 +6,7 @@ use ravel_core::{ContentId, ModId, RelativePath, Version};
 
 use crate::progression::Progression;
 
-/// One file the pack itself writes.
-///
-/// A list rather than a map, because "the pack supplies this path twice" has to be
-/// *representable* for [`crate::validate`] to be able to refuse it. A map would
-/// make the second supply overwrite the first silently, which is the defect and not
-/// the check.
+/// One file supplied by the pack; duplicate paths are rejected during validation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SuppliedFile {
     /// Where the file belongs in the written pack.
@@ -29,20 +24,7 @@ pub struct ResourceReference {
     pub referrer: ContentId,
 }
 
-/// Everything one modpack declares.
-///
-/// `SPEC.md` §4.3 lists what a pack author does, and this is that list as one
-/// value: it selects mods, pins their exact versions, configures them
-/// declaratively, refers to and supplies resources, and declares a progression.
-/// What it does not do is decide whether any of that is consistent — that is
-/// [`crate::validate`]'s single job, and keeping the two apart is what lets a pack
-/// be half-written in an editor and still be a value.
-///
-/// A pin is an exact [`Version`] and not a range. A range is what a *mod* declares
-/// about its dependencies, because a mod does not know what it will be installed
-/// beside; a pack is the thing that decided, so a pack that stated a range would be
-/// deferring the one decision it exists to make, and two builds of it could ship
-/// different code.
+/// A modpack's exact member pins, settings, resources, and progression.
 ///
 /// # Examples
 ///
@@ -59,7 +41,6 @@ pub struct ResourceReference {
 ///     Version::new(1, 4, 0),
 /// )?;
 ///
-/// // The same mod twice is a pin the pack cannot mean two ways.
 /// assert!(matches!(
 ///     pack.pin(
 ///         "example_mod".parse::<ModId>().expect("a legal mod id"),
@@ -111,10 +92,7 @@ impl PackDeclaration {
     ///
     /// # Errors
     ///
-    /// Returns [`PackError::PinnedTwice`] when the pack already pinned the mod, and
-    /// [`PackError::PinsItself`] when a pack pins its own namespace — a pack is not
-    /// one of its own members, and a pack that pinned itself would ask
-    /// [`crate::validate`] for a manifest that does not exist.
+    /// Returns an error if the member is already pinned or is the pack itself.
     pub fn pin(&mut self, member: ModId, version: Version) -> Result<(), PackError> {
         if member == self.id {
             return Err(PackError::PinsItself { pack: member });
@@ -140,21 +118,11 @@ impl PackDeclaration {
         self.members.get(member)
     }
 
-    /// States the pack's overrides for one member's settings.
-    ///
-    /// The pack layer of the three configuration layers, so the document is a
-    /// [`ValueDocument`] exactly as a player's file is and the same schema check
-    /// applies to both. Which values a pack is allowed to state at all is the
-    /// setting's `packOverride`, which `ravel-config` decides when the layers are
-    /// resolved rather than something restated here.
+    /// States one member's pack-layer overrides; validation applies its configuration schema.
     ///
     /// # Errors
     ///
-    /// Returns [`PackError::SettingsTwice`] when the pack already stated overrides
-    /// for the mod, and [`PackError::SettingsOwner`] when the document belongs to a
-    /// different mod than the one it is filed under — the same wiring mistake
-    /// `LayeredConfiguration` refuses, refused here so a pack cannot even be built
-    /// holding it.
+    /// Returns an error for repeated overrides or a document owned by another mod.
     pub fn configure(&mut self, member: ModId, document: ValueDocument) -> Result<(), PackError> {
         if document.owner != member {
             return Err(PackError::SettingsOwner {
@@ -174,12 +142,7 @@ impl PackDeclaration {
         self.settings.iter()
     }
 
-    /// Supplies `bytes` as the content of `path` in the written pack.
-    ///
-    /// Recorded rather than refused when the path repeats. [`crate::validate`] is
-    /// where a repeated path is refused, because "the pack writes one file per
-    /// path" is one of the four closure properties M4-W5's gate names and a check
-    /// spread across two layers is a check with two answers.
+    /// Supplies `bytes` at `path`; validation rejects duplicate paths.
     pub fn supply(&mut self, path: RelativePath, bytes: Vec<u8>) {
         self.supplied.push(SuppliedFile { path, bytes });
     }
@@ -190,12 +153,7 @@ impl PackDeclaration {
         &self.supplied
     }
 
-    /// Records that `referrer` expects to be able to read `path`.
-    ///
-    /// This is what makes resource closure checkable at all. A recipe naming a
-    /// texture, or a progression step naming an icon, is a reference nothing in the
-    /// file itself distinguishes from a string; saying so here is what lets
-    /// [`crate::validate`] refuse a pack that ships a name with no file behind it.
+    /// Records that `referrer` requires `path`, for resource-closure validation.
     pub fn refer_to(&mut self, path: RelativePath, referrer: ContentId) {
         self.references.push(ResourceReference { path, referrer });
     }
@@ -218,12 +176,7 @@ impl PackDeclaration {
     }
 }
 
-/// Why a pack could not declare what it was asked to.
-///
-/// Every variant is something one pack can get wrong on its own, with no member's
-/// manifest and no other pack involved — the same division
-/// [`ravel_data::DeclarationError`] draws. Everything that needs the members is
-/// [`crate::ClosureError`].
+/// An invalid pin or settings declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PackError {
     /// The pack pinned its own namespace as a member.
@@ -393,8 +346,6 @@ mod tests {
 
     #[test]
     fn a_repeated_supply_and_a_reference_are_both_recorded_rather_than_refused() {
-        // Recording is what makes the closure check possible: `validate` refuses the
-        // repeat, and it can only do so if the declaration kept both.
         let mut pack = pack();
         pack.supply(
             path("data/example_pack/recipe/lantern.json"),

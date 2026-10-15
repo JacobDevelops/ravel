@@ -1,22 +1,7 @@
-//! Resolving the compile-time stubs the settings screen is built against.
+//! Resolves compile-time stubs from pinned jars or tracked locks.
 //!
-//! `jvm/build/build-screen.sh` builds without the locally held client jar, as
-//! `build-agent.sh` already does for the agent. So the screen compiles against
-//! stub declarations of the few game types it names.
-//!
-//! Those stubs are generated rather than written, and the reason is erasure. A
-//! hand-written stub transcribes a signature a person read, generics and all;
-//! the JVM links on the erased descriptor, which is a different string. A
-//! generated stub emits the descriptor the class file actually declares, so what
-//! the screen compiles against and what the runtime resolves are the same thing
-//! by construction. The seed list names classes and member names; every
-//! descriptor, every access flag, and every supertype edge comes from the jar.
-//!
-//! A stub reproduces the hierarchy only where it has to. The set of stubbed
-//! classes induces a subgraph of the game's real one: a supertype is declared
-//! when it is itself stubbed, and dropped when it is not. That is what keeps
-//! `Screen` free of the six types above it while still letting the `Component`
-//! that `MutableComponent` implements be assignable to it.
+//! Descriptors, signatures, flags, and hierarchy edges come from class files.
+//! Only stubbed supertypes are emitted.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -122,11 +107,7 @@ struct Lock {
     stubs: Vec<Stub>,
 }
 
-/// Resolves every seeded class, and everything its members name, from the jars.
-///
-/// The archives are searched in the order the adapter inputs pin them, and the
-/// first one that carries a class is the one it is read from. The game's own jar
-/// comes first, so a library class the game shadows is still read from the game.
+/// Resolves seeded classes and their dependencies, searching pinned archives in order.
 pub(super) fn from_jar(
     archives: &[&jar::Archive],
     seeds: &Seeds,
@@ -226,19 +207,11 @@ pub(super) fn from_jar(
     Ok(stubs)
 }
 
-/// What one member's `java.util` return holds, in reviewed names.
-///
-/// A descriptor is erased, so it is the class file's `Signature` attribute that
-/// says a split answers lines of text rather than lines of anything. Only the
-/// one shape a stub can render is read: a `java.util` type carrying a single
-/// class as its type argument. Anything else with a `java.util` return is
-/// refused rather than emitted raw, because a raw collection is the silence
-/// this exists to end and a generator that fell back to one would restore it.
+/// Reads a single class type argument from a `java.util` return signature.
 ///
 /// # Errors
 ///
-/// Returns an error when a member's `java.util` return records no type argument
-/// or carries ones this cannot render.
+/// Returns an error for missing or unsupported type arguments rather than emitting raw types.
 fn element_of(
     class: &str,
     member: &classfile::Member,
@@ -292,9 +265,6 @@ fn element_of(
 }
 
 /// How a recorded type argument bounds the class it names.
-///
-/// Closed so that a bound cannot be added and then dropped: every rendering of
-/// one matches on this and stops compiling when a variant appears.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Bound {
     /// The class itself.
@@ -325,12 +295,7 @@ impl Bound {
     }
 }
 
-/// The wildcard bound and the class one recorded type argument names.
-///
-/// A signature writes an unbounded argument as the class alone, `? extends` as a
-/// leading `+`, and `? super` as a leading `-`. Anything else — a type variable,
-/// a nested argument, an inner class — answers `None`, which is what makes a
-/// shape a stub cannot render a refusal rather than a raw declaration.
+/// Parses an invariant, extends, or super class argument; unsupported shapes return `None`.
 pub(super) fn argument(recorded: &str) -> Option<(Bound, &str)> {
     let (bound, rest) = recorded.strip_prefix('+').map_or_else(
         || {
@@ -344,13 +309,7 @@ pub(super) fn argument(recorded: &str) -> Option<(Bound, &str)> {
     (!class.contains(['<', '>', ';', '.'])).then_some((bound, class))
 }
 
-/// Records, for each stub, the superclass constructor its own has to call.
-///
-/// Done over the finished set because a stub is rendered on its own and cannot
-/// see its superclass's members. Only a class that declares a constructor needs
-/// one, and only where the stubbed superclass declares one too: everywhere else
-/// javac's implicit `super()` reaches the implicit no-argument constructor that
-/// a class declaring none has.
+/// Records explicit superclass calls where both stubbed classes declare constructors.
 fn chain_constructors(stubs: &mut [Stub]) {
     let declared = stubs
         .iter()
@@ -380,11 +339,6 @@ fn chain_constructors(stubs: &mut [Stub]) {
 }
 
 /// Resolves every stub from the tracked lock.
-///
-/// This is what a machine without the client jar generates from, for
-/// the same reason `mappings.lock` exists: the lock already carries every
-/// descriptor the jar resolved to, and it is tracked, so a change shows up in a
-/// diff rather than in a build that quietly disagreed with it.
 pub(super) fn from_lock(
     tracked: &str,
     adapter: &Adapter,
@@ -466,10 +420,6 @@ fn held(archives: &[&jar::Archive], mapping: &Mapping, class: &str) -> bool {
 }
 
 /// One class's bytes, from the first pinned jar that carries it.
-///
-/// A class no jar carries is unresolved rather than extracted: the seed list
-/// named something that is in none of the sources the adapter inputs pin, and
-/// guessing a declaration for it is the transcription the stubs exist to avoid.
 fn read_class(
     archives: &[&jar::Archive],
     mapping: &Mapping,
@@ -520,13 +470,7 @@ fn read_hierarchy(
     })
 }
 
-/// The stubbed types one class is assignable to.
-///
-/// The superclass slot takes the nearest stubbed ancestor on the extends chain,
-/// so a stub declares at most the one Java allows. Every other stubbed type
-/// above the class is an interface and is declared as one. A walk that leaves
-/// the pinned jars stops: they carry the game's classes and the serialization
-/// library, and not everything either of those compiles against.
+/// Finds the nearest stubbed superclass and all stubbed interfaces, stopping outside pinned jars.
 fn above(
     archives: &[&jar::Archive],
     mapping: &Mapping,
@@ -581,22 +525,7 @@ fn hierarchy_of(
     }
 }
 
-/// Every internal class name a descriptor mentions that is not already provided.
-///
-/// A nested class arrives here under its binary name — `Button$Builder` — and is
-/// kept under it. The pinned version builds every interactive widget through
-/// one: `Button` is
-/// abstract and reached through `Button.builder`, which returns `Button$Builder`
-/// and takes a `Button$OnPress`, so a stub set that refused them would compile a
-/// screen with no button on it.
-///
-/// The stub for one is an ordinary top-level class that happens to have a `$` in
-/// its name, which Java permits in an identifier. That is the same reasoning the
-/// stubs rest on everywhere else: what the JVM links on is the binary name, the
-/// class file javac writes for `class Button$Builder` carries exactly the binary
-/// name the game's nested class has, and the source shape a human would write is
-/// not what the linkage is against. Emitting it nested inside its enclosing stub
-/// would produce the same class file from more machinery.
+/// Collects non-provided descriptor classes, preserving nested types' binary `$` names.
 pub(super) fn names_in(descriptor: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut rest = descriptor;

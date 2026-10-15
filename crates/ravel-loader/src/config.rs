@@ -7,40 +7,14 @@ use ravel_host_api::{HostError, HostMod};
 
 use crate::lifecycle::LifecycleMachine;
 
-/// Resolves every mod's settings and hands each one the values in force.
+/// Resolves settings in load order for mods on this side that declare them.
 ///
-/// The counterpart of [`crate::open_services`] and [`crate::open_saved_data`], and
-/// it exists for the same reason both of those do: a trait method nothing drives
-/// over a set is a contract closed in the type and open in every composition. The
-/// `Unsupported` default that makes a mod which declared settings and never read
-/// them loud is only useful if something asks every such mod.
-///
-/// Configuration is layered in data, so this decides nothing about a value. It
-/// walks the set in resolved load order, skips the mods this side parks, and for
-/// each mod that declares settings resolves the author's defaults under the pack's
-/// overrides and the player's file. A mod that declares none is not called: there
-/// is no declaration to resolve, and calling it with somebody else's would be the
-/// one mistake this walk exists to make impossible.
-///
-/// # Failure closure
-///
-/// Nothing is applied partially, in the sense that matters: a refusal stops the
-/// walk, so every mod after the offender is never configured and the caller must
-/// not start the set. A mod configured before the refusal holds settings for a
-/// launch that does not happen, as with saved data:
-/// the mod holds its own state and the session is withheld.
-///
-/// A dropped player value is not a refusal. The layered result already dropped it
-/// and fell back to the layer below, and this reports it so a caller can tell the
-/// player rather than deciding for them.
+/// Rejected player values fall back to lower layers and are reported in [`Configured`].
+/// A refusal stops configuration; the caller must not start the set.
 ///
 /// # Errors
 ///
-/// Returns [`ConfigRefused::ForeignDeclaration`] when a mod declares settings owned
-/// by another identity, [`ConfigRefused::Layer`] when a pack or a player document
-/// cannot be layered onto the declaration at all, and [`ConfigRefused::Mod`] when a
-/// mod refused the settings it was handed — including the default's refusal for a
-/// mod that declared settings and never implemented [`HostMod::configure`].
+/// Returns a [`ConfigRefused`] for foreign ownership, invalid layers, or a mod's refusal.
 pub fn open_configuration(
     machine: &LifecycleMachine,
     mods: &mut [&mut dyn HostMod],
@@ -106,19 +80,12 @@ impl Configured {
     }
 
     /// Returns the settings each configured mod was handed, in the same order.
-    ///
-    /// Kept rather than dropped after the mod took them, because a host installs the
-    /// resolved set for the Java settings screen. Resolving them a second time to get
-    /// them back would be a second answer to what is in force.
     #[must_use]
     pub fn resolved(&self) -> &[LayeredConfiguration] {
         &self.resolved
     }
 
-    /// Returns every player value that was dropped, with the mod that owns it.
-    ///
-    /// In the order the walk found them, so a report reads as load order and then
-    /// as key order within one mod.
+    /// Returns dropped player values in load order, then key order within each mod.
     #[must_use]
     pub fn dropped(&self) -> &[(ModId, Rejection)] {
         &self.dropped
@@ -192,8 +159,6 @@ impl std::error::Error for ConfigRefused {
 }
 
 impl StructuredFailure for ConfigRefused {
-    /// No variant of this enum is one of `SPEC.md` §9.2's dependency-graph
-    /// outcomes: the graph resolved and a document or a mod is what was refused.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
@@ -202,9 +167,6 @@ impl StructuredFailure for ConfigRefused {
         LifecycleState::Constructed
     }
 
-    /// A mod's own refusal carries the sentence that mod wrote. A layering refusal
-    /// quotes a key and a schema, both of which came out of a declaration this
-    /// repository's schema already validated.
     fn quotes_untrusted_text(&self) -> bool {
         matches!(self, Self::Mod { .. })
     }
@@ -253,7 +215,6 @@ mod tests {
         .expect("a legal document")
     }
 
-    /// A mod that declares one setting and records the value it was handed.
     struct Settled {
         id: ModId,
         declares: Option<ConfigurationDeclaration>,
@@ -276,7 +237,6 @@ mod tests {
             self
         }
 
-        /// Declares settings and never reads them, which is the loud default's case.
         fn deaf(mut self) -> Self {
             self.deaf = true;
             self
@@ -303,7 +263,6 @@ mod tests {
 
         fn configure(&mut self, resolved: &LayeredConfiguration) -> Result<(), HostError> {
             if self.deaf {
-                // Exactly what the trait's default does, reached the same way.
                 return Err(HostError::Unsupported {
                     mod_id: self.id.clone(),
                     state: LifecycleState::Constructed,
@@ -355,7 +314,6 @@ mod tests {
 
     #[test]
     fn a_mod_that_declares_settings_and_never_reads_them_refuses_the_whole_set() {
-        // The loud default's case, reached by a walk rather than by a direct call.
         let mut deaf = Settled::new("deaf_mod").deaf();
         let mut later = Settled::new("later_mod");
         let machine = machine(vec![

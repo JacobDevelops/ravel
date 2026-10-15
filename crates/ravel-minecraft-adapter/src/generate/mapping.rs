@@ -1,10 +1,4 @@
-//! Relating the names a reviewed inventory carries to the names a jar declares.
-//!
-//! There are two mapping sources. Under `unobfuscated-class-files`
-//! the jar declares the names the inventory reviews and this layer is the
-//! identity. Under `official-proguard-mappings` the jar declares obfuscated names
-//! and the version's own published mapping file says which is which, so every
-//! name the generator hands to an archive goes through here first.
+//! Maps reviewed names to linked jar names, using identity or official Proguard mappings.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -190,27 +184,11 @@ impl Mapping {
     }
 }
 
-/// Refuses a declared runtime name the mapping does not agree with.
-///
-/// The reflective surface records both names because a machine without the
-/// pinned material cannot derive the second one, exactly as `mappings.lock`
-/// records what a jar resolved for the machines that cannot open it. Wherever
-/// the mapping *can* be read the record is re-derived rather than trusted, which
-/// is what makes a stale runtime name a generation failure instead of a game
-/// that refuses to load a world. Under an identity source the mapping needs no
-/// file at all, so that re-derivation happens on every build.
-///
-/// A translating mapping is required to *name* every reviewed class, through
-/// [`Mapping::linked_class`]. Accepting the pass-through would accept the one
-/// defect this is here for: a surface copied from another version keeps a Mojang
-/// name the target version renamed away, the mapping has no entry for it, and a
-/// declared runtime name equal to that Mojang name would match itself.
+/// Verifies declared runtime class names against the mapping.
 ///
 /// # Errors
 ///
-/// Returns an error when a translating mapping does not name a reviewed class,
-/// or when a declared runtime name is not what the mapping resolves the reviewed
-/// name to.
+/// Returns an error for missing translated classes or mismatched runtime names.
 pub(super) fn verify_reflection(
     surface: &Reflection,
     mapping: &Mapping,
@@ -228,28 +206,13 @@ pub(super) fn verify_reflection(
     Ok(())
 }
 
-/// Refuses a declared member the class the JVM links does not declare.
+/// Verifies reflected members against their linked class files.
 ///
-/// [`verify_reflection`] proves the surface names the classes the mapping does,
-/// and stops there: nothing has ever checked that the members those classes are
-/// reached for exist. They are reached reflectively, so nothing compiles against
-/// them, and a member the version renamed or dropped is a refusal on the seam
-/// that needed it rather than a build that failed. The class file is what
-/// settles it, which is why this takes an archive and [`verify_reflection`] does
-/// not: a published mapping says what a name becomes and never that the jar
-/// still declares it.
-///
-/// A member declared by descriptor is resolved through the mapping like any
-/// other reviewed pair and then required byte for byte. A member declared by
-/// argument count is what the persistence adapter's own lookup does, and under a
-/// translating mapping it resolves to an exact pair anyway, because the mapping
-/// knows the one member of that name and width.
+/// Descriptor lookups require an exact pair; argument-count lookups resolve by width.
 ///
 /// # Errors
 ///
-/// Returns an error when a declaration names both ways or neither, when a
-/// translating mapping does not name the member, or when the linked class file
-/// declares nothing matching it.
+/// Returns an error for invalid lookups, unmapped members, or missing declarations.
 pub(super) fn verify_reflected_members(
     surface: &Reflection,
     mapping: &Mapping,

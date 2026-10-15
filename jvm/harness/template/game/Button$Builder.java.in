@@ -4,7 +4,6 @@
 {{import Button$OnPress}}
 {{import Component}}
 
-/** What a button is reached through, which is why it is a stand-in of its own. */
 public final class {{Button$Builder}} {
 
     private final {{Component}} message;

@@ -3,18 +3,6 @@ use ravel_core::{FailureAttribution, LifecycleState, ModId, Side};
 use crate::lifecycle::{LifecycleMachine, Requirement};
 
 /// What a player is shown about one installed mod.
-///
-/// `ROADMAP.md`'s M3-W5 row asks for valid and invalid graphs to render
-/// deterministic, actionable messages. This is the deterministic part: the
-/// model a mod list draws from, ordered by the resolved load order so the same
-/// package set always produces the same list. Ravel draws its screens in Java
-/// and never renders from Rust, including M3-W5's mod list,
-/// so this crate supplies the values and
-/// stops there.
-///
-/// Separating the two is not tidiness. A model that can be asserted on without
-/// a game running is what lets M3-W7's process matrix check the *content* of a
-/// diagnostic rather than a screenshot of it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ModEntry {
     /// The canonical identity, which is what a report attributes anything to.
@@ -26,20 +14,11 @@ pub struct ModEntry {
     /// Whether the mod loads on the side the set is running on.
     pub loads_here: bool,
     /// Why the mod failed, when it did.
-    ///
-    /// This is the loader's structured attribution rather than a sentence, so
-    /// a renderer applies its own redaction policy instead of receiving text
-    /// that has already been flattened past the point of redacting it.
     pub failure: Option<FailureAttribution>,
 }
 
 impl ModEntry {
-    /// Returns whether this entry is one a player has to act on.
-    ///
-    /// A failed required mod is actionable because the set cannot open a world
-    /// without it. A failed optional mod is reportable and not actionable: the
-    /// plan already tolerates its absence, and telling a player to fix it would
-    /// be asking for work the loader does not need done.
+    /// Returns whether a required mod has failed.
     #[must_use]
     pub const fn is_actionable(&self) -> bool {
         self.failure.is_some() && matches!(self.requirement, Requirement::Required)
@@ -47,9 +26,6 @@ impl ModEntry {
 }
 
 /// The whole installed set, as a mod list would show it.
-///
-/// The order is the resolved load order, which `SPEC.md` §14 requires to be
-/// deterministic for an identical package set, so this list is too.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ModSurface {
     side: Side,
@@ -61,31 +37,27 @@ impl ModSurface {
     ///
     /// # Panics
     ///
-    /// Never. Every identity comes from the machine's own resolved order, so
-    /// each lookup asks it about a mod it is already tracking.
+    /// Panics if the machine's order contains an untracked identity.
     #[must_use]
     pub fn of(machine: &LifecycleMachine) -> Self {
         let side = machine.side();
         let entries = machine
             .order()
-            .cloned()
-            .collect::<Vec<ModId>>()
-            .into_iter()
             .map(|mod_id| {
                 let entry = machine
-                    .entry(&mod_id)
+                    .entry(mod_id)
                     .expect("the machine only orders mods it holds");
                 ModEntry {
                     state: machine
-                        .state(&mod_id)
+                        .state(mod_id)
                         .expect("the machine only orders mods it holds"),
                     failure: machine
-                        .failure(&mod_id)
+                        .failure(mod_id)
                         .expect("the machine only orders mods it holds")
                         .cloned(),
                     requirement: entry.requirement,
                     loads_here: entry.sides.loads_on(side),
-                    mod_id,
+                    mod_id: mod_id.clone(),
                 }
             })
             .collect();
@@ -128,8 +100,6 @@ mod tests {
     use super::ModSurface;
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
 
-    /// A policy that removes nothing, so a test can build a publishable
-    /// message without depending on the crate that owns the real rules.
     struct KeepEverything;
 
     impl RedactionPolicy for KeepEverything {

@@ -1,53 +1,8 @@
-//! The settings a mod declares, and the values in force for one launch.
+//! Declarative settings resolved from author defaults, pack overrides, and player values.
 //!
-//! Configuration is declared in data and every screen Ravel owns is drawn in
-//! Java. Both halves matter to an author: what you write
-//! is a document, and you never write a widget. A [`ConfigurationDeclaration`]
-//! names each [`Setting`] — its key, what a legal value looks like, the author's
-//! `default`, which [`SettingSide`] it applies on, whether a change waits for the
-//! next launch, and how much say a pack has through [`PackOverride`].
-//!
-//! Three layers resolve into one answer, in this order: the author's `default`,
-//! then a pack's override document, then the player's file.
-//! [`LayeredConfiguration`] is the result, and it is what
-//! [`crate::Mod::configure`] is handed. A mod reads values off it and never
-//! reads a file: a player's document that states an unknown key or an illegal
-//! value has already been dropped into [`LayeredConfiguration::rejected`], so what
-//! a mod receives has been validated against the declaration the mod itself
-//! wrote.
-//!
-//! A resolved value is a [`crate::JsonValue`], because a setting's shape belongs
-//! to the mod that declared it. Reading one is a method call on the value, so the
-//! example below names no type at all; a mod that wants to write the type down —
-//! in a signature, say — reaches it through the facade rather than through
-//! `serde_json`, which a mod's manifest does not list.
-//!
-//! # What a setting's value may be
-//!
-//! `schemas/configuration.schema.json` types `valueSchema` as a bare object, so
-//! the schema alone does not say. [`ValueSchema`] does, and it is a closed set:
-//!
-//! - `"type"` is one of [`ValueKind`]'s four names — `"boolean"`, `"integer"`,
-//!   `"number"`, `"string"` — or absent, which constrains the type not at all.
-//!   **There is no array, object or null setting.** A mod that wants a list makes
-//!   it a string it parses itself, or several settings.
-//! - `"enum"` is the exact values permitted, when the setting is a closed choice.
-//! - `"minimum"` and `"maximum"` bound a number, inclusive.
-//! - `"minLength"` and `"maxLength"` bound a string's length.
-//!
-//! A keyword that does not apply to the value's type constrains nothing, so a
-//! `"minimum"` beside a string says nothing about that string; `"type"` is what
-//! refuses the string in the first place.
-//!
-//! `"integer"` here means a JSON integer literal, which is narrower than JSON
-//! Schema's rule: `2` is an integer and `2.0` is not. Every document Ravel writes
-//! spells an integer as one, and the narrow reading can be widened later without
-//! invalidating anything already accepted.
-//!
-//! `"minimum"` and `"maximum"` are read as floating point whichever way they are
-//! written, so `"minimum": 1` and `"minimum": 1.0` are the same bound and both
-//! are accepted. The examples here write `1.0` only to make it obvious that the
-//! bound is not itself typed by the setting's `"type"`.
+//! [`crate::Mod::configure`] receives validated [`LayeredConfiguration`].
+//! [`ValueSchema`] supports booleans, integer literals, numbers, and strings,
+//! with enum, numeric-range, and string-length constraints.
 //!
 //! # Examples
 //!
@@ -76,12 +31,7 @@
 //! #[declare_mod(id = "example")]
 //! impl Mod for Example {
 //!     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
-//!         // `configuration_declaration` can only answer `Some` or `None`, so a
-//!         // document that does not parse becomes `None` — which reads as "this
-//!         // mod declares no settings". `configure` is then never called and the
-//!         // mod runs on its own defaults with nothing said. Refusing here makes
-//!         // that loud, and does so whichever order the host settles settings and
-//!         // drives the lifecycle in.
+//!         // Refuse malformed declarations rather than reporting no settings.
 //!         ConfigurationDeclaration::parse(SETTINGS).map_err(|error| ModError::Refused {
 //!             mod_id: Self::declared_id().clone(),
 //!             state,

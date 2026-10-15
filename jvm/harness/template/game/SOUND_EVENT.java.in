@@ -2,7 +2,6 @@
 
 {{import IDENTIFIER}}
 
-/** The sound event, built the way the adapter builds one. */
 public final class {{SOUND_EVENT}} {
 
     private final {{IDENTIFIER}} location;

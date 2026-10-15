@@ -10,17 +10,6 @@ import java.util.stream.Stream;
 {{import LEVEL_STORAGE_ACCESS}}
 {{import PACK_REPOSITORY}}
 
-/**
- * The source that builds a world's pack repository.
- *
- * <p>The real one is handed the world's storage access and returns a repository
- * over that world's {@code datapacks} directory, and the game configures the
- * repository from what the directory holds. So this body lists the directory,
- * and the listing is the whole proof: a pack the seam writes after this ran is
- * a pack the session never enables. Nothing here knows Ravel exists, which is
- * the point — the two sides meet on the filesystem, exactly as they do in the
- * game.
- */
 public final class {{world.create-pack-repository}} {
 
     private static final List<String> AVAILABLE = new ArrayList<>();
@@ -28,7 +17,6 @@ public final class {{world.create-pack-repository}} {
     private {{world.create-pack-repository}}() {
     }
 
-    /** The pack directories the last repository was built over. */
     public static List<String> available() {
         return List.copyOf(AVAILABLE);
     }
@@ -41,8 +29,6 @@ public final class {{world.create-pack-repository}} {
         try (Stream<Path> entries = Files.list(packs)) {
             entries.map(entry -> entry.getFileName().toString()).sorted().forEach(AVAILABLE::add);
         } catch (IOException absent) {
-            // A world with no packs directory has no packs, which is what the
-            // game makes of it too.
         }
         return new {{PACK_REPOSITORY}}();
     }

@@ -1,13 +1,5 @@
 {{package}}
 
-/**
- * The game's saved-datum supertype.
- *
- * <p>It carries the payload the real subclass would, because the harness has no
- * codec and no game to encode against, and what it is here to prove is that the
- * adapter hands the storage the object the sibling built and reads back the one
- * the storage held.
- */
 public class {{SavedData}} {
 
     private final byte[] aggregate;

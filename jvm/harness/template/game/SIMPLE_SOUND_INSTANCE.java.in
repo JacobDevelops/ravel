@@ -3,13 +3,6 @@
 {{import SOUND_EVENT}}
 {{import SOUND_INSTANCE}}
 
-/**
- * The instance the adapter builds through the factory the surface pins.
- *
- * <p>It keeps the event and the pitch it was given so the harness can print
- * them: a payload whose arguments were decoded in the wrong order reaches this
- * class and is visible here rather than being lost in a void method.
- */
 public final class {{SIMPLE_SOUND_INSTANCE}} implements {{SOUND_INSTANCE}} {
 
     private final {{SOUND_EVENT}} sound;

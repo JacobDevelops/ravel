@@ -1,26 +1,17 @@
-//! Rendering the four generated artefacts from one resolution.
-//!
-//! Everything here is string emission from data already resolved, which is what
-//! makes generation reproducible: the same inputs render the same bytes, and the
-//! generator refuses to write if two runs disagree.
+//! Deterministically renders resolved hooks, locks, and Java bridge declarations.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
-use super::classfile::{ACC_FINAL, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC};
 use super::inputs::{self, Adapter, Inventory, Lookup, Reflection, Spelling};
 use super::mapping::Mapping;
 use super::resolve::Resolved;
-use super::stubs::{self, Member, Stub};
+use super::stubs::Stub;
 use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY, LIBRARY_PROPERTY};
 
 /// A JVM type a hook argument can carry across the boundary.
 ///
-/// A hook receives what the game owns rather than a copy Ravel keeps.
-/// Primitives satisfy that by being values; a `java.lang.String` is copied
-/// because it is immutable and a copy of one cannot go stale; and every other
-/// reference — an ordinary object or an array alike — crosses as an opaque
-/// handle, borrowed for the call and readable through nothing.
+/// Primitive and string values are copied; other references are borrowed opaque handles.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum JavaType {
     Boolean,
@@ -253,10 +244,6 @@ fn parameters(descriptor: &str) -> Result<Vec<JavaType>, String> {
 }
 
 /// Reads one parameter descriptor, returning it and whatever follows it.
-///
-/// Splitting one parameter off the front rather than stepping character by
-/// character is what makes an array readable: `[` is a prefix on another
-/// descriptor, so it needs the rest parsed before it knows where it ends.
 fn parameter(descriptor: &str) -> Result<(JavaType, &str), String> {
     let first = descriptor
         .chars()
@@ -567,10 +554,7 @@ pub(super) fn exports(shapes: &[Shape]) -> String {
 
 /// The library load the generated `Hook` performs, and why it names a file.
 ///
-/// Its own function because `hook_java` renders the whole class and this is
-/// the one part of it that is neither generated from the inventory nor
-/// boilerplate. See `docs/architecture/overview.md#mechanisms`; the comment it
-/// emits explains the launcher's ownership of library paths.
+/// Uses an absolute path rather than launcher-managed library search paths.
 fn library_load_java() -> String {
     format!(
         "\
@@ -712,18 +696,6 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
 }
 
 /// Renders the game names the agent jar's hand-written adapters resolve.
-///
-/// A hook observes or vetoes, so anything the host has to *perform* is performed
-/// by an adapter under `jvm/bootstrap` that reaches the
-/// game by name. Those sources are shared across every tracked version and the
-/// names are not, so they spell a role and this class says what the role links
-/// to. Each constant carries the runtime name in its value and the Mojang name
-/// in its comment, which is the same two-audience split `HookTarget` already
-/// makes: the JVM reads one, a reviewer reads the other.
-///
-/// It is package-private because nothing outside the agent jar's own package
-/// resolves a game class, and because a public one would be a second name
-/// surface for a shipped jar that has exactly one.
 pub(super) fn game_names(adapter: &Adapter, surface: &Reflection) -> String {
     let mut text = String::with_capacity(surface.classes.len() * 160 + 1024);
     let _ = writeln!(
@@ -760,32 +732,11 @@ pub(super) fn game_names(adapter: &Adapter, surface: &Reflection) -> String {
 
 /// Renders the linked members the agent jar's hand-written adapters resolve.
 ///
-/// `GameNames` says what a class role links to and this says what a member role
-/// links to, for the same reason and one level down: an obfuscated version
-/// renames `getWorldPath` as surely as it renames `MinecraftServer`, so a shared
-/// source spelling either by hand is one version's spelling asserted over the
-/// rest. Every constant here is re-derived from the mapping on every build that
-/// can read one, and `verify_reflected_members` additionally requires the linked
-/// class file to declare it, so a member a version renamed or dropped fails
-/// generation rather than a launch.
-///
-/// Each value is the linked name and the linked descriptor with a `:` between
-/// them, which is the pair that identifies one member and not an overload of it.
-/// A name and an argument count does not, once a mapping collapses names: an
-/// obfuscated storage links both its `computeIfAbsent` and its `set` under one
-/// two-argument name, so an adapter asking by width takes whichever the class
-/// file declared first.
-///
-/// Only a member the surface declares by descriptor is emitted. One declared by
-/// an argument count has not been given an identity to emit — that is what the
-/// count leaves open — so it has no constant here and stays with the adapter
-/// that asks by width.
+/// Values pair linked names and descriptors with `:`; argument-count lookups emit no constant.
 ///
 /// # Errors
 ///
-/// Returns an error when a member is declared neither way or both, when the
-/// mapping names a reviewed class but not the member, or when two members would
-/// be written down under one constant.
+/// Returns an error for invalid lookups, unresolved members, or duplicate constants.
 pub(super) fn game_members(
     adapter: &Adapter,
     surface: &Reflection,
@@ -847,11 +798,6 @@ pub(super) fn game_members(
 }
 
 /// The constant one reviewed member of one class role is written down under.
-///
-/// The class role is already the shouted word `GameNames` uses, and the member
-/// is appended in the same shape: a boundary is where a lowercase letter is
-/// followed by an uppercase one, which leaves a field constant that is already
-/// shouted exactly as it was. A constructor has no name to shout.
 fn member_constant(role: &str, member: &str) -> String {
     if member == "<init>" {
         return format!("{role}_NEW");
@@ -872,16 +818,7 @@ fn member_constant(role: &str, member: &str) -> String {
 
 /// Renders the title-menu placement this version's column cannot supply.
 ///
-/// The int-returning shape hands the transformer the row its last option took
-/// and the next row follows from it. The void-returning shape hands back
-/// nothing, and a version whose title screen places its own lower row at a
-/// constant rather than below the column reserves nothing by having a row added
-/// to it. So the number is read off that version's title screen and declared
-/// beside the seam whose descriptor cannot express it.
-///
-/// A version that needs none renders a class that says so, rather than no class
-/// at all: the shared transformer reads this constant either way, and a missing
-/// field would be a compile failure on the version that does not need one.
+/// Void-returning seams supply no row, so affected title menus need explicit placement.
 pub(super) fn menu_layout(adapter: &Adapter, inventory: &Inventory) -> String {
     let row = inventory
         .hooks
@@ -931,14 +868,6 @@ pub(super) fn menu_layout(adapter: &Adapter, inventory: &Inventory) -> String {
 }
 
 /// Renders the screen class names the agent jar loads reflectively.
-///
-/// The screens are generated, and where they are generated to is version data:
-/// a version that keeps the game in packages leaves them in Ravel's screen package,
-/// and one that obfuscates it into the unnamed package takes them with it,
-/// because Java cannot name an unnamed-package supertype from a package. The
-/// agent jar loads each one by name through `Class.forName`, so the name it
-/// passes comes from here for the same reason `GameNames` exists: one shared
-/// source tree cannot spell one version's names and be right about another.
 pub(super) fn screen_names(adapter: &Adapter, names: &[(String, String)]) -> String {
     let mut text = String::with_capacity(names.len() * 120 + 768);
     let _ = writeln!(
@@ -975,10 +904,6 @@ pub(super) fn screen_names(adapter: &Adapter, names: &[(String, String)]) -> Str
 }
 
 /// The declarations that belong to the bootstrap rather than to a hook surface.
-///
-/// They are written rather than generated, and they live here because Ravel
-/// has one exported symbol surface and it is this class: a screen or a world
-/// adapter with natives of its own would be a second one.
 fn written_declarations() -> &'static str {
     "    /**\n\
          \x20    * Constructs, configures, drives, and installs the composed mod set.\n\
@@ -1211,9 +1136,6 @@ fn written_declarations() -> &'static str {
 }
 
 /// Renders the stub provenance lock.
-///
-/// The header states what the lock is worth, because a file named `.lock` reads
-/// like a stronger promise than this one makes.
 pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
     let mut text = String::with_capacity(stubs.len() * 256 + 1536);
     let _ = writeln!(
@@ -1291,285 +1213,6 @@ pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
                 let _ = writeln!(text, "returns = \"{element}\"");
             }
         }
-    }
-    text
-}
-
-/// Renders one stub as a Java source file, with the path it belongs at.
-///
-/// Every name a stub declares is the one the JVM links, because a stub's whole
-/// job is to put that name in the screen jar's constant pool. The reviewed names
-/// stay in `stubs.lock`, where a person reads them; the mapping is what stands
-/// between the two, and under an unobfuscated version it stands for nothing.
-pub(super) fn stub_java(
-    adapter: &Adapter,
-    stub: &Stub,
-    mapping: &Mapping,
-) -> Result<(String, String), GenerateError> {
-    let unsupported =
-        |detail: String| GenerateError::Unsupported(format!("{}: {detail}", stub.class));
-    let linked = mapping.runtime_class(&stub.class);
-    let (package, simple) = split(linked);
-
-    let mut text = String::with_capacity(stub.members.len() * 192 + 1024);
-    let _ = writeln!(
-        text,
-        "// Generated from the pinned Minecraft {} class files. Do not edit.\n\
-         //\n\
-         // A compile-time stub, not Minecraft. It is compiled against and then\n\
-         // discarded: `build-screen.sh` refuses to package one, because a stub in\n\
-         // the screen jar would shadow the game's own class on the loader they\n\
-         // share. See minecraft/versions/{}/stubs.lock.",
-        adapter.minecraft, adapter.minecraft
-    );
-    // A class the mapping puts in the unnamed package declares no package at all,
-    // which is the shape an obfuscated version links: `package ;` is not Java and
-    // the name the JVM resolves has nothing before its last dot.
-    match &package {
-        Some(package) => {
-            let _ = writeln!(text, "package {package};\n");
-        }
-        None => text.push('\n'),
-    }
-
-    let mut declaration = String::new();
-    if stub.flags & ACC_PUBLIC != 0 {
-        declaration.push_str("public ");
-    }
-    if stub.is_interface() {
-        declaration.push_str("interface ");
-    } else {
-        if stub.is_abstract() {
-            declaration.push_str("abstract ");
-        }
-        if stub.is_final() {
-            declaration.push_str("final ");
-        }
-        declaration.push_str("class ");
-    }
-    declaration.push_str(simple);
-    if let Some(parent) = &stub.extends {
-        let _ = write!(
-            declaration,
-            " extends {}",
-            source_name(mapping.runtime_class(parent))
-        );
-    }
-    if !stub.implements.is_empty() {
-        // An interface writes every supertype after `extends`; a class separates
-        // its one superclass from the interfaces it is also assignable to.
-        declaration.push_str(if stub.is_interface() && stub.extends.is_none() {
-            " extends "
-        } else if stub.is_interface() {
-            ", "
-        } else {
-            " implements "
-        });
-        declaration.push_str(
-            &stub
-                .implements
-                .iter()
-                .map(|name| source_name(mapping.runtime_class(name)))
-                .collect::<Vec<_>>()
-                .join(", "),
-        );
-    }
-    let _ = writeln!(text, "{declaration} {{");
-
-    for member in &stub.members {
-        let modifiers = modifiers(member.flags, stub.is_interface(), member.method);
-        let (name, descriptor) =
-            mapping.linked_member(&stub.class, &member.name, &member.descriptor);
-        let rendered = if member.method {
-            stub_method(
-                stub,
-                member,
-                &modifiers,
-                &name,
-                &descriptor,
-                simple,
-                mapping,
-            )
-        } else {
-            stub_field(stub, member, &modifiers, &name, &descriptor, mapping)
-        };
-        let _ = writeln!(text, "{}", rendered.map_err(unsupported)?);
-    }
-
-    let _ = writeln!(text, "}}");
-    Ok((format!("{linked}.java"), text))
-}
-
-/// One stub method, as Java source declares it.
-///
-/// # Errors
-///
-/// Returns the detail of a descriptor or a recorded element type that does not
-/// read.
-fn stub_method(
-    stub: &Stub,
-    member: &Member,
-    modifiers: &str,
-    name: &str,
-    descriptor: &str,
-    simple: &str,
-    mapping: &Mapping,
-) -> Result<String, String> {
-    let (parameters, erased) = signature(descriptor)?;
-    // The erased return is what the JVM links and the element type is what a
-    // caller reads back, so a stub declares both: writing the raw type here is
-    // what let a screen compile against a list of something the game never put
-    // in one.
-    let returns = match &member.returns {
-        Some(recorded) => format!("{erased}<{}>", argument(recorded, mapping)?),
-        None => erased,
-    };
-    let declared = parameters
-        .iter()
-        .enumerate()
-        .map(|(index, parameter)| format!("{parameter} argument{index}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    if member.name == "<init>" {
-        let chained = chained_super(stub, mapping)?;
-        return Ok(format!(
-            "\n    {modifiers}{simple}({declared}) {{\n{chained}    }}"
-        ));
-    }
-    if returns == "void" {
-        return Ok(format!(
-            "\n    {modifiers}void {name}({declared}) {{\n    }}"
-        ));
-    }
-    // A stub body is never reached: the real class is what the game loads.
-    // Throwing rather than returning a default is what makes that visible if one
-    // ever is.
-    Ok(format!(
-        "\n    {modifiers}{returns} {name}({declared}) {{\n        \
-         throw new UnsupportedOperationException(\"stub\");\n    }}"
-    ))
-}
-
-/// One stub field, as Java source declares it.
-///
-/// Separate from the method branch because a field is the one member a stub can
-/// be asked for and be unable to write: an interface's fields are implicitly
-/// final, so a stub would have to invent an initial value, and inventing one is
-/// how a stub stops standing in for the game.
-///
-/// # Errors
-///
-/// Returns the detail of a field on an interface, or of a descriptor that names
-/// more than one type.
-fn stub_field(
-    stub: &Stub,
-    member: &Member,
-    modifiers: &str,
-    name: &str,
-    descriptor: &str,
-    mapping: &Mapping,
-) -> Result<String, String> {
-    if stub.is_interface() {
-        return Err(format!(
-            "{} is a field on an interface, which is implicitly final and would need a value no \
-             stub can invent",
-            member.name
-        ));
-    }
-    let (kind, rest) = java_type(descriptor)?;
-    if !rest.is_empty() {
-        return Err(format!(
-            "{} declares {} which is not one type",
-            member.name, member.descriptor
-        ));
-    }
-    let kind = match &member.returns {
-        Some(recorded) => format!("{kind}<{}>", argument(recorded, mapping)?),
-        None => kind,
-    };
-    Ok(format!("\n    {modifiers}{kind} {name};"))
-}
-
-/// One recorded type argument, as Java source writes it.
-///
-/// # Errors
-///
-/// Returns the detail of a recorded argument that names no class.
-fn argument(recorded: &str, mapping: &Mapping) -> Result<String, String> {
-    let (bound, class) = stubs::argument(recorded)
-        .ok_or_else(|| format!("{recorded} is not a type argument over one class"))?;
-    Ok(format!(
-        "{}{}",
-        bound.java(),
-        source_name(mapping.runtime_class(class))
-    ))
-}
-
-/// The explicit `super(...)` one stub's constructor has to open with.
-///
-/// A constructor runs its superclass's first, and javac writes an implicit
-/// no-argument call where a source writes none. That reaches the implicit
-/// constructor of a superclass declaring none, which was every stubbed
-/// superclass until an item that places a block: its superclass's stub declares
-/// the one constructor the jar declares and so has no no-argument one.
-///
-/// The recorded descriptor is the reviewed shape and a stub is written in the
-/// names the JVM links, so it is translated the way every other descriptor here
-/// is. A constructor is never renamed, so only the parameter types move.
-///
-/// # Errors
-///
-/// Returns the detail of a descriptor that is not a method descriptor.
-fn chained_super(stub: &Stub, mapping: &Mapping) -> Result<String, String> {
-    let Some(recorded) = stub.super_constructor.as_ref() else {
-        return Ok(String::new());
-    };
-    let (_, linked) = mapping.linked_member(&stub.class, "<init>", recorded);
-    let (parameters, _) = signature(&linked)?;
-    Ok(format!("        super({});\n", placeholders(&parameters)))
-}
-
-/// Placeholder arguments for a chained constructor call.
-///
-/// A stub's constructor body is unreachable, so what these are does not matter
-/// and only their types do. A reference is a cast `null`, because an unqualified
-/// one is ambiguous the moment a superclass overloads its constructor.
-fn placeholders(parameters: &[String]) -> String {
-    parameters
-        .iter()
-        .map(|parameter| match parameter.as_str() {
-            "boolean" => "false".to_owned(),
-            "char" => "'\\0'".to_owned(),
-            "byte" | "short" | "int" => "0".to_owned(),
-            "long" => "0L".to_owned(),
-            "float" => "0.0f".to_owned(),
-            "double" => "0.0".to_owned(),
-            reference => format!("({reference}) null"),
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-/// The modifiers a stub reproduces, as Java source writes them.
-///
-/// `abstract` is never among them. Every stub member has a body, so a class that
-/// extends a stub needs to implement nothing it did not mean to.
-fn modifiers(flags: u16, interface: bool, method: bool) -> String {
-    let mut text = String::new();
-    if flags & ACC_PUBLIC != 0 && !interface {
-        text.push_str("public ");
-    } else if flags & ACC_PROTECTED != 0 {
-        text.push_str("protected ");
-    }
-    if flags & ACC_STATIC != 0 {
-        text.push_str("static ");
-    } else if interface && method {
-        // An interface method with a body has to say so, and giving it one is
-        // what keeps a stub that implements the interface from having to.
-        text.push_str("default ");
-    }
-    if flags & ACC_FINAL != 0 && method {
-        text.push_str("final ");
     }
     text
 }
@@ -1695,12 +1338,13 @@ mod tests {
         Reflection, Spelling,
     };
     use super::super::resolve::Resolved;
+    use super::super::stub_render::stub_java;
     use super::super::stubs::{Member as StubMember, Stub};
     use super::{
         JavaType, alias, bindings, constant_name, exports, game_names, hook_java, java_name,
         name_space_is_split, parameters, rust_name, shapes,
     };
-    use super::{Mapping, java_type, signature, stub_java, stub_lock};
+    use super::{Mapping, java_type, signature, stub_lock};
 
     /// Adapter inputs standing in for the tracked ones.
     ///

@@ -1,8 +1,6 @@
 package net.minecraft.util;
 
-// A stand-in carrying the internal name, member names and exact descriptors
-// from `minecraft/versions/<version>/hooks.toml`. Invented bodies return values
-// the harness can check.
+// Fixture names and descriptors match the version's hook inventory.
 public final class StringUtil {
     public static boolean isAllowedChatCharacter(int codepoint) {
         return codepoint >= 32;
@@ -12,9 +10,7 @@ public final class StringUtil {
         return keepNewlines ? text : text.replace("\n", "");
     }
 
-    // The overload that makes descriptor matching testable: same name, different
-    // descriptor, and it delegates, so a transformer that matched on name alone
-    // would rewrite the wrong one and the invocation count would give it away.
+    // Delegation makes a name-only match observable in the invocation count.
     public static String filterText(String text) {
         return filterText(text, false);
     }

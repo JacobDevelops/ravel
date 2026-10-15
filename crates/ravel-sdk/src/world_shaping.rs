@@ -1,22 +1,7 @@
-//! What shaped a world, written into the world once.
+//! Records of the mods that shaped a world.
 //!
-//! [`crate::save`] versions the data a mod owns and migrates it, so a world
-//! written by an older build reaches the shape this one reads and a world that
-//! cannot is refused rather than opened. Removing a mod that *shaped* a world
-//! was the silent case: the chunks it made stay, the chunks made next are made
-//! by something else, and nothing says so.
-//!
-//! A mod that shapes a world declares itself in a [`WorldShaping`]. Ravel writes
-//! that set into the world at creation as a [`ShapingRecord`], and
-//! [`ShapingRecord::admit`] answers, before any world data is read, whether the
-//! set now installed is the set that made it. The refusal names what is missing
-//! and what has arrived, because both are the same divergence read from opposite
-//! ends.
-//!
-//! What "shaping" means is the mod's own — a generator, a biome, a placement.
-//! Ravel models none of it and this module names none of it. What Ravel owns is
-//! the set, because the set is what a world has to remember and no member of it
-//! can remember on the world's behalf.
+//! [`ShapingRecord::at_creation`] records a [`WorldShaping`] set;
+//! [`ShapingRecord::admit`] refuses a changed set and names missing or added mods.
 //!
 //! # Examples
 //!

@@ -2,7 +2,6 @@
 
 {{import WORLD_CREATION_CONTEXT}}
 
-/** The screen's own state, which is where its settings live. */
 public final class {{WORLD_CREATION_UI_STATE}} {
 
     private {{WORLD_CREATION_CONTEXT}} settings;

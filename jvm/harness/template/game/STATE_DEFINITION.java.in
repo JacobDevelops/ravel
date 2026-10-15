@@ -3,16 +3,6 @@
 import com.google.common.collect.ImmutableList;
 {{import BLOCK_STATE_BASE}}
 
-/**
- * Stands in for a block's state set.
- *
- * <p>Its accessor returns the Guava list the pinned jar declares, which is why
- * the adapter walks it reflectively: neither tracked jar carries Guava, so a
- * stub declaring this return type could not compile and the compiled half of
- * the content seam cannot do this walk. Guava is a library beside the game
- * rather than part of it, so no published mapping renames it and it is the one
- * name here a template spells.
- */
 public final class {{STATE_DEFINITION}} {
 
     private final ImmutableList states;

@@ -1,31 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use crate::ModId;
+use crate::identity::ModId;
 
-/// Orders mods so that every mod `after` lists under `x` follows `x`.
+/// Returns the lexicographically smallest topological order of `participants`.
 ///
-/// Three surfaces need this one rule and they are in three crates: services
-/// order a provider before its consumers, drawing stages order contributors
-/// among each other, and an interception point orders the mods it asks. Writing
-/// it once is not tidiness — a second implementation is a second answer, and the
-/// two disagree the first time either is changed.
-///
-/// The order is the lexicographically smallest topological one, produced by
-/// Kahn's algorithm over a [`BTreeSet`] of ready mods, so two runs over the same
-/// declarations produce the same order and nothing depends on a hash map's
-/// iteration order or on the order a caller happened to declare in.
-///
-/// Membership is the caller's. A mod named by an edge and absent from
-/// `participants` takes no part in the order and is not refused here, because
-/// what that means differs per surface: a drawing stage refuses it by name, and
-/// a service graph cannot produce one at all. Each caller says so in its own
-/// words rather than borrowing a refusal that means something else.
+/// Each mod listed under `x` in `after` follows `x`. Edges involving absent
+/// participants are ignored.
 ///
 /// # Errors
 ///
-/// Returns [`Cycle`] when some participants each wait for another, naming every
-/// one of them.
+/// Returns [`Cycle`] naming all participants left waiting when ordering stalls.
 ///
 /// # Examples
 ///
@@ -37,7 +22,7 @@ use crate::ModId;
 /// let early: ModId = "base_mod".parse()?;
 /// let late: ModId = "skin_mod".parse()?;
 ///
-/// // `skin_mod` follows `base_mod`, so it is second however the set is built.
+/// // `skin_mod` follows `base_mod`.
 /// let mut after = BTreeMap::new();
 /// after.insert(early.clone(), BTreeSet::from([late.clone()]));
 ///
@@ -45,7 +30,6 @@ use crate::ModId;
 ///     .expect("an edge without a cycle orders");
 /// assert_eq!(order, [early.clone(), late.clone()]);
 ///
-/// // Each waiting for the other has no order, and is not given one.
 /// let mut circular = after.clone();
 /// circular.insert(late.clone(), BTreeSet::from([early.clone()]));
 /// let refusal = precedence([early.clone(), late.clone()], &circular)
@@ -100,18 +84,14 @@ pub fn precedence(
     })
 }
 
-/// Mods that each wait for another, so no order satisfies what they declared.
-///
-/// Every mod still waiting when the order ran out is named, rather than one
-/// representative of the cycle: a mod author reading the refusal has to find the
-/// edge they wrote, and that edge is between two of these.
+/// Participants left waiting when a cycle prevents a complete order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Cycle {
     participants: Vec<ModId>,
 }
 
 impl Cycle {
-    /// Returns every mod in the cycle, in name order.
+    /// Returns all waiting participants in name order.
     #[must_use]
     pub fn participants(&self) -> &[ModId] {
         &self.participants
@@ -137,7 +117,7 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::precedence;
-    use crate::ModId;
+    use crate::identity::ModId;
 
     fn id(name: &str) -> ModId {
         name.parse().expect("a legal mod id")
@@ -151,9 +131,6 @@ mod tests {
         after
     }
 
-    /// Checks an order against the edges by a different route than the one that
-    /// produced it: every declared pair is looked up by position rather than
-    /// trusting the algorithm that placed it.
     fn satisfies(order: &[ModId], after: &BTreeMap<ModId, BTreeSet<ModId>>) -> bool {
         after.iter().all(|(earlier, followers)| {
             followers.iter().all(|follower| {

@@ -1,13 +1,5 @@
 {{package}}
 
-/**
- * What a split line is, and what a caller reads one back out of.
- *
- * <p>The pinned type is an interface whose one seeded member answers the string
- * a line draws as. It carries that and nothing else: the splitter beside it
- * builds its lines through a lambda rather than through a static the screens
- * never name.
- */
 public interface {{FormattedText}} {
 
     String {{FormattedText#getString}}();

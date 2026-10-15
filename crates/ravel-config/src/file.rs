@@ -1,28 +1,5 @@
-//! Where a player's own configuration lives on disk, and how it is written.
-//!
-//! One file per owner at `<game directory>/config/<owner>.json`, which is where
-//! the Java ecosystem puts player configuration, what players expect to find and
-//! what pack authors expect to ship. `<owner>` is the canonical mod id, so
-//! nothing new is named here.
-//!
-//! The file half lives beside [`ValueDocument`] rather than in the crate that
-//! writes it, because the file *is* that document: splitting the shape from the
-//! place would mean two crates agreeing on a filename and a layout forever. What
-//! does not live here is which directory to use — the game directory is a fact
-//! about the running process, so it is a parameter and its resolution belongs to
-//! whoever knows the process.
-//!
-//! The pack's layer is the same shape one directory deeper, at
-//! `<pack root>/ravel/config/<owner>.json`, and it is here for a sharper version of
-//! the same reason: `ravel-pack` writes those files and a launch reads them back,
-//! and a constant either crate spelled itself is a round trip that breaks the first
-//! time one of them moves. See [`PACK_DIRECTORY`] and [`read_pack`].
-//!
-//! # A missing file is not an error
-//!
-//! It means the player has changed nothing, which
-//! [`crate::LayeredConfiguration::resolve`] already handles as an absent layer.
-//! Only a file that exists and cannot be used is a failure.
+//! Player files at `config/<owner>.json` and pack overrides at `ravel/config/<owner>.json`.
+//! Missing files represent absent layers; writes use a staging file and rename.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -36,12 +13,6 @@ use crate::document::{DocumentError, ValueDocument};
 const DIRECTORY: &str = "config";
 
 /// The directory a written pack keeps its settings layer in, under the pack root.
-///
-/// One file per owner, named and shaped exactly as the player's layer one
-/// directory up is, because both are a [`ValueDocument`] stating one mod's values.
-/// The constant lives here rather than in the crate that writes a pack or the crate
-/// that reads one, so the writer and the reader cannot drift apart: `ravel-pack`
-/// writes under it and a launch enumerates it, and neither spells the path itself.
 pub const PACK_DIRECTORY: &str = "ravel/config";
 
 /// The suffix a file is written under before it is put in place.
@@ -61,10 +32,7 @@ pub fn pack_path(root: &Path, owner: &ModId) -> PathBuf {
 
 /// Reads every pack settings document a written pack holds, keyed by owner.
 ///
-/// The pack layer is one document per mod, so the launch that resolves it needs
-/// them all before it walks the set rather than one path it opens per member. A
-/// pack that states no overrides has no directory, which is not an error for the
-/// reason a missing player file is not one.
+/// A missing pack configuration directory returns an empty map.
 ///
 /// # Errors
 ///
@@ -110,8 +78,7 @@ pub fn read_pack(root: &Path) -> Result<BTreeMap<ModId, ValueDocument>, FileErro
 
 /// Reads one owner's player document.
 ///
-/// Returns `Ok(None)` when the player has changed nothing, which is the ordinary
-/// case for most mods on most launches.
+/// Returns `Ok(None)` for a missing file.
 ///
 /// # Errors
 ///
@@ -124,9 +91,7 @@ pub fn read(game_directory: &Path, owner: &ModId) -> Result<Option<ValueDocument
 
 /// Reads one owner's values from an explicitly selected document path.
 ///
-/// This is the pack-facing counterpart to [`read`]: a generated composition
-/// resolves the relative path pinned by its selected pack manifest, while this
-/// crate keeps document parsing and owner validation identical for both layers.
+/// Both pack and player layers use the same parsing and owner validation.
 ///
 /// # Errors
 ///
@@ -145,8 +110,6 @@ pub fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, Fi
 
     let document = ValueDocument::parse(&text).map_err(FileError::Document)?;
     if &document.owner != owner {
-        // The name on the file and the name inside it disagree, so one of them
-        // is a lie and applying either would give a mod somebody else's values.
         return Err(FileError::Owner {
             named: owner.to_string(),
             found: document.owner.to_string(),
@@ -157,14 +120,7 @@ pub fn read_path(file: &Path, owner: &ModId) -> Result<Option<ValueDocument>, Fi
 
 /// Writes one owner's player document, atomically.
 ///
-/// The owner comes from the document rather than the caller, so the name on the
-/// file and the name inside it cannot disagree.
-///
-/// The write goes to a staging file beside the target and is then renamed onto
-/// it, the same repair the marker socket uses. A rename within a directory
-/// replaces the target in one step, so a crash mid-write leaves either the old
-/// file or the new one and never half of either. Truncating in place would mean
-/// a crash at the wrong moment costs a player every setting for that mod.
+/// The document owner determines the filename; staging and rename avoid partial writes.
 ///
 /// # Errors
 ///
@@ -184,8 +140,7 @@ pub fn write(game_directory: &Path, document: &ValueDocument) -> Result<(), File
     let mut text = document.to_json();
     text.push('\n');
     stage(&staging, &file, &text).inspect_err(|_| {
-        // A staging file left behind would be written over by the next save, but
-        // it would also sit in the player's config directory looking like data.
+        // Cleanup is best-effort; preserve the original write failure.
         let _ = fs::remove_file(&staging);
     })
 }

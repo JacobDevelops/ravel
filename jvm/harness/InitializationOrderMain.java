@@ -8,10 +8,6 @@ public final class InitializationOrderMain {
         System.out.println("valid=" + StringUtil.isValidPlayerName("player"));
         System.out.println("transformed=" + dev.ravel.jvm.Agent.transformedClasses()
                 + " methods=" + dev.ravel.jvm.Agent.rewrittenMethods());
-        // Installed-prologue marker. The first name is a target this run
-        // rewrote and the second is one no generator ever emitted, so the pair
-        // says the marker tracks what was actually installed rather than what was
-        // merely asked for.
         System.out.println("installed=" + dev.ravel.jvm.Agent.isInstalled("chatAllowedCharacter")
                 + " unknown=" + dev.ravel.jvm.Agent.isInstalled("neverGenerated"));
     }

@@ -81,19 +81,9 @@ pub enum EditOutcome {
     NextLaunch,
 }
 
-/// One owner's settings, resolved through three layers.
+/// Defaults layered with pack and player values according to each setting's policy.
 ///
-/// The layers are the author's `default`, then the pack's override document,
-/// then the player's value, and the author's `packOverride` decides which of the
-/// last two has the final word.
-///
-/// The two override layers are treated differently on purpose.
-/// A pack that states an illegal value is refused outright, because
-/// a pack is a pinned artifact somebody can fix before the game runs and a
-/// silently ignored pack value is a pack that does not do what it says. An
-/// illegal player value falls back to the layer below and is reported through
-/// [`LayeredConfiguration::rejected`], leaving the previous value in place
-/// without failing the world.
+/// Invalid pack values fail resolution; invalid player values fall back and are reported.
 ///
 /// # Examples
 ///
@@ -135,9 +125,7 @@ pub struct LayeredConfiguration {
     pack: BTreeMap<SettingKey, Value>,
     /// What the player's document says, and so what is written back.
     written: BTreeMap<SettingKey, Value>,
-    /// What the player's document said when this session started, and so what is
-    /// in force. The two differ by exactly the restart-required edits made
-    /// since, which is what "takes effect on the next launch" means.
+    /// Session values, excluding restart-required edits made since loading.
     active: BTreeMap<SettingKey, Value>,
     rejected: Vec<Rejection>,
 }
@@ -147,18 +135,8 @@ impl LayeredConfiguration {
     ///
     /// # Errors
     ///
-    /// Returns [`LayerError::Owner`] when a document belongs to a different mod
-    /// than the declaration, which is a wiring mistake rather than a bad value
-    /// and is refused for either layer.
-    ///
-    /// The pack layer is refused rather than repaired.
-    /// [`LayerError::PackUnknown`] names a key the declaration does not declare,
-    /// [`LayerError::PackValue`] a value the setting's `valueSchema` refuses, and
-    /// [`LayerError::PackMissing`] a `required` setting the pack left out. The
-    /// last is the only obligation `packOverride` puts on a pack rather than a
-    /// permission, and it is checked only when a pack states anything at all:
-    /// an installation with no pack has nobody to oblige, and the author's
-    /// `default` is what such a setting resolves to.
+    /// Returns owner mismatches or unknown, invalid, or missing required pack values.
+    /// Required values are checked only when a pack layer is present.
     pub fn resolve(
         declaration: ConfigurationDeclaration,
         pack: Option<&ValueDocument>,
@@ -201,9 +179,6 @@ impl LayeredConfiguration {
         if let Some(chosen) = player {
             layered.check_owner(chosen)?;
             for (key, value) in &chosen.values {
-                // A dropped value is dropped from what is written back too. The
-                // alternative keeps a value nothing will ever apply in the
-                // player's file for the life of the installation.
                 let reason = match layered.declaration.setting(key) {
                     None => RejectionReason::Unknown,
                     Some(setting) => match setting.value_schema.check(value) {
@@ -268,10 +243,6 @@ impl LayeredConfiguration {
     }
 
     /// Resolves one setting through the three layers.
-    ///
-    /// The order is the whole model: a pack that took the last word wins
-    /// outright, the player comes next, and the author's default is what is left
-    /// when neither stated anything.
     fn layer<'a>(&'a self, setting: &'a Setting) -> (&'a Value, ValueSource) {
         let stated = self.pack.get(&setting.key);
         if let Some(value) = stated
@@ -295,11 +266,6 @@ impl LayeredConfiguration {
     }
 
     /// Returns the settings a process running as `side` owns, in declared order.
-    ///
-    /// A setting belonging to another side is absent rather than present and
-    /// disabled: a `dedicated-server` setting has no client screen,
-    /// which is a statement about what a screen holds and not about what it
-    /// greys out.
     #[must_use]
     pub fn settings_on(&self, side: Side) -> Vec<ResolvedSetting<'_>> {
         self.declaration
@@ -320,11 +286,7 @@ impl LayeredConfiguration {
 
     /// Records a player edit made from a screen on `side`.
     ///
-    /// A restart-required edit is written and does not take effect: [`value`]
-    /// keeps answering with the old one until the document is loaded again,
-    /// taking effect on the next launch.
-    ///
-    /// [`value`]: LayeredConfiguration::value
+    /// Restart-required edits are persisted but leave [`Self::value`] unchanged until reload.
     ///
     /// # Errors
     ///
@@ -332,8 +294,6 @@ impl LayeredConfiguration {
     /// [`EditError::OtherSide`] for a setting this side does not own,
     /// [`EditError::FixedByPack`] where the pack took the last word, and
     /// [`EditError::Illegal`] for a value the setting's `valueSchema` refuses.
-    /// Every one of them leaves the previous value in place and none of them
-    /// fails the world.
     pub fn set(
         &mut self,
         key: &SettingKey,
@@ -379,10 +339,6 @@ impl LayeredConfiguration {
     }
 
     /// Returns the player's layer as the document it is written back as.
-    ///
-    /// This is the round trip: writing this out and resolving the declaration
-    /// against it again reaches the same values, with every restart-required
-    /// edit now in force.
     #[must_use]
     pub fn player_document(&self) -> ValueDocument {
         ValueDocument {
@@ -393,11 +349,7 @@ impl LayeredConfiguration {
     }
 }
 
-/// Why the layers could not be resolved.
-///
-/// Every variant is about the pack layer or about a document written for the
-/// wrong mod. A player value that will not apply is not here: it is a
-/// [`Rejection`], because an invalid edit does not refuse the world.
+/// Pack-layer or owner errors that prevent resolution; player-value errors are rejections.
 #[derive(Clone, Debug, PartialEq)]
 pub enum LayerError {
     /// A document belongs to a different mod than the declaration.
@@ -452,9 +404,7 @@ impl fmt::Display for LayerError {
 impl std::error::Error for LayerError {}
 
 impl StructuredFailure for LayerError {
-    /// None of these is one of `SPEC.md` §9.2's dependency-graph outcomes. The
-    /// graph resolved and every mod is present; what failed is a pack's
-    /// configuration, so this reports no kind rather than borrowing one.
+    /// Configuration errors are not dependency-graph failures.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
@@ -465,19 +415,13 @@ impl StructuredFailure for LayerError {
         LifecycleState::Resolved
     }
 
-    /// Every message is this crate's own words about a validated key and a
-    /// validated mod id, and the value detail is this crate's own sentence about
-    /// a schema. Nothing a pack wrote is quoted back.
+    /// Messages contain validated identifiers and schema descriptions, not raw values.
     fn quotes_untrusted_text(&self) -> bool {
         false
     }
 }
 
-/// Why a player's edit was refused.
-///
-/// This deliberately does not implement [`StructuredFailure`]. A refused edit
-/// appears on the screen next to the field the player just changed and does not
-/// fail the world; it is not a pre-world failure report.
+/// A player edit rejected without changing the active value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EditError {
     /// The owner declares no such setting.
@@ -706,8 +650,6 @@ mod tests {
 
     #[test]
     fn a_locked_setting_the_pack_left_alone_is_still_the_players() {
-        // `locked` is a permission the pack did not use, so the player's value
-        // stands. Nothing about the policy applies where the pack said nothing.
         let player = document(&[("world.difficulty", json!("harsh"))]);
         let config = resolved(Some(&minimal_pack()), Some(&player));
 
@@ -856,8 +798,6 @@ mod tests {
                 },
             ]
         );
-        // A dropped value is dropped from what is written back, so the file is
-        // repaired once rather than carrying a value nothing will ever apply.
         assert!(config.player_document().values.is_empty());
         assert!(config.rejected()[0].to_string().contains("fell back"));
         assert!(config.rejected()[1].to_string().contains("not a setting"));
@@ -1011,7 +951,6 @@ mod tests {
             config.set(&key("engine.threads"), json!(8), Side::Client),
             Ok(EditOutcome::NextLaunch)
         );
-        // Written, and deliberately not in force.
         assert_eq!(config.value(&key("engine.threads")), Some(&json!(4)));
         assert_eq!(
             config.player_document().values.get(&key("engine.threads")),
@@ -1048,7 +987,6 @@ mod tests {
             Some(&json!("the pack's server"))
         );
         assert_eq!(relaunched.rejected(), []);
-        // A second pass changes nothing, which is what makes it a round trip.
         assert_eq!(relaunched.player_document().to_json(), written);
     }
 

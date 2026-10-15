@@ -4,12 +4,7 @@ use std::fmt;
 use ravel_core::{ContentId, ModId};
 use serde_json::Value;
 
-/// The name one mod's service is reached by.
-///
-/// Namespaced by its owner for the reason a registry key and a packet contract
-/// are: exactly one mod may answer a given service, and a name whose first half
-/// is the answering mod's identity cannot be claimed by anybody else. That makes
-/// "who provides this" a question about the name rather than about a table.
+/// A service identifier namespaced by the only mod allowed to answer it.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ServiceId(ContentId);
 
@@ -39,26 +34,10 @@ impl fmt::Display for ServiceId {
     }
 }
 
-/// What one mod answers, what it needs answered, and what it will use if present.
+/// Declares provided, required, and optional services before load ordering.
 ///
-/// All three halves are declared rather than discovered, and that is what makes
-/// the order decidable before any mod code runs: the loader can see the whole
-/// graph, name a missing provider or a cycle, and refuse — instead of finding out
-/// when a call arrives at a mod that is not there yet.
-///
-/// # Required and optional
-///
-/// [`requires`](Self::requires) and [`may_use`](Self::may_use) differ in exactly
-/// one thing: what a missing provider means. A required service nothing answers
-/// refuses the whole set, the way an unresolved package does. An optional one
-/// nothing answers is an ordinary fact about this install — the set loads, and the
-/// call reports [`ServiceUnavailable::Absent`] for the consumer to branch on.
-///
-/// They are the same in everything else. A declared optional service whose
-/// provider *is* running is ordered before the consumer exactly as a required one
-/// is, and calling it is legal rather than [`ServiceUnavailable::Undeclared`]. So
-/// "is this mod installed" is answered once, by the loader, before any mod runs —
-/// and never by a consumer that got ordered first and saw nothing.
+/// Missing required services refuse the set; missing optional services report
+/// [`ServiceUnavailable::Absent`]. Present providers precede either kind of consumer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServiceDeclaration {
     owner: ModId,
@@ -68,15 +47,11 @@ pub struct ServiceDeclaration {
 }
 
 impl ServiceDeclaration {
-    /// Declares what `owner` answers and what it needs.
-    ///
-    /// The three-part form of [`ServiceDeclaration::with_optional`], for a mod
-    /// with nothing optional to say.
+    /// Declares provided and required services with no optional dependencies.
     ///
     /// # Errors
     ///
-    /// Returns whatever [`ServiceDeclaration::with_optional`] would for the same
-    /// arguments and an empty optional set.
+    /// Returns the same declaration errors as [`Self::with_optional`].
     pub fn new(
         owner: ModId,
         provides: impl IntoIterator<Item = ServiceId>,
@@ -85,33 +60,11 @@ impl ServiceDeclaration {
         Self::with_optional(owner, provides, requires, [])
     }
 
-    /// Declares what `owner` answers, what it needs, and what it may use.
-    ///
-    /// A name in `may_use` is a service this mod calls when something answers it
-    /// and does without when nothing does. Declaring it is what buys the ordering:
-    /// a provider that *is* installed still runs first.
+    /// Declares provided, required, and optional services.
     ///
     /// # Errors
     ///
-    /// Returns [`ServiceDeclarationError::NotOurs`] for a provided service whose
-    /// name belongs to another mod, because a name is what says who answers and a
-    /// mod answering under another's namespace would make two mods claimable
-    /// under one identity.
-    ///
-    /// Returns [`ServiceDeclarationError::RequiresItself`] for a service the same
-    /// declaration both provides and requires. It is not a cycle the loader has
-    /// to find — it is one mod asking to be ordered before itself, which no order
-    /// satisfies, and refusing it here names the mod rather than a cycle of one.
-    ///
-    /// Returns [`ServiceDeclarationError::MayUseItself`] for a service the same
-    /// declaration both provides and may use, for that same reason: the provider
-    /// is present by construction, so the optional edge is a real one and it is a
-    /// self-edge.
-    ///
-    /// Returns [`ServiceDeclarationError::RequiredAndOptional`] for a service on
-    /// both the required and the optional side. The two sides disagree about what
-    /// a missing provider means, and a declaration that says both does not say
-    /// which — picking one would be the loader deciding what the author meant.
+    /// Returns an error for foreign ownership, self-dependencies, or required/optional overlap.
     pub fn with_optional(
         owner: ModId,
         provides: impl IntoIterator<Item = ServiceId>,
@@ -176,10 +129,7 @@ impl ServiceDeclaration {
         self.may_use.iter()
     }
 
-    /// Returns whether this declaration names `service` on either calling side.
-    ///
-    /// What the directory checks a call against: a mod may call what it requires
-    /// and what it may use, and nothing else.
+    /// Returns whether the mod declared `service` as required or optional.
     #[must_use]
     pub fn calls(&self, service: &ServiceId) -> bool {
         self.requires.contains(service) || self.may_use.contains(service)
@@ -252,15 +202,7 @@ impl fmt::Display for ServiceDeclarationError {
 
 impl std::error::Error for ServiceDeclarationError {}
 
-/// One call to a service.
-///
-/// The arguments and the answer are open JSON rather than a Rust type both mods
-/// name. A consumer that named the provider's type would be depending on the
-/// provider's *build* rather than on the version range its manifest declares, and
-/// mods are distributed as source the player's machine compiles, so the two
-/// builds are not interchangeable. This is the same trade the packet contracts
-/// make: a shape agreed in data, checked at the boundary, and versioned by the
-/// provider.
+/// A service call with JSON arguments, independent of the provider's Rust types.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ServiceRequest {
     /// The service being called.
@@ -295,10 +237,7 @@ impl ServiceResponse {
     }
 }
 
-/// Why a call reached nobody.
-///
-/// Distinct from the answering mod's own refusal: this says the call never got
-/// as far as a mod, which is a wiring fact and not an answer.
+/// A call that never reached a provider, distinct from a provider's refusal.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ServiceUnavailable {
     /// The caller declared neither that it requires this service nor that it may
@@ -309,27 +248,12 @@ pub enum ServiceUnavailable {
         /// The service it called.
         service: ServiceId,
     },
-    /// Nothing in this set answers a service the caller declared it **requires**.
-    ///
-    /// A resolved set cannot reach this — the loader refuses a missing provider
-    /// before any mod runs — so it exists for a directory built over a set that
-    /// was never resolved, which is a host mistake worth naming rather than
-    /// papering over.
+    /// A required provider is missing; this indicates an unresolved host directory.
     NoProvider {
         /// The service nobody answers.
         service: ServiceId,
     },
-    /// Nothing in this set answers a service the caller declared it **may use**.
-    ///
-    /// Not a mistake by anyone. The caller said it works either way, and this is
-    /// the answer to the question it was really asking: the provider is not
-    /// installed, or is installed and parked on the other side. A consumer
-    /// branches on this rather than refusing, which is the whole difference
-    /// between an optional declaration and a required one.
-    ///
-    /// Distinct from [`ServiceCallFailed::Refused`], which means a provider *was*
-    /// reached and said no. Those two are different events and this enum is how a
-    /// mod tells them apart without reading a sentence.
+    /// An optional provider is absent, not a provider that was reached and refused.
     Absent {
         /// The service nothing in this set answers.
         service: ServiceId,
@@ -356,28 +280,13 @@ impl fmt::Display for ServiceUnavailable {
 
 impl std::error::Error for ServiceUnavailable {}
 
-/// What the loader offers a mod so it can reach the services it declared.
-///
-/// The mod-facing half of service resolution, the way [`crate::Registrar`] is the
-/// mod-facing half of the registration barrier: a mod calls what it declared
-/// without naming the loader, which `docs/architecture/dependency-rules.md`
-/// forbids it from depending on.
-///
-/// A directory only ever reaches providers the loader has already started, so a
-/// call cannot arrive at a mod that has not run — the order is a property of the
-/// directory a mod is handed rather than a rule a mod is asked to respect.
+/// Access to declared services whose providers the loader has already started.
 pub trait ServiceDirectory {
     /// Calls the service `request` names.
     ///
     /// # Errors
     ///
-    /// Returns [`ServiceCallFailed::Unavailable`] when the call reached no mod,
-    /// and [`ServiceCallFailed::Refused`] when the answering mod refused it.
-    ///
-    /// A call to a service the caller declared it *may use* and nothing answers
-    /// returns [`ServiceUnavailable::Absent`], which is an ordinary outcome to
-    /// branch on rather than a reason to refuse — see
-    /// [`ServiceCallFailed::is_absent`].
+    /// Returns [`ServiceCallFailed::Unavailable`] for no provider, or [`ServiceCallFailed::Refused`] for a provider's refusal.
     fn call(&mut self, request: &ServiceRequest) -> Result<ServiceResponse, ServiceCallFailed>;
 }
 
@@ -391,13 +300,7 @@ pub enum ServiceCallFailed {
 }
 
 impl ServiceCallFailed {
-    /// Returns whether this is an optionally declared service nobody installed.
-    ///
-    /// The one branch an optional consumer takes to carry on. Everything else —
-    /// including a provider that answered and said no — is a failure it did not
-    /// declare it could do without. Reading this rather than matching on the
-    /// sentence is what makes "not installed" and "installed and refused" two
-    /// different things to a mod and not two different strings.
+    /// Returns whether an optional provider is absent, not present and refusing.
     #[must_use]
     pub const fn is_absent(&self) -> bool {
         matches!(self, Self::Unavailable(ServiceUnavailable::Absent { .. }))
@@ -543,7 +446,6 @@ mod tests {
 
         assert_eq!(declaration.may_use().collect::<Vec<_>>(), [&prices]);
         assert_eq!(declaration.requires().collect::<Vec<_>>(), [&clock]);
-        // Both calling sides are callable; only the optional one may be absent.
         assert!(declaration.calls(&prices) && declaration.calls(&clock));
         assert!(!declaration.calls(&service("base", "stock")));
         assert!(declaration.may_do_without(&prices));
@@ -560,8 +462,6 @@ mod tests {
 
     #[test]
     fn a_mod_that_may_use_what_it_answers_is_refused_by_name() {
-        // The provider is present by construction, so this optional edge is a real
-        // one — and it points at the mod that drew it.
         let refusal = ServiceDeclaration::with_optional(
             id("base"),
             [service("base", "prices")],
@@ -581,8 +481,6 @@ mod tests {
 
     #[test]
     fn one_service_declared_both_required_and_optional_is_refused_rather_than_resolved() {
-        // The two sides disagree about a missing provider. Choosing either would be
-        // the host deciding what the author meant.
         let refusal = ServiceDeclaration::with_optional(
             id("consumer"),
             [],
@@ -611,8 +509,6 @@ mod tests {
         });
         assert!(absent.is_absent());
 
-        // A provider that was reached and said no is not absence, and neither is a
-        // required service nothing answers.
         for other in [
             ServiceCallFailed::Refused(HostError::Refused {
                 mod_id: id("base"),

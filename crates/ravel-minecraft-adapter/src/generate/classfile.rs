@@ -1,13 +1,4 @@
-//! Minimal class-file reader: enough to list a class's declared members and
-//! name the types it sits under.
-//!
-//! 26.1 ships unobfuscated class files, so the class file is the mapping. What
-//! a binding generator needs from it is the exact name, descriptor, and access
-//! flags of every field and method, which is the constant pool plus the two
-//! member tables. The stub generator needs one thing more: the superclass and
-//! interfaces, which are named through `CONSTANT_Class` entries and so resolve
-//! in two hops rather than one. Attributes are skipped by length; nothing here
-//! decodes code.
+//! Reads declared members, signatures, flags, and supertypes without decoding bytecode.
 
 use std::fmt;
 
@@ -134,11 +125,6 @@ pub(super) fn members(bytes: &[u8]) -> Result<Vec<Member>, ClassFileError> {
 }
 
 /// Reads the class's own flags and the types it sits under.
-///
-/// This is the part of the header `members` skips. A supertype is named through
-/// a `CONSTANT_Class` entry rather than directly, so each name costs two hops:
-/// the index in the header points at a class entry, and that entry points at the
-/// string.
 pub(super) fn hierarchy(bytes: &[u8]) -> Result<Hierarchy, ClassFileError> {
     let (pool, mut reader) = header(bytes)?;
     let flags = reader.u16()?;
@@ -254,9 +240,6 @@ fn constant_width(tag: u8) -> Result<usize, ClassFileError> {
 
 /// Walks one member's attribute table, answering its `Signature` where it has
 /// one.
-///
-/// Every other attribute is skipped by length, as they all were before a stub
-/// needed to know what a returned collection holds.
 fn attributes(pool: &Pool, reader: &mut Reader<'_>) -> Result<Option<String>, ClassFileError> {
     let count = reader.u16()?;
     let mut signature = None;
@@ -319,21 +302,24 @@ impl<'bytes> Reader<'bytes> {
 mod tests {
     use super::{ACC_INTERFACE, MAGIC, TAG_CLASS, TAG_UTF8, hierarchy, members};
 
-    /// The smallest class file that names a superclass and one interface.
-    ///
-    /// Entries 1 and 2 are the two internal names, entries 3 and 4 are the class
-    /// references that point at them, which is the two-hop shape the header uses.
-    fn one_hierarchy_class(flags: u16) -> Vec<u8> {
-        let mut bytes = Vec::new();
+    fn class_prefix(strings: &[&str], other_entries: u16) -> Vec<u8> {
+        let size = 10 + strings.iter().map(|text| text.len() + 3).sum::<usize>();
+        let mut bytes = Vec::with_capacity(size);
         bytes.extend(MAGIC.to_be_bytes());
         bytes.extend(0_u16.to_be_bytes()); // minor
         bytes.extend(69_u16.to_be_bytes()); // major
-        bytes.extend(5_u16.to_be_bytes()); // constant pool count: entries 1 to 4
-        for text in ["some/Parent", "some/Contract"] {
+        let count = u16::try_from(strings.len()).expect("short") + other_entries + 1;
+        bytes.extend(count.to_be_bytes());
+        for text in strings {
             bytes.push(TAG_UTF8);
             bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
             bytes.extend(text.as_bytes());
         }
+        bytes
+    }
+
+    fn one_hierarchy_class(flags: u16) -> Vec<u8> {
+        let mut bytes = class_prefix(&["some/Parent", "some/Contract"], 2);
         for name in [1_u16, 2] {
             bytes.push(TAG_CLASS);
             bytes.extend(name.to_be_bytes());
@@ -351,16 +337,7 @@ mod tests {
 
     /// Builds the smallest class file that declares one static method.
     fn one_method_class() -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend(MAGIC.to_be_bytes());
-        bytes.extend(0_u16.to_be_bytes()); // minor
-        bytes.extend(69_u16.to_be_bytes()); // major
-        bytes.extend(3_u16.to_be_bytes()); // constant pool count: entries 1 and 2
-        for text in ["hook", "(I)Z"] {
-            bytes.push(TAG_UTF8);
-            bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
-            bytes.extend(text.as_bytes());
-        }
+        let mut bytes = class_prefix(&["hook", "(I)Z"], 0);
         bytes.extend(0_u16.to_be_bytes()); // access flags
         bytes.extend(0_u16.to_be_bytes()); // this class
         bytes.extend(0_u16.to_be_bytes()); // super class
@@ -460,22 +437,16 @@ mod tests {
     /// The smallest class file whose one method carries a `Signature`, between
     /// two attributes that are not one.
     fn one_signed_method_class(signature_length: u32) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend(MAGIC.to_be_bytes());
-        bytes.extend(0_u16.to_be_bytes()); // minor
-        bytes.extend(69_u16.to_be_bytes()); // major
-        bytes.extend(6_u16.to_be_bytes()); // constant pool count: entries 1 to 5
-        for text in [
-            "hook",
-            "()Ljava/util/List;",
-            "Unrelated",
-            "Signature",
-            "()Ljava/util/List<Lsome/Line;>;",
-        ] {
-            bytes.push(TAG_UTF8);
-            bytes.extend(u16::try_from(text.len()).expect("short").to_be_bytes());
-            bytes.extend(text.as_bytes());
-        }
+        let mut bytes = class_prefix(
+            &[
+                "hook",
+                "()Ljava/util/List;",
+                "Unrelated",
+                "Signature",
+                "()Ljava/util/List<Lsome/Line;>;",
+            ],
+            0,
+        );
         for value in [0_u16, 0, 0, 0, 0] {
             // flags, this class, no superclass, no interfaces, no fields
             bytes.extend(value.to_be_bytes());

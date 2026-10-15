@@ -5,16 +5,6 @@ import java.util.List;
 {{import SOUND_INSTANCE}}
 {{import SOUND_PLAY_RESULT}}
 
-/**
- * The stand-in sound manager, which records rather than plays.
- *
- * <p>Nothing here reaches sound hardware; what the harness asserts is that the
- * adapter asked for the sound the payload named, with the pitch the payload
- * stated, through the member the pinned jar declares. Nothing reads the answer
- * either — a mod asked for a sound and the game decides what became of it — but
- * a stand-in returning nothing would let an adapter pass here against a version
- * whose method returns something.
- */
 public final class {{SOUND_MANAGER}} {
 
     private final List<String> played = new ArrayList<>();

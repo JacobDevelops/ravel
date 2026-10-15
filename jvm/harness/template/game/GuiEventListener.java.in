@@ -1,12 +1,5 @@
 {{package}}
 
-/**
- * What a widget is, as much of it as a screen the harness drives reaches.
- *
- * <p>The wheel is declared here rather than on the screen because the pinned
- * jars declare it here, and a stand-in that moved it would be a surface the
- * generated stubs do not have.
- */
 public interface {{GuiEventListener}} {
 
     default boolean {{GuiEventListener#mouseScrolled}}(

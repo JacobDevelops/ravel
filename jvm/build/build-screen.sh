@@ -1,21 +1,5 @@
 #!/usr/bin/env bash
-# Builds Ravel's settings screen jar from the generated sources and the generated
-# compile-time stubs.
-#
-# The jar is a build product and is never tracked. It sits beside
-# `ravel-agent.jar`, because that is where `dev.ravel.jvm.Screens` looks for it.
-#
-# The sources are generated too, and for a different reason: a screen extends the
-# game's `Screen` and overrides its methods, so every game name it uses is a
-# constant pool entry the JVM links directly. Under an obfuscated version the
-# reviewed name is not that name, so the sources are rendered from the templates
-# in `jvm/screen/template` into whatever the selected version links.
-#
-# This compiles against generated stubs rather than the client jar, so it runs
-# on a machine without the restricted fixture — the same property
-# `build-agent.sh` protects. The stubs carry the erased descriptors the pinned
-# jar declares, which is what the runtime links on; `minecraft/versions/*/
-# stubs.lock` records them and states what that pinning is and is not worth.
+# Builds the screen jar against generated compile-time stubs, without the client jar.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -34,9 +18,7 @@ for tree in "$generated" "$screens"; do
 	fi
 done
 
-# The Java release this version's game refuses anything newer than, written by
-# the generator beside the Java it generated. Read from there rather than from
-# the environment, for the reason `build-agent.sh` gives.
+# Use the generated tree's release, not a possibly different environment selection.
 release_file="$work/generated/dev/ravel/jvm/java-release.txt"
 if [ ! -f "$release_file" ]; then
 	echo "the generated Java release is missing; run:" >&2
@@ -45,23 +27,16 @@ if [ ! -f "$release_file" ]; then
 fi
 release="$(cat "$release_file")"
 
-# The jar goes with them. Every refusal below exits with no jar at this path
-# rather than with the one a previous build left, so a step that reads the path
-# reads this build's verdict rather than the last build's product.
+# A refused build must not leave a previous build's jar behind.
 rm -rf "$stubs" "$classes"
 rm -f "$jar"
 mkdir -p "$stubs" "$classes"
 
-# The stubs are generated and their shape is not ours to adjust, so a lint
-# warning in one would block a build nobody could fix. Our own sources below
-# keep `-Xlint:all -Werror`.
+# Generated stubs erase generics; keep all lints fatal for our own sources below.
 mapfile -d '' stub_sources < <(find "$generated" -name '*.java' -print0 | sort -z)
 javac --release "$release" -nowarn -d "$stubs" "${stub_sources[@]}"
 
-# The screen's two crossings are `dev.ravel.jvm.Hook`'s natives, so the generated
-# hook class is on the compile path beside the stubs. It is not packaged here
-# either: the agent jar carries it, and at runtime the screen resolves it from
-# the same system loader the agent jar is already on.
+# Hook is compiled against but shipped only in the agent jar.
 hook="$work/generated"
 if [ ! -f "$hook/dev/ravel/jvm/Hook.java" ]; then
 	echo "the generated hook class is missing; run:" >&2
@@ -74,14 +49,7 @@ javac --release "$release" -Xlint:all -Werror -cp "$stubs" -d "$stubs" \
 mapfile -d '' sources < <(find "$screens" -name '*.java' -print0 | sort -z)
 javac --release "$release" -Xlint:all -Werror -cp "$stubs" -d "$classes" "${sources[@]}"
 
-# No stub goes in. A stub class inside this jar would shadow the game's own class
-# on the loader they share, and the game would then draw against a method that
-# throws. Compiling against the stubs and shipping none of them is what keeps
-# that impossible rather than merely avoided.
-#
-# The stub tree is what says which names those are, rather than a package
-# pattern: an obfuscated version puts the game in the unnamed package, and so a
-# rule about `net/minecraft/` would pass every jar it was supposed to refuse.
+# Shipping stubs would shadow game classes, including names in the unnamed package.
 while IFS= read -r -d '' stub; do
 	class="${stub#"$generated/"}"
 	if [ -f "$classes/${class%.java}.class" ]; then
@@ -90,25 +58,7 @@ while IFS= read -r -d '' stub; do
 	fi
 done < <(find "$generated" -name '*.java' -print0 | sort -z)
 
-# Every class about to go in the jar has to be one this version generated. The
-# trees this is built from are shared by every version, so a build after a
-# version switch shipped the previous version's screens beside this one's — and
-# both compiled, because the stubs for both were there too, and both went in the
-# jar.
-#
-# Checked before the jar is written rather than after. The check used to read the
-# finished jar, so a refusal exited with the wrong version's jar sitting at the
-# path every later step reads: the refusal was loud and what it left behind was
-# indistinguishable from a build that had passed.
-#
-# The list compared against is `ScreenNames`, which the generator writes from the
-# templates it actually rendered. Comparing against the source tree instead would
-# be comparing the jar with the thing that filled it, and a stale source is
-# exactly what filled it wrongly. The compiled tree is not that: it is the set
-# the entries below are built from, class for class.
-#
-# Nested and anonymous classes are named after the source that declares them, so
-# the outer name is what is looked up.
+# ScreenNames, unlike a stale source tree, pins this version's allowed outer classes.
 mapfile -d '' compiled < <(cd "$classes" && find . -name '*.class' -print0 | sort -z)
 names="$work/generated/dev/ravel/jvm/ScreenNames.java"
 if [ ! -f "$names" ]; then

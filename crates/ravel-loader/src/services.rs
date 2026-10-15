@@ -10,9 +10,6 @@ use ravel_host_api::{
 use crate::lifecycle::LifecycleMachine;
 
 /// The order the set's services were opened in.
-///
-/// Returned rather than discarded because "in dependency order" is the property
-/// worth checking, and a caller cannot check an order it was not told.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServiceOrder {
     order: Vec<ModId>,
@@ -26,51 +23,15 @@ impl ServiceOrder {
     }
 }
 
-/// Opens every mod's declared services, providers before consumers.
+/// Opens services in lexicographically smallest provider-before-consumer order.
 ///
-/// A service is answered by exactly one mod — its name says which — so this is a
-/// dependency graph over identities and not a search. The order is the
-/// lexicographically smallest topological order of that graph, which makes it a
-/// property of the declarations alone rather than of the order the caller supplied
-/// the mods in.
-///
-/// Each mod is handed a directory over the mods **already** started, so a call
-/// cannot reach a provider that has not run. That is the ordering guarantee as a
-/// structural fact rather than a rule a mod is trusted to follow: there is no
-/// value in the directory for a mod later in the order, so no call to one can be
-/// written.
-///
-/// A mod the machine parks on this side takes no part: it answers nothing, and a
-/// consumer that requires one of its services is refused with
-/// [`ServiceRefused::NoProvider`] rather than left waiting for a mod that will
-/// never run. That is `SPEC.md` §14's side rule reaching the service graph.
-///
-/// # Optional services
-///
-/// A service a mod declared it *may use* orders exactly as a required one when
-/// something running answers it, and refuses nothing when nothing does: the set
-/// loads and the consumer's call reports [`ravel_host_api::ServiceUnavailable::Absent`].
-/// Absence is decided once, here, by the same graph that decides the order — so a
-/// consumer never sees "not installed" for a mod that is installed and merely
-/// ordered later. A parked provider is absent for the same reason it is a missing
-/// one for a required service, and a mod parked on this side is offered nothing
-/// whether its needs are optional or not.
-///
-/// # Failure closure
-///
-/// Nothing is partially wired. A refusal stops the walk, so every mod after the
-/// offender in the order is never offered its services, and the refusal names the
-/// mod that caused it. A caller that gets an error must not start the set: a
-/// consumer that could not reach what it declared has not started, and running it
-/// anyway is running a mod with half its dependencies.
+/// Only mods on the running side participate; directories contain already-started providers.
+/// Present optional services add dependency edges; absent ones do not refuse the set.
+/// A refusal stops opening services, and the caller must not start the set.
 ///
 /// # Errors
 ///
-/// Returns [`ServiceRefused::NoProvider`] when nothing in the running set answers
-/// a service a mod requires, [`ServiceRefused::Cycle`] naming every mod in a
-/// requirement cycle, [`ServiceRefused::ForeignDeclaration`] when a mod returns a
-/// declaration owned by another identity, and [`ServiceRefused::Consumer`] when a
-/// mod refused the services it was offered.
+/// Returns [`ServiceRefused`] for missing required providers, cycles, foreign declarations, or consumer refusal.
 pub fn open_services(
     machine: &LifecycleMachine,
     mods: &mut [&mut dyn HostMod],
@@ -106,14 +67,7 @@ pub fn open_services(
     Ok(ServiceOrder { order })
 }
 
-/// Collects the declaration of every mod that runs on this side.
-///
-/// A declaration names its own owner, and this is where that name is checked
-/// against the mod that returned it. Every other boundary in this design refuses
-/// at the boundary — `NotOurs`, `RequiresItself` and `Undeclared` all do — and
-/// without this one a mod handing back a declaration built for another identity
-/// would have its edges recorded against itself and surface the mismatch far
-/// later, as a provider nothing can find at call time.
+/// Collects declarations from mods on this side, rejecting foreign owners.
 ///
 /// # Errors
 ///
@@ -156,30 +110,7 @@ fn providers(declarations: &BTreeMap<ModId, ServiceDeclaration>) -> BTreeMap<Ser
         .collect()
 }
 
-/// Returns the mods in provider-before-consumer order.
-///
-/// The order itself is [`ravel_core::precedence`], which every surface that
-/// orders mods among each other shares, so a service graph and a drawing stage
-/// cannot disagree about what "after" means. What stays here is the part that is
-/// about services: turning a required service into an edge, and refusing a
-/// service nothing provides.
-///
-/// # Optional edges
-///
-/// A service a mod declared it *may use* becomes an ordinary edge when something
-/// running answers it, and no edge at all when nothing does. Presence is a fact
-/// about the resolved set rather than about iteration order, so the graph — and
-/// therefore the order — is the same however the caller supplied the mods.
-///
-/// A present optional edge is a **real** edge, including for cycle detection. The
-/// alternative was to drop optional edges to break a cycle, and it was rejected:
-/// dropping one runs the consumer before a provider that *is* installed, so its
-/// call would have to report absence for a mod the player can see in the list.
-/// "Is it installed" would then be answered by the shape of the graph rather than
-/// by the install, and there is no non-arbitrary rule for which edge to drop —
-/// the same reason [`ServiceRefused::Cycle`] names every participant instead of
-/// picking one. So an optional declaration changes exactly one thing: whether a
-/// missing provider refuses the set.
+/// Orders required and present optional service edges, rejecting missing required providers.
 fn dependency_order(
     declarations: &BTreeMap<ModId, ServiceDeclaration>,
     providers: &BTreeMap<ServiceId, ModId>,
@@ -215,10 +146,7 @@ fn dependency_order(
     })
 }
 
-/// Rearranges `mods` so the ones `order` names come first, in that order.
-///
-/// A mod with no declaration keeps its relative position after them: it takes no
-/// part in the graph, so nothing about the order is about it.
+/// Moves declared mods into `order`, leaving undeclared mods after them.
 fn arrange(mods: &mut [&mut dyn HostMod], order: &[ModId]) {
     let mut placed = 0;
     for mod_id in order {
@@ -246,10 +174,7 @@ impl ServiceDirectory for Started<'_, '_> {
                 },
             ));
         }
-        // Nothing before this mod in the order answers it. For a required service
-        // that is a set the loader should already have refused; for an optional one
-        // it is the answer — nothing running provides it, because a provider that
-        // did would have been ordered ahead of this call.
+        // Present optional providers were ordered before this consumer.
         let Some(provider) = self
             .mods
             .iter_mut()
@@ -281,10 +206,6 @@ pub enum ServiceRefused {
         service: ServiceId,
     },
     /// Two or more mods require each other's services.
-    ///
-    /// Every mod in the cycle is named, in identity order, because a cycle has no
-    /// first offender: naming one of them would be picking an arbitrary member and
-    /// telling the player to fix that one.
     Cycle {
         /// Every mod the cycle holds, in identity order.
         participants: Vec<ModId>,
@@ -344,17 +265,11 @@ impl std::error::Error for ServiceRefused {
 }
 
 impl StructuredFailure for ServiceRefused {
-    /// A missing provider and a cycle are the service graph's own forms of
-    /// `SPEC.md` §9.2's dependency-graph outcomes, so they report them: a set
-    /// whose services do not resolve fails closed the way one whose packages do
-    /// not resolve does. A consumer's own refusal is not a graph outcome — the
-    /// graph resolved and the mod declined — so it borrows no kind.
+    /// Only missing providers and cycles are dependency-graph failures.
     fn failure_kind(&self) -> Option<FailureKind> {
         match self {
             Self::NoProvider { .. } => Some(FailureKind::MissingRequiredDependency),
             Self::Cycle { .. } => Some(FailureKind::DependencyCycle),
-            // A foreign declaration is not a graph outcome either: the graph was
-            // never built, because the mod answered for somebody else.
             Self::Consumer { .. } | Self::ForeignDeclaration { .. } => None,
         }
     }

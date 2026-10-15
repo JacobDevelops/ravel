@@ -1,18 +1,7 @@
-//! Naming content, declaring it, and claiming the names during the registration
-//! window.
+//! Content declarations and registration-window claims.
 //!
-//! `SPEC.md` §14 makes an identifier immutable once the load has claimed it, and
-//! the claim happens in one window: the loader calls [`crate::Mod::register`]
-//! once, hands it a [`Registrar`], and closes the barrier afterwards. A mod that
-//! claims nothing there claims nothing ever, and a mod that holds the registrar
-//! past the call is refused with [`RegistrationRefused::Closed`] rather than
-//! quietly accepted.
-//!
-//! A mod that registers more than one thing writes a [`ContentDeclaration`]
-//! rather than a sequence of [`RegistryKey`]s. The declaration is the single
-//! place its content is named, so the tags in [`crate::tags`] and the files in
-//! [`crate::generate`] are derived from the same statement the barrier claims
-//! from, and a mod cannot register a block it forgot to generate a name for.
+//! Declare entries once in [`ContentDeclaration`], then claim them from
+//! [`crate::Mod::register`]. Claims after the barrier closes are refused.
 //!
 //! # Examples
 //!
@@ -30,19 +19,15 @@
 //!     }
 //! }
 //!
-//! // A key is built from the mod's own declared identity, so a mod cannot name
-//! // content in a namespace it does not own without saying so.
 //! let copper = RegistryKey::new(
 //!     ContentKind::Block,
 //!     ContentId::new(Example::declared_id().clone(), "copper")?,
 //! );
 //! assert_eq!(copper.to_string(), "block:example:copper");
 //!
-//! // The same name in two registries is two different claims.
 //! let item = RegistryKey::new(ContentKind::Item, copper.id().clone());
 //! assert_ne!(copper, item);
 //!
-//! // A declaration names both in one place, and names them the same way.
 //! let mut declaration = ContentDeclaration::new(Example::declared_id().clone());
 //! let declared_block = declaration
 //!     .entry(ContentKind::Block, "copper")
@@ -63,22 +48,12 @@ use crate::ModError;
 
 /// Claims every entry a declaration holds, in declaration order.
 ///
-/// This is the whole of what a mod writes in [`crate::Mod::register`] when it
-/// declared its content up front, and it is a function here rather than a method
-/// on [`ContentDeclaration`] because the conversion it performs belongs to the
-/// author-facing boundary: the declaration model knows nothing about the
-/// lifecycle, and the host contract knows nothing about declarations.
-///
-/// A conflict is fatal. Content a mod could not claim is content it cannot then
-/// use, so carrying on would leave the mod running against a registry it does
-/// not own — which is the same reason `ravel-test-mod-registries` stops at its
-/// first refusal. A mod that has an alternative does not call this: it claims
-/// key by key through [`Registrar::claim`] and decides each refusal for itself.
+/// Stops at the first refusal; use [`Registrar::claim`] directly to handle
+/// individual conflicts.
 ///
 /// # Errors
 ///
-/// Returns [`ModError::Refused`], attributed to the declaring mod and to
-/// [`LifecycleState::Constructed`], carrying the refusal's own words.
+/// Returns [`ModError::Refused`] for the owner in [`LifecycleState::Constructed`].
 ///
 /// # Examples
 ///

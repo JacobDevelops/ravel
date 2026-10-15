@@ -5,13 +5,7 @@ use ravel_core::{ContentId, ContentIdError, ModId, RelativePath};
 
 use crate::generate::{GeneratedData, GeneratedFile};
 
-/// A kind of entry the server resolves rather than the client.
-///
-/// Four kinds, because these are the four shapes a mod ships that are neither a
-/// registry entry, a tag membership, a translation, nor a client-side asset. A
-/// registry entry is claimed at the barrier and a server-resolved entry is not:
-/// what it occupies is a path in the generated pack, and the question about it
-/// is whether something already writes that path.
+/// A kind of generated entry resolved by the server.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ServerDataKind {
     /// A conversion from some items to others.
@@ -45,14 +39,6 @@ impl ServerDataKind {
     }
 
     /// Returns the pack directory this kind's entries are generated into.
-    ///
-    /// The directory and the extension below are the pack format's conventions
-    /// rather than Ravel's, and they live here for the same reason
-    /// [`crate::TagId`]'s generated path does: one place derives them, so a mod
-    /// cannot misfile its own data and a format change is one edit rather than a
-    /// search. What is deliberately not derived here is the *content* of an
-    /// entry, which a Minecraft version decides the shape of and the mod
-    /// supplies as bytes.
     #[must_use]
     pub const fn directory(self) -> &'static str {
         match self {
@@ -79,13 +65,7 @@ impl fmt::Display for ServerDataKind {
     }
 }
 
-/// One server-resolved entry a mod owns.
-///
-/// The path is the declaration's answer rather than the mod's guess, which is
-/// the whole of what this type adds over handing bytes to
-/// [`crate::ContentDeclaration::resource`]: a mod that shipped a table as
-/// supplied bytes had to know where the pack format puts it, and was wrong
-/// silently when it did not.
+/// A mod-owned server-data entry and its derived pack path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServerDataEntry {
     owner: ModId,
@@ -120,19 +100,7 @@ impl ServerDataEntry {
     }
 }
 
-/// The server-resolved data one mod owns, declared in one place.
-///
-/// A mod already declares its registry keys, its tag memberships and its
-/// translations in a [`crate::ContentDeclaration`]. A server-resolved entry is
-/// none of those — it is claimed by nobody, merged with nobody, and read by the
-/// server when a world loads — so before this type the only way to ship one was
-/// as supplied bytes at a path the mod had to spell itself. That is the escape
-/// hatch the declaration treats as a last resort, and it is what this replaces.
-///
-/// One barrier answers whether a path is already claimed: every entry, of every
-/// kind, goes through the same table, so two of a mod's own declarations that
-/// would write one file are refused when the second is made rather than when the
-/// file is written.
+/// A mod's server-data entries, refusing collisions at their derived output paths.
 ///
 /// # Examples
 ///
@@ -183,10 +151,7 @@ impl ServerDataDeclaration {
 
     /// Declares one entry of `kind`, named `name`, with `bytes` as its content.
     ///
-    /// The bytes are the mod's, unread and unrewritten. What a table means is a
-    /// Minecraft version's decision and modelling it here would put a version's
-    /// shape into a version-neutral crate; what this crate decides is where the
-    /// entry goes and whether the name is free.
+    /// Content bytes are preserved without interpreting their version-specific format.
     ///
     /// # Errors
     ///
@@ -221,10 +186,6 @@ impl ServerDataDeclaration {
 
     /// Declares one [`ServerDataKind::Crafting`] entry.
     ///
-    /// The one shorthand, because a conversion between items is the entry a mod
-    /// declares most and the kind is not worth spelling for it. Every other kind
-    /// goes through [`ServerDataDeclaration::entry`], which is the same call.
-    ///
     /// # Errors
     ///
     /// Returns what [`ServerDataDeclaration::entry`] returns.
@@ -247,14 +208,7 @@ impl ServerDataDeclaration {
         self.entries.get(path).map(|(entry, _)| entry)
     }
 
-    /// Produces the files this declaration describes.
-    ///
-    /// The result is a pure function of what was declared and not of the order it
-    /// was declared in: the entries are held in a [`BTreeMap`] keyed by their
-    /// generated path and [`GeneratedData`] orders its files by path, so the same
-    /// entries declared in two orders produce the same bytes in the same
-    /// sequence. Nothing here reads a clock, a filesystem, an environment
-    /// variable, or a hash map's iteration order.
+    /// Generates byte-preserving files in path order, independent of declaration order.
     #[must_use]
     pub fn generate(&self) -> GeneratedServerData {
         let mut data = GeneratedData::default();
@@ -268,12 +222,7 @@ impl ServerDataDeclaration {
     ///
     /// # Panics
     ///
-    /// Panics if the derived path is not a legal [`RelativePath`], which cannot
-    /// happen: a [`ModId`] and a validated [`ContentId`] hold no backslash, no
-    /// line terminator and — since the traversal rule became one rule rather
-    /// than two — no `..` segment either. Before it was shared, `../elsewhere`
-    /// was a legal content path whose derived pack path was refused here, and
-    /// this expectation was the crash that made it visible.
+    /// Panics if validated content components produce an invalid relative path.
     fn generated_path(kind: ServerDataKind, id: &ContentId) -> RelativePath {
         RelativePath::try_from(format!(
             "data/{}/{}/{}.{}",
@@ -417,10 +366,6 @@ mod tests {
         assert_eq!(generated.len(), 0);
     }
 
-    /// The path is pinned here as text a reader can check against the pack
-    /// format, rather than being read back out of the declaration that derived
-    /// it. Asking the declaration where the entry went would agree with the
-    /// declaration whatever it decided.
     #[test]
     fn every_kind_is_generated_at_the_path_this_test_spells_out() {
         let mut declared = ServerDataDeclaration::new(owner());
@@ -482,9 +427,6 @@ mod tests {
         assert!(matches!(refusal, ServerDataError::Name { .. }));
     }
 
-    /// A content path and a pack path share one traversal rule, and this is the
-    /// name that used to fall between them: legal as a content id, refused as a
-    /// pack path, so deriving it panicked inside the declaration call.
     #[test]
     fn a_name_that_would_leave_the_mods_own_directory_is_refused() {
         let mut declared = ServerDataDeclaration::new(owner());
@@ -511,8 +453,6 @@ mod tests {
         assert_eq!(once, twice);
     }
 
-    /// The bytes a mod supplied are the bytes generated, checked against a
-    /// literal rather than against the declaration that stored them.
     #[test]
     fn the_generated_file_holds_exactly_the_bytes_the_mod_supplied() {
         let mut declared = ServerDataDeclaration::new(owner());

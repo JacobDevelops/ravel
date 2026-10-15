@@ -4,16 +4,6 @@
 {{import Component}}
 {{import Font}}
 
-/**
- * The read-only text label, which takes no input and draws no border.
- *
- * <p>It centres its text, which is what the pinned version that offers an
- * alignment member does by default. The other draws at the left edge and offers
- * no alignment member at all, so a screen has no call it can make on both and
- * has to size the box to the text instead. Modelling the centring version is
- * what makes that a testable claim: a row whose box is wider than its text draws
- * its text somewhere other than the box's left edge, and {@link #textX} is where.
- */
 public final class {{StringWidget}} extends {{AbstractWidget}} {
 
     private final {{Font}} font;
@@ -31,17 +21,14 @@ public final class {{StringWidget}} extends {{AbstractWidget}} {
         this.height = height;
     }
 
-    /** The text this label draws. */
     public String text() {
         return message().text();
     }
 
-    /** Whether that text would render whole rather than clipped. */
     public boolean fits() {
         return font.{{Font#width}}(text()) <= width;
     }
 
-    /** Where the text starts, which is the box's left edge only when it is aligned there. */
     public int textX() {
         return x + Math.round(0.5F * (width - font.{{Font#width}}(text())));
     }

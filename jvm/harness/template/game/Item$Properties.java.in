@@ -2,24 +2,6 @@
 
 {{import ResourceKey}}
 
-/**
- * An item's properties, which refuse to describe an item that has no id.
- *
- * <p>Deliberately hostile: this version's constructors read the id back out, so
- * a properties object that never had one fails before the item exists. An
- * adapter that forgot to stamp one would pass a stand-in that let it.
- *
- * <p>The applied values are kept so the harness can read back what the adapter
- * did rather than only that it did something. A stand-in that accepted every
- * setter and remembered none would pass an adapter that applied a mod's
- * description to the wrong property.
- *
- * <p>What was applied leads with that key rather than only requiring one, for
- * the reason the block's properties do: the key is the whole of what the adapter
- * had to build here, and a stand-in that only checked it was not null passed an
- * adapter that stamped the block root, or a neighbouring item's name, on every
- * item it registered.
- */
 public final class {{Item$Properties}} {
 
     private {{ResourceKey}} id;
@@ -44,7 +26,6 @@ public final class {{Item$Properties}} {
         return this;
     }
 
-    /** What was applied, as the harness reads it back. */
     public String applied() {
         if (id == null) {
             throw new IllegalStateException("Item id not set");

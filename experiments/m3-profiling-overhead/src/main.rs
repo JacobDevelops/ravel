@@ -1,18 +1,4 @@
-//! Measures what opt-in profiling costs when it is off, and records the
-//! normal-mode budget that number is held to.
-//!
-//! `ROADMAP.md`'s M3-W6 row asks for collectors, per-mod attribution whose
-//! accuracy is explicit, unsupported metrics that are named rather than absent,
-//! and a normal-mode budget that passes. The first three live in
-//! `ravel-observability` and are read out of it here rather than restated, so
-//! the record cannot describe a collector the code does not have. The fourth is
-//! what this run measures.
-//!
-//! The budget is a decision rather than a derivation. Every limit in
-//! `evidence/m2/loader-overhead.json` is its own measurement doubled; this one
-//! is a fraction of a tick chosen in advance, because "profiling costs nothing
-//! when it is off" is a promise to a player about their frame rate and not a
-//! statement about how fast the code happens to be today.
+//! Measures disabled-profiling overhead against a predetermined normal-mode budget.
 
 #![forbid(unsafe_code)]
 
@@ -34,10 +20,7 @@ const RESULT: &str = "evidence/m3/profiling-overhead.json";
 /// The hardware profile every Ravel Linux measurement is compared on.
 const HARDWARE_PROFILE: &str = "tests/performance/hardware/linux-reference.toml";
 
-/// What a tick may lose to profiling being present but off, in nanoseconds.
-///
-/// One per cent of a tick. At 20 TPS a tick is 50 ms, so the limit is 500 µs of
-/// added time per tick summed across every crossing that happens in it.
+/// One percent of a 20 TPS tick, in nanoseconds, fixed before measurement.
 const NORMAL_MODE_BUDGET_NS: f64 = 500_000.0;
 
 /// The metric the budget bounds.
@@ -61,8 +44,7 @@ fn main() -> ExitCode {
 
 fn run() -> Result<String, String> {
     let root = repository_root()?;
-    // A later run must be able to write its own record rather than overwrite
-    // the one the budget is read from.
+    // Allow later runs to preserve the budget baseline.
     let result = output_path()?;
     let started_at = harness::utc_timestamp().map_err(|error| error.to_string())?;
     let revision = harness::revision().map_err(|error| error.to_string())?;

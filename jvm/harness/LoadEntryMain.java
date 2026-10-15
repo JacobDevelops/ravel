@@ -1,9 +1,4 @@
-// Forces one class to load, so the transformer is shown it, and says so.
-//
-// A class the transformer refuses to rewrite is recorded rather than passed
-// over, and the shutdown report is the only place that record is read. Reaching
-// it needs the class loaded and nothing else, so this driver loads it by name
-// and does nothing with it.
+// Loads a target so the transformer's shutdown report can record a refusal.
 public final class LoadEntryMain {
 
     private LoadEntryMain() {

@@ -3,7 +3,6 @@
 {{import IDENTIFIER}}
 {{import Item$Properties}}
 
-/** One item, named by what it was registered under. */
 public class {{Item}} {
 
     private final String applied;
@@ -13,7 +12,6 @@ public class {{Item}} {
         this.applied = properties.applied();
     }
 
-    /** What this item was registered under, which is where its name comes from. */
     public void named({{IDENTIFIER}} identifier) {
         this.identifier = identifier;
     }
@@ -22,7 +20,6 @@ public class {{Item}} {
         return identifier;
     }
 
-    /** How this item behaves, as the properties it was built from describe it. */
     public String applied() {
         return applied;
     }

@@ -2,10 +2,6 @@
 
 {{import DefaultedRegistry}}
 
-/**
- * The built-in registries, with the internal name, member and descriptor the
- * pinned inventory carries for the seam that closes them.
- */
 public final class {{BuiltInRegistries}} {
     public static final {{DefaultedRegistry}} {{BuiltInRegistries#BLOCK}} =
             new {{DefaultedRegistry}}("block");
@@ -15,7 +11,6 @@ public final class {{BuiltInRegistries}} {
     private {{BuiltInRegistries}}() {
     }
 
-    /** The last point new content can be added, which is why the prologue is here. */
     public static void {{registry.built-in-freeze#freeze}}() {
         {{BuiltInRegistries#BLOCK}}.close();
         {{BuiltInRegistries#ITEM}}.close();

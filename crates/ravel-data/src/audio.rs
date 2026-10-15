@@ -3,14 +3,7 @@ use std::fmt;
 
 use ravel_core::{ContentId, ContentIdError, ModId, Side};
 
-/// One sound a mod owns, and the bytes it is.
-///
-/// The bytes are the mod's and this crate does not read them: what a sound file
-/// holds is a format's decision, and the gap this closes is not the bytes. A mod
-/// could already carry bytes into its pack through
-/// [`crate::ContentDeclaration::resource`]. What it could not do is relate them
-/// to the thing that plays them, so nothing connected a supplied file to a call
-/// and nothing refused a call made where there is no sound hardware.
+/// A mod-owned sound entry.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AudioEntry {
     owner: ModId,
@@ -31,11 +24,7 @@ impl AudioEntry {
     }
 }
 
-/// Something that plays an entry.
-///
-/// An event names the entry rather than a path, which is the point: a caller
-/// that had to know where the bytes went could be wrong about it, and a caller
-/// that names an entry is either right or refused when the event is declared.
+/// An event referencing a declared sound entry.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AudioEvent {
     owner: ModId,
@@ -56,20 +45,9 @@ impl AudioEvent {
     }
 }
 
-/// What one mod would play, and what plays it.
+/// A mod's sound entries and events, with client-only playback requests.
 ///
-/// The entry and the event are one declaration so the bytes and what reaches for
-/// them cannot drift apart: an event for an entry that does not exist is refused
-/// when it is declared rather than found when nothing is heard.
-///
-/// **Nothing carries a sound anywhere yet.** [`AudioDeclaration::play`] answers
-/// what would be played and on which side, exactly as [`crate::ContentDeclaration`]
-/// answers what would be written; no host in this workspace reaches audio
-/// hardware, and `crates/ravel-sdk/src/audio.rs` says so to the author. What is
-/// shipped is the entry kind, the event, and the side rule — the last of which
-/// is the half that has no other home, because a play call that quietly does
-/// nothing on a server is a mod that works in single player and is silent for
-/// everybody else.
+/// Playback returns data only; no host currently sends it to audio hardware.
 ///
 /// # Examples
 ///
@@ -115,10 +93,6 @@ impl AudioDeclaration {
 
     /// Declares an entry named `name` whose content is `bytes`.
     ///
-    /// A server may declare an entry. Owning a sound is not playing one, and a
-    /// dedicated server that could not own its mod's sounds would be a mod that
-    /// has to be two mods.
-    ///
     /// # Errors
     ///
     /// Returns [`AudioError::Name`] when `name` is not a legal content path, and
@@ -152,10 +126,7 @@ impl AudioDeclaration {
     ///
     /// # Errors
     ///
-    /// Returns [`AudioError::UnknownEntry`] when this mod declared no such
-    /// entry. That is the refusal the whole declaration exists for: an event
-    /// with nothing to play is refused where it is written, rather than being a
-    /// silence somebody has to notice.
+    /// Returns [`AudioError::UnknownEntry`] when this mod declared no such entry.
     pub fn event(&mut self, name: &str) -> Result<AudioEvent, AudioError> {
         if !self.entries.contains_key(name) {
             return Err(AudioError::UnknownEntry {
@@ -179,11 +150,7 @@ impl AudioDeclaration {
     ///
     /// # Errors
     ///
-    /// Returns [`AudioError::UnknownEvent`] when no event plays that entry, and
-    /// [`AudioError::WrongSide`] on any server side. A server has nothing to
-    /// play with, and refusing is what a mod can act on: skipping would leave
-    /// the same call succeeding in single player, where a client happens to be
-    /// in the process, and doing nothing everywhere else.
+    /// Returns an unknown-event error or [`AudioError::WrongSide`] on server sides.
     pub fn play(&self, name: &str, side: Side) -> Result<PlayRequest, AudioError> {
         let event = self
             .events
@@ -205,12 +172,7 @@ impl AudioDeclaration {
     }
 }
 
-/// What playing an entry would be.
-///
-/// A value rather than an effect: the action crosses to the game as data a Java
-/// adapter performs. A host takes this from the mod and
-/// queues it outward, so the play happens after the call that asked for it and
-/// this type is what a test can compare in between.
+/// A playback request value for a host to dispatch.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlayRequest {
     owner: ModId,
@@ -412,9 +374,6 @@ mod tests {
         }
     }
 
-    /// The refusal is a refusal rather than a quiet nothing, which is the whole
-    /// of the side rule: a call that returned success and did nothing would pass
-    /// every test written against its return value.
     #[test]
     fn playing_on_the_client_is_what_the_server_was_refused() {
         let request = declared()

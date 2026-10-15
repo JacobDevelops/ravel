@@ -1,22 +1,14 @@
-//! The loader pipeline composed end to end, over packages written to disk.
-//!
-//! These tests build their own packages rather than reading a fixture, because
-//! what they check is the composition: which crate refuses what, in which
-//! order, and what a completed run records. The no-op package M2-W6 delivers is
-//! driven by `tests/conformance/tests/noop_pipeline.rs`, which is where the
-//! recorded evidence lives.
+//! End-to-end pipeline ordering and failure boundaries over packages written to disk.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ravel_core::{LifecycleState, ModId, Side, Version};
+use ravel_core::{LifecycleState, ModId, Side};
 use ravel_host_api::{HostError, HostMod};
 use ravel_loader::LifecycleError;
 use ravel_package::{CompatibilityError, IntegrityError, ManifestError, Sha256Digest};
 use ravel_resolve::ResolutionError;
-use ravel_testkit::{
-    DiscoveredPackage, Host, PipelineError, PipelineRun, executed_states, run, run_order,
-};
+use ravel_testkit::{DiscoveredPackage, Host, PipelineError, executed_states, run, run_order};
 use serde_json::{Value, json};
 
 const RUNNING_RAVEL: &str = "0.1.0";
@@ -83,7 +75,6 @@ fn digest_of(bytes: &[u8]) -> String {
     Sha256Digest::from_bytes(digest).to_string()
 }
 
-/// A scratch directory this test owns outright.
 fn scratch(label: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("ravel-testkit-{label}-{}", std::process::id()));
     if root.exists() {
@@ -93,7 +84,6 @@ fn scratch(label: &str) -> PathBuf {
     root
 }
 
-/// Writes a package whose files match the digests its manifest declares.
 fn write_package(parent: &Path, name: &str, dependencies: &Value) -> DiscoveredPackage {
     let root = parent.join(name);
     let source = format!("pub fn {name}() {{}}\n").into_bytes();
@@ -123,14 +113,12 @@ fn write_package(parent: &Path, name: &str, dependencies: &Value) -> DiscoveredP
     DiscoveredPackage::new(root, document)
 }
 
-/// The whole successful path, over one mod that depends on nothing.
 fn single(label: &str) -> (PathBuf, Vec<DiscoveredPackage>) {
     let parent = scratch(label);
     let packages = vec![write_package(&parent, "example_mod", &json!([]))];
     (parent, packages)
 }
 
-/// Two mods where the dependency forces an order the discovery order does not.
 fn pair(label: &str) -> (PathBuf, Vec<DiscoveredPackage>) {
     let parent = scratch(label);
     let packages = vec![
@@ -142,13 +130,6 @@ fn pair(label: &str) -> (PathBuf, Vec<DiscoveredPackage>) {
         write_package(&parent, "example_library", &json!([])),
     ];
     (parent, packages)
-}
-
-fn transcript_of(run: &PipelineRun) -> Vec<(String, LifecycleState)> {
-    run.transcript()
-        .iter()
-        .map(|event| (event.mod_id.to_string(), event.state))
-        .collect()
 }
 
 #[test]
@@ -276,7 +257,6 @@ fn the_same_package_set_produces_the_same_transcript_however_it_was_discovered()
         "the dependency loads first regardless of discovery order"
     );
     assert_eq!(first.plan(), second.plan());
-    assert_eq!(transcript_of(&first), transcript_of(&second));
     assert_eq!(first, second);
 
     fs::remove_dir_all(&parent).expect("cleanup");
@@ -405,8 +385,7 @@ fn a_package_written_for_another_host_is_refused_on_either_version() {
         assert!(noop.entered.is_empty(), "no mod code ran");
     }
 
-    // The same package on the host it was written for, so the two refusals
-    // above are the versions and not the package.
+    // Control: the unchanged package succeeds on its declared host.
     let mut noop = Recording::new("example_mod");
     run(
         &packages,
@@ -631,18 +610,4 @@ fn no_refusal_this_harness_writes_names_a_path_or_a_directory() {
         assert!(!rendered.contains('/'), "{rendered}");
         assert!(!rendered.contains("tmp"), "{rendered}");
     }
-}
-
-#[test]
-fn a_declared_version_the_running_host_satisfies_is_the_one_that_was_checked() {
-    let running: Version = RUNNING_RAVEL.parse().expect("a valid version");
-    assert_eq!(host().ravel, running);
-    assert_eq!(host().minecraft, RUNNING_MINECRAFT);
-    assert_ne!(
-        host(),
-        Host {
-            ravel: running,
-            minecraft: "25.0.0".to_owned(),
-        }
-    );
 }

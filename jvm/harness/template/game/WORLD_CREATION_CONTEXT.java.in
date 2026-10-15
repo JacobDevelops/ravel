@@ -2,7 +2,6 @@
 
 {{import WORLD_DATA_CONFIGURATION}}
 
-/** The settings a create-world screen holds. */
 public final class {{WORLD_CREATION_CONTEXT}} {
 
     private final {{WORLD_DATA_CONFIGURATION}} dataConfiguration;

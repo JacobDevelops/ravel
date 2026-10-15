@@ -1,16 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Configuration schemas, validation, and layered override contracts.
-//!
-//! Configuration is declared in data and drawn in Java, so this
-//! crate owns the values and holds no widget and no Minecraft version detail. A
-//! setting resolves through three layers — the author's `default`, then the
-//! pack's override document, then the player's value — and the author's
-//! `packOverride` decides which of the last two has the final word.
-//!
-//! The three documents are [`ConfigurationDeclaration`], which is what a mod
-//! author writes, and two [`ValueDocument`]s, which are what a pack and a player
-//! state. [`LayeredConfiguration`] is where they meet.
+//! Configuration declarations, value schemas, and default/pack/player layering.
 
 mod declaration;
 mod document;
@@ -36,13 +26,7 @@ pub use schema::{ValueError, ValueKind, ValueSchema};
 /// The only `schemaVersion` the configuration documents accept.
 const SUPPORTED_SCHEMA_VERSION: u64 = 1;
 
-/// The configuration contract a document was written against.
-///
-/// `configuration.schema.json` and `configuration-override.schema.json` both pin
-/// `schemaVersion` to the constant 1, and it is a version negotiation point
-/// rather than decoration: a document declaring anything else was written
-/// against rules this crate does not implement, and reading it anyway would
-/// apply this version's rules to a document that never agreed to them.
+/// The supported version of a configuration or override document.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(into = "u64", try_from = "u64")]
 pub struct SchemaVersion(u64);

@@ -1,17 +1,4 @@
-//! Measures what Ravel's loader costs, and turns the measurement into the
-//! numeric budget M3 regresses against.
-//!
-//! `ROADMAP.md`'s M2-W8 row asks for a Linux no-op loader benchmark whose
-//! measured cost establishes the regression budget used from M3 onward. Two
-//! things are measured here: the pre-world pipeline itself, against the tracked
-//! no-op package, and the build-side numbers ADG-2 deferred to M2 — link time,
-//! binary growth, and compile time for a pack-sized set.
-//!
-//! Measuring is all this does. ADG-2 is deferred to M3 and
-//! `docs/architecture/dependency-rules.md` forbids selecting a mod execution
-//! model before then, so nothing here loads a dynamic library, starts a guest
-//! runtime, spawns a mod process, or exports a foreign symbol, and nothing it
-//! writes prefers one candidate over another.
+//! Measures loader and linked-pack build costs and records their regression budget.
 
 #![forbid(unsafe_code)]
 
@@ -32,11 +19,7 @@ use pack::BuildCost;
 const RESULT: &str = "evidence/m2/loader-overhead.json";
 /// The hardware profile every Ravel Linux measurement is compared on.
 const HARDWARE_PROFILE: &str = "tests/performance/hardware/linux-reference.toml";
-/// Headroom between a measured value and the budget set from it.
-///
-/// Two, because a budget with no headroom fails on scheduler noise and a budget
-/// with a lot of it stops catching anything. A regression that doubles the
-/// loader's cost is worth stopping a milestone for.
+/// Double measured costs to tolerate scheduler noise while catching regressions.
 const HEADROOM: f64 = 2.0;
 
 fn main() -> ExitCode {
@@ -54,8 +37,7 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let root = repository_root()?;
-    // A later milestone compares against this record, so it must be able to
-    // write its own rather than overwrite the baseline.
+    // Allow regression runs to preserve the baseline.
     let result = output_path()?;
     let work = loader::work_directory(&root);
     let started_at = harness::utc_timestamp().map_err(|error| error.to_string())?;

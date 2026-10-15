@@ -8,26 +8,13 @@ use ravel_core::RelativePath;
 use crate::validate::ValidatedPack;
 
 impl ValidatedPack {
-    /// Writes every file the pack holds under `directory`.
+    /// Writes all pack files under `directory`, creating parents without removing existing files.
     ///
-    /// The directory is the caller's: this creates the intermediate directories a
-    /// path needs and writes each file, and it removes nothing. A pack written into
-    /// a directory that already holds a different pack is two packs mixed together,
-    /// which is a mistake a caller makes and not one this could detect — so the
-    /// callers that care hand it an empty directory.
-    ///
-    /// Writing is where the determinism claim becomes checkable rather than argued.
-    /// [`ValidatedPack::files`] is already ordered and deduplicated in memory, and a
-    /// same-process comparison of two of those values cannot see a difference that
-    /// depends on the process — a hash seed, an environment variable, a locale, a
-    /// path baked into a byte. Two directories written by two processes can.
+    /// Use an empty directory to avoid retaining files from another pack.
     ///
     /// # Errors
     ///
-    /// Returns [`WriteError`] naming the path that could not be created or written.
-    /// Nothing is rolled back: a refusal partway leaves the files written so far,
-    /// because a half-written directory a caller was told about is safer than one it
-    /// was not, and a pack is written into a directory the caller can discard.
+    /// Returns the failing path and I/O error; previously written files remain.
     pub fn write(&self, directory: &Path) -> Result<(), WriteError> {
         for file in self.files() {
             let target = directory.join(file.path().as_str());

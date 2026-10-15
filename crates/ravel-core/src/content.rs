@@ -5,22 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::identity::ModId;
 
-/// The character that separates a [`ContentId`]'s namespace from its path.
 const NAMESPACE_SEPARATOR: char = ':';
 
-/// A kind of registered content.
-///
-/// `SPEC.md` §14 makes registry identifiers immutable after one registration
-/// barrier. `ROADMAP.md`'s M3-W1 row names the three world-content kinds and
-/// M3-W2 adds commands. The kind is part of the identity rather than a property
-/// of it,
-/// because the game keeps one registry per kind: a block and an item may share
-/// the name `example_mod:copper` without either claim conflicting with the
-/// other, and a barrier keyed on the path alone would refuse the second.
-///
-/// This list grows with the capabilities that land. It is deliberately not an
-/// open string: an unknown kind names a registry no adapter can commit to, and
-/// failing to parse it is how that is caught before a mod claims anything.
+/// A registry kind; the same content name may occur in different registries.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ContentKind {
@@ -30,18 +17,7 @@ pub enum ContentKind {
     Item,
     /// A recipe that converts items.
     Recipe,
-    /// A command a player types, named by its root literal.
-    ///
-    /// A command is here rather than in a surface of its own because the
-    /// property that matters is the one every other kind has: exactly one mod
-    /// owns the name, and the second claim on it is a conflict. Two mods cannot
-    /// both own `/home` any more than they can both own `example_mod:copper`,
-    /// so the registration barrier M3-W1 built is already the right answer and
-    /// a parallel one would be a second table that can disagree with it.
-    ///
-    /// The path is the root literal alone. Arguments and subcommands are the
-    /// owning mod's to parse, and nothing about them is claimed: `/home set`
-    /// and `/home list` belong to whoever owns `home`.
+    /// A command's root literal; arguments and subcommands belong to its owner.
     Command,
 }
 
@@ -49,10 +25,7 @@ impl ContentKind {
     /// Every kind, in the order this enum declares them.
     pub const ALL: [Self; 4] = [Self::Block, Self::Item, Self::Recipe, Self::Command];
 
-    /// Returns the kind's canonical lowercase name.
-    ///
-    /// This is the same spelling the serde representation uses, so a kind reads
-    /// the same in a [`RegistryKey`], in a report, and in a manifest.
+    /// Returns the kind's canonical serialized name.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -86,7 +59,7 @@ impl FromStr for ContentKind {
 /// A candidate string that names no [`ContentKind`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContentKindError {
-    /// The rejected spelling, kept so a report can quote what was asked for.
+    /// The rejected spelling.
     pub candidate: String,
 }
 
@@ -104,27 +77,10 @@ impl fmt::Display for ContentKindError {
 
 impl std::error::Error for ContentKindError {}
 
-/// A canonical identifier for one piece of registered content.
+/// A `namespace:path` identifier whose namespace is a [`ModId`].
 ///
-/// The shape is `namespace:path`, where the namespace is a [`ModId`] and the
-/// path names the content inside it. Reusing [`ModId`] for the namespace is not
-/// a convenience: `SPEC.md` §14 requires persistent data to be owned by a
-/// stable canonical mod id, and content identifiers end up in saved worlds, so
-/// the half of the identifier that says who owns it is exactly the type that is
-/// already stable for the life of a mod.
-///
-/// The namespace is *not* required to be the mod that registers the content.
-/// A pack legitimately replaces a recipe it did not declare, and refusing that
-/// here would decide a pack-authoring question this milestone has no evidence
-/// for. What stops two mods owning the same content is the registration
-/// barrier's conflict check, which reports both claimants, rather than a rule
-/// in this type.
-///
-/// The path grammar is Minecraft's resource-location path charset, narrowed to
-/// what a class file will accept: ASCII lowercase letters, ASCII digits, and
-/// the separators `_`, `.`, `-`, and `/`. A path is never empty and never
-/// starts or ends with `/`, because a trailing slash names a directory rather
-/// than an entry.
+/// Paths use ASCII lowercase letters, digits, `_`, `.`, `-`, and `/`, without
+/// leading or trailing `/` or `..` segments. Registrants may use another mod's namespace.
 ///
 /// # Examples
 ///
@@ -136,7 +92,6 @@ impl std::error::Error for ContentKindError {}
 /// assert_eq!(id.path(), "copper_ingot");
 /// assert_eq!(id.to_string(), "example_mod:copper_ingot");
 ///
-/// // A recipe path may be nested.
 /// let nested: ContentId = "example_mod:smelting/copper".parse()?;
 /// assert_eq!(nested.path(), "smelting/copper");
 ///
@@ -157,8 +112,7 @@ impl ContentId {
     ///
     /// # Errors
     ///
-    /// Returns [`ContentIdError`] when the path is empty, holds a character
-    /// outside the documented charset, or starts or ends with `/`.
+    /// Returns [`ContentIdError`] for an empty, malformed, or traversing path.
     pub fn new(namespace: ModId, path: impl Into<String>) -> Result<Self, ContentIdError> {
         let path = path.into();
         Self::validate_path(&path)?;
@@ -257,13 +211,7 @@ pub enum ContentIdError {
     EmptyPath,
     /// The path starts or ends with `/`, so it names a directory.
     PathBoundary,
-    /// The path holds a `..` segment, so it names something outside itself.
-    ///
-    /// A content path is turned into a pack path wherever content is generated
-    /// — a tag file, a server-resolved entry — and a [`crate::RelativePath`]
-    /// refuses a `..` segment. Refusing it here as well is what keeps the two
-    /// rules one rule: without it a name is a legal content id whose derived
-    /// path cannot exist, and the derivation has nowhere to put the failure.
+    /// The path holds a `..` segment.
     PathTraversal,
     /// A path character is outside the documented charset.
     PathCharacter {
@@ -308,14 +256,7 @@ impl std::error::Error for ContentIdError {
     }
 }
 
-/// One entry in one of the game's registries.
-///
-/// A [`ContentId`] says what the content is called and a [`ContentKind`] says
-/// which registry it belongs to. Only the pair is unique, so the pair is what
-/// the registration barrier keys on and what a conflict report names.
-///
-/// The canonical string form is `kind:namespace:path`. It is unambiguous
-/// because no kind holds a `:`, so the first separator always ends the kind.
+/// A unique registry entry, written as `kind:namespace:path`.
 ///
 /// # Examples
 ///
@@ -325,7 +266,6 @@ impl std::error::Error for ContentIdError {
 /// let block: RegistryKey = "block:example_mod:copper".parse()?;
 /// let item: RegistryKey = "item:example_mod:copper".parse()?;
 ///
-/// // The same name in two registries is two different claims.
 /// assert_ne!(block, item);
 /// assert_eq!(block.kind(), ContentKind::Block);
 /// assert_eq!(block.id().path(), "copper");
@@ -439,17 +379,7 @@ impl std::error::Error for RegistryKeyError {
     }
 }
 
-/// How one registered block behaves once it exists.
-///
-/// The values a mod can describe today, and no more. Every field here is a
-/// primitive the pinned version’s block properties take directly, which
-/// is the whole selection rule: a property whose setter needs a game object
-/// would mean this type naming one, and `docs/architecture/dependency-rules.md`
-/// keeps every game name out of `ravel-core`. Adding a field means finding the
-/// primitive setter first.
-///
-/// The defaults are the game's own for a plain stone-like block, so a mod that
-/// describes nothing gets what it got before this type existed.
+/// Primitive block properties, defaulting to a stone-like block.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct BlockBehaviour {
@@ -474,9 +404,7 @@ impl Default for BlockBehaviour {
     }
 }
 
-/// How one registered item behaves once it exists.
-///
-/// The same selection rule as [`BlockBehaviour`], and the same reason.
+/// Primitive item properties.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct ItemBehaviour {
@@ -495,15 +423,7 @@ impl Default for ItemBehaviour {
     }
 }
 
-/// How one claimed identifier behaves.
-///
-/// Carried beside the claim rather than inside [`RegistryKey`], because the key
-/// is an identity and `SPEC.md` §14 makes it immutable across a barrier while
-/// behaviour is a description of the value the identity names.
-///
-/// The kind is present in both this and the key it accompanies, and the two must
-/// agree: an item described as a block is a mod asking for a value no registry
-/// takes. [`Self::describes`] is what asks.
+/// A block or item description, separate from its immutable registry identity.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ContentBehaviour {
     /// A block's behaviour.
@@ -531,11 +451,7 @@ impl ContentBehaviour {
         )
     }
 
-    /// The default behaviour for `kind`, or nothing for a kind that has none.
-    ///
-    /// A recipe and a command are registry claims with no value to describe, so
-    /// there is deliberately no behaviour to default to rather than an empty one
-    /// that reads as "described and unremarkable".
+    /// Returns default block or item behaviour, or `None` for recipes and commands.
     #[must_use]
     pub fn default_for(kind: ContentKind) -> Option<Self> {
         match kind {
@@ -549,7 +465,8 @@ impl ContentBehaviour {
 #[cfg(test)]
 mod tests {
     use super::{ContentId, ContentIdError, ContentKind, RegistryKey, RegistryKeyError};
-    use crate::{ModId, RelativePath, RelativePathError};
+    use crate::identity::ModId;
+    use crate::paths::{RelativePath, RelativePathError};
 
     fn id(text: &str) -> ContentId {
         text.parse().expect("a legal content id")
@@ -608,9 +525,6 @@ mod tests {
         );
     }
 
-    /// The rule a content path and a pack path share, checked from the content
-    /// side. A `..` segment used to be legal here and refused there, so a name
-    /// that declared successfully could not have its file written.
     #[test]
     fn a_path_that_would_leave_its_own_namespace_is_refused_by_both_path_types() {
         let namespace: ModId = "example_mod".parse().expect("a legal mod id");
@@ -622,15 +536,11 @@ mod tests {
             );
         }
 
-        // The pack path the first of those would be derived into, refused from
-        // the other side, which is the disagreement the shared rule closed.
         assert_eq!(
             RelativePath::try_from("data/example_mod/../elsewhere.json".to_owned()),
             Err(RelativePathError::Traversal)
         );
 
-        // A dot that is not a whole segment is an ordinary character in both, so
-        // the shared rule refuses traversal rather than dots.
         let dotted = ContentId::new(namespace, "a..b").expect("`a..b` is not a traversal");
         assert_eq!(dotted.path(), "a..b");
         assert!(RelativePath::try_from("data/example_mod/a..b.json".to_owned()).is_ok());

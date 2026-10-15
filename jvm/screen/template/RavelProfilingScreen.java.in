@@ -5,113 +5,35 @@ import java.util.ArrayList;
 import java.util.List;
 {{import Minecraft}}
 {{import Button}}
-// The binary name is the type's name here, for the reason RavelSettingsScreen
-// records: the pinned version reaches every interactive widget through a nested
-// type and the stubs carry the binary name the JVM links on.
 {{import Button$OnPress}}
 {{import EditBox}}
 {{import Screen}}
 {{import Component}}
 
-/**
- * Ravel's opt-in profiling report.
- *
- * <p>{@code ROADMAP.md}'s M3-W6 row asks for collectors and a profiling UI or
- * report, and for two things about it to be explicit: how accurate the per-mod
- * attribution is, and which metrics are unsupported. This screen is where a
- * player reads all three, and it is ADG-6's mechanism a third time — one batched
- * read on the same length-prefixed framing, the same widget vocabulary, and no
- * drawing outside this class.
- *
- * <p><b>Off is a first-class answer.</b> Profiling is off unless a launch set
- * {@code -Dravel.profiling=true}, and a screen opened on a normal launch says so
- * and names the switch. It does not draw a table of zeroes: a mod that was never
- * measured and a mod that cost nothing are different facts, and a column of
- * zeroes states the second when only the first is true.
- *
- * <p><b>An unsupported metric is drawn, not omitted.</b> The payload carries
- * every metric with a word for how well it can be measured — {@code exact},
- * {@code approximate}, {@code unsupported} — and the sentence behind that word.
- * Leaving the unsupported ones out would make them indistinguishable from
- * metrics that measured zero, which is the silence the row exists to end.
- *
- * <p><b>A figure this build cannot produce is named, not drawn.</b> Nothing on
- * the game's tick path marks a tick boundary at M3, so the collectors' tick
- * counter cannot leave zero, and the summary used to draw that zero beside
- * per-mod times that are real — which states a measurement of zero where the
- * truth is that there was no measurement. The count is on the same list as
- * every other metric this build cannot measure, and this screen asks the
- * payload's metric table for it rather than deciding here, so a tick boundary
- * wired later puts the clause back with nothing on this screen to change.
- *
- * <p><b>The accuracy statement is part of the report.</b> A per-mod nanosecond
- * total charges a mod for host work it called into and for time the scheduler
- * gave to something else. That is not a footnote to the number, it is what the
- * number means, so it is drawn under the same heading rather than left to
- * documentation a player will not read.
- *
- * <p><b>Every line is split to the width it is drawn at.</b> A row wider than
- * the widget carrying it renders only its tail: {@link EditBox#setValue} parks
- * the cursor at the end of the value and the box scrolls its display window to
- * the cursor, so the beginning of a long line is scrolled out of sight. The
- * accuracy statement below is the longest line here and it is the one that must
- * be read, which makes splitting a correctness fix rather than a cosmetic one.
- * The game's own splitter does the splitting — it measures glyphs and breaks on
- * words — because a screen that counted characters instead would be right only
- * for scripts whose glyphs happen to be one width.
- *
- * <p><b>Known limit: no scrolling.</b> This screen still divides a measured
- * window rather than scrolling one, which is what {@link RavelModsScreen} stopped
- * doing; seeding the scroll it now uses is the remedy here too. Mods arrive
- * costliest first, so a set larger than {@link #MAX_ROWS}
- * loses the rows a player was least likely to be looking for. Splitting spends
- * rows and a player's GUI scale decides how many the window has, so that trade
- * is now made against a measured budget rather than a fixed count: {@link #rows}
- * measures the window, {@link #init} gives it out in a stated order, and a row
- * drawn past the bottom is exactly as unreadable as one drawn off the side. On
- * the smallest windows the game produces that leaves the summary and the
- * accuracy statement alone. Seeding a scroll widget is what stops the trade
- * having to be made at all.
- *
- * <p>Every widget here is one the game builds without this class drawing
- * anything, for the reason {@link RavelSettingsScreen} records at length.
- */
 public final class RavelProfilingScreen extends {{Screen}} {
 
-    /** The most mod rows this screen draws, before the window's height cuts it further. */
     private static final int MAX_ROWS = 8;
 
-    /** What the accuracy statement is drawn under. */
     private static final String HEADING = "What these numbers cannot tell apart:";
 
-    /** The metric the summary's tick clause is drawn from, when it is drawn. */
     private static final String TICK_COUNT = "tick-count";
 
-    /** The mods that were entered, costliest first. */
     private final List<Entry> entries = new ArrayList<>();
 
-    /** What a number here can and cannot tell apart. */
     private List<String> accuracy = List.of();
 
-    /** Every metric and what can be said about it. */
     private final List<Metric> metrics = new ArrayList<>();
 
-    /** Whether the collectors were running. */
     private boolean on;
 
-    /** The switch that turns them on, as the loader spells it. */
     private String profilingSwitch = "";
 
-    /** Ticks the collectors saw, which is drawn only when they can see any. */
     private int ticks;
 
-    /** The threshold above which a callback was counted as slow. */
     private int slowMicros;
 
-    /** Whether the payload read at all. */
     private boolean read;
 
-    /** The screen to return to on close, or {@code null} to leave that to the game. */
     private final {{Screen}} parent;
 
     private RavelProfilingScreen({{Screen}} parent) {
@@ -119,63 +41,26 @@ public final class RavelProfilingScreen extends {{Screen}} {
         this.parent = parent;
     }
 
-    /**
-     * Builds the screen.
-     *
-     * <p>Called reflectively by {@code dev.ravel.jvm.Screens}, which cannot name
-     * this type: {@code Screens} lives in the agent jar and ADG-1 forbids that
-     * jar naming a game type, which this class's supertype is.
-     *
-     * @return a screen the caller hands to the game
-     */
     public static {{Screen}} open() {
         return new RavelProfilingScreen(null);
     }
 
-    /**
-     * Builds the screen, closing back to the screen it was opened from.
-     *
-     * @param parent the screen to return to, as the {@code Object} the agent jar
-     *     can pass
-     * @return a screen the caller hands to the game
-     */
     public static {{Screen}} open(Object parent) {
         return new RavelProfilingScreen(({{Screen}}) parent);
     }
 
-    /** The mods this report covers, costliest first. */
     public List<Entry> entries() {
         return List.copyOf(entries);
     }
 
-    /** Every metric the report describes. */
     public List<Metric> metrics() {
         return List.copyOf(metrics);
     }
 
-    /** Whether the collectors were running when this report was taken. */
     public boolean isOn() {
         return on;
     }
 
-    /**
-     * Reads the report once and builds the rows.
-     *
-     * <p>A payload that does not read leaves everything empty and says so rather
-     * than drawing part of one. Half a profile is worse than none: it looks like
-     * a mod cost less than it did.
-     *
-     * <p>Splitting spends rows and the window has a fixed number of them, so the
-     * order things are taken out in is a decision rather than an accident. The
-     * summary and the accuracy statement are claimed first and are never cut:
-     * one says what is being looked at and the other says what it means, and a
-     * number drawn without them is the misreading this screen exists to stop.
-     * What is left over goes, in order, to the heading over that statement, to
-     * the metrics no collector can measure, and to the mod table. The last two
-     * are shortened rather than dropped, because a metric silently left out
-     * reads as one that measured zero and a mod silently left out reads as one
-     * that cost nothing, which is the same silence in both cases.
-     */
     @Override
     protected void {{Screen#init}}() {
         super.{{Screen#init}}();
@@ -187,8 +72,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         List<String> caveat = accuracy.isEmpty() ? List.of() : wrap(List.of(accuracy.get(0)));
         int budget = rows() - above.size() - caveat.size();
 
-        // The heading names the statement under it and the statement says the
-        // thing. A window with room for one of the two keeps the statement.
         List<String> heading = caveat.isEmpty() || budget < 1 ? List.of() : List.of(HEADING);
         budget -= heading.size();
 
@@ -228,12 +111,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
                         .{{Button$Builder#build}}());
     }
 
-    /**
-     * Returns to the screen this one was opened from, when it was given one.
-     *
-     * <p>The game's own close has no parent and puts a player back at the title,
-     * two screens away from the one they were reading.
-     */
     @Override
     public void {{Screen#onClose}}() {
         if (parent == null) {
@@ -243,13 +120,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         }
     }
 
-    /**
-     * The mod rows that fit in what the rest of the report left, costliest first.
-     *
-     * @param budget how many rows are free between the summary and the statement
-     *     below it
-     * @return the rows to draw, ending in a line naming what was left out
-     */
     private List<String> table(int budget) {
         if (budget < 1) {
             return List.of();
@@ -261,9 +131,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
                 break;
             }
             List<String> row = wrap(List.of(entry.line()));
-            // The last entry needs no line saying what was left out. Every other
-            // one might, so the row that line would take is held back until it
-            // turns out not to be needed.
             int held = shown + 1 < entries.size() ? 1 : 0;
             if (drawn.size() + row.size() + held > budget) {
                 break;
@@ -277,24 +144,10 @@ public final class RavelProfilingScreen extends {{Screen}} {
         return drawn;
     }
 
-    /**
-     * How many rows this window has between the title and the done button.
-     *
-     * <p>One row is reserved below the list, which is the gap the done button
-     * sits after. {@link Layout#rows} measures the rest.
-     *
-     * @return at least one row, however small the window claims to be
-     */
     private int rows() {
         return Layout.rows({{Screen#height}}, 1);
     }
 
-    /**
-     * Every line the given strings draw, each split to the width it is drawn at.
-     *
-     * @param texts the strings to draw, one or more rows each
-     * @return the rows, in order
-     */
     private List<String> wrap(List<String> texts) {
         List<String> lines = new ArrayList<>();
         for (String text : texts) {
@@ -303,13 +156,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         return lines;
     }
 
-    /**
-     * The lines above the table, saying what the player is looking at.
-     *
-     * <p>An off report says so and names the switch. That is the whole report on
-     * a normal launch, and it is the honest one: nothing was collected, so there
-     * is no number to show and no number that would be a zero.
-     */
     private List<String> summary() {
         if (!read) {
             return List.of("The profiling report could not be read.");
@@ -327,17 +173,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
                 "Slow above " + slowMicros + " us. Times are wall-clock, not CPU time.");
     }
 
-    /**
-     * What the mod count is stated over, when the payload measures anything to
-     * state it over.
-     *
-     * <p>Empty at M3: the payload reports {@code tick-count} as unmeasurable, so
-     * the only number here would be a zero standing where a measurement is
-     * expected. The clause is decided from the payload rather than deleted so
-     * that a build whose collectors do see a tick draws it again.
-     *
-     * @return the clause to append to the mod count, which may be empty
-     */
     private String over() {
         if (!measurable(TICK_COUNT)) {
             return "";
@@ -345,15 +180,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         return " over " + ticks + (ticks == 1 ? " tick" : " ticks");
     }
 
-    /**
-     * Whether the payload says a collector measures the named metric.
-     *
-     * <p>A metric the payload does not describe is not measurable here: this
-     * screen states only what the report it read claims.
-     *
-     * @param name the metric as {@code ravel-observability} names it
-     * @return whether a number for it can be drawn
-     */
     private boolean measurable(String name) {
         for (Metric metric : metrics) {
             if (metric.name.equals(name)) {
@@ -363,13 +189,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         return false;
     }
 
-    /**
-     * One line naming every metric no collector here can measure.
-     *
-     * <p>Named rather than left out, and named even when profiling is off,
-     * because what Ravel cannot measure is true of the build rather than of the
-     * run.
-     */
     private List<String> notMeasured() {
         List<String> names = unmeasured();
         if (names.isEmpty()) {
@@ -378,7 +197,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         return List.of("Not measurable in this build: " + String.join(", ", names));
     }
 
-    /** Every metric no collector here can measure, by name. */
     private List<String> unmeasured() {
         List<String> names = new ArrayList<>();
         for (Metric metric : metrics) {
@@ -389,18 +207,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         return names;
     }
 
-    /**
-     * What this window has room to say about the metrics it cannot measure.
-     *
-     * <p>Naming them is the point: a metric left out entirely reads as one that
-     * measured zero, which is the silence {@link #notMeasured} exists to end. A
-     * window with no room for the names still has room to say the names are
-     * there, and that keeps the two apart. Only a window with no room at all
-     * says nothing.
-     *
-     * @param budget how many rows are free below the summary
-     * @return the rows to draw, which may be none
-     */
     private List<String> unmeasurable(int budget) {
         List<String> named = wrap(notMeasured());
         if (named.size() <= budget) {
@@ -415,7 +221,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         return shortened.size() <= budget ? shortened : List.of();
     }
 
-    /** One uneditable text field, which is how this screen shows a line. */
     private {{EditBox}} label(String text, int y) {
         {{EditBox}} box =
                 new {{EditBox}}({{Screen#font}}, centre(), y, Layout.WIDGET_WIDTH, Layout.WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text));
@@ -429,11 +234,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         return ({{Screen#width}} - Layout.WIDGET_WIDTH) / 2;
     }
 
-    /**
-     * Reads the payload into the report.
-     *
-     * @return whether the whole payload read
-     */
     private boolean parse(String payload) {
         if (payload == null) {
             return false;
@@ -504,7 +304,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         return true;
     }
 
-    /** One mod, as the collectors measured it. */
     public static final class Entry {
 
         String modId = "";
@@ -515,7 +314,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         String slowCallbacks = "";
         String registryClaims = "";
 
-        /** Reads one entry, or {@code null} if the payload runs out. */
         static Entry read(Wire wire) {
             Entry entry = new Entry();
             entry.modId = wire.field();
@@ -537,18 +335,10 @@ public final class RavelProfilingScreen extends {{Screen}} {
             return entry;
         }
 
-        /** The mod this entry describes. */
         public String modId() {
             return modId;
         }
 
-        /**
-         * The row this entry draws.
-         *
-         * <p>The counts stay text all the way from the loader. They are counters
-         * over a session rather than quantities to compute with, and parsing them
-         * here would only create a way to fail at it.
-         */
         public String line() {
             StringBuilder row = new StringBuilder();
             row.append(modId)
@@ -571,7 +361,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         }
     }
 
-    /** One metric, and how well this build can measure it. */
     public static final class Metric {
 
         String name = "";
@@ -579,7 +368,6 @@ public final class RavelProfilingScreen extends {{Screen}} {
         String support = "";
         String detail = "";
 
-        /** Reads one metric, or {@code null} if the payload runs out. */
         static Metric read(Wire wire) {
             Metric metric = new Metric();
             metric.name = wire.field();
@@ -595,17 +383,14 @@ public final class RavelProfilingScreen extends {{Screen}} {
             return metric;
         }
 
-        /** The metric's name. */
         public String name() {
             return name;
         }
 
-        /** One of {@code exact}, {@code approximate}, or {@code unsupported}. */
         public String support() {
             return support;
         }
 
-        /** Why it is approximate or unsupported, empty when it is exact. */
         public String detail() {
             return detail;
         }

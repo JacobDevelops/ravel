@@ -2,7 +2,6 @@
 
 {{import STORAGE}}
 
-/** The level a running server hangs its saved-data storage off. */
 public final class {{SERVER_LEVEL}} {
 
     private final {{STORAGE}} storage = new {{STORAGE}}();

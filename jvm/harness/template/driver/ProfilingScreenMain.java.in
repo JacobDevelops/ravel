@@ -12,84 +12,30 @@ import java.util.regex.Pattern;
 {{import Minecraft}}
 {{import Screen}}
 
-/**
- * Builds the profiling screen at the window sizes a player's GUI scale produces
- * and checks that every line it draws can be read.
- *
- * <p>The defect this stands against was not a crash: the screen collected a real
- * report and drew it, and the two longest lines rendered only their tails,
- * because a value wider than its box scrolls to the cursor the box parks at its
- * end. So the check is not that the screen built — it always did — but that
- * every value fits the width it is drawn at, that nothing is drawn past the
- * bottom, and that the accuracy statement reads back whole from the rows it was
- * split across.
- *
- * <p>The second defect it stands against was a number: the summary drew a tick
- * count next to per-mod figures that were real, and nothing in this build marks
- * a tick, so that count was always zero. {@code ticks} is that defect — no row
- * may state a count of ticks — and {@code named} is the other half of it, that
- * the figure is on the report's unmeasurable list rather than gone.
- *
- * <p>Run with {@code driven}, the harness turns the collectors on and calls the
- * rewritten targets first, so the report carries mods that were really entered.
- * That is what says the fix removed an unproducible number and left the
- * measured ones alone: a screen checked only against an off report would pass
- * with the whole summary deleted.
- */
 public final class ProfilingScreenMain {
 
-    /**
-     * The statement the report exists to make, as `ravel-observability` writes
-     * it. Written out here rather than read from the payload: a check that
-     * compared the screen against the same string the screen read would pass on
-     * a screen that drew nothing at all.
-     */
+    // Keep the expected statement independent of the payload the screen reads.
     private static final String CAVEAT =
             "A mod is charged for host work it calls back into. The window is entry to return, so "
                     + "a mod that asks Ravel to resolve a registry key is charged for the lookup as "
                     + "well as for its own code.";
 
-    /** The heading the statement is drawn under. */
     private static final String HEADING = "What these numbers cannot tell apart:";
 
-    /**
-     * Window sizes in the units the screen places widgets in, which is what a
-     * GUI scale divides the monitor down to. 320x240 is the smallest the game
-     * guarantees, and 480x270 is what auto scale gives a 1080p monitor.
-     */
     private static final int[][] SIZES = { {320, 240}, {480, 270}, {640, 360}, {960, 540} };
 
-    /**
-     * The sizes the driven run reports, which is {@link #SIZES} without 640x360.
-     *
-     * <p>A mod row carries a wall-clock nanosecond total, so its width is
-     * different on every run and how many rows it wraps to is not a fact about
-     * the layout. At 640x360 the table's budget is exactly one row, so that width
-     * decides whether the costliest mod is drawn or replaced by the line saying it
-     * was left out — the run states {@code entered=4} on an idle machine and
-     * {@code entered=none} on a busy one. The two smaller windows spend every row
-     * before the table and the largest draws the whole set, so both are decided by
-     * the budget rather than by a timing; only this one sits on the boundary.
-     */
+    // Exclude 640x360: timing-dependent row widths straddle its one-row table budget.
     private static final int[][] DRIVEN_SIZES = { {320, 240}, {480, 270}, {960, 540} };
 
-    /** How many ticks the driven run shows the mod set. */
     private static final int TICKS = 4;
 
-    /** A row stating a count of ticks, which no build here can produce. */
     private static final Pattern TICK_CLAIM = Pattern.compile("\\d+ ticks?\\b");
 
-    /** The call count a mod row states, which the driven run knows the value of. */
     private static final Pattern CALLS = Pattern.compile(" in (\\d+) calls");
 
     public static void main(String[] args) throws ReflectiveOperationException {
         boolean driven = args.length > 0 && args[0].equals("driven");
         if (driven) {
-            // Four client ticks against the stand-in game, which is the pinned
-            // hook the loader turns into an event a client-side mod is shown.
-            // The count below is read back off the rows, so it is what says the
-            // report is of this run rather than an empty one that happens to
-            // draw.
             for (int tick = 0; tick < TICKS; tick++) {
                 {{Minecraft}}.{{Minecraft#getInstance}}().{{client.tick#tick}}();
             }
@@ -98,9 +44,6 @@ public final class ProfilingScreenMain {
         Method init = {{ravel RavelProfilingScreen}}.class.getDeclaredMethod("{{Screen#init}}");
         init.setAccessible(true);
 
-        // One screen per size. The stand-in screen keeps every widget it is ever
-        // given, so a second `init` on the same one would be read as a longer
-        // report rather than as a second layout of the same one.
         for (int[] size : driven ? DRIVEN_SIZES : SIZES) {
             {{Screen}} screen = {{ravel RavelProfilingScreen}}.open();
             screen.{{Screen#width}} = size[0];
@@ -120,9 +63,6 @@ public final class ProfilingScreenMain {
                 }
             }
 
-            // The driven run states no row count: a mod row carries a
-            // nanosecond total whose width is different on every run, so how
-            // many rows it wraps to is not a fact about the layout.
             if (driven) {
                 System.out.println("driven=" + size[0] + "x" + size[1]
                         + " fits=" + fits
@@ -141,7 +81,6 @@ public final class ProfilingScreenMain {
         }
     }
 
-    /** Whether any row states a count of ticks. */
     private static boolean claimsTicks(List<String> lines) {
         for (String line : lines) {
             if (TICK_CLAIM.matcher(line).find()) {
@@ -151,7 +90,6 @@ public final class ProfilingScreenMain {
         return false;
     }
 
-    /** Whether a row names the tick count among what this build cannot measure. */
     private static boolean named(List<String> lines) {
         for (String line : lines) {
             if (line.contains("tick-count")) {
@@ -161,12 +99,6 @@ public final class ProfilingScreenMain {
         return false;
     }
 
-    /**
-     * The call count of every mod row drawn, smallest first.
-     *
-     * <p>Sorted because the report orders mods costliest first and which of two
-     * mods that were shown the same calls is costlier is a timing.
-     */
     private static String calls(List<String> lines) {
         List<Integer> counts = new ArrayList<>();
         for (String line : lines) {
@@ -183,7 +115,6 @@ public final class ProfilingScreenMain {
         return joined.length() == 0 ? "none" : joined.toString();
     }
 
-    /** The statement read back out of the rows it was split across. */
     private static String caveat(List<String> lines) {
         int heading = lines.indexOf(HEADING);
         if (heading < 0) {

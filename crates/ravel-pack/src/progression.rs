@@ -3,17 +3,7 @@ use std::fmt;
 
 use ravel_core::{ContentId, RegistryKey};
 
-/// One step a pack's progression declares.
-///
-/// A progression is what a modpack is for: the same mods in a different order of
-/// unlocking are a different pack. `SPEC.md` §3.6 puts it in the declarative
-/// layer, so a state is data — a name, the states that must come before it, and
-/// optionally the registry entry that gates it.
-///
-/// The name is a [`ContentId`] rather than a new grammar. A progression state is
-/// named in somebody's namespace exactly as a registry entry is, and inventing a
-/// second identifier shape here would be a second charset, a second refusal, and a
-/// second thing to keep agreeing with the schema.
+/// A named progression step, its prerequisites, and an optional registry gate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProgressionState {
     id: ContentId,
@@ -40,12 +30,7 @@ impl ProgressionState {
     }
 }
 
-/// Every step a pack declares, and what has to come before each one.
-///
-/// The type owns the graph and nothing else. Whether a gate names an entry the
-/// pack provides is a question about the pack's members, so it belongs to
-/// [`crate::validate`] beside the other three closure checks; what belongs here is
-/// reachability, which is a property of the states alone.
+/// The progression graph; [`crate::validate`] checks gates against pack members.
 ///
 /// # Examples
 ///
@@ -62,11 +47,8 @@ impl ProgressionState {
 /// progression.declare(state("start"), [], None)?;
 /// progression.declare(state("smelting"), [state("start")], None)?;
 ///
-/// // Both steps are reachable: one is a root and the other stands on it.
 /// assert!(progression.unreachable().is_empty());
 ///
-/// // A step whose prerequisite is itself unreachable is unreachable too, and a
-/// // cycle has no root to stand on at all.
 /// let mut stuck = Progression::default();
 /// stuck.declare(state("left"), [state("right")], None)?;
 /// stuck.declare(state("right"), [state("left")], None)?;
@@ -83,12 +65,7 @@ impl Progression {
     ///
     /// # Errors
     ///
-    /// Returns [`ProgressionError::DuplicateState`] for a step already declared and
-    /// [`ProgressionError::RequiresItself`] for one that names itself as its own
-    /// prerequisite. A step whose prerequisite is another step that does not exist
-    /// is *not* refused here: a pack builds its progression in some order, so the
-    /// prerequisite may simply not have been declared yet, and deciding it is
-    /// [`crate::validate`]'s once the whole set is in.
+    /// Returns an error for duplicate steps or self-prerequisites; missing prerequisites are checked later.
     pub fn declare(
         &mut self,
         id: ContentId,
@@ -130,12 +107,7 @@ impl Progression {
         self.states.is_empty()
     }
 
-    /// Returns every prerequisite no declared step answers, in name order.
-    ///
-    /// Separate from [`Progression::unreachable`] because the two are different
-    /// mistakes with different repairs: a missing prerequisite is a name that
-    /// should exist and does not, and an unreachable state is a set of names that
-    /// all exist and stand on each other.
+    /// Returns undeclared prerequisites in name order.
     #[must_use]
     pub fn dangling(&self) -> Vec<(ContentId, ContentId)> {
         let mut dangling = Vec::new();
@@ -149,16 +121,7 @@ impl Progression {
         dangling
     }
 
-    /// Returns every step a player could never reach, in name order.
-    ///
-    /// A step is reachable when every prerequisite it names is declared and
-    /// reachable, so the roots are the steps with no prerequisites and the rest are
-    /// grown from them. That makes this one walk answer both shapes of the defect:
-    /// a cycle is a set of steps that never becomes ready, and a step standing on a
-    /// prerequisite that does not exist never becomes ready either.
-    ///
-    /// It is deliberately not "unreachable means in a cycle". A progression whose
-    /// only root was deleted is not a cycle and is just as unfinishable.
+    /// Returns steps unreachable from roots, including cycles and missing prerequisites, in name order.
     #[must_use]
     pub fn unreachable(&self) -> Vec<ContentId> {
         let mut reached: BTreeSet<&ContentId> = BTreeSet::new();
@@ -303,8 +266,6 @@ mod tests {
             .expect("a legal step");
 
         assert_eq!(progression.dangling(), [(state("locked"), state("absent"))]);
-        // And the step standing on it is unreachable too, not only the one that
-        // names the missing prerequisite.
         assert_eq!(progression.unreachable(), [state("after"), state("locked")]);
     }
 

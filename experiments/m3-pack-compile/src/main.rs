@@ -1,21 +1,4 @@
-//! Measures what compiling a pack-sized set of realistic mods costs.
-//!
-//! ADG-2 decided that a mod is independently shipped and interchangeable and
-//! left the mechanism open: a per-platform binary, or source that a bundled
-//! toolchain compiles on the player's machine. Its own record names the
-//! deciding measurement — "compile time for a realistic pack-sized mod set,
-//! cold and cached" — and says M2-W8's 880 ms is a floor from generated
-//! one-struct crates rather than a prediction.
-//!
-//! This replaces that floor. It generates mod crates with bodies, at a baseline
-//! and four pack sizes, and records cold compile time, warm rebuild time after
-//! one mod changes, peak resident memory during the build, and what the
-//! toolchain and the build cache cost on disk.
-//!
-//! It measures and selects nothing. Every crate it generates is ordinary safe
-//! Rust behind the same `HostMod` contract the tracked test mods use, and
-//! nothing here loads a library, starts a guest runtime, spawns a mod process,
-//! or exports a foreign symbol.
+//! Measures synthetic-pack cold and warm compilation, peak memory, and disk usage.
 
 #![forbid(unsafe_code)]
 
@@ -39,20 +22,10 @@ const RESULT: &str = "evidence/m3/pack-compile.json";
 /// The hardware profile every Ravel Linux measurement is compared on.
 const HARDWARE_PROFILE: &str = "tests/performance/hardware/linux-reference.toml";
 
-/// Pack sizes the curve is taken at.
-///
-/// Zero is the baseline: a host that links no mod, which is the shared cost of
-/// the loader and its dependencies and is subtracted to attribute the rest to
-/// the mods. The other four are the sizes M2-W8's loader scaling curve used, so
-/// the two records line up point for point, and 256 is inside the scale of
-/// ATM11 0.2.1, the pinned M0 modpack fixture.
+/// Pack sizes; zero measures shared host costs without mods.
 const PACK_SIZES: [usize; 5] = [0, 1, 16, 64, 256];
 
-/// Builds timed per pack size, cold and warm alike.
-///
-/// Three, because M2-W8's build figures were single unrepeated samples and its
-/// own record said so. Every sample is written to the record beside its median,
-/// so the spread is readable rather than summarized away.
+/// Cold and warm builds per pack size; every sample is recorded alongside its median.
 const REPEATS: usize = 3;
 
 fn main() -> ExitCode {

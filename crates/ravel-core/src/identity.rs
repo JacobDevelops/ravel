@@ -5,25 +5,7 @@ use serde::{Deserialize, Serialize};
 
 const SEPARATORS: [char; 3] = ['-', '_', '.'];
 
-/// A canonical Ravel mod identity.
-///
-/// A mod id is stable for the life of a mod. It names the mod in package
-/// metadata, in dependency declarations, in failure attribution, and in the
-/// saved data the mod owns, so `SPEC.md` §3.4, §7.3, and §14 all depend on it
-/// never changing and never colliding.
-///
-/// The grammar is `schemas/package.schema.json`'s `modId` pattern,
-/// `^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$`, implemented here rather than matched
-/// so the crate needs no regex engine. `tests/conformance` drives the pattern
-/// read out of the schema file through a real engine and asserts this validator
-/// reaches the same verdict, so the two cannot drift apart unnoticed. The rules
-/// are:
-///
-/// - the first character is an ASCII lowercase letter;
-/// - every later character is an ASCII lowercase letter, an ASCII digit, or one
-///   of the separators `-`, `_`, and `.`;
-/// - a separator is always followed by a letter or a digit, so an id neither
-///   ends in a separator nor holds two in a row.
+/// A stable mod identity matching `^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$`.
 ///
 /// # Examples
 ///

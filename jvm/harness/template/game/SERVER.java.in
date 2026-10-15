@@ -4,16 +4,12 @@ import java.nio.file.Path;
 {{import LEVEL_RESOURCE}}
 {{import SERVER_LEVEL}}
 
-/**
- * The saving server, which reports whether its own body still ran.
- */
 public final class {{SERVER}} {
 
     private static int saves;
 
     private final {{SERVER_LEVEL}} overworld = new {{SERVER_LEVEL}}();
 
-    /** How many times the vanilla save body ran, which a Ravel failure must never reduce. */
     public static int saves() {
         return saves;
     }

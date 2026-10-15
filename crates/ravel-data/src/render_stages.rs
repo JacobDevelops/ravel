@@ -3,21 +3,7 @@ use std::fmt;
 
 use ravel_core::{ModId, Side, precedence};
 
-/// A named place in the frame that Ravel publishes for mods to contribute to.
-///
-/// The set is closed, for the same reason [`crate::ServerDataKind`] is not open
-/// and [`ravel_core::ContentKind`] is not: a stage nothing publishes is a name
-/// no drawing ever reaches, and accepting it would turn a mod author's typo into
-/// a contribution that silently never happens.
-///
-/// **Nothing draws at any of these yet, and this module ships no way to draw.**
-/// The screens Ravel owns are declared in data and drawn in Java; see
-/// `docs/architecture/overview.md#mechanisms`. Nothing here extends that to a
-/// mod's own drawing: what is shipped is the stage name, the order
-/// among contributors, and the two refusals, all of which are decidable without
-/// a frame. A mod that declares a contribution today is declaring where its
-/// drawing would go, and `crates/ravel-sdk/src/render_stages.rs` says so to the
-/// author in the same words.
+/// A published frame stage; declarations currently provide ordering, not drawing.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum RenderStage {
     /// After the world's solid geometry is drawn.
@@ -54,8 +40,7 @@ impl RenderStage {
 
     /// Returns whether `side` reaches this stage.
     ///
-    /// Drawing is the client's alone. A server has no frame, so a stage is not
-    /// something a server skips — it is something a server never arrives at.
+    /// Only the client reaches frame stages.
     #[must_use]
     pub const fn happens_on(self, side: Side) -> bool {
         let _ = self;
@@ -69,14 +54,7 @@ impl fmt::Display for RenderStage {
     }
 }
 
-/// Which mods contribute to which stages, and in what order among each other.
-///
-/// Ordering between mods is what [`crate::ContentDeclaration`]'s siblings
-/// already solve for named calls between mods; drawing had none of it, so two
-/// mods adding to one stage were entered in whatever order they happened to
-/// load. This is the same answer for the same question: a mod says which stages
-/// it contributes to and which mods it wants to follow, and Ravel decides the
-/// order once for the set.
+/// Per-stage contributors and explicit ordering constraints between mods.
 ///
 /// # Examples
 ///
@@ -107,12 +85,7 @@ pub struct StageDeclaration {
 impl StageDeclaration {
     /// Declares that `owner` contributes to the stage named `stage`.
     ///
-    /// A name nothing publishes is kept rather than dropped, and refused by
-    /// [`StageDeclaration::resolve`] naming both the name and the mod that wrote
-    /// it. A mod that wants the answer at the moment it declares — because it
-    /// built the name rather than writing it — calls
-    /// [`StageDeclaration::contribute_checked`] instead. Neither route lets an
-    /// unpublished name through; they differ only in when they say so.
+    /// Unknown names are retained and refused by [`Self::resolve`].
     pub fn contribute(&mut self, owner: &ModId, stage: &str) {
         let contributors = match RenderStage::published(stage) {
             Some(published) => self.contributions.entry(published).or_default(),
@@ -127,9 +100,7 @@ impl StageDeclaration {
     ///
     /// # Errors
     ///
-    /// Returns [`StageRefused::UnknownStage`] when no stage publishes `stage`.
-    /// Nothing is recorded when it does, so a refused contribution leaves the
-    /// declaration exactly as it was.
+    /// Returns [`StageRefused::UnknownStage`] without recording an unpublished stage.
     pub fn contribute_checked(
         &mut self,
         owner: &ModId,
@@ -163,12 +134,7 @@ impl StageDeclaration {
     ///
     /// # Errors
     ///
-    /// Returns [`StageRefused::UnknownStage`] for a contribution to a stage
-    /// nothing publishes, [`StageRefused::UnknownContributors`] for an ordering
-    /// against a mod that contributes to no stage, and
-    /// [`StageRefused::Circular`] for contributors at one stage that each want
-    /// to follow the other. All three are refusals about the set, which is why
-    /// they are decided here and not when a frame is drawn.
+    /// Returns unknown-stage, unknown-contributor, or circular-ordering errors.
     pub fn resolve(&self) -> Result<StageOrder, StageRefused> {
         if let Some((name, claimants)) = self.unpublished.first_key_value() {
             return Err(StageRefused::UnknownStage {
@@ -198,9 +164,7 @@ impl StageDeclaration {
             let order = precedence(contributors.iter().cloned(), &self.after).map_err(|cycle| {
                 StageRefused::Circular {
                     stage: *stage,
-                    // In the order the mods contributed, because a mod author
-                    // reading the refusal is looking for the edge they wrote and
-                    // wrote it in this sequence.
+                    // Report participants in contribution order.
                     participants: contributors
                         .iter()
                         .filter(|id| cycle.participants().contains(id))
@@ -223,9 +187,7 @@ pub struct StageOrder {
 impl StageOrder {
     /// Returns the mods entered at the stage named `stage`, in order.
     ///
-    /// A name nothing publishes, and a published stage nothing contributes to,
-    /// both hold nobody. Neither can reach here as a mistake: an unpublished
-    /// name is refused before an order exists.
+    /// Unknown or unused stages return an empty slice.
     #[must_use]
     pub fn at(&self, stage: &str) -> &[ModId] {
         RenderStage::published(stage)
@@ -337,8 +299,6 @@ mod tests {
         name.parse().expect("a well formed owner id")
     }
 
-    /// Reads an order back positionally rather than trusting the sequence that
-    /// produced it.
     fn entered_before(order: &StageOrder, stage: &str, earlier: &ModId, later: &ModId) -> bool {
         let at = order.at(stage);
         match (
@@ -440,7 +400,6 @@ mod tests {
             .expect_err("a stage nothing publishes cannot be contributed to");
 
         assert_eq!(refusal.unknown_stage(), "a_stage_nobody_publishes");
-        // Nothing was recorded, so the declaration still resolves.
         assert_eq!(
             stages
                 .resolve()

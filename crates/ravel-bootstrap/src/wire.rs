@@ -1,39 +1,13 @@
-//! The length-prefixed framing both screen crossings are written against.
+//! UTF-16 length-prefixed fields shared by the Java crossings.
 //!
-//! Every field is `<length>:<that many UTF-16 code units>`, and a payload is a
-//! sequence of fields in a fixed order. Counts are fields that read back as
-//! numbers.
-//!
-//! This is length-prefixed rather than delimited or JSON, and the reason is the
-//! reader on the other side. A setting's title, a mod's failure detail and a
-//! player's typed value are all free-form text somebody else wrote, so any
-//! delimiter can appear inside one and a delimited format would need escaping.
-//! JSON would too, and the screen cannot borrow the game's parser for it: the
-//! screen compiles against stubs generated from the pinned client jar, that jar
-//! carries the game's own classes rather than the libraries they compile
-//! against, and it has no `com.google.gson` entry — so JSON would mean shipping
-//! a hand-written parser inside the screen jar and being right about escapes and
-//! surrogate pairs forever. A length says where a field ends, so nothing inside
-//! it can be misread and there is nothing to escape at all.
-//!
-//! UTF-16 is the unit because that is what a Java `String` counts in and what
-//! crosses the JNI boundary.
+//! Each field is `<length>:<UTF-16 units>`; counts and flags are ordinary fields.
 
 use std::fmt::Write as _;
 
-/// The wire contract the screen is written against.
-///
-/// A screen built against another one is reading fields under rules this side
-/// never agreed to, so a payload that does not open with this is refused whole.
+/// Shared payload version; readers refuse mismatched versions.
 pub(crate) const VERSION: &str = "1";
 
-/// The mod-list payload's own contract, moved when the payload gained a field.
-///
-/// Separate from [`VERSION`] because the screen jar and this library are copied
-/// into an instance one at a time and `jvm/README.md` records that nothing checks
-/// they travelled together. An older screen reading a longer row takes the new
-/// flag for the failure count that follows it, so the mod list carries a version
-/// only it moves and the settings and profiling payloads keep theirs.
+/// Independent mod-list version, bumped when its row shape changes.
 pub(crate) const MODS_VERSION: &str = "3";
 
 /// Writes one field, prefixed by the length the other side reads it with.
@@ -51,9 +25,32 @@ pub(crate) fn flag(out: &mut String, value: bool) {
     field(out, if value { "true" } else { "false" });
 }
 
+/// Decodes fields for crossing tests using Java's UTF-16 indexing.
+#[cfg(test)]
+pub(crate) fn fields(payload: &str) -> Vec<String> {
+    let units: Vec<u16> = payload.encode_utf16().collect();
+    let mut read = Vec::new();
+    let mut at = 0;
+    while at < units.len() {
+        let separator = at
+            + units[at..]
+                .iter()
+                .position(|unit| *unit == u16::from(b':'))
+                .expect("every field states a length");
+        let length: usize = String::from_utf16(&units[at..separator])
+            .expect("a length is text")
+            .parse()
+            .expect("a length is a number");
+        let start = separator + 1;
+        read.push(String::from_utf16(&units[start..start + length]).expect("a field is text"));
+        at = start + length;
+    }
+    read
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{count, field, flag};
+    use super::{count, field, fields, flag};
 
     #[test]
     fn a_field_states_the_length_the_other_side_reads() {
@@ -66,11 +63,11 @@ mod tests {
     #[test]
     fn a_length_counts_the_units_java_counts_rather_than_bytes() {
         let mut out = String::new();
-        // Outside the basic plane, so one character is two UTF-16 units and
-        // four UTF-8 bytes. Java would read three.
+        // A supplementary character occupies two UTF-16 units.
         field(&mut out, "a🎈");
 
         assert_eq!(out, "3:a🎈");
+        assert_eq!(fields(&out), ["a🎈"]);
     }
 
     #[test]
@@ -79,6 +76,7 @@ mod tests {
         field(&mut out, "a:b\n\"c\\");
 
         assert_eq!(out, "7:a:b\n\"c\\");
+        assert_eq!(fields(&out), ["a:b\n\"c\\"]);
     }
 
     #[test]
@@ -89,5 +87,6 @@ mod tests {
         flag(&mut out, false);
 
         assert_eq!(out, "2:124:true5:false");
+        assert_eq!(fields(&out), ["12", "true", "false"]);
     }
 }

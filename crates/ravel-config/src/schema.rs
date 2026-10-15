@@ -3,18 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// What a legal value for one setting looks like.
-///
-/// `configuration.schema.json` types `valueSchema` as an open JSON Schema
-/// fragment, and no JSON Schema engine is in this workspace's dependency graph:
-/// documents are validated in the gate by `check-jsonschema`, a process a
-/// running game does not get to spawn. This is the subset Ravel enforces itself,
-/// and `deny_unknown_fields` is what keeps it honest — a keyword this crate
-/// cannot enforce is refused when the declaration loads rather than ignored, so
-/// nobody writes a `pattern` and believes it is being checked. Widening the
-/// subset later starts accepting declarations that were refused and breaks
-/// nothing already written; ignoring an unknown keyword now could not be
-/// withdrawn.
+/// Supported JSON Schema keywords for a setting; unknown keywords are refused.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ValueSchema {
@@ -41,16 +30,11 @@ pub struct ValueSchema {
 impl ValueSchema {
     /// Checks one value against every keyword this fragment declares.
     ///
-    /// A keyword that does not apply to the value's type constrains nothing,
-    /// which is what JSON Schema means by an inapplicable keyword: a `minimum`
-    /// standing next to a string says nothing about that string. The `kind`
-    /// check is what refuses the string in the first place when the author
-    /// wanted a number.
+    /// Keywords that do not apply to the value's type impose no constraint.
     ///
     /// # Errors
     ///
-    /// Returns the first keyword the value breaks, which is the one a screen
-    /// shows next to the field the player just edited.
+    /// Returns the first violated keyword.
     pub fn check(&self, value: &Value) -> Result<(), ValueError> {
         if let Some(kind) = self.kind
             && !kind.matches(value)
@@ -100,11 +84,7 @@ impl ValueSchema {
     }
 }
 
-/// The JSON types a setting value may declare.
-///
-/// Scalars only. What an array or object setting looks like on a screen is a
-/// widget question left to the screen, and refusing one now can be
-/// widened later; admitting one before anything draws it could not be withdrawn.
+/// The scalar JSON types a setting may declare.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ValueKind {
@@ -135,10 +115,7 @@ impl ValueKind {
 
     /// Returns whether `value` has this type.
     ///
-    /// `integer` means a JSON integer literal, which is narrower than JSON
-    /// Schema's rule that also admits `2.0`. Every document Ravel writes spells
-    /// an integer as one, and the narrow reading is the one that can be widened
-    /// later without invalidating anything already accepted.
+    /// Integers must be integer literals, not floating-point literals such as `2.0`.
     fn matches(self, value: &Value) -> bool {
         match self {
             Self::Boolean => value.is_boolean(),
@@ -326,7 +303,6 @@ mod tests {
             bounded.check(&json!(11)),
             Err(ValueError::Above { maximum: 10.0 })
         );
-        // A numeric bound standing next to a string constrains nothing.
         assert_eq!(bounded.check(&json!("text")), Ok(()));
 
         let sized = schema(r#"{"minLength":2,"maxLength":4}"#);
@@ -357,8 +333,6 @@ mod tests {
 
     #[test]
     fn a_keyword_this_crate_cannot_enforce_is_refused_rather_than_ignored() {
-        // Accepting `pattern` and never applying it would tell an author their
-        // value is checked when nothing checks it.
         let refused = serde_json::from_str::<ValueSchema>(r#"{"type":"string","pattern":"^a"}"#)
             .expect_err("pattern is outside the enforced subset");
         assert!(refused.to_string().contains("pattern"), "{refused}");

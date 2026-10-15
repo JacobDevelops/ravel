@@ -1,23 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! A complete modpack, declared and validated the way a pack author would.
+//! Declares, validates, and reports an example pack.
 //!
-//! This is M4-W5's pack example. It lives beside `ravel-pack` rather than under the
-//! repository's `examples/` directory because that directory has a contract: every
-//! crate in it declares `ravel-sdk` and nothing else, and
-//! `tests/conformance/tests/sdk_boundary.rs` enforces it, because those crates are
-//! the model manifests a *mod* author reads. A pack author is a different role with
-//! a different dependency — `SPEC.md` §4.3 — and putting `ravel-pack` into a mod's
-//! model manifest would teach the wrong thing and widen a boundary check.
-//!
-//! Run it with a directory to write the pack into:
-//!
-//! ```console
-//! cargo run -p ravel-pack --example example_pack -- /tmp/example-pack
-//! ```
-//!
-//! With no argument it validates and lists what it would write, which is the half a
-//! pack author runs in a build.
+//! Pass a directory to write it: `cargo run -p ravel-pack --example example_pack -- /tmp/example-pack`.
+//! With no argument, lists the validated files without writing them.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -76,9 +62,6 @@ fn declare() -> PackDeclaration {
             .expect("each member is pinned once");
     }
 
-    // The pack layer of ADG-6's three, checked against `lantern_mod`'s own
-    // declaration: misspell the key or state a value the schema refuses and this
-    // pack stops building, rather than a player's launch stopping instead.
     pack.configure(
         id("lantern_mod"),
         ValueDocument::parse(
@@ -92,9 +75,7 @@ fn declare() -> PackDeclaration {
     )
     .expect("the document names the mod it is filed under");
 
-    // A recipe the pack writes itself, and the texture it refers to. The reference
-    // is what makes resource closure checkable: without it, a name with no file
-    // behind it is indistinguishable from any other string in the recipe.
+    // References are explicit; resource closure does not inspect recipe bytes.
     pack.supply(
         path("data/example_pack/recipe/copper_lantern.json"),
         b"{\n  \"result\": \"lantern_mod:copper_lantern\"\n}\n".to_vec(),
@@ -108,9 +89,6 @@ fn declare() -> PackDeclaration {
         content(PACK, "smelting"),
     );
 
-    // The progression: one root, one step standing on it, and a gate naming an entry
-    // a member declares. A step whose prerequisite nothing declares, a step nothing
-    // could reach, and a gate nothing provides are all refused by `validate`.
     let smelting = content(PACK, "smelting");
     pack.progression_mut()
         .declare(smelting.clone(), [], None)
@@ -166,12 +144,7 @@ fn copper() -> ContentDeclaration {
     declaration
 }
 
-/// What `lantern_mod` contributes: a lantern, in the same shared tag as the ingot.
-///
-/// The shared tag is the interesting part. Both members derive the same generated
-/// path from the tag's name, and the written pack holds one file with both members
-/// in it — a pack that wrote each mod's own view of the tag would keep whichever it
-/// wrote last.
+/// The lantern mod's item, contributing to the same shared tag as the copper mod.
 fn lanterns() -> ContentDeclaration {
     let mut declaration = ContentDeclaration::new(id("lantern_mod"));
     let lantern = declaration

@@ -16,7 +16,7 @@ profile and its digest so a later run can tell whether it is comparable.
 
 **The loader.** The tracked no-op package driven through
 `ravel-testkit`'s pipeline — the same composition
-`tests/conformance/tests/noop_pipeline.rs` records — with manifest parsing,
+`tests/conformance/tests/integration/noop_pipeline.rs` records — with manifest parsing,
 integrity verification and resolution also timed on their own. Then the same
 pipeline over 16, 64 and 256 copies of that package under distinct identities,
 which separates what the loader costs per package from what any one package

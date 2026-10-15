@@ -2,13 +2,6 @@
 
 {{import StringSplitter}}
 
-/**
- * The font, measuring one width for every glyph.
- *
- * <p>It holds a splitter and answers it, which is the shape the screens go
- * through: the game's font renames and retypes its own split between the pinned
- * versions and the splitter does neither.
- */
 public final class {{Font}} {
 
     private final {{StringSplitter}} splitter = new {{StringSplitter}}();

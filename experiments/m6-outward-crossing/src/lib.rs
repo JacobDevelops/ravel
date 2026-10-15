@@ -1,16 +1,4 @@
-//! Native side of the three ways a mod's game action could reach the game.
-//!
-//! Every crossing this repository ships runs inward: the game calls Rust and
-//! Rust answers. A mod that wants a sound played needs the opposite, and there
-//! are two shapes for it. Either Rust calls the game method itself through JNI,
-//! or Rust answers with an instruction and the Java adapter makes the call —
-//! which is the direction ADG-7's persistence adapter already runs in.
-//!
-//! The direct shape is measured twice, because resolving a method identifier is
-//! not the same cost as invoking one and a real loader would cache it. Pricing
-//! only the resolving form would overstate the cost of the candidate this gate
-//! is most likely to reject, which is the way to get a gate wrong that nobody
-//! reading the number afterwards can see.
+//! Native implementations of outward JNI calls with lookup, cached calls, and deferred instructions.
 
 use std::cell::Cell;
 
@@ -27,14 +15,8 @@ const FAILING_ACTION: jint = -1;
 const INSTRUCTION_BYTES: usize = 4 + 8;
 
 thread_local! {
-    /// The resolved identifier of the game method, in the candidate that caches.
-    ///
-    /// A cached identifier is only sound for as long as something holds the
-    /// class it came from, which here is the class declaring the native method
-    /// being executed — the JVM cannot unload it while its own native frame is
-    /// on the stack. A loader caching across calls would have to hold that
-    /// reference itself, and that obligation is part of what this candidate
-    /// costs rather than an accident of the measurement.
+    /// Cached method identifier; its declaring class stays live during its native frame.
+    /// A loader caching beyond that lifetime must retain the class itself.
     static CACHED: Cell<Option<JStaticMethodID>> = const { Cell::new(None) };
 }
 
@@ -105,11 +87,7 @@ pub extern "system" fn Java_dev_ravel_outward_Action_directCached<'local>(
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
-/// Rust answers with what should happen and calls nothing.
-///
-/// This is the shape `AudioDeclaration::play` already has — a request
-/// describing what would be played — carried one step further, to the side that
-/// can act on it.
+/// Returns action instructions for the Java adapter without calling outward.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_ravel_outward_Action_deferred<'local>(
     mut unowned: EnvUnowned<'local>,

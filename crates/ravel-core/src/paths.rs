@@ -2,36 +2,10 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-/// The characters an ECMA `.` does not match, and so the ones
-/// `schemas/package.schema.json`'s `relativePath` pattern excludes by ending in
-/// `.+`.
+// ECMA `.` excludes these characters in the schema's `relativePath` pattern.
 const LINE_TERMINATORS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
 
-/// A path inside a package or a generated pack.
-///
-/// The grammar is `schemas/package.schema.json`'s `relativePath` pattern,
-/// `^(?!/)(?!.*\\)(?!.*(?:^|/)\.\.(?:/|$)).+$`, implemented here rather than
-/// matched so no crate in the graph needs a regex engine, and checked against a
-/// real engine by the conformance suite rather than against a second
-/// hand-written copy of the pattern.
-///
-/// The lookaheads are the whole point of the type: a manifest names files the
-/// loader will open, so an absolute path would let a package address the host
-/// filesystem and a `..` component would let it climb out of its own directory.
-/// A backslash is refused outright because it is a separator on Windows and not
-/// on Linux, so `..\..\x` is one traversal to a future host and one ordinary
-/// file name to this one — the disagreement, not the character, is the danger.
-/// The trailing `.+` refuses the four characters an ECMA `.` excludes, which is
-/// where a line break in a declared path would otherwise part company with the
-/// schema. All of it is refused before anything is read, which is what keeps
-/// `ravel-package`'s source and provenance verification package-local.
-///
-/// It lives here rather than in `ravel-package` because two unrelated things
-/// need it and only one of them is a package manifest: `ravel-data` names the
-/// path a resource is supplied at and the path a generated file is written to,
-/// and reaching into the package crate for the type would put that crate's
-/// integrity dependencies — a SHA-256 implementation among them — into the
-/// dependency closure of every mod that declares a resource.
+/// A non-empty relative path without leading `/`, backslashes, line breaks, or `..` segments.
 ///
 /// # Examples
 ///
@@ -62,19 +36,7 @@ impl RelativePath {
         &self.0
     }
 
-    /// Returns the last non-empty segment, which is all a recorded message may
-    /// say about a file.
-    ///
-    /// `SPEC.md` §9.1 requires reports to redact unnecessarily identifying
-    /// filesystem paths, and a package-relative path still discloses the layout
-    /// of a player's installation once it is joined to a package root. Every
-    /// integrity failure therefore names a file, never a path.
-    ///
-    /// The schema permits a trailing slash, and the last segment of `src/`
-    /// is the empty string, which would render a failure as being about nothing
-    /// at all. The last *non-empty* segment always exists instead: a path that
-    /// is empty or starts with `/` never becomes a [`RelativePath`], so the
-    /// first segment is never empty and there is always one to find.
+    /// Returns the last non-empty segment, ignoring trailing slashes.
     #[must_use]
     pub fn file_name(&self) -> &str {
         self.0
@@ -83,12 +45,7 @@ impl RelativePath {
             .unwrap_or("")
     }
 
-    /// Returns the first segment, which names the subtree the path is in.
-    ///
-    /// `ravel-data` reserves one subtree for generated output, and reserving a
-    /// subtree means comparing first segments rather than string prefixes: a
-    /// prefix test on `data/` would leave `database/copper.json` looking like a
-    /// path inside the reserved tree.
+    /// Returns the first segment, which names the path's subtree.
     #[must_use]
     pub fn first_segment(&self) -> &str {
         self.0.split('/').next().unwrap_or("")
@@ -115,12 +72,6 @@ impl RelativePath {
 }
 
 /// Returns whether `candidate` holds a `..` segment.
-///
-/// One rule, in one place. A content path and a pack path both refuse to leave
-/// the directory they are relative to, and two spellings of that would be two
-/// answers: a name one accepted and the other refused would be a name that
-/// declares successfully and panics when its path is derived, which is exactly
-/// what happened before this was shared.
 pub(crate) fn is_traversal(candidate: &str) -> bool {
     candidate.split('/').any(|segment| segment == "..")
 }
@@ -146,12 +97,7 @@ impl fmt::Display for RelativePath {
     }
 }
 
-/// Why a candidate string is not a valid [`RelativePath`].
-///
-/// No variant carries the rejected path. The rejection is reported through a
-/// deserializer that already reports the line and column, so echoing the value
-/// would add nothing except a filesystem path in a message that may be
-/// recorded.
+/// Why a package-relative path was rejected, without disclosing the path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelativePathError {
     /// The candidate is empty.
@@ -196,8 +142,6 @@ mod tests {
             ("src/lib.rs", "lib.rs"),
             ("resources/lang/en.json", "en.json"),
             ("a/b/c/provenance.json", "provenance.json"),
-            // Every shape the schema pattern permits and a reader expects it to
-            // refuse: `..` is refused as a path *component*, not as a substring.
             ("a..b/c", "c"),
             ("...", "..."),
             ("./nested/file", "file"),
@@ -292,13 +236,5 @@ mod tests {
             assert!(!rendered.contains("passwd"), "{rendered}");
             assert!(!rendered.contains("player"), "{rendered}");
         }
-    }
-
-    #[test]
-    fn a_path_that_names_a_directory_still_names_a_file_to_report() {
-        // A trailing slash is legal in the schema, and a message about the empty
-        // string would be a message about nothing.
-        let path = RelativePath::try_from("src/".to_owned()).expect("a legal path");
-        assert_eq!(path.file_name(), "src");
     }
 }

@@ -1,10 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! Shared measurement contract for the Ravel M1 architecture spikes.
-//!
-//! Every candidate of every gate records the same fields through this crate, so
-//! comparisons reflect the mechanism rather than the instrument. The crate is a
-//! measurement instrument only: no production crate may depend on it.
+//! Shared architecture-spike measurement contracts and process harness.
+//! Production crates must not depend on this measurement-only crate.
 
 pub mod result;
 
@@ -69,10 +66,7 @@ pub struct Percentiles {
     pub p99: f64,
 }
 
-/// Summarizes samples with one nearest-rank definition shared by every gate.
-///
-/// Returns `None` for an empty sample set so callers record an unavailable
-/// metric instead of substituting zero.
+/// Summarizes samples with nearest-rank percentiles, or returns `None` for no samples.
 #[must_use]
 pub fn percentiles(samples: &[u64]) -> Option<Percentiles> {
     if samples.is_empty() {
@@ -195,11 +189,7 @@ fn jj(arguments: &[&str]) -> Result<String, HarnessError> {
 /// Path to the descriptor that pins every runtime input M1 measures against.
 pub const RUNTIME_INPUTS: &str = "tests/fixtures/descriptors/runtime-inputs-1.21.1.json";
 
-/// Environment variable naming the pinned game Java runtime to measure with.
-///
-/// The pinned Mojang runtime lives inside the operator's ignored launcher root,
-/// so its path can never be committed. Without it, trials fall back to the
-/// development JDK and record the difference as a deviation.
+/// Environment variable for the ignored pinned Java runtime; absence uses the development JDK.
 pub const PINNED_JAVA_ENV: &str = "RAVEL_SPIKE_JAVA";
 
 /// Runtime versions the pinned descriptor requires.
@@ -358,10 +348,7 @@ pub struct ReportedFailure {
     pub detail: String,
 }
 
-/// The measurement report a trial child prints before it parks.
-///
-/// A child written in Rust builds and serializes this type directly; a child in
-/// another language writes the same shape by hand.
+/// Trial report serialized by Rust children or emitted in the same shape by other languages.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TrialReport {
@@ -441,25 +428,14 @@ pub struct ChildTrial {
     pub duration_ms: u64,
 }
 
-/// Runs one trial child and observes its memory at a defined boundary.
+/// Runs a child that prints `ready`, emits a JSON [`TrialReport`], then waits on stdin.
 ///
-/// The child prints `ready` once its entry mechanism is in place, then a JSON
-/// [`TrialReport`] line once measurement finishes, then parks on standard input
-/// so the harness can read `/proc` while the process is still alive. Writing a
-/// newline releases it. Any other behaviour is a failed trial, never a zero.
-///
-/// Memory is sampled at the ready marker rather than after measurement, so
-/// bootstrap and retained cost describe the entry mechanism instead of the
-/// workload.
-///
-/// Pass [`TRIAL_TIMEOUT`] for a measured trial and [`PROBE_TIMEOUT`] for a probe
-/// that is expected to hang, so proving one candidate fails closed does not cost
-/// the gate a minute and a half.
+/// Samples memory at `ready` to isolate entry-mechanism cost, then releases the child
+/// with a newline after its report. Use [`PROBE_TIMEOUT`] for expected hangs.
 ///
 /// # Errors
 ///
-/// Returns an error when the child cannot start, reports nothing usable, times
-/// out, or exits unsuccessfully.
+/// Returns an error when the child fails to start, report, finish in time, or exit successfully.
 pub fn run_child_trial<S: AsRef<std::ffi::OsStr>>(
     program: &str,
     arguments: &[S],
@@ -547,13 +523,9 @@ fn next_line(
     }
 }
 
-/// Writes one spike result where the milestone gate expects to find it, unless a
-/// record is already there.
+/// Writes a result unless it exists, returning whether it was written.
 ///
-/// Existing records are digest-bound by milestone manifests, so a rerun must
-/// delete the record deliberately.
-///
-/// Returns whether the record was written.
+/// Existing records may be digest-bound; reruns must delete them deliberately.
 ///
 /// # Errors
 ///

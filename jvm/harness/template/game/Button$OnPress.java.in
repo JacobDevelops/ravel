@@ -2,7 +2,6 @@
 
 {{import Button}}
 
-/** What a built button calls. Seeded for its method: every button implements it. */
 public interface {{Button$OnPress}} {
 
     void {{Button$OnPress#onPress}}({{Button}} button);

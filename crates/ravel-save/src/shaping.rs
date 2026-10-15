@@ -3,32 +3,16 @@ use std::fmt;
 use ravel_core::{ModId, ModIdError};
 use serde::{Deserialize, Serialize};
 
-/// The format number every shaping record carries.
-///
-/// A record read without one is not this record, which is what makes
-/// [`ShapingError::Unreadable`] a refusal rather than a guess.
 const SHAPING_FORMAT_VERSION: u8 = 1;
 
-/// The mods shaping a world in one launch.
-///
-/// A mod that shapes a world declares itself here. What "shaping" means is the
-/// mod's own — a generator, a biome, a placement — and Ravel deliberately models
-/// none of it: what Ravel owns is the *set*, because the set is the thing a world
-/// has to remember and no member of it can remember on the world's behalf.
-///
-/// Order is declaration order and duplicates are dropped, so declaring twice is
-/// declaring once. Two launches that resolve the same mods in the same order
-/// produce the same record.
+/// The deduplicated world-shaping mods, in declaration order.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct WorldShaping {
     mods: Vec<ModId>,
 }
 
 impl WorldShaping {
-    /// Declares that `shaper` shapes the world.
-    ///
-    /// Declaring a mod already declared changes nothing, because the set is what
-    /// is recorded and a set holds a member once.
+    /// Declares a world-shaping mod, ignoring duplicate declarations.
     pub fn declare(&mut self, shaper: ModId) {
         if !self.mods.contains(&shaper) {
             self.mods.push(shaper);
@@ -48,17 +32,7 @@ impl WorldShaping {
     }
 }
 
-/// What one world holds about the mods that shaped it.
-///
-/// `SPEC.md` §14 versions the data a mod owns and migrates it, so removing a mod
-/// that owns data is not silent. Removing a mod that *shaped a world* was, and
-/// this is what closes it: the set in force at creation is written into the
-/// world once, and a later launch that no longer supplies one of them is refused
-/// before any world data is read.
-///
-/// The refusal runs in both directions. A world that opens with a shaping mod it
-/// was not made with generates differently from the chunks already on disk,
-/// which is the same silent divergence read from the other end.
+/// The creation-time shaping set; admission refuses both added and removed mods.
 ///
 /// # Examples
 ///
@@ -74,10 +48,8 @@ impl WorldShaping {
 /// at_creation.declare(caves.clone());
 /// let written = ShapingRecord::at_creation(&at_creation);
 ///
-/// // The same set opens the world.
 /// written.admit(&at_creation).expect("what made the world may open it");
 ///
-/// // One of them gone is a refusal that names it.
 /// let mut without_caves = WorldShaping::default();
 /// without_caves.declare(terrain);
 /// let refusal = written
@@ -113,16 +85,11 @@ impl ShapingRecord {
         &self.mods
     }
 
-    /// Returns the bytes a world stores.
-    ///
-    /// The same record produces the same bytes: the field order is the struct's,
-    /// the mods are in the order the record holds, and nothing here reads a
-    /// clock, a filesystem, or a hash map.
+    /// Serializes the record deterministically in declaration order.
     ///
     /// # Panics
     ///
-    /// Panics if a format number and a list of mod ids do not serialize, which
-    /// `serde_json` does not fail at.
+    /// Panics if the format number and mod-id strings cannot be serialized.
     #[must_use]
     pub fn bytes(&self) -> Vec<u8> {
         serde_json::to_vec(&StoredShaping {
@@ -136,13 +103,7 @@ impl ShapingRecord {
     ///
     /// # Errors
     ///
-    /// Returns [`ShapingError::Unreadable`] for bytes that are not this record —
-    /// not JSON, not the right shape, or a format number this build does not
-    /// write — and [`ShapingError::IllegalOwner`] for a record whose shape is
-    /// right and which names something that is not a mod id. The two are
-    /// separate because they mean different things to whoever is holding the
-    /// world: the first is a file from somewhere else, the second is this file
-    /// with something wrong inside it.
+    /// Returns [`ShapingError::Unreadable`] for invalid records or [`ShapingError::IllegalOwner`] for invalid mod ids.
     pub fn read(bytes: &[u8]) -> Result<Self, ShapingError> {
         let stored: StoredShaping =
             serde_json::from_slice(bytes).map_err(|source| ShapingError::Unreadable {
@@ -174,10 +135,7 @@ impl ShapingRecord {
     ///
     /// # Errors
     ///
-    /// Returns [`ShapingMismatch`] naming every mod that shaped the world and is
-    /// gone, and every mod that would shape it now and did not then. Both halves
-    /// are reported at once, because a player told about the first and then
-    /// about the second has been refused twice for one edit.
+    /// Returns [`ShapingMismatch`] with all removed and newly added shaping mods.
     pub fn admit(&self, now: &WorldShaping) -> Result<(), ShapingMismatch> {
         let missing: Vec<ModId> = self
             .mods
@@ -217,12 +175,7 @@ pub enum ShapingError {
 }
 
 impl ShapingError {
-    /// Returns whether the bytes are not a shaping record at all.
-    ///
-    /// The distinction is worth a predicate because the two failures are acted
-    /// on differently: unreadable bytes are a file from elsewhere and belong
-    /// nowhere near this world, and an illegal name is this world's own record
-    /// with something wrong inside it.
+    /// Returns whether the bytes are not a shaping record.
     #[must_use]
     pub const fn is_unreadable(&self) -> bool {
         matches!(self, Self::Unreadable { .. })
@@ -305,14 +258,11 @@ impl std::error::Error for ShapingMismatch {}
 
 #[cfg(test)]
 mod tests {
-    use ravel_core::ModId;
     use serde_json::Value;
 
     use super::{ShapingError, ShapingRecord, WorldShaping};
 
-    fn id(name: &str) -> ModId {
-        name.parse().expect("a well formed owner id")
-    }
+    use crate::tests::id;
 
     fn shaping(names: &[&str]) -> WorldShaping {
         let mut shaping = WorldShaping::default();
@@ -331,10 +281,7 @@ mod tests {
         assert_eq!(read, written);
     }
 
-    /// The bytes are pinned as text and taken apart by a reader that is not
-    /// [`ShapingRecord::read`]. A round trip checked only through the reader
-    /// that matches the writer passes whatever the format is, including a format
-    /// that stores nothing.
+    // Pin the stored format independently of the matching reader.
     #[test]
     fn the_written_bytes_are_the_document_this_test_spells_out() {
         let written = ShapingRecord::at_creation(&shaping(&["sample", "probe"]));

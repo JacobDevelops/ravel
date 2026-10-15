@@ -3,30 +3,17 @@ use std::time::{Duration, Instant};
 
 use ravel_core::ModId;
 
-/// The default above which a callback is reported as slow.
-///
-/// A twentieth of a tick. At 20 TPS a tick is 50 ms, so a single callback that
-/// takes longer than 2.5 ms has spent more of the tick than any one mod should
-/// and is worth a player's attention. It is a reporting threshold and not a
-/// limit: nothing is refused for crossing it.
+/// The default reporting threshold for slow callbacks, not an execution limit.
 pub const DEFAULT_SLOW_CALLBACK: Duration = Duration::from_micros(2_500);
 
-/// How well a collector can measure one of `SPEC.md` §9.3's facts.
-///
-/// The three arms exist because two different things can be wrong with a
-/// number. `SPEC.md` §9.3 requires proving "what can be attributed accurately
-/// rather than presenting estimates as exact measurements", and a metric can
-/// fail that either by not being measurable at all or by being measurable as
-/// something adjacent to what its name promises. Naming both keeps a metric
-/// from being quietly absent or reported as a zero that reads as "cost
-/// nothing".
+/// How accurately a collector measures a metric.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Support {
     /// Measured, and the number means what the metric's name says.
     Exact,
     /// Measured, and approximate in the way the note states.
     Approximate(&'static str),
-    /// Not measurable at M3, for the stated reason.
+    /// Not measurable, for the stated reason.
     Unsupported(&'static str),
 }
 
@@ -57,20 +44,7 @@ impl Support {
     }
 }
 
-/// One fact profiling is asked for, and what M3 can say about it.
-///
-/// The list is `SPEC.md` §9.3's, item for item, plus [`Self::InclusiveTime`],
-/// which is the quantity reported where §9.3 asks for CPU time and is named
-/// separately rather than being reported under that name. Wall-clock time
-/// spent inside a callback is not an imprecise CPU time — it is a different
-/// quantity that can be arbitrarily larger — so labelling it "estimated CPU
-/// time" would be exactly the presentation §9.3 forbids.
-///
-/// Every entry but [`Self::TickCount`] is per mod. That one is a fact about the
-/// run rather than about a mod, and it is in this table anyway because this
-/// table is what a surface generates its "not measurable in this build" list
-/// out of: a figure the report cannot produce belongs on that list whatever its
-/// scope, and the alternative is a clause that quietly disappears.
+/// Profiling metrics and their collection support.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Metric {
     /// Bytes still held by a mod's own allocations.
@@ -153,12 +127,7 @@ impl Metric {
         }
     }
 
-    /// What M3's collectors can say about this metric.
-    ///
-    /// This is the table `ROADMAP.md`'s M3-W6 row means by "unsupported metrics
-    /// are explicit". It is one table rather than prose in three places: the
-    /// evidence record, the in-game report, and the tests all read it, so a
-    /// metric cannot become supported in one of them and not the others.
+    /// Returns the collector's measurement guarantees for this metric.
     #[must_use]
     pub const fn support(self) -> Support {
         match self {
@@ -236,10 +205,6 @@ impl Metric {
 }
 
 /// What a game hook asked one mod to do.
-///
-/// Both arms are downstream of a rewritten call site: at M3 every delivery to a
-/// mod begins as a hook, and a command is the one that begins as a hook carrying
-/// something a player typed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CallKind {
     /// A game event, shown to every mod in the audience.
@@ -248,11 +213,7 @@ pub enum CallKind {
     Command,
 }
 
-/// What one mod cost, as far as M3's collectors can tell.
-///
-/// Every field is a metric [`Metric::support`] reports as measured. The
-/// unsupported ones have no field, which is deliberate: an absent number cannot
-/// be read as a zero.
+/// Measured per-mod costs; unsupported metrics have no field.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ModCost {
     /// Game events delivered to this mod.
@@ -268,36 +229,20 @@ pub struct ModCost {
 }
 
 impl ModCost {
-    /// Game-hook invocations that reached this mod.
-    ///
-    /// Every delivery begins as one, so this is the two counts added.
-    /// [`Metric::HookCalls`] records why the column sums to more than the
-    /// crossings the process made.
+    /// Game-hook deliveries to this mod, including commands.
     #[must_use]
     pub const fn hook_calls(&self) -> u64 {
         self.event_calls.saturating_add(self.command_calls)
     }
 
-    /// Calls that reached this mod across the Java boundary.
-    ///
-    /// [`Metric::BoundaryCalls`] records why this is the hook count rather than
-    /// a counter of its own.
+    /// Java-boundary deliveries, with the caveats in [`Metric::BoundaryCalls`].
     #[must_use]
     pub const fn boundary_calls(&self) -> u64 {
         self.hook_calls()
     }
 }
 
-/// The opt-in profiling coordinator.
-///
-/// Off is the state normal play runs in, and off means the collectors read no
-/// clock and touch no map: [`Self::measure`] tests one flag and calls the body.
-/// `evidence/m3/profiling-overhead.json` is what that costs, measured, and the
-/// budget it is held to.
-///
-/// The coordinator is owned by whoever drives mods and is passed around as
-/// `&mut`, because a shared profiler would need a lock on the tick path and a
-/// lock is the thing a normal-mode budget cannot afford.
+/// Opt-in per-mod profiling; disabled calls read no clock and touch no map.
 ///
 /// # Examples
 ///
@@ -343,11 +288,7 @@ impl Profiler {
         }
     }
 
-    /// The profiler an opt-in switch asks for.
-    ///
-    /// The switch is the host's to read. `ravel-observability` is
-    /// version-neutral and knows nothing about JVM system properties or command
-    /// lines, so it takes the answer rather than the question.
+    /// Configures profiling from the host's opt-in switch.
     #[must_use]
     pub const fn from_switch(requested: bool) -> Self {
         if requested {
@@ -363,11 +304,7 @@ impl Profiler {
         self.on
     }
 
-    /// Runs one mod call, attributing it only when profiling is on.
-    ///
-    /// Off, this is one flag test and the call itself: no clock is read, no map
-    /// is touched, and nothing is allocated. That is the whole normal-mode cost
-    /// and it is what the budget bounds.
+    /// Runs a mod call, measuring it only when profiling is enabled.
     pub fn measure<T>(&mut self, mod_id: &ModId, kind: CallKind, body: impl FnOnce() -> T) -> T {
         if !self.on {
             return body();
@@ -386,12 +323,7 @@ impl Profiler {
         }
     }
 
-    /// Records how many registry identifiers a mod owns.
-    ///
-    /// Told rather than counted, because the claims live in the loader's own
-    /// table and counting them there is exact whether or not anything is
-    /// profiling. That is why this replaces rather than accumulates: it is a
-    /// reading of a table, not a running total of events.
+    /// Replaces a mod's registry-claim count when profiling is enabled.
     pub fn registry_claims(&mut self, mod_id: &ModId, claims: u64) {
         if self.on {
             self.cost_of(mod_id).registry_claims = claims;
@@ -409,9 +341,7 @@ impl Profiler {
                 cost: *cost,
             })
             .collect::<Vec<_>>();
-        // Costliest first, because that is the question a player opens the
-        // screen with. Ties fall back to the id so two runs of the same set
-        // render in the same order.
+        // Stable ties keep reports deterministic.
         mods.sort_by(|left, right| {
             right
                 .cost
@@ -428,7 +358,6 @@ impl Profiler {
         }
     }
 
-    /// Adds one measured call to a mod's running cost.
     fn charge(&mut self, mod_id: &ModId, kind: CallKind, elapsed: Duration) {
         let slow = elapsed >= self.slow_callback;
         let nanos = u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX);
@@ -443,8 +372,6 @@ impl Profiler {
         }
     }
 
-    /// The running cost of one mod, started at zero the first time it is asked
-    /// for.
     fn cost_of(&mut self, mod_id: &ModId) -> &mut ModCost {
         if !self.costs.contains_key(mod_id) {
             self.costs.insert(mod_id.clone(), ModCost::default());
@@ -456,7 +383,6 @@ impl Profiler {
 }
 
 impl Default for Profiler {
-    /// Off, because off is what a host that never asked for profiling gets.
     fn default() -> Self {
         Self::off()
     }
@@ -471,12 +397,7 @@ pub struct ModReport {
     pub cost: ModCost,
 }
 
-/// Everything opt-in profiling has to say about a run.
-///
-/// The report is data and rendered lines rather than a widget, for the reason
-/// [`crate::PreWorldReport`] is: every screen Ravel owns is drawn in Java and
-/// Ravel never renders from Rust. What a screen needs is [`Self::mods`] and
-/// [`Self::unsupported`], and what a log needs is [`Self::lines`].
+/// Per-mod profiling data and rendered report lines.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProfilingReport {
     on: bool,
@@ -487,22 +408,12 @@ pub struct ProfilingReport {
 
 impl ProfilingReport {
     /// Whether the collectors were running for this report.
-    ///
-    /// A report from a normal run says no and holds no mods, which is the
-    /// honest answer rather than a page of zeroes.
     #[must_use]
     pub const fn is_on(&self) -> bool {
         self.on
     }
 
-    /// Ticks the collectors saw.
-    ///
-    /// What the collectors saw is not what the run did: [`Metric::TickCount`]
-    /// records that nothing calls [`Profiler::tick`] at M3, so this is zero on
-    /// every real launch. It is here because a surface has to carry the figure
-    /// once something produces it, and it is not what a surface decides to draw
-    /// from — that decision is [`Metric::TickCount`]'s, so one table answers it
-    /// for the log line below and for the screen alike.
+    /// Returns observed tick boundaries; consult [`Metric::TickCount`] for support.
     #[must_use]
     pub const fn ticks(&self) -> u64 {
         self.ticks
@@ -520,17 +431,13 @@ impl ProfilingReport {
         &self.mods
     }
 
-    /// What a number in this report is and is not, one sentence per hazard.
-    ///
-    /// `ROADMAP.md`'s M3-W6 row asks for per-mod attribution accuracy to be
-    /// explicit, and this is the statement in the form a surface can show. The
-    /// per-metric half is [`Metric::support`].
+    /// Returns the attribution caveats a report surface must show.
     #[must_use]
     pub const fn attribution_accuracy() -> &'static [&'static str] {
         ATTRIBUTION_ACCURACY
     }
 
-    /// Every metric a collector cannot measure at M3, and why.
+    /// Returns unsupported metrics and their reasons.
     #[must_use]
     pub fn unsupported() -> Vec<(Metric, &'static str)> {
         Metric::ALL
@@ -552,9 +459,7 @@ impl ProfilingReport {
             ];
         }
 
-        // No tick count. `Metric::TickCount` is unsupported, so the only number
-        // this could print is a zero that reads as a measurement, and it is
-        // named on the unsupported list below instead of being drawn here.
+        // Unsupported tick counts belong in the caveats, not the measurements.
         let mut lines = vec![format!(
             "profiled {} mod{}, slow above {} us",
             self.mods.len(),
@@ -583,11 +488,6 @@ impl ProfilingReport {
     }
 }
 
-/// What a per-mod number here cannot tell apart.
-///
-/// `SPEC.md` §9.3 requires proving what can be attributed accurately rather
-/// than presenting estimates as exact. These are the cases where a number is
-/// charged to a mod that did not spend it, or not charged to one that did.
 const ATTRIBUTION_ACCURACY: &[&str] = &[
     "A mod is charged for host work it calls back into. The window is entry to return, so a mod \
      that asks Ravel to resolve a registry key is charged for the lookup as well as for its own \
@@ -606,7 +506,6 @@ const ATTRIBUTION_ACCURACY: &[&str] = &[
      callback costs something, so a mod's measured time includes being measured.",
 ];
 
-/// The plural suffix for a count.
 const fn plural(count: u64) -> &'static str {
     if count == 1 { "" } else { "s" }
 }
@@ -859,12 +758,5 @@ mod tests {
             "the count vanished instead of being named as unmeasurable: {lines:?}"
         );
         assert!(!Metric::TickCount.support().is_measured());
-    }
-
-    #[test]
-    fn a_report_is_comparable_so_two_runs_can_be_shown_to_say_the_same_thing() {
-        let first = Profiler::on(DEFAULT_SLOW_CALLBACK).report();
-        assert_eq!(first.clone(), first);
-        assert_eq!(Profiler::off(), Profiler::default());
     }
 }

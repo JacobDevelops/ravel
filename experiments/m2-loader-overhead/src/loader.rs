@@ -1,10 +1,4 @@
-//! Times the pre-world loader pipeline for the no-op package.
-//!
-//! Every measurement here runs the production crates through
-//! `ravel-testkit`'s pipeline, which is the same composition
-//! `tests/conformance/tests/noop_pipeline.rs` records. Nothing is
-//! reimplemented for speed, because a benchmark of a second implementation
-//! would be a number about the benchmark.
+//! Times the production pre-world loader pipeline through `ravel-testkit`.
 
 use std::fs;
 use std::hint::black_box;
@@ -22,26 +16,16 @@ use ravel_testkit::{DiscoveredPackage, Host, run};
 /// The tracked package every primary number is measured against.
 pub const PACKAGE_DIRECTORY: &str = "tests/fixtures/public/packages/noop";
 
-/// Runs discarded before the first sample, so a measured run finds a warm
-/// allocator, a warm page cache and a warm branch predictor.
+/// Discarded warmup runs.
 const WARMUP_RUNS: usize = 500;
 
-/// Samples taken per metric. Large enough for a 99th percentile to mean
-/// something, small enough that the whole run stays under a minute.
+/// Samples per metric.
 const MEASURED_RUNS: usize = 5_000;
 
-/// Package-set sizes the scaling curve is taken at.
-///
-/// One is the no-op package itself. The rest are copies of it under different
-/// identities, which isolates what the loader costs per package from what any
-/// particular package costs.
+/// Package-set sizes; larger sets copy the no-op package under distinct identities.
 pub const SCALING_SIZES: [usize; 4] = [1, 16, 64, 256];
 
-/// A mod value the loader owns, used where the set needs more than one identity.
-///
-/// It is the no-op mod's behaviour under a supplied identity. It loads nothing,
-/// starts nothing and exports nothing: ADG-2 selects the mod execution model
-/// and is deferred to M3.
+/// No-op behavior under a supplied identity for scaling measurements.
 struct SetMod {
     id: ModId,
     entered: usize,
@@ -67,12 +51,7 @@ pub struct Timing {
     pub percentiles: Percentiles,
 }
 
-/// Calls per sample for an operation too cheap to time one at a time.
-///
-/// Reading the monotonic clock twice costs about as much as a handful of
-/// nanoseconds of work, so a single-call sample of a single-digit-nanosecond
-/// operation measures the clock. A thousand calls per sample puts the clock
-/// three orders of magnitude below the thing being measured.
+/// Batch cheap operations to amortize monotonic-clock overhead.
 const CALLS_PER_SAMPLE: usize = 1_000;
 
 impl Timing {
@@ -131,13 +110,11 @@ pub struct ScalingPoint {
 pub struct LoaderOverhead {
     /// Parsing the manifest document.
     pub parse: Timing,
-    /// Verifying declared artifacts and the provenance record against their
-    /// digests.
+    /// Verifying artifact and provenance digests.
     pub integrity: Timing,
     /// Resolving validated manifests into a load plan.
     pub resolve: Timing,
-    /// The whole pipeline for the no-op package: validate, resolve, and every
-    /// lifecycle state in order.
+    /// Validation, resolution, and ordered lifecycle entry for the no-op package.
     pub whole: Timing,
     /// One `HostMod::enter` call through the trait object the loader drives.
     pub mod_call: Timing,
@@ -148,9 +125,7 @@ pub struct LoaderOverhead {
 }
 
 impl LoaderOverhead {
-    /// The residual: what the whole pipeline costs beyond the stages measured
-    /// individually, which is the lifecycle machine plus the compatibility and
-    /// target checks.
+    /// Whole-pipeline p99 minus individually measured stage p99s, clamped to zero.
     #[must_use]
     pub fn lifecycle_residual(&self) -> f64 {
         let stages = self.parse.percentiles.p99
@@ -159,10 +134,7 @@ impl LoaderOverhead {
         (self.whole.percentiles.p99 - stages).max(0.0)
     }
 
-    /// What one extra package adds to a run, from the two ends of the curve.
-    ///
-    /// Taken from the ends rather than fitted, because two points and a stated
-    /// method are checkable and a regression line is not.
+    /// Marginal per-package cost from the scaling curve's endpoints.
     #[must_use]
     pub fn marginal_per_package(&self) -> f64 {
         let first = self.scaling.first().expect("the curve has a first point");
@@ -179,8 +151,7 @@ impl LoaderOverhead {
 ///
 /// # Errors
 ///
-/// Returns a message when the package cannot be read or the synthetic sets
-/// cannot be written.
+/// Returns a message when the package cannot be read or synthetic sets cannot be written.
 pub fn measure(root: &Path, work: &Path) -> Result<LoaderOverhead, String> {
     let package = DiscoveredPackage::read(root.join(PACKAGE_DIRECTORY))
         .map_err(|error| format!("the no-op package is unreadable: {error}"))?;
@@ -190,8 +161,7 @@ pub fn measure(root: &Path, work: &Path) -> Result<LoaderOverhead, String> {
     let manifests = [manifest.clone()];
     let package_root = root.join(PACKAGE_DIRECTORY);
 
-    // Every result goes through `black_box`, because a measured call whose
-    // result nothing reads is a call the optimizer may delete.
+    // Keep measured results observable to the optimizer.
     let parse = Timing::of(|| {
         let parsed = PackageManifest::parse(black_box(&package.document));
         debug_assert!(parsed.is_ok());
@@ -223,9 +193,7 @@ pub fn measure(root: &Path, work: &Path) -> Result<LoaderOverhead, String> {
         id: "noop".parse().map_err(|_| "`noop` is a legal mod id")?,
         entered: 0,
     };
-    // The receiver is hidden from the optimizer as well as the result: without
-    // that, a concrete value behind a `dyn` reference is devirtualized and a
-    // thousand counter increments fold into one add.
+    // Hide the receiver to prevent devirtualization and folded counter increments.
     let mod_call = Timing::batched(CALLS_PER_SAMPLE, || {
         let value: &mut dyn HostMod = black_box(&mut counter);
         let entered = value.enter(black_box(LifecycleState::Running));
@@ -285,11 +253,7 @@ fn scaling_curve(
     Ok(curve)
 }
 
-/// Writes `size` copies of the no-op package under distinct identities.
-///
-/// Only the manifest's `id` changes. The artifact bytes and the provenance
-/// record are copied verbatim so their recorded digests stay correct, which
-/// keeps integrity verification doing real work rather than being skipped.
+/// Copies the no-op package with distinct ids, preserving artifact and provenance digests.
 fn synthetic_set(
     package: &DiscoveredPackage,
     work: &Path,
@@ -345,11 +309,7 @@ fn mods_for(packages: &[DiscoveredPackage]) -> Result<Vec<SetMod>, String> {
         .collect()
 }
 
-/// What the packages are admitted against.
-///
-/// The Minecraft version comes from the package's own declaration and the Ravel
-/// version from the crate this binary compiled at, so no version literal lives
-/// in this file.
+/// Host versions from the package's game declaration and this crate's version.
 fn host(package: &DiscoveredPackage) -> Result<Host, String> {
     let manifest = PackageManifest::parse(&package.document)
         .map_err(|error| format!("the no-op manifest does not parse: {error}"))?;

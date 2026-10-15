@@ -7,20 +7,14 @@ use ravel_core::{
 
 use crate::redaction::redact;
 
-/// Who a pre-world refusal is about.
-///
-/// The identity and the version are optional for the same reason
-/// [`FailureAttribution`] makes them optional: a manifest that will not parse
-/// has neither, and inventing one to fill the field would put a mod id in a
-/// report that no package ever claimed.
+/// A refusal's subject, with identity absent until established.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Subject {
     /// The mod the failure is about, absent when nothing established one.
     pub mod_id: Option<ModId>,
     /// The version that mod declared, absent when nothing was accepted.
     pub version: Option<Version>,
-    /// The dependency path that reached it, ordered from the mod that required
-    /// it.
+    /// The dependency path from the requiring mod.
     pub dependency_chain: Vec<ModId>,
     /// The hook, event, registry, or packet involved, absent before a world.
     pub surface: Option<FailureSurface>,
@@ -36,8 +30,7 @@ impl Subject {
         }
     }
 
-    /// A subject nothing has identified, which is what a package that failed
-    /// before its manifest parsed is.
+    /// A subject whose identity has not been established.
     #[must_use]
     pub fn unidentified() -> Self {
         Self::default()
@@ -66,18 +59,13 @@ pub struct Refusal {
 }
 
 impl Refusal {
-    /// Returns the `SPEC.md` §9.1 attribution.
+    /// Returns the failure attribution.
     #[must_use]
     pub const fn attribution(&self) -> &FailureAttribution {
         &self.attribution
     }
 
     /// Returns whether the detail quotes words this project did not write.
-    ///
-    /// The text was redacted either way. This is what lets a surface tell a
-    /// player that the sentence came from their mod, their operating system, or
-    /// a parser, rather than from Ravel — which is worth saying, because those
-    /// are the sentences a player cannot report as a Ravel wording bug.
     #[must_use]
     pub const fn quotes_untrusted_text(&self) -> bool {
         self.quotes_untrusted_text
@@ -118,23 +106,7 @@ impl Refusal {
     }
 }
 
-/// Everything Ravel has to say before a world may open.
-///
-/// This is the surface `ROADMAP.md`'s M2-W7 row calls the pre-world UI/log
-/// diagnostic path: the report a player is shown, and the gate that decides
-/// whether they get a world at all. A refusal from any stage of the pipeline
-/// lands here — a manifest that will not parse, a digest that does not match, a
-/// package for another platform, a side, a missing or incompatible or circular
-/// dependency, or a mod that declined a lifecycle step — because every one of
-/// them is a [`StructuredFailure`] and one arm renders all of them.
-///
-/// A report holds no filesystem path and no credential: every message it takes
-/// is run through [`crate::redact`] on the way in, and the only messages it can
-/// hold are the ones that came back.
-///
-/// The report is data and rendered lines rather than a widget. There is no UI
-/// framework in this repository and M3-W5 owns the in-game surface; what a
-/// surface needs is [`Self::refusals`], and what a log needs is [`Self::lines`].
+/// Pre-world refusals and notices, redacted on entry.
 ///
 /// # Examples
 ///
@@ -177,11 +149,7 @@ pub struct PreWorldReport {
 }
 
 impl PreWorldReport {
-    /// Starts an empty report for one running host.
-    ///
-    /// The environment is supplied rather than discovered: `SPEC.md` §9.1
-    /// requires every attribution to name the Minecraft and Ravel versions and
-    /// the platform and architecture, and this crate is version-neutral.
+    /// Starts an empty report for the supplied host environment.
     #[must_use]
     pub const fn new(environment: FailureEnvironment) -> Self {
         Self {
@@ -192,9 +160,6 @@ impl PreWorldReport {
     }
 
     /// Records a refusal from any stage of the pipeline.
-    ///
-    /// The failure's own text is redacted here rather than by the crate that
-    /// raised it, which is what lets `ravel-core` hold the tag and no rules.
     pub fn refuse(&mut self, subject: &Subject, failure: &dyn StructuredFailure) {
         self.refusals.push(Refusal {
             attribution: FailureAttribution {
@@ -212,10 +177,6 @@ impl PreWorldReport {
     }
 
     /// Records something a player is told without being refused.
-    ///
-    /// A discouraged combination is the one dependency outcome `SPEC.md` §3.4
-    /// names that does not fail the graph, so it belongs in the report the
-    /// player reads and not in the list that withholds their world.
     pub fn note(&mut self, text: &str) {
         self.notices.push(redact(text));
     }
@@ -238,19 +199,11 @@ impl PreWorldReport {
         &self.notices
     }
 
-    /// Decides whether a world may open.
-    ///
-    /// This is the gate. `SPEC.md` §9.2 makes Ravel fail closed on an invalid
-    /// required-mod graph, and §14 requires a required dependency failure to
-    /// prevent world access, so a report holding any refusal withholds the
-    /// world — including a refusal from a stage that ran long before any
-    /// lifecycle machine existed, which is exactly the case a machine cannot
-    /// see for itself. Notices do not withhold anything.
+    /// Allows world access only when the report has no refusals.
     ///
     /// # Errors
     ///
-    /// Returns [`WorldAccessRefused`] naming how many problems there are and
-    /// the first of them.
+    /// Returns [`WorldAccessRefused`] with the refusal count and first refusal.
     pub fn world_access(&self) -> Result<(), WorldAccessRefused> {
         match self.refusals.first() {
             None => Ok(()),
@@ -276,10 +229,7 @@ impl PreWorldReport {
     }
 }
 
-/// A world was not opened because something was refused before it.
-///
-/// The error carries the count and the first line rather than the whole report,
-/// because a caller that wants the rest already holds the report it came from.
+/// A world was withheld, with the refusal count and first rendered refusal.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorldAccessRefused {
     refusals: usize,
@@ -315,7 +265,6 @@ impl fmt::Display for WorldAccessRefused {
 
 impl std::error::Error for WorldAccessRefused {}
 
-/// Renders a list of mod ids as a dependency path.
 fn ids(chain: &[ModId]) -> String {
     chain
         .iter()
@@ -324,7 +273,6 @@ fn ids(chain: &[ModId]) -> String {
         .join(" -> ")
 }
 
-/// Names the surface a failure reached, the way `SPEC.md` §9.1 lists them.
 fn named(surface: &FailureSurface) -> String {
     match surface {
         FailureSurface::Hook(name) => format!("hook `{name}`"),
@@ -345,7 +293,6 @@ mod tests {
 
     use super::{PreWorldReport, Subject, WorldAccessRefused};
 
-    /// A failure a test can shape into any stage's report.
     #[derive(Debug)]
     struct Failure {
         text: String,

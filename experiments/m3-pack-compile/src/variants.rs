@@ -1,21 +1,5 @@
-//! Measures the three variants that change the answer, beside the base curve.
-//!
-//! The base curve builds independent mod crates on every core the machine has.
-//! Three things about that are not what a player gets, and each is measured
-//! here rather than argued about:
-//!
-//! - **Four cores.** The reference machine has sixteen threads. A player's does
-//!   not, and peak memory during a build is set by how many `rustc` processes
-//!   run at once, so the core count moves both numbers.
-//! - **A dependency graph.** Real mods sit on libraries that sit on libraries.
-//!   Cargo cannot start a crate before its dependencies finish, so a deep graph
-//!   serializes work that the independent pack ran in parallel.
-//! - **Whole-pack optimization.** Mods shipped and versioned separately but
-//!   optimized together is the variant that buys runtime performance. What it
-//!   costs is a link that cannot be incremental.
-//!
-//! These are spliced into the existing record rather than written over it: the
-//! curve's numbers stay exactly as they were measured.
+//! Measures job-limit, dependency-chain, and whole-pack optimization variants.
+//! Appends results without replacing the base curve's measurements.
 
 use std::fs;
 use std::path::Path;
@@ -29,20 +13,10 @@ use crate::measure::{
     self, BuildRun, fastest_ms as fastest, peak_process_rss, peak_tree_rss as peak_rss, samples,
 };
 
-/// Pack sizes the variants are measured at.
-///
-/// The two large points of the base curve. Below 64 the differences these
-/// variants create are smaller than the run-to-run spread, so measuring them
-/// there would produce numbers without a signal in them.
+/// Large pack sizes where variant differences exceed run-to-run noise.
 const VARIANT_SIZES: [usize; 2] = [64, 256];
 
-/// Builds per figure.
-///
-/// Two rather than the curve's three, because a fat-link build of 256 crates
-/// costs about two minutes and the full matrix is already forty of them. The
-/// quoted figure is the faster of the two runs and both are recorded: build
-/// noise only ever adds time, so the minimum is the closest estimate of the
-/// cost, and it is stated rather than dressed up as a median.
+/// Builds per figure; both runs are recorded and the faster one is reported.
 const VARIANT_REPEATS: usize = 2;
 
 /// One thing being varied against the base curve.
@@ -57,16 +31,11 @@ struct Variant {
     jobs: Option<usize>,
     /// What the variant is for, in the record's own words.
     question: &'static str,
-    /// Which cache this variant's warm figure is warm against.
-    ///
-    /// Present only where that differs from the baseline's, because a reader who
-    /// assumes it does not will read two different measurements as one.
+    /// Cache details where this variant's warm path differs from the baseline.
     warm_path_detail: Option<&'static str>,
 }
 
-/// The matrix. The control is first, and exists so the others are compared
-/// against a run under the same protocol rather than against the curve's
-/// median-of-three.
+/// Control first, measured under the variants' protocol rather than the base curve's.
 const VARIANTS: [Variant; 4] = [
     Variant {
         id: "independent-j16",
@@ -278,12 +247,7 @@ fn variant_record(variant: &Variant, sizes: &[Measured], finding: Option<&str>) 
     record
 }
 
-/// States what the link-time variant found, from the numbers this run produced.
-///
-/// The claim is fixed and the evidence is computed. Writing this run's seconds
-/// into the sentence would make a rerun on other hardware quote figures its own
-/// `points` contradict, which is the failure the record is supposed to prevent
-/// rather than commit.
+/// Derives the link-time comparison from this run's measurements.
 fn link_time_finding(results: &[(&Variant, Vec<Measured>)]) -> Option<String> {
     let link_time = results.iter().find(|(variant, _)| variant.lto)?;
     let chain = results
@@ -299,8 +263,7 @@ fn link_time_finding(results: &[(&Variant, Vec<Measured>)]) -> Option<String> {
             measured.packs,
         ));
     }
-    // The largest chain point, because the contrast is clearest where there is
-    // most work for a dependency edge to hold up.
+    // Compare the largest chain point, where dependency serialization is clearest.
     let contrast = chain.1.iter().max_by_key(|measured| measured.packs)?;
 
     Some(format!(

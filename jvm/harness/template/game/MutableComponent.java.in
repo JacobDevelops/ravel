@@ -2,14 +2,6 @@
 
 {{import Component}}
 
-/**
- * What a built label is.
- *
- * <p>It is stood in for because it is the return type the two builders above
- * link under: a screen jar compiled against the stubs carries that type in
- * every call site, so a stand-in answering the interface instead would be
- * resolved against a descriptor no launch has.
- */
 public final class {{MutableComponent}} implements {{Component}} {
 
     private final String text;

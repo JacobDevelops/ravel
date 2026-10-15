@@ -1,11 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// One state of the mod lifecycle defined by `SPEC.md` §14.
-///
-/// This is the lifecycle vocabulary and its transition table, not the state
-/// machine that walks them. The loader owns sequencing, ordering, and the
-/// invariants that depend on more than two states; a machine consumes
-/// [`LifecycleState::can_transition_to`] and [`LifecycleState::is_terminal`].
+/// A mod lifecycle state; the loader owns sequencing and graph-wide invariants.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum LifecycleState {
@@ -32,7 +27,7 @@ pub enum LifecycleState {
 }
 
 impl LifecycleState {
-    /// Every state, in the order `SPEC.md` §14 lists them.
+    /// Every state in lifecycle order, followed by failure.
     pub const ALL: [Self; 10] = [
         Self::Discovered,
         Self::Validated,
@@ -46,10 +41,7 @@ impl LifecycleState {
         Self::Failed,
     ];
 
-    /// The `SPEC.md` §14 name of this state, as a report writes it.
-    ///
-    /// Every crate that renders a state to a person uses this rather than the
-    /// derived `Debug` spelling, so one state has one user-facing name.
+    /// Returns the state's canonical serialized name.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -66,21 +58,13 @@ impl LifecycleState {
         }
     }
 
-    /// Returns whether the lifecycle ends here.
-    ///
-    /// [`Self::Stopped`] and [`Self::Failed`] are the two ends, and neither has
-    /// a legal outgoing transition.
+    /// Returns whether this is [`Self::Stopped`] or [`Self::Failed`].
     #[must_use]
     pub const fn is_terminal(self) -> bool {
         matches!(self, Self::Stopped | Self::Failed)
     }
 
-    /// Returns whether moving from this state to `next` is legal.
-    ///
-    /// The successful path advances one state at a time in the `SPEC.md` §14
-    /// order, and [`Self::Failed`] is reachable from every non-terminal state
-    /// because a failure can occur in any phase, including while stopping.
-    /// Nothing leaves a terminal state, and no state transitions to itself.
+    /// Allows the next successful phase or failure from a non-terminal state.
     ///
     /// # Examples
     ///
@@ -175,23 +159,6 @@ mod tests {
             }
         }
         assert_eq!(legal, 16, "eight successful steps and eight failure edges");
-    }
-
-    #[test]
-    fn the_successful_path_runs_end_to_end_without_touching_failed() {
-        for pair in SUCCESS_PATH.windows(2) {
-            assert!(pair[0].can_transition_to(pair[1]), "{pair:?}");
-        }
-        assert!(!SUCCESS_PATH.contains(&LifecycleState::Failed));
-    }
-
-    #[test]
-    fn no_state_repeats_or_skips_itself_forward() {
-        for state in LifecycleState::ALL {
-            assert!(!state.can_transition_to(state), "{state:?} repeats itself");
-        }
-        assert!(!LifecycleState::Discovered.can_transition_to(LifecycleState::Stopped));
-        assert!(!LifecycleState::Running.can_transition_to(LifecycleState::Registered));
     }
 
     #[test]

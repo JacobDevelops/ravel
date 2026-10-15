@@ -8,18 +8,7 @@ use serde_json::Value;
 use crate::SchemaVersion;
 use crate::declaration::SettingKey;
 
-/// The values one layer states for one owner's settings.
-///
-/// `configuration-override.schema.json` defines this for the pack layer, and the
-/// player's file is the same document with a different author: a
-/// `schemaVersion`, the `owner` it belongs to, and a map from setting key to
-/// value. Nothing in the shape is pack-specific, and giving the player's file a
-/// second shape would mean two parsers and two round trips for one contract.
-///
-/// A key this document does not name is not a value at all. That is the whole
-/// point of the per-setting model: an unnamed setting keeps the
-/// author's default and stays the player's to change, and a mod that adds a
-/// setting later finds it absent here rather than frozen at an old value.
+/// Per-setting pack or player overrides for one owner; absent keys inherit lower layers.
 ///
 /// # Examples
 ///
@@ -61,15 +50,11 @@ impl ValueDocument {
 
     /// Parses a pack override document or a player's values file.
     ///
-    /// Nothing here checks a value against a setting, because a value schema
-    /// lives in the owner's declaration and this document does not carry one.
-    /// [`crate::LayeredConfiguration::resolve`] is where the two meet.
+    /// Values are checked against the declaration by [`crate::LayeredConfiguration::resolve`].
     ///
     /// # Errors
     ///
-    /// Returns [`DocumentError::Syntax`] when the bytes are not JSON and
-    /// [`DocumentError::Schema`] when they are JSON that
-    /// `configuration-override.schema.json` refuses.
+    /// Returns syntax or override-schema errors.
     pub fn parse(document: &str) -> Result<Self, DocumentError> {
         serde_json::from_str(document).map_err(|error| DocumentError::from_json(&error))
     }
@@ -78,9 +63,7 @@ impl ValueDocument {
     ///
     /// # Panics
     ///
-    /// Never. Every key is a validated string and every value is JSON that was
-    /// itself parsed, so the only way this fires is a serializer that has
-    /// stopped being one.
+    /// Panics if serialization of the document's JSON-compatible fields fails.
     #[must_use]
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("a parsed document always serializes")
@@ -122,14 +105,12 @@ impl fmt::Display for DocumentError {
 impl std::error::Error for DocumentError {}
 
 impl StructuredFailure for DocumentError {
-    /// A document that will not read has no `SPEC.md` §9.2 kind. That list names
-    /// dependency-graph outcomes, and the graph is not what failed.
+    /// Configuration errors are not dependency-graph failures.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
 
-    /// The detail is the deserializer's sentence about text a pack or a player
-    /// wrote, so a report attributes the words accordingly.
+    /// Deserializer details can quote pack or player input.
     fn quotes_untrusted_text(&self) -> bool {
         true
     }

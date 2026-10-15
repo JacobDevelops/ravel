@@ -4,45 +4,14 @@
 {{import Component}}
 {{import KeyEvent}}
 
-/**
- * The keyboard half of a Ravel screen whose content scrolls.
- *
- * <p>This class exists because of one difference the role bindings cannot
- * reach. A screen reads a keystroke by overriding the game's {@code keyPressed},
- * and the two pinned versions do not declare it in the same shape: one takes a
- * key code, a scan code and a set of modifiers as three {@code int}s, the other
- * takes one event object carrying the same three. A role binding answers a
- * rename, and a parameter list is not a name — so the shared template renders
- * the shape the version generating it declares, and the version that declares
- * the other carries its own copy of this file. Everything below the signature is
- * the same under both, which is why it is only the signature that lives here:
- * the rows, the offset and every decision about what a key means belong to the
- * screen and are written once.
- *
- * <p>The rest of the keyboard is left to the game. A key this screen does not
- * move its window with goes to {@code super}, which is what closes the screen on
- * escape and what moves the focus on tab, and a screen that answered
- * {@code false} to everything else would have taken both away.
- */
 abstract class RavelScrolling extends {{Screen}} {
 
     RavelScrolling({{Component}} title) {
         super(title);
     }
 
-    /**
-     * Moves this screen's window for one key, or leaves it where it is.
-     *
-     * @param key the key code the game reported
-     * @return whether the key moved the window, which is whether it was used
-     */
     abstract boolean scrolled(int key);
 
-    /**
-     * Hands a keystroke to {@link #scrolled} before the game sees it.
-     *
-     * @return whether this screen or the game used the key
-     */
     @Override
     public boolean {{Screen#keyPressed}}({{KeyEvent}} event) {
         return scrolled(event.{{KeyEvent#key}}()) || super.{{Screen#keyPressed}}(event);

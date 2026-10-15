@@ -9,7 +9,6 @@ import java.lang.reflect.Method;
 {{import Screen}}
 {{import Component}}
 
-/** Adds Ravel's mod list to the game's normal title-menu button column. */
 public final class RavelMenu {
 
     private static final int BUTTON_WIDTH = 200;
@@ -18,7 +17,6 @@ public final class RavelMenu {
     private RavelMenu() {
     }
 
-    /** Adds one button immediately after the normal menu options. */
     public static void add(Object receiver, int bottom, int spacing) {
         {{Screen}} title = ({{Screen}}) receiver;
         {{Button}} button = {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}("Ravel Mods"), new {{Button$OnPress}}() {
@@ -36,23 +34,14 @@ public final class RavelMenu {
         return open("openMods", new Class<?>[0]);
     }
 
-    /** One mod's settings screen closing back to {@code parent}, or {@code null} if it could not be built. */
     static {{Screen}} openSettings(String owner, {{Screen}} parent) {
         return open("openSettings", new Class<?>[] {String.class, Object.class}, owner, parent);
     }
 
-    /** The profiling screen, closing back to {@code parent}, or {@code null} if it could not be built. */
     static {{Screen}} openProfiling({{Screen}} parent) {
         return open("openProfiling", new Class<?>[] {Object.class}, parent);
     }
 
-    /**
-     * Asks the agent jar for a screen.
-     *
-     * <p>The agent's builder contains every failure a screen class can raise
-     * on load and answers {@code null} with a diagnostic, so a screen that
-     * cannot be built costs the player the click and not the client.
-     */
     private static {{Screen}} open(String name, Class<?>[] types, Object... arguments) {
         try {
             Class<?> screens = Class.forName(

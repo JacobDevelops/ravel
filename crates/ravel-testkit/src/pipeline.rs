@@ -12,11 +12,7 @@ use ravel_package::{
 };
 use ravel_resolve::{LoadPlan, ResolutionError, resolve};
 
-/// The `SPEC.md` §14 states a successful run passes through, in order.
-///
-/// [`LifecycleState::Discovered`] is absent because it is where every mod
-/// starts rather than somewhere it moves to, and [`LifecycleState::Failed`] is
-/// absent because a successful run never reaches it.
+// Discovered is the initial state; successful runs never enter Failed.
 const RUN_ORDER: [LifecycleState; 8] = [
     LifecycleState::Validated,
     LifecycleState::Resolved,
@@ -28,13 +24,7 @@ const RUN_ORDER: [LifecycleState; 8] = [
     LifecycleState::Stopped,
 ];
 
-/// A package the loader found on disk, before anything about it was believed.
-///
-/// The document is held as text rather than as a parsed manifest because
-/// parsing it is the first thing `SPEC.md` §14 requires of validation, so a
-/// harness that took a manifest would be skipping the step it exists to
-/// exercise. Where the text came from is the caller's business: `ravel-package`
-/// deliberately defines no on-disk package layout, and neither does this.
+/// A package root and unparsed manifest, preserving the validation boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiscoveredPackage {
     /// The package directory that the manifest's relative paths resolve against.
@@ -70,21 +60,11 @@ impl DiscoveredPackage {
         Ok(Self { root, document })
     }
 
-    /// The manifest file name [`Self::read`] looks for.
-    ///
-    /// This is a convention of this harness and not of the package contract.
-    /// `schemas/package.schema.json` describes a manifest's contents and says
-    /// nothing about what it is called, so naming one here is a test-support
-    /// decision that a later packaging tool is free to overrule.
+    /// The harness's manifest filename convention, not part of the package contract.
     pub const MANIFEST_FILE: &'static str = "package.json";
 }
 
-/// What a package set is being admitted against.
-///
-/// Every field is supplied rather than discovered. Ravel's own version is the
-/// running loader's and the Minecraft version belongs to `minecraft/versions/`,
-/// so a version-neutral crate that guessed either would be encoding a version
-/// boundary `SPEC.md` §3.7 puts somewhere else.
+/// Explicit host versions used to check package compatibility.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Host {
     /// The Ravel version a package's `compatibility.ravel` range is checked
@@ -95,13 +75,7 @@ pub struct Host {
     pub minecraft: String,
 }
 
-/// What one completed run of the pipeline did.
-///
-/// The transcript is the evidence `ROADMAP.md`'s M2-W6 row asks for: every
-/// state change, in the order it happened, for a package set that was validated
-/// and resolved first. It is a property of the package set alone, because the
-/// plan it was driven from is the lexicographically smallest topological order
-/// of the dependency graph and every traversal here preserves that order.
+/// A resolved package plan and its ordered lifecycle transcript.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PipelineRun {
     plan: LoadPlan,
@@ -122,9 +96,6 @@ impl PipelineRun {
     }
 
     /// Returns the states one mod was taken through, in order.
-    ///
-    /// This is the transcript projected onto a single identity, which is what a
-    /// report about one mod needs and what a per-mod determinism check compares.
     #[must_use]
     pub fn states_of(&self, mod_id: &ModId) -> Vec<LifecycleState> {
         self.transcript
@@ -135,41 +106,15 @@ impl PipelineRun {
     }
 }
 
-/// Drives a discovered package set through the whole pre-world pipeline.
+/// Validates and resolves all packages before driving mods through the lifecycle.
 ///
-/// The run is validate, resolve, then the `SPEC.md` §14 states in order, and it
-/// is the composition M2-W6 exists to demonstrate rather than any new rule:
-/// `ravel-package` decides what validates, `ravel-resolve` decides the order,
-/// and `ravel-loader` decides which transitions are legal. Nothing here
-/// overrides any of them.
-///
-/// Mod code is entered exactly when [`executes_mod_code`] says a state runs it,
-/// which is [`LifecycleState::Loaded`] through [`LifecycleState::Stopping`].
-/// Every mod is driven in resolved order, after the whole set has taken the
-/// step, because `LifecycleMachine::advance_all` moves a set together or not at
-/// all.
-///
-/// Which mods the lifecycle holds is [`ravel_loader::admitted`]'s answer rather
-/// than this harness's: every installed package is admitted, so a package whose
-/// manifest omits `side` is **parked** at [`LifecycleState::Resolved`] instead of
-/// being absent, and the side declaration an author wrote is what parks it. A
-/// parked mod is never entered, so a caller need not supply a value for one.
-///
-/// `mods` are values the caller already holds. This function never loads,
-/// links, opens, or spawns anything to obtain one: source distribution
-/// and the compilation and binding mechanism produce the
-/// values passed here.
+/// Mods run in resolved order after each set-wide transition. Packages not active
+/// on this side remain at [`LifecycleState::Resolved`] and need no mod value.
+/// The caller supplies already-constructed mods; this function loads no code.
 ///
 /// # Errors
 ///
-/// Returns the first failure in pipeline order, so a package set that breaks
-/// two rules reports the earlier one: [`PipelineError::Manifest`],
-/// [`PipelineError::Integrity`] and [`PipelineError::Compatibility`] during validation,
-/// [`PipelineError::Resolution`] during resolution, and
-/// [`PipelineError::Host`] or [`PipelineError::Lifecycle`] while running.
-/// [`PipelineError::UnexpectedMod`] is raised before any state changes and
-/// [`PipelineError::MissingMod`] when the plan reaches a mod the caller did not
-/// supply.
+/// Returns the first validation, resolution, mod-set, lifecycle, or host failure.
 pub fn run(
     packages: &[DiscoveredPackage],
     host: &Host,
@@ -178,9 +123,7 @@ pub fn run(
 ) -> Result<PipelineRun, PipelineError> {
     let manifests = validate(packages, host)?;
     let plan = resolve(&manifests, side).map_err(PipelineError::Resolution)?;
-    // `admitted` runs the same two compatibility checks `validate` already ran, and
-    // deliberately so: it is the production boundary, and a harness that skipped it
-    // would be the reason the check has no caller that runs in a game.
+    // Exercise the production admission boundary even after validating compatibility.
     let entries = admitted(&plan, &manifests, &host.ravel, &host.minecraft)
         .map_err(PipelineError::Compatibility)?;
     refuse_mods_outside_the_set(&entries, mods)?;
@@ -204,15 +147,6 @@ pub fn run(
     })
 }
 
-/// Admits every package, or none of them.
-///
-/// The checks are what `SPEC.md` §14 requires before
-/// [`LifecycleState::Validated`]: schema, source and provenance integrity, and
-/// compatibility.
-///
-/// They run over the whole set before resolution begins, because a package set
-/// is admitted together and resolving a set that holds an unvalidated package
-/// would be reading declarations nothing has vouched for.
 fn validate(
     packages: &[DiscoveredPackage],
     host: &Host,
@@ -235,13 +169,6 @@ fn validate(
     Ok(manifests)
 }
 
-/// Refuses a mod value nothing in the package set accounts for.
-///
-/// A value for a mod the set does not contain is a harness mistake worth
-/// catching early: it would sit untouched through the whole run and its absence
-/// from the transcript would read as a mod that failed rather than one that was
-/// never part of the set. A value for an *admitted* mod that this side parks is
-/// allowed, because a caller that supplies one is entitled to find it untouched.
 fn refuse_mods_outside_the_set(
     entries: &[LifecycleEntry],
     mods: &[&mut dyn HostMod],
@@ -257,7 +184,6 @@ fn refuse_mods_outside_the_set(
     Ok(())
 }
 
-/// Takes every mod into `state`, in resolved order.
 fn enter_all(
     plan: &LoadPlan,
     mods: &mut [&mut dyn HostMod],
@@ -276,19 +202,7 @@ fn enter_all(
     Ok(())
 }
 
-/// Opens the registration window for every mod, in resolved order.
-///
-/// This is the whole of `SPEC.md` §14's registration barrier as a package set
-/// experiences it: the set is [`LifecycleState::Constructed`], each mod claims
-/// what it owns, and nothing advances to [`LifecycleState::Registered`] until
-/// every one of them has had the chance. Claiming in resolved order is what
-/// makes a contested identifier go to the same mod every run, which is the
-/// deterministic-order invariant the same section requires.
-///
-/// A mod that refuses is reported as it refused. A refusal the mod could not
-/// see the whole of — a claim from outside the window — is reported as the
-/// loader's own [`LifecycleError`], because that is the accurate account and
-/// the mod only ever received a summary of it.
+// Claim in resolved order; preserve window violations over a mod's summary error.
 fn register_all(
     plan: &LoadPlan,
     mods: &mut [&mut dyn HostMod],
@@ -317,13 +231,7 @@ fn register_all(
     Ok(())
 }
 
-/// Why a package set did not complete the pipeline.
-///
-/// Five variants forward the failure the owning crate raised, kept whole rather
-/// than flattened into text, so a caller can assert on the rule that was broken
-/// instead of on a sentence. The other three are this harness's own, and every
-/// one of them names a mod or a file rather than a path, for the reason
-/// `SPEC.md` §9.1 gives.
+/// A pipeline failure, preserving errors from the responsible crate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PipelineError {
     /// A manifest file could not be read.
@@ -392,15 +300,7 @@ impl std::error::Error for PipelineError {
 }
 
 impl PipelineError {
-    /// Returns the owning crate's failure, for the failures this harness
-    /// forwards rather than raises.
-    ///
-    /// This is what makes one `match` arm enough for a report: a caller that
-    /// wants the structured facts of a pipeline failure asks for the failure
-    /// the owning crate raised and reports *that*, without naming a stage.
-    /// This harness deliberately does not implement [`StructuredFailure`]
-    /// itself, because it is test support rather than a report surface and
-    /// implementing it would put it in the reporting contract.
+    /// Returns the underlying structured failure, or `None` for harness-owned errors.
     #[must_use]
     pub fn stage(&self) -> Option<&(dyn StructuredFailure + 'static)> {
         match self {
@@ -415,11 +315,7 @@ impl PipelineError {
     }
 }
 
-/// Returns the states a mod is taken through, which is what
-/// [`executes_mod_code`] admits.
-///
-/// A caller comparing a mod's own record against the run needs the same list
-/// the run used, and deriving it twice is how the two drift apart.
+/// Returns the run states admitted by [`executes_mod_code`].
 #[must_use]
 pub fn executed_states() -> Vec<LifecycleState> {
     RUN_ORDER

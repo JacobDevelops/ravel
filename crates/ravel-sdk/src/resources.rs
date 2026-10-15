@@ -1,18 +1,7 @@
-//! Files a mod supplies, and what happens when two mods supply the same one.
+//! Supplied resource files and load-order overrides.
 //!
-//! A resource is neither a registry claim nor a tag. Two mods claiming
-//! `block:example:copper` is a conflict, two mods contributing to `c:ingots` is a
-//! merge, and two mods supplying `assets/minecraft/lang/en_us.json` is neither:
-//! it is an override, which is how every resource system in modded Minecraft
-//! works. The mod later in the resolved load order supplies the path, and the
-//! ones it took the path from are recorded — because a player whose translation
-//! vanished is owed the name of the mod that took it.
-//!
-//! A mod declares the files it supplies in its
-//! [`crate::content::ContentDeclaration`], either derived — a tag, a locale's
-//! translations — or as bytes it hands over for content Ravel does not model.
-//! [`ResourceSet`] is the layered view, and the loader owns the real one, because
-//! the resolved order is the loader's to decide and a mod cannot see it.
+//! Declare files in [`crate::content::ContentDeclaration`]. In [`ResourceSet`],
+//! the later supplier wins and overridden suppliers remain recorded.
 //!
 //! # Examples
 //!

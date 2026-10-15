@@ -6,26 +6,7 @@ use ravel_core::{ContentId, ContentKind, ModId, RegistryKey, RelativePath};
 use crate::declare::ContentDeclaration;
 use crate::generate::{GeneratedData, tag_document};
 
-/// A named group of registry entries.
-///
-/// A tag is the third thing a mod declares and the only one whose contributions
-/// *add up*. A registry key has exactly one owner, so the second claim on it is
-/// a conflict the barrier refuses. A resource path has exactly one supplier, so
-/// the last mod to declare it wins and the ones it shadowed are recorded. A tag
-/// has no owner at all: `c:ingots` is a name several mods contribute members to
-/// on purpose, and refusing the second contribution — or letting it replace the
-/// first — would break the one thing tags exist for, which is letting a recipe
-/// accept an ingot nobody has written yet.
-///
-/// The kind is part of the name for the reason it is part of a [`RegistryKey`]:
-/// the game keeps one tag namespace per registry, so a block tag and an item tag
-/// may share `c:lanterns` and mean two different groups. It also fixes what a
-/// member may be — an item tag holds items — which is what
-/// [`crate::DeclarationError::TagKind`] refuses.
-///
-/// [`ContentKind::Command`] is not taggable. A tag exists so content can be
-/// looked up as a group by a recipe, a loot table or a game rule, and none of
-/// those looks up a command; a command tag would be a name with no reader.
+/// A named group of entries in one taggable registry; commands are not taggable.
 ///
 /// # Examples
 ///
@@ -86,24 +67,11 @@ impl TagId {
         member.kind() == self.kind
     }
 
-    /// Returns the path in a generated pack that holds this tag's members.
-    ///
-    /// The layout is the data-pack layout — `data/<namespace>/tags/<registry>/<path>.json`
-    /// — which is shared across the Minecraft versions Ravel targets rather than
-    /// pinned to one of them, so deriving it here does not put a version detail
-    /// in a version-neutral crate. Anything that *is* version-shaped stays out:
-    /// this crate generates no recipe body and no translation key, because both
-    /// are shapes a version decides and an author or an adapter supplies.
-    ///
-    /// The path is derived rather than declared, which is what makes generated
-    /// output impossible to misfile: a mod names the tag and Ravel decides where
-    /// it lands.
+    /// Returns `data/<namespace>/tags/<registry>/<path>.json` for this tag.
     ///
     /// # Panics
     ///
-    /// Panics if the derived path is not a legal [`RelativePath`], which cannot
-    /// happen: a [`ContentId`]'s charset holds no backslash, no line terminator
-    /// and no `..` component, and the prefix is this crate's own literal.
+    /// Panics if validated content components produce an invalid relative path.
     #[must_use]
     pub fn generated_path(&self) -> RelativePath {
         let path = format!(
@@ -145,16 +113,7 @@ impl fmt::Display for TagError {
 
 impl std::error::Error for TagError {}
 
-/// Every tag an installed set declares, with the contributions merged.
-///
-/// This is the tag counterpart of [`crate::ResourceSet`], and the contrast is
-/// the point of both. A contested resource path has one winner and the mods it
-/// shadowed; a tag has no winner, because every contribution is kept. The
-/// caller supplies declarations in resolved load order, which fixes the order
-/// contributors are named in, and the members of one tag are ordered by their
-/// canonical spelling rather than by who declared them — a tag is a set, and a
-/// reader that saw a different order for the same set would be reading the load
-/// order out of a value that is not about load order.
+/// Merged tag members in canonical order, with contributors in supplied load order.
 ///
 /// # Examples
 ///
@@ -228,10 +187,6 @@ impl TagSet {
     }
 
     /// Returns the members of `tag`, in canonical spelling order.
-    ///
-    /// A tag nobody declared has no members rather than no answer, because a
-    /// reader asking what is in `c:ingots` when no mod supplies ingots wants an
-    /// empty group.
     #[must_use]
     pub fn members(&self, tag: &TagId) -> &[RegistryKey] {
         self.members.get(tag).map_or(&[], Vec::as_slice)
@@ -249,16 +204,7 @@ impl TagSet {
         self.members.is_empty()
     }
 
-    /// Produces one file per tag, holding every contribution.
-    ///
-    /// [`ContentDeclaration::generate`] renders one mod's view of a tag, which is
-    /// the right answer for one mod and the wrong one for an installation: two mods
-    /// contributing to `c:ingots` derive the same path, so writing both would make
-    /// the later file replace the earlier and lose exactly the contributions a tag
-    /// exists to collect. Merging first and rendering once is what keeps them.
-    ///
-    /// The rendering is the same function [`ContentDeclaration::generate`] uses, so
-    /// a merged tag file and a single mod's tag file cannot disagree about format.
+    /// Generates one merged file per tag, preserving every contribution.
     #[must_use]
     pub fn generate(&self) -> GeneratedData {
         let mut data = GeneratedData::default();
@@ -447,8 +393,7 @@ mod tests {
         assert!(text.contains("first_mod:copper_lantern"), "{text}");
         assert!(text.contains("second_mod:tin_lantern"), "{text}");
 
-        // Neither mod's own generated file holds the other's member, which is why
-        // merging has to happen before rendering rather than after.
+        // Merge declarations before rendering to avoid replacing another mod's members.
         let alone = first
             .generate()
             .file(&lanterns.generated_path())

@@ -1,27 +1,7 @@
-//! What the game did, and what a player typed.
+//! Version-neutral game events and player commands.
 //!
-//! [`GameEvent`] is a closed set, and that is deliberate: an unknown event would
-//! name something no version adapter has resolved a hook for. The loader
-//! broadcasts every event to every running mod in resolved load order, so a mod
-//! that cares about ordering sees the same order each run, and a `match` that
-//! ignores an event costs one arm.
-//!
-//! A [`CommandInvocation`] reaches only the one mod that claimed the root
-//! literal during the registration window, so a mod is never asked to run a
-//! command it does not own and never has to check.
-//!
-//! # Why there is no `hooks` module
-//!
-//! A hook is the host-side mechanism M3 settled: a named target in a version's
-//! `hooks.toml`, resolved against that version's mappings and installed into the
-//! game by `ravel-bootstrap`. This module is its mod-facing form. A mod author
-//! never names a hook, does not choose one, and cannot be affected by one moving
-//! between versions — which is the point of `SPEC.md` §3.7's version boundary, and
-//! the reason `docs/architecture/dependency-rules.md` keeps the SDK clear of
-//! version internals. Exposing a hook here would breach that rule and hand an
-//! author a name that is only stable for one Minecraft version. So the absence is
-//! a decision rather than an omission: [`GameEvent`] is what a hook becomes by the
-//! time it reaches a mod.
+//! Events reach running mods in resolved load order; commands reach only the
+//! mod that claimed their root literal.
 //!
 //! # Examples
 //!

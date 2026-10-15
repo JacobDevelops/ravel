@@ -1,52 +1,8 @@
-//! What one mod asks another for.
+//! Named JSON requests between mods, with providers started before consumers.
 //!
-//! A service is a named call one mod answers and others make. It is the one thing
-//! in this facade that crosses from one mod to another at run time, so it is
-//! deliberately narrow: a [`ServiceId`] is namespaced by the mod that answers it,
-//! so exactly one mod can, and a [`ServiceDeclaration`] states both halves — what
-//! this mod answers and what it needs answered — before any of it runs.
-//!
-//! Declaring rather than discovering is what makes the order decidable. The loader
-//! reads every declaration, orders providers before consumers, and refuses a set
-//! whose services do not resolve: a service nothing answers, or two mods that
-//! require each other. Both refusals name the offender and happen before a mod is
-//! started, so nothing is half-wired.
-//!
-//! [`crate::Mod::use_services`] is where a mod makes its calls, and the
-//! [`ServiceDirectory`] it is handed reaches only mods the loader has already
-//! started. A call to a mod later in the order is not something to avoid — there
-//! is nothing there to call.
-//!
-//! # Requiring a mod and merely using one
-//!
-//! A declaration has a third half. [`ServiceDeclaration::requires`] means your mod
-//! does not start without the service, so a set missing its provider is refused
-//! the way an unresolved package is. [`ServiceDeclaration::may_use`], declared
-//! with [`ServiceDeclaration::with_optional`], means your mod uses the service
-//! when something answers it and does without when nothing does — the set loads
-//! either way.
-//!
-//! That is the *only* difference. An optionally declared service whose provider is
-//! running is still composed before you, and calling it is still legal rather than
-//! [`ServiceUnavailable::Undeclared`]. So "is that mod installed" is answered once,
-//! by the loader, before anything runs; you never get told a mod is absent because
-//! you were composed too early.
-//!
-//! When nothing answers, the call fails with [`ServiceUnavailable::Absent`], which
-//! [`ServiceCallFailed::is_absent`] reports. It is the one outcome an optional
-//! consumer carries on past. A provider that was *reached* and refused arrives as
-//! [`ServiceCallFailed::Refused`] and is a different event: the mod is installed
-//! and said no. Branch on the variant, never on the rendered sentence.
-//!
-//! # A request and its answer are data
-//!
-//! [`ServiceRequest::arguments`] and [`ServiceResponse::value`] are JSON, not a
-//! Rust type both mods name. That is the same trade [`crate::network`] makes and
-//! it is made for the same reason: mods are distributed as source the player's
-//! machine compiles, so a consumer that named the provider's Rust type would be
-//! pinned to the provider's build rather than to the version range its package
-//! manifest declares. A provider owns the shape of its answer and versions it the
-//! way it versions anything else it publishes.
+//! Declare required services with [`ServiceDeclaration::new`] or optional
+//! services with [`ServiceDeclaration::with_optional`], then call them from
+//! [`crate::Mod::use_services`]. Optional absence is distinct from provider refusal.
 //!
 //! # Examples
 //!

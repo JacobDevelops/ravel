@@ -5,25 +5,11 @@ use ravel_observability::{PreWorldReport, WorldAccessRefused};
 use crate::lifecycle::{LifecycleError, LifecycleMachine};
 
 impl LifecycleMachine {
-    /// Opens a world only when nothing anywhere refused one.
-    ///
-    /// [`LifecycleMachine::world_access`] answers for the set the machine is
-    /// driving, and that is all it can answer for: a package whose manifest
-    /// would not parse, whose digest did not match, or whose dependency graph
-    /// had no order never became an entry in any plan, so no machine ever sees
-    /// it. `SPEC.md` §9.2 makes Ravel fail closed on an invalid required-mod
-    /// graph, which means those refusals have to withhold the world too, and
-    /// the pre-world report is where they are.
-    ///
-    /// The report is consulted first because it holds the earlier failures, and
-    /// the earliest problem is the one worth showing a player.
+    /// Requires both the pre-world report and the lifecycle to permit world access.
     ///
     /// # Errors
     ///
-    /// Returns [`WorldRefused::PreWorld`] when the report holds any refusal, and
-    /// [`WorldRefused::Lifecycle`] when the running set itself cannot open a
-    /// world — a mod that is not running, or a failure that followed world
-    /// mutation.
+    /// Returns the earliest pre-world refusal, or a lifecycle refusal if the report permits access.
     pub fn open_world(&self, report: &PreWorldReport) -> Result<(), WorldRefused> {
         report.world_access().map_err(WorldRefused::PreWorld)?;
         self.world_access().map_err(WorldRefused::Lifecycle)
@@ -31,10 +17,6 @@ impl LifecycleMachine {
 }
 
 /// Why no world opened.
-///
-/// The two variants are the two halves of the gate, kept apart because they are
-/// different things to fix: one is a package that should not have been
-/// installed, and the other is a load that did not finish.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorldRefused {
     /// Something was refused before the load reached a lifecycle machine.
@@ -74,7 +56,6 @@ mod tests {
     use super::WorldRefused;
     use crate::lifecycle::{LifecycleEntry, LifecycleError, LifecycleMachine, Requirement};
 
-    /// A failure from a stage that runs long before any lifecycle machine.
     #[derive(Debug)]
     struct Unresolvable;
 
@@ -109,8 +90,6 @@ mod tests {
         })
     }
 
-    /// A machine whose only mod is running, so the world is the report's to
-    /// withhold.
     fn running() -> LifecycleMachine {
         let mut machine = LifecycleMachine::new(
             Side::Client,

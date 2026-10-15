@@ -8,12 +8,7 @@ use super::inputs::{Adapter, Inventory, MappingSource};
 use super::mapping::Mapping;
 use super::{GenerateError, classfile, jar};
 
-/// A member as the generator read it, under both of the names it has.
-///
-/// The reviewed inventory names a target the way a human reviews it and the JVM
-/// links it the way the mapping source says. Under `unobfuscated-class-files`
-/// the two are the same string; under a published mapping they are not, and the
-/// generated doc comments want the first while the target tables want the second.
+/// A resolved hook's reviewed names for documentation and linked names for target tables.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Resolved {
     /// Hook identifier this resolves.
@@ -34,11 +29,7 @@ pub(super) struct Resolved {
     pub(super) is_static: bool,
 }
 
-/// One pinned member, as the tracked mapping lock records it.
-///
-/// The three runtime fields are written only where the mapping source makes them
-/// differ from the reviewed name, so a lock written under
-/// `unobfuscated-class-files` says each name once.
+/// A tracked member; runtime names are omitted when they match reviewed names.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Pinned {
@@ -201,11 +192,6 @@ fn header(lock: &Lock, adapter: &Adapter, inventory: &Inventory) -> Result<(), G
 }
 
 /// Resolves every hook entry against the tracked mapping lock.
-///
-/// This is what a machine without the client jar generates from, and
-/// it is why `cargo check --workspace` succeeds on one. The lock already carries
-/// every name the jar resolved to, and it is tracked, so a silent rename shows
-/// up in a diff rather than in a build that quietly disagreed with it.
 pub(super) fn from_lock(
     tracked: &str,
     adapter: &Adapter,

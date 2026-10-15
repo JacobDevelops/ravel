@@ -28,16 +28,7 @@ pub use runtime::{
 pub use settings::install as install_settings;
 pub use side::{SideError, side};
 
-/// The generated JNI exports, one per hook shape.
-///
-/// JNI-mangled exported symbols are resolved when the native library loads,
-/// and the export count scales with the hook surface: six
-/// inventory entries with heterogeneous descriptors cannot share one
-/// `extern "system"` signature, and the single `(int, Object[])` dispatcher that
-/// would have avoided that allocates an array on every crossing, which the
-/// measured zero-allocation crossing does not. Every declaration here is emitted
-/// by the generator with `#[jni::jni_mangle]`, which is what lets this crate
-/// keep `#![forbid(unsafe_code)]` verbatim with no relaxation of any kind.
+/// Generated JNI exports, with one typed symbol per callable hook shape.
 pub mod exports {
     include!(env!("RAVEL_GENERATED_EXPORTS"));
 }
@@ -69,18 +60,7 @@ mod tests {
             "the reviewed inventory carries a field, which is not a call target"
         );
 
-        // Anchored on the constant each export dispatches through, which is the
-        // one place a generated export names the target it belongs to.
-        //
-        // Searching the whole file for a member name asked a question about
-        // prose instead: member names are ordinary English, and `dispatcher` —
-        // the member behind `command.table` — also appears in this file's own
-        // header comment, which no author of an inventory entry controls. The
-        // constant is derived from the hook id and written with a trailing
-        // comma, so matching it is exact rather than a substring guess, and it
-        // says what this test's name promises in both directions: every method
-        // dispatches through its own constant, and no field's constant is
-        // dispatched through at all.
+        // Match dispatch constants, not member names that may also occur in prose.
         for target in targets {
             let dispatched = format!("pinned::{},", constant_name(target.id().as_str()));
             assert_eq!(
@@ -102,12 +82,7 @@ mod tests {
         }
     }
 
-    /// The generator's constant naming, which is what ties an export to the
-    /// target it was generated for.
-    ///
-    /// Duplicated from `render.rs` deliberately: the test needs to derive the
-    /// name independently for the comparison to mean anything, and this is the
-    /// whole derivation.
+    // Derive independently from the generator so this comparison detects drift.
     fn constant_name(id: &str) -> String {
         id.replace(['.', '-'], "_").to_uppercase()
     }
@@ -120,10 +95,7 @@ mod tests {
             source.contains("HookValue::"),
             "every argument crosses as a hook value"
         );
-        // A reference may cross for a call, but cannot stay beyond it.
-        // A `JObject` parameter is owned by the exported frame and reaches a hook
-        // only as a borrow, so a reference that does not name its frame has been
-        // moved somewhere the borrow checker stopped watching.
+        // Every reference parameter must retain the exported frame's lifetime.
         for (index, line) in source.lines().enumerate() {
             assert!(
                 !line.contains("JObject") || line.contains("<'local>"),
@@ -132,11 +104,7 @@ mod tests {
             );
         }
 
-        // Checked per export and per parameter rather than by totals. Comparing
-        // counts over the whole file lets two exports cancel each other's
-        // mistakes, and even within one export it accepts two handles both
-        // borrowing `argument0` while `argument1` is silently dropped — the
-        // totals agree and a parameter never reached the hook.
+        // Per-parameter checks prevent two exports or arguments masking omissions.
         let mut received = 0;
         for export in source.split("#[::jni::jni_mangle").skip(1) {
             let declared = export

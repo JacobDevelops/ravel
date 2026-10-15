@@ -1,37 +1,13 @@
-//! Writes the synthetic pack whose compile cost is the measurement.
-//!
-//! M2-W8 generated one-struct mod crates and its own record said the figures
-//! that came out were floors rather than predictions. The difference here is
-//! the body: every generated mod carries a configuration type it deserializes
-//! at construction, an enum it matches over, a generic rule trait instantiated
-//! once per feature, registry claims, and per-feature logic. That is what
-//! `test-mods/registries` looks like, scaled up, and it is chosen because
-//! compile cost in Rust follows derives and monomorphization rather than line
-//! count.
-//!
-//! It is still generated, so it is still a floor. What it is not is a floor set
-//! by an empty struct.
+//! Generates synthetic packs with serde derives, generic rules, and registry claims.
 
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Feature blocks per generated mod.
-///
-/// Eight gives a mod eleven serde derive pairs and sixteen instantiations of
-/// the two generic functions, which puts it well above `test-mods/registries`,
-/// the largest tracked test mod. Bigger would measure a bigger synthetic mod
-/// rather than a more honest one; the count and the resulting source size are
-/// both recorded with the result so a reader can scale them.
+/// Feature blocks per generated mod, recorded alongside generated source size.
 pub const FEATURES_PER_MOD: usize = 8;
 
-/// Length of the dependency spine under [`Shape::Chain`].
-///
-/// Sixteen, because it is the depth at which a modded Rust stack stops being a
-/// flat fan: a mod on a library on a library on a core is four, and a real pack
-/// stacks several of those. It is also the knob that decides how much of the
-/// build cannot be parallelized, so it is named here and recorded with the
-/// result rather than buried in the shape.
+/// Dependency-spine depth, recorded to expose the serialized build path.
 pub const SPINE_DEPTH: usize = 16;
 
 /// How the generated mods depend on one another.
@@ -39,12 +15,7 @@ pub const SPINE_DEPTH: usize = 16;
 pub enum Shape {
     /// No mod depends on another, so every crate can compile at once.
     Independent,
-    /// A linear spine of [`SPINE_DEPTH`] mods that every other mod sits on.
-    ///
-    /// `mod-000` has no dependency, each later spine mod depends on the one
-    /// before it, and every mod off the spine depends on the spine's tip and on
-    /// its midpoint. The critical path is therefore the spine plus one, and no
-    /// two spine crates can compile at the same time.
+    /// A linear spine of [`SPINE_DEPTH`] mods; other mods depend on its tip and midpoint.
     Chain,
 }
 
@@ -146,9 +117,7 @@ fn dependencies_of(index: usize, count: usize, shape: Shape) -> Vec<usize> {
                 // The spine: one edge each, so no two spine crates overlap.
                 vec![index - 1]
             } else {
-                // Everything else hangs off the finished spine. Depending on the
-                // tip and the midpoint gives real edges without chaining the
-                // mods off the spine into a second, accidental long pole.
+                // Avoid creating a second dependency spine.
                 let tip = depth - 1;
                 let middle = depth / 2;
                 if tip == middle {
@@ -161,11 +130,7 @@ fn dependencies_of(index: usize, count: usize, shape: Shape) -> Vec<usize> {
     }
 }
 
-/// Writes a workspace holding `count` generated mod crates and one host binary.
-///
-/// Nothing written here is tracked and nothing production reads it, which is
-/// why the mods are generated: the measurement is about the count, and 256
-/// hand-written crates would be 256 files saying the same thing.
+/// Writes an untracked synthetic-mod workspace and its host binary.
 ///
 /// # Errors
 ///
@@ -178,15 +143,12 @@ pub fn generate(root: &Path, work: &Path, spec: PackSpec) -> Result<Workspace, S
         fs::remove_dir_all(&mods)
             .map_err(|error| format!("cannot clear generated mods: {error}"))?;
     }
-    // The directory exists even when the pack is empty, because the workspace's
-    // `mods/*` member glob is an error against a missing directory and matches
-    // nothing against an empty one.
+    // Cargo's member glob needs the directory even for an empty pack.
     fs::create_dir_all(&mods).map_err(|error| format!("cannot create generated mods: {error}"))?;
     fs::create_dir_all(workspace.join("host/src"))
         .map_err(|error| format!("cannot create a generated workspace: {error}"))?;
 
-    // The repository's lock file, so the generated workspace resolves to the
-    // same dependency versions the loader itself was built against.
+    // Keep generated dependencies aligned with the measured loader.
     let lock = fs::read(root.join("Cargo.lock"))
         .map_err(|error| format!("cannot read the workspace lock file: {error}"))?;
     write(&workspace.join("Cargo.lock"), &lock)?;

@@ -1,43 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! Player-local static composition used by the M3 configuration proof.
-//!
-//! # What this host is now
-//!
-//! One of two hosts. This one holds a member list a Ravel developer compiled;
-//! `ravel-build` generates the other from the packages a player installed. Both
-//! are the same thing behind the entry point — [`ravel_host_runtime::compose`]
-//! — so a side declaration, a version range and a load order mean here exactly
-//! what they mean there. This file is a member list and a JNI symbol, and
-//! nothing else.
-//!
-//! # Where a side declaration takes effect
-//!
-//! Every member below ships with the package manifest it is packaged under, and
-//! the entries the lifecycle holds are [`ravel_loader::admitted`]'s answer rather
-//! than this file's. So the `sides` list a mod author writes decides what starts
-//! in a launched game: the runtime resolves a plan for the side it was handed,
-//! admits the whole set against it, and hands the result to
-//! [`ravel_loader::drive`], which parks a mod whose declaration does not name
-//! that side before any of its code runs.
-//!
-//! Until M4's review found it, both entries were written here by hand and the
-//! declaration was inert: a client-only mod started on a dedicated server because
-//! nothing in a launch read a manifest at all.
-//!
-//! # What this host still does not do
-//!
-//! It runs the mods it was compiled from and refuses an instance holding any
-//! other package. That refusal is not a limitation of the composition — it is
-//! what a *statically* composed host is, and the answer to it is the generated
-//! host `ravel-build` produces rather than a change here.
-//!
-//! The side is not written here. [`initialize`] asks the JVM it is running
-//! inside which distribution it was started from, and a launch that cannot get an
-//! answer installs nothing rather than composing a set for a guessed side.
-//! What it cannot answer is [`ravel_core::Side::IntegratedServer`], which is not
-//! a distribution but a server inside a client process, so a mod declaring only
-//! that side is parked on a client launch. `docs/guide/limits.md` states it.
+//! Statically composed host with the tracked test-mod member list.
+//! Admission and startup use [`ravel_host_runtime`].
 
 use jni::EnvUnowned;
 use jni::objects::JClass;
@@ -51,50 +15,31 @@ use ravel_test_mod_server_only::{ServerOnlyMod, work_log as server_work_log};
 
 pub use ravel_host_runtime::{Composition, LaunchError};
 
-/// The manifest each composed member is packaged under.
-///
-/// Read from the package rather than restated here, so the document this host
-/// admits is the same file the mod ships and there is no second copy of a `sides`
-/// list to disagree with the first.
+// Admit the same manifests the members ship.
 const CONFIGURATION_PACKAGE: &str = include_str!("../../../test-mods/configuration/package.json");
 const SAVED_DATA_PACKAGE: &str = include_str!("../../../test-mods/saved-data/package.json");
 const CLIENT_ONLY_PACKAGE: &str = include_str!("../../../test-mods/client-only/package.json");
 const SERVER_ONLY_PACKAGE: &str = include_str!("../../../test-mods/server-only/package.json");
 const REGISTRIES_PACKAGE: &str = include_str!("../../../test-mods/registries/package.json");
 
-/// The members this build was compiled from, for a launch on `side`.
 fn members(side: Side) -> Vec<Member> {
     vec![
         Member {
             package: CONFIGURATION_PACKAGE.to_owned(),
             host: Box::new(ConfigurationMod::new()),
         },
-        // The world-owning half of the composition. Until this was here no mod
-        // in a running build owned world data, so the saved-data round trip
-        // could not be observed in a launch at all.
         Member {
             package: SAVED_DATA_PACKAGE.to_owned(),
             host: Box::new(SavedDataMod::new()),
         },
-        // The client-only half. Its own module doc calls itself the mod the
-        // side gate is about, and until it was composed here nothing in a
-        // launch could show a declaration keeping code off a server.
         Member {
             package: CLIENT_ONLY_PACKAGE.to_owned(),
             host: Box::new(ClientOnlyMod::new(side, &work_log())),
         },
-        // The content-owning half. Until this was here no mod in a running
-        // build claimed a registry identifier, so the claim table the content
-        // adapter reads was empty in every launch and the surface that carries
-        // a block into the game had nothing to carry.
         Member {
             package: REGISTRIES_PACKAGE.to_owned(),
             host: Box::new(RegistriesMod::new()),
         },
-        // The other half of the same rule. With only the member above, a
-        // launch proved a declaration keeping code off a server and nothing
-        // proved the reverse, so the shipped set showed one direction of a
-        // two-directional rule.
         Member {
             package: SERVER_ONLY_PACKAGE.to_owned(),
             host: Box::new(ServerOnlyMod::new(side, &server_work_log())),
@@ -106,31 +51,20 @@ fn members(side: Side) -> Vec<Member> {
 ///
 /// # Errors
 ///
-/// Returns an error when the instance holds a package this build was not
-/// compiled from, when a selected-pack or player document cannot be read, when
-/// configuration cannot be resolved or consumed, or when the lifecycle cannot
-/// reach running.
+/// Returns an error if package admission, configuration, resources, or lifecycle startup fails.
 pub fn compose(game_directory: &std::path::Path, side: Side) -> Result<Composition, LaunchError> {
     ravel_host_runtime::compose(game_directory, side, members(side))
 }
 
 /// Starts the player-local statically composed set before game methods run.
-///
-/// The side arrives as the code the agent named it by, because the agent is
-/// where the fact exists: it is the first distribution entry point the
-/// transformer sees, and this is the crossing that moment makes.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelInitialize")]
 pub fn ravel_initialize<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     side: jni::sys::jint,
 ) {
-    env.with_env(|_env| {
-        // The side the members are built for is the side the runtime will
-        // compose them on, so it is read once, here, and handed to both.
-        run(side, members(ravel_host_runtime::side(side)?))
-    })
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+    env.with_env(|_env| run(side, members(ravel_host_runtime::side(side)?)))
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 
 #[cfg(test)]
@@ -165,7 +99,6 @@ mod tests {
         "saved_data".parse().expect("the tracked mod id is valid")
     }
 
-    /// One owner's resolved settings, which are no longer the only ones.
     fn settings_of<'a>(
         configurations: &'a [LayeredConfiguration],
         owner: &ModId,
@@ -188,10 +121,6 @@ mod tests {
         "server_only".parse().expect("the tracked mod id is valid")
     }
 
-    /// The property this composition exists to hold, with the real members.
-    ///
-    /// `client_only` ships `"sides": ["client"]`, so a dedicated server admits it
-    /// — a player who installed it sees it listed — and never starts it.
     #[test]
     fn the_client_only_member_is_admitted_and_parked_on_a_dedicated_server() {
         let game = directory("dedicated");
@@ -216,7 +145,6 @@ mod tests {
         );
     }
 
-    /// The other direction of the same rule, through the same shipped path.
     #[test]
     fn the_server_only_member_is_admitted_and_parked_on_the_client() {
         let game = directory("client");
@@ -236,7 +164,6 @@ mod tests {
         );
     }
 
-    /// Every side, and on each one the pair disagrees about who runs.
     #[test]
     fn the_shipped_pair_runs_on_opposite_sides_of_every_launch() {
         for side in Side::ALL {
@@ -286,9 +213,7 @@ mod tests {
             assert!(driven.contains(&&id), "{id}");
         }
 
-        // Load order, and only the members that declare settings. The
-        // server-only member is parked here, so its declaration is not read at
-        // all; `saved_data` is read and holds nothing a client screen may show.
+        // Parked members do not contribute configuration declarations.
         let configured: Vec<&ModId> = configurations
             .iter()
             .map(LayeredConfiguration::owner)
@@ -296,7 +221,6 @@ mod tests {
         assert_eq!(configured, [&client_owner(), &owner(), &saved_owner()]);
     }
 
-    /// The manifests are the authority, so nothing may quietly disagree with them.
     #[test]
     fn every_shipped_manifest_names_the_value_and_the_versions_it_is_composed_with() {
         let manifests = [
@@ -335,18 +259,13 @@ mod tests {
         );
     }
 
-    /// The bytes an installed fixture carries, and the digests they hash to.
-    ///
-    /// The digests came from `sha256sum` rather than from the library the code
-    /// under test hashes with, so the fixture and the check do not agree by
-    /// construction. `OTHER_DIGEST` is the digest of bytes no fixture writes.
+    // Independently computed fixture digests; OTHER_DIGEST matches no fixture.
     const INSTALLED_SOURCE: &[u8] = b"pub fn load() {}\n";
     const INSTALLED_RECORD: &[u8] = br#"{"origin":"example"}"#;
     const SOURCE_DIGEST: &str = "d43fb0c057531a1578825aa660a5cc1b415a10ae8eb1b42994ca7ceda27d6706";
     const RECORD_DIGEST: &str = "5cf5e6735c38fa43af69f9fe2210ca13d9fd75cc98cd9650ee969c0498a28ab0";
     const OTHER_DIGEST: &str = "a126bbfe4662a8d151f8e62afbb278a4a273e01fe0a88fc1545b25d017f19fb3";
 
-    /// Installs a package into an instance the way a player would.
     fn install(game: &std::path::Path, id: &str, source_digest: &str) {
         let running = ravel_host_runtime::environment();
         let root = game
@@ -385,7 +304,6 @@ mod tests {
         std::fs::write(root.join("provenance.json"), INSTALLED_RECORD).expect("record written");
     }
 
-    /// A launch finds what an instance holds, and says so when it cannot run it.
     #[test]
     fn a_package_installed_into_the_instance_that_this_build_cannot_run_refuses_the_launch() {
         let game = directory("installed-stranger");
@@ -401,7 +319,6 @@ mod tests {
         assert!(refused.to_string().contains("stranger_mod"));
     }
 
-    /// The integrity check `docs/guide/limits.md` recorded as absent from a launch.
     #[test]
     fn an_installed_package_whose_source_is_not_what_it_declares_refuses_the_launch() {
         let game = directory("installed-altered");
@@ -419,7 +336,6 @@ mod tests {
         );
     }
 
-    /// And an intact package this build *was* compiled from still starts the set.
     #[test]
     fn an_installed_package_this_build_was_compiled_from_launches() {
         let game = directory("installed-known");

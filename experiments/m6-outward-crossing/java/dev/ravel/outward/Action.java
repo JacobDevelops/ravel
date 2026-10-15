@@ -4,20 +4,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * The game action every outward-crossing candidate performs.
- *
- * <p>A mod asks for something to happen — play a sound, draw at a stage, send a
- * packet — and the request arrives while the game is already inside Ravel,
- * because every crossing this repository has runs that way. What differs
- * between the candidates is who makes the call that performs it: the native
- * side reaching back out through JNI, or the Java adapter reading an
- * instruction the native side handed it.
- *
- * <p>{@link #perform} stands in for the game method. It is deliberately trivial
- * arithmetic: this measurement is about the crossing, and a realistic body
- * would bury the difference under work both candidates pay identically.
- */
+/** Shared action workload; trivial arithmetic isolates boundary-crossing costs. */
 public final class Action {
 
     /** Action identifier that makes the performed method throw. */
@@ -29,12 +16,7 @@ public final class Action {
     /** What every performed action accumulates into, so none can be deleted. */
     private static double performed;
 
-    /**
-     * The game action itself, called by whichever side the candidate puts in
-     * charge.
-     *
-     * <p>Public because the native candidates resolve and call it by name.
-     */
+    /** Public so native candidates can resolve and call the game action by name. */
     public static double perform(int action, double argument) {
         if (action == FAILING_ACTION) {
             throw new IllegalStateException("the game refused the action");
@@ -85,12 +67,7 @@ public final class Action {
         }
     }
 
-    /**
-     * Times batches of requests, reporting batch totals undivided.
-     *
-     * <p>One request costs less than a {@code nanoTime} pair at the smaller
-     * action counts, so the harness divides after taking percentiles.
-     */
+    /** Times undivided batches; the harness divides after taking percentiles. */
     private static void measure(
             String candidate, int warmup, long[] batches, int batch, int actions) {
         double local = 0.0;
@@ -122,13 +99,7 @@ public final class Action {
         }
     }
 
-    /**
-     * Performs the instructions the native side handed back.
-     *
-     * <p>This is the whole of the deferred candidate's Java side, and it is what
-     * a Ravel adapter would carry: the call into the game happens here, in Java,
-     * at a Java call's cost.
-     */
+    /** Executes deferred instructions on the Java side. */
     private static double apply(byte[] instructions) {
         ByteBuffer reading = ByteBuffer.wrap(instructions);
         double last = 0.0;
@@ -138,13 +109,7 @@ public final class Action {
         return last;
     }
 
-    /**
-     * What each candidate does when the game action itself throws.
-     *
-     * <p>This is the axis a nanosecond cannot report. A pending Java exception
-     * is a state the native side has to notice and clear before it does
-     * anything else, and a candidate that never calls outward cannot be in it.
-     */
+    /** Exercises game-action exceptions and an unavailable native runtime. */
     private static List<String> exerciseFailures(String library) {
         List<String> failures = new ArrayList<>();
         failures.add(failure("direct-refusal", directRefusal()));
@@ -194,13 +159,7 @@ public final class Action {
                 + "\"}";
     }
 
-    /**
-     * Crossings one request costs, counted from the mechanism rather than timed.
-     *
-     * <p>A direct candidate crosses once inward and once outward per action. A
-     * deferred candidate crosses once inward per request and never outward, and
-     * copies the instruction array back as that request's return value.
-     */
+    /** Counts one inward crossing per request and one outward crossing per direct action. */
     private static long crossingsPerRequest(String candidate, int actions) {
         return switch (candidate) {
             case "direct-lookup", "direct-cached" -> 1L + actions;

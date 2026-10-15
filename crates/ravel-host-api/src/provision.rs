@@ -3,14 +3,7 @@ use std::fmt;
 
 use ravel_core::{ModId, Version, VersionRange};
 
-/// A library one mod supplies for others to build on, at a version.
-///
-/// The version is kept as the author wrote it and read when the set is
-/// resolved, not when the declaration is made. That is the same choice
-/// [`crate::Points`] and `ravel_data::StageDeclaration` make about a name
-/// nothing publishes: a declaration records what a mod said, and every refusal
-/// about the set is decided in one place, so no author has to handle an error
-/// at the point of stating a fact.
+/// A supplied library and its version, validated when the launch set resolves.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Provided {
     library: String,
@@ -39,27 +32,9 @@ impl Provided {
     }
 }
 
-/// Which mod supplies each shared library, and what the mods using it need.
+/// Resolves one compatible provider per declared shared library for a launch.
 ///
-/// [`crate::ServiceDeclaration`] orders named calls between two mods that are
-/// both installed. This is the other question: which mod *supplies* a library
-/// several mods build on, and at what version. A launch takes one provider per
-/// library, and a set that cannot produce one — two providers, a version no
-/// requirement accepts, a requirement nothing provides — is refused by
-/// [`Provision::resolve`] before any mod runs, naming the library and the mods
-/// on both sides of the disagreement.
-///
-/// # What a shared library is here, and what it is not
-///
-/// It is a declaration, not a shipped artefact. A mod is distributed as source
-/// the player's machine compiles, so a library two
-/// mods both build on is an ordinary Cargo dependency that Cargo resolves once
-/// for the build — there is no second copy of it to load, and nothing here
-/// bundles, fetches, or unpacks anything. What Cargo cannot see is the *mod
-/// set*: that two installed mods each claim to be the one supplying `shared_maths`
-/// to the others, or that one of them needs a version the supplier does not
-/// offer. Those are facts about a launch, and this is where a launch decides
-/// them.
+/// This validates mod-set declarations, not Cargo dependencies or shipped artifacts.
 ///
 /// # Examples
 ///
@@ -90,11 +65,7 @@ pub struct Provision {
 }
 
 impl Provision {
-    /// Declares that `owner` supplies a library.
-    ///
-    /// Declaring the same library at the same version twice declares it once.
-    /// Declaring it at two versions, or two mods declaring it at all, is the
-    /// contest [`Provision::resolve`] refuses.
+    /// Declares a provider, deduplicating identical claims; conflicting claims fail resolution.
     pub fn provides(&mut self, owner: &ModId, provided: Provided) {
         let claim = (owner.clone(), provided.version);
         let claims = self.provided.entry(provided.library).or_default();
@@ -103,11 +74,7 @@ impl Provision {
         }
     }
 
-    /// Declares that `owner` needs `library` within `wanted`.
-    ///
-    /// The same requirement stated twice is one requirement. Two ranges from one
-    /// mod are two requirements, and both have to be satisfied by the one
-    /// version a launch resolves.
+    /// Declares a required version range, deduplicating identical requirements.
     pub fn requires(&mut self, owner: &ModId, library: &str, wanted: VersionRange) {
         let requirement = (owner.clone(), wanted);
         let requirements = self.required.entry(library.to_owned()).or_default();
@@ -126,22 +93,11 @@ impl Provision {
             .unwrap_or_default()
     }
 
-    /// Decides one provider per library for this launch.
-    ///
-    /// A library nothing requires still resolves. A provider nobody needs is not
-    /// a mistake — it is a mod that supplies something for others and happens to
-    /// be installed alone — and refusing it would make installing a library mod
-    /// first an error.
+    /// Resolves one provider per library, including libraries with no consumers.
     ///
     /// # Errors
     ///
-    /// Returns [`ProvisionRefused::NoProvider`] when a required library is
-    /// supplied by nothing, [`ProvisionRefused::Contested`] when more than one
-    /// claim supplies one library, [`ProvisionRefused::Unsatisfied`] when the
-    /// provided version is outside some mod's declared range, and
-    /// [`ProvisionRefused::UnreadableVersion`] when a declared version is not a
-    /// version at all. All four are facts about the set, which is why they are
-    /// decided here rather than when a call is made.
+    /// Returns a refusal for missing or contested providers, invalid versions, or unsatisfied ranges.
     pub fn resolve(&self) -> Result<Resolved, ProvisionRefused> {
         let libraries: BTreeSet<&String> =
             self.provided.keys().chain(self.required.keys()).collect();
@@ -283,11 +239,7 @@ impl ProvisionRefused {
         matches!(self, Self::NoProvider { .. })
     }
 
-    /// Returns the mods whose requirement this refusal leaves unanswered.
-    ///
-    /// Empty for a refusal that is not about a requirement: a contested library
-    /// has no chosen version to hold a range against, and a version nothing can
-    /// read is refused before any range is tried.
+    /// Returns unsatisfied consumers, or an empty slice for other refusals.
     #[must_use]
     pub fn unsatisfied(&self) -> &[ModId] {
         match self {
@@ -298,10 +250,7 @@ impl ProvisionRefused {
         }
     }
 
-    /// Returns the mods claiming to supply one library, in declaration order.
-    ///
-    /// Empty unless the claim is contested, which is the refusal that has more
-    /// than one claimant to name.
+    /// Returns competing providers in declaration order, or an empty slice if not contested.
     #[must_use]
     pub fn providers(&self) -> &[ModId] {
         match self {

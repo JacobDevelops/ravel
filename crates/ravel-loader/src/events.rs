@@ -7,25 +7,12 @@ use ravel_observability::{CallKind, Profiler};
 
 use crate::lifecycle::LifecycleMachine;
 
-/// Whether a state may receive an event or run a command.
-///
-/// A mod reacts only while the set is past the registration barrier and has not
-/// stopped. `SPEC.md` §14 puts every registration before
-/// [`LifecycleState::Running`], so an event delivered earlier would reach a mod
-/// whose own content does not exist yet; one delivered after
-/// [`LifecycleState::Stopped`] would reach a mod that has already been told the
-/// run is over. [`crate::executes_mod_code`] is the wider window that includes
-/// both, so this is not that check and cannot be replaced by it.
+/// Only running and stopping mods may react.
 const fn reacts(state: LifecycleState) -> bool {
     matches!(state, LifecycleState::Running | LifecycleState::Stopping)
 }
 
 /// Why an event or a command reached no mod.
-///
-/// Every variant is a fact about the set rather than about the thing being
-/// delivered, because a delivery that fails does so for the same reason for
-/// every recipient. A mod that fails *while* reacting is not here: that is
-/// [`HostError`], raised by the mod, and [`Delivery`] carries it out whole.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DispatchRefused {
     /// The set is not in a state that reacts.
@@ -48,26 +35,11 @@ pub enum DispatchRefused {
         state: LifecycleState,
     },
     /// The owner is loaded on sides that do not include the running one.
-    ///
-    /// This is distinct from a mod that simply does not receive a broadcast.
-    /// A command a player can type on this side, owned by a mod that does not
-    /// run on this side, is a set that would silently swallow the command, so
-    /// it is refused with the reason rather than ignored.
     OwnerWrongSide {
         /// The mod that owns the command.
         mod_id: ModId,
     },
     /// The delivery's own side field disagrees with the side the set runs on.
-    ///
-    /// A [`PacketDelivery`]'s `side` is a claim the caller wrote, and it is the
-    /// source of truth for [`PacketDelivery::decode`] inside the mod, while the
-    /// machine's side is the source of truth here. Two answers to one question is
-    /// a defect whichever way they disagree, so the delivery is refused naming
-    /// both rather than routed on one and read on the other. Without this a
-    /// legitimate packet whose `side` was set wrong is delivered and then refused
-    /// by the mod, which fails closed but reports the wrong reason — so whatever
-    /// builds a delivery when a transport lands has to set `side` from the host,
-    /// and this is what says so at the time it gets it wrong.
     PacketForeignSide {
         /// The contract that was refused.
         id: PacketId,
@@ -77,12 +49,6 @@ pub enum DispatchRefused {
         running: Side,
     },
     /// The packet travels a way this side is not an end of.
-    ///
-    /// A fact about the delivery rather than about the set, and checked before
-    /// anything is looked up: a client-bound packet arriving on a server side is
-    /// refused without the owning mod's reading code running at all, which is
-    /// `SPEC.md` §14's requirement that client-only code never load on a server
-    /// side applied to the one path that carries bytes from outside.
     PacketWrongSide {
         /// The contract that was refused.
         id: PacketId,
@@ -92,12 +58,6 @@ pub enum DispatchRefused {
         side: Side,
     },
     /// The set holds no value for a mod the order names.
-    ///
-    /// The caller supplies mod values alongside the machine, and the two can
-    /// disagree. A missing value is the caller's mistake and not the set's, so
-    /// it is reported rather than skipped: skipping would make a mod that was
-    /// never supplied indistinguishable from one that chose to ignore the
-    /// event.
     Absent {
         /// The mod the order names and the caller did not supply.
         mod_id: ModId,
@@ -151,13 +111,7 @@ impl fmt::Display for DispatchRefused {
 impl std::error::Error for DispatchRefused {}
 
 impl StructuredFailure for DispatchRefused {
-    /// No variant here is one of `SPEC.md` §9.2's dependency-graph outcomes.
-    /// Every one is a fact about this delivery — the state the set is in, a name
-    /// nobody claimed, a side that is not an end of the link, a value the caller
-    /// did not supply — rather than a fact about the mod graph, so this reports no
-    /// kind rather than borrowing one. In particular a side refusal here is not
-    /// [`FailureKind::SideMismatch`]: that names a mod the graph would not load,
-    /// and these mods loaded.
+    /// Dispatch refusals are not dependency-graph failures.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
@@ -173,21 +127,13 @@ impl StructuredFailure for DispatchRefused {
         }
     }
 
-    /// Every word is this crate's own, about identifiers `ravel-core` has
-    /// already validated against a charset holding no path separator and no
-    /// whitespace.
+    /// Messages contain only validated identifiers and loader-owned text.
     fn quotes_untrusted_text(&self) -> bool {
         false
     }
 }
 
-/// What one delivery did.
-///
-/// A refused delivery reached nobody and a failed one reached everybody before
-/// the mod that failed, so the two are not the same shape and are not folded
-/// into one `Result`. [`Self::received`] is the ordering evidence `ROADMAP.md`'s
-/// M3-W2 row asks for: it is the resolved load order filtered by side, and it is
-/// the same list every run for the same set.
+/// Successful recipients in resolved order and any mod failure that stopped delivery.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Delivery {
     received: Vec<ModId>,
@@ -215,16 +161,7 @@ impl Delivery {
 }
 
 impl LifecycleMachine {
-    /// Returns the mods that receive a broadcast of `event`, in resolved order.
-    ///
-    /// The audience is the load order filtered twice: by whether the mod loads
-    /// on the running side, and by whether the event happens on that side at
-    /// all. The second filter is why a client tick on a dedicated server has an
-    /// empty audience rather than one that happens to be empty because no mod
-    /// is client-side.
-    ///
-    /// This answers the question without needing the mod values, so a report or
-    /// a test can ask who *would* receive an event without delivering one.
+    /// Returns side-compatible recipients of `event`, in resolved order.
     #[must_use]
     pub fn audience(&self, event: GameEvent) -> Vec<ModId> {
         if !event.happens_on(self.side()) {
@@ -237,43 +174,23 @@ impl LifecycleMachine {
     }
 
     /// Returns whether `mod_id` loads on the side this set is running on.
-    ///
-    /// The machine already refuses to advance a mod onto the wrong side, so a
-    /// running set cannot hold one. It can still be asked before the set runs,
-    /// which is what makes an empty audience checkable without driving a set.
     fn loads_here(&self, mod_id: &ModId) -> bool {
         self.entry(mod_id)
             .is_ok_and(|entry| entry.sides.loads_on(self.side()))
     }
 }
 
-/// Broadcasts `event` to every mod in the audience, in resolved order.
+/// Broadcasts `event` in resolved order after validating the entire audience.
 ///
-/// The whole set is checked before any mod reacts. A delivery that would find
-/// the set in the wrong state part-way through is one that has already changed
-/// something, and `SPEC.md` §9.2 wants a refusal a player can act on rather than
-/// a half-delivered event.
+/// Mod failures stop delivery and are returned in [`Delivery::failure`].
 ///
 /// # Errors
 ///
-/// Returns [`DispatchRefused`] when nothing was delivered: the set does not
-/// react, or the caller supplied no value for a mod the order names. A mod that
-/// fails while reacting is not an error here — it ends the broadcast and is
-/// carried out in [`Delivery::failure`], because the mods before it did react
-/// and a report that lost that would be describing a different run.
+/// Returns [`DispatchRefused`] if an audience member is not reacting or was not supplied.
 ///
 /// # Panics
 ///
-/// Never. The audience is checked against the supplied values before anything
-/// is delivered, so the lookup during delivery is asking about a mod the check
-/// already found.
-///
-/// `mods` writes the trait object's own lifetime bound rather than letting it
-/// default to the borrow's. Elision would tie the two together, and `&mut` is
-/// invariant in what it points at, so a caller holding `Box<dyn HostMod>` —
-/// which is `dyn HostMod + 'static` — could not lend them for anything shorter
-/// than `'static`. That is exactly what a runtime owning its mods does, and the
-/// bound is what lets it.
+/// Never; all audience members are checked before delivery.
 pub fn broadcast(
     machine: &LifecycleMachine,
     mods: &mut [&mut (dyn HostMod + '_)],
@@ -282,16 +199,7 @@ pub fn broadcast(
     broadcast_profiled(machine, mods, event, &mut Profiler::off())
 }
 
-/// The same broadcast, attributed to each mod that received it.
-///
-/// Separate from [`broadcast`] rather than a fourth parameter on it, because
-/// almost every caller is not profiling and `&mut Profiler::off()` at every one
-/// of them would be noise standing for nothing. The two share a body: this is
-/// the body, and [`broadcast`] is it with the collectors off.
-///
-/// A profiler that is off costs one flag test per mod entered and reads no
-/// clock. `evidence/m3/profiling-overhead.json` is what that costs, measured,
-/// and the budget it is held to.
+/// Broadcasts `event`, attributing each mod's cost to `profiler`.
 ///
 /// # Errors
 ///
@@ -299,8 +207,7 @@ pub fn broadcast(
 ///
 /// # Panics
 ///
-/// Never, and for the same reason [`broadcast`] never does: the audience is
-/// checked against the supplied values before anything is delivered.
+/// Never; all audience members are checked before delivery.
 pub fn broadcast_profiled(
     machine: &LifecycleMachine,
     mods: &mut [&mut (dyn HostMod + '_)],
@@ -346,37 +253,11 @@ pub fn broadcast_profiled(
     })
 }
 
-/// Routes `delivery` to the mod that owns the contract it names.
-///
-/// A packet is routed rather than broadcast, for the reason a command is: a
-/// [`PacketId`] is namespaced by its owner, so exactly one mod can read it and
-/// asking the others would be handing them bytes they have no contract for.
-///
-/// The delivery's own `side` is reconciled with the machine's before anything
-/// else. `PacketDelivery::side` is what `ravel_network::PacketDelivery::decode`
-/// checks inside the mod and the machine's side is what this function checks, so
-/// a delivery whose two answers disagree is refused here rather than routed on
-/// one and read on the other. Every side check downstream then reads a side that
-/// has been agreed.
-///
-/// The side check comes first and is the point of this function. A client-bound
-/// packet arriving on a server side is refused before the owner is looked up and
-/// before any of the mod's decoding runs, which is what makes `SPEC.md` §14's
-/// requirement hold on the one path that carries bytes from outside the process.
-/// `ravel_network::PacketDelivery::decode` applies the same rule again inside the
-/// mod, and the two are independent on purpose: this one keeps the call from
-/// happening, that one keeps a call that happened anyway from reading anything.
-///
-/// There is no profiled twin. Attributing a packet's cost to a mod needs a column
-/// in `ravel_observability::ModCost`, and that shape is M3's closed profiling
-/// report; W3 does not reopen it, so a packet is unattributed today rather than
-/// counted as something it is not.
+/// Routes `delivery` to its owner after checking the claimed side and direction.
 ///
 /// # Errors
 ///
-/// Returns [`DispatchRefused`] when the packet reached nobody: this side is not an
-/// end of the link, the plan does not name the owner, the owner does not load on
-/// this side, the owner is not reacting, or the caller supplied no value for it.
+/// Returns [`DispatchRefused`] for incompatible sides, an absent owner, or an owner not reacting.
 pub fn deliver_packet(
     machine: &LifecycleMachine,
     mods: &mut [&mut (dyn HostMod + '_)],
@@ -432,15 +313,9 @@ pub fn deliver_packet(
 
 /// Routes `invocation` to the one mod that claimed its root literal.
 ///
-/// A command is routed and an event is broadcast, and the difference is the
-/// registration barrier: exactly one mod owns a command name, so asking every
-/// mod would be asking the ones that already lost the claim.
-///
 /// # Errors
 ///
-/// Returns [`DispatchRefused`] when the command reached nobody: nothing claimed
-/// the key, the owner is not reacting, the owner does not load on this side, or
-/// the caller supplied no value for it.
+/// Returns [`DispatchRefused`] if the command is unclaimed or its owner is absent, on another side, or not reacting.
 pub fn route(
     machine: &LifecycleMachine,
     mods: &mut [&mut (dyn HostMod + '_)],
@@ -449,10 +324,7 @@ pub fn route(
     route_profiled(machine, mods, invocation, &mut Profiler::off())
 }
 
-/// The same routing, attributed to the mod that owns the command.
-///
-/// Split from [`route`] for the reason [`broadcast_profiled`] is split from
-/// [`broadcast`].
+/// Routes `invocation`, attributing its owner's cost to `profiler`.
 ///
 /// # Errors
 ///

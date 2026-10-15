@@ -9,32 +9,11 @@
 {{import Item$Properties}}
 {{import BlockItem}}
 
-/**
- * Registers one block or one item, in the shape this version's registries want,
- * for 1.21.1.
- *
- * <p>This is a per-version source rather than a role binding, and what differs
- * is a call rather than a name. 1.21.1's properties builders carry no id setter
- * in any spelling: a block is named by the identifier it is registered under and
- * by nothing else, so there is no registry key to build and none to stamp. The
- * shared template stamps one because 26.1.2's constructors read it back out and
- * refuse a value without it, and no renaming turns one of those into the other.
- *
- * <p>Everything the shared template says about why this half is compiled rather
- * than reflective holds here unchanged, and the entry points keep the names and
- * the argument counts it gives them, because the agent jar reaches them that way
- * and that source is shared by every version.
- */
 public final class RavelContent {
 
     private RavelContent() {
     }
 
-    /**
-     * Registers one block with the behaviour the mod that claimed it described.
-     *
-     * @return the registered block, which the caller adds the states of
-     */
     public static {{Block}} registerBlock(
             String namespace,
             String path,
@@ -58,7 +37,6 @@ public final class RavelContent {
         return block;
     }
 
-    /** Registers one item, described the same way and for the same reason. */
     public static void registerItem(
             String namespace, String path, int stackSize, boolean fireResistant) {
         {{Identifier}} id = {{Identifier}}.{{Identifier#fromNamespaceAndPath}}(namespace, path);
@@ -71,13 +49,6 @@ public final class RavelContent {
                 {{BuiltInRegistries}}.{{BuiltInRegistries#ITEM}}, id, new {{Item}}(properties));
     }
 
-    /**
-     * Registers one item that places a block, rather than a plain one.
-     *
-     * <p>An item whose identifier is a block's identifier is that block's
-     * placing item. A plain item has no use-on, so right clicking it does
-     * nothing at all.
-     */
     public static void registerBlockItem(
             String namespace, String path, int stackSize, boolean fireResistant, {{Block}} block) {
         {{Identifier}} id = {{Identifier}}.{{Identifier#fromNamespaceAndPath}}(namespace, path);

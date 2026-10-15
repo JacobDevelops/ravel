@@ -1,16 +1,7 @@
-//! Grouping content several mods contribute to.
+//! Tag memberships shared by multiple mods.
 //!
-//! A tag is the one thing a mod declares that has no owner. A registry key has
-//! exactly one — the second claim on `example:copper` is a conflict — and a
-//! resource path has exactly one supplier. `c:ingots` has neither: every mod
-//! that makes an ingot puts it in, and a recipe that accepts the tag accepts
-//! ingots the recipe's author never saw. Refusing the second contribution would
-//! break the only thing tags are for.
-//!
-//! That is why nothing here goes through the registration barrier. A mod
-//! declares its memberships in its [`crate::content::ContentDeclaration`], and
-//! [`TagSet`] is what several declarations add up to once the loader knows the
-//! resolved load order.
+//! Declare memberships in [`crate::content::ContentDeclaration`]; [`TagSet`]
+//! merges contributions without exclusive ownership or registry claims.
 //!
 //! # Examples
 //!

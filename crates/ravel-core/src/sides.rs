@@ -3,10 +3,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-/// One side a mod can execute on (`SPEC.md` §3.4).
-///
-/// A single-player session runs a client and an integrated server in one
-/// process, so a side is a role within a process rather than a process kind.
+/// A mod execution role; client and integrated server may share a process.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Side {
@@ -19,24 +16,16 @@ pub enum Side {
 }
 
 impl Side {
-    /// Every side, in the order `SPEC.md` §3.4 lists them.
+    /// Every execution side in declaration order.
     pub const ALL: [Self; 3] = [Self::Client, Self::IntegratedServer, Self::DedicatedServer];
 
     /// Returns whether this side runs server logic.
-    ///
-    /// `SPEC.md` §14 requires that client-only code never loads on a server
-    /// side, and the client is the only non-server side, so this is the
-    /// predicate that invariant tests against.
     #[must_use]
     pub const fn is_server(self) -> bool {
         matches!(self, Self::IntegratedServer | Self::DedicatedServer)
     }
 
-    /// Returns the `SPEC.md` §3.4 name of this side, matching its serialized form.
-    ///
-    /// One spelling, so a side reads the same in a refusal, in a report, and in
-    /// a manifest. A second `match` somewhere else is a second answer that can
-    /// disagree with this one.
+    /// Returns the side's canonical serialized name.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -70,9 +59,7 @@ impl SideSet {
     ///
     /// # Errors
     ///
-    /// Returns [`EmptySideSet`] when no side is declared. A mod that runs on no
-    /// side can never load, so an empty declaration is a metadata error rather
-    /// than a mod that happens to be inactive everywhere.
+    /// Returns [`EmptySideSet`] when no side is declared.
     pub fn new(sides: impl IntoIterator<Item = Side>) -> Result<Self, EmptySideSet> {
         let sides: BTreeSet<Side> = sides.into_iter().collect();
         if sides.is_empty() {
@@ -107,39 +94,13 @@ impl TryFrom<BTreeSet<Side>> for SideSet {
     }
 }
 
-/// A value the client side holds and no server side ever does.
-///
-/// `SPEC.md` §14 requires that client-only code never loads on a server side.
-/// The load graph enforces that for a whole mod — a mod whose [`SideSet`] omits
-/// the running side is parked before its code runs — but a mod that legitimately
-/// loads on every side still has client-only parts, and nothing above this type
-/// stops those parts running where there is no client.
-///
-/// This closes that at the point the value is made rather than at the point it is
-/// used, which is the difference between hiding client-only code and not running
-/// it: [`ClientOnly::built_on`] never calls the closure on a server side, so the
-/// work is not done rather than done and discarded. [`ClientOnly::get`] then
-/// refuses a server side a second time, so a value that reached one anyway is
-/// still not readable there.
-///
-/// What belongs inside one is state a mod keeps only because it is on the client.
-/// A packet contract travelling `to-client` has the client as its only receiving
-/// end, and a client-only event happens on no server side, so what such a packet
-/// last carried and what such an event last counted are values a server side has
-/// no reason to hold. Drawing is not among them, and not because of this type:
-/// every screen Ravel owns is declared in data and drawn in Java,
-/// and no mod rendering path is provided.
-///
-/// The two halves are deliberately independent. The constructor is what makes
-/// the claim true and the accessor is what makes it checkable, and either one
-/// alone would leave the other's failure silent.
+/// A value built only on the client and inaccessible from server sides.
 ///
 /// # Examples
 ///
 /// ```
 /// use ravel_core::{ClientOnly, Side};
 ///
-/// // On a server side the closure does not run at all.
 /// let mut ran = false;
 /// let absent = ClientOnly::built_on(Side::DedicatedServer, || {
 ///     ran = true;
@@ -149,7 +110,6 @@ impl TryFrom<BTreeSet<Side>> for SideSet {
 /// assert!(!absent.is_present());
 /// assert!(absent.get(Side::DedicatedServer).is_err());
 ///
-/// // On the client it runs, and only the client may read it.
 /// let present = ClientOnly::built_on(Side::Client, || "what a client-bound packet last carried");
 /// assert_eq!(
 ///     present.get(Side::Client),
@@ -164,10 +124,6 @@ pub struct ClientOnly<T> {
 
 impl<T> ClientOnly<T> {
     /// Builds the value on the client side, and runs `build` nowhere else.
-    ///
-    /// `side` is the side the set is running on, which the host that composed
-    /// the mod knows and the mod is given. A mod cannot answer this question for
-    /// itself, and one that guessed would be the defect this type exists for.
     pub fn built_on(side: Side, build: impl FnOnce() -> T) -> Self {
         Self {
             value: if side.is_server() {
@@ -182,10 +138,7 @@ impl<T> ClientOnly<T> {
     ///
     /// # Errors
     ///
-    /// Returns [`WrongSide`] on every server side, and on the client when the
-    /// value was built for a different side — which is a caller asking about one
-    /// side after building for another, and is the same answer either way: there
-    /// is no client-only value here.
+    /// Returns [`WrongSide`] on server sides or when no value was built.
     pub fn get(&self, side: Side) -> Result<&T, WrongSide> {
         if side.is_server() {
             return Err(WrongSide { side });
@@ -205,11 +158,7 @@ impl<T> ClientOnly<T> {
         self.value.as_mut().ok_or(WrongSide { side })
     }
 
-    /// Returns whether the value was built at all.
-    ///
-    /// This is the constructor's answer rather than the accessor's, so a test can
-    /// tell "the closure never ran" apart from "the value exists and this side
-    /// may not read it".
+    /// Returns whether the value was built.
     #[must_use]
     pub const fn is_present(&self) -> bool {
         self.value.is_some()
@@ -296,9 +245,6 @@ mod tests {
 
     #[test]
     fn a_value_that_was_never_built_is_refused_on_the_client_too() {
-        // The accessor's own answer, separate from the constructor's: a caller
-        // that built for a server side and then asked the client gets a refusal
-        // rather than a value that does not exist.
         let absent = ClientOnly::<u32>::built_on(Side::DedicatedServer, || 7);
         assert!(!absent.is_present());
         assert_eq!(
@@ -317,10 +263,7 @@ mod tests {
 
     #[test]
     fn the_variant_list_serde_reads_is_exactly_the_one_side_all_holds() {
-        // `ALL` is hand-written, so nothing forces a fourth variant into it and
-        // every derivation from it inherits the gap. serde's unknown-variant
-        // message enumerates the variants from the enum itself, so comparing the
-        // two is what makes `ALL` incomplete a failure rather than a silence.
+        // Serde enumerates variants independently of the hand-written `ALL`.
         let error = serde_json::from_str::<Side>("\"not-a-side\"")
             .expect_err("no side is spelled that way");
         let text = error.to_string();
@@ -346,8 +289,6 @@ mod tests {
         assert!(!Side::Client.is_server());
         assert!(Side::IntegratedServer.is_server());
         assert!(Side::DedicatedServer.is_server());
-        // Derived rather than counted: a fourth side would keep an absolute
-        // figure true while making the claim in this test's name false.
         assert_eq!(
             Side::ALL
                 .into_iter()

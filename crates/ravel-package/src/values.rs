@@ -2,31 +2,16 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-/// A package-relative path, owned by `ravel-core`.
-///
-/// The type moved down to the crate every layer can name, because `ravel-data`
-/// needs it for a resource path and reaching into this crate for it would put
-/// this crate's SHA-256 dependency into a mod's dependency closure. The grammar
-/// is still `schemas/package.schema.json`'s `relativePath` pattern, and this
-/// crate is still where a manifest field is declared to have it.
+/// Package-relative paths shared with other Ravel contracts.
 pub use ravel_core::{RelativePath, RelativePathError};
 
-/// The only `schemaVersion` `schemas/package.schema.json` accepts.
 const SUPPORTED_SCHEMA_VERSION: u64 = 1;
 
-/// Length in characters of the `sha256` form the schema declares.
 const DIGEST_TEXT_LENGTH: usize = 64;
 
-/// Length in bytes of a SHA-256 digest.
 const DIGEST_BYTES: usize = 32;
 
 /// The manifest schema a package declares itself against.
-///
-/// `schemas/package.schema.json` pins `schemaVersion` to the constant `1`. The
-/// constant is a version negotiation point rather than decoration: a manifest
-/// that declares anything else was written against a contract this loader does
-/// not implement, and guessing at it would run code that never agreed to these
-/// rules.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(into = "u64", try_from = "u64")]
 pub struct SchemaVersion(u64);
@@ -86,10 +71,6 @@ impl fmt::Display for SchemaVersionError {
 impl std::error::Error for SchemaVersionError {}
 
 /// A string the schema constrains with `minLength: 1`.
-///
-/// The schema asserts a minimum length on the display name, the licence
-/// expression, an author name, and every declared Minecraft version. Each one names something, and an empty
-/// name is a metadata error rather than a mod that happens to be anonymous.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(into = "String", try_from = "String")]
 pub struct NonEmptyText(String);
@@ -137,13 +118,7 @@ impl fmt::Display for EmptyText {
 
 impl std::error::Error for EmptyText {}
 
-/// A SHA-256 digest as `schemas/package.schema.json` records one.
-///
-/// The schema's `sha256` pattern is `^[0-9a-f]{64}$`, so the text form is
-/// exactly 64 lowercase hex characters and nothing else. The digest is kept as
-/// bytes rather than as text: that is what a comparison against a freshly
-/// hashed file needs, and it makes the canonical lowercase rendering the only
-/// one this crate can emit.
+/// A SHA-256 digest with a canonical 64-character lowercase hexadecimal representation.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(into = "String", try_from = "String")]
 pub struct Sha256Digest([u8; DIGEST_BYTES]);
@@ -180,8 +155,6 @@ impl Sha256Digest {
     }
 }
 
-/// Decodes one lowercase hex character, refusing the uppercase form the schema
-/// pattern excludes so a digest has exactly one text spelling.
 fn hex_value(character: char) -> Option<u8> {
     let value = match character {
         '0'..='9' => u32::from(character) - u32::from('0'),

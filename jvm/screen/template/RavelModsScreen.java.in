@@ -7,195 +7,66 @@ import java.util.List;
 import java.util.Map;
 {{import Minecraft}}
 {{import Button}}
-// The binary name is the type's name here, for the reason RavelSettingsScreen
-// records: the pinned version reaches every interactive widget through a nested
-// type and the stubs carry the binary name the JVM links on.
 {{import Button$OnPress}}
 {{import StringWidget}}
 {{import Screen}}
 {{import Component}}
 
-/**
- * Ravel's mod list and dependency diagnostics screen.
- *
- * <p>{@code ROADMAP.md}'s M3-W5 row asks for a mod list and diagnostics UI over
- * the model {@code ravel-loader} already holds, ordered by resolved load order,
- * and for valid and invalid graphs to render deterministic, actionable messages.
- * ADG-6 settled the drawing half before this screen existed: it names M3-W5's
- * mod list as <i>the same mechanism</i> as the settings screen rather than a
- * second one. So this is that mechanism again — one batched read on the same
- * length-prefixed framing, the same widget vocabulary, and no drawing outside
- * this class.
- *
- * <p><b>One crossing, not two, and scrolling does not add a third.</b> A mod
- * list is read and never written, so the session makes a single call:
- * {@code Hook.ravelModSurface} in {@link #init}. Scrolling re-enters {@code init}
- * through {@link #rebuildWidgets}, so the read is guarded by {@link #loaded} and
- * happens once per instance however far a player scrolls. Nothing crosses per
- * row and nothing per frame. {@link #loaded} is set from the read rather than
- * before it, so a payload that was refused is read again on the next layout: a
- * refusal latched for the life of the instance would keep the screen saying the
- * list could not be read after the reason it could not had gone.
- *
- * <p><b>The sentence is composed here.</b> A failure arrives as attribution —
- * kind, surface, dependency chain, the state it failed in, the detail — rather
- * than as text already flattened into a sentence, because flattening it on the
- * Rust side would have taken the choice of what to show away from the only part
- * of Ravel that knows what a player is looking at. The composing is
- * {@link Entry#lines}, and it is the only place a message is built.
- *
- * <p><b>Actionable and reportable are drawn differently on purpose.</b> A failed
- * required mod is actionable: the set cannot open a world without it, so it is
- * marked and counted in the summary. A failed optional mod is reported and not
- * marked, because the plan already tolerates its absence and telling a player to
- * fix it would be asking for work the loader does not need done. That is the
- * difference between a diagnostic and a nag, and it is the loader's distinction
- * rather than this screen's — {@code ModEntry.is_actionable} decides it and this
- * screen only draws what it decided.
- *
- * <p><b>A notice is drawn above the rows and counted with them.</b> The launch
- * records things a player is told without being refused — a resource pack that
- * was written and could not be switched on is the one there is — and those are
- * about the launch rather than about any one mod, so they sit above the rows
- * with no row of their own. The summary counts them, because that line is what a
- * player reads before deciding nothing is wrong. Each is split across as many
- * rows as its text needs: a notice says what happened <i>and</i> what can be
- * done about it, and a row given more text than it has width shows only part of
- * it, so a notice on one row is a notice whose remedy is out of sight.
- *
- * <p><b>Everything below the summary is one scrolling list.</b> The notice
- * lines, the mod rows and the settings entries are flattened into {@link #rows}
- * in that order, and the window draws the slice of it starting at
- * {@link #scroll}. That replaces a row budget divided between the three groups,
- * which was the design launch 20 met: at the game's own GUI scale this screen
- * has about six rows, and dividing them showed one line of a seven-line notice
- * and cut the settings entry. Nothing is cut now — a row a window has no space
- * for is a row a player scrolls to — and the summary says which slice is on
- * screen so that a player knows there is more.
- *
- * <p><b>Rows are drawn actionable-first, and every row states its load
- * position.</b> The two go together and the second is what makes the first safe.
- * The model stays in resolved load order — that is what {@code surface.rs}
- * promises and nothing here changes it — but the rows a player has to act on are
- * the rows the screen exists to show, so they are the ones it opens on rather
- * than the ones a player has to scroll for. Grouping is still deterministic: the
- * same set always draws the same screen. The position is numbered on every row,
- * not only on moved ones, so a player reads the load order from the numbers
- * rather than inferring it from where a row happens to sit. Without the numbers
- * this reordering would not be defensible.
- *
- * <p><b>The wheel is not the only way down the list.</b> Up and Down move it by
- * a row and the page keys by a window, which is what a player without a wheel
- * has. The keystroke arrives through {@link RavelScrolling}, whose only reason
- * to exist is that the two pinned versions declare {@code keyPressed} with
- * different parameters. A key this screen does not use goes to the game, so
- * escape still closes the screen and tab still moves the focus.
- *
- * <p><b>A layout puts the focus back where it was.</b> The game's
- * {@code rebuildWidgets} clears the focus and sets the initial one, so a player
- * who tabbed to a settings entry and then pressed Down would have been moved off
- * it by the very layout that scrolled. This screen reads the focused widget
- * before the layout and focuses it again afterwards: a settings entry whenever
- * the window it lands on still draws one, Profiling and Done always.
- *
- * <p>Every widget here is one the game builds without this class drawing
- * anything, for the reason {@link RavelSettingsScreen} records at length:
- * {@code AbstractButton} declares {@code extractContents} and implementing it
- * would be drawing, which is the one thing ADG-6 forbids. A text row is a
- * {@code StringWidget}, which is the game's own read-only label: it takes no
- * input, so it draws no caret and no focus border and swallows no click, which
- * an uneditable text field did all three of.
- */
 public final class RavelModsScreen extends RavelScrolling {
 
-    /** What marks a line as one a player has to act on. */
     private static final String ATTENTION = "[needs attention] ";
 
-    // The key codes the game reports, which are the window system's own and not
-    // the game's, so they are the same number under every version Ravel pins.
     private static final int KEY_UP = 265;
     private static final int KEY_DOWN = 264;
     private static final int KEY_PAGE_UP = 266;
     private static final int KEY_PAGE_DOWN = 267;
 
-    /** The mod set as it stood when this screen opened. */
     private final List<Entry> entries = new ArrayList<>();
 
-    /** What the launch told the player without refusing them, as it stood then. */
     private final List<String> notices = new ArrayList<>();
 
-    /** Every row those notices were split into, whether the window draws it or not. */
     private final List<String> noticeRows = new ArrayList<>();
 
-    /** Everything below the summary, in the one order it is scrolled through. */
     private final List<Row> rows = new ArrayList<>();
 
-    /** The settings entry this screen last drew for each mod that has one. */
     private final Map<String, {{Button}}> drawnSettings = new LinkedHashMap<>();
 
-    /** Which row of {@link #rows} the window starts at. */
     private int scroll;
 
-    /** The Profiling and Done buttons this screen last drew, in that order. */
     private final List<{{Button}}> below = new ArrayList<>();
 
-    /** How many entries the loader says a player has to act on. */
     private int actionable;
 
-    /** The side the set is running on, as the loader reported it. */
     private String side = "";
 
-    /** Whether the surface has been read, which happens once per instance. */
     private boolean loaded;
 
-    /** Whether the payload read at all. */
     private boolean read;
 
     private RavelModsScreen() {
         super({{Component}}.{{Component#translatable}}("ravel.mods.title"));
     }
 
-    /**
-     * Builds the screen.
-     *
-     * <p>Called reflectively by {@code dev.ravel.jvm.Screens}, which cannot name
-     * this type: {@code Screens} lives in the agent jar and ADG-1 forbids that
-     * jar naming a game type, which this class's supertype is.
-     *
-     * @return a screen the caller hands to the game
-     */
     public static {{Screen}} open() {
         return new RavelModsScreen();
     }
 
-    /** The mod set this screen read, in resolved load order. */
     public List<Entry> entries() {
         return List.copyOf(entries);
     }
 
-    /** How many entries a player has to act on. */
     public int actionable() {
         return actionable;
     }
 
-    /** What the launch told the player without refusing them. */
     public List<String> notices() {
         return List.copyOf(notices);
     }
 
-    /**
-     * Every row those notices were split into, drawn or scrolled past.
-     *
-     * <p>The whole split rather than the part on screen, which is what a caller
-     * needs to tell a drawn notice line apart from a drawn mod line: the window
-     * is a slice of one list and a line's group is not readable from where it
-     * sits. What is on screen is {@link #rowLabels} and the offset.
-     */
     public List<String> noticeRows() {
         return List.copyOf(noticeRows);
     }
 
-    /** Every row below the summary, drawn or scrolled past, as its label reads. */
     public List<String> rowLabels() {
         List<String> labels = new ArrayList<>();
         for (Row row : rows) {
@@ -204,17 +75,6 @@ public final class RavelModsScreen extends RavelScrolling {
         return labels;
     }
 
-    /**
-     * Reads the mod set once and lays the window out over the rows it built.
-     *
-     * <p>A payload that does not read leaves the list empty and says so rather
-     * than drawing part of one. Half a mod list is worse than none: it looks
-     * like the set is smaller than it is, which is the opposite of a diagnostic.
-     *
-     * <p>{@link #rebuildWidgets} re-enters this method for every scrolled row,
-     * so the read is behind {@link #loaded} and the rows are rebuilt from what it
-     * already holds. Reading again would put a second crossing on a keystroke.
-     */
     @Override
     protected void {{Screen#init}}() {
         super.{{Screen#init}}();
@@ -245,8 +105,6 @@ public final class RavelModsScreen extends RavelScrolling {
         }
 
         int shown = shown();
-        // A window that grew can show rows the old offset put past the end, so
-        // the offset is bounded on every layout and not only on a scroll.
         scroll = bound(scroll, shown);
 
         int y = Layout.TOP;
@@ -288,29 +146,11 @@ public final class RavelModsScreen extends RavelScrolling {
         }
     }
 
-    /**
-     * Moves the window by one row a notch and draws it again.
-     *
-     * <p>A notch with no vertical component is not this screen's: a sideways
-     * wheel would otherwise lay the whole screen out to move nothing and then
-     * claim the event, which is a layout a player asked for nothing by.
-     *
-     * @return whether this screen used the event
-     */
     @Override
     public boolean {{GuiEventListener#mouseScrolled}}(double mouseX, double mouseY, double scrollX, double scrollY) {
         return move(-(int) Math.signum(scrollY));
     }
 
-    /**
-     * Moves the window for one key, or leaves it where it is.
-     *
-     * <p>A page is the window, so the key that follows a page ends where the eye
-     * left off. Every other key is the game's.
-     *
-     * @param key the key code the game reported
-     * @return whether the key moved the window
-     */
     @Override
     boolean scrolled(int key) {
         if (key == KEY_UP) {
@@ -328,23 +168,6 @@ public final class RavelModsScreen extends RavelScrolling {
         return false;
     }
 
-    /**
-     * Moves the offset by rows and draws the screen again.
-     *
-     * <p>Refused when the whole list is already on screen, so that a window with
-     * nothing to scroll leaves the event to whatever the game does with it rather
-     * than swallowing it to do nothing. Refused too when the window has room for
-     * no row at all: there is nothing to look at, so moving the offset would only
-     * leave a taller window opening part of the way down a list a player never
-     * scrolled, and so is a notch past either end: the window is already where
-     * that notch would put it, and laying it out again would be a layout a
-     * player asked for nothing by. {@link #init} bounds the offset as well,
-     * because a window that changed size has to be bounded on a layout no wheel
-     * caused.
-     *
-     * @param by how many rows to move, positive being further down the list
-     * @return whether the window moved
-     */
     private boolean move(int by) {
         int shown = shown();
         if (by == 0 || shown <= 0 || rows.size() <= shown) {
@@ -359,27 +182,11 @@ public final class RavelModsScreen extends RavelScrolling {
         return true;
     }
 
-    /**
-     * The offset the list has room for nearest {@code offset}.
-     *
-     * <p>The bound is the last row rather than the last window, because a window
-     * with no room for a row at all has no last window and would otherwise park
-     * the offset past the whole list.
-     */
     private int bound(int offset, int shown) {
         return Math.max(0, Math.min(offset, rows.size() - Math.max(shown, 1)));
     }
 
-    /**
-     * Lays the screen out again and puts the focus back where it was.
-     *
-     * <p>The game's own layout clears the focus and sets the initial one, which
-     * on a screen scrolled by the keyboard would move a player off the entry they
-     * were on every time they pressed a key. An entry is found again by the mod
-     * it opens rather than by where it sat, because the window it lands in is a
-     * different slice of the list; Profiling and Done are found by which of the
-     * two they are, because every layout draws both.
-     */
+    // Rebuilding resets keyboard focus, so restore it by entry identity.
     private void relayout() {
         String owner = focusedOwner();
         int held = below.indexOf({{AbstractContainerEventHandler#getFocused}}());
@@ -390,7 +197,6 @@ public final class RavelModsScreen extends RavelScrolling {
         }
     }
 
-    /** The mod whose settings entry holds the focus, or {@code null} if none does. */
     private String focusedOwner() {
         Object focused = {{AbstractContainerEventHandler#getFocused}}();
         for (Map.Entry<String, {{Button}}> drawn : drawnSettings.entrySet()) {
@@ -401,28 +207,10 @@ public final class RavelModsScreen extends RavelScrolling {
         return null;
     }
 
-    /**
-     * How many rows of the list this window draws.
-     *
-     * <p>The rows the window has, less the one the summary takes, and never more
-     * than the list holds. Two more rows are reserved below the list for
-     * Profiling and Done, which is what keeps them on screen whatever is drawn
-     * above them. {@link Layout#rows} measures the rest.
-     *
-     * @return how many rows of {@link #rows} are on screen, which can be none
-     */
     private int shown() {
         return Math.min(rows.size(), Math.max(0, Layout.rows({{Screen#height}}, 2) - 1));
     }
 
-    /**
-     * The set with actionable entries first, each group keeping load order.
-     *
-     * <p>Load order is what the row asks the list to be in, and it still is
-     * within each group. Putting the entries a player has to act on at the top is
-     * what makes them the rows the screen opens on rather than rows a player has
-     * to find.
-     */
     private List<Entry> ordered() {
         List<Entry> sorted = new ArrayList<>();
         for (Entry entry : entries) {
@@ -438,12 +226,6 @@ public final class RavelModsScreen extends RavelScrolling {
         return sorted;
     }
 
-    /**
-     * The mods a settings screen has something to draw for, in load order.
-     *
-     * <p>Load order rather than the actionable-first order above, because a
-     * settings entry is not a diagnostic and a player looks for it by name.
-     */
     private List<Entry> configurable() {
         List<Entry> offered = new ArrayList<>();
         for (Entry entry : entries) {
@@ -454,23 +236,6 @@ public final class RavelModsScreen extends RavelScrolling {
         return offered;
     }
 
-    /**
-     * The line above the list, saying what the player is looking at.
-     *
-     * <p>The count includes a notice as well as a failed mod. It is followed by
-     * which part of the list is on screen, whenever that is not all of it: a
-     * player who reads that three things need attention and sees two rows has
-     * been told the screen is complete, which is the one thing this line must
-     * never say when it is not. Where a row budget used to report what it had cut
-     * for good, this reports where a player is in a list nothing was cut from.
-     *
-     * <p>The clause is {@code rows 1-8 of 14} rather than a sentence because this
-     * line is one row and can outgrow it. The window this screen opens at draws
-     * about fifty characters, a longer wording pushed the clause off the end, and
-     * a position a player cannot read is worse than none.
-     *
-     * @return the line
-     */
     private String summary() {
         if (!read) {
             return "The mod list could not be read.";
@@ -500,32 +265,13 @@ public final class RavelModsScreen extends RavelScrolling {
         return line.toString();
     }
 
-    /**
-     * One line of text, which is how this screen shows a row.
-     *
-     * <p>The game's read-only label rather than an uneditable text field. The
-     * field was the choice while every row was one, and it costs a caret, a focus
-     * border and a swallowed click on a row a player cannot type in — all three
-     * of which launch 20 saw on screen. This widget takes no input at all, and it
-     * draws its text against its whole width rather than inside a border, which
-     * is why {@link Layout#wrap} is asked for the full width here.
-     *
-     * <p>The box is the width of the text it holds rather than the width of the
-     * column, and that is what left-aligns the row. One pinned version centres a
-     * label inside its box and the other draws it at the box's left edge, and
-     * they share no member that says which — so a box the text exactly fills has
-     * nothing left to centre and both versions draw the same row. The column's
-     * width is still the bound, because a line wider than the column is a line
-     * {@link Layout#wrap} should have split and the box must not grow past what
-     * the screen has room for.
-     */
+    // Matching the box width to the text keeps labels left-aligned across versions.
     private {{StringWidget}} label(String text, int y) {
         int box = Math.min({{Screen#font}}.{{Font#width}}(text), Layout.WIDGET_WIDTH);
         return new {{StringWidget}}(
                 centre(), y, box, Layout.WIDGET_HEIGHT, {{Component}}.{{Component#literal}}(text), {{Screen#font}});
     }
 
-    /** The entry that opens one mod's settings screen. */
     private {{Button}} settings(String owner, int y) {
         final String named = owner;
         return {{Button}}.{{Button#builder}}(
@@ -545,24 +291,14 @@ public final class RavelModsScreen extends RavelScrolling {
         return ({{Screen#width}} - Layout.WIDGET_WIDTH) / 2;
     }
 
-    /** A count and the word that agrees with it. */
     private static String plural(int count, String one, String many) {
         return count + " " + (count == 1 ? one : many);
     }
 
-    /**
-     * One row below the summary.
-     *
-     * <p>A row is a line of text or the settings entry for one mod, and the two
-     * are one list rather than two because the window that scrolls over them
-     * spans both.
-     */
     private static final class Row {
 
-        /** The text this row draws, or {@code null} if it is a settings entry. */
         private final String text;
 
-        /** The mod this row opens the settings of, or {@code null} if it is text. */
         private final String owner;
 
         private Row(String text, String owner) {
@@ -578,17 +314,11 @@ public final class RavelModsScreen extends RavelScrolling {
             return new Row(null, owner);
         }
 
-        /** What this row reads as, which is what a settings entry is labelled. */
         String label() {
             return owner == null ? text : "Settings: " + owner;
         }
     }
 
-    /**
-     * Reads the payload into entries.
-     *
-     * @return whether the whole payload read
-     */
     private boolean parse(String payload) {
         if (payload == null) {
             return false;
@@ -637,7 +367,6 @@ public final class RavelModsScreen extends RavelScrolling {
         return true;
     }
 
-    /** One mod, as the loader described it. */
     public static final class Entry {
 
         int position;
@@ -656,7 +385,6 @@ public final class RavelModsScreen extends RavelScrolling {
         List<String> chain = List.of();
         String detail = "";
 
-        /** Reads one entry, or {@code null} if the payload runs out. */
         static Entry read(Wire wire) {
             Entry entry = new Entry();
             entry.position = wire.count();
@@ -712,36 +440,18 @@ public final class RavelModsScreen extends RavelScrolling {
             return entry.detail == null ? null : entry;
         }
 
-        /**
-         * Where this mod sits in the resolved load order, numbered from one.
-         *
-         * <p>Every row states it, which is what lets this screen draw actionable
-         * entries first without taking the load order away from a player: the
-         * order is read from the numbers rather than inferred from where a row
-         * happens to sit.
-         */
         public int position() {
             return position;
         }
 
-        /** The mod id this entry describes. */
         public String modId() {
             return modId;
         }
 
-        /** Whether a player has to act on this entry. */
         public boolean isActionable() {
             return actionable;
         }
 
-        /**
-         * The lines this entry draws, composed from its structured fields.
-         *
-         * <p>This is the only place in Ravel where a failure becomes a sentence.
-         * Everything above it — the loader, the crossing, the wire — carries
-         * attribution, so that this method can decide what a player sees without
-         * anything having decided for it.
-         */
         public List<String> lines() {
             StringBuilder head = new StringBuilder();
             head.append(position).append(". ").append(modId);

@@ -18,30 +18,13 @@ impl GeneratedFile {
     }
 
     /// Returns the file's exact content.
-    ///
-    /// Bytes rather than text, because a mod may supply a texture and because
-    /// the property this whole surface is judged on is byte equality. A `String`
-    /// would invite comparing values that render the same and differ on disk.
     #[must_use]
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
 }
 
-/// The pack a declaration produces.
-///
-/// The files are ordered by path and each path appears once, which is the whole
-/// of the determinism claim: two runs over the same declaration emit the same
-/// files in the same order with the same bytes, so the output can be compared
-/// byte for byte rather than field by field. Nothing here reads a clock, a
-/// filesystem, an environment variable or a hash map's iteration order, and
-/// [`crate::ContentDeclaration`] keeps every collection it generates from keyed
-/// or sorted by content rather than by declaration order.
-///
-/// `tests/conformance/tests/content_declarations.rs` is where that is checked
-/// rather than asserted: it generates the same declaration twice, builds the
-/// same content in two different declaration orders, and requires the bytes to
-/// match.
+/// Generated pack files in unique path order.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GeneratedData {
     files: Vec<GeneratedFile>,
@@ -50,9 +33,7 @@ pub struct GeneratedData {
 impl GeneratedData {
     /// Records `bytes` as the content of `path`, keeping the files in path order.
     ///
-    /// A repeated path replaces the earlier bytes, and no caller can reach that:
-    /// [`crate::ContentDeclaration`] refuses two producers for one path when the
-    /// declaration is made, so a collision cannot survive to generation.
+    /// A repeated path replaces its earlier bytes.
     pub(crate) fn insert(&mut self, path: RelativePath, bytes: Vec<u8>) {
         match self
             .files
@@ -96,17 +77,7 @@ impl GeneratedData {
     }
 }
 
-/// Renders one JSON document the way every generated file is rendered.
-///
-/// One function, so no two generated file kinds can disagree about formatting.
-/// The rendering is `serde_json`'s pretty form plus a trailing newline: a JSON
-/// file without one is a file every text tool reports as ending mid-line, and
-/// the diff a player or an author reads is worth two bytes.
-///
-/// Object key order is not decided here and does not need to be. `serde_json`'s
-/// `Map` is a `BTreeMap` unless its `preserve_order` feature is on, and this
-/// workspace enables no features on it, so keys are emitted in sorted order by
-/// construction rather than by a sort this file would have to remember to do.
+/// Renders sorted-key, pretty JSON with a trailing newline.
 fn document(value: &Value) -> Vec<u8> {
     let mut text = serde_json::to_string_pretty(value)
         .expect("a map of strings and arrays of strings always serializes");
@@ -114,14 +85,7 @@ fn document(value: &Value) -> Vec<u8> {
     text.into_bytes()
 }
 
-/// Renders one tag file from its members' canonical spellings.
-///
-/// `replace` is present and false. The pack format treats an absent `replace` as
-/// false too, so this could be left out — and then a mod reading its own
-/// generated tag would have to know that, and a mod that ever needs to replace a
-/// tag would find the field missing rather than set. Ravel never generates
-/// `true`: replacing another mod's tag members discards contributions the tag
-/// exists to collect, and a pack that means to do it is M4-W5's business.
+/// Renders tag members with `replace: false` to preserve other contributions.
 pub(crate) fn tag_document(members: &[String]) -> Vec<u8> {
     let mut object = Map::new();
     object.insert("replace".to_owned(), Value::Bool(false));
@@ -137,11 +101,7 @@ pub(crate) fn tag_document(members: &[String]) -> Vec<u8> {
     document(&Value::Object(object))
 }
 
-/// Renders the blockstates file mapping a block's one variant to its model.
-///
-/// One variant, spelled `""`, which is what a block with no properties has. A
-/// block whose states a mod wants to vary supplies this file itself; nothing
-/// here can guess a mapping it was never told about.
+/// Renders the empty-variant blockstate mapping.
 pub(crate) fn blockstate_document(namespace: &str, path: &str) -> Vec<u8> {
     let mut variant = Map::new();
     variant.insert(
@@ -155,12 +115,7 @@ pub(crate) fn blockstate_document(namespace: &str, path: &str) -> Vec<u8> {
     document(&Value::Object(object))
 }
 
-/// Renders the loot table a block that drops itself carries.
-///
-/// The single pool with a survives-explosion condition, which is what every
-/// vanilla block that drops one of itself declares. It is written at the path
-/// the game derives from the block's own identifier: a block sets no table, so
-/// the game looks for its id with `blocks/` in front of it.
+/// Renders a self-drop loot table with a survives-explosion condition.
 pub(crate) fn loot_table_document(namespace: &str, path: &str) -> Vec<u8> {
     let mut condition = Map::new();
     condition.insert(
@@ -210,10 +165,6 @@ pub(crate) fn item_model_document(model: &str) -> Vec<u8> {
 }
 
 /// Renders an item model that shows a flat sprite.
-///
-/// The sprite is the texture named after the item, which is a file the author
-/// ships. An item with no texture renders as the missing one, which is a visible
-/// answer rather than a silent one.
 pub(crate) fn sprite_model_document(texture: &str) -> Vec<u8> {
     let mut textures = Map::new();
     textures.insert("layer0".to_owned(), Value::String(texture.to_owned()));

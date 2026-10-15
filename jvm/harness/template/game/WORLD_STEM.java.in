@@ -2,7 +2,6 @@
 
 {{import REGISTRY_LAYERS}}
 
-/** The loaded world, carrying the two members the adapter uses. */
 public final class {{WORLD_STEM}} implements AutoCloseable {
 
     private final {{REGISTRY_LAYERS}} registries = new {{REGISTRY_LAYERS}}();
@@ -12,7 +11,6 @@ public final class {{WORLD_STEM}} implements AutoCloseable {
         return registries;
     }
 
-    /** Whether a refusal closed the stem it was handed. */
     public boolean isClosed() {
         return closed;
     }

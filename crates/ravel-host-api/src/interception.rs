@@ -3,18 +3,7 @@ use std::fmt;
 
 use ravel_core::{ModId, Side, precedence};
 
-/// A place the host calls out from and a mod may answer at.
-///
-/// The set is closed, and closed for the same reason [`crate::GameEvent`]'s is:
-/// a point is a place a version adapter has resolved a hook for, so a name no
-/// adapter published names nothing. A mod never spells a hook — `SPEC.md` §3.7's
-/// version boundary and `docs/architecture/dependency-rules.md` both forbid it —
-/// and this is the mod-facing form the hook becomes.
-///
-/// **Nothing calls out at any of these yet.** No host in this workspace asks a
-/// point, exactly as no host carries a packet, and the module documentation says
-/// so at greater length. What is shipped is the declaration, the order and the
-/// two refusals, all of which are decidable without a game.
+/// A published host decision point; live host dispatch is not yet wired.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Point {
     /// A block is about to be broken.
@@ -45,12 +34,7 @@ impl Point {
         Self::ALL.into_iter().find(|point| point.as_str() == name)
     }
 
-    /// Returns whether `side` is a side this point is reached on.
-    ///
-    /// All three are server-side decisions: what a block does when it breaks is
-    /// the server's answer even in single player, where the integrated server
-    /// gives it. A client that answered separately would answer differently, and
-    /// the two answers would be two games.
+    /// Returns whether `side` is a server side, where these decisions belong.
     #[must_use]
     pub const fn happens_on(self, side: Side) -> bool {
         let _ = self;
@@ -64,13 +48,7 @@ impl fmt::Display for Point {
     }
 }
 
-/// What the host is about to do, handed to every mod asked at a point.
-///
-/// It carries the point and the side today and no more, for the same reason
-/// [`crate::GameEvent`] carries no payload: the projection from a hook's
-/// parameters to a value a mod can read lands with the wiring that connects a
-/// hook to the loader. A mod that matches on the point is writing against what
-/// exists; one that expects a block position is writing against what does not.
+/// A host decision's point and side; hook payloads are not yet projected.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Occasion {
     point: Point,
@@ -78,12 +56,7 @@ pub struct Occasion {
 }
 
 impl Occasion {
-    /// Builds the occasion a host hands a mod at `point`.
-    ///
-    /// A host builds these; a mod is handed them. It is public because a mod's
-    /// own tests drive [`crate::HostMod::intercept`] directly, and a mod that
-    /// could not construct the argument could not test the method — which is the
-    /// same reason `ravel-testkit` exists for the pipeline.
+    /// Builds an occasion for host dispatch or direct mod tests.
     #[must_use]
     pub const fn at(point: Point, side: Side) -> Self {
         Self { point, side }
@@ -102,13 +75,7 @@ impl Occasion {
     }
 }
 
-/// What a mod answers at a point.
-///
-/// Two answers rather than three, and the third one a caller reaches for —
-/// "replace this outcome with mine" — is a property of the *declaration* instead
-/// of the answer. That is [`Points::replace_at`], and it is separated because
-/// the two compose differently: any number of mods may proceed or refuse, and
-/// two mods replacing one outcome is a conflict no order resolves.
+/// A mod's answer; exclusive replacement is declared separately with [`Points::replace_at`].
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Outcome {
     /// The game does what it was going to do.
@@ -117,26 +84,13 @@ pub enum Outcome {
     Refuse,
 }
 
-/// One mod's declared answer at one point.
-///
-/// A declaration and not a closure. A host holds its mods as `dyn HostMod` and
-/// cannot obtain a closure from a trait object, so a registry of closures is a
-/// registry no host can fill — which is why nothing asked a round until the
-/// declaration became the thing a mod hands over and the answer became a call
-/// the host makes back.
 struct Answer {
     owner: ModId,
     point: Point,
     replaces: bool,
 }
 
-/// What one mod declares about the points it answers at.
-///
-/// A mod hands this over and the host folds every one of them into a
-/// [`Points`]. The owner travels with the declaration for the same reason a
-/// [`ravel_config::ConfigurationDeclaration`]'s does: the host checks it against
-/// the mod that produced it, so a declaration naming somebody else is refused
-/// rather than believed.
+/// Declares interception points and ordering, with ownership checked by the host.
 ///
 /// # Examples
 ///
@@ -173,11 +127,7 @@ impl InterceptionDeclaration {
         }
     }
 
-    /// Declares that this mod answers at `point`.
-    ///
-    /// The name is not checked here. A name no point publishes is refused at
-    /// [`Points::admit`], where the refusal can name every mod that wrote it
-    /// rather than only the first one to be built.
+    /// Declares an answer at `point`; unpublished names are refused by [`Points::admit`].
     pub fn answer_at(&mut self, point: &str) -> &mut Self {
         self.answers.push((point.to_owned(), false));
         self
@@ -217,18 +167,7 @@ impl InterceptionDeclaration {
     }
 }
 
-/// Every mod's declared answers, and the order they are asked in.
-///
-/// A mod declares that it wants to *answer* at a point rather than be told what
-/// happened at one. Declaring is the whole of what a mod does here: the order
-/// among mods, the conflict refusal, and the round itself belong to Ravel,
-/// because each of them is a question about the set and no member of a set can
-/// answer one.
-///
-/// This is not a way to rewrite the game's code. A point is a place the host
-/// already calls out from, so an interception is a call the host makes into a
-/// mod and never a patch a mod applies to the host. Nothing here asks for an
-/// exception to `#![forbid(unsafe_code)]` and no crate that carries it has one.
+/// Admits and orders declared interceptions without rewriting game code.
 ///
 /// # Examples
 ///
@@ -242,11 +181,8 @@ impl InterceptionDeclaration {
 /// let mut points = Points::default();
 /// points.answer_at(&ledger, "block_is_broken");
 /// points.answer_at(&guard, "block_is_broken");
-/// // The guard answers first, so what it refuses the ledger never sees.
 /// points.after(&ledger, &guard);
 ///
-/// // The host asks each mod in turn. In a launch this reaches
-/// // `HostMod::intercept`; here it stands in for one.
 /// let round = points.ask("block_is_broken", Side::IntegratedServer, &mut |owner, _| {
 ///     Ok(if owner == &guard {
 ///         Outcome::Refuse
@@ -262,8 +198,7 @@ impl InterceptionDeclaration {
 pub struct Points {
     answers: Vec<Answer>,
     after: BTreeMap<ModId, BTreeSet<ModId>>,
-    /// Names no point publishes, kept so the barrier can name them and the mods
-    /// that wrote them.
+    /// Retained so admission can report unpublished names and their claimants.
     unpublished: BTreeMap<String, BTreeSet<ModId>>,
 }
 
@@ -286,35 +221,17 @@ impl fmt::Debug for Points {
 }
 
 impl Points {
-    /// Declares that `owner` answers at `point`.
-    ///
-    /// An answer composes with every other answer at the point: the round takes
-    /// them in order and the first [`Outcome::Refuse`] ends it, so a mod that
-    /// proceeds has said nothing and a mod that refuses has said the only thing
-    /// there is to say.
-    ///
-    /// The point name is not checked here, because a mod that builds one at run
-    /// time wants the answer at the barrier rather than at each call site; that
-    /// is [`Points::admit`], which every round runs first.
+    /// Declares an answer, validated at admission; the first refusal ends a round.
     pub fn answer_at(&mut self, owner: &ModId, point: &str) {
         self.record(owner, point, false);
     }
 
-    /// Declares that `owner` replaces the outcome at `point`.
-    ///
-    /// A replacement is what a mod writes when the game's own outcome is not one
-    /// it wants composed with — the mod is deciding, not voting. Exactly one mod
-    /// may do that at a point, and [`Points::admit`] refuses a set where two do.
+    /// Declares exclusive replacement; admission refuses multiple replacements at a point.
     pub fn replace_at(&mut self, owner: &ModId, point: &str) {
         self.record(owner, point, true);
     }
 
-    /// Folds one mod's whole declaration in.
-    ///
-    /// This is the route a host takes: every declaration comes from the mod it
-    /// belongs to, so nothing here needs to trust an owner written beside a
-    /// point. A caller that reads declarations off a set of mods is what turns
-    /// them into an order.
+    /// Incorporates a mod's interception points and ordering.
     pub fn declare(&mut self, declaration: &InterceptionDeclaration) {
         for (point, replaces) in &declaration.answers {
             self.record(&declaration.owner, point, *replaces);
@@ -324,11 +241,6 @@ impl Points {
         }
     }
 
-    /// Records one declaration, published or not.
-    ///
-    /// An unpublished name is kept rather than dropped, so [`Points::admit`] can
-    /// name it. Dropping it here is what would make a typo silent, which is the
-    /// failure this capability exists to refuse.
     fn record(&mut self, owner: &ModId, point: &str, replaces: bool) {
         match Point::published(point) {
             Some(published) => self.answers.push(Answer {
@@ -353,18 +265,11 @@ impl Points {
             .insert(later.clone());
     }
 
-    /// Answers whether the declared set can be asked at all.
-    ///
-    /// Two refusals, both about the set rather than about any one mod: a point
-    /// nothing published, and two mods replacing one outcome. Both are decided
-    /// before a round runs, because a set that cannot be asked coherently should
-    /// not be asked once and then found out.
+    /// Checks published point names and exclusive replacement claims.
     ///
     /// # Errors
     ///
-    /// Returns [`InterceptionRefused::UnpublishedPoint`] naming the name and the
-    /// mods that wrote it, and [`InterceptionRefused::ContestedPoint`] naming the
-    /// point and both claimants.
+    /// Returns [`InterceptionRefused::UnpublishedPoint`] or [`InterceptionRefused::ContestedPoint`].
     pub fn admit(&self) -> Result<(), InterceptionRefused> {
         if let Some((name, owners)) = self.unpublished.first_key_value() {
             return Err(InterceptionRefused::UnpublishedPoint {
@@ -387,36 +292,17 @@ impl Points {
         Ok(())
     }
 
-    /// Asks every mod that answers at `point`, in the declared order.
+    /// Asks mods in declared order, stopping at the first refusal or failure.
     ///
-    /// Each mod is asked while the outcome still stands and the first
-    /// [`Outcome::Refuse`] ends the round, so a mod that refused is not
-    /// overruled by a later one it never knew about. A point whose answers were
-    /// collected and then reconciled would have no meaning for the mod that
-    /// refused, which is why they are not.
-    ///
-    /// `respond` is how the host asks one mod. In a launch it reaches
-    /// [`crate::HostMod::intercept`]; the argument exists because a host holds
-    /// its mods and this type holds only what they declared, and a set that
-    /// stored callables could not be built from trait objects at all.
-    ///
-    /// A mod that fails while answering ends the round like a refusal does, and
-    /// the failure is carried out in [`Round::failure`] rather than discarded —
-    /// the mods before it were asked, and a report that lost that would describe
-    /// a different run. The outcome of a failed round is
-    /// [`Outcome::Refuse`]: a host that could not finish asking has not been
-    /// told it may proceed.
+    /// A failure produces [`Outcome::Refuse`] and remains available through [`Round::failure`].
     ///
     /// # Errors
     ///
-    /// Returns whatever [`Points::admit`] refuses, which every round runs first,
-    /// and [`InterceptionRefused::Circular`] when the mods at the point each wait
-    /// for another.
+    /// Returns admission refusals or [`InterceptionRefused::Circular`] for an ordering cycle.
     ///
     /// # Panics
     ///
-    /// Panics if the order names a mod that does not answer at the point, which
-    /// cannot happen: the order is built from exactly those mods.
+    /// Panics if the internally built order names a mod that does not answer here.
     pub fn ask(
         &self,
         point: &str,
@@ -441,8 +327,7 @@ impl Points {
         )
         .map_err(|cycle| InterceptionRefused::Circular {
             point,
-            // In the order the mods declared, because a mod author reading the
-            // refusal is looking for the edge they wrote and wrote it here.
+            // Report cycle participants in declaration order.
             claimants: at_point
                 .iter()
                 .filter(|answer| cycle.participants().contains(&answer.owner))
@@ -450,9 +335,6 @@ impl Points {
                 .collect(),
         })?;
 
-        // The side the host is running on, rather than a side written here. A
-        // point is reached on a server side and an integrated server is a
-        // server, so a client launch reaches these through its own.
         let occasion = Occasion { point, side };
         let mut asked = Vec::with_capacity(order.len());
         let mut outcome = Outcome::Proceed;
@@ -502,10 +384,7 @@ impl Round {
         self.point
     }
 
-    /// Returns the mods that were asked, in the order they were asked.
-    ///
-    /// A mod after the one that refused is absent rather than present with a
-    /// discarded answer, because it was not asked.
+    /// Returns only the mods actually asked, in dispatch order.
     #[must_use]
     pub fn asked(&self) -> &[ModId] {
         &self.asked
@@ -517,11 +396,7 @@ impl Round {
         self.outcome
     }
 
-    /// Returns the failure that ended the round, when one did.
-    ///
-    /// A mod that failed while answering is a mod that did not answer, and the
-    /// round it ended refuses. This is how the host learns which mod to
-    /// attribute that to.
+    /// Returns the failure that ended the round with [`Outcome::Refuse`], if any.
     #[must_use]
     pub const fn failure(&self) -> Option<&crate::HostError> {
         self.failure.as_ref()
@@ -616,9 +491,7 @@ mod tests {
         name.parse().expect("a legal mod id")
     }
 
-    /// Checks a round against what was declared by a different route than the
-    /// round took: the order is read back positionally rather than trusting the
-    /// sequence that produced it.
+    /// Checks dispatch order independently by comparing returned positions.
     fn asked_before(round: &Round, earlier: &ModId, later: &ModId) -> bool {
         match (
             round.asked().iter().position(|id| id == earlier),
@@ -763,8 +636,6 @@ mod tests {
         assert!(refusal.to_string().contains(first.as_str()));
         assert!(refusal.to_string().contains(second.as_str()));
 
-        // The round is refused too, rather than running on a set the barrier
-        // already said cannot be asked.
         assert!(
             points
                 .ask("block_is_broken", Side::IntegratedServer, &mut |_, _| Ok(

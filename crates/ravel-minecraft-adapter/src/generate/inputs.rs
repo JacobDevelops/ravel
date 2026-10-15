@@ -1,9 +1,4 @@
-//! The tracked inputs the generator is allowed to read.
-//!
-//! Each version pins three files: the reviewed hook inventory, the adapter
-//! inputs with their upstream hashes, and the generated mapping lock. Nothing
-//! else is read, and an input whose bytes no longer match what is tracked is
-//! refused before a single class is looked at.
+//! Loading and validation of pinned generator inputs.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -14,474 +9,12 @@ use sha2::{Digest, Sha256};
 
 use super::{GenerateError, SELECTION, jar};
 
+mod schema;
+
+pub(super) use schema::*;
+
 /// Every pinned version's data lives here, relative to the repository root.
 const VERSIONS: &str = "minecraft/versions";
-
-/// Where the names the generator resolves against come from.
-///
-/// There are two sources, and nothing else: an unknown value is refused here
-/// rather than carried through as descriptive text, because this string decides
-/// whether a name is translated before an archive is asked for it.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub(super) enum MappingSource {
-    /// The jar declares the names the reviewed inventory carries.
-    UnobfuscatedClassFiles,
-    /// The version's own published mapping file relates the two name spaces.
-    OfficialProguardMappings,
-}
-
-impl MappingSource {
-    /// How the adapter inputs and the generated locks write this down.
-    pub(super) const fn as_str(self) -> &'static str {
-        match self {
-            Self::UnobfuscatedClassFiles => "unobfuscated-class-files",
-            Self::OfficialProguardMappings => "official-proguard-mappings",
-        }
-    }
-
-    /// Whether this source needs a published mapping file to be read.
-    pub(super) const fn needs_mappings(self) -> bool {
-        matches!(self, Self::OfficialProguardMappings)
-    }
-}
-
-/// Shape of a hook target, which the class file's flags have to agree with.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub(super) enum Kind {
-    StaticMethod,
-    InstanceMethod,
-    StaticField,
-    InstanceField,
-}
-
-impl Kind {
-    /// Whether the target is a method rather than a field.
-    pub(super) const fn is_method(self) -> bool {
-        matches!(self, Self::StaticMethod | Self::InstanceMethod)
-    }
-
-    /// Whether the class file has to declare the target static.
-    pub(super) const fn is_static(self) -> bool {
-        matches!(self, Self::StaticMethod | Self::StaticField)
-    }
-
-    /// The `ravel-minecraft` variant the generated binding names.
-    pub(super) const fn variant(self) -> &'static str {
-        match self {
-            Self::StaticMethod => "StaticMethod",
-            Self::InstanceMethod => "InstanceMethod",
-            Self::StaticField => "StaticField",
-            Self::InstanceField => "InstanceField",
-        }
-    }
-}
-
-/// One reviewed hook entry.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Hook {
-    pub(super) id: String,
-    pub(super) class: String,
-    pub(super) member: String,
-    pub(super) descriptor: String,
-    pub(super) kind: Kind,
-    pub(super) capability: String,
-    /// Whether this target's prologue may return from it before its body runs.
-    ///
-    /// The opt-in is generated data rather than Java: the refusable set is
-    /// exactly what this inventory names, so widening it re-pins a hash and
-    /// shows up in a diff. Absent means false, which is what every observation
-    /// hook is.
-    #[serde(default)]
-    pub(super) refuses: bool,
-    /// Where Ravel's own title-menu row goes, measured down from the column top.
-    ///
-    /// Carried by the title-menu seam alone, and only where that seam's shape
-    /// cannot supply it. A version whose column builder returns the row it took
-    /// says where the next row is; one that returns nothing does not, and the
-    /// caller that places the game's own lower row may compute it from a
-    /// constant rather than from the column, so nothing about the column says
-    /// what is free. That number is version data for the same reason a linked
-    /// name is: it is read off one version's `init` and is the layout of no
-    /// other.
-    #[serde(default, rename = "titleMenuRow")]
-    pub(super) title_menu_row: Option<i16>,
-}
-
-/// One capability this version reviewed and deliberately does not carry.
-///
-/// Declared rather than left to the header's prose, because a caller that names
-/// a hook by id has to tell a decision from a typo and prose cannot be asked.
-/// The reason travels with the id for the reader who finds it missing.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct NonGoal {
-    pub(super) id: String,
-    pub(super) reason: String,
-}
-
-/// The tracked hook inventory.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct Inventory {
-    pub(super) schema_version: u8,
-    pub(super) minecraft: String,
-    #[serde(rename = "hook")]
-    pub(super) hooks: Vec<Hook>,
-    /// Absent means this version carries every capability it reviewed.
-    #[serde(default, rename = "nonGoal")]
-    pub(super) non_goals: Vec<NonGoal>,
-}
-
-/// One member a screen template names, and the member this version spells it.
-///
-/// A template writes a role, so where the game renamed a member and not the job
-/// it does, the version's seed list is what says so. Written as a bare string
-/// where the two are the same word, which is every member under the version the
-/// templates were authored against and most members under any other.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(untagged)]
-pub(super) enum SeedMember {
-    /// The template's word is the class's own member name.
-    Same(String),
-    /// The class spells this member differently from the word templates use.
-    Bound(BoundMember),
-}
-
-/// Which overload of one name a role means.
-///
-/// A count where a count separates them, which is the ordinary case, and the
-/// declared types where it does not: a version can overload one name on two
-/// three-parameter shapes and link the two under different names, and then a
-/// count names both and neither.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(untagged)]
-pub(super) enum Overload {
-    /// How many parameters the descriptor declares.
-    Count(usize),
-    /// The reviewed types the descriptor declares, in order, as Java source
-    /// writes them.
-    Types(Vec<String>),
-}
-
-impl Overload {
-    /// Whether one descriptor's parameters are the ones this names.
-    pub(super) fn matches(&self, parameters: &[String]) -> bool {
-        match self {
-            Self::Count(count) => parameters.len() == *count,
-            Self::Types(types) => types.as_slice() == parameters,
-        }
-    }
-}
-
-/// A member role bound to the name one version's class declares.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct BoundMember {
-    pub(super) role: String,
-    pub(super) member: String,
-    /// Which overload of that name this role means.
-    ///
-    /// Absent for every member whose overloads link under one name, which is all
-    /// of them under an unobfuscated version and most under any other. It is
-    /// needed where they do not: an obfuscated version can link
-    /// `translatable(String)` and `translatable(String, Object[])` under
-    /// different names, so a reference to one is not a reference to the other
-    /// and the seed list is what says which the screen means.
-    ///
-    /// A count rather than a descriptor wherever a count is enough, and the
-    /// distinction is the rule this file already keeps: a descriptor is a
-    /// transcription of the jar, which the generated stubs exist to avoid, and
-    /// it would have to be rewritten in the linked name space besides. Where a
-    /// count separates nothing the parameter types are written instead. Those
-    /// are still the reviewed names this file already writes for a class, and
-    /// they are matched against the reviewed descriptor, so neither objection
-    /// applies to them.
-    ///
-    /// It counts the parameters the *descriptor* declares, which is usually what
-    /// a reader counts at the call site and is not always: the constructor of a
-    /// non-static nested class carries its enclosing instance as a first
-    /// parameter the source never writes, so a count taken from the call site
-    /// would be one short and select nothing. Nothing seeded today is such a
-    /// constructor. It is a filter and not an assertion, so an overload set this
-    /// does not separate is still refused rather than picked between, and a
-    /// count that separates nothing is refused rather than ignored.
-    #[serde(default)]
-    pub(super) parameters: Option<Overload>,
-}
-
-impl SeedMember {
-    /// The word a template names this member by.
-    pub(super) fn role(&self) -> &str {
-        match self {
-            Self::Same(name) => name,
-            Self::Bound(bound) => &bound.role,
-        }
-    }
-
-    /// The name this version's class declares.
-    pub(super) fn member(&self) -> &str {
-        match self {
-            Self::Same(name) => name,
-            Self::Bound(bound) => &bound.member,
-        }
-    }
-
-    /// Which overload this role means, where the binding says.
-    pub(super) const fn parameters(&self) -> Option<&Overload> {
-        match self {
-            Self::Same(_) => None,
-            Self::Bound(bound) => bound.parameters.as_ref(),
-        }
-    }
-}
-
-/// One class the settings screen compiles against.
-///
-/// Three names for the same reason [`Reflected`] carries three: `role` is the
-/// word a screen template names the class by and is the same under every
-/// version, and `class` is the Mojang name this version calls it. A screen
-/// source is compiled, so it cannot resolve a name the way the agent jar does,
-/// and a template that spelled a game class directly would be one version's
-/// spelling asserted over every other.
-///
-/// The members are named and nothing else: every descriptor comes from the jar,
-/// which is the whole reason these are generated rather than written by hand. A
-/// name that the class overloads stubs every overload, because picking one would
-/// mean writing down the descriptor that distinguishes them.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Seed {
-    pub(super) role: String,
-    pub(super) class: String,
-    pub(super) members: Vec<SeedMember>,
-}
-
-/// The tracked list of classes to stub.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct Seeds {
-    pub(super) schema_version: u8,
-    pub(super) minecraft: String,
-    #[serde(rename = "stub")]
-    pub(super) stubs: Vec<Seed>,
-}
-
-/// One game class an adapter under `jvm/bootstrap` resolves by name.
-///
-/// Three names rather than one, because three audiences read them. `name` is the
-/// role the adapter reaches the class for and is the same word under every
-/// version; `class` is the Mojang name a reviewer reads; `runtime` is what the
-/// JVM links, which is the Mojang name under an unobfuscated source and an
-/// obfuscated one otherwise.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Reflected {
-    pub(super) name: String,
-    pub(super) class: String,
-    pub(super) runtime: String,
-    /// Every member of this class the agent jar reaches by name.
-    ///
-    /// Empty where the jar names the class and nothing on it, which a class
-    /// reached only as a parameter type is.
-    #[serde(default, rename = "member")]
-    pub(super) members: Vec<ReflectedMember>,
-}
-
-/// One member of a reflected class the agent jar resolves by name.
-///
-/// Declared the way the jar asks for it, which is one of two ways and never
-/// both. `descriptor` is what a lookup naming its parameter types asks for, and
-/// it is written in the reviewed name space like every other descriptor in this
-/// crate's inputs. `parameters` is what a lookup by name and argument count
-/// asks for, which is how the persistence adapter reaches a member whose
-/// parameter types it cannot name without carrying every one of them as a game
-/// name too.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct ReflectedMember {
-    pub(super) name: String,
-    #[serde(default)]
-    pub(super) descriptor: Option<String>,
-    #[serde(default)]
-    pub(super) parameters: Option<usize>,
-}
-
-/// How the agent jar asks a class for one of its members.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Lookup<'a> {
-    /// By the parameter types it names, which fix exactly one descriptor.
-    Descriptor(&'a str),
-    /// By name and argument count, which is what the persistence adapter does.
-    Parameters(usize),
-}
-
-impl ReflectedMember {
-    /// Which of the two ways this member is declared.
-    ///
-    /// A declaration carrying both would hold two answers that can disagree,
-    /// and one carrying neither says only that some member of that name exists,
-    /// which every overload of it satisfies. Both are refused here rather than
-    /// in each caller, so the rule is written once.
-    ///
-    /// # Errors
-    ///
-    /// Returns the detail of a declaration that names both ways or neither.
-    pub(super) fn lookup(&self) -> Result<Lookup<'_>, String> {
-        match (&self.descriptor, self.parameters) {
-            (Some(descriptor), None) => Ok(Lookup::Descriptor(descriptor)),
-            (None, Some(count)) => Ok(Lookup::Parameters(count)),
-            (Some(_), Some(_)) => Err(format!(
-                "{} is declared by both a descriptor and a parameter count, and a member is \
-                 looked up one way",
-                self.name
-            )),
-            (None, None) => Err(format!(
-                "{} is declared by neither a descriptor nor a parameter count, so nothing says \
-                 which member it is",
-                self.name
-            )),
-        }
-    }
-}
-
-/// The tracked set of classes the always-present agent jar resolves by name.
-///
-/// It is a generator input rather than only a declaration the scaffold sweeps,
-/// because the runtime names in it are rendered into the agent jar's own
-/// `GameNames` class. A shared source tree cannot spell one version's names and
-/// be right about another, so the sources spell the role and this file decides
-/// what the role resolves to.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct Reflection {
-    pub(super) schema_version: u8,
-    pub(super) minecraft: String,
-    #[serde(rename = "reflected")]
-    pub(super) classes: Vec<Reflected>,
-}
-
-/// One pinned input file.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Input {
-    pub(super) path: String,
-    #[serde(default)]
-    pub(super) sha256: Option<String>,
-    #[serde(default)]
-    pub(super) bytes: Option<u64>,
-    #[serde(default)]
-    pub(super) upstream: Option<String>,
-}
-
-/// Inputs the generator is allowed to read.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct Inputs {
-    pub(super) client_jar: Input,
-    /// The version's published client mapping, where the source calls for one.
-    ///
-    /// It is declared exactly as the jar is and kept locally. It is derived
-    /// from the build that produced the jar; its hash is tracked instead of
-    /// its contents.
-    #[serde(default)]
-    pub(super) client_mappings: Option<Input>,
-    /// The library jar carrying the serialization types the game's signatures
-    /// name. Those classes are not in the client jar, so a stub for one has to be
-    /// read from the library that declares it rather than guessed at.
-    pub(super) data_fixer_jar: Input,
-    pub(super) version_manifest: Input,
-    pub(super) hook_inventory: Input,
-    pub(super) stub_seeds: Input,
-    /// The reviewed set of classes the agent jar's adapters resolve by name.
-    pub(super) reflective_surface: Input,
-    /// The generated mapping lock, pinned to the jars that produced it.
-    pub(super) mappings_lock: Input,
-    /// The generated stub lock, pinned to the jars that produced it.
-    pub(super) stubs_lock: Input,
-}
-
-/// The tracked adapter inputs.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct Adapter {
-    pub(super) schema_version: u8,
-    pub(super) minecraft: String,
-    pub(super) mapping_source: MappingSource,
-    /// The Java release every jar built for this version is compiled for.
-    ///
-    /// A game refuses a class file newer than the runtime it declares, and the
-    /// first real launch against an older version had to be started with the
-    /// runtime compatibility check switched off, because Ravel's jars were built
-    /// by whatever JDK the shell happened to hold. So it is version data like
-    /// every other build fact here: declared for the machines that hold no
-    /// version manifest, and re-derived from the manifest's
-    /// `javaVersion.majorVersion` wherever that file is present.
-    pub(super) java_release: u16,
-    /// The pack formats this version's own resource and data packs declare.
-    ///
-    /// Version data like `java_release`, and for the same reason: a pack whose
-    /// `pack_format` the game does not recognise is a pack the game refuses to
-    /// load, and the number changes with the version. The jar states it in its own
-    /// `version.json`, so it is declared for the machines that hold no jar and
-    /// re-derived from the jar wherever one is present.
-    pub(super) pack_format: PackFormat,
-    pub(super) inputs: Inputs,
-}
-
-/// The pack formats one Minecraft version declares, and how it spells them.
-///
-/// Two formats rather than one because a version states them separately and the
-/// tracked versions disagree by more than sixty. Each carries a minor because the
-/// newer of the two versions split every format in half, and the spelling is here
-/// because the same split changed the shape of the document a pack writes: the
-/// older version's own packs declare `pack_format`, and the newer one's declare a
-/// `max_format` beside a `min_format` pair. A pack written in the wrong spelling
-/// is a pack the game declines, so the shape is version data like the numbers.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct PackFormat {
-    /// What a resource pack this version accepts declares.
-    pub(super) resource: u16,
-    /// The resource format's minor, which a version that states none has as zero.
-    pub(super) resource_minor: u16,
-    /// What a data pack this version accepts declares.
-    pub(super) data: u16,
-    /// The data format's minor, which a version that states none has as zero.
-    pub(super) data_minor: u16,
-    /// The document shape this version's own packs are written in.
-    pub(super) spelling: Spelling,
-}
-
-/// How a version's own packs spell the format they declare.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub(super) enum Spelling {
-    /// One `pack_format` integer.
-    PackFormat,
-    /// A `max_format` integer beside a `min_format` major and minor.
-    MinMaxFormat,
-}
-
-impl Spelling {
-    /// The key a pack.mcmeta written in this spelling always carries.
-    const fn key(self) -> &'static str {
-        match self {
-            Self::PackFormat => "\"pack_format\"",
-            Self::MinMaxFormat => "\"min_format\"",
-        }
-    }
-
-    /// The name this spelling is declared under.
-    pub(super) const fn as_str(self) -> &'static str {
-        match self {
-            Self::PackFormat => "pack-format",
-            Self::MinMaxFormat => "min-max-format",
-        }
-    }
-}
 
 /// The one version this build generates against, and everything tracked for it.
 #[derive(Clone, Debug)]
@@ -494,17 +27,6 @@ pub(super) struct PinnedVersion {
 }
 
 /// Reads the tracked data of the version this build generates against.
-///
-/// One build emits one version's artefacts: one hook class, one exported symbol
-/// set, one stub tree, chosen before the compiler runs rather than by the
-/// running game. See `docs/architecture/overview.md#mechanisms`. Several
-/// directories under `minecraft/versions` may be tracked and reviewed side by
-/// side, and `selected` is which of them this build reads.
-///
-/// A directory this build did not select is not read at all. Whether every
-/// tracked version is well formed is the scaffold contract's guarantee, which
-/// holds over all of them at once regardless of what any build chose, and one
-/// rule written in two places is two rules that can disagree.
 pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersion, GenerateError> {
     let versions = root.join(VERSIONS);
     let mut names = Vec::new();
@@ -526,11 +48,6 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
             adapter.minecraft
         )));
     }
-    // The inventory is verified here rather than beside the jar, because it is
-    // tracked and therefore present on every machine: a build that falls back to
-    // the mapping lock still has to know the inventory is the reviewed one. It is
-    // verified before it is parsed, so nothing reads meaning out of bytes that
-    // have not been checked.
     verify_input(root, &adapter.inputs.hook_inventory)?;
     let inventory: Inventory = parse(&root.join(&adapter.inputs.hook_inventory.path))?;
     if inventory.minecraft != adapter.minecraft {
@@ -548,9 +65,6 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
     check_non_goals(&inventory)?;
     check_title_menu_row(&inventory)?;
 
-    // The seed list is tracked and therefore present everywhere too, for the
-    // same reason: a build that generates stubs from the stub lock still has to
-    // know which classes the lock was asked to cover.
     verify_input(root, &adapter.inputs.stub_seeds)?;
     let seeds: Seeds = parse(&root.join(&adapter.inputs.stub_seeds.path))?;
     if seeds.minecraft != adapter.minecraft || seeds.schema_version != adapter.schema_version {
@@ -563,10 +77,6 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
 
     let surface = reflection(root, &adapter)?;
 
-    // The source decides whether a mapping file exists, so a pair that
-    // disagrees is refused rather than resolved one way: a mapping file nothing
-    // reads is a pin nobody maintains, and a source with none to read cannot
-    // translate the name it is about to ask an archive for.
     match (
         adapter.mapping_source.needs_mappings(),
         adapter.inputs.client_mappings.is_some(),
@@ -597,9 +107,6 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
     .into_iter()
     .chain(adapter.inputs.client_mappings.as_ref())
     {
-        // An input that records where it came from has to record a fetchable
-        // origin, because that string is the only trail back to the bytes the
-        // hash pins.
         if let Some(upstream) = &input.upstream
             && !upstream.starts_with("https://")
         {
@@ -621,18 +128,11 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
     })
 }
 
-/// Refuses a declared Java release the version's own manifest disagrees with.
-///
-/// The manifest is upstream material this repository does not track, so most
-/// machines cannot read it and the declaration is what they build from. Where it
-/// is present the declaration is re-derived rather than trusted, which is the
-/// same split `runtime` already makes in the reflective surface: a record for the
-/// machines that cannot check, and a check wherever the material is there.
+/// Checks the declared Java release against an available version manifest.
 ///
 /// # Errors
 ///
-/// Returns an error when the manifest is present and unreadable, states no
-/// `javaVersion.majorVersion`, or states one the adapter inputs do not declare.
+/// Returns an error if the manifest is unreadable or its Java release is missing or inconsistent.
 fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), GenerateError> {
     let path = root.join(&adapter.inputs.version_manifest.path);
     if !path.is_file() {
@@ -657,20 +157,11 @@ fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), GenerateErr
     Ok(())
 }
 
-/// Refuses a declared pack format the version's own jar disagrees with.
-///
-/// The jar states both numbers in a `version.json` at its root, so wherever a
-/// build holds the jar the declaration is re-derived rather than trusted — the
-/// same split [`verify_java_release`] makes over the launcher's manifest. A jar
-/// that states none is refused rather than skipped: the jar is here, so the
-/// answer is here, and a pack written under a number nothing checked is a pack
-/// the game silently declines to load.
+/// Checks the declared pack formats against the pinned jar.
 ///
 /// # Errors
 ///
-/// Returns an error when the jar holds no `version.json`, when that document
-/// states no pack versions, or when it states numbers the adapter inputs do not
-/// declare.
+/// Returns an error if the jar's pack formats are missing or inconsistent with the declaration.
 pub(super) fn verify_pack_format(
     adapter: &Adapter,
     archive: &jar::Archive,
@@ -698,17 +189,11 @@ pub(super) fn verify_pack_format(
     verify_spelling(declared.spelling, archive)
 }
 
-/// Refuses a declared spelling this version's own packs do not use.
-///
-/// The correlation between the split numbers and the newer document shape is
-/// real and it is still an inference, so it is checked rather than assumed: the
-/// jar ships packs of its own, every one of them written by the game's authors in
-/// the shape the game's own reader accepts, and that is the evidence.
+/// Checks the declared metadata spelling against a pack in the pinned jar.
 ///
 /// # Errors
 ///
-/// Returns an error when the jar ships no pack of its own, and when the packs it
-/// ships are written in the other spelling.
+/// Returns an error if the jar contains no pack or its metadata uses another spelling.
 fn verify_spelling(spelling: Spelling, archive: &jar::Archive) -> Result<(), GenerateError> {
     let Some(name) = archive.names().find(|name| name.ends_with(PACK_METADATA)) else {
         return Err(GenerateError::Input(format!(
@@ -744,16 +229,6 @@ const PACK_METADATA: &str = "pack.mcmeta";
 const JAR_VERSION: &str = "version.json";
 
 /// The resource and data pack formats one jar's `version.json` states.
-///
-/// Two spellings, because the tracked versions use two: an older one states
-/// `resource` and `data`, and a newer one splits each into a major and a minor.
-/// The major is the format a pack declares in both, so the split spelling is read
-/// for its major and its minor is not a number this generator has a use for.
-///
-/// The scan is bounded to the `pack_version` object rather than run over the
-/// whole document, because `data` is not a name only that object uses and a
-/// manifest carrying one elsewhere would hand this the wrong number under the
-/// right name.
 fn pack_versions(text: &str) -> Option<(u16, u16, u16, u16)> {
     let named = text.find("\"pack_version\"")?;
     let open = text[named..].find('{')? + named;
@@ -771,9 +246,6 @@ fn pack_versions(text: &str) -> Option<(u16, u16, u16, u16)> {
 }
 
 /// The number one JSON key is set to, where the key is spelled exactly.
-///
-/// The quotes are part of the search, so `resource` does not match
-/// `resource_major` and the two spellings stay distinguishable.
 fn number_after(text: &str, key: &str) -> Option<u16> {
     let quoted = format!("\"{key}\"");
     let at = text.find(&quoted)? + quoted.len();
@@ -783,18 +255,6 @@ fn number_after(text: &str, key: &str) -> Option<u16> {
 }
 
 /// The `javaVersion.majorVersion` one version manifest states.
-///
-/// Read by scanning rather than by deserializing the manifest, because the
-/// manifest is a large upstream document whose every other field is none of this
-/// generator's business, and a struct for it would be a second thing to maintain
-/// against Mojang.
-///
-/// The scan starts at `javaVersion` rather than at the number, because
-/// `majorVersion` is not a name only that object uses: a manifest carrying one
-/// anywhere earlier — a library rule, a future sibling of `javaVersion` — would
-/// hand this the wrong number under the right name, and the drift check that
-/// reads it would then compare the adapter's release against something else
-/// entirely.
 fn major_version(text: &str) -> Option<u16> {
     let object = text.find("\"javaVersion\"")?;
     let at = text[object..].find("\"majorVersion\"")? + object + "\"majorVersion\"".len();
@@ -808,16 +268,9 @@ pub(super) const TITLE_MENU_SEAM: &str = "screen.title-menu-options";
 
 /// Checks that the title-menu row is declared exactly where it is needed.
 ///
-/// The row is derivable from a column builder that returns the row it took, and
-/// is derivable from nothing at all when it returns void. So the descriptor
-/// decides whether the number has to be there, and a number carried by any other
-/// hook is a number nothing reads.
-///
 /// # Errors
 ///
-/// Returns an error when a hook other than the title-menu seam carries a row,
-/// when a void-returning title-menu seam carries none, or when one that hands
-/// the row back carries one anyway.
+/// Returns an error if a row is missing, redundant, or declared on another hook.
 fn check_title_menu_row(inventory: &Inventory) -> Result<(), GenerateError> {
     for hook in &inventory.hooks {
         if hook.title_menu_row.is_some() && hook.id != TITLE_MENU_SEAM {
@@ -851,15 +304,9 @@ fn check_title_menu_row(inventory: &Inventory) -> Result<(), GenerateError> {
 
 /// Checks that a version's declared non-goals say something the hooks do not.
 ///
-/// One id is either carried or not carried, so an id on both lists is two
-/// answers to one question. A repeated non-goal is the same defect a repeated
-/// hook is, and an empty reason is a declaration that explains nothing to the
-/// reader who went looking for the capability.
-///
 /// # Errors
 ///
-/// Returns an error when a non-goal is also a hook, when one is declared twice,
-/// or when one carries no reason.
+/// Returns an error if a non-goal is duplicated, has no reason, or is also a hook.
 fn check_non_goals(inventory: &Inventory) -> Result<(), GenerateError> {
     let mut seen = BTreeSet::new();
     for non_goal in &inventory.non_goals {
@@ -889,18 +336,9 @@ fn check_non_goals(inventory: &Inventory) -> Result<(), GenerateError> {
 
 /// Checks that every role a screen template could name is declared exactly once.
 ///
-/// A role is what a template writes, so two seeds claiming one role is two
-/// answers to one placeholder and neither is the obvious one. The same holds
-/// inside a class for a member role. Roles are checked here rather than where a
-/// template is read because the seed list is what declares them, and a version
-/// whose data is ambiguous is ambiguous whether or not a template happens to
-/// name the ambiguous one.
-///
 /// # Errors
 ///
-/// Returns an error when a role is not spelled like a name a template can write,
-/// when two seeds declare one class role, or when one seed declares one member
-/// role twice.
+/// Returns an error if a class, member, or role is invalid or duplicated.
 fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
     let mut seen = BTreeSet::new();
     let mut classes = BTreeSet::new();
@@ -924,12 +362,6 @@ fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
                 seed.role
             )));
         }
-        // Two seeds naming one class is refused on the jar path by `from_jar`,
-        // and was refused nowhere else: `from_lock` looks a seed up by class and
-        // is content to find the same stub twice. So the refusal existed only on
-        // a machine holding the client jar, which is the opposite of where a
-        // seed-list check belongs. It lives here now, where neither the jar nor
-        // the lock decides whether it runs.
         if !classes.insert(seed.class.as_str()) {
             return Err(GenerateError::Drift(format!(
                 "the stub seeds bind two roles to {}, and one class is stubbed once",
@@ -956,10 +388,6 @@ fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
                     member.role()
                 )));
             }
-            // Two roles bound to one member stub that member's overloads twice,
-            // and `from_jar` pushes every match once per binding with no dedup,
-            // so the generated stub declares the same method twice and does not
-            // compile. Refused here rather than discovered by javac.
             if !bound.insert(member.member()) {
                 return Err(GenerateError::Drift(format!(
                     "the stub seeds bind two of {}'s member roles to {}, which stubs it twice",
@@ -973,11 +401,6 @@ fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
 }
 
 /// Whether a value is spelled like a role a screen template can write.
-///
-/// Narrower than the JVM's rule and wider than a Java identifier, because a
-/// nested type's role carries the `$` its binary name does. What has to fail is
-/// anything holding the punctuation a placeholder body or a Java declaration
-/// would end on, which is what keeps a role from becoming a second declaration.
 fn role_reference(value: &str) -> bool {
     !value.is_empty()
         && value.starts_with(|first: char| first.is_ascii_alphabetic() || first == '_')
@@ -987,24 +410,15 @@ fn role_reference(value: &str) -> bool {
 }
 
 /// Whether a value is spelled like a member a seed list can bind.
-///
-/// Wider than [`role_reference`] by exactly the two names the JVM spells with
-/// angle brackets and Java cannot: a constructor is a member the screen calls
-/// through and the seed list has to be able to name it.
 fn member_reference(value: &str) -> bool {
     matches!(value, "<init>" | "<clinit>") || role_reference(value)
 }
 
 /// Reads the reviewed set of classes the agent jar's adapters resolve by name.
 ///
-/// Tracked and read on every build for the same reason the inventory and the
-/// seeds are: it decides the names compiled into the agent jar, so a build that
-/// never opens a jar still has to know it is the reviewed set.
-///
 /// # Errors
 ///
-/// Returns an error when the file is missing, has drifted from its pinned hash,
-/// pins another version or schema, or declares one role twice.
+/// Returns an error if the surface is missing, unpinned, inconsistent, or invalid.
 fn reflection(root: &Path, adapter: &Adapter) -> Result<Reflection, GenerateError> {
     verify_input(root, &adapter.inputs.reflective_surface)?;
     let surface: Reflection = parse(&root.join(&adapter.inputs.reflective_surface.path))?;
@@ -1021,20 +435,10 @@ fn reflection(root: &Path, adapter: &Adapter) -> Result<Reflection, GenerateErro
 
 /// Refuses a surface that cannot be rendered or cannot be checked.
 ///
-/// Separate from reading the file so the rules can be asked a question without
-/// one: every refusal here is about what the file says and none of it about
-/// where the file came from.
-///
 /// # Errors
 ///
-/// Returns an error when a name is not one, when a role is declared twice, or
-/// when a member says which member it is in no way or in two ways at once.
+/// Returns an error if a name, role, or member declaration is invalid or duplicated.
 fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> {
-    // Every one of the three is interpolated into Java: the role becomes a field
-    // name, the runtime name becomes that field's string literal, and the
-    // reviewed name becomes the comment beside it. A file is reviewed and pinned,
-    // so this is not the door anything walks in through; it is the reason a
-    // typo cannot become a second declaration in a class with one name surface.
     for reflected in &surface.classes {
         for (what, value, legal) in [
             ("role", &reflected.name, role_name as fn(&str) -> bool),
@@ -1048,8 +452,6 @@ fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> {
             }
         }
     }
-    // One role names one class, so a file that declares a role twice has said
-    // two things about one generated constant and only one can be rendered.
     let mut seen = BTreeSet::new();
     for reflected in &surface.classes {
         if !seen.insert(reflected.name.as_str()) {
@@ -1090,10 +492,6 @@ fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> {
 }
 
 /// Whether a value is a member name and nothing else.
-///
-/// Narrow for the reason [`class_name`] is, with the two names the JVM spells
-/// in angle brackets admitted because a constructor is a member the agent jar
-/// reaches like any other.
 fn member_name(value: &str) -> bool {
     matches!(value, "<init>" | "<clinit>")
         || (!value.is_empty()
@@ -1112,11 +510,6 @@ fn role_name(value: &str) -> bool {
 }
 
 /// Whether a value is a binary class name and nothing else.
-///
-/// Deliberately narrower than the JVM's own rule, which admits almost any
-/// character in an identifier. What has to pass is the names Mojang and a
-/// proguard mapping write, and what has to fail is anything carrying the
-/// punctuation that would end a Java string literal or a declaration.
 fn class_name(value: &str) -> bool {
     !value.is_empty()
         && value.split('.').all(|segment| {
@@ -1129,13 +522,6 @@ fn class_name(value: &str) -> bool {
 }
 
 /// Picks the one version directory this build reads.
-///
-/// One tracked directory needs no selection, because there is no other answer.
-/// More than one requires the build to name the one it means: alphabetical
-/// order, the most recent version, and whichever one was there first are all
-/// silent answers to a question an operator should have answered. A name no
-/// directory carries is refused with the names that were actually found, so the
-/// refusal says what the build can act on rather than only what it wanted.
 fn choose<'a>(names: &'a [String], selected: Option<&str>) -> Result<&'a str, GenerateError> {
     if let Some(wanted) = selected {
         return names
@@ -1187,15 +573,8 @@ pub(super) fn parse<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, Gene
 }
 
 /// Refuses an input whose bytes no longer match the tracked hash.
-///
-/// An input that pins neither a hash nor a length is refused too. Generation
-/// runs only from inputs whose hashes match what is tracked, and an input with
-/// nothing to check against does not meet that by having nothing to fail: it
-/// just makes the check vacuous, silently, for the one file nobody remembered
-/// to pin.
 pub(super) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateError> {
-    // Messages name inputs by file name, never by path: these strings end up in
-    // recorded evidence, and a path would say whose machine produced it.
+    // Omit paths from recorded evidence to avoid exposing machine-local details.
     let name = file_name(&input.path);
     if input.sha256.is_none() && input.bytes.is_none() {
         return Err(GenerateError::Input(format!(
@@ -1224,10 +603,6 @@ pub(super) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateErr
 }
 
 /// Rewrites what the adapter inputs pin for the two generated locks.
-///
-/// Only the generated locks are ever re-pinned, and only by the deliberate
-/// regeneration path that has just written them from the jar. An upstream pin is
-/// a claim about bytes nobody here produced, so nothing rewrites one.
 pub(super) fn repin_locks(
     root: &Path,
     directory: &Path,
@@ -1249,11 +624,7 @@ pub(super) fn repin_locks(
         .map_err(|error| GenerateError::Input(format!("cannot write adapter.toml: {error}")))
 }
 
-/// Replaces the hash and length one table of the adapter inputs records.
-///
-/// The document is edited line by line rather than deserialized and written
-/// back, because every sentence of prose in `adapter.toml` explains a pin and a
-/// round trip through the parser would drop all of it.
+/// Replaces one table's hash and length without discarding TOML comments.
 pub(super) fn replace_pin(
     document: &str,
     table: &str,
@@ -1308,13 +679,6 @@ pub(super) fn sha256(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 /// Every version directory this repository tracks, in name order.
-///
-/// Read rather than spelled. A version literal inside a crate is one
-/// version's data asserted over every other and `ravel-verify-scaffold`
-/// refuses it, and a test that named a version would be a test of whichever
-/// version its author happened to have. Sweeping is also the stronger
-/// assertion: what these tests check is true of a tracked version because it
-/// is tracked, not because it is the one the build selects.
 pub(super) fn tracked_versions(root: &Path) -> Vec<String> {
     let mut names = std::fs::read_dir(root.join(VERSIONS))
         .expect("the version data should be readable")
@@ -1329,16 +693,9 @@ pub(super) fn tracked_versions(root: &Path) -> Vec<String> {
 
 /// The first tracked version whose adapter inputs have the shape a test needs.
 ///
-/// Tests name a property rather than a version for the same reason
-/// [`tracked_versions`] exists: a test that asserts a runtime name equals its
-/// reviewed one is asserting something true of an unobfuscated version and false
-/// of an obfuscated one, and which of those it gets should not depend on how the
-/// directories happen to sort.
-///
 /// # Panics
 ///
-/// Panics when no tracked version has that shape, because a test that needs one
-/// and finds none is asserting nothing.
+/// Panics when no tracked version has the requested shape.
 #[cfg(test)]
 pub(super) fn tracked_version_where(
     root: &Path,
@@ -1369,11 +726,6 @@ mod tests {
             .expect("the crate lives under crates/<name>")
     }
 
-    /// Every Java source the agent jar is built from, concatenated.
-    ///
-    /// Read rather than listed: a source added under `jvm/bootstrap` is compiled
-    /// into the jar, so a list here would be a second inventory of that tree and
-    /// would go stale silently.
     fn bootstrap_sources(root: &Path) -> String {
         fn walk(directory: &Path, read: &mut String) {
             let mut entries: Vec<_> = std::fs::read_dir(directory)
@@ -1395,9 +747,6 @@ mod tests {
         read
     }
 
-    /// `majorVersion` is not a name only `javaVersion` uses, and the scan used
-    /// to take the first one in the file. A manifest carrying one earlier hands
-    /// the release check a number from somewhere else under the right name.
     #[test]
     fn the_java_release_is_read_from_the_java_version_object() {
         let manifest = r#"{
@@ -1408,13 +757,6 @@ mod tests {
         assert_eq!(super::major_version(manifest), Some(21));
     }
 
-    /// Both spellings the tracked jars use, and the trap between them.
-    ///
-    /// One version states `resource` and `data`; the other splits each into a
-    /// major and a minor. A scan for `resource` that ignored the closing quote
-    /// would match `resource_major` and read a major as though it were the whole
-    /// number, and a scan not bounded to the object would find `data` in a key
-    /// that has nothing to do with packs.
     #[test]
     fn both_spellings_of_a_jars_pack_version_are_read_and_neither_reads_the_other() {
         let joined = r#"{"data": 9, "pack_version": {"resource": 34, "data": 48}}"#;
@@ -1439,10 +781,6 @@ mod tests {
                 pinned(root, Some(&version)).expect("the tracked version data should parse");
 
             assert_eq!(pinned.adapter.schema_version, 1);
-            // The source and the inputs have to agree about whether a published
-            // mapping exists, which is the invariant that holds under both of them
-            // rather than the one that happens to hold under the version the author
-            // had.
             assert_eq!(
                 pinned.adapter.mapping_source.needs_mappings(),
                 pinned.adapter.inputs.client_mappings.is_some()
@@ -1466,30 +804,6 @@ mod tests {
             );
             assert_eq!(pinned.seeds.minecraft, pinned.adapter.minecraft);
 
-            // The member check proves what the surface declares, so a surface
-            // that declared nothing would pass it while saying nothing. Every
-            // adapter under `jvm/bootstrap` calls members on the classes it
-            // resolves, so a version whose surface names classes and no members
-            // has lost the declarations rather than needed none. The floor is a
-            // member per class rather than a fixed count: the set shrinks when a
-            // seam moves out of the agent jar and into the sibling, which content
-            // registration did, and a fixed count would then have to be edited
-            // down every time — which is the same as not having one.
-            //
-            // Held per class rather than over the sum. A sum satisfies the floor
-            // with the members of one class and nothing on the rest, which is the
-            // shape a lost declaration actually takes: the classes stay, one of
-            // them loses its members, and a total that another class is carrying
-            // never moves.
-            //
-            // A class the agent jar names and calls nothing on is the exception
-            // the floor has to make room for, and there are two ways to be one.
-            // A parameter or return type inside a descriptor is reached by name
-            // and has no member to declare, so it earns its place by being named
-            // in one. An entry point is reached by name too and is not in any
-            // descriptor — it is compared against a class the JVM is loading —
-            // so it earns its place by the agent jar naming its role constant.
-            // Both are asked for instead of a member; neither is a free pass.
             let descriptors = pinned
                 .surface
                 .classes
@@ -1514,12 +828,6 @@ mod tests {
                 }
             }
 
-            // A seed with no members earns its place by being named by something
-            // else in the set. Nothing calls a member on it, so the only work it can
-            // do is being a type another stub already writes down: a supertype that
-            // makes the classes under it assignable, or a descriptor that a member
-            // of another stub declares. A seed nothing names stubs a class that
-            // cannot be reached at all, which is a seed to delete.
             let lock = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
                 .expect("the tracked stub lock should be readable");
             for seed in &pinned.seeds.stubs {
@@ -1535,11 +843,6 @@ mod tests {
         }
     }
 
-    /// Whether anything else in `lock` writes `class` down.
-    ///
-    /// A supertype edge or a member descriptor, and nothing else: both are lines
-    /// the generator rendered out of the jar, so neither can name a class the
-    /// jar does not agree carries that relationship.
     fn named_by_another_stub(lock: &str, class: &str) -> bool {
         let internal = class.replace('.', "/");
         lock.lines().any(|line| {
@@ -1565,12 +868,9 @@ descriptor = \"(Lnet/minecraft/Parameter;)V\"
 class = \"net/minecraft/Unreferenced\"
 ";
 
-        // The two ways a seed earns its place, and both still earn it.
         assert!(named_by_another_stub(lock, "net.minecraft.Above"));
         assert!(named_by_another_stub(lock, "net.minecraft.Parameter"));
 
-        // Its own declaration is not something else naming it, and neither is a
-        // class the lock never mentions.
         assert!(!named_by_another_stub(lock, "net.minecraft.Unreferenced"));
         assert!(!named_by_another_stub(lock, "net.minecraft.Absent"));
     }
@@ -1785,7 +1085,6 @@ bytes = 2
         assert_ne!(sha256(b"ravel"), sha256(b"Ravel"));
     }
 
-    /// Adapter inputs written out, with one mapping source and one mapping pin.
     fn document(source: &str, mappings: &str) -> String {
         format!(
             "schemaVersion = 1\n\
@@ -1840,7 +1139,6 @@ bytes = 2
         }
     }
 
-    /// One reflected class written out, with whatever members follow it.
     fn reflected(members: &str) -> Reflection {
         toml::from_str(&format!(
             "schemaVersion = 1\nminecraft = \"0.0.0-test\"\n\
@@ -1866,8 +1164,6 @@ bytes = 2
         assert!(error.to_string().contains("not a member name"), "{error}");
     }
 
-    /// Two overloads are two members and one declared twice is one, so the shape
-    /// is what tells them apart rather than the name.
     #[test]
     fn one_member_declared_twice_is_refused_and_two_overloads_are_not() {
         verify_surface(&reflected(

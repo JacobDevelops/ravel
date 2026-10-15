@@ -8,19 +8,10 @@ use crate::{
     SavedDataAggregate, SavedDataDeclaration, SavedDataError, SavedDataPlan, SavedDataVersion,
 };
 
-/// One declared step, from the version below it to the version it reaches.
-///
-/// A plain function pointer rather than a boxed closure: a migration is a pure
-/// rewriting of one payload shape into the next, so it captures nothing, and a
-/// pointer keeps [`MigrationChain`] `Clone` and keeps a mod's declaration a value
-/// the host can hold beside every other declaration.
+/// A non-capturing migration from the preceding data version to the target version.
 pub type MigrationStep = fn(&Value) -> Result<Value, MigrationFailed>;
 
-/// What a migration step said when it could not read the shape it was given.
-///
-/// A mod's own sentence, in the mod's words, because only the mod knows what its
-/// old shape was supposed to hold. It travels as text and is marked untrusted
-/// where it is reported.
+/// A mod-provided migration refusal, treated as untrusted text when reported.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MigrationFailed {
     detail: String,
@@ -50,15 +41,7 @@ impl fmt::Display for MigrationFailed {
 
 impl std::error::Error for MigrationFailed {}
 
-/// Every step one owner declares for carrying an old payload up to the current
-/// version.
-///
-/// `SPEC.md` §14 requires persistent data to be versioned. This crate owns
-/// migrations. [`SavedDataPlan`] decides *which* versions a world
-/// has to cross; this is what actually crosses them. The two are separate because
-/// the decision is about declared versions alone and can be made before any
-/// payload is read, which is what lets a world be refused rather than opened
-/// half-applied.
+/// An owner's migration steps, applied in the order selected by [`SavedDataPlan`].
 ///
 /// # Examples
 ///
@@ -91,10 +74,8 @@ impl std::error::Error for MigrationFailed {}
 ///     .reaching(versions[1], to_two)
 ///     .reaching(versions[2], to_three);
 ///
-/// // Every version the declaration crosses has a step.
 /// chain.covers(&declaration)?;
 ///
-/// // A world two versions behind arrives at the current shape.
 /// let plan = SavedDataPlan::open(&declaration, Some(versions[0]))?;
 /// assert_eq!(plan.steps(), [versions[1], versions[2]]);
 /// assert_eq!(
@@ -119,10 +100,7 @@ impl MigrationChain {
         }
     }
 
-    /// Declares the step that reaches `to` from the version below it.
-    ///
-    /// A second step declared for the same version replaces the first, because a
-    /// version has one shape and therefore one way in.
+    /// Declares a step into `to`, replacing any previously declared step.
     #[must_use]
     pub fn reaching(mut self, to: SavedDataVersion, step: MigrationStep) -> Self {
         self.steps.insert(to, step);
@@ -140,19 +118,11 @@ impl MigrationChain {
         self.steps.keys().copied()
     }
 
-    /// Refuses a chain that cannot carry a world from the oldest version
-    /// `declaration` admits to the version this build writes.
-    ///
-    /// This is checkable before any world is opened, and that is the point: a
-    /// build shipped with a link missing is a build that would refuse somebody's
-    /// world, and it is better found by its own tests than by their save.
+    /// Checks that every declared version after the oldest has a migration step.
     ///
     /// # Errors
     ///
-    /// Returns [`SavedDataError::UnknownOwner`] when the chain and the
-    /// declaration belong to different mods, and
-    /// [`SavedDataError::MissingMigration`] for the lowest declared version above
-    /// the oldest that has no step.
+    /// Returns [`SavedDataError::UnknownOwner`] for a different owner or [`SavedDataError::MissingMigration`] for a missing step.
     pub fn covers(&self, declaration: &SavedDataDeclaration) -> Result<(), SavedDataError> {
         if declaration.owner() != &self.owner {
             return Err(SavedDataError::UnknownOwner {
@@ -170,20 +140,11 @@ impl MigrationChain {
         Ok(())
     }
 
-    /// Runs every step `plan` names, in order, and returns the current payload.
-    ///
-    /// `payload` is borrowed and a new value is returned, so a chain that refuses
-    /// partway leaves the caller holding exactly what it had. There is no
-    /// half-migrated payload to discard, because none was ever produced: this is
-    /// the payload-level half of the rule that a refusal withholds the world
-    /// rather than opening it part-applied.
+    /// Runs the planned steps in order without modifying the original payload.
     ///
     /// # Errors
     ///
-    /// Returns [`SavedDataError::UnknownOwner`] when the plan is another mod's,
-    /// [`SavedDataError::MissingMigration`] for a step the plan crosses and this
-    /// chain does not declare, and [`SavedDataError::MigrationFailed`] carrying
-    /// the mod's own account when a step could not read what it was given.
+    /// Returns [`SavedDataError::UnknownOwner`], [`SavedDataError::MissingMigration`], or [`SavedDataError::MigrationFailed`].
     pub fn apply(&self, plan: &SavedDataPlan, payload: &Value) -> Result<Value, SavedDataError> {
         if plan.owner() != &self.owner {
             return Err(SavedDataError::UnknownOwner {
@@ -210,23 +171,11 @@ impl MigrationChain {
 }
 
 impl SavedDataAggregate {
-    /// Brings every owner's payload up to the version this build writes.
-    ///
-    /// Every owner or none. The migrated envelopes are built beside the stored
-    /// ones and only replace them once every chain has succeeded, so an aggregate
-    /// whose third owner refuses is the aggregate that arrived rather than one
-    /// holding two migrated owners and one stale. A refusal withholds the world
-    /// and stages nothing.
-    ///
-    /// An owner already at the current version needs no chain. An owner that has
-    /// versions to cross and no chain is refused, because a declared version with
-    /// no way into it is a build that cannot read the world it admitted.
+    /// Migrates every owner's payload, replacing envelopes only after all succeed.
     ///
     /// # Errors
     ///
-    /// Returns [`SavedDataError::UnknownOwner`] for stored data whose owner is
-    /// not installed, and otherwise whatever [`MigrationChain::apply`] refuses.
-    /// Nothing is replaced on any error.
+    /// Returns admission or migration errors from [`SavedDataPlan::resolve`] and [`MigrationChain::apply`], leaving the aggregate unchanged.
     pub fn migrate(
         &mut self,
         declarations: &[SavedDataDeclaration],
@@ -268,30 +217,13 @@ impl SavedDataAggregate {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZero;
-
-    use ravel_core::ModId;
     use serde_json::{Value, json};
 
     use super::{MigrationChain, MigrationFailed};
+    use crate::tests::{id, version};
     use crate::{
         SavedDataAggregate, SavedDataDeclaration, SavedDataEnvelope, SavedDataError, SavedDataPlan,
-        SavedDataVersion,
     };
-
-    fn id(value: &str) -> ModId {
-        value.parse().expect("a legal mod id")
-    }
-
-    fn version(raw: u32) -> SavedDataVersion {
-        NonZero::new(raw).expect("a non-zero version")
-    }
-
-    /// Each step appends its own version, so the payload records the route it
-    /// took rather than only where it ended.
-    fn noting(to: u32) -> Value {
-        json!(to)
-    }
 
     fn to_two(payload: &Value) -> Result<Value, MigrationFailed> {
         append(payload, 2)
@@ -311,7 +243,7 @@ mod tests {
             .and_then(Value::as_array)
             .cloned()
             .ok_or_else(|| MigrationFailed::new(format!("no `route` to carry into {to}")))?;
-        route.push(noting(to));
+        route.push(json!(to));
         Ok(json!({ "route": route }))
     }
 
@@ -332,7 +264,7 @@ mod tests {
     }
 
     fn stored(at: u32) -> Value {
-        json!({ "route": [noting(at)] })
+        json!({ "route": [at] })
     }
 
     #[test]
@@ -369,7 +301,6 @@ mod tests {
             .reaching(version(2), to_two)
             .reaching(version(4), to_four);
 
-        // Found without a world: the version with no way into it is named.
         assert_eq!(
             broken.covers(&declaration),
             Err(SavedDataError::MissingMigration {
@@ -377,7 +308,6 @@ mod tests {
                 to: version(3),
             })
         );
-        // And with one, at the step the payload actually reached.
         let plan = SavedDataPlan::open(&declaration, Some(version(1))).expect("a declared version");
         assert_eq!(
             broken.apply(&plan, &stored(1)),
@@ -386,7 +316,6 @@ mod tests {
                 to: version(3),
             })
         );
-        // The whole chain does cover it, so the refusals above are about the gap.
         chain().covers(&declaration).expect("every link declared");
     }
 
@@ -410,9 +339,6 @@ mod tests {
                 detail: "this shape was never written".to_owned(),
             }
         );
-        // The first step did run and produced a value, and none of it survived:
-        // the caller holds what it had, so there is nothing half-migrated to
-        // mistake for state.
         assert_eq!(arrived, stored(1));
         assert!(refusal.to_string().contains("never written"), "{refusal}");
     }
@@ -471,8 +397,7 @@ mod tests {
             assert_eq!(envelope.payload(), &json!({ "route": [1, 2] }));
         }
 
-        // Now the second owner refuses. The first one's chain still succeeds, so
-        // an implementation that replaced as it went would leave it migrated.
+        // A later refusal must roll back earlier owners' successful migrations.
         let refusing_chains = [
             MigrationChain::new(id("first")).reaching(version(2), to_two),
             MigrationChain::new(id("second")).reaching(version(2), refusing),

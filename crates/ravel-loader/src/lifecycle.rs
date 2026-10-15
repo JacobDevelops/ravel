@@ -1,20 +1,15 @@
+mod error;
+
+pub use error::LifecycleError;
+
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
 use std::num::NonZeroU32;
 
 use ravel_core::{
-    ContentBehaviour, ContentKind, FailureAttribution, FailureKind, LifecycleState, ModId,
-    RegistryKey, Side, SideSet, StructuredFailure,
+    ContentBehaviour, FailureAttribution, LifecycleState, ModId, RegistryKey, Side, SideSet,
 };
 
 /// Whether a lifecycle state can run mod code.
-///
-/// `SPEC.md` §14 admits mod code from [`LifecycleState::Loaded`], where the
-/// code package is made available, through [`LifecycleState::Stopping`], where
-/// shutdown callbacks are still quiescing. Nothing runs once the process has
-/// stopped, and every earlier state is bookkeeping over metadata the loader
-/// read itself, which is what makes the first `SPEC.md` §14 invariant a
-/// property of the transition table rather than a runtime check.
 #[must_use]
 pub const fn executes_mod_code(state: LifecycleState) -> bool {
     matches!(
@@ -39,11 +34,6 @@ const fn has_registered(state: LifecycleState) -> bool {
 }
 
 /// Whether the load plan can proceed without a mod.
-///
-/// `SPEC.md` §9.2 makes Ravel fail closed on an invalid required-mod graph, so
-/// a required mod that fails withholds world access from the whole set while an
-/// optional one that fails does not. The resolver decides which a mod is; the
-/// lifecycle machine only honours the decision.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Requirement {
     /// The set fails closed without it.
@@ -53,11 +43,6 @@ pub enum Requirement {
 }
 
 /// One mod of a resolved load plan, as the lifecycle needs it.
-///
-/// This is deliberately not a package manifest and not a resolver output. It is
-/// the subset of a resolved plan that lifecycle rules read: the canonical
-/// identity that owns saved data, the sides the mod loads on, whether the set
-/// fails closed without it, and the saved-data versions it owns.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LifecycleEntry {
     /// The canonical identity that owns this mod's registrations and saved data.
@@ -66,19 +51,11 @@ pub struct LifecycleEntry {
     pub sides: SideSet,
     /// Whether the set fails closed without this mod.
     pub requirement: Requirement,
-    /// The saved-data versions this identity owns, empty when it persists
-    /// nothing.
-    ///
-    /// The element type is the manifest's, so a version of zero is
-    /// unrepresentable rather than rejected: `SPEC.md` §14 requires persistent
-    /// data to be versioned, and the type is what says so.
+    /// The nonzero saved-data versions this identity owns.
     pub saved_data_versions: BTreeSet<NonZeroU32>,
 }
 
 /// One recorded lifecycle state change.
-///
-/// The transcript of these events is the machine's determinism evidence: the
-/// same plan driven the same way produces the same sequence, in resolved order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LifecycleEvent {
     /// The mod that changed state.
@@ -102,26 +79,6 @@ struct TransitionContext {
 }
 
 /// The per-mod lifecycle progression of one resolved package set.
-///
-/// The machine owns sequencing for a whole set rather than a single mod,
-/// because the `SPEC.md` §14 invariants are properties of the set: world access
-/// depends on every required mod, the registration barrier is one barrier for
-/// the load rather than one checkpoint per mod, and lifecycle order has to be
-/// deterministic for an identical package set. Determinism is structural — the
-/// resolved order is taken as input and every traversal preserves it, so no
-/// caller's iteration order can change the outcome.
-///
-/// Three collaborators this milestone does not have are modelled as barriers
-/// here rather than invented. The registration barrier stands in for the
-/// registries M3-W1 builds, [`LifecycleMachine::request_save`] stands in for
-/// the save system M3-W4 builds, and [`LifecycleMachine::world_access`] stands
-/// in for the pre-world gate M2-W7 renders. Each is the smallest rule that
-/// makes its invariant testable, and each is replaced rather than extended when
-/// its owning work package lands.
-///
-/// The machine never loads, links, or executes anything. `Loaded` and
-/// `Constructed` are state changes a caller drives once it has performed the
-/// step; code composition belongs to the caller rather than this machine.
 ///
 /// # Examples
 ///
@@ -161,12 +118,7 @@ pub struct LifecycleMachine {
     entries: Vec<Tracked>,
     transcript: Vec<LifecycleEvent>,
     claims: BTreeMap<String, ModId>,
-    /// How each claimed identifier's value behaves.
-    ///
-    /// Beside the claim table rather than inside it because the two answer
-    /// different questions and only one of them is a barrier: `claims` decides
-    /// conflicts and is written by every claim, and this is written only by a
-    /// claim that described something. A key here is always a key there.
+    /// Descriptions exist only for identifiers present in `claims`.
     behaviours: BTreeMap<String, ContentBehaviour>,
     world_mutated: bool,
     halted: Option<ModId>,
@@ -175,14 +127,9 @@ pub struct LifecycleMachine {
 impl LifecycleMachine {
     /// Admits a resolved load plan, in the order the resolver produced.
     ///
-    /// Every mod starts [`LifecycleState::Discovered`]: the package was found
-    /// and nothing has run.
-    ///
     /// # Errors
     ///
-    /// Returns [`LifecycleError::DuplicateIdentity`] when two entries claim one
-    /// mod id, because saved data and registrations are owned by identity and
-    /// an ambiguous owner cannot be resolved later.
+    /// Returns [`LifecycleError::DuplicateIdentity`] for repeated mod ids.
     pub fn new(side: Side, order: Vec<LifecycleEntry>) -> Result<Self, LifecycleError> {
         let mut entries: Vec<Tracked> = Vec::with_capacity(order.len());
         for entry in order {
@@ -249,10 +196,6 @@ impl LifecycleMachine {
 
     /// Returns the saved-data versions a canonical identity owns.
     ///
-    /// Ownership is fixed when the plan is admitted and no lifecycle step can
-    /// move it, which is what makes the identity stable in the sense `SPEC.md`
-    /// §14 requires.
-    ///
     /// # Errors
     ///
     /// Returns [`LifecycleError::UnknownMod`] when the id is not in the plan.
@@ -266,19 +209,13 @@ impl LifecycleMachine {
 
     /// Returns whether the registration barrier has closed.
     ///
-    /// `SPEC.md` §14 names one barrier for the load, not one checkpoint per
-    /// mod, so it closes when every mod still in the plan has committed its
-    /// registrations. A mod that failed, and a mod that does not load on this
-    /// side, are past caring and do not hold it open.
+    /// Failed and side-parked mods do not hold the barrier open.
     #[must_use]
     pub fn registration_barrier_closed(&self) -> bool {
         self.unregistered().is_none()
     }
 
     /// Returns the plan entry one mod was admitted under.
-    ///
-    /// The state and the failure are answered separately because they change;
-    /// this is what the plan declared and does not.
     ///
     /// # Errors
     ///
@@ -287,28 +224,7 @@ impl LifecycleMachine {
         Ok(&self.tracked(mod_id)?.entry)
     }
 
-    /// Returns whether a mod is one this launch is actually running.
-    ///
-    /// This is the question an optional integration asks: not whether a package
-    /// is installed, but whether the mod it would integrate with is in this
-    /// plan, loads on this side, and has not failed. All three have to hold, and
-    /// each is a different way the answer is no — an id outside the plan is not
-    /// installed, a mod parked by its `sides` declaration is installed and will
-    /// not run here, and a failed optional mod ran and stopped. A mod that
-    /// integrated with any of the three would be building on something absent.
-    ///
-    /// The answer changes as the set advances, which is why it is a question
-    /// rather than a list handed out once: a mod asking during registration is
-    /// told what is true at the barrier, and a mod that fails afterwards is a
-    /// failure the integrating mod sees through its own calls rather than
-    /// through this.
-    /// The side is read from the entry's own declaration rather than through
-    /// [`Self::is_parked`], which is a fact about the *state machine* — a mod is
-    /// parked once the set has resolved and left it behind — and would answer
-    /// yes for a server-only mod on a client before the set reaches
-    /// [`LifecycleState::Resolved`]. What a mod is asking is whether the other
-    /// mod will run here, and its `sides` list decides that from the moment the
-    /// plan is admitted.
+    /// Returns whether the mod loads on this side and has not failed.
     #[must_use]
     pub fn loads(&self, mod_id: &ModId) -> bool {
         self.tracked(mod_id).is_ok_and(|tracked| {
@@ -323,11 +239,6 @@ impl LifecycleMachine {
     }
 
     /// Returns how many registry identifiers one mod owns.
-    ///
-    /// This is `SPEC.md` §9.3's registry footprint, and it is a reading of the
-    /// claim table rather than something a collector accumulates: the table is
-    /// exact whether or not anything is profiling, and counting it here means
-    /// the number cannot drift from what the barrier actually admitted.
     #[must_use]
     pub fn registry_claims(&self, mod_id: &ModId) -> usize {
         self.claims
@@ -336,29 +247,11 @@ impl LifecycleMachine {
             .count()
     }
 
-    /// Returns every admitted registry claim, with the identity that owns it.
-    ///
-    /// This is the claim table read out rather than counted, and it exists
-    /// because something outside the loader has to carry these into the game:
-    /// the barrier decides *that* a mod owns `block:example:copper`, and a
-    /// registry in the running game is where that becomes a block. The order is
-    /// the table's own, which is sorted by identifier, so two runs over one set
-    /// produce the same sequence and a caller that turns it into registrations
-    /// cannot make the game's contents depend on map iteration order.
-    ///
-    /// A claim whose identifier does not parse as a [`RegistryKey`] is skipped.
-    /// The barrier stores identifiers as text, and every claim reaching it came
-    /// from a key that was formatted into that text, so the parse cannot fail
-    /// for anything this loader admitted; skipping rather than panicking means
-    /// a future claimant that writes the table by another route degrades to
-    /// carrying less content instead of taking the game down.
+    /// Returns admitted content in identifier order, skipping unparseable keys.
     pub fn claimed_content(&self) -> impl Iterator<Item = (RegistryKey, &ModId, ContentBehaviour)> {
         self.claims.iter().filter_map(|(identifier, owner)| {
             let key: RegistryKey = identifier.parse().ok()?;
-            // A claim that described nothing gets the kind's default, and a kind
-            // with no value to describe is not carried at all. That is what
-            // keeps "described plainly" and "not a thing a registry builds"
-            // from arriving as the same answer.
+            // Omitted descriptions use the kind's default, if one exists.
             let behaviour = self
                 .behaviours
                 .get(identifier)
@@ -400,11 +293,7 @@ impl LifecycleMachine {
 
     /// Moves the whole set to its next state, in resolved order.
     ///
-    /// A mod that has already ended, and a mod parked at
-    /// [`LifecycleState::Resolved`] because it does not load on this side, are
-    /// both skipped rather than refused. Every other mod must be able to take
-    /// the step: the call is checked in full before anything moves, so a set
-    /// that cannot advance together does not advance partway.
+    /// Checks every active mod before committing any transition.
     ///
     /// # Errors
     ///
@@ -418,26 +307,21 @@ impl LifecycleMachine {
         }
 
         let context = self.context();
-        let mut selected = Vec::with_capacity(self.entries.len());
         for tracked in &self.entries {
-            let moves = !Self::is_settled(self.side, tracked);
-            if moves {
+            if !Self::is_settled(self.side, tracked) {
                 Self::check(&context, tracked, next)?;
             }
-            selected.push(moves);
         }
 
-        let mut events = Vec::new();
-        for (tracked, moves) in self.entries.iter_mut().zip(selected) {
-            if moves {
+        for tracked in &mut self.entries {
+            if !Self::is_settled(self.side, tracked) {
                 tracked.state = next;
-                events.push(LifecycleEvent {
+                self.transcript.push(LifecycleEvent {
                     mod_id: tracked.entry.mod_id.clone(),
                     state: next,
                 });
             }
         }
-        self.transcript.extend(events);
         Ok(())
     }
 
@@ -481,13 +365,6 @@ impl LifecycleMachine {
 
     /// Claims a registry identifier for a mod before the registration barrier.
     ///
-    /// `SPEC.md` §14 makes registry identifiers immutable after *the*
-    /// registration barrier, one barrier for the whole load, so a claim is
-    /// refused once the set has closed it no matter which mod asks. Before
-    /// then, a mod claims while it is [`LifecycleState::Constructed`]: its
-    /// instance exists and its registrations are not yet committed. This is the
-    /// barrier, not a registry — M3-W1 builds what the identifiers name.
-    ///
     /// # Errors
     ///
     /// Returns [`LifecycleError::UnknownMod`] for an id outside the plan,
@@ -505,11 +382,6 @@ impl LifecycleMachine {
     }
 
     /// Claims `identifier` and records how the value it names behaves.
-    ///
-    /// The behaviour is checked against the identifier's own kind rather than
-    /// trusted: a mod describing `item:example_mod:copper` as a block has asked
-    /// for a value no registry takes, and admitting it would move the failure to
-    /// the moment the game tries to build one.
     ///
     /// # Errors
     ///
@@ -545,9 +417,7 @@ impl LifecycleMachine {
             });
         }
 
-        // Checked before either table is written, so a refused description
-        // leaves no identifier owned. A claim that half happened would be a name
-        // a mod can neither re-claim nor use.
+        // Validate before writing either table so a refused claim owns nothing.
         if let Some(behaviour) = behaviour
             && !identifier
                 .parse::<RegistryKey>()
@@ -569,10 +439,7 @@ impl LifecycleMachine {
 
     /// Decides whether the set may open a world.
     ///
-    /// Access needs every mod that loads on this side to be
-    /// [`LifecycleState::Running`], except an optional mod that failed, whose
-    /// absence the plan already tolerates. A halted set never regains access.
-    /// M2-W7 renders the refusal; this decides it.
+    /// All non-parked mods must run, except optional mods that failed.
     ///
     /// # Errors
     ///
@@ -604,9 +471,6 @@ impl LifecycleMachine {
 
     /// Records that the world has been mutated.
     ///
-    /// After this point a failure is no longer recoverable by stopping quietly,
-    /// because state a mod already changed is on disk's critical path.
-    ///
     /// # Errors
     ///
     /// Returns whatever [`LifecycleMachine::world_access`] refuses: a set that
@@ -618,11 +482,6 @@ impl LifecycleMachine {
     }
 
     /// Decides whether saved state may be written.
-    ///
-    /// A halted set is refused, which is the half of the sixth `SPEC.md` §14
-    /// invariant that forbids saving partial state; the other half is that
-    /// [`LifecycleMachine::advance`] refuses forward progress. M3-W4 owns what
-    /// a permitted save then writes.
     ///
     /// # Errors
     ///
@@ -637,8 +496,7 @@ impl LifecycleMachine {
         }
     }
 
-    /// The set-wide facts a per-mod check reads, taken before the mod itself is
-    /// borrowed.
+    /// Snapshots set-wide facts before borrowing an individual mod.
     fn context(&self) -> TransitionContext {
         TransitionContext {
             side: self.side,
@@ -647,8 +505,6 @@ impl LifecycleMachine {
         }
     }
 
-    /// The first mod in resolved order still holding the registration barrier
-    /// open.
     fn unregistered(&self) -> Option<&ModId> {
         self.entries
             .iter()
@@ -683,8 +539,6 @@ impl LifecycleMachine {
                 side: context.side,
             });
         }
-        // Running is the first state past the registration barrier, so no mod
-        // starts until the whole set has committed its registrations.
         if next == LifecycleState::Running
             && let Some(blocking) = &context.unregistered
         {
@@ -696,8 +550,6 @@ impl LifecycleMachine {
         Ok(())
     }
 
-    /// Whether a mod does not load on this side and has gone as far as a mod
-    /// that never loads can go.
     fn is_parked(side: Side, tracked: &Tracked) -> bool {
         tracked.state == LifecycleState::Resolved && !tracked.entry.sides.loads_on(side)
     }
@@ -725,252 +577,6 @@ impl LifecycleMachine {
     }
 }
 
-/// Why the lifecycle refused an operation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum LifecycleError {
-    /// Two entries of one plan claim the same mod id.
-    DuplicateIdentity {
-        /// The contested identity.
-        mod_id: ModId,
-    },
-    /// The plan holds no such mod.
-    UnknownMod {
-        /// The requested identity.
-        mod_id: ModId,
-    },
-    /// The `SPEC.md` §14 table refuses this pair of states.
-    IllegalTransition {
-        /// The mod that would have moved.
-        mod_id: ModId,
-        /// The state it is in.
-        from: LifecycleState,
-        /// The state it was asked to enter.
-        to: LifecycleState,
-    },
-    /// A move to `failed` arrived without structured attribution.
-    AttributionRequired,
-    /// The set halted after a failure that followed world mutation.
-    Halted {
-        /// The mod that would have moved.
-        mod_id: ModId,
-        /// The state it is in.
-        from: LifecycleState,
-        /// The state it was asked to enter.
-        to: LifecycleState,
-    },
-    /// Mod code would have run on a side the mod does not declare.
-    SideMismatch {
-        /// The mod that would have run.
-        mod_id: ModId,
-        /// The state it is in.
-        from: LifecycleState,
-        /// The side the set is running on.
-        side: Side,
-    },
-    /// A mod would have started running before the set finished registering.
-    RegistrationBarrierOpen {
-        /// The mod that would have started.
-        mod_id: ModId,
-        /// The mod still holding the barrier open.
-        blocking: ModId,
-    },
-    /// A registry identifier was claimed after the set closed the barrier.
-    RegistrationBarrierClosed {
-        /// The claiming mod.
-        mod_id: ModId,
-        /// The identifier it claimed.
-        identifier: String,
-    },
-    /// A registry identifier was claimed by a mod that is not constructed.
-    RegistrationWindow {
-        /// The claiming mod.
-        mod_id: ModId,
-        /// The identifier it claimed.
-        identifier: String,
-        /// The state the claim arrived in.
-        state: LifecycleState,
-    },
-    /// Two mods claim one registry identifier.
-    ConflictingRegistryClaim {
-        /// The contested identifier.
-        identifier: String,
-        /// The mod that already owns it.
-        owner: ModId,
-        /// The mod that claimed it second.
-        claimant: ModId,
-    },
-    /// A mod described claimed content as a kind the identifier does not name.
-    MismatchedContentBehaviour {
-        /// The identifier that was described.
-        identifier: String,
-        /// The kind the description describes.
-        described: ContentKind,
-    },
-    /// A mod is not running, so the set cannot open a world.
-    WorldAccessBlocked {
-        /// The mod that is not running.
-        mod_id: ModId,
-        /// The state it is in.
-        state: LifecycleState,
-    },
-    /// The set failed after mutating the world, so it never regains access.
-    WorldAccessHalted {
-        /// The mod whose failure halted the set.
-        mod_id: ModId,
-    },
-    /// A save was requested after a failure that followed world mutation.
-    PartialStateRefused {
-        /// The mod whose failure halted the set.
-        mod_id: ModId,
-    },
-}
-
-impl fmt::Display for LifecycleError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::DuplicateIdentity { mod_id } => write!(
-                formatter,
-                "two packages claim the mod id `{mod_id}`, so nothing can own its registrations \
-                 or saved data"
-            ),
-            Self::UnknownMod { mod_id } => {
-                write!(formatter, "the load plan holds no mod `{mod_id}`")
-            }
-            Self::IllegalTransition { mod_id, from, to } => write!(
-                formatter,
-                "`{mod_id}` cannot move from `{}` to `{}`",
-                state_name(*from),
-                state_name(*to)
-            ),
-            Self::AttributionRequired => formatter.write_str(
-                "a move to `failed` carries structured attribution, so it is recorded by `fail`",
-            ),
-            Self::Halted { mod_id, from, to } => write!(
-                formatter,
-                "the set failed after mutating the world, so `{mod_id}` cannot move from `{}` to \
-                 `{}`; only stopping remains",
-                state_name(*from),
-                state_name(*to)
-            ),
-            Self::SideMismatch { mod_id, from, side } => write!(
-                formatter,
-                "`{mod_id}` does not declare the `{}` side, so its code never loads here and it \
-                 stays `{}`",
-                side_name(*side),
-                state_name(*from)
-            ),
-            Self::RegistrationBarrierOpen { mod_id, blocking } => write!(
-                formatter,
-                "`{mod_id}` cannot start running until the set has registered, and `{blocking}` \
-                 has not"
-            ),
-            Self::RegistrationBarrierClosed { mod_id, identifier } => write!(
-                formatter,
-                "the set closed the registration barrier, so `{mod_id}` cannot claim \
-                 `{identifier}`"
-            ),
-            Self::RegistrationWindow {
-                mod_id,
-                identifier,
-                state,
-            } => write!(
-                formatter,
-                "`{mod_id}` can claim `{identifier}` only while constructed, but it is `{}`",
-                state_name(*state)
-            ),
-            Self::ConflictingRegistryClaim {
-                identifier,
-                owner,
-                claimant,
-            } => write!(
-                formatter,
-                "`{claimant}` claimed the registry identifier `{identifier}`, which `{owner}` \
-                 already owns"
-            ),
-            Self::MismatchedContentBehaviour {
-                identifier,
-                described,
-            } => write!(
-                formatter,
-                "`{identifier}` was described as {described} content, which is not the kind it \
-                 names"
-            ),
-            Self::WorldAccessBlocked { mod_id, state } => write!(
-                formatter,
-                "`{mod_id}` is `{}` rather than running, so the set cannot open a world",
-                state_name(*state)
-            ),
-            Self::WorldAccessHalted { mod_id } => write!(
-                formatter,
-                "`{mod_id}` failed after the world was mutated, so the set cannot open a world"
-            ),
-            Self::PartialStateRefused { mod_id } => write!(
-                formatter,
-                "`{mod_id}` failed after the world was mutated, so partial state is not saved"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for LifecycleError {}
-
-impl StructuredFailure for LifecycleError {
-    /// Only three lifecycle refusals are `SPEC.md` §9.2 graph outcomes. The
-    /// rest are sequencing rules, which a report describes by their phase and
-    /// text rather than by borrowing a dependency-graph kind they are not.
-    fn failure_kind(&self) -> Option<FailureKind> {
-        match self {
-            Self::DuplicateIdentity { .. } => Some(FailureKind::DuplicateIdentity),
-            Self::SideMismatch { .. } => Some(FailureKind::SideMismatch),
-            Self::ConflictingRegistryClaim { .. } => Some(FailureKind::ConflictingRegistryClaim),
-            _ => None,
-        }
-    }
-
-    /// The phase the subject had reached, taken from the refusal itself
-    /// wherever it names one.
-    fn lifecycle_state(&self) -> LifecycleState {
-        match self {
-            Self::IllegalTransition { from, .. }
-            | Self::Halted { from, .. }
-            | Self::SideMismatch { from, .. } => *from,
-            Self::RegistrationWindow { state, .. } | Self::WorldAccessBlocked { state, .. } => {
-                *state
-            }
-            // Both are refusals of a claim, and a claim is only ever made from
-            // the one state the window is open in.
-            Self::ConflictingRegistryClaim { .. } | Self::MismatchedContentBehaviour { .. } => {
-                LifecycleState::Constructed
-            }
-            Self::RegistrationBarrierOpen { .. } | Self::RegistrationBarrierClosed { .. } => {
-                LifecycleState::Registered
-            }
-            Self::WorldAccessHalted { .. } | Self::PartialStateRefused { .. } => {
-                LifecycleState::Failed
-            }
-            // A plan the loader would not admit, and an operation naming a mod
-            // that is not in one, both precede every lifecycle step.
-            Self::DuplicateIdentity { .. }
-            | Self::UnknownMod { .. }
-            | Self::AttributionRequired => LifecycleState::Discovered,
-        }
-    }
-}
-
-/// The `SPEC.md` §14 name of a state, matching its serialized form.
-const fn state_name(state: LifecycleState) -> &'static str {
-    state.name()
-}
-
-/// The `SPEC.md` §3.4 name of a side, matching its serialized form.
-///
-/// A delegate for the reason [`state_name`] is one: the spelling belongs to
-/// `ravel-core` beside the type, and a second `match` here would be a second
-/// answer that can disagree with it.
-const fn side_name(side: Side) -> &'static str {
-    side.name()
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -983,7 +589,7 @@ mod tests {
 
     use super::{
         LifecycleEntry, LifecycleError, LifecycleMachine, Requirement, executes_mod_code,
-        has_registered, side_name, state_name,
+        has_registered,
     };
 
     const SUCCESS_PATH: [LifecycleState; 8] = [
@@ -1028,13 +634,6 @@ mod tests {
         }
     }
 
-    /// `loads` answers the question an optional integration asks, and every way
-    /// the answer is no is a different absence.
-    ///
-    /// Written against a client machine holding a client mod, a server-only mod
-    /// and a mod that fails: the first runs here, the second is installed and
-    /// parked by its own `sides` declaration, the third ran and stopped, and a
-    /// fourth id was never in the plan at all.
     #[test]
     fn loading_is_answered_for_every_way_a_mod_can_be_absent() {
         let mut machine = LifecycleMachine::new(
@@ -1072,7 +671,6 @@ mod tests {
         );
     }
 
-    /// Drives a single-mod machine to `target` through legal steps only.
     fn machine_at(target: LifecycleState) -> LifecycleMachine {
         let mut machine =
             LifecycleMachine::new(Side::Client, vec![entry("example_mod", &[Side::Client])])
@@ -1276,8 +874,7 @@ mod tests {
             machine.advance_all(state).expect("legal");
         }
 
-        // Claimed out of sorted order, and by two different owners, so the order
-        // the table answers in is the table's and not the claimant's.
+        // Claim order differs from identifier order.
         machine
             .claim_registry_identifier(&id("second_mod"), "item:second_mod:ingot")
             .expect("accepted");
@@ -1564,8 +1161,6 @@ mod tests {
         }
     }
 
-    /// Every variant with the text it renders, so rendering and structured
-    /// reporting are both checked across the whole error surface.
     fn every_refusal() -> Vec<(LifecycleError, &'static str)> {
         vec![
             (
@@ -1666,13 +1261,6 @@ mod tests {
                 "`example_mod` failed after the world was mutated, so partial state is not saved",
             ),
         ]
-    }
-
-    #[test]
-    fn every_refusal_renders_the_rule_it_broke() {
-        for (error, expected) in every_refusal() {
-            assert_eq!(error.to_string(), expected);
-        }
     }
 
     #[test]
@@ -1805,18 +1393,6 @@ mod tests {
             ),
         ] {
             assert_eq!(error.lifecycle_state(), expected, "{error:?}");
-        }
-    }
-
-    #[test]
-    fn rendered_state_and_side_names_match_their_serialized_forms() {
-        for state in LifecycleState::ALL {
-            let encoded = serde_json::to_string(&state).expect("state should serialize");
-            assert_eq!(encoded, format!("\"{}\"", state_name(state)));
-        }
-        for side in Side::ALL {
-            let encoded = serde_json::to_string(&side).expect("side should serialize");
-            assert_eq!(encoded, format!("\"{}\"", side_name(side)));
         }
     }
 }

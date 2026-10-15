@@ -7,16 +7,6 @@ import java.util.Map;
 {{import Item}}
 {{import BlockItem}}
 
-/**
- * A stand-in registry with the behaviour that decides whether registration
- * worked: it refuses a duplicate and refuses everything once frozen.
- *
- * <p>It also stamps what it registered with the identifier it was registered
- * under, because that is where a registered value's name comes from under every
- * tracked version. One of them additionally makes the caller describe the value
- * with a key before it exists, and that is that version's properties builder's
- * business rather than this one's.
- */
 public class {{Registry}} {
     private final String name;
     private final Map<String, Object> entries = new LinkedHashMap<>();
@@ -47,15 +37,11 @@ public class {{Registry}} {
         frozen = true;
     }
 
-    /** One registered value, as its own type describes itself. */
     private static String describe(Object value) {
         if (value instanceof {{BLOCK}} block) {
             return "Block(" + block.applied() + ")";
         }
         if (value instanceof {{BlockItem}} placing) {
-            // Named apart from a plain item on purpose: an item registered under
-            // a block's identifier has to be the block's placing item, and a
-            // stand-in that printed both the same way would pass either.
             return "BlockItem(" + placing.holds().name() + "/" + placing.applied() + ")";
         }
         if (value instanceof {{Item}} item) {
@@ -64,7 +50,6 @@ public class {{Registry}} {
         return value.getClass().getSimpleName();
     }
 
-    /** What this registry holds, as the harness reads it back. */
     public String contents() {
         StringBuilder read = new StringBuilder(name).append("=");
         boolean first = true;

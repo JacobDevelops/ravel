@@ -9,33 +9,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Stream;
 
-/**
- * The pack repository.
- *
- * <p><b>Discovering and selecting are two steps.</b> A pack that appears in the
- * directory after a scan is not available until another scan, and a pack that is
- * available is not selected until something selects it. Neither happens on its
- * own, and a stand-in that let either happen implicitly would pass a caller that
- * takes neither step.
- */
 public final class {{PACK_REPOSITORY}} {
 
-    /**
-     * The pack every repository has, which no directory holds.
-     *
-     * <p>The real one comes from a built-in source beside the directory source.
-     * It is here because selecting drops ids the last scan did not find, and a
-     * screen whose configuration names this one is the ordinary case.
-     */
     private static final String BUILT_IN = "vanilla";
 
-    /**
-     * How a pack found in a directory is identified, which is the game's rule.
-     *
-     * <p>Spelled here rather than asked for, unlike everywhere on Ravel's side of
-     * the seam: this stands in for the game's own folder source, which is what
-     * owns the rule.
-     */
     private static final String DISCOVERED = "file/";
 
     private final Path directory;
@@ -50,13 +27,6 @@ public final class {{PACK_REPOSITORY}} {
         this.directory = directory;
     }
 
-    /**
-     * Rescans the directory, keeping whatever of the selection survives it.
-     *
-     * <p>This is the step a pack written after the repository was built needs:
-     * until it runs, the pack is on disk and this repository has never heard of
-     * it.
-     */
     public void {{PACK_REPOSITORY#reload}}() {
         List<String> found = new ArrayList<>();
         found.add(BUILT_IN);
@@ -73,13 +43,6 @@ public final class {{PACK_REPOSITORY}} {
         {{PACK_REPOSITORY#setSelected}}(keep);
     }
 
-    /**
-     * What a selected pack's files hold, which is what loading it reads.
-     *
-     * <p>Here because a load that only restated the ids it was given would pass a
-     * caller that never re-read anything: the ids are identical across a
-     * replacement and the files are not.
-     */
     public String contents(String id) {
         if (!id.startsWith(DISCOVERED)) {
             return "";
@@ -103,7 +66,6 @@ public final class {{PACK_REPOSITORY}} {
         return List.copyOf(selected);
     }
 
-    /** Replaces the selection with the ids given, dropping what no scan found. */
     public void {{PACK_REPOSITORY#setSelected}}(Collection<String> ids) {
         List<String> kept = ids.stream().filter(available::contains).toList();
         selected.clear();

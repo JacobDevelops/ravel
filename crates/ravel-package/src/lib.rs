@@ -7,6 +7,9 @@ mod integrity;
 mod manifest;
 mod values;
 
+#[cfg(test)]
+mod test_support;
+
 pub use compatibility::CompatibilityError;
 pub use integrity::{IntegrityError, verify_package, verify_provenance, verify_source_file};
 pub use manifest::{

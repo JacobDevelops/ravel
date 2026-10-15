@@ -1,23 +1,7 @@
-//! Server-resolved entries a mod owns, declared beside the rest of its content.
+//! Server-data declarations with derived paths and duplicate-file detection.
 //!
-//! A mod's [`crate::content::ContentDeclaration`] holds its registry keys, its
-//! tag memberships, its translations and any bytes Ravel does not generate for
-//! it. A conversion between items, a table of what something drops, a step in a
-//! player's progression and a named sequence of commands are none of those: no
-//! mod claims them at the barrier, no mod merges into them, and the server reads
-//! them when a world loads. Before this module the only way to ship one was as
-//! supplied bytes at a path the author had to spell, which is the escape hatch
-//! [`crate::content::ContentDeclaration::resource`] documents as a last resort.
-//!
-//! What this adds is the path and the barrier. The path is derived from the
-//! kind and the name, so a mod cannot misfile its own data; the barrier is the
-//! one table every entry goes through, so two of a mod's declarations that would
-//! write one file are refused when the second is made.
-//!
-//! What it deliberately does not add is the *shape* of an entry. What a table
-//! means is a Minecraft version's decision, and modelling it here would put a
-//! version's shape into the version-neutral surface `docs/architecture/dependency-rules.md`
-//! keeps clear of one. The bytes are the author's, carried unread.
+//! Supply version-specific entry bodies as bytes. Ravel derives paths from
+//! their kind and name without interpreting the bodies.
 //!
 //! # Examples
 //!

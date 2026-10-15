@@ -1,10 +1,4 @@
-//! Contract tests for `ravel-resolve` against the spec it implements.
-//!
-//! The unit tests inside the crate check each resolution rule on its own.
-//! These check the two things only an out-of-crate test can: that a pack-shaped
-//! package set walks from manifest documents to one load order through the
-//! public API alone, and that every `SPEC.md` §9.2 dependency outcome comes
-//! back distinctly enough for the surface that reports it to tell them apart.
+//! Public-API coverage of pack resolution and distinct dependency failures.
 
 use std::collections::BTreeSet;
 
@@ -45,9 +39,7 @@ fn names(plan: &[ModId]) -> Vec<String> {
     plan.iter().map(ToString::to_string).collect()
 }
 
-/// A pack shaped like a small real one: a library everything sits on, two mods
-/// that need it, a client-only renderer, an optional integration between two
-/// mods, and a discouraged pair that still loads.
+/// A pack with shared dependencies, a client-only mod, optional integration, and discouragement.
 fn pack() -> Vec<PackageManifest> {
     vec![
         everywhere(

@@ -1,30 +1,4 @@
-//! The admitted-content crossing.
-//!
-//! `ravel-loader`'s registration barrier already decides *that* a mod owns
-//! `block:example_mod:copper`: two mods cannot claim one identifier, and a claim
-//! outside the window is refused. What it cannot do is make the block exist. A
-//! registry in the running game is where that happens, and Java can call Rust
-//! without a reverse call into the JVM — so this is the read the Java
-//! adapter performs at the last moment the built-in registries still accept
-//! entries, and the registration itself is Java's.
-//!
-//! # Why a read rather than a hook
-//!
-//! A hook observes or vetoes, and nothing else: it cannot
-//! change an argument, substitute a return value, or call back into the JVM.
-//! Registering content is an *action*, so the hook fires and a
-//! hand-written Java adapter performs the action using its own crossing; see
-//! `docs/architecture/overview.md#mechanisms`. This is that
-//! crossing, on the framing `mods.rs` and `settings.rs` already use.
-//!
-//! # Only what a registry can take
-//!
-//! [`ContentKind`] names four kinds and two of them are registry entries. A
-//! recipe is data the recipe manager reloads and a command is registered against
-//! a dispatcher that does not exist yet at this seam, so neither crosses here.
-//! They are filtered on this side rather than skipped on the other, because
-//! which claims are registrable is an admission question:
-//! Rust decides, Java performs.
+//! Admitted registry content encoded for the Java registration adapter.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -40,18 +14,11 @@ use crate::wire::{VERSION, count, field, flag};
 static RUNTIME: Mutex<Option<Arc<LoaderRuntime>>> = Mutex::new(None);
 
 /// Makes the admitted content readable by the registration adapter.
-///
-/// Called wherever the runtime is installed rather than by a second caller, so
-/// there is no launch in which the barrier admits a claim and the adapter cannot
-/// see it.
 pub(crate) fn install(runtime: Arc<LoaderRuntime>) {
     *lock() = Some(runtime);
 }
 
-/// Takes the store, recovering it from a previous panic.
-///
-/// Nothing here mutates the runtime, so a poisoned lock cannot mean a half-built
-/// one.
+// The store holds complete runtimes, so poison recovery cannot expose partial state.
 fn lock() -> std::sync::MutexGuard<'static, Option<Arc<LoaderRuntime>>> {
     RUNTIME.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -61,31 +28,18 @@ const fn is_registrable(kind: ContentKind) -> bool {
     matches!(kind, ContentKind::Block | ContentKind::Item)
 }
 
-/// Everything admitted, as one payload.
-///
-/// Returns nothing before a set is installed, which is a launch that has not got
-/// far enough to have claimed anything rather than a failure.
+/// Encodes admitted content, or returns nothing before runtime installation.
 fn document() -> Option<String> {
-    // The runtime leaves the store's lock behind before the payload is built,
-    // for the reason `mods.rs` gives: nothing is held while Java works.
     document_of(lock().clone().as_deref())
 }
 
 /// The payload one runtime answers with, or nothing without one.
-///
-/// Separate from [`document`] so the absent case is a value a caller passes
-/// rather than the state of the process's own store.
 fn document_of(runtime: Option<&LoaderRuntime>) -> Option<String> {
     Some(runtime?.content_document())
 }
 
 impl LoaderRuntime {
-    /// Every admitted registry claim this runtime holds, as one payload.
-    ///
-    /// The order is the claim table's own, which is sorted by identifier. That
-    /// is deliberate: what a game registers must not depend on the order mods
-    /// happened to claim in, because two launches of the same set would then
-    /// produce two registries.
+    /// Encodes admitted registry claims in identifier order.
     pub(crate) fn content_document(&self) -> String {
         let claimed: Vec<_> = self
             .inner
@@ -104,9 +58,6 @@ impl LoaderRuntime {
             field(&mut out, key.kind().as_str());
             field(&mut out, key.id().namespace().as_str());
             field(&mut out, key.id().path());
-            // The owner as well as the namespace. They are the same identity in
-            // every claim the barrier admits today, and carrying only one would
-            // make a future where they differ unreadable rather than wrong.
             field(&mut out, owner.as_str());
             describe(&mut out, behaviour);
         }
@@ -114,13 +65,7 @@ impl LoaderRuntime {
     }
 }
 
-/// Writes how one entry behaves, as the fields its kind declares.
-///
-/// The field count is fixed per kind rather than tagged, because the kind is
-/// already the field before it: a reader that knows it is looking at a block
-/// knows how many fields follow. A number crosses as text for the reason every
-/// other field does — the framing has one field type and adding a second would
-/// be a second parser on the other side.
+/// Writes the fixed behavior fields declared by the entry's kind.
 fn describe(out: &mut String, behaviour: ContentBehaviour) {
     match behaviour {
         ContentBehaviour::Block(block) => {
@@ -136,18 +81,11 @@ fn describe(out: &mut String, behaviour: ContentBehaviour) {
     }
 }
 
-/// Hands the registration adapter everything the barrier admitted.
-///
-/// An empty answer is a launch with nothing to register, and it is not the same
-/// as null: null is what the JVM receives when the native failed, and the
-/// adapter registers nothing on it rather than guessing at a set. Registering
-/// less than a mod declared is the safe side here — the missing block is
-/// visible to the player, where a block registered from an unchecked set is not.
+/// Hands the registration adapter the admitted set, or null before installation.
 ///
 /// # Panics
 ///
-/// Does not panic. The guard around the body turns a panic into a thrown
-/// `RuntimeException` rather than an unwind into the JVM.
+/// Panics become Java `RuntimeException`s rather than unwinding into the JVM.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelAdmittedContent")]
 pub fn ravel_admitted_content<'local>(
     mut env: EnvUnowned<'local>,
@@ -171,34 +109,12 @@ mod tests {
 
     use super::document_of;
     use crate::runtime::LoaderRuntime;
-
-    /// Reads a payload back into its fields, the way the adapter does.
-    fn fields(payload: &str) -> Vec<String> {
-        let units: Vec<u16> = payload.encode_utf16().collect();
-        let mut read = Vec::new();
-        let mut at = 0;
-        while at < units.len() {
-            let separator = at
-                + units[at..]
-                    .iter()
-                    .position(|unit| *unit == u16::from(b':'))
-                    .expect("every field states a length");
-            let length: usize = String::from_utf16(&units[at..separator])
-                .expect("a length is text")
-                .parse()
-                .expect("a length is a number");
-            let start = separator + 1;
-            read.push(String::from_utf16(&units[start..start + length]).expect("a field is text"));
-            at = start + length;
-        }
-        read
-    }
+    use crate::wire::fields;
 
     fn id(name: &str) -> ModId {
         name.parse().expect("a valid mod id")
     }
 
-    /// A runtime holding one mod, driven far enough to claim.
     fn runtime(mod_ids: &[&str]) -> LoaderRuntime {
         let entries = mod_ids
             .iter()

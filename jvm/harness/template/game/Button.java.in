@@ -5,7 +5,6 @@
 {{import Button$OnPress}}
 {{import Component}}
 
-/** A button, which is what a toggle and a choice both are here. */
 public final class {{Button}} extends {{AbstractWidget}} {
 
     private final {{Button$OnPress}} onPress;
@@ -31,7 +30,6 @@ public final class {{Button}} extends {{AbstractWidget}} {
         return height;
     }
 
-    /** Presses this button, which is what a driver reaches a screen's own code through. */
     public void press() {
         onPress.{{Button$OnPress#onPress}}(this);
     }

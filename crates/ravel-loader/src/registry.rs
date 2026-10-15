@@ -3,17 +3,7 @@ use ravel_host_api::{Registrar, RegistrationRefused};
 
 use crate::lifecycle::{LifecycleError, LifecycleMachine};
 
-/// The registration window the loader opens for one mod.
-///
-/// `ravel-host-api`'s [`Registrar`] is the mod's view of the registration
-/// barrier and this is the loader's implementation of it. The claim table lives
-/// in [`LifecycleMachine`], because whether a claim is legal depends on where
-/// the whole set is in its lifecycle and not on anything this type knows, so
-/// every decision here is delegated and none is duplicated.
-///
-/// The value borrows the machine, which is what makes the window a window: it
-/// exists for the duration of one [`ravel_host_api::HostMod::register`] call
-/// and a mod cannot outlive it to claim later.
+/// A mod's registration window, borrowing the lifecycle machine for the call.
 pub struct Registration<'a> {
     machine: &'a mut LifecycleMachine,
     mod_id: ModId,
@@ -31,14 +21,7 @@ impl<'a> Registration<'a> {
         }
     }
 
-    /// Returns the loader's own account of why a claim was refused.
-    ///
-    /// A mod is told what it can act on: the identifier is taken, or the window
-    /// is shut. Two of [`LifecycleMachine::claim_registry_identifier`]'s
-    /// refusals carry more than that — which state the claimant was in, and the
-    /// unreachable case of an id outside the plan — and a mod can do nothing
-    /// with either. They are recorded here instead, so the loader reports the
-    /// refusal it actually made rather than the summary the mod received.
+    /// Returns the detailed loader refusal behind the mod-facing closed-window response.
     #[must_use]
     pub const fn unexpected(&self) -> Option<&LifecycleError> {
         self.unexpected.as_ref()
@@ -68,7 +51,6 @@ impl Registrar for Registration<'_> {
 }
 
 impl Registration<'_> {
-    /// Makes one claim, described or not, and translates the loader's refusal.
     fn record(
         &mut self,
         key: RegistryKey,
@@ -87,11 +69,7 @@ impl Registration<'_> {
                 Err(RegistrationRefused::Conflict { key, owner })
             }
             Err(error) => {
-                // `RegistrationBarrierClosed` is exactly `Closed`. The other two
-                // reachable refusals — a claim from a mod that is not
-                // constructed, and an id outside the plan — are also windows
-                // that are not open to this claimant, so this is what the mod is
-                // told; `unexpected` keeps what the loader knows.
+                // Preserve detailed loader errors behind the mod-facing closed window.
                 if self.unexpected.is_none()
                     && !matches!(error, LifecycleError::RegistrationBarrierClosed { .. })
                 {
@@ -106,10 +84,6 @@ impl Registration<'_> {
 impl LifecycleMachine {
     /// Opens the registration window for one mod.
     ///
-    /// The window is the returned value's lifetime. Nothing about the set moves
-    /// while it is open, which is what lets a mod claim several identifiers and
-    /// still be refused as one step.
-    ///
     /// # Errors
     ///
     /// Returns [`LifecycleError::UnknownMod`] for an id outside the plan.
@@ -117,18 +91,11 @@ impl LifecycleMachine {
         &mut self,
         mod_id: &ModId,
     ) -> Result<Registration<'_>, LifecycleError> {
-        // Asking for the state is how an id outside the plan is refused before
-        // a window opens on it.
         self.state(mod_id)?;
         Ok(Registration::new(self, mod_id.clone()))
     }
 
     /// Returns the identity that owns a typed registry entry.
-    ///
-    /// [`LifecycleMachine::registry_owner`] answers the same question about the
-    /// flat identifier the barrier stores. This is the same lookup for callers
-    /// that hold the key rather than its spelling, so the two cannot disagree
-    /// about what a key is called.
     #[must_use]
     pub fn owner_of(&self, key: &RegistryKey) -> Option<&ModId> {
         self.registry_owner(&key.to_string())
@@ -161,7 +128,6 @@ mod tests {
         }
     }
 
-    /// A set of `names`, driven to `Constructed` so the window is open.
     fn constructed(names: &[&str]) -> LifecycleMachine {
         let mut machine =
             LifecycleMachine::new(Side::Client, names.iter().map(|name| entry(name)).collect())
@@ -225,8 +191,6 @@ mod tests {
             }
         );
         assert_eq!(window.claimed(), []);
-        // A conflict is the mod's whole account of the refusal: nothing is held
-        // back, so the loader has nothing extra to report.
         assert!(window.unexpected().is_none());
         assert_eq!(machine.owner_of(&contested), Some(&id("first_mod")));
     }
@@ -247,8 +211,6 @@ mod tests {
             window.claim(late.clone()),
             Err(RegistrationRefused::Closed { key: late.clone() })
         );
-        // The barrier closing is the whole reason, so the loader records no
-        // second account of it.
         assert!(window.unexpected().is_none());
         assert_eq!(machine.owner_of(&late), None);
     }
@@ -272,7 +234,6 @@ mod tests {
             Err(RegistrationRefused::Closed { key: early.clone() })
         );
 
-        // The mod is told the window is not open to it. The loader is told why.
         match window.unexpected() {
             Some(LifecycleError::RegistrationWindow { mod_id, state, .. }) => {
                 assert_eq!(mod_id, &id("early_mod"));

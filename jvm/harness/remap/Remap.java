@@ -11,27 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
-// Puts a stand-in game's linked names back into the class files it compiled to.
-//
-// A version that keeps part of its game in a package and moves the rest into the
-// unnamed package cannot have a stand-in game written as Java at all, because
-// nothing inside a package can name a class outside every package. The generator
-// answers that by writing the whole stand-in game in the unnamed package and
-// recording each pair it moved in `aliases.txt`, as `written=linked`. The
-// adapters resolve the linked name, so the names have to be back before anything
-// runs against the classes, and the class file is where they can go back: only
-// the constant pool spells a name, and everything after it reaches the pool by
-// index. So this rewrites the pool and copies the rest byte for byte.
-//
-// What makes that harder than replacing a string is that javac interns: one Utf8
-// entry serves every occurrence of a spelling, so the entry holding a class's
-// name is the same entry as a method, a local or a source file called the same
-// thing. An entry is therefore rewritten whole only where a class entry points at
-// it, and refused when anything else points at it too — the pass never guesses
-// which of two meanings a shared entry was reached by. Everything that reads a
-// Utf8 has to be walked for that question to be answerable, which is why the
-// fields, the methods and the attributes are read even though they are copied
-// back unchanged.
+// Restores aliases.txt's written=linked names after compiling unnamed-package fixtures.
+// Shared Utf8 entries with non-class uses are refused; bytes after the pool stay unchanged.
 public final class Remap {
 
     private Remap() {}
@@ -172,16 +153,7 @@ public final class Remap {
         }
     }
 
-    /**
-     * What one Utf8 entry becomes, or the refusal that says it cannot be decided.
-     *
-     * <p>A written name is put back whole only where a class entry points at the
-     * entry: a spelling reached any other way is a member, a local or a piece of
-     * text that happens to read like a class, and the interned pool gives them all
-     * the same entry. So an entry two kinds of reference reach is refused rather
-     * than resolved, and so is one that spells a written name with no class entry
-     * pointing at it.
-     */
+    /** Refuses ambiguous Utf8 entries rather than guessing which use names a class. */
     private static String replacement(
             Path file, int index, String value, Map<String, String> aliases, Marks marks) {
         String linked = aliases.get(value);

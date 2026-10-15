@@ -1,61 +1,21 @@
 use ravel_core::{DiagnosticMessage, RedactionPolicy};
 
-/// What replaces a value the policy removes outright.
 const REDACTED: &str = "[redacted]";
 
-/// The words that make a name a credential's name.
-///
-/// This is the set `tools/ravel-xtask` rejects as a key in a recorded evidence
-/// manifest, deliberately: a report that would be rejected there is a report
-/// that should never have been published here either.
+// Keep credential names aligned with the evidence-manifest policy.
 const CREDENTIAL_WORDS: [&str; 5] = ["token", "password", "secret", "credential", "authorization"];
 
-/// Value prefixes that identify a credential whatever it sits next to.
 const CREDENTIAL_PREFIXES: [&str; 6] = ["ghp_", "gho_", "ghs_", "xoxb-", "xoxp-", "sk-"];
 
-/// How long each of a token's three segments has to be before the dotted shape
-/// is read as a credential rather than as a name.
-///
-/// A version (`1.0.0`), a namespaced id (`com.example.mod`) and a doubly
-/// suffixed file (`level.dat.backup`) are all three dot-separated runs of
-/// base64url characters. None of them reaches this length in every segment, and
-/// the shortest real header segment — the encoding of `{"alg":"HS256"}` — is
-/// well past it.
+// Short dotted names are not tokens.
 const TOKEN_SEGMENT: usize = 8;
 
-/// Punctuation a message wraps a word in, which is kept rather than redacted.
 const OPENING: [char; 5] = ['`', '\'', '"', '(', '['];
 const CLOSING: [char; 9] = ['`', '\'', '"', ')', ']', '.', ',', ';', '!'];
 
-/// The rules `SPEC.md` §9.1 requires of every published Ravel report.
+/// Reduces absolute paths to filenames and replaces credentials with `[redacted]`.
 ///
-/// Two things come out of a message: a filesystem path becomes the file it
-/// names, and a credential's value becomes nothing at all.
-///
-/// The first rule is the one the rest of the workspace already models.
-/// `ravel_package::RelativePath::file_name` exists because an integrity failure
-/// is about a file inside a package while the directory that package was
-/// installed into says where a player keeps their game. This policy applies the
-/// same reduction to text nobody in this workspace wrote — the sentence a mod
-/// hands back when it declines a lifecycle step is the one message in the
-/// pre-world path that can hold anything at all.
-///
-/// A directory name may contain a space, so a path is not one whitespace-
-/// delimited word: the reduction follows a path across the spaces inside it and
-/// publishes the file the whole run names.
-///
-/// The second rule is unconditional. `SPEC.md` §10 requires that logs and
-/// diagnostics never expose launcher tokens, and a credential has no shortened
-/// form worth keeping, so its value is replaced rather than reduced. A token
-/// need not be announced to be recognised: an account token arrives from a
-/// launcher with no credential word beside it and no vendor prefix on it, and
-/// its three-segment shape is what identifies it.
-///
-/// Both rules over-redact rather than under-redact where they are unsure: a
-/// bare `token` or `password` in prose costs the word after it. Rules this
-/// policy deliberately does not have: it does not shorten a URL, because a
-/// package's `source` is published metadata, and it does not touch a mod id, a
-/// version, or a lifecycle state, because those are what a report is for.
+/// Ambiguous credential labels over-redact; URLs and package-relative paths survive.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Redactor;
 
@@ -90,30 +50,16 @@ impl RedactionPolicy for Redactor {
 }
 
 /// Redacts `text` and returns it as a message that may be shown to a player.
-///
-/// This is the only way to obtain [`ravel_core::Redaction::Applied`] anywhere in
-/// the workspace. `ravel-core` holds the tag and no rules, this crate holds the
-/// rules, and `DiagnosticMessage::redacted` runs them rather than taking a
-/// caller's word that they ran.
 #[must_use]
 pub fn redact(text: &str) -> DiagnosticMessage {
     DiagnosticMessage::redacted(&Redactor, text)
 }
 
-/// Splits the next whitespace-delimited word from the text that follows it.
 fn split_word(rest: &str) -> (&str, &str) {
     let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
     rest.split_at(end)
 }
 
-/// Follows an absolute path across the spaces a directory name can contain.
-///
-/// A fragment continues the path before it when it carries a separator and does
-/// not start somewhere of its own, and the run then reduces to the file the last
-/// fragment names rather than leaving the tail of a player's path in the
-/// message. The run stops at a line break, at punctuation that closed the path,
-/// and at a URL, because none of those is the middle of a path — and stopping
-/// early only costs a component that names no player.
 fn follow_a_path_across_spaces<'text>(
     core: &'text str,
     closing: &'text str,
@@ -143,12 +89,10 @@ fn follow_a_path_across_spaces<'text>(
     }
 }
 
-/// Returns whether this fragment is the middle of the path before it.
 fn continues_a_path(core: &str) -> bool {
     core.contains(separator) && !is_absolute(core) && !core.contains("://")
 }
 
-/// Splits the punctuation a message wraps a word in from the word itself.
 fn undecorate(word: &str) -> (&str, &str, &str) {
     let unopened = word.trim_start_matches(OPENING);
     let opening = &word[..word.len() - unopened.len()];
@@ -157,17 +101,12 @@ fn undecorate(word: &str) -> (&str, &str, &str) {
     (opening, core, closing)
 }
 
-/// Applies both rules to one undecorated word.
-///
-/// The path rule runs first, because a word can be both: a file inside a
-/// player's home directory can be named after the credential it holds, and
-/// reducing the path first leaves the credential rule something to remove.
+// Value rules inspect filenames; credential labels use the original word.
 fn redact_word(core: &str, value_follows: bool) -> String {
     if core.is_empty() {
         return String::new();
     }
-    // A credential's name is not its value, so the name survives and the word
-    // after it does not.
+    // Preserve credential labels, but redact the following value.
     if names_a_credential(core) {
         return core.to_owned();
     }
@@ -184,12 +123,7 @@ fn redact_word(core: &str, value_follows: bool) -> String {
     core.to_owned()
 }
 
-/// Returns whether this word is a credential's name, so the next word is its
-/// value.
-///
-/// The match is exact rather than a substring, because `token.json` is a file
-/// and `access_token=…` already carries its own value: treating either as a
-/// label would cost the innocent word after it.
+// Exact labels avoid consuming text after filenames or `name=value` pairs.
 fn names_a_credential(core: &str) -> bool {
     let name = core.trim_end_matches(':').to_ascii_lowercase();
     name == "bearer" || CREDENTIAL_WORDS.contains(&name.as_str())
@@ -206,13 +140,7 @@ fn starts_with_a_credential_prefix(core: &str) -> bool {
         .any(|prefix| core.starts_with(prefix))
 }
 
-/// Returns whether this word is a token on its own evidence.
-///
-/// Three base64url segments separated by dots is what a signed token looks
-/// like, and a launcher hands one over with nothing beside it to say so. The
-/// per-segment length is what keeps a version or a namespaced id out; anything
-/// that reaches it and is still not a credential costs a reader one unreadable
-/// word, which is the side to be wrong on.
+// Require three long base64url segments, excluding ordinary versions and names.
 fn has_the_shape_of_a_token(core: &str) -> bool {
     let mut segments = core.split('.');
     let shape = [segments.next(), segments.next(), segments.next()];
@@ -227,12 +155,7 @@ fn has_the_shape_of_a_token(core: &str) -> bool {
         })
 }
 
-/// Returns the file an absolute path names, and nothing for anything else.
-///
-/// A path is absolute when it starts at a root: a Unix root, a home shorthand,
-/// a Windows drive, or a share. A package-relative path is none of those and is
-/// left alone, because it names a file inside a package rather than a place on
-/// the player's disk.
+// Relative paths identify package content rather than the player's filesystem.
 fn file_name_of(core: &str) -> Option<&str> {
     if !is_absolute(core) {
         return None;
@@ -240,7 +163,6 @@ fn file_name_of(core: &str) -> Option<&str> {
     Some(last_component(core))
 }
 
-/// The last non-empty component of a path, or nothing nameable at all.
 fn last_component(core: &str) -> &str {
     core.rsplit(separator)
         .find(|component| !component.is_empty())
@@ -323,19 +245,15 @@ mod tests {
     #[test]
     fn following_a_path_stops_where_the_path_does() {
         for (raw, expected) in [
-            // A word with no separator is prose, not the middle of a path.
             (
                 "read /home/player/saves for writing",
                 "read saves for writing",
             ),
-            // A URL is published metadata and starts nothing.
             (
                 "read /home/player/saves https://example.invalid/x",
                 "read saves https://example.invalid/x",
             ),
-            // A path does not span a line break.
             ("/home/player/saves\nGames/mods", "saves\nGames/mods"),
-            // Punctuation already closed the path.
             ("(/home/player/logs) Games/mods", "(logs) Games/mods"),
         ] {
             assert_eq!(applied(raw), expected, "{raw}");

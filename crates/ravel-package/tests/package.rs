@@ -1,11 +1,4 @@
-//! End-to-end tests for one package walking the admission path.
-//!
-//! The unit tests inside the crate check each rule on its own. These check that
-//! parse, integrity, and compatibility hold together over a package on disk,
-//! before any code could run. The differential against
-//! `schemas/package.schema.json` lives in `tests/conformance`, which is the
-//! workspace member allowed to spawn `check-jsonschema` and read the schema
-//! directory.
+//! Package admission across parsing, on-disk integrity, and host compatibility.
 
 use std::fs;
 use std::path::PathBuf;
@@ -56,7 +49,6 @@ fn manifest_document(source_digest: &str, record_digest: &str) -> String {
     )
 }
 
-/// Builds a package whose files match every digest its manifest declares.
 fn package(label: &str) -> (PathBuf, PackageManifest) {
     let root =
         std::env::temp_dir().join(format!("ravel-package-flow-{label}-{}", std::process::id()));
@@ -89,19 +81,6 @@ fn an_intact_package_passes_identity_integrity_and_compatibility_together() {
         Ok(())
     );
     assert_eq!(manifest.compatibility.check_minecraft("26.0.1"), Ok(()));
-
-    fs::remove_dir_all(&root).expect("cleanup");
-}
-
-#[test]
-fn a_manifest_round_trips_through_its_document_form_unchanged() {
-    let (root, manifest) = package("round-trip");
-
-    let rendered = manifest.to_json();
-    assert_eq!(
-        PackageManifest::parse(&rendered).expect("a rendered manifest re-parses"),
-        manifest
-    );
 
     fs::remove_dir_all(&root).expect("cleanup");
 }

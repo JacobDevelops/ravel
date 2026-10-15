@@ -1,7 +1,4 @@
 //! Serializable form of `schemas/spike-result.schema.json`.
-//!
-//! Candidates build these values directly so that every gate reports the same
-//! fields, units, collector identity, and evidence quality.
 
 use serde::Serialize;
 
@@ -123,10 +120,7 @@ pub struct Distribution {
 }
 
 impl Distribution {
-    /// Summarizes observed samples through one shared percentile definition.
-    ///
-    /// Returns an unavailable distribution when no sample was collected, because
-    /// a missing measurement must never be reported as zero.
+    /// Summarizes observed samples, reporting an unavailable distribution for an empty set.
     #[must_use]
     pub fn measured(collector: &str, samples: &[u64]) -> Self {
         let Some(percentiles) = crate::percentiles(samples) else {
@@ -144,13 +138,7 @@ impl Distribution {
         }
     }
 
-    /// Summarizes batch totals as per-call cost.
-    ///
-    /// A single boundary transition costs less than the clock's resolution, so
-    /// trials time a batch. Dividing inside the trial would truncate a two
-    /// nanosecond call to zero, so the division happens here, once, after the
-    /// percentiles are taken. Percentiles scale with the divisor, and the result
-    /// is labelled estimated because a batch mean is not a single observation.
+    /// Scales batch-total percentiles to estimated per-call costs without integer truncation.
     #[must_use]
     pub fn from_batches(collector: &str, batch_nanoseconds: &[u64], batch: u64) -> Self {
         if batch == 0 {

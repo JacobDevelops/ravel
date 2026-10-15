@@ -5,39 +5,17 @@ use ravel_host_api::{HostMod, InterceptionRefused, Occasion, Point, Points, Roun
 
 use crate::lifecycle::LifecycleMachine;
 
-/// Asks every mod that answers at `point`, in the order the set resolves to.
+/// Asks eligible mods at `point` in declared order, skipping parked or inactive mods.
 ///
-/// This is the caller `ravel_host_api::Points` existed without. Until it was
-/// here a mod could be given a way to declare an answer and nothing would ever
-/// ask for one, which is the same shape as a packet nothing carries: the
-/// declaration was real and the round was hypothetical.
-///
-/// Every step belongs to somebody else. Each mod says what it answers at, and
-/// [`Points`] decides the order and refuses a set that cannot be asked; what
-/// this function owns is which mods are eligible, and asking them.
-///
-/// # Which mods are asked
-///
-/// Only mods in a state that runs mod code, and only those that declared this
-/// point. A mod parked on this side or not yet running is not asked and is not
-/// an error: a point is a moment in a running game, not a barrier every mod must
-/// reach.
+/// A mod's answering failure ends the round and is retained in [`Round::failure`].
 ///
 /// # Errors
 ///
-/// Returns [`InterceptionError::Disowned`] when a mod hands over a declaration
-/// naming another mod, and [`InterceptionError::Refused`] when the set cannot be
-/// asked at all — an unpublished point, two replacements, or a cycle.
-///
-/// A mod that *fails* while answering is not an error here. It ends the round
-/// and is carried out in [`Round::failure`], because the mods before it were
-/// asked and a report that lost that would describe a different run.
+/// Returns [`InterceptionError`] for foreign declarations or a point set that cannot be asked.
 ///
 /// # Panics
 ///
-/// Never. The order is built from the declarations of mods this function has
-/// already found among `mods`, so the lookup while asking is asking about a mod
-/// the first pass held.
+/// Never: ordered owners were found in `mods` while collecting declarations.
 pub fn intercept(
     machine: &LifecycleMachine,
     mods: &mut [&mut (dyn HostMod + '_)],
@@ -115,19 +93,14 @@ impl std::error::Error for InterceptionError {
 }
 
 impl StructuredFailure for InterceptionError {
-    /// Neither variant is one of `SPEC.md` §9.2's dependency-graph outcomes. A
-    /// round runs long after the graph was accepted.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
 
-    /// A round is asked while the set runs.
     fn lifecycle_state(&self) -> LifecycleState {
         LifecycleState::Running
     }
 
-    /// Every sentence here is written in this workspace. A point name a mod
-    /// wrote reaches the refusal `ravel-host-api` renders, which says so itself.
     fn quotes_untrusted_text(&self) -> bool {
         match self {
             Self::Disowned { .. } => false,
@@ -150,13 +123,7 @@ mod tests {
     use super::{InterceptionError, intercept};
     use crate::lifecycle::{LifecycleEntry, LifecycleMachine, Requirement};
 
-    /// The two fixture identities, chosen to sort against the declared order.
-    ///
-    /// `zephyr_guard` is declared to be asked *first* and sorts *last*; the
-    /// order this module resolves is therefore only ever right because the
-    /// declared edge was read. With the edge dropped, `precedence` falls back to
-    /// the lexicographically smallest order and answers `alpha_ledger` first, so
-    /// every ordering assertion below fails rather than passing by luck.
+    // Reverse lexical order ensures ordering assertions depend on the declared edge.
     const GUARD: &str = "zephyr_guard";
     const LEDGER: &str = "alpha_ledger";
 
@@ -174,7 +141,6 @@ mod tests {
         }
     }
 
-    /// A mod that answers at one point and records every occasion it saw.
     struct Answering {
         id: ModId,
         point: Point,
@@ -249,7 +215,6 @@ mod tests {
         }
     }
 
-    /// A mod that intercepts nothing, which is what most mods are.
     struct Quiet {
         id: ModId,
     }
@@ -264,7 +229,6 @@ mod tests {
         }
     }
 
-    /// Drives `names` to `Running` on an integrated server.
     fn running(names: &[&str]) -> LifecycleMachine {
         let mut machine = LifecycleMachine::new(
             Side::IntegratedServer,
@@ -284,7 +248,6 @@ mod tests {
         machine
     }
 
-    /// The order is the declared one, not the one the names sort into.
     #[test]
     fn the_declared_edge_decides_who_is_asked_first() {
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed);
@@ -299,11 +262,6 @@ mod tests {
         assert_eq!(round.point(), Point::WorldIsSaved);
     }
 
-    /// The first refusal ends the round, and the mod after it is never entered.
-    ///
-    /// Both halves are checked: the round says who it asked, and the mod itself
-    /// says whether its own body ran. A round that reported correctly while
-    /// entering everybody would pass the first and fail the second.
     #[test]
     fn a_refusal_ends_the_round_before_the_later_mod_is_asked() {
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Refuse);
@@ -324,7 +282,6 @@ mod tests {
         assert_eq!(guard.seen[0].side(), Side::IntegratedServer);
     }
 
-    /// A mod that declared another point is not asked at this one.
     #[test]
     fn a_mod_that_declared_another_point_is_not_asked_here() {
         let mut elsewhere = Answering::new(GUARD, Point::BlockIsBroken, Outcome::Refuse);
@@ -339,7 +296,6 @@ mod tests {
         assert_eq!(elsewhere.seen, [] as [ravel_host_api::Occasion; 0]);
     }
 
-    /// A mod that declares nothing is neither asked nor an obstacle.
     #[test]
     fn a_mod_that_intercepts_nothing_is_not_asked() {
         let mut quiet = Quiet { id: id(GUARD) };
@@ -352,7 +308,6 @@ mod tests {
         assert_eq!(round.asked(), [id(LEDGER)]);
     }
 
-    /// A mod that is not running is not asked, however it declared.
     #[test]
     fn a_mod_that_is_not_running_is_not_asked() {
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Refuse);
@@ -370,7 +325,6 @@ mod tests {
         assert_eq!(guard.seen, [] as [ravel_host_api::Occasion; 0]);
     }
 
-    /// A declaration that names another mod is refused rather than believed.
     #[test]
     fn a_mod_declaring_interceptions_for_another_mod_is_refused() {
         let mut liar = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Refuse).owned_by(LEDGER);
@@ -394,7 +348,6 @@ mod tests {
         assert!(!refused.quotes_untrusted_text());
     }
 
-    /// A mod that fails while answering ends the round and is named.
     #[test]
     fn a_mod_that_fails_while_answering_ends_the_round_and_is_attributed() {
         let mut guard = Answering::new(GUARD, Point::WorldIsSaved, Outcome::Proceed).failing();
@@ -414,7 +367,6 @@ mod tests {
         assert!(ledger.seen.is_empty(), "the round continued past a failure");
     }
 
-    /// A mod that declared a point and implements nothing is refused loudly.
     #[test]
     fn a_declared_point_with_no_implementation_is_unsupported() {
         struct Silent {
@@ -451,7 +403,6 @@ mod tests {
         );
     }
 
-    /// A set that cannot be asked is refused rather than half asked.
     #[test]
     fn two_mods_replacing_one_outcome_refuse_the_round() {
         struct Replacing {

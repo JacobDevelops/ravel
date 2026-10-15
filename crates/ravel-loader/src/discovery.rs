@@ -7,60 +7,19 @@ use std::path::{Path, PathBuf};
 use ravel_core::{FailureKind, LifecycleState, ModId, StructuredFailure};
 use ravel_package::{IntegrityError, ManifestError, PackageManifest, verify_package};
 
-/// Where an instance keeps the Ravel packages installed into it.
-///
-/// Relative to the game directory, and deliberately not `mods`: that directory
-/// belongs to the Java loaders' archives, which `tools/ravel-xtask`'s instance
-/// scan counts and Ravel never reads. It sits beside the `ravel-pack` directory
-/// the selected pack's documents already use.
+/// The installed-package directory, relative to the game directory.
 pub const PACKAGES_DIRECTORY: &str = "ravel/mods";
 
-/// The document each installed package carries, named as `SPEC.md` §3.4's
-/// manifest and as every `test-mods/*/package.json` already writes it.
+/// The manifest filename within each installed package.
 pub const MANIFEST_FILE: &str = "package.json";
 
-/// Finds every package installed into an instance and validates each one.
+/// Validates installed packages without running mod code.
 ///
-/// This is `SPEC.md` §3.5's "mod discovery from an installed instance" and
-/// §14's **Discovered** and **Validated** states: each package directory is
-/// located, its manifest parsed against `schemas/package.schema.json`, and its
-/// declared source and provenance digests verified, before anything asks
-/// whether the set has a load order. No mod code runs here and none can — this
-/// crate holds no mod code — so a package that fails any step fails before the
-/// state that would let it run.
-///
-/// The answer is [`Discovered`], whose [`Discovered::manifests`] is exactly what
-/// [`ravel_resolve::resolve`] and [`crate::admitted`] take. A discovered package
-/// therefore reaches the same [`crate::LifecycleEntry`] a compiled-in one does,
-/// by the same two functions, rather than by a second route that could answer
-/// differently.
-///
-/// # What an absent directory means
-///
-/// An instance with no `ravel/mods` directory has no packages installed, which
-/// is an empty set and not a failure: a player who installed nothing gets a
-/// game with nothing added. A directory that exists and cannot be read is a
-/// refusal, because that is an instance whose packages could not be established
-/// either way.
-///
-/// # Failure closure
-///
-/// One unusable entry refuses the whole instance. Skipping it would start a
-/// game the player believes holds a mod it does not, and `SPEC.md` §9.2 reports
-/// what was refused before world access rather than after. Every refusal names
-/// the package directory it is about.
+/// An absent packages directory is an empty set; any unusable entry refuses the instance.
 ///
 /// # Errors
 ///
-/// Returns [`DiscoveryRefused::Unreadable`] when the packages directory or an
-/// entry inside it cannot be read, [`DiscoveryRefused::NotAPackage`] when an
-/// entry is not a directory, [`DiscoveryRefused::OutsideInstance`] when an entry
-/// resolves outside the packages directory,
-/// [`DiscoveryRefused::MissingManifest`] when a package directory carries no
-/// `package.json`, [`DiscoveryRefused::Manifest`] when that document is not one
-/// the package schema accepts, [`DiscoveryRefused::Integrity`] when a declared
-/// file is not the file the manifest describes, and
-/// [`DiscoveryRefused::Duplicate`] when two directories declare one identity.
+/// Returns a [`DiscoveryRefused`] for unreadable, invalid, escaping, or duplicate packages.
 pub fn discover(game_directory: &Path) -> Result<Discovered, DiscoveryRefused> {
     let packages = game_directory.join(PACKAGES_DIRECTORY);
     if !packages.exists() {
@@ -88,12 +47,7 @@ pub fn discover(game_directory: &Path) -> Result<Discovered, DiscoveryRefused> {
     Ok(Discovered { packages: found })
 }
 
-/// Reads the packages directory into name-ordered entries.
-///
-/// The order `std::fs::read_dir` yields is the filesystem's, so it is sorted
-/// here. Nothing downstream depends on it — the result is ordered by mod id —
-/// but the *first* refusal a broken instance reports would otherwise depend on
-/// which directory the filesystem happened to hand over first.
+// Sort names so the first refusal is independent of filesystem enumeration order.
 fn entries(root: &Path) -> Result<Vec<(OsString, PathBuf)>, DiscoveryRefused> {
     let reader = fs::read_dir(root).map_err(|error| refuse_io(PACKAGES_DIRECTORY, &error))?;
     let mut entries = Vec::new();
@@ -105,7 +59,6 @@ fn entries(root: &Path) -> Result<Vec<(OsString, PathBuf)>, DiscoveryRefused> {
     Ok(entries)
 }
 
-/// Validates one entry of the packages directory into a discovered package.
 fn package(
     root: &Path,
     path: &Path,
@@ -167,8 +120,7 @@ impl Discovered {
         &self.packages
     }
 
-    /// Returns the manifests, in the form [`ravel_resolve::resolve`] and
-    /// [`crate::admitted`] take them.
+    /// Returns the manifests for resolution and admission.
     #[must_use]
     pub fn manifests(&self) -> Vec<PackageManifest> {
         self.packages
@@ -188,9 +140,6 @@ pub struct DiscoveredPackage {
 
 impl DiscoveredPackage {
     /// Returns the package directory, canonicalized.
-    ///
-    /// The declared resources, configuration schemas, and source files a
-    /// manifest names are package-relative, so this is what resolves them.
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
@@ -202,22 +151,14 @@ impl DiscoveredPackage {
         &self.manifest
     }
 
-    /// Returns the name of the directory it was installed under.
-    ///
-    /// The name alone, never the path: a refusal about this package is text a
-    /// player reads, and `SPEC.md` §9.1 requires reports to redact
-    /// unnecessarily identifying filesystem paths.
+    /// Returns the installed directory name, without its identifying parent path.
     #[must_use]
     pub fn directory(&self) -> &str {
         &self.directory
     }
 }
 
-/// Why an instance's installed packages were refused.
-///
-/// Every variant names a directory rather than a path, for the reason
-/// [`ravel_package::IntegrityError`] names a file rather than one: the
-/// directory an instance lives in says where a player keeps their game.
+/// An installed-package refusal, naming directories rather than identifying paths.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiscoveryRefused {
     /// A directory or a manifest exists and could not be read.
@@ -332,22 +273,14 @@ impl std::error::Error for DiscoveryRefused {
 }
 
 impl StructuredFailure for DiscoveryRefused {
-    /// No variant is one of `SPEC.md` §9.2's dependency-graph outcomes. Nothing
-    /// here has reached a graph: the set the graph would be built from is what
-    /// was refused.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
 
-    /// Discovery is the state before validation, and every refusal here is a
-    /// package that never left it.
     fn lifecycle_state(&self) -> LifecycleState {
         LifecycleState::Discovered
     }
 
-    /// [`Self::Unreadable`] quotes the operating system and the manifest and
-    /// integrity refusals quote whatever `ravel-package` says about a document
-    /// an author wrote. The rest are sentences written here.
     fn quotes_untrusted_text(&self) -> bool {
         match self {
             Self::Unreadable { .. } => true,
@@ -374,27 +307,20 @@ mod tests {
     use ravel_resolve::resolve;
 
     use super::{Discovered, DiscoveryRefused, MANIFEST_FILE, PACKAGES_DIRECTORY, discover};
-    use crate::admitted;
+    use crate::admission::admitted;
 
     const SOURCE_BYTES: &[u8] = b"pub fn load() {}\n";
     const RECORD_BYTES: &[u8] = br#"{"origin":"example"}"#;
 
-    /// The digests of the two fixtures above, recorded rather than computed.
-    ///
-    /// A test that hashes its own fixture with the same library the code under
-    /// test hashes it with agrees with that library by construction. These came
-    /// from `sha256sum` and are the outside answer.
+    // Fixture digests computed independently with `sha256sum`.
     const SOURCE_DIGEST: &str = "d43fb0c057531a1578825aa660a5cc1b415a10ae8eb1b42994ca7ceda27d6706";
     const RECORD_DIGEST: &str = "5cf5e6735c38fa43af69f9fe2210ca13d9fd75cc98cd9650ee969c0498a28ab0";
-    /// `pub fn other() {}\n`, which no fixture below declares.
     const OTHER_DIGEST: &str = "a126bbfe4662a8d151f8e62afbb278a4a273e01fe0a88fc1545b25d017f19fb3";
 
-    /// The game this fixture's manifests declare, and nothing a real game names.
     const GAME: &str = "test-version";
 
     static NEXT: AtomicU32 = AtomicU32::new(0);
 
-    /// A game directory of its own, so tests may run in any order at once.
     fn instance(label: &str) -> PathBuf {
         let unique = NEXT.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
@@ -439,8 +365,6 @@ mod tests {
         )
     }
 
-    /// Installs a package into an instance the way a player would: a directory
-    /// holding a manifest, the source it declares, and its provenance record.
     fn install(instance: &Path, directory: &str, id: &str, sides: &[&str]) -> PathBuf {
         install_document(
             instance,
@@ -466,7 +390,6 @@ mod tests {
             .collect()
     }
 
-    /// The whole point: a package nothing was compiled from becomes an entry.
     #[test]
     fn a_package_installed_in_an_instance_reaches_the_lifecycle_entry_shape() {
         let instance = instance("admitted");
@@ -502,8 +425,6 @@ mod tests {
         fs::remove_dir_all(&instance).expect("cleanup");
     }
 
-    /// Two packages, so the order the answer comes back in is a property of the
-    /// set and not of the directory names it happened to be installed under.
     #[test]
     fn discovery_answers_in_mod_id_order_whatever_the_directories_are_called() {
         let instance = instance("order");
@@ -536,9 +457,6 @@ mod tests {
     #[test]
     fn a_manifest_the_schema_refuses_refuses_the_instance() {
         let instance = instance("schema");
-        // A field the schema does not declare. `deny_unknown_fields` is what
-        // makes a typo a rejection rather than a dropped declaration, and this
-        // is that rule reached through a package on disk.
         install_document(
             &instance,
             "example",
@@ -559,7 +477,6 @@ mod tests {
     #[test]
     fn a_package_whose_source_is_not_what_it_declares_refuses_the_instance() {
         let instance = instance("integrity");
-        // The manifest records a digest for source this package does not carry.
         install_document(
             &instance,
             "example",

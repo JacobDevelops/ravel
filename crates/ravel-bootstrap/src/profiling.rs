@@ -1,35 +1,4 @@
-//! The opt-in profiling switch and the report crossing.
-//!
-//! `ROADMAP.md`'s M3-W6 row asks for collectors and a profiling UI or report,
-//! for per-mod attribution whose accuracy is explicit, and for unsupported
-//! metrics to be explicit too. The collectors and both statements live in
-//! `ravel-observability`; this module is the two places they touch the JVM.
-//!
-//! # The switch crosses once, at premain
-//!
-//! Profiling is off unless a launch asks for it, and the asking is
-//! `-Dravel.profiling=true` — the shape `-Dravel.report.loader=true` already
-//! set for the measurement switch `evidence/m3/class-loader-identity.json` was
-//! taken under. Java reads the property because Java is where a system property
-//! is, and hands the answer across once before any mod exists. Java calls Rust,
-//! without a reverse call into the JVM, so this is the direction the switch travels.
-//!
-//! Reading it once is what makes the off path cheap. The collectors hold a
-//! plain flag rather than an atomic, because nothing toggles it while the game
-//! runs; `evidence/m3/profiling-overhead.json` measures what that costs a tick
-//! and is the budget it is held to.
-//!
-//! # The report crosses like every other screen
-//!
-//! Every screen Ravel owns is drawn in Java, never in Rust. Like M3-W5's mod
-//! list, this report uses the settings-screen mechanism: one batched read on the framing in
-//! [`crate::wire`], carrying numbers and the sentences that qualify them, and
-//! `RavelProfilingScreen` decides what a player sees.
-//!
-//! The unsupported metrics cross with the rest. A screen that simply omitted
-//! them would show a player a shorter list and no reason, which is the silence
-//! the row exists to end — an absent metric and one that measured zero look
-//! identical.
+//! Launch-time profiling opt-in and reports encoded for the Java screen.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -45,12 +14,7 @@ use crate::wire::{VERSION, count, field, flag};
 /// The system property a launch turns the collectors on with.
 pub(crate) const SWITCH: &str = "-Dravel.profiling=true";
 
-/// Whether this launch asked for profiling.
-///
-/// A static rather than a field, because the answer arrives at premain and the
-/// runtime it configures is installed much later. Relaxed ordering is enough:
-/// the write happens on the premain thread before any game thread exists, and
-/// the JVM's own thread start is the barrier between them.
+// Premain sets this before game threads start, so relaxed ordering is sufficient.
 static REQUESTED: AtomicBool = AtomicBool::new(false);
 
 /// The installed runtime, or nothing before one is installed.
@@ -66,40 +30,22 @@ pub(crate) fn install(runtime: Arc<LoaderRuntime>) {
     *lock() = Some(runtime);
 }
 
-/// Takes the store, recovering it from a previous panic.
-///
-/// Recovered rather than refused for the reason `crate::mods` recovers one:
-/// nothing here mutates the runtime, so a poisoned lock cannot mean a
-/// half-built one, and refusing would take the report away at the moment
-/// something has gone wrong enough to want it.
+// The store holds complete runtimes, so poison recovery cannot expose partial state.
 fn lock() -> std::sync::MutexGuard<'static, Option<Arc<LoaderRuntime>>> {
     RUNTIME.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// The whole report, as one payload.
-///
-/// Returns nothing before a set is installed, which is a launch that has not
-/// got far enough to have mods to profile rather than a failure.
+/// Encodes the report, or returns nothing before runtime installation.
 fn document() -> Option<String> {
     document_of(lock().clone().as_deref())
 }
 
 /// The report a screen reads from one runtime, or nothing without one.
-///
-/// Separate from [`document`] so the absent case is a value a caller passes
-/// rather than the state of the process's own store. A test that had to empty
-/// that store to see the case would be asserting against every other test in
-/// the process, and the plain runner shares one.
 fn document_of(runtime: Option<&LoaderRuntime>) -> Option<String> {
     Some(render(&runtime?.profiling_report()))
 }
 
-/// Writes one report onto the wire.
-///
-/// The numbers and the sentences that qualify them travel together. Sending the
-/// numbers alone would hand a screen a column of nanoseconds with nothing
-/// saying that a mod is charged for host work it called into, which is the
-/// difference between a profiler and a scoreboard.
+/// Encodes measurements alongside their attribution and support qualifications.
 fn render(report: &ProfilingReport) -> String {
     let mut out = String::new();
     field(&mut out, VERSION);
@@ -117,10 +63,7 @@ fn render(report: &ProfilingReport) -> String {
     count(&mut out, report.mods().len());
     for entry in report.mods() {
         field(&mut out, entry.mod_id.as_str());
-        // Nanoseconds as a field rather than a count: a long session's total
-        // outgrows what a screen reads back as an `int`, and a field lets the
-        // screen decide what to do about that rather than losing the number
-        // here.
+        // Totals may exceed the Java reader's int-sized count type.
         field(&mut out, &entry.cost.inclusive_nanos.to_string());
         field(&mut out, &entry.cost.hook_calls().to_string());
         field(&mut out, &entry.cost.event_calls.to_string());
@@ -135,9 +78,6 @@ fn render(report: &ProfilingReport) -> String {
         field(&mut out, sentence);
     }
 
-    // Every metric, not only the unsupported ones. A screen that listed what is
-    // missing without what is present cannot tell a player which of the two a
-    // number they are looking at came from.
     count(&mut out, Metric::ALL.len());
     for metric in Metric::ALL {
         let support = metric.support();
@@ -150,34 +90,16 @@ fn render(report: &ProfilingReport) -> String {
     out
 }
 
-/// Whether a launch asked for the collectors, given the property it set.
-///
-/// [`None`] is a launch that set no property, which is almost every launch, and
-/// it is a distinct value rather than an empty string on purpose: the JVM hands
-/// a missing property across as `null`, and a `null` read as text is an error
-/// rather than a word this could compare.
+/// Only the exact property value "true" opts in; a missing property is off.
 fn requested_by(property: Option<&str>) -> bool {
     property == Some("true")
 }
 
-/// Records whether this launch asked for the collectors.
-///
-/// Takes the property's value rather than a boolean, because that is what
-/// `System.getProperty` returns and turning it into a decision on one side or
-/// the other is the same work. An absent property is an absent switch.
-///
-/// The absent case is the one that matters, and it is why the null is tested
-/// before the text is read rather than after. `premain` passes
-/// `System.getProperty("ravel.profiling")` straight across, so an ordinary
-/// launch — one that never asked for profiling — hands this `null`. Reading
-/// that as a string throws, the throw leaves `premain`, and the JVM treats a
-/// premain that threw as fatal: the client never starts. Getting this wrong
-/// does not switch profiling on by accident, it stops the game booting.
+/// Records the launch property, accepting null as profiling disabled.
 ///
 /// # Panics
 ///
-/// Does not panic. The guard around the body turns a panic into a thrown
-/// `RuntimeException` rather than an unwind into the JVM.
+/// Panics become Java `RuntimeException`s rather than unwinding into the JVM.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelEnableProfiling")]
 pub fn ravel_enable_profiling<'local>(
     mut env: EnvUnowned<'local>,
@@ -200,7 +122,7 @@ pub fn ravel_enable_profiling<'local>(
 ///
 /// # Panics
 ///
-/// Does not panic, for the same reason as [`ravel_enable_profiling`].
+/// Panics become Java `RuntimeException`s rather than unwinding into the JVM.
 #[jni::jni_mangle("dev.ravel.jvm.Hook", "ravelProfilingReport")]
 pub fn ravel_profiling_report<'local>(
     mut env: EnvUnowned<'local>,
@@ -230,14 +152,10 @@ mod tests {
 
     use super::{document_of, requested_by};
     use crate::runtime::LoaderRuntime;
+    use crate::wire::fields;
 
     #[test]
     fn a_launch_that_set_no_property_asked_for_nothing() {
-        // The case that aborts a launch when it is got wrong. `premain` hands
-        // `System.getProperty` across untouched, so an ordinary launch reaches
-        // the switch with nothing, and the switch has to answer rather than
-        // fail: a failure there leaves `premain` and the JVM never starts the
-        // client.
         assert!(!requested_by(None));
     }
 
@@ -253,33 +171,10 @@ mod tests {
         }
     }
 
-    /// Reads a payload back into its fields, the way the screen does.
-    fn fields(payload: &str) -> Vec<String> {
-        let units: Vec<u16> = payload.encode_utf16().collect();
-        let mut read = Vec::new();
-        let mut at = 0;
-        while at < units.len() {
-            let separator = at
-                + units[at..]
-                    .iter()
-                    .position(|unit| *unit == u16::from(b':'))
-                    .expect("every field states a length");
-            let length: usize = String::from_utf16(&units[at..separator])
-                .expect("a length is text")
-                .parse()
-                .expect("a length is a number");
-            let start = separator + 1;
-            read.push(String::from_utf16(&units[start..start + length]).expect("a field is text"));
-            at = start + length;
-        }
-        read
-    }
-
     fn mod_id(name: &str) -> ModId {
         name.parse().expect("a valid mod id")
     }
 
-    /// A mod that reacts to everything and costs nothing doing it.
     struct Quiet(ModId);
 
     impl HostMod for Quiet {
@@ -296,7 +191,6 @@ mod tests {
         }
     }
 
-    /// A hook target standing in for a reviewed one, keyed on the id alone.
     fn target(hook: &'static str) -> HookTarget {
         HookTarget::new(
             HookId::new(hook),
@@ -307,7 +201,6 @@ mod tests {
         )
     }
 
-    /// A driven runtime holding one mod, profiling as asked.
     fn running(profiler: Profiler) -> Arc<LoaderRuntime> {
         let entry = LifecycleEntry {
             mod_id: mod_id("example_mod"),
@@ -336,10 +229,6 @@ mod tests {
         ))
     }
 
-    /// The payload a screen reads from `runtime`, as [`document`] builds it.
-    ///
-    /// The runtime is the test's own rather than the process's, so no test here
-    /// installs anything and none of them can read another's report.
     fn report(runtime: &LoaderRuntime) -> String {
         document_of(Some(runtime)).expect("a runtime was handed over")
     }

@@ -3,13 +3,7 @@ use std::fmt;
 
 use ravel_core::{ModId, RelativePath};
 
-/// One resource a mod supplies, at the path the mod declared it under.
-///
-/// The pairing is the whole point. `schemas/package.schema.json` gives a
-/// package a flat list of relative paths and says nothing about who supplies
-/// what once several packages are installed together, so a set that only kept
-/// the paths could not answer the one question a resource system is asked:
-/// which mod's copy of `lang/en.json` is the one the game reads.
+/// A supplied resource path paired with its owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Resource {
     /// The mod that declared it.
@@ -24,18 +18,7 @@ impl fmt::Display for Resource {
     }
 }
 
-/// One path several mods declared, and who won it.
-///
-/// A resource is not a registry claim, and that is why it needed its own type.
-/// The registration barrier refuses a second claim on `example_mod:copper`,
-/// because two blocks cannot both be that block. Two mods supplying
-/// `lang/en.json` is not a conflict at all — it is how every resource system in
-/// modded Minecraft works, and the later one wins. Routing resources through the
-/// barrier would have turned an ordinary override into a load failure.
-///
-/// What is *not* ordinary is doing it silently. A player whose translation
-/// disappeared because a mod later in load order shipped its own is owed the
-/// name of the mod that took it, which is what this records.
+/// The winning supplier and shadowed owners of a contested resource path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Override {
     /// The path more than one mod declared.
@@ -58,18 +41,7 @@ impl fmt::Display for Override {
     }
 }
 
-/// Every resource an installed set declares, layered in load order.
-///
-/// `ROADMAP.md`'s M3-W2 row asks for resources alongside commands and events,
-/// and the property that separates them from both is that resources *layer*. A
-/// command is routed to one owner and an event is broadcast to everybody; a
-/// resource path is declared by everybody who wants it and read from exactly one
-/// of them.
-///
-/// Last-declared wins, and "last" is the resolved load order the caller supplies
-/// rather than anything this type decides. `SPEC.md` §14 requires that order to
-/// be deterministic for an identical package set, so the winner of a contested
-/// path is deterministic too, which is the ordering case M3-W2 has to show.
+/// Resources layered in caller-supplied load order; the last declaration wins.
 ///
 /// # Examples
 ///
@@ -98,10 +70,6 @@ pub struct ResourceSet {
 
 impl ResourceSet {
     /// Layers every mod's declared paths, in the order they are given.
-    ///
-    /// The argument is one pass over the caller's own data rather than a built
-    /// collection, because the caller holds manifests and this crate has no
-    /// business asking for them to be rearranged first.
     #[must_use]
     pub fn layered<'a, M, P>(declarations: M) -> Self
     where
@@ -122,16 +90,7 @@ impl ResourceSet {
         set
     }
 
-    /// Builds the override record from the declarations, in path order.
-    ///
-    /// This runs once, after every declaration is in, because a path is only
-    /// contested in hindsight: the first mod to declare it has taken nothing
-    /// from anybody.
-    ///
-    /// A mod that declares the same path twice shadows only itself, and a
-    /// report saying so would name a conflict nobody can act on, so the winner
-    /// is removed from its own shadow list and a path left with none is not an
-    /// override at all.
+    /// Builds path-ordered override records, excluding self-shadowing and repeated owners.
     fn contested(&self) -> Vec<Override> {
         let mut by_path: BTreeMap<&str, Vec<&Resource>> = BTreeMap::new();
         for resource in &self.declared {
@@ -173,9 +132,6 @@ impl ResourceSet {
     }
 
     /// Returns every path more than one mod declared, in path order.
-    ///
-    /// Path order rather than load order, because this is what a report lists
-    /// and a player scanning it is looking for a file name.
     #[must_use]
     pub fn overrides(&self) -> &[Override] {
         &self.overrides
@@ -237,7 +193,6 @@ mod tests {
 
         let taken = &set.overrides()[0];
         assert_eq!(taken.winner, third);
-        // In load order, so a report reads as the sequence that happened.
         assert_eq!(taken.shadowed, [first, second]);
         assert_eq!(taken.path, shared);
     }

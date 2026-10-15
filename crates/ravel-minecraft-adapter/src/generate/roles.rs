@@ -1,26 +1,4 @@
-//! Resolving one template role to the class a version means by it.
-//!
-//! A template names a role rather than a game class, because a class name is one
-//! version's spelling asserted over every other. Three tracked files bind roles:
-//! `stubs.toml` binds the classes the screen jar compiles against, `reflection.toml`
-//! binds the classes the agent jar resolves by name, and `hooks.toml` binds the
-//! methods it transforms.
-//!
-//! A role is looked for in all three and resolves only where they agree: a role
-//! two lists bind to different classes is refused with both entries named, never
-//! resolved by whichever list the caller happened to ask. The three key spaces
-//! are stylistically disjoint today, so nothing currently resolves in more than
-//! one; that is a property of the files as they stand and not one anything
-//! enforces, which is why the comparison is here rather than assumed away.
-//!
-//! Members are bound two ways, because there are two questions. `stubs.toml`
-//! binds a member role to a member of a class the stub tree carries, which is
-//! what a caller writing a compile-time reference asks. `reflection.toml` and
-//! `hooks.toml` declare a member by name and descriptor, which is what a caller
-//! writing a *declaration* the runtime then resolves asks — the stand-in game
-//! declares the member the agent jar looks up, so the two have to be the same
-//! string. Both are bound under the reviewed member name, and a member role two
-//! lists answer differently is refused for the reason a class role is.
+//! Reconciles class and member roles from stub seeds, reflection, and hook inventories.
 
 use std::collections::BTreeMap;
 
@@ -54,26 +32,16 @@ pub(super) struct Roles {
     /// The members the runtime lists declare, by the role and the member role.
     declared: BTreeMap<(String, String), Vec<Declared>>,
     /// The members the stub seeds bind, by the role that declares them.
-    ///
-    /// Kept apart from the runtime declarations above because the two are
-    /// resolved differently: a seed names a member of a stubbed class and the
-    /// stub tree decides which overload it meant, while a declaration carries
-    /// its own descriptor and needs no tree at all.
+    /// Seeded members need the stub tree to resolve overloads; declarations carry descriptors.
     seeded: BTreeMap<String, Vec<SeedMember>>,
 }
 
 impl Roles {
-    /// Reads a version's three admission lists as one role table.
-    ///
-    /// The bindings are collected rather than compared here, because a version
-    /// legitimately binds roles no template names and a comparison run over all
-    /// of them would refuse a version for a disagreement nothing reads.
+    /// Collects bindings, deferring agreement checks until a role is requested.
     ///
     /// # Errors
     ///
-    /// Returns an error when a declared member says both how it is looked up
-    /// and neither, because a declaration that cannot be read binds no member
-    /// role and going on would leave the role bound by whatever else names it.
+    /// Returns an error when a reflected member declares an invalid lookup.
     pub(super) fn new(
         seeds: &Seeds,
         surface: &Reflection,
@@ -110,9 +78,7 @@ impl Roles {
                     ))
                 })?;
                 match lookup {
-                    // A member declared by argument count has been given no
-                    // descriptor, and a declaration is one member or it is
-                    // nothing, so it binds no member role rather than a guess.
+                    // Argument counts do not identify a member declaration.
                     Lookup::Parameters(_) => {}
                     Lookup::Descriptor(descriptor) => {
                         declared
@@ -186,8 +152,7 @@ impl Roles {
 
     /// The members the stub seeds bind under one role.
     ///
-    /// `None` where the seeds bind no class to the role at all, which a caller
-    /// reports differently from a role whose class declares no such member.
+    /// Absence differs from a bound class with no matching member.
     pub(super) fn seeded_members(&self, role: &str) -> Option<&[SeedMember]> {
         self.seeded.get(role).map(Vec::as_slice)
     }
@@ -196,8 +161,7 @@ impl Roles {
     ///
     /// # Errors
     ///
-    /// Returns an error when two lists declare the member role differently,
-    /// because a declaration is one member and two of them are two.
+    /// Returns an error when lists disagree on a member role's declaration.
     pub(super) fn declared_member(
         &self,
         role: &str,

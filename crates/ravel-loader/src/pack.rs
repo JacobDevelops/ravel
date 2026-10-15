@@ -6,32 +6,15 @@ use std::path::{Path, PathBuf};
 use crate::resources::Supplied;
 
 /// Where a client scans for packs a player can enable.
-///
-/// The game's own folder source reads this directory, so a pack written here is
-/// one the player can see and turn on. Nothing else about it is Ravel's to
-/// decide: the name of the directory is the game's.
 pub const RESOURCE_PACKS: &str = "resourcepacks";
 
 /// Where a world's automatically enabled packs live.
-///
-/// A pack here is enabled by the world rather than by the player, which is why
-/// the data half goes to a world and the asset half goes to the instance.
 pub const WORLD_DATA_PACKS: &str = "datapacks";
 
 /// The one directory Ravel writes in either place.
 pub const PACK_DIRECTORY: &str = "ravel";
 
-/// The id the game gives the one directory Ravel writes.
-///
-/// The prefix is the game's own rule for a pack a folder source listed, and
-/// everything after it is [`PACK_DIRECTORY`]. Every side that names the pack — a
-/// player's enabled list, a world's selection, the create-world screen's — names
-/// it by this.
-///
-/// Borrowed rather than composed, because the value never changes and every
-/// caller only reads it: composing it handed a fresh `String` to each settings
-/// and record scan that asked. A test holds the spelling to [`PACK_DIRECTORY`],
-/// so the directory's name still has one owner.
+/// The folder-source identifier for [`PACK_DIRECTORY`].
 #[must_use]
 pub fn pack_id() -> &'static str {
     concat!("file/", "ravel")
@@ -68,53 +51,21 @@ impl Half {
     }
 }
 
-/// Writes one half of `supplied` as a pack under `root`, replacing what is there.
+/// Writes one half of `supplied` under `root` using version-specific `metadata`.
 ///
-/// `root` is the directory the pack itself occupies, so a caller decides whether
-/// it lands beside a player's other packs or inside a world. `metadata` is the
-/// `pack.mcmeta` this build's version reads, which the caller takes from the
-/// generated bindings; nothing here names a format or a version.
-///
-/// # A pack that has not changed is not written
-///
-/// The tree on disk is compared with the one this would write, and an identical
-/// one is left completely alone — not rewritten with the same bytes. A launch
-/// writes the asset half every time and a world writes its data half on every
-/// open, so most of those writes have nothing to say, and rewriting a file the
-/// game may be reading in order to put back what was already there is a risk
-/// taken for no result. It also means an unchanged pack keeps its timestamps,
-/// which is the only evidence a player has of when Ravel last changed it.
-///
-/// # The replacement is a rename
-///
-/// When the tree does differ, the new one is built beside the old under a
-/// `.pending` name and renamed over it. Deleting a pack and refilling it in place
-/// leaves the game reading a half-written tree if anything goes wrong in the
-/// middle, and the world half is written while the world's own pack source is
-/// already built. Staging is what `options.rs` does to a player's settings, for
-/// the same reason: neither file is Ravel's to leave truncated.
-///
-/// A leftover staging directory from an interrupted run is removed before every
-/// write rather than left to be found. The window it can exist in is between the
-/// staged tree being complete and the rename, which is two syscalls wide and is
-/// the price of not editing a live tree in place.
+/// Identical trees are left untouched. Changed trees are staged in a sibling directory,
+/// then replace the old pack.
 ///
 /// # Errors
 ///
-/// Returns a [`PackError`] for any filesystem refusal. Every one of them fails the
-/// launch: a pack half written is a pack the game reads, and a game that serves
-/// one mod's model and not another's is worse than a game that does not start.
+/// Returns a [`PackError`] for any filesystem refusal; the caller must refuse the launch.
 pub fn write_pack(
     root: &Path,
     supplied: &Supplied,
     half: Half,
     metadata: &str,
 ) -> Result<Written, PackError> {
-    // A set holds one entry per mod that offered a path, so a path several mods
-    // supply appears several times and is written once. The seen set is what
-    // keeps that a lookup: scanning the files already chosen, once per offer, is
-    // quadratic in the size of the pack, and a large modpack is where that stops
-    // being free.
+    // Declarations include overridden offers; write each path only once.
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     let mut wanted: Vec<(String, Vec<u8>)> =
         vec![(PACK_METADATA.to_owned(), metadata.as_bytes().to_vec())];
@@ -124,10 +75,7 @@ pub fn write_pack(
         if !path.as_str().starts_with(half.prefix()) || !seen.insert(path.as_str()) {
             continue;
         }
-        // The supplier's bytes rather than this resource's own. `declared` lists
-        // every mod that offered a path, and a contested path is written once
-        // from the mod that won it; asking the set means the file on disk is the
-        // one the override record names.
+        // Read the winning supplier's bytes, not this declaration's bytes.
         let Some(bytes) = supplied.bytes(path) else {
             continue;
         };
@@ -168,21 +116,14 @@ pub fn write_pack(
     Ok(written)
 }
 
-/// Where a pack is built before it takes the place of the one on disk.
-///
-/// A sibling rather than a child, because a directory inside the pack would be
-/// part of the pack it is replacing.
+// Stage beside the pack so staging files cannot become pack contents.
 fn staging(root: &Path) -> PathBuf {
     let mut name = root.file_name().unwrap_or_default().to_os_string();
     name.push(".pending");
     root.with_file_name(name)
 }
 
-/// Whether the tree at `root` is already exactly `wanted`.
-///
-/// Every path and every byte, in both directions: a pack holding one extra file
-/// is not the pack this would write, and neither is one whose model has changed.
-/// An unreadable tree answers false, which writes rather than guesses.
+// Extra files or unreadable content also require replacement.
 fn holds(root: &Path, wanted: &[(String, Vec<u8>)]) -> bool {
     let mut found = Vec::new();
     if !collect(root, root, &mut found) {
@@ -281,11 +222,7 @@ impl Written {
         &self.paths
     }
 
-    /// Whether the tree on disk is not the tree that was there before.
-    ///
-    /// A pack written where none was and a pack written over a different one
-    /// answer alike, because what reads this asks whether anything holding the
-    /// old contents has to read them again, and both say yes.
+    /// Whether a pack was created or its contents changed.
     #[must_use]
     pub const fn changed(&self) -> bool {
         self.changed
@@ -335,8 +272,6 @@ impl std::error::Error for PackError {
 
 #[cfg(test)]
 mod tests {
-
-    /// The id names the directory Ravel writes, under the game's own prefix.
     #[test]
     fn the_pack_id_is_the_directory_the_folder_source_would_have_listed() {
         assert_eq!(super::pack_id(), format!("file/{}", super::PACK_DIRECTORY));
@@ -353,7 +288,6 @@ mod tests {
 
     use super::{Half, PACK_DIRECTORY, write_pack};
 
-    /// The metadata a test writes, which is not this crate's to render.
     const METADATA: &str = "{\n  \"pack\": {}\n}\n";
 
     fn id(name: &str) -> ModId {
@@ -367,7 +301,6 @@ mod tests {
         at
     }
 
-    /// A mod supplying exactly the paths it is built with.
     struct Supplying {
         id: ModId,
         supplies: Vec<(String, String)>,
@@ -425,7 +358,6 @@ mod tests {
         open_resources(&machine, &hosts).expect("every declaration is its own")
     }
 
-    /// Every file in the pack beside the moment it was last written.
     fn timestamps(root: &std::path::Path) -> Vec<(String, std::time::SystemTime)> {
         tree(root)
             .into_iter()
@@ -439,7 +371,6 @@ mod tests {
             .collect()
     }
 
-    /// Every file in a directory, relative to it, sorted.
     fn tree(root: &std::path::Path) -> Vec<String> {
         fn walk(at: &std::path::Path, root: &std::path::Path, into: &mut Vec<String>) {
             let entries = std::fs::read_dir(at).expect("a readable directory");
@@ -463,12 +394,6 @@ mod tests {
         found
     }
 
-    /// The gate property: what lands on disk is the list this test states itself.
-    ///
-    /// The expected tree is written out here rather than derived from the set, so
-    /// a writer that dropped a file or invented one fails rather than agreeing
-    /// with itself. The data half is in the set and is deliberately absent from
-    /// the assets pack.
     #[test]
     fn the_written_pack_is_the_asset_half_of_the_set_and_nothing_else() {
         let root = directory("assets").join(PACK_DIRECTORY);
@@ -504,7 +429,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
     }
 
-    /// A contested path is written once, from the mod the set says supplies it.
     #[test]
     fn a_contested_path_is_written_from_the_mod_that_supplies_it() {
         let root = directory("contested").join(PACK_DIRECTORY);
@@ -517,9 +441,6 @@ mod tests {
         let written = write_pack(&root, &set, Half::Assets, METADATA).expect("the pack writes");
 
         assert_eq!(tree(&root), [shared, "pack.mcmeta"]);
-        // A path two mods offered is one file and is reported once. The set holds
-        // an entry per offer, so a writer that did not collapse them would report
-        // the path twice and write it twice.
         assert_eq!(written.paths(), tree(&root));
         assert_eq!(
             std::fs::read_to_string(root.join(shared)).expect("the file is readable"),
@@ -529,7 +450,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
     }
 
-    /// What the previous launch wrote is gone, not merged with what this one writes.
     #[test]
     fn a_second_write_leaves_nothing_the_set_no_longer_supplies() {
         let root = directory("replace").join(PACK_DIRECTORY);
@@ -546,11 +466,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
     }
 
-    /// The other half, and the halves do not mix.
-    ///
-    /// The list is written out here for the reason the asset one is: a writer that
-    /// took the whole set would put a mod's models in a world's data pack, and
-    /// every model in that set would still be a file the set supplies.
     #[test]
     fn the_data_half_holds_the_data_paths_and_none_of_the_assets() {
         let root = directory("data").join(PACK_DIRECTORY);
@@ -578,7 +493,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
     }
 
-    /// A set that supplies no assets still leaves a pack, so its id stays valid.
     #[test]
     fn a_set_supplying_no_assets_writes_a_pack_holding_only_its_metadata() {
         let root = directory("empty").join(PACK_DIRECTORY);
@@ -590,11 +504,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
     }
 
-    /// An unchanged set is not rewritten, which is what the timestamps show.
-    ///
-    /// The mtimes are the assertion rather than the bytes, because a rewrite that
-    /// put the same bytes back would satisfy any comparison of contents. What is
-    /// under test is that nothing was touched.
+    // Contents alone would not detect rewriting identical bytes; compare timestamps too.
     #[test]
     fn a_second_write_of_an_unchanged_set_touches_nothing() {
         let root = directory("unchanged").join(PACK_DIRECTORY);
@@ -630,8 +540,6 @@ mod tests {
             "no staging directory is left behind"
         );
 
-        // And a set that did change is written, so the skip is a comparison
-        // rather than a second write never happening at all.
         let changed = supplied(&[(
             "first_mod",
             &[
@@ -646,7 +554,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
     }
 
-    /// A staging directory left by an interrupted run is replaced, not merged.
     #[test]
     fn a_leftover_staging_directory_is_removed_before_the_pack_is_built() {
         let root = directory("leftover").join(PACK_DIRECTORY);
@@ -665,12 +572,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().expect("the pack sits in a directory"));
     }
 
-    /// A filesystem refusal is an error rather than a partial pack.
     #[test]
     fn a_pack_that_cannot_be_written_is_refused_and_names_the_path() {
         let at = directory("refused");
-        // A file where the pack's parent directory belongs. The pack cannot be
-        // created under it, and nothing here may pretend it was.
         let blocked = at.join("blocked");
         std::fs::write(&blocked, b"not a directory").expect("a writable file");
         let set = supplied(&[("first_mod", &[("assets/first_mod/lang/en_us.json", "{}")])]);

@@ -6,83 +6,28 @@ import java.util.List;
 {{import Minecraft}}
 {{import AbstractSliderButton}}
 {{import Button}}
-// The binary name is the type's name here. The pinned version reaches every
-// interactive widget through a nested type, and the stubs declare each one as a
-// top-level class carrying the binary name the JVM links on, so this is the same
-// class the game loads at runtime.
+// Generated stubs expose nested game types under their binary names.
 {{import Button$OnPress}}
 {{import EditBox}}
 {{import GuiEventListener}}
 {{import Screen}}
 {{import Component}}
 
-/**
- * Ravel's generated settings screen.
- *
- * <p>ADG-6 declares configuration in data and draws it in Java: a mod author
- * writes a declaration, `ravel-config` resolves it through the author's default,
- * the pack's override and the player's value, and this class turns the result
- * into widgets. Ravel never renders from Rust, so nothing here calls back the
- * other way and no drawing happens outside this class.
- *
- * <p>This class ships in {@code ravel-screen.jar}, beside the agent's own jar
- * rather than inside it: ADG-1 keeps the agent jar declaring no game type, and
- * this one declares several. {@code dev.ravel.jvm.Screens} appends the jar at
- * {@code premain} and {@link #open} is what first loads this class, which is why
- * definition is lazy — a {@code Screen} subclass cannot be defined without
- * loading {@code Screen}, and doing that at {@code premain} would drag the game's
- * screen stack in before the client bootstraps.
- *
- * <p>It declares no native method. ADG-1 gives Ravel one exported symbol surface
- * and it is {@code dev.ravel.jvm.Hook}; a screen with its own natives would be a
- * second one. Both crossings this screen makes are that class's:
- * {@code ravelSettingsDocument} once when it opens, and {@code ravelSaveSettings}
- * once when it closes. There are two batched crossings per settings session,
- * which is why the document is read into fields here rather than asked for
- * again per widget or per frame.
- *
- * <p><b>Every widget here is one the game can build without this class drawing
- * anything.</b> {@code AbstractButton} looks like the obvious base for the button
- * rows and it is not available: it declares
- * {@code protected abstract void extractContents(GuiGraphicsExtractor, int, int,
- * float)}, so subclassing it means implementing render-state extraction. The
- * inventory does declare {@code extractRenderState} — it is 26.1.2's per-frame
- * seam, and {@code screen.extract-render-state} is where Ravel observes the
- * game's own screens. What ADG-6 commits to is narrower and it is what this class
- * obeys: <i>Ravel never draws</i>. So the omission of that override is this
- * screen's own, and a screen that implemented it would be drawing whatever else
- * the architecture said. {@code AbstractSliderButton} is
- * subclassed instead, and only because the two methods the jar declares abstract
- * on it are {@code updateMessage} and {@code applyValue}, neither of which is an
- * extraction.
- */
 public final class RavelSettingsScreen extends {{Screen}} {
 
-    /** Where the first row sits, below the title. */
     private static final int TOP = 40;
 
-    /** The distance between one row and the next. */
     private static final int ROW = 24;
 
     private static final int WIDGET_WIDTH = 200;
     private static final int WIDGET_HEIGHT = 20;
 
-    /**
-     * The owner whose settings this screen shows.
-     *
-     * <p>One screen shows one mod's settings, because a setting's identity in
-     * `ravel-config` is an owner plus a key and a screen mixing owners would
-     * have no single thing to save back.
-     */
     private final String owner;
 
-    /** The rows read at open, in the order the declaration states them. */
     private final List<Row> rows = new ArrayList<>();
 
-    /** What the last save refused, kept so a player can be told. */
     private String refused = "";
 
-    /** The screen to return to on close, or {@code null} to leave that to the game. */
     private final {{Screen}} parent;
 
     private RavelSettingsScreen(String owner, {{Screen}} parent) {
@@ -92,51 +37,22 @@ public final class RavelSettingsScreen extends {{Screen}} {
         rows.addAll(read(Hook.ravelSettingsDocument(owner)));
     }
 
-    /**
-     * Builds the screen for one owner.
-     *
-     * <p>Called reflectively by {@code dev.ravel.jvm.Screens}, which cannot name
-     * this type: {@code Screens} lives in the agent jar and ADG-1 forbids that
-     * jar naming a game type, which this class's supertype is.
-     *
-     * @param owner the canonical mod id whose settings to show
-     * @return a screen the caller hands to the game
-     */
     public static {{Screen}} open(String owner) {
         return new RavelSettingsScreen(owner, null);
     }
 
-    /**
-     * Builds the screen for one owner, closing back to the screen it was opened from.
-     *
-     * @param owner the canonical mod id whose settings to show
-     * @param parent the screen to return to, as the {@code Object} the agent jar
-     *     can pass
-     * @return a screen the caller hands to the game
-     */
     public static {{Screen}} open(String owner, Object parent) {
         return new RavelSettingsScreen(owner, ({{Screen}}) parent);
     }
 
-    /** The mod whose settings this screen shows. */
     public String owner() {
         return owner;
     }
 
-    /** What the last save refused, empty when every edit landed. */
     public String refused() {
         return refused;
     }
 
-    /**
-     * Builds one widget per setting, from the document read at open.
-     *
-     * <p>A document this process has nothing for reads as {@code null}, which is
-     * a mod with nothing to configure rather than a failure: the screen draws its
-     * title and a done button and nothing else. A document that does not read is
-     * treated the same way, because a payload this screen did not understand is a
-     * Ravel bug and drawing half of one would hide it.
-     */
     @Override
     protected void {{Screen#init}}() {
         super.{{Screen#init}}();
@@ -160,7 +76,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
                         .{{Button$Builder#build}}());
     }
 
-    /** Reads a settings document into rows, or into nothing if it does not read. */
     private static List<Row> read(String document) {
         if (document == null) {
             return List.of();
@@ -184,16 +99,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
         return wire.finished() ? read : List.of();
     }
 
-    /**
-     * Hands back what the player changed, once, and keeps what was refused.
-     *
-     * <p>Only changed rows travel, which is what ADG-6 means by saving handing
-     * back the settings that changed. The answer names every value the owning mod
-     * refused and why, so a player is told rather than finding the old value the
-     * next time they open the screen. Closing returns to the screen this one was
-     * opened from when it was given one; the game's own close would put a
-     * player at the title, two screens from where they were.
-     */
     @Override
     public void {{Screen#onClose}}() {
         List<Row> changed = new ArrayList<>();
@@ -218,7 +123,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
         }
     }
 
-    /** Turns a save answer into one line a player can be shown. */
     private static String describe(String answer) {
         if (answer == null) {
             return "";
@@ -255,7 +159,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
         }
     }
 
-    /** One setting, and the widget standing for it. */
     private static final class Row {
 
         private final String key;
@@ -296,7 +199,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
             this.whole = "integer".equals(kind);
         }
 
-        /** Reads one row, or {@code null} if the payload does not carry one. */
         static Row read(Wire wire) {
             String key = wire.field();
             String label = wire.field();
@@ -349,14 +251,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
                     choices);
         }
 
-        /**
-         * Builds the widget for this row.
-         *
-         * <p>A row the player may not change is drawn as an ordinary row that
-         * cannot be edited rather than as a marked-out one. Whether a pack may
-         * fix a client-side setting is an open question, and a screen that drew
-         * that combination differently would answer it by implementation.
-         */
         private {{GuiEventListener}} build(RavelSettingsScreen screen, int y) {
             int x = screen.centre();
             if (!editable) {
@@ -384,15 +278,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
             return box;
         }
 
-        /**
-         * A button that steps through a fixed set of values.
-         *
-         * <p>A toggle and a closed choice are the same widget over different
-         * lists, so one button covers both. Nothing here is a checkbox or a cycle
-         * button because the pinned version reaches both of those through their
-         * own nested builders, and a second builder buys no behaviour this does
-         * not have.
-         */
         private {{Button}} cycle(int x, int y, List<String> values) {
             return {{Button}}.{{Button#builder}}({{Component}}.{{Component#literal}}(caption()), new {{Button$OnPress}}() {
                         @Override
@@ -408,7 +293,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
                     .{{Button$Builder#build}}();
         }
 
-        /** The label a widget carries, with the value and any warning on it. */
         private String caption() {
             String shown = label + ": " + value;
             if (restartRequired && changed()) {
@@ -417,12 +301,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
             return shown;
         }
 
-        /**
-         * Whether the player moved this row away from what it opened with.
-         *
-         * <p>A text field is read at the moment the question is asked rather than
-         * on every keystroke, because nothing observes it until the screen closes.
-         */
         private void capture() {
             if (box != null) {
                 value = box.{{EditBox#getValue}}();
@@ -436,12 +314,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
         }
     }
 
-    /**
-     * A slider over one bounded number.
-     *
-     * <p>This is the only widget the screen subclasses, and the class doc says
-     * why it is this one and not {@code AbstractButton}.
-     */
     private static final class Slider extends {{AbstractSliderButton}} {
 
         private final Row row;
@@ -457,7 +329,6 @@ public final class RavelSettingsScreen extends {{Screen}} {
             this.row = row;
         }
 
-        /** Where the row's current value sits between its bounds. */
         private static double fraction(Row row) {
             double span = row.maximum - row.minimum;
             if (span <= 0) {

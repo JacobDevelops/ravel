@@ -1,11 +1,5 @@
-//! Times what the profiling collectors cost when nobody asked for them.
-//!
-//! Every figure here is a *paired* difference: one sample times a batch of
-//! instrumented calls and the same batch of bare calls, and records the gap
-//! between them. Differencing two separate runs' percentiles would not be a
-//! percentile of anything, which `evidence/m2/loader-overhead.json` already
-//! records as the weakness of its residual stage. Pairing inside the sample
-//! makes the distribution the distribution of the overhead itself.
+//! Measures paired differences between instrumented and bare call batches.
+//! Percentiles describe sampled overhead, not differences between separate distributions.
 
 use std::hint::black_box;
 use std::time::Instant;
@@ -15,38 +9,19 @@ use ravel_host_api::{HostError, HostMod};
 use ravel_observability::{CallKind, Profiler};
 use ravel_spike_harness::{Percentiles, percentiles};
 
-/// Runs discarded before the first sample, so a measured run finds a warm
-/// allocator, a warm page cache and a warm branch predictor.
+/// Discarded warmup runs.
 const WARMUP_RUNS: usize = 500;
 
 /// Samples taken per metric.
 const MEASURED_RUNS: usize = 5_000;
 
-/// Calls per sample.
-///
-/// The quantity being measured is a branch that is not taken. Reading the
-/// monotonic clock costs more than that on its own, so a single-call sample
-/// would measure the clock; a thousand calls per sample puts the clock three
-/// orders of magnitude below the difference.
+/// Calls per sample to amortize clock overhead for the untaken profiling branch.
 const CALLS_PER_SAMPLE: usize = 1_000;
 
-/// Crossings a tick is charged with when the per-tick figure is formed.
-///
-/// This is an assumption and not a measurement. `ROADMAP.md` defers the real
-/// per-tick crossing count to its own work — `evidence/m2/loader-overhead.json`
-/// records the count as zero for M2 and says M3 is where the first non-zero one
-/// is taken — so the record states this number, states that it is assumed, and
-/// carries the break-even count as well, which depends on no assumption at all.
-///
-/// Ten thousand is chosen as a ceiling rather than a prediction: a pack-sized
-/// set of 256 mods would each have to be entered thirty-nine times in one tick
-/// to reach it.
+/// Assumed, not measured, crossings per tick when deriving the per-tick overhead.
 pub const ASSUMED_CROSSINGS_PER_TICK: u64 = 10_000;
 
-/// The mod a crossing enters.
-///
-/// Its body is the smallest thing that cannot be optimized away, because the
-/// quantity being measured is what wraps the call rather than the call.
+/// Minimal observable mod body to isolate the overhead of wrapping its call.
 struct Subject {
     id: ModId,
     entered: u64,
@@ -92,11 +67,7 @@ pub struct Overhead {
 }
 
 impl Overhead {
-    /// The per-tick total the normal-mode budget bounds.
-    ///
-    /// One tick boundary plus [`ASSUMED_CROSSINGS_PER_TICK`] crossings, which
-    /// is the shape the budget is written in: a limit on what a tick loses to
-    /// profiling being present, summed over every crossing inside it.
+    /// One tick boundary plus [`ASSUMED_CROSSINGS_PER_TICK`] crossings.
     #[must_use]
     pub fn off_per_tick(&self) -> f64 {
         #[expect(
@@ -135,8 +106,7 @@ pub fn run() -> Overhead {
     }
 }
 
-/// Times one crossing through the profiler against the same crossing without
-/// it.
+/// Times a profiled crossing against the same uninstrumented crossing.
 fn per_crossing(mut profiler: Profiler) -> Timing {
     let mut instrumented = Subject {
         id: "example_mod".parse().expect("a valid mod id"),
@@ -174,16 +144,8 @@ fn per_tick_boundary() -> Timing {
     )
 }
 
-/// Times `instrumented` against `control` in the same sample and reports the
-/// per-call gap.
-///
-/// The two are run in alternating order across samples so that neither is
-/// systematically the one that finds the caches cold.
-///
-/// A sample where the instrumented batch came out faster than its control is
-/// recorded as zero rather than as a negative time. That biases the result
-/// upward, which is the safe direction for a limit: the budget is charged for
-/// noise it did not cause rather than credited for it.
+/// Measures per-call gaps, alternating batch order to limit cache bias.
+/// Negative gaps clamp to zero, conservatively charging noise to the budget.
 fn paired(mut instrumented: impl FnMut(), mut control: impl FnMut()) -> Timing {
     for _ in 0..WARMUP_RUNS {
         instrumented();
@@ -232,8 +194,7 @@ mod tests {
 
     use super::{ASSUMED_CROSSINGS_PER_TICK, Overhead, Timing, batch, paired, per_tick_boundary};
 
-    /// A timing whose percentiles are all `value`, so arithmetic over it is
-    /// readable rather than a lookup.
+    /// Equal percentiles for readable budget arithmetic.
     fn flat(value: f64) -> Timing {
         Timing {
             samples: 1,
@@ -282,14 +243,11 @@ mod tests {
     fn the_break_even_count_is_what_is_left_of_the_budget_over_one_crossing() {
         let measured = overhead(2.0, 100.0);
 
-        // 500 ns of budget less the 100 ns boundary, at 2 ns a crossing.
         assert!((measured.break_even_crossings_per_tick(500.0) - 200.0).abs() < 0.001);
     }
 
     #[test]
     fn an_overhead_too_small_to_measure_puts_the_break_even_count_out_of_reach() {
-        // A crossing that costs nothing measurable never reaches the budget,
-        // and saying so is more honest than dividing by zero into a number.
         let measured = overhead(0.0, 1.0);
 
         assert!(measured.break_even_crossings_per_tick(500.0).is_infinite());
@@ -311,16 +269,11 @@ mod tests {
             entered,
             u32::try_from(super::CALLS_PER_SAMPLE).expect("a small constant")
         );
-        // A thousand increments take a nonzero but tiny time; the assertion is
-        // that the clock was read around them rather than how fast they were.
         assert!(elapsed < 1_000_000_000);
     }
 
     #[test]
     fn an_instrumented_body_no_slower_than_its_control_is_recorded_as_zero() {
-        // The pair is the same work both sides, so the gap is noise in either
-        // direction and the clamp is what keeps a negative time out of the
-        // record. The median of that is zero.
         let measured = paired(
             || {
                 let _ = std::hint::black_box(1_u64);
@@ -340,9 +293,6 @@ mod tests {
         let measured = per_tick_boundary();
 
         assert_eq!(measured.samples, super::MEASURED_RUNS);
-        // Not an assertion about how fast it is: this build is unoptimized and
-        // the record's figure comes from a release run. What is asserted is that
-        // the clamp holds, so no negative time can reach the record.
         assert!(measured.percentiles.median >= 0.0);
         assert!(measured.percentiles.p95 >= measured.percentiles.median);
         assert!(measured.percentiles.p99 >= measured.percentiles.p95);

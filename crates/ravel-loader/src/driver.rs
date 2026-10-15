@@ -3,7 +3,7 @@ use std::fmt;
 use ravel_core::{LifecycleState, ModId, Side};
 use ravel_host_api::{HostError, HostMod};
 
-use crate::{LifecycleEntry, LifecycleError, LifecycleMachine, executes_mod_code};
+use crate::lifecycle::{LifecycleEntry, LifecycleError, LifecycleMachine, executes_mod_code};
 
 const START_ORDER: [LifecycleState; 6] = [
     LifecycleState::Validated,
@@ -14,18 +14,11 @@ const START_ORDER: [LifecycleState; 6] = [
     LifecycleState::Running,
 ];
 
-/// Drives a statically composed mod set to `running` in its stated order.
-///
-/// Each entry travels with its ordinary compiled Rust value. This
-/// function does not discover or load code and therefore creates no second mod
-/// execution mechanism beside static source composition.
+/// Drives statically composed mods to `running` in their stated order.
 ///
 /// # Errors
 ///
-/// Returns [`DriveError::Identity`] when a constructed value disagrees with the
-/// entry paired with it, [`DriveError::Lifecycle`] when the lifecycle refuses a
-/// transition or registration, and [`DriveError::Host`] when mod code refuses a
-/// lifecycle step.
+/// Returns [`DriveError`] for mismatched identities, refused lifecycle operations, or host failures.
 pub fn drive(
     side: Side,
     mut composed: Vec<(LifecycleEntry, Box<dyn HostMod>)>,
@@ -134,7 +127,7 @@ mod tests {
     use ravel_host_api::{HostError, HostMod};
 
     use super::{DriveError, drive};
-    use crate::{LifecycleEntry, Requirement};
+    use crate::lifecycle::{LifecycleEntry, Requirement};
 
     struct Recording {
         id: ModId,

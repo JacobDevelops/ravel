@@ -6,35 +6,16 @@ use std::path::Path;
 use ravel_core::{FailureKind, StructuredFailure};
 use sha2::{Digest, Sha256};
 
+use crate::manifest::{PackageManifest, Provenance, SourceFile};
 use crate::values::{RelativePath, Sha256Digest};
-use crate::{PackageManifest, Provenance, SourceFile};
 
-/// How much of a file is hashed at a time.
-///
-/// A package may carry large source files, so each file is streamed rather than
-/// read into memory whole.
 const READ_BUFFER_BYTES: usize = 64 * 1024;
 
-/// Verifies one declared source file against the digest its manifest records.
-///
-/// `SPEC.md` §10 requires package integrity verification and
-/// `docs/architecture/safety-boundary.md` keeps that requirement in place for
-/// fully trusted mods: trust decides what a mod may do once it runs, not
-/// whether the bytes on disk are the bytes the author published. The check runs
-/// before anything is loaded, so a package that fails it never reaches
-/// [`ravel_core::LifecycleState::Validated`].
-///
-/// `root` is the package directory. The source path is package-relative and
-/// must resolve strictly beneath that directory.
+/// Verifies a declared source file's digest beneath the package root.
 ///
 /// # Errors
 ///
-/// Returns [`IntegrityError::Missing`] when the file is absent,
-/// [`IntegrityError::Unreadable`] when it cannot be read,
-/// [`IntegrityError::OutsidePackage`] when a symbolic link resolves outside the
-/// package, and [`IntegrityError::Mismatch`] when its contents hash to anything
-/// other than the recorded digest, which covers alteration, truncation, and
-/// extension alike.
+/// Returns an error for missing, unreadable, escaping, or digest-mismatched files.
 pub fn verify_source_file(root: &Path, source: &SourceFile) -> Result<(), IntegrityError> {
     let file = source.path.file_name();
     let canonical_root = canonical_root(root, file)?;
@@ -42,9 +23,6 @@ pub fn verify_source_file(root: &Path, source: &SourceFile) -> Result<(), Integr
 }
 
 /// Verifies the provenance record against the digest its manifest records.
-///
-/// `SPEC.md` §3.4 requires provenance metadata, which is only worth recording
-/// if it is checked the same way a source file is.
 ///
 /// # Errors
 ///
@@ -125,14 +103,7 @@ fn digest_file(path: &Path, file: &str) -> Result<Sha256Digest, IntegrityError> 
     Ok(Sha256Digest::from_bytes(digest))
 }
 
-/// A declared file is not the file the manifest describes.
-///
-/// Every variant names a file rather than a path. The failure is about a file
-/// inside a package, and the directory that package was installed into says
-/// where a player keeps their game, which `SPEC.md` §9.1 requires reports to
-/// redact. The `detail` an unreadable file carries comes from the operating
-/// system through `std::fs`, which reports the failing operation and never the
-/// path it was given.
+/// A declared file is missing, unreadable, outside the package, or has the wrong digest.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IntegrityError {
     /// The manifest declares a file the package does not contain.
@@ -216,17 +187,11 @@ impl fmt::Display for IntegrityError {
 impl std::error::Error for IntegrityError {}
 
 impl StructuredFailure for IntegrityError {
-    /// An integrity failure has no `SPEC.md` §9.2 kind.
-    ///
-    /// That list names the dependency-graph outcomes reported before world
-    /// access. A package whose bytes do not match its manifest fails earlier
-    /// than any of them and is reported as itself.
     fn failure_kind(&self) -> Option<FailureKind> {
         None
     }
 
-    /// [`Self::Unreadable`] quotes the operating system, which is text this
-    /// project did not write. The other variants are written here and name a file.
+    // Operating-system error details are untrusted text.
     fn quotes_untrusted_text(&self) -> bool {
         matches!(self, Self::Unreadable { .. })
     }
@@ -243,7 +208,8 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     use super::{IntegrityError, verify_package, verify_provenance, verify_source_file};
-    use crate::PackageManifest;
+    use crate::manifest::PackageManifest;
+    use crate::test_support::manifest_document;
     use crate::values::Sha256Digest;
 
     const SOURCE_BYTES: &[u8] = b"pub fn load() {}\n";
@@ -254,25 +220,6 @@ mod tests {
         let mut digest = [0_u8; 32];
         digest.copy_from_slice(&Sha256::digest(bytes));
         Sha256Digest::from_bytes(digest).to_string()
-    }
-
-    fn manifest_document(source_digest: &str, record_digest: &str) -> String {
-        format!(
-            r#"{{
-              "schemaVersion": 1,
-              "id": "example_mod",
-              "version": "1.4.0",
-              "compatibility": {{ "ravel": "*", "minecraft": ["26.0.0"] }},
-              "sides": ["client"],
-              "authors": [{{ "name": "Example" }}],
-              "license": "MIT",
-              "source": {{
-                "repository": "https://example.invalid/example_mod",
-                "files": [{{ "path": "src/lib.rs", "sha256": "{source_digest}" }}]
-              }},
-              "provenance": {{ "record": "provenance.json", "sha256": "{record_digest}" }}
-            }}"#
-        )
     }
 
     fn package(label: &str) -> (PathBuf, PackageManifest) {
@@ -286,6 +233,8 @@ mod tests {
         fs::write(root.join("provenance.json"), RECORD_BYTES).expect("record written");
 
         let manifest = PackageManifest::parse(&manifest_document(
+            "*",
+            r#"["26.0.0"]"#,
             &digest_of(SOURCE_BYTES),
             &digest_of(RECORD_BYTES),
         ))
@@ -362,6 +311,8 @@ mod tests {
         fs::write(source_path(&root), &bytes).expect("source rewritten");
 
         let manifest = PackageManifest::parse(&manifest_document(
+            "*",
+            r#"["26.0.0"]"#,
             &digest_of(&bytes),
             &digest_of(RECORD_BYTES),
         ))
@@ -417,9 +368,13 @@ mod tests {
         fs::write(external.join("lib.rs"), EXTERNAL_BYTES).expect("external source written");
         fs::remove_dir_all(root.join("src")).expect("package source directory removed");
         symlink(&external, root.join("src")).expect("directory symlink created");
-        let manifest =
-            PackageManifest::parse(&manifest_document(ABSENT_DIGEST, &digest_of(RECORD_BYTES)))
-                .expect("a valid manifest");
+        let manifest = PackageManifest::parse(&manifest_document(
+            "*",
+            r#"["26.0.0"]"#,
+            ABSENT_DIGEST,
+            &digest_of(RECORD_BYTES),
+        ))
+        .expect("a valid manifest");
 
         let error = verify_package(&root, &manifest).expect_err("the source escapes the package");
         assert_eq!(
@@ -444,9 +399,13 @@ mod tests {
         fs::write(&external_file, EXTERNAL_BYTES).expect("external source written");
         fs::remove_file(source_path(&root)).expect("package source removed");
         symlink(&external_file, source_path(&root)).expect("file symlink created");
-        let manifest =
-            PackageManifest::parse(&manifest_document(ABSENT_DIGEST, &digest_of(RECORD_BYTES)))
-                .expect("a valid manifest");
+        let manifest = PackageManifest::parse(&manifest_document(
+            "*",
+            r#"["26.0.0"]"#,
+            ABSENT_DIGEST,
+            &digest_of(RECORD_BYTES),
+        ))
+        .expect("a valid manifest");
 
         let error = verify_package(&root, &manifest).expect_err("the source escapes the package");
         assert_eq!(
@@ -511,9 +470,13 @@ mod tests {
     #[test]
     fn a_digest_recorded_for_other_bytes_is_a_mismatch() {
         let (root, _) = package("declared-only");
-        let manifest =
-            PackageManifest::parse(&manifest_document(ABSENT_DIGEST, &digest_of(RECORD_BYTES)))
-                .expect("a valid manifest");
+        let manifest = PackageManifest::parse(&manifest_document(
+            "*",
+            r#"["26.0.0"]"#,
+            ABSENT_DIGEST,
+            &digest_of(RECORD_BYTES),
+        ))
+        .expect("a valid manifest");
         let error = verify_package(&root, &manifest).expect_err("the digest was never correct");
         assert!(matches!(error, IntegrityError::Mismatch { .. }), "{error}");
         fs::remove_dir_all(&root).expect("cleanup");

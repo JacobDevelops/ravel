@@ -8,10 +8,6 @@ use ravel_minecraft::{HookId, HookTarget, VersionAdapter};
 pub mod generate;
 
 /// The target table generated from the pinned version's reviewed inventory.
-///
-/// The generator writes this into `OUT_DIR` rather than into the source tree,
-/// because its header names the Minecraft version it resolved against and a
-/// version string is only allowed to live in version data.
 pub mod pinned {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
@@ -72,11 +68,7 @@ mod tests {
             adapter.targets().len() >= 6,
             "the reviewed inventory carries at least six resolved hook targets"
         );
-        // The JVM writes an internal name with slashes and never with dots. A
-        // class in a package therefore carries a slash, and one the version
-        // links into the unnamed package carries neither — which is most of the
-        // game under an obfuscated version, so asserting a slash was asserting
-        // that this build selected an unobfuscated one.
+        // Internal names permit an unnamed package but never use dots.
         assert!(
             adapter
                 .targets()

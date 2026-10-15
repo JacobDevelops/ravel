@@ -1,35 +1,8 @@
-//! Which mod supplies a shared library, and at which version.
+//! Shared-library provider declarations and version resolution.
 //!
-//! [`crate::services`] orders named calls between two mods that are both
-//! installed. This is the other half of "two mods that know about each other":
-//! one mod supplies a library several others build on, and a launch has to agree
-//! on exactly one supplier of it. A mod declares what it provides, a mod that
-//! uses it declares the range it needs, and [`Provision::resolve`] either names
-//! the one provider or refuses the set — naming the library and the mods on both
-//! sides.
-//!
-//! # This is not jar-in-jar, and it does not need to be
-//!
-//! A mod is distributed as source the player's machine compiles. A library two
-//! mods both build on is therefore
-//! an ordinary Cargo dependency, resolved once for the build: there is no second
-//! copy to load, no shading, and nothing here bundles, fetches, or unpacks
-//! anything. **This module ships no loading mechanism and no library.**
-//!
-//! What Cargo cannot see is the mod *set*. That two installed mods each claim to
-//! be the one supplying `shared_maths` to the others, or that one of them needs
-//! a major version its supplier does not offer, is a fact about a launch rather
-//! than about any one package's manifest — and it is the fact this module
-//! decides.
-//!
-//! # What this does not give a mod
-//!
-//! **Nothing reads a declaration in a running game.** No launch path builds a
-//! [`Provision`] from the packages it composed, exactly as none carries a packet;
-//! `docs/guide/limits.md` says so in the same terms. What ships is the
-//! declaration, the resolution, and the four refusals, all decidable without a
-//! game — so a mod that declares what it provides today is stating the version
-//! it will be held to.
+//! [`Provision::resolve`] selects one supplier per library or refuses the set.
+//! Libraries remain ordinary Cargo dependencies: this module loads nothing,
+//! and production launches do not yet consume these declarations.
 //!
 //! # Examples
 //!

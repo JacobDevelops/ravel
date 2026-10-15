@@ -1,22 +1,5 @@
 {{package}}
 
-/**
- * The chat text the reviewed inventory pins call targets on.
- *
- * <p>It carries every member this version's hook table declares on this class,
- * under the names and descriptors that version links, with invented bodies. A
- * version that pins one more than this carries replaces the whole file, because
- * a template has no way to render a member only some versions bind.
- *
- * <p>Leaving one out is not a smaller stand-in but an untested hook: the
- * settings section counts the methods the transformer rewrote against the
- * generated table, so a missing member is a target nothing drives and the count
- * is what says so.
- *
- * <p>The delegating overload is what makes descriptor matching testable: same
- * name, different descriptor, so a transformer that matched on name alone would
- * rewrite the wrong one and the invocation count would give it away.
- */
 public final class {{chat.filter-text}} {
 
     private {{chat.filter-text}}() {

@@ -2,9 +2,6 @@
 
 {{import chat.filter-text}}
 
-// Calls each stubbed target once and then asks the agent what it rewrote. The
-// return values are printed because they are the check that the transformer
-// prepended a hook call and left the body alone.
 public final class Main {
     public static void main(String[] args) {
         System.out.println("filtered=" + {{chat.filter-text}}.{{chat.filter-text#filterText}}("a\nb", true));
@@ -13,9 +10,6 @@ public final class Main {
         System.out.println("transformed=" + dev.ravel.jvm.Agent.transformedClasses()
                 + " methods=" + dev.ravel.jvm.Agent.rewrittenMethods());
 
-        // These calls prove the generated Java declarations resolve to the JNI
-        // exports and that premain installed the real source-composed mod before
-        // any transformed game method ran.
         String settings = dev.ravel.jvm.Hook.ravelSettingsDocument("configuration");
         System.out.println("client=" + setting(settings, "client.enabled"));
         System.out.println("common=" + setting(settings, "common.profile"));

@@ -37,27 +37,15 @@ public final class Hook {
                     ? persistenceTargets()
             : Boolean.getBoolean("ravel.test.transform.content")
                     ? new HookTarget[] {
-                        // The seam content is registered at. The prologue runs
-                        // before the body that closes the registries.
                         linkedTarget("registryBuiltInFreeze"),
                     }
             : Boolean.getBoolean("ravel.test.transform.outward")
                     ? new HookTarget[] {
-                        // The seam a queued action is performed at. Carrying an
-                        // action needs no new target, which is the whole reason
-                        // this one was chosen.
                         linkedTarget("clientTick"),
                     }
             : Boolean.getBoolean("ravel.test.transform.members")
                     ? new HookTarget[] {
-                        // One method target in each of the four classes that
-                        // also carry a pinned field, with the exact internal
-                        // names, members and descriptors the inventory holds. A
-                        // field is not among them because a field is not a call
-                        // target: the generator emits no export and no prologue
-                        // for one, so what a field entry claims is that the
-                        // class the transformer rewrote still declares it under
-                        // the pinned descriptor.
+                        // Rewrite each field-bearing class without treating fields as call targets.
                         new HookTarget(
                                 "net/minecraft/util/SmoothDouble",
                                 "getNewDeltaValue",
@@ -152,20 +140,7 @@ public final class Hook {
     private Hook() {
     }
 
-    /**
-     * The four persistence seams, read out of the generated hook table.
-     *
-     * <p>{@code ravel.test.persistence.saveSeamMissing} keeps the open seam and
-     * drops the save seam, which is the one arrangement that makes
-     * {@code Persistence.saveSeamInstalled} answer false: the server class is
-     * present and loads, its transformation matches no method, and the
-     * installed-prologue marker stays empty, exercising its false branch.
-     *
-     * <p>The pack and staging seams are in both sets below, because the case the
-     * save seam is missing from is about the save marker and says nothing about
-     * either: dropping them there would make that case silently stop covering
-     * them.
-     */
+    // Keep pack and staging coverage when only the save seam is intentionally missing.
     private static HookTarget[] persistenceTargets() {
         HookTarget open = linkedTarget("worldOpenPersistence");
         HookTarget packRepository = linkedTarget("worldCreatePackRepository");
@@ -178,19 +153,7 @@ public final class Hook {
         };
     }
 
-    /**
-     * One entry of the generated hook table, as this version links it.
-     *
-     * <p>Every section that uses it runs against a stand-in game generated per
-     * version, so the class, the member and the prologue's own descriptor are
-     * this version's rather than the reviewed ones. This class stands in for the
-     * native library and not for the inventory, so the harness reads the whole
-     * entry out of the generated table and hands it in here rather than letting a
-     * stand-in spell one version's names.
-     *
-     * <p>The prologue is Ravel's own name on Ravel's own class, so it is the same
-     * word under every version and is what an entry is asked for by.
-     */
+    // Read version-specific names from the generated table by stable prologue id.
     private static HookTarget linkedTarget(String prologue) {
         String[] parts = seam(prologue).split(":");
         if (parts.length != ENTRY_FIELDS) {
@@ -209,10 +172,8 @@ public final class Hook {
                 Boolean.parseBoolean(parts[6]));
     }
 
-    /** How many fields the generated table writes for one entry. */
     private static final int ENTRY_FIELDS = 7;
 
-    /** The table entry this run named for one prologue. */
     private static String seam(String prologue) {
         String named = System.getProperty("ravel.test.target." + prologue);
         if (named == null) {
@@ -222,7 +183,6 @@ public final class Hook {
         return named;
     }
 
-    /** The binary name of the class one seam is declared on. */
     private static String linkedTargetClass(String prologue) {
         return seam(prologue).split(":")[0].replace('/', '.');
     }
@@ -233,9 +193,7 @@ public final class Hook {
     public static void ravelEnableProfiling(String value) {
     }
 
-    // Takes the side the agent named it by and ignores it: what these sections
-    // measure is when the class this forces is loaded, not which distribution
-    // loaded it. The side rule itself is driven against the real host.
+    // Force class loading during initialization; side selection is tested against the real host.
     public static void ravelInitialize(int side) {
         String className;
         if (Boolean.getBoolean("ravel.test.transform.hierarchy")) {
@@ -254,9 +212,7 @@ public final class Hook {
             className = "net.minecraft.util.StringUtil";
         }
         try {
-            // Through `Members`, which is where the agent jar turns a game name
-            // into a class. A stand-in that named a loader of its own would pass
-            // in the one case the launch it stands in for fails.
+            // Use the agent's game loader rather than the system loader.
             Members.game(className);
         } catch (ReflectiveOperationException absent) {
             throw new IllegalStateException(absent);
@@ -295,16 +251,7 @@ public final class Hook {
         invocations++;
     }
 
-    /**
-     * Answers the content crossing the way the property asks.
-     *
-     * <p>The property names the claims a set admitted, comma separated and
-     * spelled the way the barrier spells them, and this encodes them onto the
-     * wire the adapter reads. {@code null} is what the JVM receives when the
-     * native failed and {@code empty} is a launch with no set installed;
-     * {@code malformed} is a payload built under a contract this adapter never
-     * agreed to, which it must refuse whole rather than read half of.
-     */
+    /** Encodes admitted claims, including absent, failed and malformed crossing cases. */
     public static String ravelAdmittedContent() {
         invocations++;
         String answer = System.getProperty("ravel.test.content.admitted", "empty");
@@ -321,9 +268,7 @@ public final class Hook {
         StringBuilder payload = new StringBuilder(field("1")).append(field(
                 String.valueOf(claims.length)));
         for (String claim : claims) {
-            // kind:namespace:path followed by that kind's behaviour fields, which
-            // is the shape the real payload has and the reason a row's width is
-            // not fixed.
+            // kind:namespace:path, then a variable number of kind-specific fields.
             String[] parts = claim.split(":");
             payload.append(field(parts[0]))
                     .append(field(parts[1]))
@@ -340,16 +285,7 @@ public final class Hook {
         invocations++;
     }
 
-    /**
-     * Answers the outward crossing the way the property asks.
-     *
-     * <p>{@code empty} is a tick nobody asked for anything on and {@code null}
-     * is what the JVM receives when the native failed. Anything else is handed
-     * through verbatim, which is how the harness drives this side with the exact
-     * payload {@code crates/ravel-bootstrap/src/outward.rs} pins — the two ends
-     * of this crossing are two languages, so a helper that built the payload
-     * here would only prove Java agrees with itself.
-     */
+    // Pass externally authored wire payloads through verbatim.
     public static String ravelOutwardActions() {
         invocations++;
         String answer = System.getProperty("ravel.test.outward.actions", "empty");
@@ -401,17 +337,7 @@ public final class Hook {
         return false;
     }
 
-    /**
-     * Refuses the open seam whose argument count is not the one this version links.
-     *
-     * <p>Both overloads are declared because one source has to compile at every
-     * version, and that is what a rewritten call site of the wrong width would
-     * otherwise resolve against: the section would cross into Java, count the
-     * crossing and never notice it passed a vector the game does not have. The
-     * count is read from the target member's own descriptor rather than from the
-     * prologue's, because the prologue's is what a wrong entry gets wrong and the
-     * transformer pushes the target's parameters whatever the prologue says.
-     */
+    // Both version overloads compile here; reject a call using the wrong target arity.
     private static void requireOpenArity(int arity) {
         int declared = arity(seam("worldOpenPersistence").split(":")[2]);
         if (declared != arity) {
@@ -421,7 +347,6 @@ public final class Hook {
         }
     }
 
-    /** How many parameters one method descriptor declares. */
     private static int arity(String descriptor) {
         int count = 0;
         int at = descriptor.indexOf('(') + 1;
@@ -447,22 +372,17 @@ public final class Hook {
         invocations++;
     }
 
-    /** How many times the staging native was asked, which the guard bounds. */
     private static int stagedWrites;
 
     /** Nothing is staged: no mod supplied data, or the write was refused. */
     private static final int UNSTAGED = 0;
 
-    /** The staged pack holds what it already held. */
     private static final int STAGED_UNCHANGED = 1;
 
-    /** The staged pack's files are not the ones that were there. */
     private static final int STAGED_ANEW = 2;
 
-    /** What a pack this writes holds, which is not what a replaced one held. */
     private static final String STAGED_CONTENTS = "new";
 
-    /** The one file a staged pack holds, which is what a load of it reads. */
     public static final String PACK_FILE = "pack.txt";
 
     /** Where the pack was staged, or empty when staging never happened. */
@@ -476,29 +396,13 @@ public final class Hook {
         return stagedWrites;
     }
 
-    /**
-     * Answers the staging crossing and writes the pack where the screen loads.
-     *
-     * <p>One directory level shallower than the world crossing below, because the
-     * game copies this directory's contents into the world it makes. Writing a
-     * {@code datapacks} directory here would put the pack at
-     * {@code datapacks/datapacks/ravel} in the created world.
-     *
-     * <p>Which of the answers Rust would have given is a property, like the two
-     * world verdicts: what a run is about is what the caller does with an answer,
-     * not how the pack writer arrived at one. {@code undiscovered} is the
-     * exception that writes rather than answers — it puts the pack a level too
-     * deep, which is a pack on disk that no scan of this directory finds under
-     * the id the crossing names.
-     */
+    // The game copies this directory into datapacks; "undiscovered" deliberately nests too deep.
     public static int ravelWriteStagedDatapack(String directory) {
         invocations++;
         stagedWrites++;
         stagedDirectory = directory;
         String staging = System.getProperty("ravel.test.persistence.staging", "written");
         if (staging.equals("nothing")) {
-            // The launch whose mods supply no data half. Nothing is staged and
-            // the caller must not ask the screen to reload for it.
             return UNSTAGED;
         }
         java.nio.file.Path pack = staging.equals("undiscovered")
@@ -507,8 +411,7 @@ public final class Hook {
         try {
             java.nio.file.Files.createDirectories(pack);
             if (staging.equals("unchanged")) {
-                // The answer that says the tree on disk is the one the mods
-                // supply, so writing a file here would contradict it.
+                // Do not change the tree when reporting it unchanged.
                 return STAGED_UNCHANGED;
             }
             java.nio.file.Files.writeString(pack.resolve(PACK_FILE), STAGED_CONTENTS);
@@ -520,13 +423,7 @@ public final class Hook {
     }
 
 
-    /**
-     * Answers the id crossing, which Rust composes from the directory it writes.
-     *
-     * <p>Spelled here because this class stands in for the native library, which
-     * is the side that owns it. Nothing on the game's side of the seam and
-     * nothing in the agent jar spells it at all.
-     */
+    /** Supplies the pack id owned by the native side. */
     public static String ravelPackId() {
         invocations++;
         return "file/ravel";
@@ -535,22 +432,11 @@ public final class Hook {
     /** The world the pack crossing was given, or empty when it never happened. */
     private static String datapackWorld = "";
 
-    /** Where the pack was asked for, which says the crossing carried a directory. */
     public static String datapackWorld() {
         return datapackWorld;
     }
 
-    /**
-     * Answers the pack crossing, records the world it named, and writes the pack.
-     *
-     * <p>It writes a real directory because that is what the native side does,
-     * and because the filesystem is the only thing this class and the stand-in
-     * game share: this class is compiled without the game on its class path and
-     * the game is compiled without this one, exactly as the two sides are in a
-     * launch. The seam's whole claim is that the pack is on disk before the
-     * world's repository is built over that directory, and a listing taken there
-     * is what settles it.
-     */
+    // The game must find this real directory when it builds the world's pack repository.
     public static void ravelWriteWorldDatapack(String world) {
         invocations++;
         datapackWorld = world;
@@ -562,23 +448,15 @@ public final class Hook {
         }
     }
 
-    /** How many times the open crossing was reached, which a refusal before it never does. */
     public static long openCrossings() {
         return openCrossings;
     }
 
-    /** What the open crossing was handed, which says the stored bytes were read. */
     public static String openAggregate() {
         return openAggregate;
     }
 
-    /**
-     * Answers the open crossing the way the property asks.
-     *
-     * <p>The three answers are the three the real native can give: an empty
-     * string admits, a non-empty one refuses and carries the diagnostic, and
-     * null is what the JVM receives when the native failed.
-     */
+    /** Returns empty to admit, a diagnostic to refuse, or null for native failure. */
     public static String ravelOpenWorldPersistence(
             byte[] aggregate, String identity, boolean newWorld) {
         invocations++;

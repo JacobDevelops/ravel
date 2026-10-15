@@ -1,10 +1,5 @@
-//! Runs the builds and watches what they cost while they run.
-//!
-//! Three things are observed per build: wall-clock time on the monotonic clock,
-//! the resident set of the whole cargo process tree sampled while it compiles,
-//! and what the build left on disk. The memory figure is a sampled sum rather
-//! than a kernel high-water mark, because `getrusage` reports the largest
-//! single descendant and the question here is what a build needs at once.
+//! Measures build wall time, sampled process-tree RSS, and disk usage.
+//! RSS is summed across descendants rather than taken from a single-process high-water mark.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -17,10 +12,7 @@ use std::time::{Duration, Instant};
 
 use ravel_spike_harness as harness;
 
-/// How often the sampler walks the process tree.
-///
-/// Fast enough that a sub-second rebuild still yields samples, slow enough that
-/// reading `/proc` is not itself part of what is being measured.
+/// Process-tree sampling interval.
 const SAMPLE_INTERVAL: Duration = Duration::from_millis(25);
 
 /// What one `cargo build` cost.
@@ -40,8 +32,7 @@ pub struct BuildRun {
 ///
 /// # Errors
 ///
-/// Returns a message when the cache cannot be cleared or cargo refuses the
-/// generated workspace.
+/// Returns a message when cache removal or a cargo build fails.
 pub fn cold(workspace: &Path, jobs: Option<usize>) -> Result<BuildRun, String> {
     let target = workspace.join("target");
     if target.exists() {
@@ -51,8 +42,7 @@ pub fn cold(workspace: &Path, jobs: Option<usize>) -> Result<BuildRun, String> {
     build(workspace, jobs)
 }
 
-/// Changes one mod's source and rebuilds, which is what adding or updating a
-/// single mod costs against a warm cache.
+/// Changes one mod's source and rebuilds against a warm cache.
 ///
 /// # Errors
 ///
@@ -125,8 +115,7 @@ fn spawn_sampler(root_pid: u32, running: &Arc<AtomicBool>) -> thread::JoinHandle
         };
         while running.load(Ordering::Relaxed) {
             let (tree, largest) = sample(proc_root, root_pid);
-            // A sample that found nothing means the tree was between processes,
-            // not that it used no memory, so it is not counted.
+            // An empty sample may fall between processes; exclude it from sample counts.
             if tree > 0 {
                 observed.peak_tree = observed.peak_tree.max(tree);
                 observed.peak_process = observed.peak_process.max(largest);
@@ -176,11 +165,7 @@ fn children_by_parent(proc_root: &Path) -> BTreeMap<u32, Vec<u32>> {
     children
 }
 
-/// Extracts the parent pid from a `/proc/<pid>/stat` line.
-///
-/// The command name is the second field, is parenthesised, and may itself
-/// contain spaces and parentheses, so the fields after it are found from the
-/// last closing parenthesis rather than by splitting the whole line.
+/// Reads the parent pid after the last `)`, since process names may contain spaces and parentheses.
 fn parent_of(stat: &str) -> Option<u32> {
     let tail = stat.rsplit_once(')')?.1;
     tail.split_whitespace().nth(1)?.parse().ok()
@@ -203,10 +188,7 @@ pub fn median_ms(runs: &[BuildRun]) -> Option<u64> {
     Some(times[times.len() / 2])
 }
 
-/// The fastest of a set of runs, which is the closest estimate of the cost.
-///
-/// Build noise only ever adds time, so with few samples the minimum says more
-/// than the mean. Used where a figure has two runs behind it rather than three.
+/// Fastest wall-clock time, used for the two-run variant measurements.
 #[must_use]
 pub fn fastest_ms(runs: &[BuildRun]) -> Option<u64> {
     runs.iter().map(|run| run.milliseconds).min()

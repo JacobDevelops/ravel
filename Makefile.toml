@@ -160,7 +160,9 @@ set -euo pipefail
 export PATH="$HOME/.cargo/bin:$PATH"
 cd "${CARGO_MAKE_WORKING_DIRECTORY}"
 
-cargo llvm-cov nextest --workspace --all-features --fail-under-lines 80
+# Profiles from deleted sources otherwise survive and drag the figure down.
+cargo llvm-cov clean --workspace
+cargo llvm-cov nextest --workspace --all-features --ignore-filename-regex '/registry/' --fail-under-lines 80
 '''
 
 [tasks."ravel:audit"]

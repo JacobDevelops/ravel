@@ -1,9 +1,7 @@
 //! The panic guard between the JVM's stack frame and Ravel's own code.
 //!
-//! ADG-1 left two things about this frame unmeasured and assigned both to
-//! M2-W5: what a panic guard costs, and what the veto-by-throwing path looks
-//! like. This module is the answer to the second and the shape the first will be
-//! measured against.
+//! M2-W5 examines the cost of a panic guard and the veto-by-throwing path.
+//! This module implements the latter and supplies the frame being measured.
 //!
 //! A Rust panic that unwinds out of an `extern "system"` function aborts the
 //! process, so the plumbing between the exported frame and any code that can
@@ -19,8 +17,8 @@
 //! there is nothing between the exported frame and the return that can panic —
 //! one relaxed atomic add for the count and one relaxed load asking whether
 //! anything is listening — so the fast path skips the attach guard and the
-//! `catch_unwind` entirely. What that costs relative to ADG-1's unguarded
-//! 10.02 ns is M2-W8's measurement; the shape is fixed here.
+//! `catch_unwind` entirely. M2-W8 measures that cost against the unguarded
+//! 10.02 ns crossing; the shape is fixed here.
 
 use std::fmt;
 
@@ -119,11 +117,10 @@ pub(crate) fn enter<'local, 'handle, Collect>(
 /// Runs one hook invocation for a target whose prologue may refuse it.
 ///
 /// Same guard, same registry, same collection: the only difference is what a
-/// refusal becomes. ADG-1's Phase C amendment says an opted-in prologue answers
-/// a boolean and the injected call site returns from the host method when it is
-/// true, so a veto is reported as that verdict instead of being thrown. Throwing
-/// would unwind into game code Ravel does not author, which is the whole reason
-/// the amendment exists.
+/// refusal becomes. An opted-in prologue answers a boolean and the injected
+/// call site returns from the host method when it is true, so a veto is reported
+/// as that verdict instead of being thrown. Throwing would unwind into game
+/// code Ravel does not author.
 ///
 /// Everything else still throws. A collection error or a panic resolves through
 /// [`ThrowRuntimeExAndDefault`], whose default for a boolean is false, so the

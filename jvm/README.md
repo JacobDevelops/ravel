@@ -4,9 +4,8 @@ Three artefacts enter the game process — the premain agent jar, the native
 library, and the screen jar — and this directory holds the Java sources of the
 first and the third.
 
-[ADG-6](../docs/decisions/adg-6-configuration-ui.md) draws Ravel's screens in
-Java, and [ADG-1's amendment](../docs/decisions/adg-1-jvm-entry.md) settles that
-the screen is a separate artefact rather than something the agent jar grows: a
+Ravel's [screen mechanism](../docs/architecture/overview.md#mechanisms) draws
+screens in Java using a separate artefact: a
 screen names game types, and the agent jar deliberately compiles without the
 client jar. M3-W3 answered how it reaches a loader that resolves those types —
 the agent opens the screen jar under a `URLClassLoader` of its own whose parent
@@ -54,18 +53,17 @@ cargo build -p ravel-minecraft-adapter
 ./jvm/build/build-screen.sh
 ```
 
-Neither step needs the restricted client jar. The generator falls back to the
+Neither step needs the client jar. The generator falls back to the
 tracked `mappings.lock` when the jar is absent, and the transformer names no game
 type, so it compiles without the game on its class path.
 
-The jar is never tracked — `.jar` is a forbidden tracked extension and
-`ravel:verify-scaffold` enforces it. It is built deterministically (fixed entry
-timestamps, sorted entries) so its hash can be recorded as evidence.
+The jar is built deterministically (fixed entry timestamps, sorted entries) so
+its hash can be recorded as evidence.
 
 ## Launching with it
 
-ADG-5 decided Ravel reaches the game through two stock Prism instance settings
-and no launcher change:
+Ravel reaches the game through two stock Prism instance settings and no launcher
+change:
 
 ```text
 -javaagent:<path to ravel-agent.jar>
@@ -97,25 +95,23 @@ transformer is installed and says which property and which path. Removing these
 two arguments switches Ravel off without uninstalling anything.
 
 At shutdown the agent prints one line naming how many classes and methods it
-rewrote and how many hook invocations reached native code. ADG-5's launch proved
+rewrote and how many hook invocations reached native code. The initial launch proved
 the JVM accepted the `-javaagent` and the client ran with it attached; it could
 not prove the rewrite happened, because nothing reported it. That line is what closes it, and
 `evidence/m2/prism-launch.json` records the launch where it did.
 
 ### Why the second argument is a property and not a library path
 
-ADG-5 first described the second argument as `-Djava.library.path` appending the
-directory holding the library, and the first real launch showed it does not
-work. Prism 11.0.3 puts the instance's `JvmArgs` on the command line *before*
+The initial launch used `-Djava.library.path` to append the directory holding the
+library, but this does not work. Prism 11.0.3 puts the instance's `JvmArgs` on the command line *before*
 its own `-Djava.library.path=<instance>/natives`, and the last one wins, so
 appending a directory through the instance setting has no effect. The launcher
 also deletes that natives directory when a launch ends, so a library placed
 there lasts one launch.
 
 M2 and M3 launched by staging `libravel_bootstrap.so` into `<instance>/natives`
-immediately before starting, which ADG-5 recorded as a workaround and told
-nobody to build on. Its amendment chose the fix: the generated `Hook` calls
-`System.load` on a path a `-D` property supplies. `ravel.host` is that property.
+immediately before starting as a workaround. The fix is for the generated `Hook`
+to call `System.load` on a path a `-D` property supplies. `ravel.host` is that property.
 It is Ravel's own name in Ravel's own namespace, so nothing about the library
 depends on a directory the launcher owns, populates on launch, and deletes on
 exit.
@@ -445,11 +441,11 @@ answer is `EnvUnowned::with_env`, which wraps its closure in `catch_unwind` and
 returns an outcome that `resolve::<ThrowRuntimeExAndDefault>` turns into a thrown
 `RuntimeException` — for a caught panic and for an ordinary error alike.
 
-That is also the whole veto path. An observer that refuses becomes an `Err`,
-which becomes an exception on the game's own thread, which unwinds the method the
-agent rewrote. The injected sequence needs no branch, no discarded return value,
-and no invented contract for what a returned value would have meant while ADG-2
-is undecided.
+An observer error becomes an exception on the game's own thread, which unwinds
+the method the agent rewrote without an injected branch. Inventory-opted-in void
+targets also support a boolean refusal: when the hook returns `true`, the
+prologue returns early from the host method. Only void targets may opt in, so
+this path needs a branch but invents no return value.
 
 The guard is not paid on every crossing. `crate::guard::enter` does two things
 before it decides: one relaxed atomic add for the invocation count, and one
@@ -459,8 +455,8 @@ listening the call returns without ever attaching an environment or entering a
 `catch_unwind`. Everything that can panic — argument collection, the string copy,
 the observer itself — happens inside the guarded closure.
 
-What that costs is still unmeasured, and deliberately so: ADG-1's 10.02 ns is the
-unguarded shape, measuring the guarded one needs a running JVM, and the verify
+What that costs is still unmeasured, and deliberately so: the JVM-entry spike's
+10.02 ns is the unguarded shape, measuring the guarded one needs a running JVM, and the verify
 gate has none. M2-W8 owns the number. What M2-W5 owes is the shape, and the shape
 is: two atomics on the path that observes nothing, an attach guard plus a
 `catch_unwind` on the path that can reach mod code, and a thrown exception on the
@@ -468,9 +464,8 @@ path that refuses.
 
 ### Why `miniz_oxide` is the archive dependency
 
-ADG-3's spike read jar entries by shelling out to `unzip`, one process per class,
-and recorded that production picks a Rust archive dependency with its own
-`cargo deny` review. It is `miniz_oxide`, used for inflate only, with the zip
+The bindings spike read jar entries by shelling out to `unzip`, one process per
+class. Production uses `miniz_oxide` for inflate only, with the zip
 central directory read by about a hundred lines in
 `crates/ravel-minecraft-adapter/src/generate/jar.rs`.
 
@@ -488,7 +483,7 @@ genuinely hard — a correct DEFLATE decoder — and it is:
 
 `cargo deny check` passes on advisories, bans, licences, and sources with it and
 with `jni` 0.22.4 added. `jni` is pinned without the `invocation` feature: that
-feature exists for hosting a JVM, which ADG-1 rejected, and it is what would drag
+feature exists for hosting a JVM, which Ravel does not do, and it would drag
 `libloading` and a JVM locator into a production crate.
 
 The archive reader is deliberately narrow. It handles stored and deflated entries

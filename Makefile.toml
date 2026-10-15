@@ -32,9 +32,7 @@ require_public_fixtures() {
   fi
 }
 
-# Restricted local material is ignored rather than repository content, so
-# it is not held to the repository's formatting. Its README is tracked and
-# stays in.
+# Local fixtures are excluded from formatting; their tracked README stays in.
 mapfile -d "" toml_files < <(
   find . -type f -name "*.toml" \
     -not -path "./.jj/*" \
@@ -293,7 +291,7 @@ cargo run --locked -p ravel-xtask -- verify spikes
 
 # Compile every version's screens and stubs, including obfuscated unnamed-package types.
 # Packaging only the last selected version left other versions' Java uncompiled.
-# Stub compilation needs no restricted jars, but translating sources need their published mapping.
+# Stub compilation needs no game jars, but translating sources need their published mapping.
 # Persist skipped-version verdicts so the gate can reconcile actual coverage.
 [tasks."ravel:verify-java"]
 description = "Compile every tracked version's generated Java."

@@ -202,7 +202,7 @@ fn header(lock: &Lock, adapter: &Adapter, inventory: &Inventory) -> Result<(), G
 
 /// Resolves every hook entry against the tracked mapping lock.
 ///
-/// This is what a machine without the restricted client jar generates from, and
+/// This is what a machine without the client jar generates from, and
 /// it is why `cargo check --workspace` succeeds on one. The lock already carries
 /// every name the jar resolved to, and it is tracked, so a silent rename shows
 /// up in a diff rather than in a build that quietly disagreed with it.

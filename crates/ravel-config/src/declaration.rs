@@ -199,7 +199,7 @@ impl SettingSide {
 
     /// Returns whether a process running as `side` owns this setting.
     ///
-    /// ADG-6 makes this the rule for what a screen shows at all: a
+    /// Screen contents follow ownership: a
     /// `dedicated-server` setting has no client screen, so a client asking for
     /// its own settings never sees one.
     #[must_use]
@@ -215,8 +215,7 @@ impl SettingSide {
 
 /// Who has the last word on a setting when a pack states a value for it.
 ///
-/// ADG-6 resolves the repository's two readings of "pack override" in favour of
-/// this per-setting one, and the three values carry its semantics: `allowed`
+/// Pack overrides apply per setting, and the three values carry the policy: `allowed`
 /// lets the player change what the pack stated, `locked` does not where the pack
 /// stated anything, and `required` obliges the pack to state a value at all.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -237,13 +236,8 @@ impl PackOverride {
 
     /// Returns whether a pack that stated a value overrules the player's.
     ///
-    /// ADG-6 leaves one pairing open — whether a pack may lock a `client`
-    /// setting — and this is where an answer would go. It is not answered here:
-    /// the rule reads `packOverride` alone and never looks at `side`, so
-    /// refusing the pairing later is a new rule added elsewhere rather than a
-    /// change to this one, and permitting it is what the schema already does.
-    /// See "Open: may a pack lock a client-side setting?" in
-    /// `docs/decisions/adg-6-configuration-ui.md`.
+    /// This rule reads `packOverride` alone and never looks at `side`, so it
+    /// permits a pack to lock a client-side setting.
     #[must_use]
     pub const fn overrules_player(self) -> bool {
         matches!(self, Self::Locked | Self::Required)
@@ -262,7 +256,7 @@ impl PackOverride {
 /// Every field is the schema's, including the camel-case names and the refusal
 /// of anything else: a setting that parses here has to be one the schema
 /// validates. Nothing about presentation beyond `title` and `description` lives
-/// here, because ADG-6 puts the widgets in Java and this crate supplies values.
+/// here, because widgets live in Java and this crate supplies values.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Setting {

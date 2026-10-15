@@ -1,9 +1,8 @@
 # Architecture experiments
 
 M1 experiments live here and must use the common benchmark/evidence contract.
-No experiment is a production dependency before its architecture decision is
-accepted. Measurement that a later milestone owes belongs here too, for the same
-reason: it is an instrument, and instruments stay out of the production graph.
+Measurement that a later milestone owes belongs here too: these are instruments,
+and instruments stay out of the production graph.
 
 ## The experiments
 
@@ -24,8 +23,8 @@ package rather than a gate and runs as
 `cargo make ravel:measure-loader-overhead`; it writes an M2 record instead
 of a spike result, because the budget it sets is not a candidate comparison.
 `m3-pack-compile` runs as `cargo make ravel:measure-pack-compile` and
-writes an M3 record for the same reason: it prices one of ADG-2's two open
-mechanisms rather than comparing candidates.
+writes an M3 record for the same reason: it prices source compilation
+rather than comparing candidates.
 
 ## Common contract
 
@@ -51,8 +50,7 @@ These crates are measurement instruments, not production code:
   what they measure needs a JVM, a launcher, or a game. The shared harness is not
   excluded: it is ordinary logic and earns the floor like anything else;
 - they may contain the `unsafe` a candidate needs in order to be measured at all,
-  while every maintained crate keeps `#![forbid(unsafe_code)]`. Each ADR records
-  the unsafe surface a production implementation of its candidate would require.
+  while every maintained crate keeps `#![forbid(unsafe_code)]`.
 
 ## Pinned inputs
 

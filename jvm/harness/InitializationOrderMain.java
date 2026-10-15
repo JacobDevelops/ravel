@@ -8,7 +8,7 @@ public final class InitializationOrderMain {
         System.out.println("valid=" + StringUtil.isValidPlayerName("player"));
         System.out.println("transformed=" + dev.ravel.jvm.Agent.transformedClasses()
                 + " methods=" + dev.ravel.jvm.Agent.rewrittenMethods());
-        // ADG-7's installed-prologue marker. The first name is a target this run
+        // Installed-prologue marker. The first name is a target this run
         // rewrote and the second is one no generator ever emitted, so the pair
         // says the marker tracks what was actually installed rather than what was
         // merely asked for.

@@ -5,12 +5,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 /**
- * ADG-7's world persistence adapter, on the Java side of the two crossings.
+ * World persistence adapter, on the Java side of the two crossings.
  *
- * <p>Everything here is reflective, because this class ships in the always
- * present agent jar and ADG-1 forbids that jar <em>declaring</em> a game type:
- * the jar is compiled with no client jar on the class path, so a source declaring
- * one would not compile. Every game name it resolves at runtime — the classes
+ * <p>Everything here is reflective because this class ships in the always
+ * present agent jar, compiled with no client jar on the class path. A source
+ * declaring a game type would not compile. Every game name it resolves at runtime — the classes
  * through {@link GameNames}, the members through {@link GameMembers} — is
  * generated from the version's reviewed reflective surface, so this one source
  * is right about every tracked version. The one half that cannot be reflective —
@@ -29,20 +28,18 @@ import java.util.Arrays;
  * screen jar loses the settings UI and leaves a working game, so
  * {@link Screens#install} treats it as a diagnostic. An absent sibling loses all
  * persistence, and a world opened without it would run, accept a player's work,
- * and save none of it. So this path refuses the world load instead. That
- * asymmetry is deliberate and is the opposite of the policy next door.
+ * and save none of it. So this path refuses the world load instead.
  *
  * <p><b>Rust decides, Java cleans up and presents.</b> Nothing here inspects the
- * aggregate, measures it, or bounds its length: a length check on this side
- * would make Java an admission authority, and ADG-7 reserves every admission
- * decision for {@code ravel-save}. The bytes are opaque in both directions.
+ * aggregate, measures it, or bounds its length. Admission decisions belong to
+ * {@code ravel-save}; the bytes are opaque in both directions.
  */
 final class Persistence {
 
     /**
      * The generated hook the save seam is rewritten to call.
      *
-     * <p>Read as ADG-7's installed-prologue marker. The open crossing proves its
+     * <p>Read as the installed-prologue marker. The open crossing proves its
      * own seam by firing at all — a prologue that never ran cannot ask — but the
      * save seam has no such self-proof at open time, so it is asked for by name.
      */
@@ -124,8 +121,8 @@ final class Persistence {
      *
      * @param access the selected {@code LevelStorageAccess}, held opaquely
      * @param stem the selected {@code WorldStem}, held opaquely
-     * @param freshWorld the game's advisory new-world marker; ADG-7 says absence
-     *     rather than this marker is what initializes fresh state
+     * @param freshWorld the game's advisory new-world marker; absent saved data,
+     *     rather than this marker, initializes fresh state
      * @return whether to return from the host method without running its body
      * @throws IllegalStateException when the world is refused and no screen can
      *     say so, which is a refusal the player would otherwise never see
@@ -139,9 +136,8 @@ final class Persistence {
             refusal = "Ravel could not read this world's saved data ("
                     + cause.getClass().getName() + ")";
         } catch (Throwable unusable) {
-            // Deliberately everything. This runs inside the game's own call and
-            // ADG-7 says a refusal must not leak a raw exception; an escape here
-            // would also leave the world lock held by the access below.
+            // Catch everything so refusal closes the access and releases the
+            // world lock instead of leaking a raw exception from the game's call.
             refusal = "Ravel could not read this world's saved data ("
                     + unusable.getClass().getName() + ")";
         }
@@ -195,8 +191,7 @@ final class Persistence {
      * world open. Loading it runs the transformer for it, so the answer after
      * this line is about a transformation that has happened rather than one that
      * might. A class that is present but whose transformation matched zero
-     * methods answers false here, which is the hole ADG-7's rejected alternative
-     * leaves open.
+     * methods answers false here.
      */
     private static boolean saveSeamInstalled() {
         try {
@@ -216,7 +211,7 @@ final class Persistence {
      * {@code close} performs has nothing to write.
      *
      * @return the aggregate, or {@code null} when this world holds no Ravel
-     *     object — which ADG-7 initializes fresh state for, in any world
+     *     object and fresh state is initialized
      */
     private static byte[] read(Object access, Object stem, Class<?> data)
             throws ReflectiveOperationException {

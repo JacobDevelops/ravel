@@ -2,12 +2,11 @@
 
 Status: resolved against the pinned client jar and **inventoried**, except for
 one target named below. Every target here is real.
-[ADG-4](../decisions/adg-4-state-ownership.md) admits opaque handles and the
-generator carries one, so nothing here is blocked by a decision or by a missing
-shape.
+The [state-ownership mechanism](overview.md#mechanisms) uses opaque handles and
+the generator carries one, so nothing here is blocked by a missing shape.
 
-This file exists so that decision was made against what the game actually offers
-rather than against a guess, and so the resolution work is not repeated. It is a
+This file records what the game actually offers
+so the resolution work is not repeated. It is a
 record, not a contract: `hooks.toml` remains the reviewed inventory and
 `mappings.lock` remains what pins it.
 
@@ -23,8 +22,7 @@ that outlives its call is a compile error rather than a rule. The generated Java
 declares every such parameter as `java.lang.Object`, so `Hook.java` declares no
 game type and still compiles without the client jar. It does name game classes —
 its target table carries the internal name of each one as a string — and a string
-reference needs nothing on the class path, which is the distinction ADG-1's
-invariant draws. What is refused now is
+reference needs nothing on the class path. What is refused now is
 only a descriptor that is not one: an unterminated class name, an array of
 nothing, or a character that is not a descriptor at all.
 
@@ -32,7 +30,7 @@ nothing, or a character that is not a descriptor at all.
 carrying 28 handle parameters between them — covering all six capabilities
 below. Every entry was re-resolved against the class file's own member table for
 name, descriptor, kind and static flag before it was written. The last two of
-those entries are ADG-7's world persistence seams, tabled under
+those entries are the world persistence seams, tabled under
 [World save and load](#world-save-and-load--m3-w4); they arrived after this
 paragraph was first written, which is why the four counts in it are now gated.
 `verify_hook_inventory_document` in [`tools/ravel-xtask/src/lib.rs`](../../tools/ravel-xtask/src/lib.rs)
@@ -60,9 +58,9 @@ inventoried: both are `public abstract` on interfaces, so neither has a body to
 rewrite.
 
 Two things a handle still does not do, and neither is this generator's to fix.
-It cannot be read through, which is what ADG-4 kept forbidden: reading a field
-and keeping the result is a mirror and needs its own ADR. And it cannot be used
-to call back into the game, which is ADG-6's to settle.
+It cannot be read through: reading a field and keeping the result would mirror
+game state. And it cannot be used to call back into the game; actions are
+instructions performed by the Java adapter.
 
 ## How these were resolved
 
@@ -70,8 +68,8 @@ Parsed from class-file constant pools and member tables in the pinned jar named 
 [`adapter.toml`](../../minecraft/versions/26.1.2/adapter.toml), then cross-checked
 with `javap -p -s`. Two independent passes agreed on every entry. No name here
 comes from recall, and 26.1.2 ships unobfuscated with no mapping file, so the
-class files are the mapping — the same basis
-[ADG-3](../decisions/adg-3-bindings.md) records.
+class files are the mapping — the same basis the
+[binding mechanism](overview.md#mechanisms) uses.
 
 The generator's `Kind` supports `static-method`, `instance-method`,
 `static-field` and `instance-field`.
@@ -180,9 +178,9 @@ to be call interception. The overridable one is `protected void init()`.
 `createNormalMenuOptions` builds the main-menu button column and returns the next
 y, which is where a Mods button goes.
 
-Separately from ADG-4: rendering a screen *from Rust* needs Ravel to call **into**
-Minecraft, and no accepted ADR provides that. ADG-1 established Java-to-Rust only.
-That is ADG-6's to settle.
+Rendering a screen *from Rust* would need Ravel to call **into** Minecraft,
+whereas the crossing is Java-to-Rust only. Ravel-owned screens are declared in
+data and drawn in Java; see the [mechanisms overview](overview.md#mechanisms).
 
 ## World save and load — M3-W4
 
@@ -201,7 +199,7 @@ there is no read/write pair on `SavedData` to hook. `ravel-save` already models 
 deciding half of that — which versions exist and whether a world may be opened —
 and it needs none of these targets to do so.
 
-ADG-7 then selected two of these as the persistence adapter's own seams, and both
+The persistence adapter uses two of these as its own seams, and both
 are now reviewed inventory entries resolved against the pinned jar:
 
 | Member | Descriptor | Kind | Inventory id |
@@ -211,7 +209,7 @@ are now reviewed inventory entries resolved against the pinned jar:
 
 These are adapter crossings rather than observations. The entries above watch what
 the game does with saved data; these two carry Ravel's own aggregate into and out
-of it. ADG-7 records why each is the single common seam for its half —
+of it. Each is the single common seam for its half:
 `doWorldLoad` is where both the creation and existing-world paths converge before
 the body's first persistent mutation, and `saveAllChunks` is the one call both
 autosave and `stopServer` reach.
@@ -219,9 +217,9 @@ autosave and `stopServer` reach.
 ## What adding any of these costs
 
 Editing `hooks.toml` means updating `inputs.hookInventory`'s `sha256` and `bytes`
-in `adapter.toml`, then regenerating `mappings.lock`. That is the deliberate step
-ADG-3 designed in, and it works: an inventory edit without the hash update is
-refused, and a resolved set that differs from the lock is refused separately.
+in `adapter.toml`, then regenerating `mappings.lock`. An inventory edit without
+the hash update is refused, and a resolved set that differs from the lock is
+refused separately.
 
 Regenerating the lock no longer runs the ADG-3 spike. That spike is M1's record
 and has drifted from the adapter inputs it once read — it predates `stubSeeds`

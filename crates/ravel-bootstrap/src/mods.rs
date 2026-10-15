@@ -2,10 +2,9 @@
 //!
 //! `ROADMAP.md`'s M3-W5 row asks for a mod list and diagnostics UI over the
 //! model `ravel-loader` already holds, ordered by resolved load order, and for
-//! valid and invalid graphs to render deterministic, actionable messages. ADG-6
-//! settled the drawing half before this crate was asked to do any of it: Ravel
-//! declares in data and draws in Java, and M3-W5's mod list is named there as
-//! *the same mechanism* as the settings screen rather than a second one. So this
+//! valid and invalid graphs to render deterministic, actionable messages. Ravel
+//! declares in data and draws in Java, and M3-W5's mod list uses
+//! the same mechanism as the settings screen rather than a second one. So this
 //! is one read crossing carrying [`ModSurface`], on the framing the settings
 //! screen already uses, and no rendering at all.
 //!

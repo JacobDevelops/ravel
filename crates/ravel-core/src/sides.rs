@@ -127,8 +127,8 @@ impl TryFrom<BTreeSet<Side>> for SideSet {
 /// end, and a client-only event happens on no server side, so what such a packet
 /// last carried and what such an event last counted are values a server side has
 /// no reason to hold. Drawing is not among them, and not because of this type:
-/// ADG-6 settled that every screen Ravel owns is declared in data and drawn in
-/// Java, and no accepted decision gives a mod a rendering path of its own.
+/// every screen Ravel owns is declared in data and drawn in Java,
+/// and no mod rendering path is provided.
 ///
 /// The two halves are deliberately independent. The constructor is what makes
 /// the claim true and the accessor is what makes it checkable, and either one

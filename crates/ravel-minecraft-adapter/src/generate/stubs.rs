@@ -1,9 +1,8 @@
 //! Resolving the compile-time stubs the settings screen is built against.
 //!
-//! `jvm/build/build-screen.sh` cannot put the client jar on its class path: the
-//! jar is a restricted local fixture and most machines do not hold one, which is
-//! the property `build-agent.sh` already protects for the agent. So the screen
-//! compiles against stub declarations of the few game types it names.
+//! `jvm/build/build-screen.sh` builds without the locally held client jar, as
+//! `build-agent.sh` already does for the agent. So the screen compiles against
+//! stub declarations of the few game types it names.
 //!
 //! Those stubs are generated rather than written, and the reason is erasure. A
 //! hand-written stub transcribes a signature a person read, generics and all;
@@ -382,7 +381,7 @@ fn chain_constructors(stubs: &mut [Stub]) {
 
 /// Resolves every stub from the tracked lock.
 ///
-/// This is what a machine without the restricted client jar generates from, for
+/// This is what a machine without the client jar generates from, for
 /// the same reason `mappings.lock` exists: the lock already carries every
 /// descriptor the jar resolved to, and it is tracked, so a change shows up in a
 /// diff rather than in a build that quietly disagreed with it.

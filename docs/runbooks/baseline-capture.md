@@ -3,21 +3,20 @@
 This procedure captures one official-pack comparison and one Ravel-pack
 acceptance under `tests/performance/profiles/initial.toml` for Linux M9. M0
 admission uses the Linux launch proof in `docs/runbooks/prism-launch.md` and
-does not run this performance procedure. It does not authorize storing an
-official world, mod JAR, raw capture, launcher token, or identifying path in the
-tracked tree.
+does not run this performance procedure. Keep launcher tokens and identifying
+paths out of the tracked tree.
 
 ## Preconditions
 
 1. Use the native target machine and the pinned Prism-owned instance. Do not use
    a virtual machine or translate the process architecture.
-2. Put authorized worlds and raw collector output under an ignored
+2. Put worlds and raw collector output under an ignored
    `evidence/<milestone>/raw/` directory.
 3. Record sanitized hardware, operating-system, Java, Prism, game, fixture,
    launch-argument, display, power, and thermal-control inputs. Hash the hardware
    profile and launch input.
 4. Prepare a fresh world for each subject from the profile seed and the
-   locally authorized setup recipe. Hash the prepared world and recorded route
+   setup recipe. Hash the prepared world and recorded route
    without admitting either private artifact.
 5. Verify the common active-content counts and the subject-specific vanilla or
    complete-pack counts before warm-up. A failed count invalidates the
@@ -101,8 +100,8 @@ the official result hash and startup/world-load deltas.
 ## Admit evidence
 
 Hash every raw collector output and the sanitized result. Scan the result for
-credentials, launcher tokens, absolute paths, official content, private-world
-data, and identifying hardware details. Keep raw data outside the tracked tree.
+credentials, launcher tokens, absolute paths, private-world data, and identifying
+hardware details. Keep raw data outside the tracked tree.
 Admit only the schema-valid sanitized result hash and small decision-relevant
 summary through `docs/runbooks/evidence-admission.md`.
 

@@ -12,9 +12,9 @@ path.
 | `provenance.json` | The provenance record required by `SPEC.md` §3.4. |
 
 The runnable test body remains [`test-mods/noop`](../../../../../test-mods/noop),
-a plain Rust value implementing `ravel_host_api::HostMod`. ADG-2 selected source
-distribution; later compilation and binding work turns these portable sources
-into the value the pipeline drives.
+a plain Rust value implementing `ravel_host_api::HostMod`. Ravel uses source
+distribution; compilation and binding turn these portable sources into the value
+the pipeline drives.
 
 The digests are the SHA-256 of the files as committed. Editing a source or
 provenance file means recomputing its manifest digest, and

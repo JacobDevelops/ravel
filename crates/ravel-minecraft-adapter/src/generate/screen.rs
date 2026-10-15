@@ -1,6 +1,6 @@
 //! Rendering the Ravel-owned screen sources in the name space one version links.
 //!
-//! ADG-6 draws Ravel's own screens in Java, and a screen extends the game's
+//! Ravel draws its own screens in Java, and a screen extends the game's
 //! `Screen` and overrides its methods. A compile-time reference is a constant
 //! pool entry, so those names cannot be resolved at runtime the way the agent
 //! jar's adapters resolve theirs through `GameNames`: what javac writes is what
@@ -247,7 +247,7 @@ pub(super) fn render(
     // A class the mapping puts in the unnamed package cannot be named from a
     // package at all — the language has no syntax for it — so Ravel's own
     // sources go where their supertypes are. Under a version that keeps the game
-    // in packages they stay where ADG-6 put them, which is why an unobfuscated
+    // in packages they stay in Ravel's screen package, which is why an unobfuscated
     // version generates the sources it already had. A driver is launched by the
     // name a command line spells, so it has no package to lose under either.
     // Which of the two it is comes from the stand-in game rather than from this

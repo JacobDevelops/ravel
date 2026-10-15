@@ -2,7 +2,7 @@
 
 //! Configuration schemas, validation, and layered override contracts.
 //!
-//! ADG-6 declares configuration in data and draws the screen in Java, so this
+//! Configuration is declared in data and drawn in Java, so this
 //! crate owns the values and holds no widget and no Minecraft version detail. A
 //! setting resolves through three layers — the author's `default`, then the
 //! pack's override document, then the player's value — and the author's

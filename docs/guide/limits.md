@@ -107,7 +107,7 @@ audio has both ends and no launched game has run them:
 - `audio` — you declare the sounds your mod owns and the events that play them,
   and `AudioDeclaration::play` answers with a `PlayRequest` describing what would
   be played. **Both ends of the crossing now exist and nobody has heard the
-  sound.** `docs/decisions/carrying-an-action-outward.md`'s crossing is built:
+  sound.** The [outward crossing](../architecture/overview.md#mechanisms) is built:
   you hold what `play` answered and hand it over from `Mod::take_play_requests`,
   which the host asks after each delivery; Ravel encodes the action, and a Java
   adapter decodes it at the client tick and asks the game's own sound manager for
@@ -133,17 +133,15 @@ audio has both ends and no launched game has run them:
 - `render_stages` — you declare which published stages your mod contributes to
   and which mods it follows at them, and Ravel decides the order, refusing a cycle
   and a stage nothing publishes. **This is not a way to draw, and it is not going
-  to become one.** No drawing path exists for a mod,
-  [ADG-6](../decisions/adg-6-configuration-ui.md) settled that Ravel's own screens
+  to become one.** No drawing path exists for a mod. Ravel's own screens
   are declared in data and drawn in Java, and a contribution today says where your
   drawing would go rather than putting anything on the display. M8-W0 carried the
   other outward surfaces and deliberately did not carry this one: the outward
   crossing performs an instruction the Java adapter can name, and a mod's drawing
-  is not one instruction but a frame's worth of them, which is the second
-  generated boundary `docs/decisions/carrying-an-action-outward.md` rejected. So
-  this stays a declaration — the stage name, the order among contributors, and the
-  two refusals — and reopening it means reopening ADG-6 with its own measurement,
-  not adding a verb.
+  is not one instruction but a frame's worth of them, requiring a second
+  generated boundary. So this stays a declaration — the stage name, the order among
+  contributors, and the two refusals. A drawing path would need its own measurement,
+  not another verb.
 - `interception` — **partly carried, and the first of these four to be.** You
   declare the points you answer at with `interception_declaration` and answer
   with `intercept`; the host orders the set, refuses one it cannot ask, and asks

@@ -10,8 +10,8 @@
 //!
 //! # This is not jar-in-jar, and it does not need to be
 //!
-//! `docs/decisions/adg-2-mod-packaging-and-abi.md` distributes a mod as source
-//! the player's machine compiles. A library two mods both build on is therefore
+//! A mod is distributed as source the player's machine compiles. A library two
+//! mods both build on is therefore
 //! an ordinary Cargo dependency, resolved once for the build: there is no second
 //! copy to load, no shading, and nothing here bundles, fetches, or unpacks
 //! anything. **This module ships no loading mechanism and no library.**

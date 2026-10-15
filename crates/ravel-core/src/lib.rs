@@ -46,9 +46,8 @@ pub use states::LifecycleState;
 
 /// Names which tracked Minecraft version a build generates its bindings from.
 ///
-/// `docs/decisions/version-selection-is-a-build-time-choice.md` made the
-/// selection an input of a build rather than a pin in the tree, so more than one
-/// thing has to spell it: the adapter's build script reads it, and a build Ravel
+/// Version selection is an input of a build rather than a pin in the tree, so
+/// more than one thing has to spell it: the adapter's build script reads it, and a build Ravel
 /// itself launches has to set it rather than hope it was inherited. The name
 /// lives here because two crates that spelled it separately would be one rule
 /// written twice, and the one that drifted would silently build a version

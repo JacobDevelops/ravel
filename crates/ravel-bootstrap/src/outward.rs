@@ -1,8 +1,8 @@
 //! The crossing an action a mod asked for leaves Ravel by.
 //!
-//! `docs/decisions/carrying-an-action-outward.md` decided that an action crosses
-//! outward as data and the Java adapter makes the call. `content.rs` is that
-//! decision applied to one verb, with the verb's shape written into the payload:
+//! An action crosses outward as data and the Java adapter makes the call; see
+//! `docs/architecture/overview.md#mechanisms`. `content.rs` applies this to one
+//! verb, with the verb's shape written into the payload:
 //! a row is a kind and the behaviour fields that kind declares, so the reader
 //! must know every kind to read any row. This module is the same crossing with
 //! the verb left open, which is the whole of what it adds — an action states how
@@ -66,9 +66,8 @@ struct Action {
 /// Asks for a declared sound to be played on the client.
 ///
 /// The pitch is stated here rather than defaulted on the other side, because
-/// `PlayRequest` carries no pitch and something has to decide one: ADG-7's rule
-/// that Rust decides and Java performs holds for a value a mod did not give as
-/// much as for one it did.
+/// `PlayRequest` carries no pitch and something has to decide one. Rust decides
+/// and Java performs, including for a value a mod did not give.
 pub fn play(owner: &str, entry: &str) {
     queue(Action {
         verb: PLAY,

@@ -1,6 +1,6 @@
 //! The tracked inputs the generator is allowed to read.
 //!
-//! ADG-3 pins three files per version: the reviewed hook inventory, the adapter
+//! Each version pins three files: the reviewed hook inventory, the adapter
 //! inputs with their upstream hashes, and the generated mapping lock. Nothing
 //! else is read, and an input whose bytes no longer match what is tracked is
 //! refused before a single class is looked at.
@@ -19,9 +19,9 @@ const VERSIONS: &str = "minecraft/versions";
 
 /// Where the names the generator resolves against come from.
 ///
-/// ADG-3's amendment admits two, and nothing else: an unknown value is refused
-/// here rather than carried through as descriptive text, because this string
-/// decides whether a name is translated before an archive is asked for it.
+/// There are two sources, and nothing else: an unknown value is refused here
+/// rather than carried through as descriptive text, because this string decides
+/// whether a name is translated before an archive is asked for it.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum MappingSource {
@@ -90,10 +90,10 @@ pub(super) struct Hook {
     pub(super) capability: String,
     /// Whether this target's prologue may return from it before its body runs.
     ///
-    /// ADG-1's Phase C amendment bounds the power by making the opt-in generated
-    /// data rather than Java: the refusable set is exactly what this inventory
-    /// names, so widening it re-pins a hash and shows up in a diff. Absent means
-    /// false, which is what every observation hook is.
+    /// The opt-in is generated data rather than Java: the refusable set is
+    /// exactly what this inventory names, so widening it re-pins a hash and
+    /// shows up in a diff. Absent means false, which is what every observation
+    /// hook is.
     #[serde(default)]
     pub(super) refuses: bool,
     /// Where Ravel's own title-menu row goes, measured down from the column top.
@@ -383,11 +383,9 @@ pub(super) struct Inputs {
     pub(super) client_jar: Input,
     /// The version's published client mapping, where the source calls for one.
     ///
-    /// It is declared exactly as the jar is and never tracked, for the reasons
-    /// ADG-3's amendment records: it is upstream material this repository does
-    /// not own, it is derived from the build that produced the jar, and it is
-    /// larger than every tracked file of a version put together. What is tracked
-    /// is its hash.
+    /// It is declared exactly as the jar is and kept locally. It is derived
+    /// from the build that produced the jar; its hash is tracked instead of
+    /// its contents.
     #[serde(default)]
     pub(super) client_mappings: Option<Input>,
     /// The library jar carrying the serialization types the game's signatures
@@ -497,12 +495,11 @@ pub(super) struct PinnedVersion {
 
 /// Reads the tracked data of the version this build generates against.
 ///
-/// One build emits one version's artefacts, which is what
-/// `docs/decisions/version-selection-is-a-build-time-choice.md` decided: one
-/// hook class, one exported symbol set, one stub tree, chosen before the
-/// compiler runs rather than by the running game. Several directories under
-/// `minecraft/versions` may be tracked and reviewed side by side, and `selected`
-/// is which of them this build reads.
+/// One build emits one version's artefacts: one hook class, one exported symbol
+/// set, one stub tree, chosen before the compiler runs rather than by the
+/// running game. See `docs/architecture/overview.md#mechanisms`. Several
+/// directories under `minecraft/versions` may be tracked and reviewed side by
+/// side, and `selected` is which of them this build reads.
 ///
 /// A directory this build did not select is not read at all. Whether every
 /// tracked version is well formed is the scaffold contract's guarantee, which
@@ -930,7 +927,7 @@ fn check_roles(seeds: &Seeds) -> Result<(), GenerateError> {
         // Two seeds naming one class is refused on the jar path by `from_jar`,
         // and was refused nowhere else: `from_lock` looks a seed up by class and
         // is content to find the same stub twice. So the refusal existed only on
-        // a machine holding the restricted jar, which is the opposite of where a
+        // a machine holding the client jar, which is the opposite of where a
         // seed-list check belongs. It lives here now, where neither the jar nor
         // the lock decides whether it runs.
         if !classes.insert(seed.class.as_str()) {
@@ -1037,7 +1034,7 @@ fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> {
     // name, the runtime name becomes that field's string literal, and the
     // reviewed name becomes the comment beside it. A file is reviewed and pinned,
     // so this is not the door anything walks in through; it is the reason a
-    // typo cannot become a second declaration in a class ADG-1 gives one.
+    // typo cannot become a second declaration in a class with one name surface.
     for reflected in &surface.classes {
         for (what, value, legal) in [
             ("role", &reflected.name, role_name as fn(&str) -> bool),
@@ -1191,11 +1188,11 @@ pub(super) fn parse<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, Gene
 
 /// Refuses an input whose bytes no longer match the tracked hash.
 ///
-/// An input that pins neither a hash nor a length is refused too. ADG-3 says
-/// generation runs only from inputs whose hashes match what is tracked, and an
-/// input with nothing to check against does not meet that by having nothing to
-/// fail: it just makes the check vacuous, silently, for the one file nobody
-/// remembered to pin.
+/// An input that pins neither a hash nor a length is refused too. Generation
+/// runs only from inputs whose hashes match what is tracked, and an input with
+/// nothing to check against does not meet that by having nothing to fail: it
+/// just makes the check vacuous, silently, for the one file nobody remembered
+/// to pin.
 pub(super) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateError> {
     // Messages name inputs by file name, never by path: these strings end up in
     // recorded evidence, and a path would say whose machine produced it.
@@ -1457,7 +1454,7 @@ mod tests {
             );
             assert!(
                 pinned.inventory.hooks.len() >= 6,
-                "the reviewed inventory should carry every entry ADG-3 resolved"
+                "the reviewed inventory should carry at least six resolved hook targets"
             );
             assert!(
                 pinned

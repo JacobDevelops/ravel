@@ -3,7 +3,7 @@
 //! One opcode byte plus a little-endian `u64` in each direction. The protocol is
 //! deliberately unbatched: it measures what a synchronous per-call boundary
 //! costs, which is the question a hook has to answer. Batching would amortize it
-//! and is recorded in the ADR as the alternative it is.
+//! and is deliberately left out.
 
 #![forbid(unsafe_code)]
 

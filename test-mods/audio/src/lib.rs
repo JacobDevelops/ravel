@@ -10,7 +10,7 @@
 //!
 //! It also asks on the client tick and hands what it asked for to the host
 //! through [`ravel_sdk::Mod::take_play_requests`], which is the near end of
-//! `docs/decisions/carrying-an-action-outward.md`'s crossing. That makes this
+//! the outward instruction crossing in `docs/architecture/overview.md`. That makes this
 //! mod the producer a host drains rather than a mod that only declares.
 
 use ravel_sdk::audio::{AudioDeclaration, AudioError, PlayRequest};

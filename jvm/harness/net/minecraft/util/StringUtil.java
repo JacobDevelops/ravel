@@ -1,10 +1,8 @@
 package net.minecraft.util;
 
-// A stand-in for the game's own class, carrying the internal name, member names
-// and exact descriptors the reviewed hook inventory pins. It is not a Minecraft
-// asset: no game bytecode, resource or jar is copied here, and the same strings
-// are already tracked in `minecraft/versions/<version>/hooks.toml`. The bodies
-// are invented, and they only have to return something the harness can check.
+// A stand-in carrying the internal name, member names and exact descriptors
+// from `minecraft/versions/<version>/hooks.toml`. Invented bodies return values
+// the harness can check.
 public final class StringUtil {
     public static boolean isAllowedChatCharacter(int codepoint) {
         return codepoint >= 32;

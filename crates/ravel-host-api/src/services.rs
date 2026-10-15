@@ -257,7 +257,7 @@ impl std::error::Error for ServiceDeclarationError {}
 /// The arguments and the answer are open JSON rather than a Rust type both mods
 /// name. A consumer that named the provider's type would be depending on the
 /// provider's *build* rather than on the version range its manifest declares, and
-/// ADG-2 distributes a mod as source the player's machine compiles, so the two
+/// mods are distributed as source the player's machine compiles, so the two
 /// builds are not interchangeable. This is the same trade the packet contracts
 /// make: a shape agreed in data, checked at the boundary, and versioned by the
 /// provider.

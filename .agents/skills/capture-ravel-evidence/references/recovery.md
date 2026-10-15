@@ -169,6 +169,15 @@ expected coordinate, not merely a total chunk count.
 
 ## An attached agent cannot find its native library
 
+Current hosts load the absolute file named by `-Dravel.host` with `System.load`;
+they do not search `java.library.path`. Build the installed packages with
+`ravel-cli host build` and point the property at
+`<instance>/ravel/host/libravel_bootstrap.so`. A missing property or file is a
+startup refusal, not a reason to copy the host into the launcher's natives directory.
+
+The workaround below applies only when reproducing an older pinned launch whose
+generated hook used `System.loadLibrary`. Do not apply it to the current player path.
+
 Symptom: the client never opens a window, and the game process aborts with
 `FATAL ERROR in native method: processing of -javaagent failed`, caused by
 `java.lang.UnsatisfiedLinkError: no <library> in java.library.path: <instance>/natives`.
@@ -186,11 +195,12 @@ mkdir -p INSTANCE_DIR/natives
 cp target/release/libravel_bootstrap.so INSTANCE_DIR/natives/
 ```
 
-Keep the `-Djava.library.path` argument set anyway — it is what ADG-5 decided
-and it is inert rather than wrong — and record the override as a deviation
-wherever the launch is admitted. Both halves of this are the launcher's
-behaviour rather than a Ravel bug, and a launch record that does not mention it
-overstates how stock the arrangement is.
+Keep the `-Djava.library.path` argument set anyway; it is inert for this
+launcher override.
+
+Record the native-library override as a deviation wherever the launch is
+admitted. Both behaviours belong to the launcher rather than Ravel, and a launch
+record that does not mention them overstates how stock the arrangement is.
 
 ## The agent's shutdown line is nowhere on disk
 
@@ -316,7 +326,7 @@ The helper derives the official CDN path from the file ID, downloads over
 HTTPS, verifies the expected SHA-1 before installing, uses mode `0600`, and
 refuses to overwrite a mismatched or non-regular target. Prism's default
 manual-download watcher should then show the file as found. Do not bypass the
-hash check, use an unofficial mirror, or admit the downloaded JAR to the repo.
+hash check or use an unofficial mirror.
 
 If Prism requires an acknowledgement and global input automation is
 unavailable or would steal focus:

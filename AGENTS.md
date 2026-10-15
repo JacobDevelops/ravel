@@ -41,9 +41,9 @@ The individual tasks are `ravel:fmt`, `ravel:typecheck`, `ravel:lint`, `ravel:te
 Formatting and lint cover shell, TOML, and Markdown as well as Rust, so a docs-only change still has to
 pass `cargo make ravel:fmt`. Report the real output. Never state that a gate passed without running it.
 
-`ravel:verify` checks every milestone manifest for the things the repository decides: schema conformance,
-`revision.changeId` provenance, digest binding, and the recorded arithmetic. It deliberately does not ask
-whether a milestone is closed. Whether the independent review passed and whether any finding is blocking are
+`ravel:verify` checks every milestone manifest for schema conformance, digest binding,
+and the recorded arithmetic. It deliberately does not ask whether a milestone is closed.
+Whether the independent review passed and whether any finding is blocking are
 verdicts a manifest records rather than facts the gate derives, so a green `ravel:verify` says the evidence is
 intact and says nothing about closure. Closure is `cargo make ravel:verify-milestone <id>`, and an open
 milestone exits 1 there and is expected to. Ask that task which milestones are closed; do not trust a list
@@ -55,9 +55,8 @@ Judge the gate by its exit status, not an individual task's test summary.
 
 - Every maintained crate root carries `#![forbid(unsafe_code)]`, `ravel-bootstrap` included, and no
   exception exists. The table in
-  [`docs/architecture/safety-boundary.md`](docs/architecture/safety-boundary.md) is empty and adding a row
-  takes an accepted ADR plus an independent review, so assume the answer is no. The workspace denies
-  `clippy::all` and
+  [`docs/architecture/safety-boundary.md`](docs/architecture/safety-boundary.md) is empty and
+  stays empty unless deliberately changed. The workspace denies `clippy::all` and
   `clippy::pedantic`. Fix causes: no `#[allow]`, no `#[ignore]`, no skipped tests, no loosened assertions to
   reach green. Everywhere else, unsafe operations belong only in audited dependencies behind narrow safe
   wrappers. Measurement experiments under `experiments/` may hold unsafe and are fenced out of the
@@ -65,14 +64,9 @@ Judge the gate by its exit status, not an individual task's test summary.
 - Respect the layering in [`docs/architecture/dependency-rules.md`](docs/architecture/dependency-rules.md).
   `ravel-core` depends on no other Ravel crate, the SDK exposes no bootstrap or JVM or version internals, and
   production crates never depend on `ravel-testkit`.
-- [`docs/decisions/`](docs/decisions/) is the list of accepted decisions and each record's own `Status`
-  line says how far it is accepted and what amended it; do not enumerate them here, because the count and
-  the subjects both grow. Read the directory before writing anything a decision covers — its filename
-  names its subject — and follow the mechanism the ADR selected. Configuration is declared in data and
-  Ravel-owned screens are drawn in Java.
-- Never track mod JARs, official Minecraft or modpack assets, credentials, private worlds, or raw captures.
-  Authorized local material goes in `tests/fixtures/local/`, which is ignored. `ravel:verify-scaffold`
-  enforces this and will fail the gate.
+- Follow the mechanisms in [`docs/architecture/overview.md`](docs/architecture/overview.md#mechanisms):
+  configuration is declared in data and Ravel-owned screens are drawn in Java.
+- `tests/fixtures/local/` is gitignored local material. Never track credentials.
 - Adding or removing a crate or test mod means updating `CRATE_NAMES` or `TEST_MOD_NAMES` in
   [`tools/ravel-xtask/src/lib.rs`](tools/ravel-xtask/src/lib.rs) and the workspace dependency list in
   `Cargo.toml`.

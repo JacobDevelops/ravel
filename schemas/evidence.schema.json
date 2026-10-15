@@ -47,7 +47,7 @@
     "revision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "changeId", "dirty"],
+      "required": ["id", "dirty"],
       "properties": {
         "id": {
           "type": "string",
@@ -57,7 +57,7 @@
         "changeId": {
           "type": "string",
           "pattern": "^[k-z]{32}$",
-          "description": "The change that holds this manifest. Survives every rewrite, and the milestone gate recomputes it against the change that introduced the file."
+          "description": "Optional historical change identifier retained for compatibility with recorded evidence; the gate does not verify revision ownership."
         },
         "dirty": {
           "type": "boolean",
@@ -67,11 +67,11 @@
     },
     "unobtainableRevisions": {
       "type": "array",
-      "description": "Pins carried by records this manifest admits that name no tree a reader can obtain. Optional, because a manifest whose records all pin obtainable trees discloses nothing; the scaffold requires this set to equal exactly the set of pins that fail, so it can neither miss one nor outlive one.",
+      "description": "Historical disclosures of record pins that were unobtainable when recorded. Retained for compatibility; the gate does not verify pin obtainability or require these disclosures.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["record", "id", "changeId", "reason"],
+        "required": ["record", "id", "reason"],
         "properties": {
           "record": {
             "type": "string",
@@ -81,17 +81,17 @@
           "id": {
             "type": "string",
             "minLength": 1,
-            "description": "The commit the record pins, quoted so a disclosure cannot excuse a pin it does not name."
+            "description": "The commit the record pinned when this historical disclosure was written."
           },
           "changeId": {
             "type": "string",
             "pattern": "^[k-z]{32}$",
-            "description": "The change the record pins alongside that commit."
+            "description": "Optional historical change identifier recorded alongside the commit; retained for compatibility without revision ownership verification."
           },
           "reason": {
             "type": "string",
             "minLength": 1,
-            "description": "What a reader loses by this pin naming nothing obtainable."
+            "description": "Historical explanation of what a reader lost when this pin was unobtainable."
           }
         }
       }
@@ -409,7 +409,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["symbol", "paths"],
-      "description": "The one claim inside a finding that a machine can hold: the named Rust symbol has no caller outside this path set. A finding is prose no measurement takes, so it ages into a false statement in silence; the anchor is what makes that failure loud. ADG-8 makes it mandatory for M5 onward and says why it is not retrofitted.",
+      "description": "The one claim inside a finding that a machine can hold: the named Rust symbol has no caller outside this path set. A finding is prose no measurement takes, so it ages into a false statement in silence; the anchor is what makes that failure loud. Required for M5 onward, without retrofitting earlier recorded evidence.",
       "properties": {
         "symbol": {
           "type": "string",

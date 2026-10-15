@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ravel:schema:configuration:1",
   "title": "Ravel configuration declaration",
-  "description": "Common validation metadata for file and generated-UI configuration. ADG-6 may extend the presentation model.",
+  "description": "Common validation metadata for file and generated-UI configuration.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "owner", "version", "settings"],

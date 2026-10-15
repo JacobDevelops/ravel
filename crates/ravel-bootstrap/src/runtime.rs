@@ -11,7 +11,7 @@
 //! observer rather than a second path beside the first. That also answers the
 //! lifetime question by construction: the registry is `'static`, this value owns
 //! its machine and its mods outright, and nothing it touches borrows from the
-//! JVM. ADG-4 is satisfied for the same reason — the projection below copies
+//! JVM. The projection below copies
 //! only owned data out of a [`HookValue`], and the slice is dropped when the
 //! call returns, so nothing Ravel keeps can go stale.
 //!
@@ -29,7 +29,7 @@
 //!   is what enforces it.
 //! - A mod is never shown a [`HookValue`]. The projection below turns one into a
 //!   `GameEvent` or a `CommandInvocation` — a fieldless enum and owned text —
-//!   before any mod code runs, so ADG-4's borrowed handle does not reach a mod
+//!   before any mod code runs, so the borrowed handle does not reach a mod
 //!   even as something to look at.
 //! - `JavaHandle`'s whole surface is the constructor the generated exports call
 //!   and the declared class name. Nothing on it calls anything.
@@ -333,8 +333,8 @@ impl HookObserver for LoaderRuntime {
         //
         // What this does not do is attribute the panic. The mod that panicked is
         // still `Running` and will be shown the next tick as well. Catching a
-        // panic at the mod boundary rather than at the JNI one is ADG-2's
-        // execution-model question and is not settled here.
+        // panic at the mod boundary rather than at the JNI one is an
+        // execution-model question not settled here.
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(work) = inner.work(target, values) {
             inner.deliver(&work);

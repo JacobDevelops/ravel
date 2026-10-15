@@ -169,7 +169,7 @@ impl fmt::Display for WorldIdentity {
 ///
 /// `fresh_world` is the game's advisory marker for a world being created. It
 /// never decides admission: an absent aggregate initializes fresh state for any
-/// world, exactly as ADG-7 says. It is read only to tell the ordinary case apart
+/// world. It is read only to tell the ordinary case apart
 /// from an existing world that used to hold Ravel data and now does not, which
 /// is worth noticing and is not worth refusing over.
 #[must_use]
@@ -346,7 +346,7 @@ impl LoaderRuntime {
             .machine
             .open_world(&inner.report)
             .map_err(|refused| refused.to_string())?;
-        // Absence initializes fresh state for any world, exactly as ADG-7 says.
+        // Absence initializes fresh state for any world.
         // What the marker separates is the ordinary new world from an existing
         // one that used to hold Ravel data and now does not, which is worth
         // saying and is not worth refusing over.
@@ -543,8 +543,8 @@ enum Incoming {
 ///
 /// The length is asked for first and on its own. An oversized array is refused
 /// on one integer read, so a hostile one never allocates natively, and the
-/// ceiling is applied here rather than in Java because ADG-7 reserves every
-/// admission decision for Rust.
+/// ceiling is applied here rather than in Java because Rust owns every
+/// admission decision.
 fn incoming<'local>(
     env: &mut Env<'local>,
     aggregate: &JByteArray<'local>,

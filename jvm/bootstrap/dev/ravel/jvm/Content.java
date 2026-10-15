@@ -11,12 +11,9 @@ import java.util.Map;
  *
  * <p>The loader already decides <em>that</em> a mod owns
  * {@code block:example_mod:copper}: two mods cannot claim one identifier, and a
- * claim outside the registration window is refused. What no part of Rust can do
- * is make the block exist, because ADG-4 admits a hook that observes or vetoes
- * and nothing else — a hook cannot call back into the JVM.
- * {@code docs/decisions/carrying-an-action-outward.md} settles that the way
- * ADG-7 settled persistence: the hook fires, and a hand-written adapter performs
- * the action with its own crossing. This is that adapter.
+ * claim outside the registration window is refused. Hooks observe or veto and
+ * cannot call back into the JVM. This adapter performs registration with its
+ * own crossing. See {@code docs/architecture/overview.md#mechanisms}.
  *
  * <p>Everything here is reflective for the reason {@link Persistence} gives: this
  * class ships in the always-present agent jar, which is compiled with no client

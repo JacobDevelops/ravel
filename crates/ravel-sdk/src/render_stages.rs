@@ -10,9 +10,9 @@
 //! # What this does not give a mod
 //!
 //! **A way to draw.** Nothing draws at any stage today and this module ships no
-//! drawing path. `docs/decisions/adg-6-configuration-and-screens.md` settled
-//! that the screens Ravel owns are declared in data and drawn in Java, and
-//! nothing here extends that to a mod's own drawing; [`crate::sides`] says the
+//! drawing path. The screens Ravel owns are declared in data and drawn in Java;
+//! see `docs/architecture/overview.md#mechanisms`. Nothing here extends that to
+//! a mod's own drawing; [`crate::sides`] says the
 //! same from the other direction, that a mod's client-only state is what it
 //! knows on the client rather than what it puts on the display. What ships is
 //! the stage name, the ordering and the two refusals, which are decidable

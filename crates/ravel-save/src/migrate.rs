@@ -53,8 +53,8 @@ impl std::error::Error for MigrationFailed {}
 /// Every step one owner declares for carrying an old payload up to the current
 /// version.
 ///
-/// `SPEC.md` §14 requires persistent data to be versioned, and ADG-7 puts
-/// migrations in this crate. [`SavedDataPlan`] decides *which* versions a world
+/// `SPEC.md` §14 requires persistent data to be versioned. This crate owns
+/// migrations. [`SavedDataPlan`] decides *which* versions a world
 /// has to cross; this is what actually crosses them. The two are separate because
 /// the decision is about declared versions alone and can be made before any
 /// payload is read, which is what lets a world be refused rather than opened
@@ -175,7 +175,7 @@ impl MigrationChain {
     /// `payload` is borrowed and a new value is returned, so a chain that refuses
     /// partway leaves the caller holding exactly what it had. There is no
     /// half-migrated payload to discard, because none was ever produced: this is
-    /// the payload-level half of ADG-7's rule that a refusal withholds the world
+    /// the payload-level half of the rule that a refusal withholds the world
     /// rather than opening it part-applied.
     ///
     /// # Errors
@@ -215,8 +215,8 @@ impl SavedDataAggregate {
     /// Every owner or none. The migrated envelopes are built beside the stored
     /// ones and only replace them once every chain has succeeded, so an aggregate
     /// whose third owner refuses is the aggregate that arrived rather than one
-    /// holding two migrated owners and one stale. That is what ADG-7's refusal
-    /// semantics require of a world: the world is withheld and nothing is staged.
+    /// holding two migrated owners and one stale. A refusal withholds the world
+    /// and stages nothing.
     ///
     /// An owner already at the current version needs no chain. An owner that has
     /// versions to cross and no chain is refused, because a declared version with

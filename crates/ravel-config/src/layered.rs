@@ -77,24 +77,23 @@ pub enum EditOutcome {
     /// The value is written and is in force now.
     Now,
     /// The value is written, and the session keeps the old one until the next
-    /// launch. ADG-6 makes this the screen's to report at the moment of the
-    /// edit rather than the loader's to enforce.
+    /// launch. The screen reports this at the moment of the edit.
     NextLaunch,
 }
 
-/// One owner's settings, resolved through the three layers ADG-6 names.
+/// One owner's settings, resolved through three layers.
 ///
 /// The layers are the author's `default`, then the pack's override document,
 /// then the player's value, and the author's `packOverride` decides which of the
 /// last two has the final word.
 ///
-/// The two override layers are treated differently on purpose, and the asymmetry
-/// is ADG-6's. A pack that states an illegal value is refused outright, because
+/// The two override layers are treated differently on purpose.
+/// A pack that states an illegal value is refused outright, because
 /// a pack is a pinned artifact somebody can fix before the game runs and a
 /// silently ignored pack value is a pack that does not do what it says. An
 /// illegal player value falls back to the layer below and is reported through
-/// [`LayeredConfiguration::rejected`], because ADG-6 says a rejected value
-/// "leaves the previous value in place" and "does not fail the world".
+/// [`LayeredConfiguration::rejected`], leaving the previous value in place
+/// without failing the world.
 ///
 /// # Examples
 ///
@@ -298,7 +297,7 @@ impl LayeredConfiguration {
     /// Returns the settings a process running as `side` owns, in declared order.
     ///
     /// A setting belonging to another side is absent rather than present and
-    /// disabled: ADG-6 says a `dedicated-server` setting has no client screen,
+    /// disabled: a `dedicated-server` setting has no client screen,
     /// which is a statement about what a screen holds and not about what it
     /// greys out.
     #[must_use]
@@ -323,7 +322,7 @@ impl LayeredConfiguration {
     ///
     /// A restart-required edit is written and does not take effect: [`value`]
     /// keeps answering with the old one until the document is loaded again,
-    /// which is what ADG-6 means by taking effect on the next launch.
+    /// taking effect on the next launch.
     ///
     /// [`value`]: LayeredConfiguration::value
     ///
@@ -398,7 +397,7 @@ impl LayeredConfiguration {
 ///
 /// Every variant is about the pack layer or about a document written for the
 /// wrong mod. A player value that will not apply is not here: it is a
-/// [`Rejection`], because ADG-6 refuses the edit rather than the world.
+/// [`Rejection`], because an invalid edit does not refuse the world.
 #[derive(Clone, Debug, PartialEq)]
 pub enum LayerError {
     /// A document belongs to a different mod than the declaration.
@@ -476,10 +475,9 @@ impl StructuredFailure for LayerError {
 
 /// Why a player's edit was refused.
 ///
-/// This deliberately does not implement [`StructuredFailure`]. ADG-6 puts a
-/// refused edit on the screen next to the field the player just changed, and
-/// says it "does not fail the world"; a pre-world failure report is exactly what
-/// this is not.
+/// This deliberately does not implement [`StructuredFailure`]. A refused edit
+/// appears on the screen next to the field the player just changed and does not
+/// fail the world; it is not a pre-world failure report.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EditError {
     /// The owner declares no such setting.

@@ -94,7 +94,7 @@ question, whether the value was built at all, which is what a test asserts on.
 
 Client-only means state a mod keeps *because* it is on the client — what a
 `to-client` packet last carried, what a client tick last counted. **Drawing is
-not one of them.** No accepted decision gives a mod a rendering path; every
+not one of them.** Ravel gives a mod no rendering path; every
 screen Ravel owns is declared in data and drawn in Java, and nothing extends that
 to a mod's own.
 

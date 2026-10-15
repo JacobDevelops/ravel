@@ -1,9 +1,8 @@
 //! Who a hook invocation is shown to.
 //!
-//! This is a registry of safe Rust trait objects and nothing more. How a mod's
-//! code arrives in the process is ADG-2's question, ADG-2 is deferred to M3, and
-//! nothing here names a binary format, a dynamic library, or a foreign calling
-//! convention.
+//! This is a registry of safe Rust trait objects and nothing more. Mods arrive
+//! through static source composition; this registry names no binary format,
+//! dynamic library, or foreign calling convention.
 
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, Ordering};

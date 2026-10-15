@@ -474,7 +474,7 @@ pub struct ModReport {
 /// Everything opt-in profiling has to say about a run.
 ///
 /// The report is data and rendered lines rather than a widget, for the reason
-/// [`crate::PreWorldReport`] is: ADG-6 draws every screen Ravel owns in Java and
+/// [`crate::PreWorldReport`] is: every screen Ravel owns is drawn in Java and
 /// Ravel never renders from Rust. What a screen needs is [`Self::mods`] and
 /// [`Self::unsupported`], and what a log needs is [`Self::lines`].
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -87,5 +87,6 @@ For each platform, record:
 M0 requires the Linux record only. macOS records are separate post-Linux-M10
 evidence and must not block M0 through M10.
 
-ADG-5 later decides whether stock Prism is sufficient for Ravel itself. This M0
-procedure proves only the pinned vanilla host and does not select a bootstrap.
+This M0 procedure proves only the pinned vanilla host and does not select a
+bootstrap. Ravel's stock Prism integration is described in the
+[architecture mechanisms](../architecture/overview.md#mechanisms).

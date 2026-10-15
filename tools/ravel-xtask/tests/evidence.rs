@@ -236,15 +236,13 @@ fn identifying_local_paths_are_rejected() {
 #[test]
 fn m1_closure_accepts_the_recorded_prism_launch() {
     // Checked against the real repository, so this test states M1's status: every
-    // gate has a result, every gate has a decision record, and ADG-5's result
-    // records the launch an operator observed.
+    // gate has a result, and ADG-5's result records the launch an operator observed.
     let violations =
         verify_evidence_manifest(repository_root(), &fixture("complete-m1.json"), "M1");
 
     for unmet in [
         "M1 closure requires an ADG-5 result",
         "M1 closure requires a recorded result",
-        "M1 closure requires the decision record",
     ] {
         assert!(
             !violations
@@ -983,14 +981,6 @@ fn m3_closure_is_refused_when_a_record_does_not_show_what_its_row_requires() {
     // nothing but the rule under test can explain the refusal.
     let root = temporary_root();
     fs::create_dir_all(root.join("evidence/m3")).expect("evidence directory should be creatable");
-    fs::create_dir_all(root.join("docs/decisions")).expect("decisions should be creatable");
-    for decision in ["adg-6-configuration-ui.md", "adg-7-world-persistence.md"] {
-        fs::copy(
-            repository_root().join("docs/decisions").join(decision),
-            root.join("docs/decisions").join(decision),
-        )
-        .expect("decision record should be copied");
-    }
     for record in [
         "class-loader-identity.json",
         "pack-compile.json",
@@ -1049,15 +1039,11 @@ fn m3_closure_is_refused_when_a_record_is_missing_altogether() {
     );
 
     fs::remove_dir_all(&root).expect("evidence root should be removable");
-    for absent in [
-        "M3 closure requires the record evidence/m3/linux-process-matrix.json",
-        "M3 closure requires the decision record adg-7-world-persistence.md",
-    ] {
-        assert!(
-            violations.iter().any(|violation| violation == absent),
-            "expected {absent}, got {violations:?}"
-        );
-    }
+    let absent = "M3 closure requires the record evidence/m3/linux-process-matrix.json";
+    assert!(
+        violations.iter().any(|violation| violation == absent),
+        "expected {absent}, got {violations:?}"
+    );
 }
 
 /// Applies a jq program to a document, for a mutation a string replacement cannot

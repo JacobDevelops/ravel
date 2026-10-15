@@ -207,9 +207,8 @@ impl AudioDeclaration {
 
 /// What playing an entry would be.
 ///
-/// A value rather than an effect, because
-/// `docs/decisions/carrying-an-action-outward.md` decided the effect crosses to
-/// the game as data a Java adapter performs. A host takes this from the mod and
+/// A value rather than an effect: the action crosses to the game as data a Java
+/// adapter performs. A host takes this from the mod and
 /// queues it outward, so the play happens after the call that asked for it and
 /// this type is what a test can compare in between.
 #[derive(Clone, Debug, Eq, PartialEq)]

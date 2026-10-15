@@ -1,6 +1,6 @@
 //! What the agent's shutdown line reports.
 //!
-//! ADG-5's launch proved the JVM took Ravel's two arguments and the client ran.
+//! The M2 launch spike proved the JVM took Ravel's two arguments and the client ran.
 //! It could not prove the class rewrite happened, because nothing in the spike
 //! agent said whether it had transformed anything. Counting on both sides and
 //! printing one line at shutdown is what turns an ordinary in-game launch into

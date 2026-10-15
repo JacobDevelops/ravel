@@ -3,18 +3,18 @@
 //! `ravel-loader`'s registration barrier already decides *that* a mod owns
 //! `block:example_mod:copper`: two mods cannot claim one identifier, and a claim
 //! outside the window is refused. What it cannot do is make the block exist. A
-//! registry in the running game is where that happens, and ADG-1 gives Java a
-//! way to call Rust and nothing the other way — so this is the read the Java
+//! registry in the running game is where that happens, and Java can call Rust
+//! without a reverse call into the JVM — so this is the read the Java
 //! adapter performs at the last moment the built-in registries still accept
 //! entries, and the registration itself is Java's.
 //!
 //! # Why a read rather than a hook
 //!
-//! ADG-4 admits a hook that observes or vetoes, and nothing else: a hook cannot
+//! A hook observes or vetoes, and nothing else: it cannot
 //! change an argument, substitute a return value, or call back into the JVM.
-//! Registering content is an *action*, so `docs/decisions/carrying-an-action-outward.md`
-//! settles it the way ADG-7 settled persistence — the hook fires, and a
-//! hand-written Java adapter does the work using its own crossing. This is that
+//! Registering content is an *action*, so the hook fires and a
+//! hand-written Java adapter performs the action using its own crossing; see
+//! `docs/architecture/overview.md#mechanisms`. This is that
 //! crossing, on the framing `mods.rs` and `settings.rs` already use.
 //!
 //! # Only what a registry can take
@@ -23,8 +23,8 @@
 //! recipe is data the recipe manager reloads and a command is registered against
 //! a dispatcher that does not exist yet at this seam, so neither crosses here.
 //! They are filtered on this side rather than skipped on the other, because
-//! which claims are registrable is an admission question and ADG-7's rule holds
-//! for this surface too: Rust decides, Java performs.
+//! which claims are registrable is an admission question:
+//! Rust decides, Java performs.
 
 use std::sync::{Arc, Mutex, PoisonError};
 

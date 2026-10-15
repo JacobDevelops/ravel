@@ -4,8 +4,8 @@ profile = "minimal"
 components = ["clippy", "llvm-tools", "rust-analyzer", "rustfmt"]
 targets = [
   "aarch64-apple-darwin",
-  # ADG-2 measures a WebAssembly mod-execution candidate, which needs a guest
-  # built for this target. Production crates never target it.
+  # The WebAssembly mod-execution spike builds a guest for this target.
+  # Production crates never target it.
   "wasm32-unknown-unknown",
   "x86_64-unknown-linux-gnu",
 ]

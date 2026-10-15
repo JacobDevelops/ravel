@@ -44,7 +44,7 @@ Newest last. All local, nothing pushed.
 
 | Change | Subject |
 | --- | --- |
-| `omqxmqwv` | amend ADG-3 to admit Mojang's published mapping file as a second source |
+| `omqxmqwv` | admit Mojang's published mapping file as a second binding source |
 | `lxouzzut` | make `mappingSource` a generator decision; add the proguard mapping layer |
 | `pxsoorlm` | decide version selection as a build-time choice |
 | `wqtmwuvy` | select the version a build generates against instead of refusing two |
@@ -288,8 +288,8 @@ Windows-only path rule are fixed; the `C:/x` case is out of scope until Windows 
   say so. This is the largest unknown on the way to anyone but this machine running Ravel.
 - **Is a Cargo compile inside the launch sequence acceptable?** About 32 s cold and 1.6 s warm for a
   256-mod pack per `evidence/m3/pack-compile.json`, needing network for the registry and a toolchain on
-  `PATH`. And who runs it: ADG-5 lets Ravel add two arguments to one instance and own no launcher
-  setting, so a `PreLaunchCommand` needs an amendment or a different trigger.
+  `PATH`. The stock Prism integration adds two arguments to one instance and owns no launcher
+  setting, so a `PreLaunchCommand` would change that integration or need a different trigger.
 - **Does the composed host survive?** It is the only thing exercising five test mods in a real launch.
   Relegating it to a test fixture trades that for installed examples unless the test mods become
   installable, which the widened workspace now makes possible.
@@ -388,7 +388,7 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
 - `profilingCommandCounter` — needs a command-claiming mod in the composed host and a namespaced root
   typed in a live client. Small.
 - `profilingTickCounter` — needs a tick boundary wired on the game's tick path.
-- ADG-3's re-pin of the agent jar's reflective surface is owned by no work package.
+- Re-pinning the agent jar's reflective surface is owned by no work package.
 - The JVM harness runs at every tracked version and `ravel:verify-gate-versions` holds it there. Both
   versions now run all thirteen sections — initialization, hierarchy, refusal, members, side,
   transformation, load, persistence, content, outward, settings, screens and cluster — so every
@@ -444,7 +444,6 @@ Two things no gate can reach, to watch for on screen. Both are also recorded in
 - Screen sources are generated, not hand-written.
 - Version selection is a build-time choice, declared per entry point, no default.
 - Per-version sources only where the API genuinely differs; role indirection for renames.
-- No new ADRs. Records serve the work, not the reverse.
 - Ravel has never been released, so there are no compat contracts. Breaking changes are fine where they
   are the cleaner design.
 - 26.1.2 stays tracked for now — it is the only thing proving the multi-version machinery against two

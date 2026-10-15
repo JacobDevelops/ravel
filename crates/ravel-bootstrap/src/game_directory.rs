@@ -66,9 +66,9 @@
 //!    the inventory today are drift-checked declarations, not readable state, so
 //!    reading one needs generator machinery that does not exist. That is the open
 //!    question in issue #29.
-//! 3. ADG-4 forbids it as written: reading through a handle and keeping the
-//!    result is a mirror, and a mirror needs a measurement, a staleness argument
-//!    and an ADR. A configuration writer holding a path is a copy that stays.
+//! 3. Reading through a handle and keeping the result creates a mirror that
+//!    needs a measurement and a staleness argument. A configuration writer
+//!    holding a path is a copy that stays.
 //!
 //! # When configuration uses this answer
 //!

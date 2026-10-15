@@ -1,7 +1,7 @@
 //! The settings screen's two crossings, and the configurations they read.
 //!
-//! ADG-6 declares configuration in data, draws the screen in Java, and budgets
-//! "two boundary crossings per screen session, both batched": opening reads one
+//! Configuration is declared in data and drawn in Java, using
+//! two batched boundary crossings per screen session: opening reads one
 //! owner's declaration and current values, saving hands back what the player
 //! changed. This module is both of them and the state they read.
 //!
@@ -47,7 +47,7 @@
 //! # What crosses
 //!
 //! Data, in both directions, and nothing else. There is no handle in the payload
-//! and no game object on either side of it, so ADG-4 has nothing to say here.
+//! and no game object on either side of it, so no live state is duplicated.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -109,7 +109,7 @@ impl Store {
 /// Installs the configurations a screen may read and edit.
 ///
 /// `side` is the process's own, and it decides what a screen holds rather than
-/// what it greys out: ADG-6 says a `dedicated-server` setting has no client
+/// what it greys out: a `dedicated-server` setting has no client
 /// screen, so on a client such a setting is absent rather than shown disabled.
 ///
 /// Resolution is the caller's. Reaching a [`LayeredConfiguration`] means reading
@@ -293,7 +293,7 @@ fn text_of(value: &Value) -> String {
 /// screen.
 ///
 /// Text that will not read as the declared kind stays text. The schema then
-/// refuses it, which is the outcome ADG-6 asks for — the edit fails and the
+/// refuses it, so the edit fails and the
 /// previous value stands — and the refusal is reported rather than swallowed.
 fn value_of(kind: Option<ValueKind>, typed: &str) -> Value {
     let parsed = match kind {
@@ -364,7 +364,7 @@ const fn side_name(side: Side) -> &'static str {
 
 /// Records what the player changed, and answers what was refused.
 ///
-/// Every refusal ADG-6 names leaves the previous value in place, and the screen
+/// Every refusal leaves the previous value in place, and the screen
 /// has to be able to *say* so rather than let a player watch an edit disappear
 /// between one open and the next. So the answer carries the key and the reason
 /// for each one, and an empty answer means every edit landed.
@@ -473,8 +473,8 @@ fn answer(applied: Option<Applied>) -> String {
 /// This runs after the edits are applied in memory, so a failure here means the
 /// player's change is in force for this run and gone at the next one. That is
 /// worth a refusal rather than silence: it is the same thing a refused value is,
-/// an edit the player will not find where they left it, and ADG-6's whole reason
-/// for answering the save crossing is that the screen can say so.
+/// an edit the player will not find where they left it. The save crossing
+/// answers so the screen can report the refusal.
 fn persist(directory: Result<&Path, &String>, document: &ValueDocument) -> Result<(), String> {
     let directory = directory.map_err(Clone::clone)?;
     file::write(directory, document).map_err(|error| error.to_string())
@@ -1073,7 +1073,7 @@ mod tests {
             &[("render.quality", "fancy"), ("render.distance", "8")],
         ));
 
-        // The round trip ADG-6 asks for: what the player's layer is written out
+        // The round trip: what the player's layer is written out
         // as, resolved again, is what the next launch shows — with the
         // restart-required edit now in force.
         let written = screen

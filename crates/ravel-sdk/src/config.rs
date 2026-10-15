@@ -1,7 +1,7 @@
 //! The settings a mod declares, and the values in force for one launch.
 //!
-//! ADG-6 decided that configuration is declared in data and that every screen
-//! Ravel owns is drawn in Java. Both halves matter to an author: what you write
+//! Configuration is declared in data and every screen Ravel owns is drawn in
+//! Java. Both halves matter to an author: what you write
 //! is a document, and you never write a widget. A [`ConfigurationDeclaration`]
 //! names each [`Setting`] — its key, what a legal value looks like, the author's
 //! `default`, which [`SettingSide`] it applies on, whether a change waits for the

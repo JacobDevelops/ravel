@@ -16,12 +16,11 @@ use super::{EXTRACTOR, GenerateError, HOOK_CLASS, LIBRARY, LIBRARY_PROPERTY};
 
 /// A JVM type a hook argument can carry across the boundary.
 ///
-/// ADG-4 says a hook receives what the game owns rather than a copy Ravel keeps.
+/// A hook receives what the game owns rather than a copy Ravel keeps.
 /// Primitives satisfy that by being values; a `java.lang.String` is copied
 /// because it is immutable and a copy of one cannot go stale; and every other
-/// reference — an ordinary object or an array alike — crosses as the opaque
-/// handle the gate's M3-W0 amendment admits, borrowed for the call and readable
-/// through nothing.
+/// reference — an ordinary object or an array alike — crosses as an opaque
+/// handle, borrowed for the call and readable through nothing.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum JavaType {
     Boolean,
@@ -35,7 +34,7 @@ enum JavaType {
     Text,
     /// A `byte[]`, copied across as the opaque payload it is.
     ///
-    /// ADG-7 carries a world's aggregate as bytes Java never reads, so this is
+    /// A world's aggregate travels as bytes Java never reads, so this is
     /// the one array that is not an opaque handle: a handle would let a hook
     /// know a `byte[]` is there and nothing more.
     Bytes,
@@ -126,7 +125,7 @@ impl JavaType {
             }
             // A byte array still reaches an observer as the handle every array
             // is: what `Bytes` changes is the crossing's declared type, not what
-            // ADG-4 admits an observer to see.
+            // an observer can see.
             Self::Bytes => format!(
                 "::ravel_minecraft::HookValue::Handle(\
                  ::ravel_minecraft::JavaHandle::new(\"[B\", &{name}))"
@@ -158,14 +157,12 @@ impl Shape {
     /// The descriptor of the generated hook method.
     ///
     /// An ordinary hook returns nothing, because the injected call site then
-    /// needs no branch, no discarded value, and no invented contract for what a
-    /// returned value would mean while ADG-2 is undecided. A hook that has to
-    /// stop the call throws, which the call site honours without any bytecode of
-    /// its own.
+    /// needs no branch or discarded value. A hook that has to stop the call
+    /// throws, which the call site honours without any bytecode of its own.
     ///
-    /// A target the reviewed inventory opts in returns a boolean instead, which
-    /// is ADG-1's Phase C amendment: the verdict says only whether to return
-    /// from the host method before its body runs, never what to return.
+    /// A target the reviewed inventory opts in returns a boolean instead:
+    /// the verdict says only whether to return from the host method before
+    /// its body runs, never what to return.
     fn hook_descriptor(&self) -> String {
         let mut text = String::from("(");
         for parameter in &self.parameters {
@@ -191,10 +188,10 @@ pub(super) fn shapes(
         if !hook.kind.is_method() {
             continue;
         }
-        // ADG-1's amendment admits a bare early return and nothing wider. A
-        // target that returns a value would need one synthesized to leave
-        // early, and nothing has decided what it would be, so this is a hard
-        // error rather than a warning that renders anyway.
+        // Refusal permits a bare early return and nothing wider. A target that
+        // returns a value would need one synthesized to leave early, which is
+        // unsupported, so this is a hard error rather than a warning that
+        // renders anyway.
         if hook.refuses && !target.runtime_descriptor.ends_with(")V") {
             return Err(GenerateError::Unsupported(format!(
                 "{} may refuse its target, but {} does not return void and an early \
@@ -307,7 +304,7 @@ fn parameter(descriptor: &str) -> Result<(JavaType, &str), String> {
             // The element descriptor is parsed only to find where this one ends
             // and to refuse an array of nothing valid.
             let (_, after) = parameter(&descriptor[1..])?;
-            // `[B` and nothing else is the exception, because ADG-7's aggregate
+            // `[B` and nothing else is the exception, because a world's aggregate
             // is bytes rather than an object a hook looks at. `[[B` is still a
             // handle: it is an array of arrays, not a payload.
             if descriptor.len() - after.len() == 2 && descriptor.starts_with("[B") {
@@ -503,7 +500,7 @@ pub(super) fn exports(shapes: &[Shape]) -> String {
     text.push_str(
         "// Generated JNI exports for the pinned hook surface. Do not edit.\n\
          //\n\
-         // One export per hook shape, as ADG-1 requires: a single dispatcher\n\
+         // One export per hook shape: a single dispatcher\n\
          // taking an argument array would allocate on every crossing, and the\n\
          // measured crossing allocates nothing. Every declaration is emitted by\n\
          // the generator, which is what lets this crate keep\n\
@@ -572,8 +569,8 @@ pub(super) fn exports(shapes: &[Shape]) -> String {
 ///
 /// Its own function because `hook_java` renders the whole class and this is
 /// the one part of it that is neither generated from the inventory nor
-/// boilerplate: `docs/decisions/adg-5-prism-integration.md` decided this exact
-/// shape, and the comment it emits is load-bearing rather than decoration.
+/// boilerplate. See `docs/architecture/overview.md#mechanisms`; the comment it
+/// emits explains the launcher's ownership of library paths.
 fn library_load_java() -> String {
     format!(
         "\
@@ -708,16 +705,16 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
 
     // Written rather than generated, like the count below them: these belong to
     // the bootstrap rather than to any version's hook surface. They are declared
-    // here because ADG-1 gives Ravel one exported symbol surface and it is this
-    // class — a screen with natives of its own would be a second one.
+    // here because Ravel has one exported symbol surface and it is this class —
+    // a screen with natives of its own would be a second one.
     let _ = writeln!(text, "{}", written_declarations());
     text
 }
 
 /// Renders the game names the agent jar's hand-written adapters resolve.
 ///
-/// ADG-4 admits a hook that observes or vetoes, so anything the host has to
-/// *perform* is performed by an adapter under `jvm/bootstrap` that reaches the
+/// A hook observes or vetoes, so anything the host has to *perform* is performed
+/// by an adapter under `jvm/bootstrap` that reaches the
 /// game by name. Those sources are shared across every tracked version and the
 /// names are not, so they spell a role and this class says what the role links
 /// to. Each constant carries the runtime name in its value and the Mojang name
@@ -726,7 +723,7 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
 ///
 /// It is package-private because nothing outside the agent jar's own package
 /// resolves a game class, and because a public one would be a second name
-/// surface for a shipped jar that ADG-1 gives exactly one.
+/// surface for a shipped jar that has exactly one.
 pub(super) fn game_names(adapter: &Adapter, surface: &Reflection) -> String {
     let mut text = String::with_capacity(surface.classes.len() * 160 + 1024);
     let _ = writeln!(
@@ -936,7 +933,7 @@ pub(super) fn menu_layout(adapter: &Adapter, inventory: &Inventory) -> String {
 /// Renders the screen class names the agent jar loads reflectively.
 ///
 /// The screens are generated, and where they are generated to is version data:
-/// a version that keeps the game in packages leaves them where ADG-6 put them,
+/// a version that keeps the game in packages leaves them in Ravel's screen package,
 /// and one that obfuscates it into the unnamed package takes them with it,
 /// because Java cannot name an unnamed-package supertype from a package. The
 /// agent jar loads each one by name through `Class.forName`, so the name it
@@ -979,9 +976,9 @@ pub(super) fn screen_names(adapter: &Adapter, names: &[(String, String)]) -> Str
 
 /// The declarations that belong to the bootstrap rather than to a hook surface.
 ///
-/// They are written rather than generated, and they live here because ADG-1
-/// gives Ravel one exported symbol surface and it is this class: a screen or a
-/// world adapter with natives of its own would be a second one.
+/// They are written rather than generated, and they live here because Ravel
+/// has one exported symbol surface and it is this class: a screen or a world
+/// adapter with natives of its own would be a second one.
 fn written_declarations() -> &'static str {
     "    /**\n\
          \x20    * Constructs, configures, drives, and installs the composed mod set.\n\
@@ -1000,7 +997,7 @@ fn written_declarations() -> &'static str {
          \x20   /**\n\
          \x20    * One mod's settings, as the screen draws them.\n\
          \x20    *\n\
-         \x20    * <p>ADG-6 budgets two batched crossings per screen session and this is\n\
+         \x20    * <p>There are two batched crossings per settings session and this is\n\
          \x20    * the first: everything a screen needs to build its widgets arrives in\n\
          \x20    * one document, so nothing crosses per widget and nothing per frame.\n\
          \x20    *\n\
@@ -1033,7 +1030,7 @@ fn written_declarations() -> &'static str {
          \x20   /**\n\
          \x20    * The installed mod set, in resolved load order.\n\
          \x20    *\n\
-         \x20    * <p>M3-W5's mod list is ADG-6's mechanism rather than a second one,\n\
+         \x20    * <p>The mod list uses the settings screen's mechanism,\n\
          \x20    * so it is one batched read on the same framing: the whole list and\n\
          \x20    * every failure's attribution arrive together, and nothing crosses\n\
          \x20    * per row or per frame.\n\
@@ -1052,8 +1049,8 @@ fn written_declarations() -> &'static str {
          \x20    *\n\
          \x20    * <p>Called once from {@code premain}, before any mod exists.\n\
          \x20    * The property is read here because Java is where a system\n\
-         \x20    * property is, and ADG-1 gives Java a way to call Rust and\n\
-         \x20    * nothing the other way, so this is the direction the switch can\n\
+         \x20    * property is. The crossing runs from Java to Rust,\n\
+         \x20    * not the other way, so this is the direction the switch can\n\
          \x20    * travel in. Reading it once is what lets the collectors hold a\n\
          \x20    * plain flag instead of an atomic on every crossing.\n\
          \x20    *\n\
@@ -1079,7 +1076,7 @@ fn written_declarations() -> &'static str {
          \x20   /**\n\
          \x20    * Admits or refuses one world's Ravel aggregate.\n\
          \x20    *\n\
-         \x20    * <p>ADG-7's open crossing. The aggregate is bytes Java never reads:\n\
+         \x20    * <p>The world's open crossing. The aggregate is bytes Java never reads:\n\
          \x20    * it is handed over as it was stored and every question about what\n\
          \x20    * is inside it is answered natively, which is what keeps admission\n\
          \x20    * one authority rather than two.\n\
@@ -1158,8 +1155,8 @@ fn written_declarations() -> &'static str {
          \x20   /**\n\
          \x20    * Offers the aggregate the saving world should now store.\n\
          \x20    *\n\
-         \x20    * <p>ADG-7's save crossing, and the opposite failure priority to the\n\
-         \x20    * open one: element zero tags the answer, the remainder is its\n\
+         \x20    * <p>The save crossing has the opposite failure priority to the\n\
+         \x20    * open crossing: element zero tags the answer, the remainder is its\n\
          \x20    * payload, and null means the native failed and nothing is written.\n\
          \x20    * Losing one Ravel checkpoint is the safe side here, because writing\n\
          \x20    * a guess would not be.\n\
@@ -1182,8 +1179,7 @@ fn written_declarations() -> &'static str {
          \x20    * registry in the running game is where that becomes a block, so\n\
          \x20    * this is the read the content adapter performs at the last point\n\
          \x20    * the built-in registries still accept entries. A hook could not\n\
-         \x20    * do it: ADG-4 admits observing and vetoing, and registering is\n\
-         \x20    * an action.\n\
+         \x20    * do it: hooks only observe or veto, and registering is an action.\n\
          \x20    *\n\
          \x20    * <p>The payload carries only the kinds a registry can take,\n\
          \x20    * because which claims are registrable is an admission question\n\
@@ -1198,12 +1194,10 @@ fn written_declarations() -> &'static str {
          \x20    * Every action a mod asked for since this was last called.\n\
          \x20    *\n\
          \x20    * <p>The other direction of the same rule\n\
-         \x20    * {@code ravelAdmittedContent} carries: ADG-4 admits a hook that\n\
-         \x20    * observes or vetoes, so an action a mod asks for crosses as an\n\
-         \x20    * instruction and the Java adapter performs it. Generic over the\n\
-         \x20    * verb rather than written per verb, because\n\
-         \x20    * {@code docs/decisions/carrying-an-action-outward.md} settles\n\
-         \x20    * every outbound action with one mechanism.\n\
+         \x20    * {@code ravelAdmittedContent} carries: a hook only observes or\n\
+         \x20    * vetoes, so an action a mod asks for crosses as an instruction\n\
+         \x20    * and the Java adapter performs it. Every outbound action uses\n\
+         \x20    * one mechanism, generic over the verb rather than written per verb.\n\
          \x20    *\n\
          \x20    * <p>Draining is what this does: an action is answered once and\n\
          \x20    * never again. Empty is a tick nobody asked for anything on.\n\
@@ -1870,7 +1864,7 @@ mod tests {
         );
         assert_eq!(
             parameters("(Lcom/example/resources/ResourceKey;Ljava/lang/Object;)V")
-                .expect("ADG-4 admits a handle onto an object the game owns"),
+                .expect("a reference to an object the game owns crosses as a handle"),
             vec![
                 JavaType::Handle("com/example/resources/ResourceKey".to_owned()),
                 JavaType::Handle("java/lang/Object".to_owned()),
@@ -1900,7 +1894,7 @@ mod tests {
         assert_eq!(
             parameters("([BI)V").expect("valid"),
             vec![JavaType::Bytes, JavaType::Int],
-            "ADG-7's aggregate is a payload rather than an object to look at"
+            "the saved-data aggregate is a byte payload rather than a borrowed object"
         );
         assert_eq!(
             parameters("([[B[Ljava/lang/Byte;)V").expect("valid"),

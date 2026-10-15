@@ -1,12 +1,10 @@
-# ADG-2: what a pack-sized mod set costs to compile
+# What a pack-sized mod set costs to compile
 
-ADG-2 decided that a mod is independently shipped and interchangeable, and left
-the mechanism open. A mod can arrive as a per-platform compiled binary, or as
-source that a bundled toolchain compiles on the player's machine. The second
-removes Rust's unstable ABI from the problem and gives one portable artifact per
-mod; what it costs is a build, and
-[the record](../../docs/decisions/adg-2-mod-execution.md) names that build as the
-deciding measurement.
+A mod is independently shipped and interchangeable. Ravel uses
+[portable source distribution](../../docs/architecture/overview.md#mechanisms):
+a bundled toolchain compiles it on the player's machine. This removes Rust's
+unstable ABI from the problem and gives one portable artifact per mod; what it
+costs is a build. This experiment measures that cost.
 
 M2-W8 measured 880 ms for a 256-mod pack compile and said in its own words that
 the figure came from one-struct crates and is a floor rather than a prediction.

@@ -142,7 +142,7 @@ impl PackDeclaration {
 
     /// States the pack's overrides for one member's settings.
     ///
-    /// The pack layer of ADG-6's three, so the document is a
+    /// The pack layer of the three configuration layers, so the document is a
     /// [`ValueDocument`] exactly as a player's file is and the same schema check
     /// applies to both. Which values a pack is allowed to state at all is the
     /// setting's `packOverride`, which `ravel-config` decides when the layers are

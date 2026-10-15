@@ -33,16 +33,15 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>The injected sequence loads the target's own arguments and calls one static
  * hook that returns nothing. It passes the declared arguments and never the
- * receiver: ADG-4 decided the game keeps its state, so a hook sees what the call
- * site was given rather than the object holding it. A reference among those
- * arguments is passed as it stands, and the generated hook declares it as
- * {@code Object}, which is the opaque handle that gate's M3-W0 amendment admits.
+ * receiver: a hook sees what the call site was given rather than the object
+ * holding it. Reference arguments are passed unchanged and declared as
+ * {@code Object} in the generated hook.
  * A hook that has to stop the call throws, which unwinds the target without any
  * branch here.
  *
- * <p>A target the reviewed inventory opts in is the one exception, on ADG-1's
- * Phase C amendment: its hook answers a boolean and the prologue returns from the
- * host method when it is true. The opt-in arrives as generated data on
+ * <p>A target the reviewed inventory opts in is the one exception: its hook
+ * answers a boolean and the prologue returns from the host method when it is
+ * true. The opt-in arrives as generated data on
  * {@link HookTarget}, so nothing written here can widen the set, and only a void
  * target may carry it, so the early return invents no value.
  *
@@ -136,10 +135,8 @@ public final class Transformer implements ClassFileTransformer {
      * Gives the rewritten pack-repository seam a public path to the data pack
      * writer.
      *
-     * <p>Its own bridge rather than a widened hook, for the reason every other
-     * one here has: the world directory is on the storage access, ADG-4 keeps a
-     * hook's hands off the receiver's members, so the access is handed to an
-     * adapter that reads it.
+     * <p>The world directory is on the storage access, which is handed to an
+     * adapter that reads it; hooks receive arguments, not receiver members.
      */
     public static void openWorldDatapack(Object access) {
         Datapack.write(access);
@@ -159,7 +156,7 @@ public final class Transformer implements ClassFileTransformer {
     }
 
     /**
-     * Gives the rewritten world-load method a public path to ADG-7's adapter.
+     * Gives the rewritten world-load method a public path to the persistence adapter.
      *
      * @return whether to return from the host method before its body runs
      */
@@ -167,7 +164,7 @@ public final class Transformer implements ClassFileTransformer {
         return Persistence.open(access, stem, freshWorld);
     }
 
-    /** Gives the rewritten save method a public path to ADG-7's adapter. */
+    /** Gives the rewritten save method a public path to the persistence adapter. */
     public static void saveWorldPersistence(Object server) {
         Persistence.save(server);
     }
@@ -175,11 +172,9 @@ public final class Transformer implements ClassFileTransformer {
     /**
      * Gives the rewritten freeze method a public path to the content adapter.
      *
-     * <p>Named here for the same reason as the two above: registering is an
-     * action, ADG-4's hooks observe and veto, so the action is a second call at
-     * the same seam rather than a widened hook contract. It takes nothing — the
-     * set to register is read across the adapter's own crossing, not out of the
-     * host method's arguments.
+     * <p>Hooks observe and veto; registration runs as a second call at the same
+     * seam. It takes nothing: the set to register is read across the adapter's
+     * own crossing, not out of the host method's arguments.
      */
     public static void registerContent() {
         Content.register();
@@ -188,12 +183,8 @@ public final class Transformer implements ClassFileTransformer {
     /**
      * Gives the rewritten client tick a public path to the outward adapter.
      *
-     * <p>The same shape as the three above, and the same reason: performing an
-     * action is not something ADG-4's hooks do, so it is a second call at a seam
-     * the reviewed inventory already pins rather than a widened hook contract.
-     * The tick is where it goes because an action is drained rather than pushed,
-     * and a tick is the coarsest thing that happens often enough for a player not
-     * to hear the delay.
+     * <p>The adapter performs actions in a second call at the client-tick seam.
+     * Actions are drained rather than pushed, once per tick.
      */
     public static void performOutward() {
         Outward.perform();
@@ -231,18 +222,13 @@ public final class Transformer implements ClassFileTransformer {
     /**
      * Whether the target that calls {@code hookMethod} was actually rewritten.
      *
-     * <p>ADG-7's installed-prologue marker. It is separate state from the
-     * counters and the reported target table above, and deliberately so: those
-     * are diagnostics that {@code -Dravel.report.targets} turns on, and a marker
-     * a launch flag can turn off is not a marker. This set is collected
-     * unconditionally and its only reader is the world-open path.
+     * <p>The installed-prologue marker is collected unconditionally, separately
+     * from the counters and target table enabled by {@code -Dravel.report.targets}.
+     * Its only reader is the world-open path.
      *
-     * <p>A target enters it only once a prepend matched the method, which is what
-     * tells a class that merely loaded apart from a seam that was actually
-     * installed. That distinction is the hole ADG-7's rejected alternative —
-     * checking only for a jar or a class — leaves open, because a transformation
-     * can return the original class or match zero methods and still leave
-     * everything present.
+     * <p>A target enters the set only once a prepend matched the method. Merely
+     * loading a class does not establish that its seam was installed: a
+     * transformation can return the original class or match zero methods.
      *
      * @param hookMethod the generated hook name the target is rewritten to call
      */
@@ -270,11 +256,9 @@ public final class Transformer implements ClassFileTransformer {
      * Describes the loader that loaded the first class this transformer
      * rewrote, or {@code null} if it rewrote nothing.
      *
-     * <p>ADG-1's second candidate turns on which loader resolves the game's
-     * classes, and {@link #transform} received that loader and discarded it, so
-     * nothing had ever measured it. The description is built at the moment of
-     * the rewrite and kept as text rather than as a reference, so recording it
-     * holds nothing of the game alive.
+     * <p>The description is built at the moment of the rewrite and kept as text
+     * rather than as a loader reference, so recording it holds nothing of the
+     * game alive.
      */
     public String loaderIdentity() {
         return loaderIdentity.get();
@@ -441,26 +425,21 @@ public final class Transformer implements ClassFileTransformer {
     }
 
     /**
-     * ADG-7's open seam, which carries the version adapter rather than a hook.
+     * The world-open seam, which carries the version adapter rather than a hook.
      *
-     * <p>Named here the way the title-menu bridge is named here: the generated
-     * hook takes what ADG-4 admits and returns a verdict, and the adapter needs
-     * two of the method's own arguments to read the world and to clean it up
-     * again. That is version-specific translation rather than a hook, so it is a
-     * second call at the same seam instead of a widened hook contract.
+     * <p>The adapter uses two of the method's arguments to read the world and
+     * clean it up again. It runs as a second call at the same seam.
      */
     private static boolean isWorldOpen(HookTarget target) {
         return target.hookMethod().equals("worldOpenPersistence");
     }
 
     /**
-     * ADG-7's save seam.
+     * The world-save seam.
      *
-     * <p>This one needs the receiver, which no hook is given: the saving world's
-     * identity is {@code MinecraftServer.getWorldPath(ROOT)} and there is nowhere
-     * else it can come from. ADG-4 keeps that out of a hook's hands, so it is
-     * handed to the adapter instead, exactly as the title-menu bridge takes the
-     * screen it adds a button to.
+     * <p>The adapter receives the receiver to resolve the saving world's identity
+     * through {@code MinecraftServer.getWorldPath(ROOT)}. Hooks do not receive
+     * the receiver.
      */
     private static boolean isWorldSave(HookTarget target) {
         return target.hookMethod().equals("worldSavePersistence");

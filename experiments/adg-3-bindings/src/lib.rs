@@ -344,7 +344,7 @@ pub fn resolve(
 fn from_class_file(jar: &Path, class: &str) -> Result<Vec<classfile::Member>, GenerateError> {
     let entry = format!("{}.class", class.replace('.', "/"));
     // ponytail: `unzip -p` is the standard library of the shell. A Rust zip
-    // reader is a real dependency decision, recorded in the ADR for production.
+    // reader is a real dependency decision for production, not for this spike.
     let output = Command::new("unzip")
         .arg("-p")
         .arg(jar)

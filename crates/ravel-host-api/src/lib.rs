@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Provisional host contract whose mechanism is selected by ADG-2.
+//! Host contract for statically composed Rust mods.
 
 mod interception;
 mod provision;
@@ -28,11 +28,10 @@ use ravel_save::{MigrationChain, SavedDataDeclaration, SavedDataEnvelope, SavedD
 /// Something the game did that a mod may react to.
 ///
 /// Every variant names an occurrence and carries no payload **today**, and that
-/// is unstarted work rather than a boundary. `docs/decisions/adg-4-state-ownership.md`
-/// refuses a copy that *stays* — one that can go stale while nothing notices —
-/// and a value marshalled at dispatch and dropped when the call returns is not
-/// one: `ravel-minecraft`'s `HookValue::Text` already copies a `java.lang.String`
-/// out of the JVM on the current inventory, and nothing has called that a mirror.
+/// is unstarted work rather than a boundary. A copy retained beyond a call can
+/// become stale, but a value marshalled at dispatch and dropped when the call
+/// returns does not: `ravel-minecraft`'s `HookValue::Text` already copies a
+/// `java.lang.String` out of the JVM on the current inventory.
 ///
 /// What is missing is a projection from `HookValue` to this type, and a
 /// per-target decision about which of a hook's parameters are worth carrying.
@@ -214,12 +213,10 @@ impl StructuredFailure for HostError {
 
 /// What the loader needs from one installed mod.
 ///
-/// This is the whole contract, deliberately. How a mod's code arrives in the
-/// process is ADG-2's question and ADG-2 is deferred to M3, so nothing here
-/// names a binary format, a dynamic library, a guest runtime, or a foreign
-/// calling convention: a host mod is a safe Rust value the loader owns and
-/// drives, and the mechanism that produces that value is decided later without
-/// changing this trait.
+/// This is the whole contract, deliberately. A host mod is a safe Rust value
+/// the loader owns and drives. Static source composition produces that value;
+/// this trait names no binary format, dynamic library, guest runtime, or
+/// foreign calling convention.
 pub trait HostMod: Send {
     /// The canonical identity this mod was validated under.
     fn id(&self) -> &ModId;
@@ -439,8 +436,7 @@ pub trait HostMod: Send {
     /// that made it and a mod holds no channel it could use off a thread the
     /// host never entered.
     ///
-    /// `docs/decisions/carrying-an-action-outward.md` decided that the action
-    /// itself crosses to the game as data a Java adapter performs, so what a
+    /// The action crosses to the game as data a Java adapter performs, so what a
     /// host does with these is queue them outward rather than play them. An
     /// action therefore happens after this call rather than during it, and a
     /// mod cannot learn here whether the game did it.
@@ -453,7 +449,7 @@ pub trait HostMod: Send {
 
     /// Declares the settings this mod owns, when it owns any.
     ///
-    /// ADG-6 declares configuration in data, so this is a document rather than a
+    /// Configuration is declared in data, so this is a document rather than a
     /// screen: the host layers the author's defaults under a pack's overrides and
     /// a player's file, and hands the result back through [`HostMod::configure`].
     fn configuration_declaration(&self) -> Option<ConfigurationDeclaration> {
@@ -564,9 +560,8 @@ pub trait HostMod: Send {
 /// without naming the loader, which `docs/architecture/dependency-rules.md`
 /// forbids it from depending on.
 ///
-/// The trait is object-safe and takes `&mut dyn Registrar`, so the mechanism
-/// that produced the mod value is still ADG-2's question and still unanswered
-/// here.
+/// The trait is object-safe and takes `&mut dyn Registrar`, independent of how
+/// static source composition produced the mod value.
 pub trait Registrar {
     /// Claims `key` for the mod currently registering.
     ///

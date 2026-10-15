@@ -37,9 +37,9 @@ import java.util.List;
  * and it is {@code dev.ravel.jvm.Hook}; a screen with its own natives would be a
  * second one. Both crossings this screen makes are that class's:
  * {@code ravelSettingsDocument} once when it opens, and {@code ravelSaveSettings}
- * once when it closes. That is ADG-6's budget of two batched crossings per
- * session, and it is why the document is read into fields here rather than asked
- * for again per widget or per frame.
+ * once when it closes. There are two batched crossings per settings session,
+ * which is why the document is read into fields here rather than asked for
+ * again per widget or per frame.
  *
  * <p><b>Every widget here is one the game can build without this class drawing
  * anything.</b> {@code AbstractButton} looks like the obvious base for the button

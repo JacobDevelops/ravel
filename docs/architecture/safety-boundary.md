@@ -37,13 +37,11 @@ Two consequences worth stating:
   [`dependency-rules.md`](dependency-rules.md) still apply for their own reasons.
 - **`RegisterNatives` still cannot reach zero.** `Env::register_native_methods` and
   `NativeMethod::from_raw_parts` are `unsafe fn`, and an unsafe call is not
-  something an attribute can hide. ADG-1's rejection of the hosted VM therefore
+  something an attribute can hide. Rejection of the hosted VM therefore
   holds more strongly than the spike measured: zero against two, not one against
   two.
 
-Adding a row needs an accepted ADR and an independent review, and the bar is the one
-M1 failed to clear — showing that no audited dependency can hold the operation,
-rather than that none was found. Measurement alternatives live in `experiments/`,
+The table stays empty unless deliberately changed. Measurement alternatives live in `experiments/`,
 which is fenced out of the production graph by `ravel:verify-scaffold` and may hold
 whatever unsafe a candidate needs to be measured at all.
 

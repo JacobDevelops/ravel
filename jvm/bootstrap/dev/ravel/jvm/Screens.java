@@ -15,12 +15,10 @@ import java.util.jar.JarFile;
  * obfuscates the game into the unnamed package generates them there too, because
  * a Java source in a package cannot name a supertype that has none.
  *
- * <p>ADG-1's amendment named two ways to get a screen class into the game
- * process and chose the agent carrying a second jar, rather than a launcher
- * putting it on the class path. That keeps ADG-5's property that Ravel adds JVM
- * arguments to a stock instance and nothing else, because a class path cannot be
- * appended through a JVM argument on a launcher that builds its own and takes
- * the last one.
+ * <p>The agent carries a second jar so Ravel can add JVM arguments to a stock
+ * instance without changing its class path. A launcher that builds its own
+ * class path and takes the last one cannot have it appended through a JVM
+ * argument.
  *
  * <p>The jar is found beside the agent's own jar rather than named in an
  * argument, so {@link Boot#premain} keeps rejecting arguments and there is
@@ -148,10 +146,10 @@ final class Screens {
     /**
      * Builds the settings screen for one mod.
      *
-     * <p>ADG-6's mechanism: the screen loads lazily, out of the optional jar,
-     * through reflection, because ADG-1 forbids this jar naming its supertype.
-     * The parent is the screen to close back to, typed {@code Object} for the
-     * same reason.
+     * <p>The screen loads lazily from the optional jar through reflection.
+     * The agent jar is compiled without game classes, including the screen's
+     * supertype. The parent is the screen to close back to, typed {@code Object}
+     * for the same reason.
      *
      * @param owner the canonical mod id whose settings to show
      * @param parent the screen to return to on close
@@ -177,7 +175,7 @@ final class Screens {
     /**
      * Builds the mod list and dependency diagnostics screen.
      *
-     * <p>ADG-6's mechanism again, for the same ADG-1 reason.
+     * <p>Loads reflectively from the optional screen jar.
      *
      * @return the screen as an {@code Object} for the caller to hand to the
      *     game, or {@code null} if there is no screen jar or it could not be used
@@ -189,10 +187,9 @@ final class Screens {
     /**
      * Builds the screen a refused world load leaves the player on.
      *
-     * <p>ADG-6's mechanism again, and the one screen whose absence is
-     * not the end of the story: {@link Persistence} has already refused the
-     * world by the time it asks for this, so a {@code null} here costs the
-     * player the explanation and not the protection.
+     * <p>{@link Persistence} has already refused the world before requesting
+     * this screen, so a {@code null} here loses the explanation, not the
+     * protection.
      *
      * @param diagnostic Rust's refusal text, which Java presents and never
      *     composes
@@ -228,9 +225,8 @@ final class Screens {
     /**
      * Loads one screen class and calls its {@code open}.
      *
-     * <p>Reflection rather than a direct reference, because this class is in the
-     * agent jar and ADG-1 requires that jar to declare no game type — and every
-     * screen's supertype is one.
+     * <p>Reflection avoids a direct reference to a screen whose supertype is a
+     * game class: the agent jar compiles without game classes.
      *
      * @param name the screen class to load
      * @param types the parameter types of the {@code open} to call

@@ -232,8 +232,8 @@ public final class Agent {
     /**
      * Whether the target calling {@code hookMethod} was actually rewritten.
      *
-     * <p>ADG-7's installed-prologue marker, read through the agent because the
-     * transformer instance is the agent's to hold. An agent that installed no
+     * <p>The installed-prologue marker is read through the agent, which holds
+     * the transformer instance. An agent that installed no
      * transformer has rewritten nothing, so it answers {@code false} rather than
      * throwing — the reader refuses a world load on a false either way, and a
      * marker that can throw is one the open path would have to guard.
@@ -281,9 +281,8 @@ public final class Agent {
     /**
      * Prints what this launch actually did.
      *
-     * <p>ADG-5 proved the JVM accepted Ravel's arguments and the client ran, but
-     * not that the rewrite happened, because nothing reported it. One line at
-     * shutdown is what makes an ordinary launch direct evidence.
+     * <p>The shutdown report records whether transformations actually happened,
+     * rather than merely whether the JVM accepted the launch arguments.
      *
      * <p>The line goes to the process's own standard output rather than to
      * {@code System.out}. The game replaces {@code System.out} with its logger

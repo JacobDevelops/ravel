@@ -72,7 +72,7 @@ pub fn work_log() -> WorkLog {
 /// The authoritative state a server side holds and a client does not.
 ///
 /// A count of the ticks this side has been told about. It stands for anything a
-/// server owns outright: no accepted decision gives a mod the world, so what
+/// server owns outright: Ravel gives a mod no access to the world, so what
 /// matters here is that the state exists nowhere but a server and that building
 /// it is observable.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

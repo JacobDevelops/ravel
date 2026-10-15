@@ -51,8 +51,8 @@ stable contracts toward concrete host internals.
   stale.
   What is *not* proved is a general crate executing against the second version's
   target table. A build compiles exactly one table, because the generated bindings
-  are `include!`d from `OUT_DIR` and ADG-3 declined to decide how two hook classes
-  and two exported symbol sets would be told apart. So the general crates' claim
+  are `include!`d from `OUT_DIR`; separate versions ship separate artifacts rather
+  than sharing hook classes or exported symbol sets. So the general crates' claim
   rests on the id set being identical and on their holding no other version-derived
   name, both of which are checked, rather than on a second table being run.
 - `ravel-minecraft` is the highest crate that may name a JNI type, and
@@ -84,7 +84,7 @@ stable contracts toward concrete host internals.
   told the answer to the opt-in switch rather than reading it, because the switch
   is a JVM system property and this crate is version-neutral.
 - Testkit may depend on the loader and public contracts to construct process
-  harnesses, but production libraries never depend on testkit. Restricted fixtures
+  harnesses, but production libraries never depend on testkit. Local fixtures
   are never package or source dependencies.
 
 - `ravel-bootstrap` is the JVM entry crate. It holds no unsafe code — see
@@ -110,9 +110,6 @@ stable contracts toward concrete host internals.
 - Measurement experiments under `experiments/` are not production crates. No
   production crate depends on one, and `ravel:verify-scaffold` enforces that.
 
-Architecture-gated crates may exist as empty boundaries before a decision, but
-production code must not select an ADG-1 through ADG-5 mechanism until its ADR
-is accepted. ADG-1, ADG-3, ADG-4 and ADG-5 are accepted; see
-[`docs/decisions/`](../decisions/). ADG-2 and ADG-6 are accepted too; a mod is
-distributed as source the player's machine compiles, and every screen Ravel owns
-is declared in data and drawn in Java.
+The [mechanisms overview](overview.md#mechanisms) describes the current boundaries:
+a mod is distributed as source the player's machine compiles, and every screen
+Ravel owns is declared in data and drawn in Java.

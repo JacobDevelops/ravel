@@ -123,18 +123,16 @@ impl HookTarget {
 
 /// An opaque reference to an object the game owns, valid for one hook call.
 ///
-/// ADG-4's M3-W0 amendment admits exactly this and nothing more: a reference to
-/// state the *game* keeps, which the loader may hold for the duration of a call
-/// and hand back, and cannot read into. It is not the mirror that gate refused.
+/// It refers to state the *game* keeps, which the loader may hold for the
+/// duration of a call and hand back, and cannot read into.
 /// A handle names the one authoritative object rather than copying a field out
 /// of it, so it cannot go stale; it costs a pointer rather than a per-entity
 /// copy; and it is opaque, so its shape is the same in every game version while
 /// a copy's field layout is not.
 ///
-/// The residual risk the amendment names is lifetime, and three separate things
-/// close it. Each has its own test below, and each pins the failure it wants, so
-/// a change that makes one of them start compiling is caught by that one rather
-/// than absorbed by another.
+/// Lifetime safety is enforced in three separate ways. Each has its own test
+/// below, and each pins the failure it wants, so a change that makes one of them
+/// start compiling is caught by that one rather than absorbed by another.
 ///
 /// A handle *borrows* the local reference the JVM handed the exported frame, so
 /// it cannot leave the frame that built it:
@@ -209,10 +207,9 @@ impl HookTarget {
 /// assert_eq!(describe(&HookValue::Int(7)), "Int(7)");
 /// ```
 ///
-/// Reading a field through a handle and keeping the result is a mirror, and
-/// every rule ADG-4 wrote about one still applies to it. Calling into the game
-/// at all is ADG-6's to settle, and until it is settled a handle is only
-/// something an observer can recognise and pass on.
+/// Reading a field through a handle and keeping the result would duplicate
+/// authoritative game state. A handle is only something an observer can
+/// recognise and pass on; game operations belong to the Java adapters.
 #[derive(Clone, Copy)]
 pub struct JavaHandle<'local> {
     class: &'static str,
@@ -310,11 +307,11 @@ impl fmt::Debug for JavaHandle<'_> {
 
 /// One argument a hook receives.
 ///
-/// ADG-4 decided that the game keeps its state and Ravel duplicates nothing, so
-/// every variant here is either a value the call site already had or, since the
-/// M3-W0 amendment, a [`JavaHandle`] onto an object the game owns. Nothing here
-/// can go stale: the owned variants refer back to no live object, and the handle
-/// refers to the authoritative one rather than to a copy of it.
+/// The game keeps its state and Ravel duplicates nothing, so every variant here
+/// is either a value the call site already had or a [`JavaHandle`] onto an
+/// object the game owns. Nothing here can go stale: the owned variants refer
+/// back to no live object, and the handle refers to the authoritative one
+/// rather than to a copy of it.
 ///
 /// The lifetime is the hook call. It is what lets a handle be carried at all;
 /// what stops one being *stored* past the call is [`HookObserver::observe`]'s
@@ -368,7 +365,7 @@ pub trait HookObserver: Send + Sync {
     /// name, cannot unify with the borrow of `&self`, and cannot return. That,
     /// together with an observer being `'static` — it is stored as
     /// `Box<dyn HookObserver>` — is what makes retaining a handle past the call
-    /// a compile error, and it is what ADG-4's amendment leans on.
+    /// a compile error.
     ///
     /// Writing it as `fn observe<'a>(&'a self, …, values: &'a [HookValue<'a>])`
     /// would tie the values to the observer's own borrow and give that up, while

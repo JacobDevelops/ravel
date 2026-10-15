@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ravel:schema:provenance:1",
   "title": "Ravel provenance record",
-  "description": "Source, rights, implementation, permission, and attribution record used by publication gates.",
+  "description": "Package-format source, rights, implementation, permission, and attribution metadata.",
   "type": "object",
   "additionalProperties": false,
   "required": [

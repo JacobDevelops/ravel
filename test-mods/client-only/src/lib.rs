@@ -148,8 +148,8 @@ pub fn overlay_id() -> PacketId {
 /// The client-only resources this mod would hold in a running game.
 ///
 /// The lines a `to-client` packet last carried: the client is the only receiving
-/// end of such a link, so this is state no server side has a reason to hold. No
-/// accepted decision gives a mod a way to draw, so nothing here renders anything —
+/// end of such a link, so this is state no server side has a reason to hold.
+/// Ravel gives a mod no way to draw, so nothing here renders anything —
 /// what matters is that building it is observable and that it is built nowhere but
 /// the client.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

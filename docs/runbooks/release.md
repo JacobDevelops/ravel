@@ -8,12 +8,10 @@ registry is post-initial scope.
 2. Validate the relevant milestone evidence and independent review.
 3. Confirm package identity, compatibility, portable source-file integrity, licence,
    repository, and provenance metadata.
-4. Audit dependencies, advisories, notices, assets, names, branding,
-   permissions, and attribution.
-5. Verify public/private separation and scan history and artifacts for
-   restricted content and secrets.
+4. Audit dependency licences and advisories.
+5. Scan history and artifacts for credentials and secrets.
 6. Reproduce candidate packages from pinned inputs and compare hashes.
 7. Record rollback inputs and retain the last compatible release.
 
-Signing, publisher identity, moderation, distribution, and remote publication
+Publisher signing, publisher identity, moderation, distribution, and remote publication
 require a separately approved plan.

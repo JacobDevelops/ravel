@@ -103,7 +103,7 @@ impl ValueSchema {
 /// The JSON types a setting value may declare.
 ///
 /// Scalars only. What an array or object setting looks like on a screen is a
-/// widget question ADG-6 leaves to the screen, and refusing one now can be
+/// widget question left to the screen, and refusing one now can be
 /// widened later; admitting one before anything draws it could not be withdrawn.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]

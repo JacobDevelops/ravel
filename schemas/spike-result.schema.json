@@ -92,7 +92,7 @@
         "revision": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["id", "changeId", "dirty"],
+          "required": ["id", "dirty"],
           "properties": {
             "id": {
               "type": "string",
@@ -102,7 +102,7 @@
             "changeId": {
               "type": "string",
               "pattern": "^[k-z]{32}$",
-              "description": "The change that holds this result. Survives every rewrite, and ravel:verify-spikes checks it against the change that introduced the file."
+              "description": "Optional historical change identifier retained for compatibility with recorded results; the gate does not verify revision ownership."
             },
             "dirty": {
               "type": "boolean"

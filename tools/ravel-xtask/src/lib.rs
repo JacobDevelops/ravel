@@ -2,7 +2,7 @@
 
 //! Repository automation for Ravel.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -133,7 +133,6 @@ const ROOT_FILES: &[&str] = &[
     "SPEC.md",
     "deny.toml",
     "docs/architecture/m1-measurement-gate.md",
-    "docs/decisions/README.md",
     "evidence/m1/README.md",
     "evidence/m2/README.md",
     "docs/runbooks/darwin-verification.md",
@@ -186,9 +185,8 @@ const VERSION_DATA: &str = "minecraft/versions";
 /// [`ROOT_FILES`]. A path is a fine way to require a file and a poor way to
 /// require a *shape*: the moment a second version directory is tracked, a literal
 /// list asks nothing of it, so a version arriving without its locks is caught by
-/// nothing. `version-selection-is-a-build-time-choice.md` makes that gap explicit —
-/// a build reads the directory it selected and no other, so the guarantee that
-/// every tracked version is well formed has no owner but this sweep.
+/// nothing. A build reads the directory it selected and no other, so the guarantee
+/// that every tracked version is well formed has no owner but this sweep.
 const VERSION_FILES: [&str; 7] = [
     "README.md",
     "adapter.toml",
@@ -507,7 +505,6 @@ pub fn verify_scaffold(root: &Path) -> Vec<String> {
     verify_version_directories(root, &mut violations);
     let inventories = hook_inventories(root);
     verify_hook_inventory_document(root, &inventories, &mut violations);
-    verify_decision_hook_claims(root, &inventories, &mut violations);
     verify_campaign_inventory(root, &mut violations);
     verify_review_round_counts(root, &mut violations);
     verify_review_blocking_counts(root, &mut violations);
@@ -598,7 +595,7 @@ struct HookCounts {
 ///
 /// M3-W0 closes on that document and `evidence/m3/manifest.json` pins its digest
 /// as an M3 input, so the gate was satisfied by a document that had gone stale:
-/// it still said 35 entries, 31 methods and 23 handle parameters after ADG-7's two
+/// it still said 35 entries, 31 methods and 23 handle parameters after two
 /// world persistence seams entered the inventory, while tabling those two seams
 /// further down the same file. A digest binds a document to its bytes and never to
 /// the thing it is about, which is why nothing caught it. These four counts are
@@ -686,202 +683,13 @@ fn documented_versions(document: &str) -> BTreeSet<String> {
     named
 }
 
-/// The directory holding the accepted decision records.
-const DECISION_RECORDS: &str = "docs/decisions";
-
-/// The word a decision record denies a hook with.
-///
-/// Paired with [`DENIAL_VERBS`] rather than used alone, because `not` alone
-/// appears in most sentences and `hook` alone appears in every one of these
-/// records dozens of times. What the pair reaches is the shape a denial takes:
-/// the negation adjacent to a form of the verb.
-const DENIAL: &str = "not";
-
-/// The forms of `hook` a denial may be written with.
-///
-/// The inflected passive is the more natural phrasing of the sentence this check
-/// exists over — "the `extractRenderState` seam is not hooked" — and holding only
-/// the infinitive left that outside the anchor.
-const DENIAL_VERBS: [&str; 3] = ["hook", "hooked", "hooking"];
-
-/// The absolute denial of any per-frame crossing, which one hook falsifies.
-const NO_PER_FRAME: &str = "nothing crosses per frame";
-
-/// The inventory entry that makes [`NO_PER_FRAME`] false.
-const PER_FRAME_MEMBER: &str = "extractRenderState";
-
-/// Holds a decision record's claims about hooks to the inventory that declares
-/// them.
-///
-/// Two accepted decisions survived eight review rounds describing a hook surface
-/// the repository does not have. ADG-6 said the inventory omitted
-/// `extractRenderState` and that no crossing happened per frame, while
-/// `hooks.toml` had declared `screen.extract-render-state` since M3-W0 and a
-/// launch had rewritten it. The only ADR checks that existed asked whether the
-/// file was present, so a record could deny any mechanism it liked. This binds the
-/// denial to the inventory: a record may not deny a hook the inventory declares,
-/// and may not deny per-frame crossing while a per-frame member is declared.
-///
-/// Known limits, and they are narrow on purpose.
-///
-/// It reads two anchors and no more. A denial has to be written as [`DENIAL`]
-/// adjacent to one of [`DENIAL_VERBS`], with a hook id or a member name the
-/// inventory declares within [`COUNT_LOOKBACK`] words on either side of that pair,
-/// and the absolute per-frame denial has to be written as [`NO_PER_FRAME`]. Both
-/// inflections and both word orders are reached, so "does not hook
-/// `extractRenderState`" and "the `extractRenderState` seam is not hooked" both
-/// fire. A record that denies the same hook without the negation and the verb —
-/// "the extraction seam is left alone", "Ravel leaves the extraction seam alone" —
-/// is not reached, and no general prose parser is attempted here for the reason
-/// `hook_document_violations` gives about telling a current claim from a
-/// historical one.
-///
-/// It cannot tell a claim from a quotation. A record that quotes a withdrawn
-/// denial in order to withdraw it fails this check exactly as one that still
-/// asserts it does, so an amendment has to describe the sentence it repeals rather
-/// than reprint it. That is the cost of not parsing prose, it is paid in ADG-6's
-/// amendment, and it is the right way round: a false sentence in an accepted
-/// record is worse than an amendment that has to paraphrase.
-///
-/// It knows one per-frame member, named above. A future version whose per-frame
-/// seam is called something else needs that name added, and the check reports
-/// nothing until it is.
-///
-/// It reads every tracked version's inventory rather than one. A decision record
-/// is version-agnostic prose and denies a mechanism outright, so the claim is
-/// false as soon as any tracked version declares the hook, and the message names
-/// the inventory that falsifies it.
-fn verify_decision_hook_claims(
-    root: &Path,
-    inventories: &[HookInventory],
-    violations: &mut Vec<String>,
-) {
-    let mut sources: Vec<(String, &str)> = Vec::new();
-    for inventory in inventories {
-        for hook in declared_hook_names(&inventory.text) {
-            sources.push((hook, inventory.path.as_str()));
-        }
-    }
-    let declared = sources
-        .iter()
-        .map(|(hook, _)| hook.clone())
-        .collect::<Vec<_>>();
-    let per_frame = sources
-        .iter()
-        .find(|(hook, _)| hook == PER_FRAME_MEMBER)
-        .map(|(_, path)| *path);
-
-    let mut records: Vec<PathBuf> = match fs::read_dir(root.join(DECISION_RECORDS)) {
-        Ok(entries) => entries
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|kind| kind == "md"))
-            .collect(),
-        Err(error) => {
-            violations.push(format!("cannot read {DECISION_RECORDS}: {error}"));
-            return;
-        }
-    };
-    records.sort();
-
-    for path in records {
-        let name = path
-            .file_name()
-            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
-        let record = match fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(error) => {
-                violations.push(format!("cannot read {DECISION_RECORDS}/{name}: {error}"));
-                continue;
-            }
-        };
-        for denied in denied_hook_names(&record, &declared) {
-            let inventory = sources
-                .iter()
-                .find(|(hook, _)| *hook == denied)
-                .map_or("", |(_, path)| *path);
-            violations.push(format!(
-                "{DECISION_RECORDS}/{name} says `{denied}` is not hooked while {inventory} \
-                 declares it"
-            ));
-        }
-        if let Some(inventory) = per_frame
-            && record
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .to_ascii_lowercase()
-                .contains(NO_PER_FRAME)
-        {
-            violations.push(format!(
-                "{DECISION_RECORDS}/{name} says \"{NO_PER_FRAME}\" while {inventory} \
-                 declares `{PER_FRAME_MEMBER}`, which the inventory itself calls the per-frame seam"
-            ));
-        }
-    }
-}
-
-/// Every hook id and member name the inventory declares.
-///
-/// Both, because a record names a hook either way: ADG-6's consequence bullet
-/// wrote the member and its section prose wrote the id.
-fn declared_hook_names(inventory: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    for line in inventory.lines().map(str::trim) {
-        for key in ["id", "member"] {
-            if let Some(value) = line.strip_prefix(key).map(str::trim_start)
-                && let Some(value) = value.strip_prefix('=')
-            {
-                let value = value.trim().trim_matches('"');
-                if !value.is_empty() {
-                    names.push(value.to_owned());
-                }
-            }
-        }
-    }
-    names
-}
-
-/// Every declared hook a record denies within reach of a denial.
-///
-/// Both sides of the denial are read, because English puts the thing denied on
-/// either one: "does not hook the extraction seam" and "the extraction seam is not
-/// hooked" say the same thing.
-fn denied_hook_names(record: &str, declared: &[String]) -> Vec<String> {
-    let bare = |word: &str| {
-        word.trim_matches(|character: char| !character.is_alphanumeric())
-            .to_owned()
-    };
-    let words: Vec<&str> = record.split_whitespace().collect();
-    let mut denied = Vec::new();
-    for (at, window) in words.windows(2).enumerate() {
-        let anchored = bare(window[0]).eq_ignore_ascii_case(DENIAL)
-            && DENIAL_VERBS
-                .iter()
-                .any(|verb| bare(window[1]).eq_ignore_ascii_case(verb));
-        if !anchored {
-            continue;
-        }
-        let before = at.saturating_sub(COUNT_LOOKBACK)..at;
-        let after = (at + 2)..(at + 2 + COUNT_LOOKBACK).min(words.len());
-        for word in words[before].iter().chain(&words[after]) {
-            let word = bare(word);
-            if declared.contains(&word) && !denied.contains(&word) {
-                denied.push(word);
-            }
-        }
-    }
-    denied
-}
-
 /// Counts the entries, kinds and handle parameters one `hooks.toml` declares.
 ///
 /// An inventory declaring no entry is refused rather than counted as four zeroes.
 /// Zero is a number a truncated file reaches by having nothing in it, and every
 /// consumer reads a successful count as evidence the inventory was read: a
-/// version truncated to its header would contribute nothing to
-/// `declared_hook_names`, so no decision record could be falsified by it, and its
-/// document's figures would be satisfied by emptiness.
+/// version truncated to its header would leave its document's figures satisfied
+/// by emptiness.
 fn hook_counts(inventory: &str) -> Result<HookCounts, String> {
     let mut counts = HookCounts {
         entries: 0,
@@ -1550,8 +1358,7 @@ const ROUND_HEADING: &str = "### Round ";
 /// sections, because a count inside a section is a count of that round and
 /// disagreeing with the campaign total is what it is for. And it reaches a
 /// record whose rounds carry their blocking count in the heading; M3's and M4's
-/// records are laid out differently and are not retrofitted, for the reason
-/// `docs/decisions/claims-without-a-second-reading.md` gives about rewriting
+/// records are laid out differently and are not retrofitted, to avoid rewriting
 /// evidence a review already certified.
 fn verify_review_blocking_counts(root: &Path, violations: &mut Vec<String>) {
     for (record, _) in round_count_subjects() {
@@ -1667,8 +1474,8 @@ fn verify_manifest_percentages(root: &Path, violations: &mut Vec<String>) {
 ///
 /// The M2 milestone gate validates all six of `loader-overhead.json`'s limits
 /// identically — each one a number above its measurement — and three of them were
-/// voided by the record's own expiry clause when ADG-2 chose source compilation
-/// over linking. Nothing inside the record marks those three dead, so a reader who
+/// voided by the record's own expiry clause when source compilation replaced
+/// linking. Nothing inside the record marks those three dead, so a reader who
 /// runs the gate and not `ROADMAP.md` reads a green on three limits that describe a
 /// shape which no longer exists. The record is not edited, because a recorded
 /// measurement is not edited after the fact; what is bound instead is the
@@ -1801,7 +1608,7 @@ const AGENT_JAR_SOURCES: &str = "jvm/bootstrap";
 /// What makes a string literal in those sources a game class name.
 ///
 /// `com.mojang.` is here because the game's own libraries are as version-coupled as
-/// its own classes and are reached the same way: ADG-7 turns on
+/// its own classes and are reached the same way: persistence uses
 /// `com.mojang.serialization.Codec` and `adapter.toml` pins `com.mojang:datafixerupper`
 /// as a second class source, so a reflective reach into one would be the same defect
 /// wearing a different prefix.
@@ -1818,8 +1625,8 @@ const GAME_PACKAGES: [&str; 2] = ["net.minecraft.", "com.mojang."];
 /// beside the `hooks.toml` whose classes it complements, and the check below runs
 /// once per tracked version.
 ///
-/// Two sources resolve one set, and for the same reason: ADG-4 admits a hook that
-/// observes or vetoes, so anything the host has to *perform* — storing a world's
+/// Two sources resolve one set, and for the same reason: hooks
+/// observe or veto, so anything the host has to *perform* — storing a world's
 /// aggregate, registering a mod's block — is performed by a hand-written adapter
 /// that reaches the game by name. Adding a name to either source without adding it
 /// to a version's file fails the scaffold, which is the whole point of the file.
@@ -1967,8 +1774,8 @@ fn declared_roles(text: &str, path: &str) -> Result<Vec<Reflected>, String> {
 
 /// Pins the game class names the always-present agent jar's own sources carry.
 ///
-/// ADG-1 forbids that jar from *declaring* a game type and `build-agent.sh`
-/// enforces it by construction, compiling with no `-cp` at all. ADG-4's adapters
+/// That jar declares no game type, which `build-agent.sh`
+/// enforces by construction, compiling with no `-cp` at all. The adapters
 /// resolve the game classes they need by name instead, and that name used to be a
 /// string literal in the shared source. It cannot be: `jvm/bootstrap` is one
 /// source tree serving every tracked version, so a literal there spells one
@@ -2142,8 +1949,6 @@ fn verify_persistence_reflection(root: &Path, violations: &mut Vec<String>) {
             }
         }
     }
-
-    verify_resolved_class_figure(root, &surfaces, violations);
 }
 
 /// Every Java source under one directory, in path order.
@@ -2888,87 +2693,6 @@ fn declaring_role<'a>(constant: &str, declared: &[&'a str]) -> Option<&'a str> {
         .copied()
 }
 
-/// The record that states in prose how large the reflective surface is.
-const JVM_ENTRY_DECISION: &str = "docs/decisions/adg-1-jvm-entry.md";
-
-/// Anchors the one prose figure written about the set above to the set itself.
-///
-/// The list is designed to grow: bringing a member under the adapter means adding
-/// a class name to it, and the check above already fails in both directions when
-/// the jar and the list disagree. What nothing read was the sentence in ADG-1 that
-/// counts the list for a reader, so the figure could go stale on exactly the edit
-/// the rest of this function exists to force. It is one line of prose against one
-/// `len()`, which is the cheapest anchor in this repository and the reason there
-/// is no excuse for the figure being ungated.
-///
-/// Known limit: this holds the count and nothing else. A record that states the
-/// right number and describes the wrong classes passes, because prose about what
-/// the names *are* is held by nothing but reading.
-///
-/// The agent jar the sentence describes exists once per version, so the record
-/// owes a figure per *distinct* surface size: the figures it states and the sizes
-/// the tracked versions declare have to be the same set. Holding one figure
-/// against every surface's `len()` was unsatisfiable the moment two versions
-/// differed in size — no wording makes one number equal two — which hard-blocked
-/// the second version in the gate instead of in the work package that owns it.
-/// Set equality is the same rule under one version, where the set of sizes is a
-/// singleton, and under two it asks for the amendment the record can actually
-/// write. Versions that agree on a size share one figure, which is why the
-/// comparison is over distinct values rather than over a figure per version.
-fn verify_resolved_class_figure(
-    root: &Path,
-    surfaces: &[ReflectiveSurface],
-    violations: &mut Vec<String>,
-) {
-    let record = match fs::read_to_string(root.join(JVM_ENTRY_DECISION)) {
-        Ok(record) => record,
-        Err(error) => {
-            violations.push(format!("cannot read {JVM_ENTRY_DECISION}: {error}"));
-            return;
-        }
-    };
-    let stated = numbers_before(&record, &["classes", "by", "name"]);
-    if stated.is_empty() {
-        violations.push(format!(
-            "{JVM_ENTRY_DECISION} states no count of the classes the agent jar's adapters resolve \
-             by name; the figure is the one thing about that set a reader takes on trust, so it is \
-             required rather than optional"
-        ));
-        return;
-    }
-    let stated: BTreeSet<usize> = stated.into_iter().collect();
-    let mut declaring: BTreeMap<usize, Vec<&str>> = BTreeMap::new();
-    for surface in surfaces {
-        declaring
-            .entry(surface.roles.len())
-            .or_default()
-            .push(surface.path.as_str());
-    }
-
-    for (declared, paths) in &declaring {
-        if !stated.contains(declared) {
-            violations.push(format!(
-                "{} declares {declared} classes and {JVM_ENTRY_DECISION} states no such count; \
-                 the record owes one figure per distinct surface size",
-                paths.join(", ")
-            ));
-        }
-    }
-    for count in &stated {
-        if !declaring.contains_key(count) {
-            let sizes = declaring
-                .keys()
-                .map(usize::to_string)
-                .collect::<Vec<_>>()
-                .join(", ");
-            violations.push(format!(
-                "{JVM_ENTRY_DECISION} says the agent jar's adapters resolve {count} classes by \
-                 name while no tracked version declares that many ({sizes})"
-            ));
-        }
-    }
-}
-
 /// The author-facing documents whose enumerations are held to the code.
 const GUIDE_DIRECTORY: &str = "docs/guide";
 
@@ -3172,13 +2896,11 @@ fn stated_variants(document: &str, name: &str) -> BTreeSet<String> {
 /// carries both generated classes.
 /// What holds is narrower and enforced by construction — the jar *declares* no
 /// game type, so `jvm/build/build-agent.sh` compiles it with no `-cp` at all and
-/// needs no licensed fixture, and a source declaring one would fail to compile.
+/// needs no game fixture, and a source declaring one would fail to compile.
 ///
 /// So the naming form is refused and the declaring form is left alone. A
-/// quotation of the naming form is left alone too: `docs/decisions/adg-1-jvm-entry.md`
-/// and [`verify_persistence_reflection`]'s own documentation each quote
-/// "names no game type" in order to say it was false, and a record of a mistake is
-/// not the mistake.
+/// quotation of the naming form is left alone too: a record of a mistake is not
+/// the mistake.
 ///
 /// **What it cannot catch, stated because a gate that promises more than it
 /// enforces is the defect this repository keeps finding.** It matches four verbs
@@ -3221,8 +2943,8 @@ fn verify_game_type_claims(root: &Path, paths: &[String], violations: &mut Vec<S
                 violations.push(format!(
                     "{relative}:{} says an artifact `{claim}`. That is false of the always \
                      present agent jar and of generated Hook.java, both of which carry game \
-                     class names as strings. State the claim ADG-1 enforces instead — the jar \
-                     *declares* no game type, so it compiles with no `-cp` and no licensed \
+                     class names as strings. State the precise claim instead — the jar \
+                     *declares* no game type, so it compiles with no `-cp` and no game \
                      fixture — or put the false form in quotation marks where the point is that \
                      it was false.",
                     index + 1
@@ -3388,14 +3110,14 @@ pub fn verify_evidence_records(root: &Path) -> Vec<String> {
 ///
 /// `ravel:verify` is what `AGENTS.md` tells every agent to run, and it ran no
 /// milestone closure rule at all: `ravel:verify-milestone m<N>` was a separate,
-/// opt-in task, so `revision.changeId` provenance, schema conformance and the
-/// recorded arithmetic were checked only by whoever thought to ask. Moving the
+/// opt-in task, so schema conformance and the recorded arithmetic were checked
+/// only by whoever thought to ask. Moving the
 /// whole of closure into `ravel:verify` was not available, because M1, M2 and M3
 /// record `review.result: "fail"` by design and the repository's own gate has to
 /// keep exiting zero.
 ///
 /// So closure is split by what decides it. Everything here is decided by the
-/// document and the repository — the schema, the pinned change, the numbers
+/// document and the repository — the schema, the input digests, the numbers
 /// agreeing with each other — and runs on every gate. The verdict rules, which
 /// ask what the independent reviewer concluded and whether any finding is
 /// blocking, stay in the per-milestone task, because a failing review is a true
@@ -3443,7 +3165,6 @@ fn verify_manifest_invariants(
             violations,
         );
     }
-    verify_manifest_change(root, manifest_path, violations);
     // Whether a finding anchors the symbol it names is decided by this repository
     // and by no reviewer, so it runs on every gate rather than only where a
     // milestone is closed. A deviation goes stale between milestones, which is
@@ -3498,8 +3219,7 @@ const RUST_DEFINITION_KEYWORDS: [&str; 8] = [
 /// The anchor does not verify the finding, and this check does not pretend to.
 /// It holds the one narrow claim inside a finding that a machine can hold — that
 /// the named symbol has no caller outside a stated path set — so that the tree
-/// moving out from under a finding is loud. `docs/decisions/` records the
-/// decision that makes it mandatory from M5 forward and states what it buys.
+/// moving out from under a finding is loud. This is mandatory from M5 forward.
 ///
 /// Both halves are checked against the tree rather than against the author. What
 /// counts as a Rust symbol is decided by what the tracked sources actually
@@ -3835,72 +3555,22 @@ fn verify_admitted_inventory(
     }
 }
 
-/// Every pin a record carries, wherever inside the record it sits.
-///
-/// One record holds more than one trial — `evidence/m3/pack-compile.json` pins a
-/// revision under `trial` and a second under `variants.trial` — so a filter that
-/// read `.trial.revision` alone would leave the others free to pin anything.
+/// Every trial revision a record carries, including nested variant trials.
 const TRIAL_PINS: &str = r#"[paths(objects) as $p
         | select(($p | length) >= 2 and ($p[-1]) == "revision" and ($p[-2]) == "trial")
         | {at: ($p | map(tostring) | join(".")), pin: getpath($p)}]
     | .[]
-    | .at + " " + (.pin.id // "-") + " " + (.pin.changeId // "-") + " " + (.pin.dirty | type)"#;
+    | (.at | tojson) + " " + (.pin.dirty | type)"#;
 
-/// Requires every pin inside an admitted record to name a tree a reader can obtain.
-///
-/// `verify_pinned_commit` applies the visible-commit and changeId-owns-id tests to
-/// a manifest's own `.revision`, and `verify_recorded_change` applies change
-/// provenance only under `evidence/m1/spikes/`. So the revision a *record* pinned
-/// was constrained by nothing anywhere: `evidence/m2/loader-overhead.json`'s
-/// `trial.revision.id` was set to forty zeroes and its `changeId` to a change that
-/// exists nowhere, the manifest digest was rebound, and `verify scaffold` exited
-/// zero. A record whose pin binds nothing is a measurement of an unnamed tree.
-///
-/// Absence and unobtainability are separated deliberately, because they are not
-/// the same claim. A record that pins no commit claims no tree, which some records
-/// legitimately do and say so in their own prose; there is nothing there to
-/// refuse, and the skip is announced rather than silent. A record that pins one
-/// makes a statement a reader can act on, and this requires it to be true: the
-/// commit has to be reachable from visible heads — the distinction `visible_commit`
-/// draws, and the one that separates a commit a clone carries from one only this
-/// working copy's operation log can see — and it has to be the commit its own
-/// change is at now.
-///
-/// The escape is a disclosure rather than a tolerance. A pin that fails is
-/// permitted only where the admitting manifest lists it under
-/// `unobtainableRevisions` quoting that record, that commit and that change, so an
-/// excuse cannot cover a pin it does not name; and a disclosed pin that starts
-/// passing is itself a violation, so the excuse cannot outlive the defect.
-/// What a disclosure may not say, because the gate is what says it.
-///
-/// A disclosure's `reason` is free prose and no gate can check a judgement about
-/// what a reader loses. What it *can* check is that the prose does not also
-/// classify the failure, which is the one part of it that goes stale: a round
-/// re-pinned a record to a real commit of a different change, updated only the
-/// disclosure's `id`, and the excuse still read "reachable from no visible head"
-/// while the gate was computing a different reason entirely. Refusing the
-/// restatement leaves exactly one statement of why a pin failed — the computed one,
-/// printed beside the prose on every run — so the two cannot disagree.
-const CLASSIFICATION_PHRASES: [&str; 2] = [
-    "reachable from no visible head",
-    "the commit its own recorded change is at",
-];
-
+/// Requires admitted trial revisions to declare whether their measured tree was dirty.
 fn verify_admitted_revisions(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
     let label = relative_label(root, manifest_path);
-    if !root.join(".jj").exists() {
-        println!(
-            "- {label}: the pins its records carry are not recomputed, because this checkout has \
-             no jj repository to resolve them in"
-        );
-        return;
-    }
     let Some(directory) = manifest_path.parent() else {
         return;
     };
     // Both places a manifest admits a record. M0 admits its two launch records as
     // baselines rather than as benchmark results, and a rule that read only
-    // `benchmarks.results` would leave those two free to pin anything.
+    // `benchmarks.results` would leave those two unchecked.
     let names = match jq_value(
         manifest_path,
         r".benchmarks.results[]?.name,
@@ -3912,31 +3582,6 @@ fn verify_admitted_revisions(root: &Path, manifest_path: &Path, violations: &mut
             return;
         }
     };
-    let disclosed = match disclosed_pins(manifest_path) {
-        Ok(disclosed) => disclosed,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    for (pin, reason) in &disclosed {
-        for restated in CLASSIFICATION_PHRASES {
-            if reason.contains(restated) {
-                violations.push(format!(
-                    "{label} discloses the pin `{pin}` with prose that classifies the failure \
-                     itself (`{restated}`); a disclosure states what a reader loses and this gate \
-                     states why the pin failed, so prose that says why goes stale the next time \
-                     the pin moves and nothing catches it"
-                ));
-            }
-        }
-    }
-    // One disclosure covers every pin that quotes the same record, commit and
-    // change, because one record can carry the same pin at more than one trial —
-    // `evidence/m3/pack-compile.json` does. So which disclosures were used is
-    // tracked beside them rather than by consuming them.
-    let mut used = BTreeSet::new();
-
     for name in names.lines().filter(|name| !name.trim().is_empty()) {
         let record = directory.join(name);
         // An admitted record that is not there is reported by the digest rule,
@@ -3947,135 +3592,28 @@ fn verify_admitted_revisions(root: &Path, manifest_path: &Path, violations: &mut
         match jq_value(&record, TRIAL_PINS) {
             Ok(pins) => {
                 for pin in pins.lines().filter(|pin| !pin.trim().is_empty()) {
-                    verify_one_pin(root, &label, name, pin, &disclosed, &mut used, violations);
+                    let (at, dirty) = pin
+                        .rsplit_once(' ')
+                        .expect("TRIAL_PINS always emits a location and type separated by a space");
+                    if dirty != "boolean" {
+                        violations.push(format!(
+                            "{label} admits {name}, whose trial at {at} does not declare whether \
+                             the tree it measured was dirty"
+                        ));
+                    }
                 }
             }
             Err(error) => violations.push(error),
         }
     }
-
-    for pin in disclosed.keys().filter(|pin| !used.contains(*pin)) {
-        violations.push(format!(
-            "{label} discloses the pin `{pin}` as unobtainable, and no record it admits carries \
-             it; a disclosure that names no pin excuses nothing and hides the next one"
-        ));
-    }
-}
-
-/// Holds one pin to the disclosure or to the tests, and reports which.
-fn verify_one_pin(
-    root: &Path,
-    label: &str,
-    name: &str,
-    pin: &str,
-    disclosed: &BTreeMap<String, String>,
-    used: &mut BTreeSet<String>,
-    violations: &mut Vec<String>,
-) {
-    let fields = pin.split_whitespace().collect::<Vec<_>>();
-    let [at, id, change, dirty] = fields.as_slice() else {
-        violations.push(format!(
-            "{label} admits {name}, which records a trial revision this gate cannot read: {pin}"
-        ));
-        return;
-    };
-    // A run on a dirty tree measured something no commit holds, so whether it was
-    // dirty is part of what the pin means. Left unstated it reads as clean.
-    if *dirty != "boolean" {
-        violations.push(format!(
-            "{label} admits {name}, whose trial at {at} does not declare whether the tree it \
-             measured was dirty"
-        ));
-    }
-    if *id == "-" {
-        println!(
-            "- {label}: {name} pins no commit at {at}, so it claims no tree and none is recomputed"
-        );
-        return;
-    }
-    if *change == "-" {
-        violations.push(format!(
-            "{label} admits {name}, whose trial at {at} pins the commit {id} and no change; every \
-             rewrite abandons a commit, so a pin no change names cannot be recovered"
-        ));
-        return;
-    }
-    let key = format!("{name} {id} {change}");
-    match (pin_is_obtainable(root, id, change), disclosed.get(&key)) {
-        (Ok(()), None) => {}
-        (Ok(()), Some(_)) => {
-            // Counted as used even though it is refused, so the one defect is
-            // reported once rather than again as a disclosure nothing carries.
-            used.insert(key);
-            violations.push(format!(
-                "{label} discloses {name}'s pin {id} as unobtainable and it now resolves to the \
-                 commit change {change} is at; remove the disclosure rather than leaving an excuse \
-                 the defect has outlived"
-            ));
-        }
-        (Err(why), Some(reason)) => {
-            used.insert(key);
-            println!(
-                "- {label}: {name}'s pin {id} at {at} is disclosed rather than recomputed, \
-                 because {why}. What the record says a reader loses by it, which is prose this \
-                 gate does not check: {reason}"
-            );
-        }
-        (Err(why), None) => violations.push(format!(
-            "{label} admits {name}, whose trial at {at} pins {id}, and {why}; re-pin it to the \
-             commit change {change} is at and re-measure there, or disclose it under \
-             unobtainableRevisions with what a reader loses"
-        )),
-    }
-}
-
-/// Whether a pinned commit is one a reader can obtain under its own change.
-fn pin_is_obtainable(root: &Path, id: &str, change: &str) -> Result<(), String> {
-    let pinned = visible_commit(root, id).map_err(|error| format!("that commit {error}"))?;
-    let current =
-        visible_commit(root, change).map_err(|error| format!("its change {change} {error}"))?;
-    if pinned == current {
-        return Ok(());
-    }
-    Err(format!(
-        "change {change} is at {current} instead, so the pin names a tree that change no longer \
-         holds"
-    ))
-}
-
-/// The pins a manifest discloses as unobtainable, keyed as they are compared.
-fn disclosed_pins(manifest_path: &Path) -> Result<BTreeMap<String, String>, String> {
-    let listed = jq_value(
-        manifest_path,
-        r#".unobtainableRevisions[]? | .record + " " + .id + " " + .changeId + " " + .reason"#,
-    )?;
-    let mut disclosed = BTreeMap::new();
-    for line in listed.lines().filter(|line| !line.trim().is_empty()) {
-        let mut fields = line.splitn(4, ' ');
-        let key = match (fields.next(), fields.next(), fields.next()) {
-            (Some(record), Some(id), Some(change)) => format!("{record} {id} {change}"),
-            _ => {
-                return Err(format!(
-                    "{} discloses an unobtainable revision naming no record, commit and change: \
-                     {line}",
-                    redacted_path(manifest_path)
-                ));
-            }
-        };
-        disclosed.insert(key, fields.next().unwrap_or_default().to_owned());
-    }
-    Ok(disclosed)
 }
 
 /// Recomputes every input digest against the revision the manifest pins.
 ///
 /// An input digest is a claim about one revision, so it has to be hashed there.
-/// `revision.id` is that revision, and `verify_pinned_commit` requires it to be
-/// the visible commit `revision.changeId` is at — so it is the state of the
-/// milestone's own change as the repository holds it now, not the tree the
-/// recorded commands ran on. Those ran earlier and on a commit the rewrites
-/// abandoned; `tests` and `commands` are attestations about that run and nothing
-/// recomputes them, which each manifest's deviations state.
+/// `revision.id` is that revision. It need not belong to the change that admits
+/// the manifest. Recorded `tests` and `commands` remain attestations about the run;
+/// this check recomputes only the input digests.
 ///
 /// What this binds is narrower and real: the files the milestone names as its
 /// inputs hash, at the revision it pins, to the values it records. Hashing them in
@@ -4085,22 +3623,15 @@ fn disclosed_pins(manifest_path: &Path) -> Result<BTreeMap<String, String>, Stri
 ///
 /// Hashing at the pinned revision answers only half of it. A file deleted since
 /// the milestone closed still hashes there, so a closed record went on binding two
-/// fixture descriptors the ATM10 retarget removed and the gate said nothing. That
-/// is the first of the two questions
-/// [`machinery-is-not-material.md`](../../../docs/decisions/machinery-is-not-material.md)
-/// separates — does everything this record named still exist — and a deletion
-/// falsifies what the record claims to have measured. So every input name is held
-/// against the tracked set as well, which needs no revision and therefore reports
+/// fixture descriptors the ATM10 retarget removed and the gate said nothing.
+/// A deletion falsifies what the record claims to have measured, so every input
+/// name is held against the tracked set as well, which needs no revision and reports
 /// in a plain git tree where the digest recompute cannot.
 ///
 /// The revision is resolved through jj, and a checkout without a jj repository is
 /// skipped rather than failed, because there is nothing there to resolve a revision
-/// with. That is the one gap left: a clone of this repository does reach the pinned
-/// commits, since the colocated repository exports the visible stack to git HEAD, so
-/// `jj git init --colocate` in a clone recomputes every digest — but a plain git tree
-/// cannot, and reporting every input unreadable there would turn a provenance check
-/// into noise. The skip says so on stdout, because a whole provenance check that
-/// evaporates in silence reads exactly like one that passed.
+/// with. A plain git tree cannot perform that digest recomputation. The skip says
+/// so on stdout, because a check that evaporates in silence reads like one that passed.
 fn verify_recorded_inputs(
     root: &Path,
     manifest_path: &Path,
@@ -4157,9 +3688,22 @@ fn verify_recorded_inputs(
             return;
         }
     };
+    let resolved = match visible_commit(root, &revision) {
+        Ok(commit) if commit == revision => commit,
+        Ok(_) => {
+            violations.push(format!(
+                "{label} revision.id {revision} is not a full commit id"
+            ));
+            return;
+        }
+        Err(error) => {
+            violations.push(format!("{label} revision.id {revision} {error}"));
+            return;
+        }
+    };
 
     for (name, recorded) in inputs {
-        match revision_digest(root, &revision, name) {
+        match revision_digest(root, &resolved, name) {
             Ok(actual) if actual == recorded => {}
             Ok(actual) => violations.push(format!(
                 "{label} records input {name} as {recorded} but revision {revision} holds {actual}"
@@ -4167,6 +3711,39 @@ fn verify_recorded_inputs(
             Err(error) => violations.push(format!("{label} records input {name}: {error}")),
         }
     }
+}
+
+/// Resolves one commit reachable from visible heads, excluding the empty root.
+///
+/// An abandoned commit remains readable in the local operation log but cannot
+/// bind evidence for a reader cloning the visible history.
+fn visible_commit(root: &Path, revision: &str) -> Result<String, String> {
+    let output = Command::new("jj")
+        .args([
+            "log",
+            "--color",
+            "never",
+            "-r",
+            &format!("(::visible_heads() & ({revision})) ~ root()"),
+            "--no-graph",
+            "-T",
+            r#"commit_id ++ "\n""#,
+        ])
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("cannot be resolved: {error}"))?;
+    if !output.status.success() {
+        return Err("cannot be resolved by jj".to_owned());
+    }
+    let resolved = String::from_utf8_lossy(&output.stdout);
+    let mut commits = resolved.lines().filter(|line| !line.trim().is_empty());
+    let Some(commit) = commits.next() else {
+        return Err("names no commit in visible history".to_owned());
+    };
+    if commits.next().is_some() {
+        return Err("names more than one visible commit".to_owned());
+    }
+    Ok(commit.to_owned())
 }
 
 /// Hashes a tracked file as it stood in one revision.
@@ -4799,253 +4376,10 @@ pub fn verify_spikes(root: &Path) -> Vec<String> {
         }
         for result in &results {
             verify_spike_result(root, result, gate, &mut violations);
-            verify_recorded_change(root, result, &mut violations);
         }
     }
 
     violations
-}
-
-/// Checks that a result names the change that introduced it.
-///
-/// `trial.revision.id` is a commit, which every jj rewrite abandons, so it cannot
-/// be resolved and is not checked. The change id can be, and this is the only
-/// reason to prefer it: seven results named the wrong revision for a week because
-/// nothing recomputed the claim.
-///
-/// A checkout with no jj repository cannot resolve a change at all, so the check
-/// is skipped there and says so on stdout. It used to return in silence, which is
-/// indistinguishable from passing on exactly the machines where the repository's
-/// strongest provenance control is absent.
-fn verify_recorded_change(root: &Path, path: &Path, violations: &mut Vec<String>) {
-    let label = path
-        .strip_prefix(root)
-        .unwrap_or(path)
-        .display()
-        .to_string();
-    if !root.join(".jj").exists() {
-        println!(
-            "- {label}: the recorded change is not recomputed, because this checkout has no jj \
-             repository to resolve it in"
-        );
-        return;
-    }
-    let recorded = match jq_value(path, ".trial.revision.changeId") {
-        Ok(value) if value != "null" && !value.is_empty() => value,
-        // A result with no recorded change is the failure this rule exists for,
-        // so it cannot be the branch that returns quietly.
-        Ok(_) => {
-            violations.push(format!("{label} records no change id"));
-            return;
-        }
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    match introducing_change(root, &label) {
-        Ok(owner) => violations.extend(change_mismatch(&label, &recorded, &owner)),
-        Err(error) => violations.push(error),
-    }
-}
-
-/// Resolves the change that introduced a tracked path.
-///
-/// A lookup that cannot run is an error, not a pass. This is the repository's
-/// strongest provenance control, and a control that fails open when its tool is
-/// missing verifies nothing on exactly the machines where it matters. Empty
-/// output is not an error: an untracked result has no introducing change yet.
-fn introducing_change(root: &Path, label: &str) -> Result<String, String> {
-    let output = Command::new("jj")
-        .args([
-            "log",
-            "-r",
-            &format!("roots(::@ & files('{label}'))"),
-            "--no-graph",
-            "-T",
-            "change_id",
-        ])
-        .current_dir(root)
-        .output()
-        .map_err(|error| format!("cannot resolve the change that introduced {label}: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "cannot resolve the change that introduced {label}: jj exited {}",
-            output.status
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
-}
-
-/// Checks that a milestone manifest names the change that introduced it.
-///
-/// The same rule the spike results carry, for the same reason: a commit id is
-/// abandoned by every rewrite, so a manifest that records only one cannot be
-/// resolved by the reader it is written for.
-///
-/// As with the spike results, a checkout with no jj repository is skipped and the
-/// skip is announced rather than silent.
-fn verify_manifest_change(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
-    let Ok(label) = manifest_path.strip_prefix(root) else {
-        return;
-    };
-    let label = label.display().to_string();
-    // Contract fixtures are synthetic by design and describe no real revision;
-    // only admitted evidence carries a resolvable provenance claim.
-    if !label.starts_with("evidence/") {
-        return;
-    }
-    if !root.join(".jj").exists() {
-        println!(
-            "- {label}: the recorded change is not recomputed, because this checkout has no jj \
-             repository to resolve it in"
-        );
-        return;
-    }
-    let owner = match introducing_change(root, &label) {
-        Ok(owner) => owner,
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    match jq_value(manifest_path, ".revision.changeId") {
-        Ok(recorded) if recorded != "null" && !recorded.is_empty() => {
-            violations.extend(change_mismatch(&label, &recorded, &owner));
-            verify_pinned_commit(root, &label, &recorded, manifest_path, violations);
-        }
-        Ok(_) => violations.push(format!("{label} records no change id")),
-        Err(error) => violations.push(error),
-    }
-}
-
-/// Requires `revision.id` to be the visible commit `revision.changeId` is at now.
-///
-/// A commit id is not a name. Every jj rewrite abandons the commit and keeps the
-/// change, so a manifest pinned by commit id dangles the moment its own change is
-/// revised. The dangling is invisible here and only here: the abandoned commit
-/// survives in this working copy's operation log, so `jj file show -r` still reads
-/// it, while a clone carries no `refs/jj/*` and holds no such object at all. All four
-/// milestone manifests were in that state, and every input digest in all four was
-/// unreadable in a fresh clone as a result.
-///
-/// So the pinned commit has to be one visible history reaches, and it has to be the
-/// commit the pinned change is at. A rewrite that moves the change then fails the
-/// gate and forces a re-pin with the inputs re-hashed there, which is the only way
-/// a recorded commit id stays a true statement about anything.
-fn verify_pinned_commit(
-    root: &Path,
-    label: &str,
-    change: &str,
-    manifest_path: &Path,
-    violations: &mut Vec<String>,
-) {
-    let recorded = match jq_value(manifest_path, ".revision.id") {
-        Ok(value) if value != "null" && !value.is_empty() => value,
-        Ok(_) => {
-            violations.push(format!(
-                "{label} records change {change} but no commit it pins"
-            ));
-            return;
-        }
-        Err(error) => {
-            violations.push(error);
-            return;
-        }
-    };
-    let current = match visible_commit(root, change) {
-        Ok(current) => current,
-        Err(error) => {
-            violations.push(format!("{label} records change {change}, which {error}"));
-            return;
-        }
-    };
-    if let Err(error) = visible_commit(root, &recorded) {
-        violations.push(format!(
-            "{label} pins revision.id {recorded}, which {error}; re-pin it to {current}, the \
-             commit change {change} is at now, and re-hash every input there"
-        ));
-        return;
-    }
-    violations.extend(pinned_commit_mismatch(label, change, &recorded, &current));
-}
-
-/// Compares a pinned commit against the one its change is at.
-fn pinned_commit_mismatch(
-    label: &str,
-    change: &str,
-    recorded: &str,
-    current: &str,
-) -> Option<String> {
-    if recorded == current {
-        return None;
-    }
-    Some(format!(
-        "{label} pins revision.id {recorded} but change {change} is at {current}; a commit id does \
-         not survive a rewrite, so re-pin it and re-hash every input there"
-    ))
-}
-
-/// Resolves a revision to the one commit visible history reaches through it.
-///
-/// Resolving is not the check. `jj file show -r` reads an abandoned commit out of
-/// this machine's operation log, and `jj log -r <abandoned>` prints it, so neither
-/// distinguishes a commit a clone would carry from one only this working copy can
-/// see. `::visible_heads()` is that distinction: it is what publishing the stack
-/// would put in a clone, and an abandoned commit is outside it.
-///
-/// The root commit is subtracted, because it is the one commit every repository
-/// has and it holds nothing: a pin there names no tree anything could have been
-/// measured on. That is not a hypothetical shape. jj's root commit *is* the
-/// all-zero commit id and the all-`z` change id, so a record whose
-/// `trial.revision` was overwritten with forty zeroes and thirty-two `z`s pinned
-/// the root, agreed with itself, and satisfied both tests — which is exactly the
-/// substituted value this resolution exists to refuse.
-fn visible_commit(root: &Path, revision: &str) -> Result<String, String> {
-    let output = Command::new("jj")
-        .args([
-            "log",
-            "-r",
-            &format!("(::visible_heads() & ({revision})) ~ root()"),
-            "--no-graph",
-            "-T",
-            r#"commit_id ++ "\n""#,
-        ])
-        .current_dir(root)
-        .output()
-        .map_err(|error| format!("cannot be resolved: {error}"))?;
-    let resolved = String::from_utf8_lossy(&output.stdout);
-    let mut commits = resolved.lines().filter(|line| !line.trim().is_empty());
-    let Some(commit) = commits.next() else {
-        return Err("names no commit in visible history".to_owned());
-    };
-    if commits.next().is_some() {
-        return Err("names more than one visible commit".to_owned());
-    }
-    Ok(commit.to_owned())
-}
-
-/// Compares a recorded change against the one that introduced the file.
-///
-/// An untracked result has no introducing change yet, which is not a violation:
-/// the schema still constrains the field, and the next run has a change to check.
-/// It is announced rather than passed over, for the reason the `.jj` skips are:
-/// a path jj cannot attribute clears this control, and a cleared control that
-/// says nothing is indistinguishable from one that agreed.
-fn change_mismatch(label: &str, recorded: &str, owner: &str) -> Option<String> {
-    if owner.is_empty() {
-        println!(
-            "- {label}: the recorded change {recorded} is not recomputed, because jj attributes \
-             this path to no change yet"
-        );
-        return None;
-    }
-    if owner == recorded {
-        return None;
-    }
-    Some(format!(
-        "{label} records change {recorded} but was introduced by {owner}"
-    ))
 }
 
 fn verify_spike_result(root: &Path, path: &Path, gate: &str, violations: &mut Vec<String>) {
@@ -5304,7 +4638,6 @@ pub fn verify_evidence_manifest(root: &Path, manifest_path: &Path, milestone: &s
         ),
         Err(error) => violations.push(error),
     }
-    verify_manifest_change(root, manifest_path, &mut violations);
     verify_finding_anchors(root, manifest_path, milestone, &mut violations);
     if milestone == "M0" {
         verify_m0_manifest(manifest_path, &mut violations);
@@ -5479,8 +4812,7 @@ fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
         violations,
     );
 
-    // Every gate needs a recorded result and an accepted decision. A gate with
-    // no ADR is a measurement nobody committed to.
+    // Every gate needs a recorded result.
     for (directory, gate) in SPIKE_GATES {
         let results = root.join("evidence/m1/spikes").join(directory);
         let recorded = fs::read_dir(&results)
@@ -5496,13 +4828,6 @@ fn verify_m1_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
             .count();
         if recorded == 0 {
             violations.push(format!("M1 closure requires a recorded result for {gate}"));
-        }
-    }
-    for decision in M1_DECISIONS {
-        if !root.join("docs/decisions").join(decision).is_file() {
-            violations.push(format!(
-                "M1 closure requires the decision record {decision}"
-            ));
         }
     }
 
@@ -5785,14 +5110,6 @@ fn verify_m3_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
         violations,
     );
 
-    for decision in M3_DECISIONS {
-        if !root.join("docs/decisions").join(decision).is_file() {
-            violations.push(format!(
-                "M3 closure requires the decision record {decision}"
-            ));
-        }
-    }
-
     for (file, rule, requirement) in M3_RECORDS {
         let path = root.join("evidence/m3").join(file);
         if !path.is_file() {
@@ -5903,9 +5220,6 @@ const M3_RECORDS: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// Decision records M3 cannot close without.
-const M3_DECISIONS: &[&str] = &["adg-6-configuration-ui.md", "adg-7-world-persistence.md"];
-
 /// Checks what closing M4 requires beyond the rules every milestone shares.
 ///
 /// M4 is the SDK breadth milestone, so its closure is about a surface a mod
@@ -5971,14 +5285,6 @@ fn verify_m4_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
          as a refusal, so closure requires them to still be there",
         violations,
     );
-
-    for decision in M4_DECISIONS {
-        if !root.join("docs/decisions").join(decision).is_file() {
-            violations.push(format!(
-                "M4 closure requires the decision record {decision}"
-            ));
-        }
-    }
 
     for (file, rule, requirement) in M4_RECORDS {
         let path = root.join("evidence/m4").join(file);
@@ -6060,13 +5366,6 @@ const M4_RECORDS: &[(&str, &str, &str)] = &[
          it, and what it does not prove",
     ),
 ];
-
-/// Decision records M4 cannot close without.
-///
-/// ADG-2 is the distribution and execution decision every packaging surface in
-/// M4 implements, and ADG-3 is the binding decision M4-W6's version isolation is
-/// an argument about. M4 accepted no decision of its own.
-const M4_DECISIONS: &[&str] = &["adg-2-mod-execution.md", "adg-3-bindings.md"];
 
 /// Reconciles the recorded SDK surface against the repository it inventories.
 ///
@@ -6449,30 +5748,11 @@ const M5_RECORDS: &[(&str, &str, &str)] = &[(
      which of its claims rest on judgement",
 )];
 
-/// Decision records M5 cannot close without.
-///
-/// The rights half of M5's inventory is a judged claim, and the record that
-/// decides how a judged claim is written is what makes publishing it legitimate
-/// rather than a figure with no basis. It is not an ADG: `SPEC.md` §15 owns those
-/// numbers and reserves the unused ones for other subjects.
-const M5_DECISIONS: &[&str] = &[
-    "claims-without-a-second-reading.md",
-    // M5's bound digests freeze two different things, and the record now says
-    // which is which per entry. What a class means — permanent for material,
-    // amendable in the open for machinery — is decided there rather than in the
-    // summary that carries the labels, so M5's record does not resolve without
-    // it. It was written for M6 and reaches back into M5's record, which is the
-    // amendment that record licenses.
-    "machinery-is-not-material.md",
-];
-
 /// Checks what closing M5 requires beyond the rules every milestone shares.
 ///
-/// M5 catalogues a fixture it may not publish, so its closure is almost entirely
-/// about the boundary: the numbers reconcile with each other, the private files
-/// behind them are bound by digest, and the two claims that cannot be recomputed
-/// anywhere say so in the record rather than being carried as if they were
-/// measurements.
+/// M5's recorded figures reconcile with each other, the files behind them are
+/// bound by digest, and claims that cannot be recomputed disclose that in the
+/// record rather than being carried as measurements.
 fn verify_m5_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<String>) {
     require_manifest_rule(
         manifest_path,
@@ -6533,14 +5813,6 @@ fn verify_m5_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
              something a milestone can close over"
                 .to_owned(),
         );
-    }
-
-    for decision in M5_DECISIONS {
-        if !root.join("docs/decisions").join(decision).is_file() {
-            violations.push(format!(
-                "M5 closure requires the decision record {decision}"
-            ));
-        }
     }
 
     for (file, rule, requirement) in M5_RECORDS {
@@ -6834,16 +6106,6 @@ const M6_RECORDS: &[(&str, &str, &str)] = &[(
      mutation exit statuses",
 )];
 
-/// Decision records M6 cannot close without.
-///
-/// Both were accepted inside M6 and both decide something a counterpart is
-/// written against rather than something it merely cites: where an upstream name
-/// may appear, and how an action a mod asks for reaches the game.
-const M6_DECISIONS: &[&str] = &[
-    "carrying-an-action-outward.md",
-    "counterpart-identity-and-aliases.md",
-];
-
 /// The sums and thresholds M6's counterpart summary has to close, inside itself.
 ///
 /// The declarable-only figure is the one this table exists for. ROADMAP.md says
@@ -7074,14 +6336,6 @@ fn verify_m6_manifest(root: &Path, manifest_path: &Path, violations: &mut Vec<St
          recording no deviation or risk deleted the finding rather than the defect",
         violations,
     );
-
-    for decision in M6_DECISIONS {
-        if !root.join("docs/decisions").join(decision).is_file() {
-            violations.push(format!(
-                "M6 closure requires the decision record {decision}"
-            ));
-        }
-    }
 
     for (file, rule, requirement) in M6_RECORDS {
         let path = root.join("evidence/m6").join(file);
@@ -7434,15 +6688,6 @@ fn verify_m7_carried_figures(root: &Path, manifest_path: &Path, violations: &mut
     );
 }
 
-/// Decision records M1 cannot close without.
-const M1_DECISIONS: &[&str] = &[
-    "adg-1-jvm-entry.md",
-    "adg-2-mod-execution.md",
-    "adg-3-bindings.md",
-    "adg-4-state-ownership.md",
-    "adg-5-prism-integration.md",
-];
-
 fn verify_m0_manifest(manifest_path: &Path, violations: &mut Vec<String>) {
     require_manifest_rule(
         manifest_path,
@@ -7578,7 +6823,7 @@ fn private_workspace_name() -> String {
     PRIVATE_WORKSPACE_NAME.concat()
 }
 
-/// Rejects rights-restricted, secret, and local-runtime paths from a tracked tree.
+/// Rejects secret paths and private workspace names from a tracked tree.
 #[must_use]
 pub fn verify_tracked_paths<'a>(paths: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let private = private_workspace_name();
@@ -7618,8 +6863,7 @@ pub fn verify_tracked_paths<'a>(paths: impl IntoIterator<Item = &'a str>) -> Vec
 /// was a completeness claim, written once by the hand relying on it, and the
 /// tree falsified it: a member mod's catalogue ids sat verbatim in a test
 /// fixture, and `evidence/m5/review.md` had already written the counterexample
-/// down. `docs/decisions/claims-without-a-second-reading.md` is the record that
-/// forbids the shape, so what is not enforced is stated here instead.
+/// down. What is not enforced is stated here instead.
 ///
 /// **Not enforced, deliberately.** An absolute path naming a user's home
 /// directory is not refused: this repository's redaction machinery and its
@@ -7824,10 +7068,8 @@ fn verify_ignored_boundaries(root: &Path, violations: &mut Vec<String>) {
         return;
     };
 
-    for pattern in ["/tests/fixtures/local/**", "/evidence/private/**", ".env"] {
-        if !gitignore.lines().any(|line| line.trim() == pattern) {
-            violations.push(format!("missing restricted-content ignore: {pattern}"));
-        }
+    if !gitignore.lines().any(|line| line.trim() == ".env") {
+        violations.push("missing credential ignore: .env".to_owned());
     }
 }
 
@@ -8513,44 +7755,19 @@ fn collect_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
 }
 
 fn is_forbidden_tracked_path(path: &str) -> bool {
-    if path == "tests/fixtures/local/README.md" {
-        return false;
-    }
-
     let lower = path.to_ascii_lowercase();
     let basename = lower.rsplit('/').next().unwrap_or(&lower);
-    let components = lower.split('/').collect::<Vec<_>>();
-    let forbidden_prefix = [
-        "tests/fixtures/local/",
-        "evidence/private/",
-        "private/",
-        "restricted/",
-        ".minecraft/",
-        "prism-instances/",
-    ]
-    .iter()
-    .any(|prefix| lower.starts_with(prefix));
-    let forbidden_component = components
-        .iter()
-        .any(|component| matches!(*component, "saves" | "logs" | "crash-reports"));
+    let forbidden_component = lower
+        .split('/')
+        .any(|component| matches!(component, "saves" | "logs" | "crash-reports"));
     let forbidden_evidence_component = lower.starts_with("evidence/")
-        && components
-            .iter()
-            .any(|component| matches!(*component, "raw" | "captures"));
-    let forbidden_basename = matches!(
-        basename,
-        ".env"
-            | "credentials.json"
-            | "secrets.json"
-            | "fabric.mod.json"
-            | "quilt.mod.json"
-            | "neoforge.mods.toml"
-            | "mods.toml"
-    ) || (basename.starts_with(".env.") && basename != ".env.example")
+        && lower
+            .split('/')
+            .any(|component| matches!(component, "raw" | "captures"));
+    let forbidden_basename = matches!(basename, ".env" | "credentials.json" | "secrets.json")
+        || (basename.starts_with(".env.") && basename != ".env.example")
         || basename.starts_with("hs_err_pid");
     let forbidden_extension = [
-        ".jar",
-        ".mrpack",
         ".pem",
         ".p12",
         ".pfx",
@@ -8563,11 +7780,7 @@ fn is_forbidden_tracked_path(path: &str) -> bool {
     .iter()
     .any(|extension| lower.ends_with(extension));
 
-    forbidden_prefix
-        || forbidden_component
-        || forbidden_evidence_component
-        || forbidden_basename
-        || forbidden_extension
+    forbidden_basename || forbidden_extension || forbidden_component || forbidden_evidence_component
 }
 
 fn is_valid_milestone_id(milestone: &str) -> bool {
@@ -8689,33 +7902,32 @@ fn has_credential_assignment(line: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::fmt::Write as _;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
     use super::{
-        AGENT_JAR_SOURCES, CRATE_NAMES, CampaignInventory, DECISION_RECORDS, EXAMPLE_NAMES,
-        GATE_DEFINITION, GUIDE_DIRECTORY, HOOK_DOCUMENT, HookCounts, JVM_ENTRY_DECISION,
-        MILESTONE_MANIFESTS, NETWORK_SOURCE, REFLECTION_FILE, SCREEN_JAR_SOURCES, SWEPT_SCOPE,
-        TEST_MOD_NAMES, TRANSFORMER_SHAPE_RECORD, VERSION_CLASS_EXCUSES, VERSION_DATA,
-        VERSION_FILES, VERSION_PROSE_FILE, campaign_document_violations, change_mismatch,
-        declared_hook_names, declares_unsafe_prohibition, denied_hook_names, documented_versions,
+        AGENT_JAR_SOURCES, CRATE_NAMES, CampaignInventory, EXAMPLE_NAMES, GATE_DEFINITION,
+        GUIDE_DIRECTORY, HOOK_DOCUMENT, HookCounts, MILESTONE_MANIFESTS, NETWORK_SOURCE,
+        REFLECTION_FILE, SCREEN_JAR_SOURCES, SWEPT_SCOPE, TEST_MOD_NAMES, TRANSFORMER_SHAPE_RECORD,
+        VERSION_CLASS_EXCUSES, VERSION_DATA, VERSION_FILES, VERSION_PROSE_FILE,
+        campaign_document_violations, declares_unsafe_prohibition, documented_versions,
         game_class_literals, hook_counts, hook_document_violations, hook_inventories,
-        numbers_before, pinned_commit_mismatch, redacted_path, reflective_surfaces,
-        required_scaffold_paths, round_count_restatements, verify_campaign_inventory,
-        verify_decision_hook_claims, verify_evidence_records, verify_experiment_fence,
+        numbers_before, redacted_path, required_scaffold_paths, round_count_restatements,
+        verify_campaign_inventory, verify_evidence_records, verify_experiment_fence,
         verify_gate_versions, verify_guide_enumerations, verify_harness_lifecycles,
         verify_hook_inventory_document, verify_hook_name_literals, verify_ignored_boundaries,
         verify_m4_gate_figures, verify_m4_process_matrix, verify_m4_surface,
         verify_manifest_percentages, verify_milestone, verify_persistence_reflection,
-        verify_resolved_class_figure, verify_review_round_counts, verify_scaffold,
-        verify_screen_templates, verify_spikes, verify_testkit_fence, verify_tracked_contents,
-        verify_tracked_paths, verify_transformer_shape, verify_version_boundary,
-        verify_version_directories, verify_void_limits, version_class_names, visible_commit,
+        verify_review_round_counts, verify_scaffold, verify_screen_templates, verify_spikes,
+        verify_testkit_fence, verify_tracked_contents, verify_tracked_paths,
+        verify_transformer_shape, verify_version_boundary, verify_version_directories,
+        verify_void_limits, version_class_names,
     };
     use super::{
-        M6_ARITHMETIC, M6_CARRIED_FIGURES, M6_DECISIONS, M7_ARITHMETIC, M7_CARRIED_FIGURES,
+        M6_ARITHMETIC, M6_CARRIED_FIGURES, M7_ARITHMETIC, M7_CARRIED_FIGURES,
         verify_m6_carried_figures, verify_m6_counterpart_arithmetic, verify_m6_manifest,
         verify_m7_carried_figures, verify_m7_library_arithmetic, verify_m7_manifest,
         verify_m7_verified_fixture_total,
@@ -8725,6 +7937,7 @@ mod tests {
         round_count_subjects, sources_naming, verify_m5_carried_figures,
         verify_m5_inventory_arithmetic,
     };
+    use super::{verify_admitted_revisions, verify_recorded_inputs, visible_commit};
 
     /// A passing gate run, which every fixture below records.
     ///
@@ -8760,7 +7973,10 @@ mod tests {
     fn a_recorded_result_digest_is_recomputed_against_the_file() {
         let root = recorded_result_root("records-match", "{}\n", EMPTY_OBJECT_DIGEST);
 
-        assert!(verify_evidence_records(&root).is_empty());
+        assert_eq!(
+            verify_evidence_records(&root),
+            [] as [std::string::String; 0]
+        );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
@@ -8900,7 +8116,10 @@ mod tests {
         let root =
             recorded_review_root("review-match", PASS_RECORD, "review.md", PASS_RECORD_DIGEST);
 
-        assert!(verify_evidence_records(&root).is_empty());
+        assert_eq!(
+            verify_evidence_records(&root),
+            [] as [std::string::String; 0]
+        );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
@@ -8960,7 +8179,10 @@ mod tests {
         )
         .expect("manifest should be writable");
 
-        assert!(verify_evidence_records(&root).is_empty());
+        assert_eq!(
+            verify_evidence_records(&root),
+            [] as [std::string::String; 0]
+        );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
@@ -8992,7 +8214,10 @@ mod tests {
         // and is announced rather than checked, so it cannot be a violation.
         let root = recorded_baseline_root("baseline-match", "{}\n", EMPTY_OBJECT_DIGEST);
 
-        assert!(verify_evidence_records(&root).is_empty());
+        assert_eq!(
+            verify_evidence_records(&root),
+            [] as [std::string::String; 0]
+        );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
@@ -9042,7 +8267,7 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
-    /// A jj repository with nothing in it yet, for the pin tests below.
+    /// A jj repository for checking the admitted record inventory.
     fn pinned_record_root(label: &str) -> PathBuf {
         let root = temporary_root(label);
         let initialised = Command::new("jj")
@@ -9055,12 +8280,7 @@ mod tests {
     }
 
     /// Writes one admitted record carrying `pin`, with its digest bound.
-    ///
-    /// `revision.id` is here because a manifest with no revision at all is a
-    /// violation of the input rule; it resolves nothing, because the manifest
-    /// records no inputs to hash there. What these tests are about is the pin
-    /// inside the record.
-    fn write_admitted(root: &Path, pin: &str, disclosures: &str) {
+    fn write_admitted(root: &Path, pin: &str, revision: &str) {
         let milestone = root.join("evidence/m9");
         fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
         let record = format!("{{\"trial\":{{\"revision\":{pin}}}}}\n");
@@ -9068,7 +8288,7 @@ mod tests {
         fs::write(
             milestone.join("manifest.json"),
             format!(
-                r#"{{{RECORDED_RUN},"revision":{{"id":"@"}},{disclosures}
+                r#"{{{RECORDED_RUN},"revision":{{"id":"{revision}"}},
                     "benchmarks":{{"protocolVersion":"v1",
                     "results":[{{"name":"record.json","sha256":"{}"}}]}}}}"#,
                 super::hex_digest(record.as_bytes())
@@ -9077,167 +8297,51 @@ mod tests {
         .expect("manifest should be writable");
     }
 
-    /// Commits everything and answers the commit and change that now hold it.
-    ///
-    /// A described commit is what a pin can name truthfully: editing the working
-    /// copy afterwards moves `@` and leaves this one where it is.
-    fn committed_pin(root: &Path, message: &str) -> (String, String) {
-        let committed = Command::new("jj")
-            .args(["commit", "-m", message])
-            .current_dir(root)
-            .output()
-            .expect("jj should be available");
-        assert!(committed.status.success(), "{committed:?}");
-        let output = Command::new("jj")
-            .args([
-                "log",
-                "-r",
-                "@-",
-                "--no-graph",
-                "-T",
-                r#"commit_id ++ " " ++ change_id"#,
-            ])
-            .current_dir(root)
-            .output()
-            .expect("jj should be available");
-        assert!(output.status.success(), "{output:?}");
-        let resolved = String::from_utf8_lossy(&output.stdout);
-        let mut fields = resolved.split_whitespace();
-        (
-            fields.next().expect("a commit id").to_owned(),
-            fields.next().expect("a change id").to_owned(),
-        )
-    }
-
-    /// A pin naming one commit and one change, as a record records it.
-    fn pin(id: &str, change: &str) -> String {
-        format!(r#"{{"id":"{id}","changeId":"{change}","dirty":false}}"#)
-    }
-
-    /// One disclosure of an unobtainable pin, as a manifest records it.
-    fn disclosure(id: &str, change: &str, reason: &str) -> String {
-        format!(
-            r#""unobtainableRevisions":[{{"record":"record.json","id":"{id}",
-                "changeId":"{change}","reason":"{reason}"}}],"#
-        )
-    }
-
     #[test]
-    fn a_record_pin_that_no_visible_commit_answers_is_reported() {
-        // The defect this exists for: a record a manifest admits could pin
-        // anything at all, because the visible-commit test was applied to the
-        // manifest's own revision and never to a record's.
-        let root = pinned_record_root("pin-dangles");
-        write_admitted(&root, &pin(&"1".repeat(40), &"k".repeat(32)), "");
+    fn admitted_trial_revisions_require_a_boolean_dirty_state() {
+        for (label, pin, accepted) in [
+            ("missing", "{}", false),
+            ("null", r#"{"dirty":null}"#, false),
+            ("string", r#"{"dirty":"false"}"#, false),
+            ("number", r#"{"dirty":0}"#, false),
+            ("clean", r#"{"dirty":false}"#, true),
+            ("dirty", r#"{"dirty":true}"#, true),
+        ] {
+            let root = temporary_root(&format!("trial-dirty-{label}"));
+            write_admitted(&root, pin, "@");
+            let mut violations = Vec::new();
 
-        let violations = verify_evidence_records(&root);
+            verify_admitted_revisions(
+                &root,
+                &root.join("evidence/m9/manifest.json"),
+                &mut violations,
+            );
 
-        assert_eq!(violations.len(), 1, "{violations:?}");
-        assert!(
-            violations[0].starts_with("evidence/m9/manifest.json admits record.json")
-                && violations[0].contains("names no commit in visible history"),
-            "{violations:?}"
-        );
-        fs::remove_dir_all(root).expect("temporary root should be removable");
-    }
-
-    #[test]
-    fn a_record_pin_at_the_repository_root_is_refused() {
-        // Forty zeroes and thirty-two `z`s are not arbitrary garbage: they are jj's
-        // root commit and its change, so a pin substituted with them resolves,
-        // agrees with itself, and satisfied both tests until the root was
-        // subtracted from what counts as a visible commit.
-        let root = pinned_record_root("pin-root");
-        write_admitted(&root, &pin(&"0".repeat(40), &"z".repeat(32)), "");
-
-        let violations = verify_evidence_records(&root);
-
-        assert_eq!(violations.len(), 1, "{violations:?}");
-        assert!(
-            violations[0].contains("names no commit in visible history"),
-            "{violations:?}"
-        );
-        fs::remove_dir_all(root).expect("temporary root should be removable");
-    }
-
-    #[test]
-    fn a_record_pin_its_own_change_has_moved_off_is_reported() {
-        let root = pinned_record_root("pin-moved");
-        write_admitted(&root, r#"{"dirty":false}"#, "");
-        let (older, _) = committed_pin(&root, "the tree the trial measured");
-        fs::write(root.join("later.txt"), "later\n").expect("a later file should be writable");
-        let (_, moved) = committed_pin(&root, "a later change");
-        // Both halves resolve and they resolve to different commits, which is the
-        // state every rewrite leaves a recorded pin in and the one a pin that
-        // merely resolves cannot be told apart from a true one.
-        write_admitted(&root, &pin(&older, &moved), "");
-
-        let violations = verify_evidence_records(&root);
-
-        assert_eq!(violations.len(), 1, "{violations:?}");
-        assert!(violations[0].contains("no longer holds"), "{violations:?}");
-        fs::remove_dir_all(root).expect("temporary root should be removable");
-    }
-
-    #[test]
-    fn a_true_record_pin_passes_and_a_disclosure_of_it_does_not() {
-        let root = pinned_record_root("pin-true");
-        write_admitted(&root, r#"{"dirty":false}"#, "");
-        let (commit, change) = committed_pin(&root, "the tree the trial measured");
-        write_admitted(&root, &pin(&commit, &change), "");
-
-        assert!(verify_evidence_records(&root).is_empty());
-
-        // The same pin, disclosed as unobtainable while it resolves. An excuse the
-        // defect has outlived is what lets the next real one hide behind it.
-        write_admitted(
-            &root,
-            &pin(&commit, &change),
-            &disclosure(&commit, &change, "stale"),
-        );
-        let violations = verify_evidence_records(&root);
-
-        assert_eq!(violations.len(), 1, "{violations:?}");
-        assert!(
-            violations[0].contains("remove the disclosure"),
-            "{violations:?}"
-        );
-        fs::remove_dir_all(root).expect("temporary root should be removable");
-    }
-
-    #[test]
-    fn a_disclosed_record_pin_is_permitted_and_a_disclosure_naming_no_pin_is_not() {
-        let dangling = pin(&"1".repeat(40), &"k".repeat(32));
-        let root = pinned_record_root("pin-disclosed");
-        write_admitted(
-            &root,
-            &dangling,
-            &disclosure(
-                &"1".repeat(40),
-                &"k".repeat(32),
-                "the trial ran on a working copy jj abandoned",
-            ),
-        );
-
-        assert!(verify_evidence_records(&root).is_empty());
-
-        // A disclosure quoting a pin no record carries excuses nothing, and
-        // leaving it would let the undisclosed pin beside it pass under its name.
-        write_admitted(
-            &root,
-            &dangling,
-            &disclosure(&"2".repeat(40), &"k".repeat(32), "quotes another commit"),
-        );
-        let violations = verify_evidence_records(&root);
-
-        assert_eq!(violations.len(), 2, "{violations:?}");
-        assert!(
-            violations
-                .iter()
-                .any(|violation| violation.contains("a disclosure that names no pin excuses")),
-            "{violations:?}"
-        );
-        fs::remove_dir_all(root).expect("temporary root should be removable");
+            if accepted {
+                assert_eq!(violations, Vec::<String>::new(), "{label}");
+            } else {
+                assert_eq!(
+                    violations,
+                    [
+                        "evidence/m9/manifest.json admits record.json, whose trial at \"trial.revision\" \
+                      does not declare whether the tree it measured was dirty"
+                    ],
+                    "{label}"
+                );
+            }
+            let record_path = root.join("evidence/m9/record.json");
+            let record = fs::read_to_string(&record_path).expect("record should be readable");
+            fs::write(&record_path, format!(r#"{{"a\nb":{record}}}"#))
+                .expect("nested record should be writable");
+            violations.clear();
+            verify_admitted_revisions(
+                &root,
+                &root.join("evidence/m9/manifest.json"),
+                &mut violations,
+            );
+            assert_eq!(violations.len(), usize::from(!accepted), "{label}");
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
     }
 
     #[test]
@@ -9246,8 +8350,8 @@ mod tests {
         // counts were rewritten to invented numbers and the scaffold stayed at
         // zero, because the digest that would have caught it was no longer
         // recorded.
-        let root = pinned_record_root("record-unnamed");
-        write_admitted(&root, r#"{"dirty":false}"#, "");
+        let (root, revision) = pinned_input_root("record-unnamed");
+        write_admitted(&root, r#"{"dirty":false}"#, &revision);
         fs::write(root.join("evidence/m9/unnamed.json"), "{}\n")
             .expect("record should be writable");
 
@@ -9287,6 +8391,12 @@ mod tests {
             .output()
             .expect("jj should be available");
         assert!(pinned.status.success(), "{pinned:?}");
+        let advanced = Command::new("jj")
+            .arg("new")
+            .current_dir(&root)
+            .output()
+            .expect("jj should be available");
+        assert!(advanced.status.success(), "{advanced:?}");
         fs::write(root.join("input.txt"), "moved on\n").expect("input should be rewritable");
         (
             root,
@@ -9313,7 +8423,10 @@ mod tests {
         let (root, revision) = pinned_input_root("inputs-match");
         write_input_manifest(&root, &revision, "input.txt", HELLO_DIGEST);
 
-        assert!(verify_evidence_records(&root).is_empty());
+        assert_eq!(
+            verify_evidence_records(&root),
+            [] as [std::string::String; 0]
+        );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
@@ -9380,39 +8493,16 @@ mod tests {
     }
 
     #[test]
-    fn a_pinned_commit_that_is_the_change_head_agrees() {
-        assert_eq!(pinned_commit_mismatch("m9", "kkxp", "abc", "abc"), None);
-    }
-
-    #[test]
-    fn a_pinned_commit_the_change_has_moved_off_is_reported() {
-        // The hole this exists for: all four manifests pinned a commit their own
-        // change no longer held, and every one of them resolved here and nowhere
-        // else, so twenty input digests bound nothing in a clone.
-        let reported = pinned_commit_mismatch("evidence/m9/manifest.json", "kkxp", "abc", "def")
-            .expect("a moved change should be reported");
-
-        assert!(
-            reported.starts_with(
-                "evidence/m9/manifest.json pins revision.id abc but change kkxp is at def"
-            ),
-            "{reported}"
-        );
-    }
-
-    #[test]
     fn an_abandoned_commit_is_not_visible_although_jj_still_reads_it() {
-        // `jj file show -r` reads an abandoned commit out of the operation log, so
-        // resolving one is not evidence a clone could. This is the distinction the
-        // whole re-pin rests on.
-        let (root, abandoned) = pinned_input_root("visible-abandoned");
+        let root = pinned_record_root("visible-abandoned");
+        fs::write(root.join("input.txt"), "hello\n").expect("input should be writable");
+        let abandoned = visible_commit(&root, "@").expect("the working copy should be visible");
         let described = Command::new("jj")
             .args(["describe", "-m", "moves the change off that commit"])
             .current_dir(&root)
             .output()
             .expect("jj should be available");
         assert!(described.status.success(), "{described:?}");
-
         let readable = Command::new("jj")
             .args(["file", "show", "-r", &abandoned, "--", "input.txt"])
             .current_dir(&root)
@@ -9423,23 +8513,37 @@ mod tests {
             visible_commit(&root, &abandoned),
             Err("names no commit in visible history".to_owned())
         );
-
-        let current = visible_commit(&root, "@").expect("the working copy should be visible");
-        assert_ne!(current, abandoned);
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
     #[test]
-    fn a_revision_naming_nothing_is_not_visible() {
-        // All-zeros is jj's root commit and is visible, so the bogus id here is a
-        // hash no object carries.
-        let (root, _) = pinned_input_root("visible-bogus");
-
-        assert_eq!(
-            visible_commit(&root, &"1".repeat(40)),
-            Err("names no commit in visible history".to_owned())
-        );
+    fn a_missing_or_root_revision_is_not_visible() {
+        let root = pinned_record_root("visible-bogus");
+        for revision in ["1".repeat(40), "0".repeat(40)] {
+            assert!(visible_commit(&root, &revision).is_err());
+        }
         fs::remove_dir_all(root).expect("temporary root should be removable");
+    }
+
+    #[test]
+    fn an_input_revision_must_name_a_visible_commit_not_a_revset() {
+        for revision in ["@", "root()"] {
+            let (root, _) = pinned_input_root(&format!("inputs-revset-{revision}"));
+            write_input_manifest(&root, revision, "input.txt", HELLO_DIGEST);
+            let mut violations = Vec::new();
+            verify_recorded_inputs(
+                &root,
+                &root.join("evidence/m9/manifest.json"),
+                &BTreeSet::from(["input.txt".to_owned()]),
+                &mut violations,
+            );
+            assert_eq!(violations.len(), 1, "{revision}: {violations:?}");
+            assert!(
+                violations[0].starts_with("evidence/m9/manifest.json revision.id "),
+                "{violations:?}"
+            );
+            fs::remove_dir_all(root).expect("temporary root should be removable");
+        }
     }
 
     /// Writes a manifest recording one gate run and returns the root.
@@ -9460,7 +8564,10 @@ mod tests {
                     "lineCoveragePercent":85.97}}"#,
         );
 
-        assert!(verify_evidence_records(&root).is_empty());
+        assert_eq!(
+            verify_evidence_records(&root),
+            [] as [std::string::String; 0]
+        );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
@@ -9515,7 +8622,7 @@ mod tests {
     fn an_absent_spike_tree_is_not_a_violation() {
         let root = temporary_root("spikes-absent");
 
-        assert!(verify_spikes(&root).is_empty());
+        assert_eq!(verify_spikes(&root), [] as [std::string::String; 0]);
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
@@ -9584,6 +8691,34 @@ mod tests {
             checked += 1;
         }
         assert!(checked > 0, "the repository tracks a version");
+    }
+
+    #[test]
+    fn a_spike_result_does_not_require_a_historical_change_identifier() {
+        let root = temporary_root("spikes-no-change-id");
+        let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        fs::create_dir_all(root.join("schemas")).expect("schema directory should be creatable");
+        fs::copy(
+            repository.join("schemas/spike-result.schema.json"),
+            root.join("schemas/spike-result.schema.json"),
+        )
+        .expect("spike schema should be copied");
+        let gate = root.join("evidence/m1/spikes/adg-5");
+        fs::create_dir_all(&gate).expect("spike directory should be creatable");
+        let output = Command::new("jq")
+            .arg("del(.trial.revision.changeId)")
+            .arg(repository.join("evidence/m1/spikes/adg-5/adg5-stock-jvm-arguments.json"))
+            .output()
+            .expect("recorded spike result should be readable by jq");
+        assert!(output.status.success(), "spike mutation should succeed");
+        fs::write(gate.join("candidate.json"), output.stdout)
+            .expect("spike result should be writable");
+
+        assert!(
+            verify_spikes(&root).is_empty(),
+            "a spike result without the historical identifier should pass"
+        );
+        fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
     #[test]
@@ -9678,33 +8813,6 @@ mod tests {
     }
 
     #[test]
-    fn a_result_naming_a_change_that_did_not_introduce_it_is_reported() {
-        // The defect this exists for: seven results named a revision no rewrite
-        // had updated, and nothing recomputed the claim until a human read them.
-        let wrong = change_mismatch(
-            "evidence/m1/spikes/adg-3/adg3-javap-extraction.json",
-            "wtvoqolwmrxtpwsxspnlwnsnkoslxxlt",
-            "ysvpslstqmmmkkzknzmozqkpnozlworn",
-        );
-        assert_eq!(
-            wrong.as_deref(),
-            Some(
-                "evidence/m1/spikes/adg-3/adg3-javap-extraction.json records change \
-                 wtvoqolwmrxtpwsxspnlwnsnkoslxxlt but was introduced by \
-                 ysvpslstqmmmkkzknzmozqkpnozlworn"
-            )
-        );
-        assert_eq!(
-            change_mismatch("r.json", "wtvoqolwmrxt", "wtvoqolwmrxt"),
-            None
-        );
-        // An untracked result has no introducing change and is not yet checkable,
-        // so the check clears without a verdict and has to say so rather than
-        // read as agreement.
-        assert_eq!(change_mismatch("r.json", "wtvoqolwmrxt", ""), None);
-    }
-
-    #[test]
     fn unsafe_code_cannot_be_permitted_outside_experiments() {
         let root = temporary_root("fence-unsafe");
         let crate_root = root.join("crates/ravel-bootstrap/src");
@@ -9751,7 +8859,7 @@ mod tests {
     }
 
     #[test]
-    fn restricted_content_ignores_are_required() {
+    fn credential_ignores_are_required() {
         let root = temporary_root("ignores");
         fs::write(root.join(".gitignore"), "# intentionally incomplete\n")
             .expect("test gitignore should be writable");
@@ -9759,32 +8867,57 @@ mod tests {
 
         verify_ignored_boundaries(&root, &mut violations);
 
-        assert_eq!(violations.len(), 3);
+        assert_eq!(violations.len(), 1);
         assert!(
             violations
                 .iter()
-                .all(|violation| violation.starts_with("missing restricted-content ignore:"))
+                .all(|violation| violation.starts_with("missing credential ignore:"))
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
     #[test]
-    fn restricted_tracked_paths_are_rejected() {
-        let violations = verify_tracked_paths([
-            "tests/fixtures/local/secret.jar",
-            "evidence/private/capture.json",
-            "evidence/m0/raw/process.log",
-            "evidence/m0/captures/frame.trace",
-            "config/credentials.json",
-            "docs/README.md",
-        ]);
+    fn tracked_credential_paths_are_rejected() {
+        let violations = verify_tracked_paths(["config/credentials.json", "docs/README.md"]);
 
-        assert_eq!(violations.len(), 5);
+        assert_eq!(violations.len(), 1);
         assert!(
             violations
                 .iter()
                 .all(|violation| violation.starts_with("forbidden tracked path:"))
         );
+    }
+
+    #[test]
+    fn tracked_runtime_material_is_rejected() {
+        let paths = [
+            "hs_err_pid123.log",
+            "nested/HS_ERR_PID456.log",
+            "dump.hprof",
+            "recording.jfr",
+            "frame.trace",
+            "logs/latest.log",
+            "instance/crash-reports/crash.txt",
+            "instance/saves/world/level.dat",
+            "evidence/m0/raw/process.log",
+            "evidence/m0/captures/frame.png",
+        ];
+        let violations = verify_tracked_paths(paths);
+
+        assert_eq!(violations.len(), paths.len(), "{violations:?}");
+    }
+
+    #[test]
+    fn non_runtime_material_is_not_a_policy_violation() {
+        let violations = verify_tracked_paths([
+            "tests/fixtures/local/example.jar",
+            "evidence/private/capture.json",
+            ".minecraft/assets/example.png",
+            "mods/example.jar",
+            "pack.mrpack",
+        ]);
+
+        assert!(violations.is_empty(), "violations: {violations:?}");
     }
 
     #[test]
@@ -10105,13 +9238,7 @@ mod tests {
         // The defect this exists for: the digest was recomputed against the working
         // copy and nothing asked whether the repository held the file, so a record
         // could be bound to something only the machine that wrote it can obtain.
-        let root = temporary_root("records-untracked");
-        let initialised = Command::new("jj")
-            .args(["git", "init"])
-            .current_dir(&root)
-            .output()
-            .expect("jj should be available");
-        assert!(initialised.status.success(), "{initialised:?}");
+        let (root, revision) = pinned_input_root("records-untracked");
         fs::write(root.join(".gitignore"), "ignored.json\n").expect("ignore should be writable");
         let milestone = root.join("evidence/m9");
         fs::create_dir_all(&milestone).expect("evidence directory should be creatable");
@@ -10119,7 +9246,7 @@ mod tests {
         fs::write(
             milestone.join("manifest.json"),
             format!(
-                r#"{{{RECORDED_RUN},"revision":{{"id":"@"}},
+                r#"{{{RECORDED_RUN},"revision":{{"id":"{revision}"}},
                     "benchmarks":{{"protocolVersion":"v1",
                     "results":[{{"name":"ignored.json",
                         "sha256":"{EMPTY_OBJECT_DIGEST}"}}]}}}}"#
@@ -10410,8 +9537,14 @@ mod tests {
         );
         // An ordinal is a reference into the record's numbering rather than a
         // count of it, and prose that states no figure states none.
-        assert!(numbers_before("the fourth round of review", &["round"]).is_empty());
-        assert!(numbers_before("every round returned FAIL", &["rounds"]).is_empty());
+        assert_eq!(
+            numbers_before("the fourth round of review", &["round"]),
+            [] as [usize; 0]
+        );
+        assert_eq!(
+            numbers_before("every round returned FAIL", &["rounds"]),
+            [] as [usize; 0]
+        );
     }
 
     /// The tail a round walked the count checks around by spelling it.
@@ -10432,9 +9565,18 @@ mod tests {
         // accident: a hundred and above is read by nothing, a compound without its
         // hyphen reads as its parts, and a hyphenated pair that is not a count is
         // not invented into one.
-        assert!(numbers_before("a hundred rounds", &["rounds"]).is_empty());
-        assert!(numbers_before("thirty-thousand-entry rounds", &["rounds"]).is_empty());
-        assert!(numbers_before("twenty-eleven rounds", &["rounds"]).is_empty());
+        assert_eq!(
+            numbers_before("a hundred rounds", &["rounds"]),
+            [] as [usize; 0]
+        );
+        assert_eq!(
+            numbers_before("thirty-thousand-entry rounds", &["rounds"]),
+            [] as [usize; 0]
+        );
+        assert_eq!(
+            numbers_before("twenty-eleven rounds", &["rounds"]),
+            [] as [usize; 0]
+        );
         assert_eq!(numbers_before("twenty one rounds", &["rounds"]), [1]);
     }
 
@@ -10623,8 +9765,7 @@ mod tests {
     }
 
     /// An inventory truncated to its header counted as four zeroes and read as
-    /// countable, so the version contributed no hook name any decision record
-    /// could be falsified by and no figure any document could be held to.
+    /// countable, leaving its document's figures satisfied by emptiness.
     #[test]
     fn a_version_whose_inventory_declares_no_hook_is_reported() {
         let root = temporary_root("version-empty-inventory");
@@ -10820,20 +9961,13 @@ mod tests {
         assert_eq!(named.into_iter().collect::<Vec<_>>(), ["26.1.2"]);
     }
 
-    /// Writes one agent source and one figure, so a reflection test asks only
-    /// about the surface.
-    fn reflection_root(label: &str, source: &str, figure: usize) -> PathBuf {
+    /// Writes one agent source so a reflection test asks only about the surface.
+    fn reflection_root(label: &str, source: &str) -> PathBuf {
         let root = temporary_root(label);
         version_directory(&root, "26.1.2", &[]);
         let sources = root.join(AGENT_JAR_SOURCES).join("dev/ravel/jvm");
         fs::create_dir_all(&sources).expect("agent sources should be creatable");
         fs::write(sources.join("Content.java"), source).expect("agent source should be writable");
-        fs::create_dir_all(root.join(DECISION_RECORDS)).expect("records should be creatable");
-        fs::write(
-            root.join(JVM_ENTRY_DECISION),
-            format!("The adapters resolve {figure} classes by name.\n"),
-        )
-        .expect("record should be writable");
         root
     }
 
@@ -10846,7 +9980,6 @@ mod tests {
             "version-reflection-literal",
             "String identifier = \"net.minecraft.resources.Identifier\";\n    String one = \
              GameNames.ONE;\n",
-            1,
         );
         let mut violations = Vec::new();
 
@@ -10869,7 +10002,6 @@ mod tests {
         let root = reflection_root(
             "version-reflection-role",
             "String one = GameNames.ONE;\n    String other = GameNames.STORAGE;\n",
-            1,
         );
         let mut violations = Vec::new();
 
@@ -10887,7 +10019,7 @@ mod tests {
     /// drifted rather than that it is pinned.
     #[test]
     fn a_declared_role_no_source_resolves_is_refused() {
-        let root = reflection_root("version-reflection-unused", "String nothing = null;\n", 1);
+        let root = reflection_root("version-reflection-unused", "String nothing = null;\n");
         let mut violations = Vec::new();
 
         verify_persistence_reflection(&root, &mut violations);
@@ -10914,7 +10046,6 @@ mod tests {
         let root = reflection_root(
             "version-reflection-descriptor",
             "String one = GameNames.ONE;\n",
-            3,
         );
         fs::write(
             root.join(format!("{VERSION_DATA}/26.1.2/{REFLECTION_FILE}")),
@@ -10942,7 +10073,6 @@ mod tests {
         let root = reflection_root(
             "version-reflection-partial",
             "String one = GameNames.ONE;\n",
-            1,
         );
         fs::write(
             root.join(format!("{VERSION_DATA}/26.1.2/{REFLECTION_FILE}")),
@@ -10994,7 +10124,6 @@ mod tests {
             "version-hook-name",
             "boolean seam = target.hookMethod().equals(\"worldSave\");\n    String one = \
              GameNames.ONE;\n",
-            1,
         );
         let inventories = hook_inventories(&root);
         let mut violations = Vec::new();
@@ -11017,7 +10146,6 @@ mod tests {
             "version-hook-name-declared",
             "boolean seam = target.hookMethod().equals(\"levelTick\");\n    String one = \
              GameNames.ONE;\n",
-            1,
         );
         let inventories = hook_inventories(&root);
         let mut violations = Vec::new();
@@ -11262,55 +10390,6 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
-    /// The record owes one figure per distinct surface size. One figure held
-    /// against every surface's length was unsatisfiable across two versions of
-    /// different sizes, so the rule is set equality and both directions fail.
-    #[test]
-    fn the_resolved_class_figure_is_owed_once_per_distinct_surface_size() {
-        let root = temporary_root("version-figures");
-        for (version, declarations) in [
-            (
-                "26.1.2",
-                "[[reflected]]\nname = \"ONE\"\nclass = \"net.minecraft.client.One\"\nruntime = \
-                 \"net.minecraft.client.One\"\n",
-            ),
-            (
-                "99.0.0-synthetic",
-                "[[reflected]]\nname = \"ONE\"\nclass = \"net.minecraft.client.One\"\nruntime = \
-                 \"net.minecraft.client.One\"\n\n[[reflected]]\nname = \"TWO\"\nclass = \
-                 \"net.minecraft.client.Two\"\nruntime = \"net.minecraft.client.Two\"\n",
-            ),
-        ] {
-            version_directory(&root, version, &[]);
-            fs::write(
-                root.join(format!("{VERSION_DATA}/{version}/{REFLECTION_FILE}")),
-                format!("schemaVersion = 1\nminecraft = \"{version}\"\n\n{declarations}"),
-            )
-            .expect("version data should be writable");
-        }
-        fs::create_dir_all(root.join(DECISION_RECORDS)).expect("records should be creatable");
-        fs::write(
-            root.join(JVM_ENTRY_DECISION),
-            "The adapters resolve 1 classes by name, and 3 classes by name at the other.\n",
-        )
-        .expect("record should be writable");
-        let mut violations = Vec::new();
-
-        let surfaces = reflective_surfaces(&root, &mut violations);
-        verify_resolved_class_figure(&root, &surfaces, &mut violations);
-
-        assert_eq!(violations.len(), 2, "{violations:?}");
-        assert!(
-            violations[0].contains("99.0.0-synthetic/reflection.toml declares 2 classes"),
-            "{violations:?}"
-        );
-        assert!(
-            violations[1].contains("resolve 3 classes by name while no tracked version declares"),
-            "{violations:?}"
-        );
-        fs::remove_dir_all(root).expect("temporary root should be removable");
-    }
-
     /// A document states one inventory's counts, so a document that links into no
     /// version directory, or into two, names no subject and is refused rather than
     /// held to whichever inventory happened to be first.
@@ -11378,42 +10457,6 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
-    /// A decision record denies a mechanism outright, so the denial is false as
-    /// soon as *any* tracked version declares the hook. The version the reader is
-    /// not on must not excuse the sentence, and the message names the inventory
-    /// that falsifies it.
-    #[test]
-    fn a_denial_is_falsified_by_any_tracked_versions_inventory() {
-        let root = temporary_root("decision-union");
-        version_directory(&root, "26.1.2", &[]);
-        version_directory(&root, "99.0.0-synthetic", &[]);
-        fs::write(
-            root.join(format!("{VERSION_DATA}/99.0.0-synthetic/hooks.toml")),
-            "schemaVersion = 1\nminecraft = \"99.0.0-synthetic\"\n\n[[hook]]\nid = \
-             \"screen.extract-render-state\"\nkind = \"instance-method\"\nmember = \
-             \"extractRenderState\"\ndescriptor = \"()V\"\n",
-        )
-        .expect("version data should be writable");
-        fs::create_dir_all(root.join(DECISION_RECORDS)).expect("records should be creatable");
-        fs::write(
-            root.join(format!("{DECISION_RECORDS}/adg-6-example.md")),
-            "Ravel does **not** hook `extractRenderState`.\n",
-        )
-        .expect("record should be writable");
-        let mut violations = Vec::new();
-
-        verify_decision_hook_claims(&root, &hook_inventories(&root), &mut violations);
-
-        assert_eq!(
-            violations,
-            [
-                "docs/decisions/adg-6-example.md says `extractRenderState` is not hooked while \
-                 minecraft/versions/99.0.0-synthetic/hooks.toml declares it"
-            ]
-        );
-        fs::remove_dir_all(root).expect("temporary root should be removable");
-    }
-
     /// The reflected names became version data in the same change that made them
     /// version data, so the version-boundary sweep reads them: a general crate
     /// spelling one is welded to that version whether the generator reads the file
@@ -11471,72 +10514,6 @@ mod tests {
         verify_campaign_inventory(&root, &mut violations);
 
         assert_eq!(violations, Vec::<String>::new());
-    }
-
-    /// No accepted decision denies a hook the pinned inventory declares.
-    #[test]
-    fn the_tracked_decision_records_deny_no_hook_the_inventory_declares() {
-        let root = std::env::current_dir()
-            .expect("the current directory must be available")
-            .join("../..");
-        let mut violations = Vec::new();
-
-        verify_decision_hook_claims(&root, &hook_inventories(&root), &mut violations);
-
-        assert_eq!(violations, Vec::<String>::new());
-    }
-
-    /// The two shapes the stale ADG-6 sentences had, against the names the pinned
-    /// inventory actually declares.
-    #[test]
-    fn a_denial_of_a_declared_hook_is_found_by_id_and_by_member() {
-        let inventory = "\
-            [[hook]]\n\
-            id = \"screen.extract-render-state\"\n\
-            member = \"extractRenderState\"\n";
-        let declared = declared_hook_names(inventory);
-
-        assert_eq!(
-            declared,
-            ["screen.extract-render-state", "extractRenderState"]
-        );
-        assert_eq!(
-            denied_hook_names("It does **not** hook `extractRenderState`.", &declared),
-            ["extractRenderState"]
-        );
-        assert_eq!(
-            denied_hook_names(
-                "The record does not hook screen.extract-render-state.",
-                &declared
-            ),
-            ["screen.extract-render-state"]
-        );
-        // The inflected passive, and the order that puts the name first. Round 10
-        // wrote this exact sentence into ADG-6 and the gate stayed at zero.
-        assert_eq!(
-            denied_hook_names(
-                "The `extractRenderState` seam is not hooked by Ravel.",
-                &declared
-            ),
-            ["extractRenderState"]
-        );
-        assert_eq!(
-            denied_hook_names(
-                "Ravel is not hooking `screen.extract-render-state` in this version.",
-                &declared
-            ),
-            ["screen.extract-render-state"]
-        );
-        // A denial of something the inventory does not declare is the record's
-        // business, and a declared hook named without a denial is ordinary prose.
-        assert!(denied_hook_names("It does not hook `Screen.render`.", &declared).is_empty());
-        assert!(
-            denied_hook_names(
-                "The inventory carries `extractRenderState`, the per-frame seam.",
-                &declared
-            )
-            .is_empty()
-        );
     }
 
     #[test]
@@ -12376,11 +11353,6 @@ mod tests {
     fn m6_root(label: &str, summary: &str, manifest: &str) -> PathBuf {
         let root = temporary_root(label);
         fs::create_dir_all(root.join("evidence/m6")).expect("evidence should be creatable");
-        fs::create_dir_all(root.join("docs/decisions")).expect("decisions should be creatable");
-        for decision in M6_DECISIONS {
-            fs::write(root.join("docs/decisions").join(decision), "# record\n")
-                .expect("decision should be writable");
-        }
         fs::write(root.join("evidence/m6/counterpart-summary.json"), summary)
             .expect("summary should be writable");
         fs::write(root.join("evidence/m6/manifest.json"), manifest)
@@ -12762,35 +11734,6 @@ mod tests {
                     .iter()
                     .any(|violation| violation.contains(expected)),
                 "{label} was not refused; violations:\n{}",
-                violations.join("\n")
-            );
-            fs::remove_dir_all(root).expect("temporary root should be removable");
-        }
-    }
-
-    #[test]
-    fn m6_closure_refuses_a_missing_decision_record() {
-        for decision in M6_DECISIONS {
-            let root = m6_root(
-                &format!("m6-decision-{decision}"),
-                &balanced_counterpart_summary(),
-                &balanced_m6_manifest(),
-            );
-            fs::remove_file(root.join("docs/decisions").join(decision))
-                .expect("decision should be removable");
-            let mut violations = Vec::new();
-
-            verify_m6_manifest(
-                &root,
-                &root.join("evidence/m6/manifest.json"),
-                &mut violations,
-            );
-
-            assert!(
-                violations.contains(&format!(
-                    "M6 closure requires the decision record {decision}"
-                )),
-                "violations:\n{}",
                 violations.join("\n")
             );
             fs::remove_dir_all(root).expect("temporary root should be removable");

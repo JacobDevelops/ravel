@@ -1,11 +1,8 @@
 //! Minimal zip reader: enough to pull named entries out of the pinned jar.
 //!
-//! ADG-3's spike shelled out to `unzip`, one process per class, and recorded
-//! that production would pick a Rust archive dependency instead. What this needs
-//! is two of thirty thousand entries by exact name, so it reads the central
-//! directory and inflates only the entries it was asked for. The inflate itself
-//! is `miniz_oxide`, which is pure Rust, carries `#![forbid(unsafe_code)]`, and
-//! brings one permissively licensed dependency with it.
+//! It reads the central directory and inflates only the entries it was asked
+//! for, rather than starting a process per class. The inflate itself is
+//! `miniz_oxide`, which is pure Rust and carries `#![forbid(unsafe_code)]`.
 
 use std::collections::BTreeMap;
 use std::fs;

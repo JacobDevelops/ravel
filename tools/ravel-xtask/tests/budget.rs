@@ -170,7 +170,7 @@ fn a_run_from_another_machine_is_refused_rather_than_compared() {
     assert!(report.violations[0].contains("some-laptop"));
     assert!(report.violations[0].contains("linux-reference-v1"));
     // Nothing was compared, so nothing is reported as not compared either.
-    assert!(report.notes.is_empty());
+    assert_eq!(report.notes, [] as [std::string::String; 0]);
 }
 
 #[test]
@@ -245,7 +245,7 @@ fn a_run_declaring_another_budget_protocol_is_refused_before_anything_is_compare
     assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
     assert!(report.violations[0].contains("m4-loader-budget-v2"));
     assert!(report.violations[0].contains("m2-loader-budget-v1"));
-    assert!(report.notes.is_empty());
+    assert_eq!(report.notes, [] as [std::string::String; 0]);
 }
 
 /// Writes a temporary repository root whose budget record has `edits` applied.
@@ -328,8 +328,8 @@ fn a_run_that_is_not_a_readable_record_fails_rather_than_reporting_nothing() {
     let _ = fs::remove_file(&missing);
 
     let report = compare(&repository_root(), &missing);
-    assert!(!report.violations.is_empty());
-    assert!(report.notes.is_empty());
+    assert_ne!(report.violations, [] as [std::string::String; 0]);
+    assert_eq!(report.notes, [] as [std::string::String; 0]);
 }
 
 #[test]

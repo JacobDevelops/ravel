@@ -28,10 +28,10 @@ Two properties are worth stating because a reader will otherwise wonder:
   `minecraft/versions/`.** Everything in it is invented, so it is a question to
   ask the generator rather than a version anything ships. Staged as the only
   version it asks M4-W6's question, whether the generator works on a version
-  that is not the pinned one. Staged beside the pinned one it asks the question
-  [`version-selection-is-a-build-time-choice.md`](../../../../docs/decisions/version-selection-is-a-build-time-choice.md)
-  answers, whether a build reads the version it was told to and refuses to guess
-  when it was told nothing.
+  that is not the pinned one. Staged beside the pinned one it asks whether a
+  build reads the version it was told to and refuses to guess when it was told
+  nothing, as described in the
+  [build-time version-selection mechanism](../../../../docs/architecture/overview.md#mechanisms).
 
 The gate that reads it is
 `crates/ravel-minecraft-adapter/src/generate/mod.rs`'s

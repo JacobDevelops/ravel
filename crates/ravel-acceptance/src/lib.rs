@@ -32,13 +32,11 @@
 //! projection could read, because every reference parameter crosses as a
 //! `HookValue::Handle` offering a declared class and a null check, which is what
 //! `ROADMAP.md` records as the open question a reviewed hook target has to
-//! close; and a directive becomes an effect through
-//! `docs/decisions/carrying-an-action-outward.md`'s mechanism, whose outbound leg
-//! `ROADMAP.md`'s M8-W0 owns and which no launched game has performed yet.
-//! This crate names both boundaries as traits a driver implements
-//! — [`GameView`] and [`GameDriver`] — so a run is written, ordered and asserted
-//! against them now, and the driver that makes them real is built against a
-//! launched game later without this model changing. [`run`] is the loop that
+//! close; a directive becomes an effect when the Java adapter performs it. The
+//! outbound leg has not been performed by a launched game. This crate names both
+//! boundaries as traits a driver implements — [`GameView`] and [`GameDriver`] —
+//! so a run is written, ordered and asserted against them now.
+//! The driver can be built against a launched game without changing this model. [`run`] is the loop that
 //! drives a scenario against them, so what a live driver has to supply is the
 //! two traits and nothing else: the order of carry, observe, evaluate and
 //! record is decided here rather than re-derived by each caller.
@@ -47,13 +45,11 @@
 //!
 //! A run answers the game the way a mod does and no other way. It never calls a
 //! game method: a [`Directive`] is data a [`GameDriver`] hands to the adapter,
-//! which is `docs/decisions/carrying-an-action-outward.md`'s decision applied to
-//! a test rather than to a mod, so no `#![forbid(unsafe_code)]` is weakened and
-//! no new crossing is opened. It reads the modded world through structured
+//! which the Java adapter performs, so no `#![forbid(unsafe_code)]` is weakened
+//! and no new crossing is opened. It reads the modded world through structured
 //! observations rather than by parsing rendered pixels, so a scenario names a
-//! modded machine, item or quest by the key the pack declared it under rather
-//! than by what it looks like on a screen — the fork
-//! `docs/architecture/agentic-acceptance-harness.md` resolves. And it decides a
+//! condition by its meaning rather than by what it looks like on a screen; see
+//! `docs/architecture/overview.md#mechanisms`. It decides a
 //! verdict from the transcript it recorded rather than from a claim, because a
 //! green that measures the harness rather than the game is the failure
 //! `ROADMAP.md`'s M8-W0 note exists to prevent.
@@ -213,8 +209,7 @@ impl Step {
 
 /// A thing a step asks the game to do, carried outward as data.
 ///
-/// A directive is `docs/decisions/carrying-an-action-outward.md`'s crossing put
-/// to a test's use: a [`GameDriver`] hands it to the receiver-aware Java adapter,
+/// A directive is data carried by a [`GameDriver`] to the receiver-aware Java adapter,
 /// which decodes it and performs it against the game. No variant is a call Rust
 /// makes, and every variant names its target by the key a pack declared it under
 /// rather than by a game type this crate may not name.
@@ -617,17 +612,15 @@ pub trait GameView {
 /// A driver that carries a directive outward and lets the game advance.
 ///
 /// This is the second boundary this crate names and does not cross. A directive
-/// leaves as `docs/decisions/carrying-an-action-outward.md`'s instruction, which
-/// the Java adapter performs; the outbound leg is `ROADMAP.md`'s M8-W0 and no
-/// host performs it yet, so the only implementations that exist are a test's.
+/// leaves as an instruction for the Java adapter to perform; the outbound leg is
+/// not yet implemented by a host. The only implementations that exist are tests.
 /// The trait is here so a scenario is written and ordered against it now.
 pub trait GameDriver {
     /// Carries `directive` outward as an instruction the adapter performs, or
     /// returns why it could not.
     ///
-    /// An action happens after the answer, not during it — the property
-    /// `docs/decisions/carrying-an-action-outward.md` records — so a successful
-    /// return means the instruction was carried, not that its effect is already
+    /// An action happens after the answer, not during it. A successful return
+    /// means the instruction was carried, not that its effect is already
     /// visible. A step that needs the effect to have landed waits for it with a
     /// following [`Directive::AdvanceTicks`] step and asserts then.
     ///
@@ -657,9 +650,7 @@ pub trait GameDriver {
 ///
 /// This does not wait. A step names the [`GameEvent`] it waits for and this
 /// asserts immediately after the directive, so a scenario that needs an effect
-/// to have landed says so with a following [`Directive::AdvanceTicks`] step —
-/// the property `docs/decisions/carrying-an-action-outward.md` records, kept in
-/// the scenario where a reader sees it rather than hidden in a runner's sleep.
+/// to have landed says so with a following [`Directive::AdvanceTicks`] step.
 pub fn run<W>(scenario: &Scenario, world: &mut W) -> Transcript
 where
     W: GameView + GameDriver,

@@ -16,7 +16,7 @@ const START_ORDER: [LifecycleState; 6] = [
 
 /// Drives a statically composed mod set to `running` in its stated order.
 ///
-/// Each entry travels with the ordinary Rust value ADG-2 selected for it. This
+/// Each entry travels with its ordinary compiled Rust value. This
 /// function does not discover or load code and therefore creates no second mod
 /// execution mechanism beside static source composition.
 ///

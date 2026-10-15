@@ -18,8 +18,8 @@ import java.lang.reflect.Method;
  * version they are not: 1.21.1 links {@code DimensionDataStorage.computeIfAbsent}
  * and {@code set} both as a two-argument {@code a}, and {@code get} shares
  * {@code b} with a two-argument lambda. A lookup by width would take whichever
- * the class file declared first, and reading a world with the method that writes
- * one is exactly the failure ADG-7 refuses a world load to avoid.
+ * the class file declared first, potentially reading a world with the method
+ * that writes one.
  *
  * <p>Descriptors are built from the reflected member rather than read off it,
  * because the JVM exposes no descriptor on {@link Method}. What is built here is

@@ -1,22 +1,16 @@
 # Test fixtures
 
-`public/` contains original, unrestricted inputs that may be committed and
-redistributed with Ravel. Every fixture should state its purpose, author, and
-licence.
+`public/` contains small tracked test inputs.
 
-`descriptors/` contains public metadata for restricted fixtures: authorized
-source pages, exact versions, expected counts, and cryptographic hashes. It
-never contains an archive or extracted third-party content.
+`descriptors/` contains source pages, exact versions, expected counts, and
+cryptographic hashes for fixture reconstruction.
 
-`local/` is ignored except for its policy README. It is the only location in
-this repository tree for reconstructed official Minecraft, ATM11, third-party
-mod, private-world, or other restricted compatibility inputs. Tools may write
-there only from authorized sources and must verify pinned hashes. Tests must
-refer to those inputs through explicit environment or command-line paths and
-must skip collection, not silently substitute content, when they are absent.
+`local/` holds ignored compatibility inputs. Reconstruction verifies pinned
+hashes. Tests refer to these inputs through explicit environment or command-line
+paths and skip collection, rather than silently substituting content, when they
+are absent.
 
-Never commit credentials, launcher tokens, official mod JARs, ATM-owned assets,
-rights-sensitive notes, or derived restricted content.
+Never commit credentials or launcher tokens.
 
 ## Pinned M0 fixture
 
@@ -26,7 +20,7 @@ All the Mods 11 `0.2.1` for Minecraft `26.1.2`, using NeoForge
 The source archive and embedded manifest SHA-256 digests are recorded in
 `descriptors/atm11-0.2.1.json`.
 
-Reconstruct and verify it only under the ignored local boundary:
+Reconstruct and verify the local fixture:
 
 ```console
 cargo make ravel:fixture-reconstruct

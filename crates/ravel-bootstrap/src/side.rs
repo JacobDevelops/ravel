@@ -26,7 +26,7 @@
 //! initialises, and the first of the two distribution entry points to arrive
 //! there says which distribution this process was started from. Initialisation
 //! then runs from a prologue that transformer prepends to that entry point's own
-//! `main`, which is what `ADG-1`'s amendment records.
+//! `main`, so side detection runs in the game's defining class loader.
 //!
 //! # The code this receives
 //!

@@ -22,6 +22,16 @@ fn required_scaffold_is_complete() {
 }
 
 #[test]
+fn scaffold_contract_does_not_require_decision_records() {
+    assert!(
+        required_scaffold_paths()
+            .iter()
+            .all(|path| !path.starts_with("docs/decisions/")),
+        "decision records are not part of the scaffold contract"
+    );
+}
+
+#[test]
 fn scaffold_contract_covers_every_planned_crate() {
     let required = required_scaffold_paths();
 

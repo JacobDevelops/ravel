@@ -15,7 +15,7 @@ use crate::lifecycle::LifecycleMachine;
 /// `Unsupported` default that makes a mod which declared settings and never read
 /// them loud is only useful if something asks every such mod.
 ///
-/// ADG-6 puts the layering in data, so this decides nothing about a value. It
+/// Configuration is layered in data, so this decides nothing about a value. It
 /// walks the set in resolved load order, skips the mods this side parks, and for
 /// each mod that declares settings resolves the author's defaults under the pack's
 /// overrides and the player's file. A mod that declares none is not called: there
@@ -27,8 +27,8 @@ use crate::lifecycle::LifecycleMachine;
 /// Nothing is applied partially, in the sense that matters: a refusal stops the
 /// walk, so every mod after the offender is never configured and the caller must
 /// not start the set. A mod configured before the refusal holds settings for a
-/// launch that does not happen, which is the same shape ADG-7 defines for saved
-/// data — the mod holds its own state and the session is withheld.
+/// launch that does not happen, as with saved data:
+/// the mod holds its own state and the session is withheld.
 ///
 /// A dropped player value is not a refusal. The layered result already dropped it
 /// and fell back to the layer below, and this reports it so a caller can tell the
@@ -108,7 +108,7 @@ impl Configured {
     /// Returns the settings each configured mod was handed, in the same order.
     ///
     /// Kept rather than dropped after the mod took them, because a host installs the
-    /// resolved set for the screen ADG-6 draws. Resolving them a second time to get
+    /// resolved set for the Java settings screen. Resolving them a second time to get
     /// them back would be a second answer to what is in force.
     #[must_use]
     pub fn resolved(&self) -> &[LayeredConfiguration] {

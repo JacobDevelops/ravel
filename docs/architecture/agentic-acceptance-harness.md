@@ -55,7 +55,7 @@ There are three ways to build (2) and (3), and the choice determines everything.
   intercepts the game in-process. It already reports occurrences to a mod as
   `ravel_host_api::GameEvent`, and it already carries a mod's requested action
   outward as an instruction the Java adapter performs
-  (`docs/decisions/carrying-an-action-outward.md`). An acceptance run is a
+  ([mechanisms overview](overview.md#mechanisms)). An acceptance run is a
   privileged consumer of exactly those two crossings: it observes structured
   world state projected from a hook's value, and it acts by handing the adapter
   the same kind of instruction a mod's action becomes. It understands modded
@@ -84,15 +84,13 @@ built and tested now, because all three are decidable without a game.
 ### Action — decided mechanism, unstarted outbound leg
 
 A run acts by handing a `ravel_acceptance::Directive` to a `GameDriver`, which
-carries it outward as `docs/decisions/carrying-an-action-outward.md`'s
-instruction. That decision is accepted and measured; its outbound leg — a host
-that actually performs the instruction against a running game — is `ROADMAP.md`'s
-M8-W0, which that row states "is impossible rather than merely hard" today and
-which "no work package owns" for its native-load half either (the ADG-5
-amendment). The harness therefore names `GameDriver` as a trait with no live
+carries it outward as an instruction described in the
+[mechanisms overview](overview.md#mechanisms). Its outbound leg — a host that
+actually performs the instruction against a running game — is `ROADMAP.md`'s
+M8-W0. The harness therefore names `GameDriver` as a trait with no live
 implementation, and inherits M8-W0 as its blocker rather than restating it. A
 directive is data, never a Rust call into the game, so the safety boundary and
-ADG-1's "nothing here admits a call from Rust into the game" both hold unchanged.
+Java-to-Rust-only crossing both hold unchanged.
 
 Because "an action happens after the answer, not during it" is a property of that
 crossing, a scenario that needs an effect to have landed inserts a following
@@ -102,9 +100,8 @@ same step that issued the action.
 ### Authentication — decided elsewhere, needs a human once
 
 Reaching a real Minecraft session is the Microsoft/Xbox/Minecraft-services device
-flow, and `ADG-5` puts authentication, entitlement and account data outside
-Ravel and Prism-owned: "The launch needs a signed-in session, so it is run by
-hand rather than by the gate." The harness does not weaken that. The one-time
+flow, and authentication, entitlement and account data remain outside Ravel and
+Prism-owned. The harness does not weaken that. The one-time
 human step — approve a device code in a browser — mints a refresh token that a
 subsequent run renews non-interactively, so "headless after the first launch" is
 achievable without Ravel storing a credential. Two properties follow and are
@@ -115,8 +112,8 @@ recorded rather than assumed:
   in offline mode with a chosen profile name. Whether the acceptance gate runs
   offline is a launcher-configuration question the harness leaves to the run, and
   choosing offline sidesteps the credential entirely for those milestones.
-- **Ravel never reads or stores the credential.** As under ADG-5, "Anything Ravel
-  needs to know about an instance comes from what the operator configured on it."
+- **Ravel never reads or stores the credential.** Anything Ravel needs to know
+  about an instance comes from what the operator configured on it.
 
 ### Display — a functional rig and a performance rig, and they differ
 
@@ -156,8 +153,8 @@ here:
 - the projection from a hook value to an `Observation` (`ravel-host-api`'s
   recorded gap);
 - a host that performs an outward instruction against a running game
-  (`ROADMAP.md` M8-W0, and ADG-5's amendment for the native-load half);
-- the one-time human authentication bootstrap (ADG-5; needs a licensed account);
+  (`ROADMAP.md` M8-W0);
+- the one-time human authentication bootstrap (needs a licensed account);
 - a launched-game run of any kind, functional or performance (needs a runtime and
   a display, and for M9 a GPU).
 
@@ -169,8 +166,7 @@ any of these yet" keeps, applied one layer up.
 
 This harness is the mechanism M8-W4 and M10 are verified *by*, so it is built
 before them the way `ravel-host-api` was built before the hooks that fill it. It
-does not close either milestone and does not take an ADG number of its own beyond
-the acceptance-gate record in `docs/decisions/`; `SPEC.md` §15 owns those numbers.
+does not close either milestone; `SPEC.md` §15 owns their acceptance contracts.
 The open dependency it sits behind — a running game to drive — is `ROADMAP.md`'s
 own open-questions surface, and this document is the design that will be ready the
 moment that dependency is met.

@@ -7,10 +7,8 @@
 //! in Rust source. This is the step that turns a discovered package into a host
 //! that names it.
 //!
-//! Nothing here decides where anything lives.
-//! `docs/decisions/shared-toolchain-and-build-cache.md` deliberately leaves the
-//! cache path to whatever owns installation layout, so both directories are
-//! arguments rather than defaults invented here.
+//! Installation layout owns the cache path, so both directories are arguments
+//! rather than defaults invented here.
 
 use std::fmt;
 use std::path::{Path, PathBuf};

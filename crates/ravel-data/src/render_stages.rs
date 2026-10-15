@@ -11,9 +11,9 @@ use ravel_core::{ModId, Side, precedence};
 /// a contribution that silently never happens.
 ///
 /// **Nothing draws at any of these yet, and this module ships no way to draw.**
-/// `docs/decisions/adg-6-configuration-and-screens.md` settled that the screens
-/// Ravel owns are declared in data and drawn in Java, and nothing here extends
-/// that to a mod's own drawing: what is shipped is the stage name, the order
+/// The screens Ravel owns are declared in data and drawn in Java; see
+/// `docs/architecture/overview.md#mechanisms`. Nothing here extends that to a
+/// mod's own drawing: what is shipped is the stage name, the order
 /// among contributors, and the two refusals, all of which are decidable without
 /// a frame. A mod that declares a contribution today is declaring where its
 /// drawing would go, and `crates/ravel-sdk/src/render_stages.rs` says so to the

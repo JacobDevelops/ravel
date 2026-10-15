@@ -1,6 +1,6 @@
 # M1 architecture measurement gate
 
-Status: M0-W8 input to ADG-1 through ADG-5. This document defines comparable
+Status: M0-W8 input to the M1 mechanism comparisons. This document defines comparable
 Linux evidence and failure actions without selecting an architecture.
 
 ## Common trial
@@ -59,38 +59,35 @@ alongside the percentiles, and run long enough for the sample to contain
 collection, safepoint, and scheduler events. M2-W8 is the first gate that needs
 this.
 
-ADG-specific additions remain required:
+Mechanism-specific additions remain required:
 
-- ADG-2 records isolation, ABI evolution, and mod-to-mod call behaviour.
-- ADG-3 records binding generation time, output hash, drift failure, and
+- Mod execution records isolation, ABI evolution, and mod-to-mod call behaviour.
+- Binding generation records generation time, output hash, drift failure, and
   produced binding size.
-- ADG-4 records duplicated state bytes and boundary traffic for the
+- State ownership records duplicated state bytes and boundary traffic for the
   representative object flow.
-- ADG-5 records stock-Prism launch proof or the size and ownership of a minimal
-  required patch. Authentication data is never captured.
+- Launcher integration records stock-Prism launch proof or the size and ownership
+  of a minimal required patch. Authentication data is never captured.
 
 ## Failure actions
 
 - Reject a candidate that requires a maintained unsafe *call*, another Java mod
-  loader, unredacted credentials, or untracked restricted artifacts. No exception
-  is admitted: `SPEC.md` §3.3 records none and the table in
-  [`safety-boundary.md`](safety-boundary.md) is empty, so admitting one would take
-  an accepted amendment plus a row. ADG-1 applied this to reject JVMTI at four
-  unsafe calls and the hosted VM at two. ADG-2's dynamic library needs two and is
-  retained rather than rejected, because M3 decides the execution model and
-  rejecting the only drop-in candidate here would decide it early; the ADR records
-  what selecting it would cost.
+  loader, or unredacted credentials. The table in
+  [`safety-boundary.md`](safety-boundary.md) is empty and stays empty unless
+  deliberately changed. The JVM-entry comparison rejected JVMTI at four unsafe
+  calls and the hosted VM at two. The dynamic-library candidate needs two; the
+  mod-execution measurements retain its costs for comparison.
 - Reject a candidate that cannot launch the pinned official game, preserve the
   required lifecycle boundary, or fail closed for invalid input and crashes.
 - Mark evidence incomplete when a required metric, unit, collector hash,
   candidate revision, or failure scenario is missing. Do not substitute zero.
 - Record `unavailable` only when the platform cannot expose a metric and the
-  ADR explains the resulting comparison limit. Candidate implementation
+  evidence explains the resulting comparison limit. Candidate implementation
   failure is not metric unavailability.
 - Treat performance differences as comparative evidence, not an invented M0
-  threshold. The ADR must explain each material regression and why the selected
+  threshold. Explain each material regression and why the selected
   trade-off can plausibly meet M9.
-- Keep the ADG open when evidence is ambiguous or incomparable. Do not select a
+- Leave the mechanism unresolved when evidence is ambiguous or incomparable. Do not select a
   mechanism by convenience.
 
 M2-W8 measures the selected no-op loader and establishes the first numeric

@@ -17,7 +17,7 @@
 //!
 //! # What a host supplies
 //!
-//! A [`Member`] is a package document beside the value ADG-2's Rust source
+//! A [`Member`] is a package document beside the value its Rust source
 //! compiled to. Neither half is authority alone: the document says which sides
 //! the mod loads on and what it is compatible with, the value is the code that
 //! would run there.
@@ -80,7 +80,7 @@ pub fn side(code: i32) -> Result<Side, LaunchError> {
 pub struct Member {
     /// The `package.json` this member ships, as written.
     pub package: String,
-    /// The Rust value ADG-2 selected for it.
+    /// The compiled Rust value for this package.
     pub host: Box<dyn HostMod>,
 }
 

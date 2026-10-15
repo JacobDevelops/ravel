@@ -153,14 +153,13 @@ public final class Hook {
     }
 
     /**
-     * ADG-7's four seams, read out of the generated hook table.
+     * The four persistence seams, read out of the generated hook table.
      *
      * <p>{@code ravel.test.persistence.saveSeamMissing} keeps the open seam and
      * drops the save seam, which is the one arrangement that makes
      * {@code Persistence.saveSeamInstalled} answer false: the server class is
      * present and loads, its transformation matches no method, and the
-     * installed-prologue marker stays empty. That is the hole ADG-7's rejected
-     * alternative leaves open, and without this case its false branch never runs.
+     * installed-prologue marker stays empty, exercising its false branch.
      *
      * <p>The pack and staging seams are in both sets below, because the case the
      * save seam is missing from is about the save marker and says nothing about

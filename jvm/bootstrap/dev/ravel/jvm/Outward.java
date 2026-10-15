@@ -6,12 +6,10 @@ import java.util.List;
 /**
  * Performs the actions Ravel asked the game for.
  *
- * <p>{@code docs/decisions/carrying-an-action-outward.md} decided that an action
- * a mod asks for crosses outward as data and this side makes the call. {@link
- * Content} is that decision written for one verb; this is the same crossing with
- * the verb left open, so audio, and whatever follows it, are a case in one
- * switch rather than a second adapter with its own payload, its own reader and
- * its own failure rules.
+ * <p>Mod actions cross outward as data and this side makes the call.
+ * Unlike {@link Content}'s single registration verb, this adapter dispatches
+ * verbs through one switch with a shared payload, reader and failure handling.
+ * See {@code docs/architecture/overview.md#mechanisms}.
  *
  * <p>An action states how many arguments it carries, which is the one thing this
  * payload has that {@link Content}'s does not. It is what lets a verb this
@@ -57,10 +55,8 @@ final class Outward {
     /**
      * Drains everything Ravel queued and performs it.
      *
-     * <p>Called from the client tick prologue, which is a seam the reviewed hook
-     * inventory already pins, so carrying an action needs no new hook target and
-     * no re-pin. A tick that has nothing queued costs one crossing answering an
-     * empty string.
+     * <p>Called from the client tick prologue. A tick that has nothing queued
+     * costs one crossing answering an empty string.
      */
     static void perform() {
         String payload;

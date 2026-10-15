@@ -17,7 +17,7 @@ use crate::declaration::SettingKey;
 /// second shape would mean two parsers and two round trips for one contract.
 ///
 /// A key this document does not name is not a value at all. That is the whole
-/// point of the per-setting model ADG-6 chose: an unnamed setting keeps the
+/// point of the per-setting model: an unnamed setting keeps the
 /// author's default and stays the player's to change, and a mod that adds a
 /// setting later finds it absent here rather than frozen at an old value.
 ///

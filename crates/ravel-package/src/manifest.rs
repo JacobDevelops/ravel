@@ -23,7 +23,7 @@ use crate::values::{NonEmptyText, RelativePath, SchemaVersion, Sha256Digest};
 ///
 /// Parsing establishes identity, compatibility, and the integrity claims a
 /// source-only package makes. It accepts portable source declarations and no
-/// compiled target or artifact model, as selected by ADG-2.
+/// compiled target or artifact model.
 ///
 /// # Examples
 ///

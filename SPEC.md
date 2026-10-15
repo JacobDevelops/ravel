@@ -55,10 +55,7 @@ the two are not the same thing.
    model.
 7. **Compatibility is evidence-backed.** Automated behavioural, save/reload,
    registry, and protocol tests replace claims based on visual inspection.
-8. **Public and private work stay separable.** Loader infrastructure is
-   public-ready. Rights-sensitive compatibility work stays in a private
-   workspace until cleared.
-9. **No calendar-driven shortcuts.** Milestones close only when their exit
+8. **No calendar-driven shortcuts.** Milestones close only when their exit
    criteria pass.
 
 ## 3. Fixed product decisions
@@ -101,12 +98,8 @@ the two are not the same thing.
   M1-W8 review refuted that: the pinned `jni` 0.22.4 provides
   `#[jni::jni_mangle("class", "method")]`, which emits the export, and a crate
   keeping `#![forbid(unsafe_code)]` verbatim compiles and exports the mangled
-  symbol. Verified by building it and reading the symbol table, and recorded in
-  [ADG-1](docs/decisions/adg-1-jvm-entry.md). Because the attribute takes string
-  literals, the binding generator emits it, so the declaration is generated.
-- Admitting an exception in future takes an accepted ADR and an independent review,
-  and the bar is the one M1 failed to clear: show that no audited dependency can
-  hold the operation. "No dependency we looked at" is not that.
+  symbol. Verified by building it and reading the symbol table. Because the attribute
+  takes string literals, the binding generator emits it, so the declaration is generated.
 - Whether a macro-emitted unsafe attribute counts as encapsulation or as a lint
   bypass is a fair question, and the answer this repository takes is that it counts:
   the unsafety is authored and audited in the dependency, Ravel's source contains no
@@ -141,9 +134,8 @@ the two are not the same thing.
   196 MB on the player's machine, a build cache that has to stay resident for a
   rebuild to be warm, and Ravel owning mod compile failures as a support burden
   rather than the author's.
-  [`evidence/m3/pack-compile.json`](evidence/m3/pack-compile.json) prices them
-  and [ADG-2](docs/decisions/adg-2-mod-execution.md) records the decision.
-- **The package-schema contradiction is closed.** ADG-2 exposed that the old
+  [`evidence/m3/pack-compile.json`](evidence/m3/pack-compile.json) prices them.
+- **The package-schema contradiction is closed.** The old
   schema required per-target artifacts for source-distributed mods. Schema v1 was
   migrated in place: `targets` is refused, and `source` now declares its repository
   plus at least one integrity-protected portable source file.
@@ -249,7 +241,7 @@ Vanilla datapacks and resource packs must continue to work unchanged.
   [`docs/architecture/safety-boundary.md`](docs/architecture/safety-boundary.md),
   the layering in
   [`docs/architecture/dependency-rules.md`](docs/architecture/dependency-rules.md),
-  and every accepted decision gate bind exactly as they did before it was
+  and the mechanisms in `docs/architecture/overview.md` bind exactly as they did before it was
   written. Intrusiveness governs how much of the game Ravel may touch. It does
   not govern what Ravel may be made of, and the two must not be confused.
 - Where an intrusion would cross one of those boundaries, the boundary wins and
@@ -352,7 +344,7 @@ Apple Silicon refuses to load unsigned executable code, so every macOS artifact
 must be signed before it can run, and notarization becomes relevant separately
 where downloaded files are quarantined.
 
-**ADG-2 dissolved that obligation rather than resolving it.** Because a mod is
+**Source distribution dissolved that obligation rather than resolving it.** Because a mod is
 distributed as source and compiled on the installing machine, the binary needing
 a signature is produced on the machine that will run it, and there is no other
 machine it could have been signed on. Ravel ad-hoc signs what it compiled. A mod
@@ -506,13 +498,9 @@ change the scope.
 ### 7.2 Fixture handling
 
 - The official pack is a local, ignored compatibility fixture.
-- A repository tool reconstructs the exact pinned fixture from authorized
-  sources and verifies hashes.
-- Official mod JARs, ATM-owned scripts, quests, menu assets, and other
-  restricted files must not be committed to a public-ready repository.
+- A repository tool reconstructs the exact pinned fixture and verifies hashes.
 - Credentials and CurseForge API keys must never enter source control.
 - The fixture is used as a black-box compatibility oracle and research input.
-- The fixture tool must respect current platform API and distribution terms.
 
 ### 7.3 Counterpart completeness
 
@@ -539,8 +527,7 @@ It may intentionally fix upstream bugs when:
 - the difference is documented;
 - later server interoperability is not broken.
 
-Pixel-level reproduction is preferred, but copying restricted assets is not
-permitted. Visual parity remains subject to per-mod asset rights.
+Pixel-level reproduction is preferred.
 
 ### 7.5 Save compatibility
 
@@ -665,58 +652,10 @@ exact measurements.
   what it just compiled, on the machine that will run it.
 - Microsoft authentication remains outside Ravel.
 - Logs and diagnostics must not collect or expose launcher tokens.
-- Fixture reconstruction must not bypass Minecraft ownership, authorized
-  downloads, or third-party distribution controls.
 
-## 11. Rights, provenance, and publication
+## 11. Project licence
 
-This section is project policy, not legal advice.
-
-### 11.1 Source-use policy
-
-- Compatible open-source mod: a source-informed reimplementation is allowed when
-  all licence terms, notices, and attribution requirements are followed. It is
-  still an original Rust implementation; reading the source informs it and does
-  not license translating it.
-- Closed, All Rights Reserved, or unclear mod: implementation proceeds from a
-  behavioural specification and independent code. Line-by-line or machine
-  translation is prohibited.
-- For closed, All Rights Reserved, or unclear mods, implementers may use public
-  documentation, public metadata, published APIs, and observable black-box
-  behaviour. Decompilation, private source, and source-derived notes are
-  prohibited unless permission or a compatible licence explicitly allows them.
-- Where practical, separate research and implementation agents are used: the
-  researcher produces a behaviour-only specification, and the implementer sees
-  that specification rather than the original implementation.
-- Each counterpart's provenance record identifies every source of behavioural,
-  code, and asset evidence, who or what produced its specification, and whether
-  permission was obtained. An unresolved provenance record blocks publication.
-- Rewriting in another language does not by itself avoid derivative-work or
-  asset rights.
-- Code, textures, models, sounds, names, branding, quests, scripts, and other
-  content are audited separately.
-
-### 11.2 Publication gate
-
-Before publishing a counterpart:
-
-- audit code and asset licences;
-- preserve required notices;
-- seek author permission where required;
-- resolve names and branding;
-- verify that distributed assets are authorized;
-- record the decision in the provenance ledger;
-- credit the original author regardless of whether attribution is legally
-  required.
-
-The initial ATM10 To the Sky compatibility workspace remains private. Publication of its
-counterparts, modpack, or registry is post-initial scope.
-
-### 11.3 Project licence
-
-The provisional licence for original Ravel loader and SDK code is dual
-MIT/Apache-2.0, subject to dependency and interoperability review before public
-release.
+Original Ravel loader and SDK code is dual MIT/Apache-2.0.
 
 ## 12. Repository topology
 
@@ -730,8 +669,8 @@ The `ravel` repository contains:
 - package and manifest definitions;
 - pack authoring and validation tools;
 - original test mods and fixtures;
-- compatibility harnesses that contain no restricted content;
-- specifications and architecture decisions.
+- compatibility harnesses;
+- specifications and architecture documentation.
 
 ### 12.2 Private compatibility workspace
 
@@ -740,12 +679,7 @@ A separate private workspace contains:
 - the ATM10-To-the-Sky-equivalent Rust counterparts;
 - private pack manifests and integrations;
 - ignored official ATM10 To the Sky fixtures;
-- rights-sensitive behavioural research;
-- permission and publication status;
 - private end-to-end worlds and reports.
-
-The boundary exists from the beginning so that making Ravel public never
-requires purging restricted history.
 
 ### 12.3 Future registry
 
@@ -753,7 +687,7 @@ A Ravel package registry is post-initial scope. It is considered when individual
 counterparts and the loader are ready for publication. Until then, package
 acquisition remains file/manifest based and external to the loader.
 
-Open question 9 has a recorded preferred shape. A registry should be an index
+Open question 8 has a recorded preferred shape. A registry should be an index
 over author-owned release records rather than the authoritative store of the
 artifacts themselves. Publisher identity should be portable and bound to
 something the author already controls, so that losing a registry account does
@@ -952,7 +886,7 @@ Exit:
 - vanilla and official ATM11 each reach a playable Linux world through Prism;
 - the Linux launch evidence records sanitized startup, world-open, runtime, and
   clean-exit results for both workloads;
-- fixture files and secrets are absent from source control.
+- secrets are absent from source control.
 
 ### M1 — Architecture spikes
 
@@ -1051,8 +985,7 @@ Exit:
 - every manifest entry has an owner record and counterpart plan;
 - shared libraries and integration clusters are explicit;
 - required SDK additions are expressed as general capability proposals with
-  original test-mod acceptance cases;
-- no restricted fixture is tracked.
+  original test-mod acceptance cases.
 
 ### M6 — Foundation counterpart set
 
@@ -1079,7 +1012,7 @@ Exit:
   verification;
 - all per-mod and cluster suites pass;
 - dependency and registry closure succeeds;
-- every package has attribution and rights status.
+- every package has attribution and provenance metadata.
 
 ### M8 — Complete Ravel pack
 
@@ -1159,8 +1092,7 @@ Post-initial scope:
 
 - verify public-name collisions and finalize repository/package presentation;
 - complete loader/SDK dependency and licence audit;
-- publish cleared counterparts individually;
-- obtain permissions and replace assets where required;
+- publish counterparts individually;
 - design registry identity, signing, moderation, and distribution;
 - rename or create remotes without exposing private history.
 
@@ -1177,12 +1109,10 @@ The initial scope does not include:
 - shaders as part of the performance target;
 - Windows, Intel macOS, or Linux ARM support;
 - a public mod registry;
-- public distribution of uncleared counterparts or ATM assets;
 - automatic KubeJS translation or JavaScript execution;
 - official ATM10 To the Sky multiplayer before single-player completion;
 - a wholly Rust dedicated server;
-- safe-mode world loading with required mods disabled;
-- pixel-identical visuals when asset rights do not permit them.
+- safe-mode world loading with required mods disabled.
 
 ## 18. Open questions
 
@@ -1197,16 +1127,13 @@ These are intentionally unresolved:
 4. Can stock Prism launch Ravel without modification?
 5. What are the single-pair official ATM10 To the Sky comparisons on Linux, and later on
    the target Mac after Linux M10?
-6. Which ATM10 To the Sky counterparts permit source-informed reimplementation and asset
-   reuse?
-7. Can official Minecraft plus Ravel meet the constrained Mac target?
-8. What protocol surface is required for pinned ATM10 To the Sky server interoperability?
-9. What rights, identity, signing, and moderation model should a future registry
-   use?
+6. Can official Minecraft plus Ravel meet the constrained Mac target?
+7. What protocol surface is required for pinned ATM10 To the Sky server interoperability?
+8. What identity, signing, and moderation model should a future registry use?
 
 None of these questions blocks M0. Each has an explicit decision gate before it
 can affect implementation. Question 2 has a recorded platform-signing constraint
-and candidate in section 5.3. Question 9 has a recorded preferred shape and
+and candidate in section 5.3. Question 8 has a recorded preferred shape and
 three candidate mechanisms in section 12.3. Recording a candidate does not
 resolve a question.
 
@@ -1239,8 +1166,7 @@ The scope is ready for research and implementation beginning at M0.
 The immediate execution lane is:
 
 1. initialize the public-ready Ravel repository structure;
-2. write the pinned fixture manifest and reconstruction design without
-   downloading restricted files into source control;
+2. write the pinned fixture manifest and reconstruction design;
 3. establish Prism-based vanilla and official ATM11 launch proof on Linux;
 4. turn ADG-1 through ADG-5 into isolated benchmark plans;
 5. review M1 evidence before selecting the loader architecture.

@@ -2,7 +2,7 @@
 
 //! Builds a host on the player's machine from the packages they installed.
 //!
-//! ADG-2 makes a mod's code Rust source, so a discovered package has a manifest
+//! A mod's code is Rust source, so a discovered package has a manifest
 //! and no value: nothing to construct and nothing to enter. That is why a launch
 //! could find an installed package and still refuse it. This crate is the step
 //! between — it writes a Cargo workspace that names the installed packages, and
@@ -44,8 +44,8 @@
 //!
 //! [`build`] writes a generated file only when its bytes differ from what is
 //! already there, and compiles into a build cache that
-//! `docs/decisions/shared-toolchain-and-build-cache.md` decided is shared per
-//! machine. An unchanged set therefore rewrites nothing and Cargo has nothing to
+//! is shared per machine; see `docs/architecture/overview.md#mechanisms`.
+//! An unchanged set therefore rewrites nothing and Cargo has nothing to
 //! rebuild: `evidence/m3/pack-compile.json` measured that path at about 1.6
 //! seconds for a 256-mod pack against about 32 seconds cold.
 
@@ -122,8 +122,7 @@ pub struct PlannedMember {
 ///
 /// `ravel_root` is where this Ravel installation keeps its own crates, because
 /// the generated workspace depends on them by path. Nothing here decides where
-/// that is: `docs/decisions/shared-toolchain-and-build-cache.md` leaves the
-/// installation layout to whatever owns it.
+/// that is: the caller owns the installation layout.
 ///
 /// # Errors
 ///
@@ -387,9 +386,8 @@ fn host_source(members: &[PlannedMember]) -> String {
 /// holding no package declares nothing at all, so a version read off the
 /// installed set would be a guess where the set is silent and ambiguous where
 /// it is not. It is passed to the toolchain rather than left to the environment
-/// for the same reason
-/// `docs/decisions/version-selection-is-a-build-time-choice.md` refuses a
-/// default: a build that inherited the variable would compile whichever version
+/// because a build must select its version explicitly:
+/// a build that inherited the variable would compile whichever version
 /// the shell around it happened to name, which on a player's machine is nothing
 /// anyone chose.
 ///

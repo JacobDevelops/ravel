@@ -70,7 +70,7 @@ mod tests {
         assert_eq!(adapter.targets().len(), pinned::TARGETS.len());
         assert!(
             adapter.targets().len() >= 6,
-            "the reviewed inventory carries at least the six ADG-3 resolved"
+            "the reviewed inventory carries at least six resolved hook targets"
         );
         // The JVM writes an internal name with slashes and never with dots. A
         // class in a package therefore carries a slash, and one the version

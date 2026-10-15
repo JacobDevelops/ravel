@@ -22,9 +22,9 @@
 //! what such a packet last carried and what such an event last counted are values
 //! a server side has no reason to hold.
 //!
-//! Drawing is not one of them. No accepted decision gives a mod a rendering path:
-//! ADG-6 settled that every screen Ravel owns is declared in data and drawn in
-//! Java, and nothing extends that to a mod's own. A mod's client-only state is
+//! Drawing is not one of them. No mod rendering path is provided:
+//! every screen Ravel owns is declared in data and drawn in Java,
+//! and nothing extends that to a mod's own. A mod's client-only state is
 //! what it *knows* on the client, not what it puts on the display.
 //!
 //! ```

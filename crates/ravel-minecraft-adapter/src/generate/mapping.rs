@@ -1,6 +1,6 @@
 //! Relating the names a reviewed inventory carries to the names a jar declares.
 //!
-//! ADG-3's amendment admits two mapping sources. Under `unobfuscated-class-files`
+//! There are two mapping sources. Under `unobfuscated-class-files`
 //! the jar declares the names the inventory reviews and this layer is the
 //! identity. Under `official-proguard-mappings` the jar declares obfuscated names
 //! and the version's own published mapping file says which is which, so every

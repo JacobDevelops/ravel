@@ -12,8 +12,8 @@ use crate::lifecycle::LifecycleMachine;
 
 /// Admits the world's saved data, migrates it, and hands each owner its entry.
 ///
-/// This is the composition ADG-7 describes, in the order it describes it and with
-/// nothing added: `ravel-save` admits the aggregate and owns the migrations, the
+/// This composes persistence admission in order:
+/// `ravel-save` admits the aggregate and owns the migrations, the
 /// mods own their shapes, and this decides nothing about either. What it owns is
 /// the sequence, and the sequence is what makes a refusal closed.
 ///
@@ -51,8 +51,8 @@ use crate::lifecycle::LifecycleMachine;
 /// thing a caller can save from — so a refused world has no bytes to write and no
 /// state bound to emission. Steps 2, 3 and 4 all refuse before a single mod has
 /// been handed anything. Step 5 can refuse after an earlier mod has read its own
-/// entry; that mod holds its own state, the world does not open, and ADG-7 makes
-/// that the defined outcome: the refusal withholds the world rather than opening
+/// entry; that mod holds its own state and the world does not open. The
+/// refusal withholds the world rather than opening
 /// it half-applied, and `LifecycleMachine::request_save` is what stops a halted set
 /// producing bytes.
 ///

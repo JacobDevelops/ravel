@@ -156,8 +156,8 @@ impl PipelineRun {
 /// parked mod is never entered, so a caller need not supply a value for one.
 ///
 /// `mods` are values the caller already holds. This function never loads,
-/// links, opens, or spawns anything to obtain one: ADG-2 selects source
-/// distribution, while the later compilation and binding mechanism produces the
+/// links, opens, or spawns anything to obtain one: source distribution
+/// and the compilation and binding mechanism produce the
 /// values passed here.
 ///
 /// # Errors

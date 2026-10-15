@@ -42,7 +42,7 @@
 //!
 //! [`ServiceRequest::arguments`] and [`ServiceResponse::value`] are JSON, not a
 //! Rust type both mods name. That is the same trade [`crate::network`] makes and
-//! it is made for the same reason: ADG-2 distributes a mod as source the player's
+//! it is made for the same reason: mods are distributed as source the player's
 //! machine compiles, so a consumer that named the provider's Rust type would be
 //! pinned to the provider's build rather than to the version range its package
 //! manifest declares. A provider owns the shape of its answer and versions it the

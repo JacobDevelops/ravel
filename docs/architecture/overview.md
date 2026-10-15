@@ -27,58 +27,88 @@ encode any Minecraft version's internals.
 Official-server interoperability is a later protocol layer; it does not turn
 Ravel into a Java mod host.
 
-## The selected architecture
+## Mechanisms
 
-M1 measured each mechanism and recorded the evidence in
-[`evidence/m1/spikes/`](../../evidence/m1/spikes/); each decision is an ADR in
-[`docs/decisions/`](../decisions/). What was selected:
+- **JVM entry.** A `java.lang.instrument` premain agent rewrites hook targets with
+  the runtime's `java.lang.classfile` API and binds callbacks through generated
+  JNI-mangled exports; the generated `Hook` class owns native loading and the sole
+  native declaration surface.
+- **Entry-point initialization.** The agent jar joins the bootstrap loader's
+  search path so class loaders share one copy of Ravel's classes.
+  The first distribution entry point names the running side and initializes the
+  Rust runtime; `premain` does not infer the side.
+- **Refusable prologues.** An inventory-opted-in prepend on a void target can
+  return early when its hook answers a boolean refusal verdict.
+  The generated target data bounds that power, and non-void targets cannot use it.
+- **Mod execution.** Mods ship independently as portable Rust source, and a
+  Ravel-supplied toolchain compiles the installed set on the player's machine.
+  Compiled mod artifacts are not distribution inputs, so Ravel owes no stable mod ABI.
+- **Bindings.** Build-time generation resolves each reviewed hook exactly once
+  against hash-pinned class files and records the result in `mappings.lock`.
+  Names come from unobfuscated class files or the version's official ProGuard
+  mappings; input drift or a mismatched shape prevents generation.
+- **State ownership.** Minecraft keeps its state; hooks receive values or
+  call-scoped opaque `JavaHandle` references and return results without retaining
+  a mirror. A mirror needs measured justification and a way to detect divergence;
+  batching reduces boundary traffic without duplicating state.
+- **Launcher integration.** Prism owns authentication, downloads, Java selection
+  and launch; Ravel uses stock instance arguments rather than a launcher fork.
+  The generated `Hook` loads the native library with `System.load` from the
+  absolute path named by `-Dravel.host`, beside the `-javaagent` argument.
+- **Configuration and screens.** Mods declare configuration as data, and Java
+  draws every Ravel-owned screen from declarations and values supplied by Rust.
+  Values resolve from author defaults through per-setting pack overrides to
+  player values, with `locked` or `required` pack values suppressing the player
+  layer; the per-frame extraction hook observes rather than draws.
+- **World persistence.** Minecraft stores one opaque Rust-owned, owner-sorted
+  canonical JSON aggregate in one `SavedData` object, bounded to 1 MiB before
+  parsing or replacement, through batched open and save crossings.
+  Rust owns admission, migration and staged/live world identity; Java owns game
+  calls and vanilla file handling, and a failed replacement preserves the prior
+  aggregate without aborting vanilla saving.
+- **Outward actions.** Rust answers an inbound crossing with data describing an
+  action, and the receiver-aware Java adapter performs it against the game.
+  Rust does not call game methods, and `JavaHandle` exposes no such capability.
+- **Claims and checks.** Measured claims have an independent reading proved by
+  mutation; judged claims carry per-input verdicts, reasons and bases in data,
+  checked for two-way congruence with behaviour, and mechanisms disclose their
+  actual bounds rather than asserting completeness.
+  From M5 onward, deviations naming detectable Rust symbols carry checked
+  caller-scope anchors; this does not turn the whole judgement into a measurement.
+- **Evidence classes.** Material digests freeze findings, while machinery
+  digests describe the measured tree and can be rebound with an amendment trail;
+  later dispositions belong to later records rather than frozen findings.
+  Closed inventories retain the names they measured without claiming to
+  enumerate later additions.
+- **Counterpart identity.** Counterparts use their own Ravel-native identity;
+  load-time identity mapping belongs to the host.
+  In the private compatibility workspace, a genuine compatibility alias lives
+  only in `counterparts/<package>/aliases.json`, whose rows contain the upstream
+  id, native id and canonical replacement id.
+- **Toolchain and cache.** Player mod builds share one exactly pinned toolchain
+  and one reconstructible Cargo build cache per machine across instances.
+  Cargo's cache keys separate different builds, and its lock serializes concurrent
+  access; cache size and eviction remain open work.
+- **Acceptance runs.** A run perceives structured `GameEvent`/`Observation` data
+  by registered content keys and acts through `Directive` data carried by a
+  `GameDriver` over the existing outward instruction crossing.
+  Verdict arithmetic lives in the recorded `Transcript`; a live game driver
+  remains the launcher-integration dependency rather than a new crossing.
+- **Version selection.** One build emits one version's artifacts and reads only
+  that version directory; one tracked version defaults automatically, while
+  multiple versions require `RAVEL_MINECRAFT_VERSION` and unknown names fail closed.
+  The distribution carries artifacts per supported version, and the scaffold
+  gate independently sweeps every tracked version directory.
 
-```text
-Prism instance (stock, two JVM arguments)
-  └── official Minecraft 26.1.2 JVM
-        ├── premain agent          rewrites hook targets with java.lang.classfile
-        │     └── generated hook class
-        │           └── exported JNI symbol ──> ravel-bootstrap (generated, safe)
-        │                                          └── loader, resolver, host API
-        └── the game's own state, which stays the game's
-                                                   └── mod: execution model undecided
-                                                         (M3 decides; see ADG-2)
-```
-
-- **[ADG-1](../decisions/adg-1-jvm-entry.md): a `java.lang.instrument` premain
-  agent, rewriting hooks with the runtime's own class-file API, calling an
-  exported JNI symbol.** Chosen over a Rust-hosted VM at equal call cost, because
-  it launches on stock JVM arguments and needs no maintained unsafe operation
-  rather than two. A primitive boundary crossing costs about 10 ns at the median and allocates
-  nothing. That is a floor measured at a warm call site with a trivial body, not a
-  prediction for a real hook, and it is not a frame budget: see
-  [`evidence/m1/README.md`](../../evidence/m1/README.md) for what the measurements
-  do not establish.
-- **[ADG-2](../decisions/adg-2-mod-execution.md): measured, decision deferred to
-  M3.** Four bindings were measured and the measurements stand; the choice between
-  them is not made, because it turns on properties of a loader that does not exist.
-  The leading candidate is a mod linked into the loader — 2.5 ns a call, no unsafe,
-  survives a panicking mod, contract drift caught at build — with per-mod dynamic
-  libraries the alternative to beat at 0.625 ns faster and drop-in distribution.
-  WebAssembly costs 4.26× the leading candidate's call and a helper process 1267×.
-- **[ADG-3](../decisions/adg-3-bindings.md): bindings are generated at build time
-  from the pinned jar's class files.** 26.1.2 ships unobfuscated and publishes no
-  mapping file, so the class files are the mapping. Two independent extractors
-  agree on every target, and a drifted input is refused before a name is read.
-- **[ADG-4](../decisions/adg-4-state-ownership.md): the game keeps its state.**
-  All three ownership models measured within 1.09 ns of each other at the median,
-  so the decision went to the axis that is not nanoseconds: one copy cannot go
-  stale.
-- **[ADG-5](../decisions/adg-5-prism-integration.md): stock Prism, two instance
-  arguments, no patch.** The launcher surface is verified, and the pinned client
-  has been observed launching with Ravel's `-javaagent` attached and no other
-  loader. The agent argument is what the claim rests on; the library path is
-  recorded but proves nothing, because the launcher appends its own after the
-  instance's and the last one wins.
-- **ADG-6 (configuration schema and UI)** has not started. It is due before M3
-  closes.
-
-Two consequences run through everything after M1. A boundary crossing is the
-unit of cost, so reducing crossings matters and reducing bytes does not. And
-no maintained crate holds unsafe code at all — the exception M1 drafted turned out
-to be unnecessary; see [`safety-boundary.md`](safety-boundary.md).
+The original Linux measurements live in
+[`evidence/m1/spikes/`](../../evidence/m1/spikes/).
+The ADG-1 through ADG-7 spike names refer respectively to JVM entry, mod execution,
+bindings, state ownership, launcher integration, configuration and screens, and
+world persistence above. The world-persistence byte-preservation measurement runs
+with `./jvm/harness/run-datafix-byte-preservation.sh`; the outward-action crossing
+measurement runs with `cargo make ravel:measure-outward-crossing`.
+A primitive crossing's roughly 10 ns median and zero allocation are a warm,
+trivial-call floor, not a frame budget or a prediction for a real hook; see
+[`evidence/m1/README.md`](../../evidence/m1/README.md).
+No maintained crate holds unsafe code; see
+[`safety-boundary.md`](safety-boundary.md).

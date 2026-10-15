@@ -8,7 +8,7 @@ dependency graphs, or saved-data versions are invalid.
    it through a reduced required-mod graph.
 3. Record the mod identity, dependency chain, lifecycle phase, Minecraft and
    Ravel versions, platform, and failing invariant.
-4. Redact tokens, private paths, and restricted content before sharing a
+4. Redact tokens, private paths, and private-world data before sharing a
    diagnostic.
 5. Restore the exact compatible package set or run a tested, declared migration
    against a copy.

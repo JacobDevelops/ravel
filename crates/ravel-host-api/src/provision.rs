@@ -51,8 +51,8 @@ impl Provided {
 ///
 /// # What a shared library is here, and what it is not
 ///
-/// It is a declaration, not a shipped artefact. `docs/decisions/adg-2-mod-packaging-and-abi.md`
-/// distributes a mod as source the player's machine compiles, so a library two
+/// It is a declaration, not a shipped artefact. A mod is distributed as source
+/// the player's machine compiles, so a library two
 /// mods both build on is an ordinary Cargo dependency that Cargo resolves once
 /// for the build — there is no second copy of it to load, and nothing here
 /// bundles, fetches, or unpacks anything. What Cargo cannot see is the *mod

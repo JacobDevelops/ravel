@@ -30,8 +30,8 @@ pub use side::{SideError, side};
 
 /// The generated JNI exports, one per hook shape.
 ///
-/// ADG-1 chose an exported, JNI-mangled symbol resolved by `System.loadLibrary`
-/// and recorded that the export count scales with the hook surface: six
+/// JNI-mangled exported symbols are resolved when the native library loads,
+/// and the export count scales with the hook surface: six
 /// inventory entries with heterogeneous descriptors cannot share one
 /// `extern "system"` signature, and the single `(int, Object[])` dispatcher that
 /// would have avoided that allocates an array on every crossing, which the
@@ -120,7 +120,7 @@ mod tests {
             source.contains("HookValue::"),
             "every argument crosses as a hook value"
         );
-        // ADG-4's amendment admits a reference that crosses, not one that stays.
+        // A reference may cross for a call, but cannot stay beyond it.
         // A `JObject` parameter is owned by the exported frame and reaches a hook
         // only as a borrow, so a reference that does not name its frame has been
         // moved somewhere the borrow checker stopped watching.

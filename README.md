@@ -18,9 +18,8 @@ Continuous integration uses GitHub Actions in `.github/workflows/ci.yml`.
 The repository is at M3, the credible loader prototype. A milestone is closed
 when [`evidence/`](evidence/) holds its `manifest.json`, so that directory is
 the current answer to what has passed rather than this sentence. Interfaces and
-package formats are not stable, and which parts of the architecture are still
-behind an open decision gate is recorded in
-[`docs/decisions/README.md`](docs/decisions/README.md).
+package formats are not stable. The current mechanisms are described in
+[`docs/architecture/overview.md`](docs/architecture/overview.md#mechanisms).
 
 ## Writing a mod
 
@@ -71,19 +70,15 @@ actual `aarch64-darwin` host using
 Ravel-maintained Rust and public mod-author code forbid unsafe code. Audited
 dependencies may encapsulate unavoidable operating-system or JVM boundaries.
 
-## Fixture and evidence policy
+## Fixtures and evidence
 
-Only original, unrestricted fixtures and sanitized evidence belong in this
-repository. Official Minecraft or modpack files, mod JARs, credentials, private
-worlds, rights-sensitive research, and raw captures stay in ignored local
-storage or the separate private compatibility workspace. See
-[`tests/fixtures/README.md`](tests/fixtures/README.md),
-[`evidence/README.md`](evidence/README.md), and
-[`docs/architecture/public-private-boundary.md`](docs/architecture/public-private-boundary.md).
+Credentials, launcher tokens, private-world data, and raw captures stay out of
+source control. Fixture reconstruction is documented in
+[`tests/fixtures/README.md`](tests/fixtures/README.md); recorded results live in
+[`evidence/`](evidence/).
 
 ## Licence
 
 Original Ravel loader and SDK code is provisionally dual-licensed under the
 [Apache License 2.0](LICENSE-APACHE) or [MIT License](LICENSE-MIT), at your
-option. Third-party inputs retain their own licences and must pass the
-provenance and publication gates before distribution.
+option. Third-party inputs retain their own licences.

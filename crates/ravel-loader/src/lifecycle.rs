@@ -121,7 +121,7 @@ struct TransitionContext {
 ///
 /// The machine never loads, links, or executes anything. `Loaded` and
 /// `Constructed` are state changes a caller drives once it has performed the
-/// step, because ADG-2 has not selected a mod execution model.
+/// step; code composition belongs to the caller rather than this machine.
 ///
 /// # Examples
 ///

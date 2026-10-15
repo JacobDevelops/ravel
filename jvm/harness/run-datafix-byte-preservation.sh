@@ -4,9 +4,7 @@
 #
 # This is a measurement and not a gate. It needs the restricted pinned client jar
 # and a real Minecraft library root, neither of which `ravel:verify` can assume,
-# so nothing in the gate graph runs it and no cargo-make task wraps it. ADG-7 records
-# what it measured, at which revision, and what would have to change for this to
-# become a gate.
+# so nothing in the gate graph runs it and no cargo-make task wraps it.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -45,12 +43,12 @@ fi
 # and that is an era rather than a spelling: an earlier era registers saved data
 # through a factory over `CompoundTag` and declares no such type under any name.
 # A version that overrides the shared screen template has its own storage contract,
-# so the fixer question for it is a different measurement with its own answer, and
-# ADG-7 records it as unowned rather than answered here. Refusing by the override
-# is what makes that a stated result instead of a compiler error about a name.
+# so the fixer question for it is a different measurement with its own answer.
+# Refusing by the override makes that limit explicit instead of producing a
+# compiler error about a name.
 if [[ -f "$root/jvm/screen/template/$version/RavelWorldData.java.in" ]]; then
     echo "Minecraft $version overrides the shared saved-data template, so it stores through" >&2
-    echo "a contract this codec-era measurement does not describe; see ADG-7." >&2
+    echo "a contract this codec-era measurement does not describe." >&2
     exit 1
 fi
 

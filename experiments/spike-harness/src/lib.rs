@@ -549,27 +549,7 @@ fn next_line(
 /// Writes one spike result where the milestone gate expects to find it, unless a
 /// record is already there.
 ///
-/// `trial.revision.changeId` is checked by `verify_spikes` against the change that
-/// introduced the file, so a record belongs to the change that first wrote it and
-/// to no later one. Every runner here wrote unconditionally, so re-running one
-/// restamped records it had not produced with the running change and broke that
-/// rule: `ravel:spike-adg-3` did it to four rejections and two re-measurements at
-/// once, and the only recovery anyone found was `jj restore --from @-`, which is a
-/// step that has to be remembered rather than a fix.
-///
-/// So a run does not rewrite a record that is already on disk. It measures, and
-/// its own assertions about what it measured still fail the run — ADG-3 still
-/// refuses a generator whose second pass differs — but the recording stops at the
-/// change that made it. Recording a fresh measurement therefore means deleting the
-/// record first, in the change that will own the new one, which is the deliberate
-/// act the provenance rule is asking for.
-///
-/// The alternative was to let the rule tolerate a rewrite whose content had not
-/// changed. That fixes nothing here: a re-measurement's durations and timestamps
-/// differ every run, so the measured records would still fail, and it would let
-/// any later change claim an earlier change's record whenever a content
-/// comparison happened to call the two equal. Stopping the writer costs nothing
-/// and leaves the rule absolute.
+/// Existing records are digest-bound by milestone manifests, so a rerun must delete the record deliberately.
 ///
 /// Returns whether the record was written.
 ///
@@ -582,8 +562,7 @@ pub fn write_result(path: &Path, spike_result: &SpikeResult) -> Result<bool, Har
         // and a runner is no more entitled to leak one than a check is.
         let name = path.file_name().unwrap_or(path.as_os_str());
         println!(
-            "- {}: left as the change that introduced it recorded it; this run measured but \
-             recorded nothing",
+            "- {}: already recorded; this run measured but recorded nothing",
             Path::new(name).display()
         );
         return Ok(false);
@@ -887,12 +866,6 @@ mod tests {
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }
 
-    /// A second run must not restamp a record the first run's change owns.
-    ///
-    /// `verify_spikes` resolves `trial.revision.changeId` against the change that
-    /// introduced the file, so a rewrite by any later change is a violation. The
-    /// runners rewrote unconditionally and six ADG-3 records failed that rule on
-    /// every re-run.
     #[test]
     fn a_record_already_on_disk_is_not_rewritten_by_a_later_run() {
         let root = temporary_root("existing");
@@ -914,7 +887,7 @@ mod tests {
         assert_eq!(
             fs::read_to_string(&path).expect("result should still be readable"),
             recorded,
-            "the record on disk must be exactly what the change that introduced it wrote"
+            "the record on disk must remain exactly what was recorded"
         );
         fs::remove_dir_all(root).expect("temporary root should be removable");
     }

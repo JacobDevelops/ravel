@@ -11,9 +11,8 @@
 //! `-Dravel.profiling=true` — the shape `-Dravel.report.loader=true` already
 //! set for the measurement switch `evidence/m3/class-loader-identity.json` was
 //! taken under. Java reads the property because Java is where a system property
-//! is, and hands the answer across once before any mod exists. ADG-1 gives Java
-//! a way to call Rust and nothing the other way, so this is the direction the
-//! switch can travel in.
+//! is, and hands the answer across once before any mod exists. Java calls Rust,
+//! without a reverse call into the JVM, so this is the direction the switch travels.
 //!
 //! Reading it once is what makes the off path cheap. The collectors hold a
 //! plain flag rather than an atomic, because nothing toggles it while the game
@@ -22,9 +21,8 @@
 //!
 //! # The report crosses like every other screen
 //!
-//! ADG-6 draws every screen Ravel owns in Java and Ravel renders nothing from
-//! Rust, and M3-W5's mod list is named there as the same mechanism rather than
-//! a second one. That holds a third time: one batched read on the framing in
+//! Every screen Ravel owns is drawn in Java, never in Rust. Like M3-W5's mod
+//! list, this report uses the settings-screen mechanism: one batched read on the framing in
 //! [`crate::wire`], carrying numbers and the sentences that qualify them, and
 //! `RavelProfilingScreen` decides what a player sees.
 //!

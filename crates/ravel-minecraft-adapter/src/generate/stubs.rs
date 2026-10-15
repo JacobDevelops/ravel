@@ -118,29 +118,8 @@ pub(super) fn from_jar(
 
     for seed in &seeds.stubs {
         let class = seed.class.replace('.', "/");
-        // A class file names both halves of every member the way the JVM links
-        // them, and the seed list is in the reviewed name space. Both halves
-        // cross here, once, so nothing below can compare one name space against
-        // the other or emit a stub that is half of each.
         let read = read_members(archives, mapping, &class)?;
-        let declared = read
-            .iter()
-            .filter(|member| member.is_visible())
-            .map(|member| {
-                (
-                    member,
-                    Member {
-                        name: mapping
-                            .mojang_member(&class, &member.name, &member.descriptor)
-                            .to_owned(),
-                        descriptor: mapping.mojang_descriptor(&member.descriptor),
-                        flags: member.flags,
-                        method: member.method,
-                        returns: None,
-                    },
-                )
-            })
-            .collect::<Vec<_>>();
+        let declared = from_jar_declared(&read, mapping, &class);
         let mut selected = Vec::new();
         for seeded in &seed.members {
             let name = seeded.member();
@@ -205,6 +184,30 @@ pub(super) fn from_jar(
     }
     chain_constructors(&mut stubs);
     Ok(stubs)
+}
+
+fn from_jar_declared<'a>(
+    read: &'a [classfile::Member],
+    mapping: &Mapping,
+    class: &str,
+) -> Vec<(&'a classfile::Member, Member)> {
+    read.iter()
+        .filter(|member| member.is_visible())
+        .map(|member| {
+            (
+                member,
+                Member {
+                    name: mapping
+                        .mojang_member(class, &member.name, &member.descriptor)
+                        .to_owned(),
+                    descriptor: mapping.mojang_descriptor(&member.descriptor),
+                    flags: member.flags,
+                    method: member.method,
+                    returns: None,
+                },
+            )
+        })
+        .collect()
 }
 
 /// Reads a single class type argument from a `java.util` return signature.
@@ -519,10 +522,10 @@ fn hierarchy_of(
     class: &str,
     hierarchies: &BTreeMap<String, Hierarchy>,
 ) -> Result<Hierarchy, GenerateError> {
-    match hierarchies.get(class) {
-        Some(known) => Ok(known.clone()),
-        None => read_hierarchy(archives, mapping, class),
-    }
+    hierarchies.get(class).map_or_else(
+        || read_hierarchy(archives, mapping, class),
+        |known| Ok(known.clone()),
+    )
 }
 
 /// Collects non-provided descriptor classes, preserving nested types' binary `$` names.

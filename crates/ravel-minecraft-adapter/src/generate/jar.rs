@@ -177,7 +177,10 @@ fn u32_at(bytes: &[u8], at: usize) -> Result<usize, String> {
     let field = bytes
         .get(at..at + 4)
         .ok_or_else(|| "it ends before its central directory does".to_owned())?;
-    Ok(u32::from_le_bytes([field[0], field[1], field[2], field[3]]) as usize)
+    Ok(
+        usize::try_from(u32::from_le_bytes([field[0], field[1], field[2], field[3]]))
+            .expect("archive offset fits in usize"),
+    )
 }
 
 /// Archive fixtures shared with the resolver's tests.
@@ -188,12 +191,12 @@ pub(super) mod fixture {
     };
 
     /// Indexes an archive built in memory.
-    pub fn parse(bytes: Vec<u8>) -> Result<Archive, String> {
+    pub(in crate::generate) fn parse(bytes: Vec<u8>) -> Result<Archive, String> {
         Archive::read(bytes)
     }
 
     /// Builds a one-entry archive, storing or deflating the content.
-    pub fn archive(name: &str, content: &[u8], method: u16) -> Vec<u8> {
+    pub(in crate::generate) fn archive(name: &str, content: &[u8], method: u16) -> Vec<u8> {
         let payload = if method == DEFLATED {
             miniz_oxide::deflate::compress_to_vec(content, 6)
         } else {
@@ -240,12 +243,12 @@ pub(super) mod fixture {
     }
 
     /// Builds a one-entry archive that stores its content uncompressed.
-    pub fn stored(name: &str, content: &[u8]) -> Vec<u8> {
+    pub(in crate::generate) fn stored(name: &str, content: &[u8]) -> Vec<u8> {
         archive(name, content, super::STORED)
     }
 
     /// Builds a one-entry archive that deflates its content.
-    pub fn deflated(name: &str, content: &[u8]) -> Vec<u8> {
+    pub(in crate::generate) fn deflated(name: &str, content: &[u8]) -> Vec<u8> {
         archive(name, content, DEFLATED)
     }
 }
@@ -331,12 +334,7 @@ mod tests {
         // Claim a compressed length the archive does not hold.
         bytes[18..22].copy_from_slice(&u32::MAX.to_le_bytes());
         let end = bytes.len() - 22;
-        let central = u32::from_le_bytes([
-            bytes[end + 16],
-            bytes[end + 17],
-            bytes[end + 18],
-            bytes[end + 19],
-        ]) as usize;
+        let central = super::u32_at(&bytes, end + 16).expect("the stored archive has an offset");
         bytes[central + 20..central + 24].copy_from_slice(&u32::MAX.to_le_bytes());
 
         let archive = parse(bytes).expect("the directory still indexes");

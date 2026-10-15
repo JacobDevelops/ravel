@@ -1,7 +1,7 @@
 //! Generates pinned bindings using the shared generator before the adapter compiles.
 
 #[path = "src/generate/mod.rs"]
-mod generate;
+pub mod generate;
 
 use std::path::PathBuf;
 

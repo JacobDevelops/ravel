@@ -77,6 +77,20 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
 
     let surface = reflection(root, &adapter)?;
 
+    pinned_sources(&adapter)?;
+
+    verify_java_release(root, &adapter)?;
+
+    Ok(PinnedVersion {
+        directory,
+        adapter,
+        inventory,
+        seeds,
+        surface,
+    })
+}
+
+fn pinned_sources(adapter: &Adapter) -> Result<(), GenerateError> {
     match (
         adapter.mapping_source.needs_mappings(),
         adapter.inputs.client_mappings.is_some(),
@@ -93,7 +107,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
                 adapter.mapping_source.as_str()
             )));
         }
-        _ => {}
+        (true, true) | (false, false) => {}
     }
 
     for input in [
@@ -116,16 +130,7 @@ pub(super) fn pinned(root: &Path, selected: Option<&str>) -> Result<PinnedVersio
             )));
         }
     }
-
-    verify_java_release(root, &adapter)?;
-
-    Ok(PinnedVersion {
-        directory,
-        adapter,
-        inventory,
-        seeds,
-        surface,
-    })
+    Ok(())
 }
 
 /// Checks the declared Java release against an available version manifest.
@@ -138,7 +143,7 @@ fn verify_java_release(root: &Path, adapter: &Adapter) -> Result<(), GenerateErr
     if !path.is_file() {
         return Ok(());
     }
-    let text = std::fs::read_to_string(&path).map_err(|error| {
+    let text = fs::read_to_string(&path).map_err(|error| {
         GenerateError::Input(format!("{} is unreadable: {error}", path.display()))
     })?;
     let declared = major_version(&text).ok_or_else(|| {
@@ -441,11 +446,19 @@ fn reflection(root: &Path, adapter: &Adapter) -> Result<Reflection, GenerateErro
 fn verify_surface(surface: &Reflection) -> Result<(), GenerateError> {
     for reflected in &surface.classes {
         for (what, value, legal) in [
-            ("role", &reflected.name, role_name as fn(&str) -> bool),
-            ("runtime name", &reflected.runtime, class_name),
-            ("reviewed name", &reflected.class, class_name),
+            ("role", &reflected.name, role_name(&reflected.name)),
+            (
+                "runtime name",
+                &reflected.runtime,
+                class_name(&reflected.runtime),
+            ),
+            (
+                "reviewed name",
+                &reflected.class,
+                class_name(&reflected.class),
+            ),
         ] {
-            if !legal(value) {
+            if !legal {
                 return Err(GenerateError::Drift(format!(
                     "the reflective surface declares {value} as a {what}, which is not one"
                 )));
@@ -592,7 +605,7 @@ pub(super) fn verify_input(root: &Path, input: &Input) -> Result<(), GenerateErr
         }
     }
     if let Some(expected) = input.bytes
-        && bytes.len() as u64 != expected
+        && u64::try_from(bytes.len()).expect("input length fits in u64") != expected
     {
         return Err(GenerateError::Drift(format!(
             "{name} is {} bytes but the adapter inputs pin {expected}",
@@ -618,7 +631,8 @@ pub(super) fn repin_locks(
         let name = file_name(&input.path);
         let bytes = fs::read(root.join(&input.path))
             .map_err(|error| GenerateError::Input(format!("cannot read {name}: {error}")))?;
-        document = replace_pin(&document, table, &sha256(&bytes), bytes.len() as u64)?;
+        let length = u64::try_from(bytes.len()).expect("lock length fits in u64");
+        document = replace_pin(&document, table, &sha256(&bytes), length)?;
     }
     fs::write(&path, document)
         .map_err(|error| GenerateError::Input(format!("cannot write adapter.toml: {error}")))
@@ -680,7 +694,7 @@ pub(super) fn sha256(bytes: &[u8]) -> String {
 #[cfg(test)]
 /// Every version directory this repository tracks, in name order.
 pub(super) fn tracked_versions(root: &Path) -> Vec<String> {
-    let mut names = std::fs::read_dir(root.join(VERSIONS))
+    let mut names = fs::read_dir(root.join(VERSIONS))
         .expect("the version data should be readable")
         .flatten()
         .filter(|entry| entry.path().is_dir())
@@ -909,7 +923,7 @@ class = \"net/minecraft/Unreferenced\"
         .expect("the tracked adapter inputs should parse");
 
         let drifted = Input {
-            path: adapter.inputs.hook_inventory.path.clone(),
+            path: adapter.inputs.hook_inventory.path,
             sha256: Some("0".repeat(64)),
             bytes: None,
             upstream: None,

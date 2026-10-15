@@ -59,10 +59,12 @@ const JAVA_ROOT: &str = "target/ravel-jvm/generated";
 const OUTPUT_LOCK: &str = "target/ravel-jvm/.generating";
 
 /// How long a generation waits for another to finish before it gives up.
-const LOCK_WAIT: std::time::Duration = std::time::Duration::from_mins(1);
+const LOCK_WAIT_MAX: std::time::Duration = std::time::Duration::from_mins(1);
 
 /// How old a lock has to be before it is read as left behind rather than held.
 const LOCK_STALE: std::time::Duration = std::time::Duration::from_mins(5);
+
+const LOCK_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(25);
 
 /// Serializes output sweeps and inspections; downstream compilers rely on task ordering.
 ///
@@ -85,7 +87,7 @@ impl OutputLock {
         }
         let waited = std::time::Instant::now();
         loop {
-            match std::fs::File::create_new(&path) {
+            match fs::File::create_new(&path) {
                 Ok(_) => return Ok(Self { path }),
                 Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
                     return Err(GenerateError::Input(format!(
@@ -95,27 +97,37 @@ impl OutputLock {
                 }
                 Err(_) => {}
             }
-            let stale = std::fs::metadata(&path)
-                .and_then(|held| held.modified())
-                .is_ok_and(|held| held.elapsed().is_ok_and(|age| age > LOCK_STALE));
-            if stale {
-                let _ = std::fs::remove_file(&path);
-                continue;
-            }
-            if waited.elapsed() > LOCK_WAIT {
+            if waited.elapsed() > LOCK_WAIT_MAX {
                 return Err(GenerateError::Input(format!(
                     "another build has held {} for longer than a build should take; if none is \
                      running, delete it",
                     path.display()
                 )));
             }
-            std::thread::sleep(std::time::Duration::from_millis(25));
+            let stale = fs::metadata(&path)
+                .and_then(|held| held.modified())
+                .is_ok_and(|held| held.elapsed().is_ok_and(|age| age > LOCK_STALE));
+            if stale {
+                match fs::remove_file(&path) {
+                    Ok(()) => {}
+                    // Another waiter may already have removed the same stale lock.
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        return Err(GenerateError::Input(format!(
+                            "{} could not be removed after becoming stale: {error}",
+                            path.display()
+                        )));
+                    }
+                }
+                continue;
+            }
+            std::thread::sleep(LOCK_POLL_INTERVAL);
         }
     }
 
     /// Re-dates the existing lock, refusing to recreate a removed one.
     fn refresh(&self) -> Result<(), GenerateError> {
-        std::fs::File::options()
+        fs::File::options()
             .write(true)
             .open(&self.path)
             .and_then(|file| file.set_modified(std::time::SystemTime::now()))
@@ -142,7 +154,10 @@ impl OutputLock {
 
 impl Drop for OutputLock {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        // Drop cannot return an error; leave a failed cleanup for stale-lock recovery.
+        if let Err(error) = fs::remove_file(&self.path) {
+            eprintln!("cannot remove output lock {}: {error}", self.path.display());
+        }
     }
 }
 
@@ -249,19 +264,9 @@ pub fn regenerate_locks(root: &Path, selected: Option<&str>) -> Result<(), Gener
             )));
         }
     }
-    inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
-    inputs::verify_input(root, &pinned.adapter.inputs.data_fixer_jar)?;
-    inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
     let mapping = mapping(root, &pinned.adapter)?;
-
-    // Hooks target game members, not members declared only by a library.
-    let archive = jar::Archive::open(&jar_path)?;
-    let library = jar::Archive::open(&library_path)?;
     mapping::verify_reflection(&pinned.surface, &mapping)?;
-    mapping::verify_reflected_members(&pinned.surface, &mapping, &archive)?;
-    inputs::verify_pack_format(&pinned.adapter, &archive)?;
-    let resolved = resolve::from_jar(&archive, &pinned.inventory, &mapping)?;
-    let stubbed = stubs::from_jar(&[&archive, &library], &pinned.seeds, &mapping)?;
+    let (resolved, stubbed) = resolve_jars(root, &pinned, &mapping)?;
 
     write_atomically(
         &pinned.directory.join("mappings.lock"),
@@ -353,24 +358,7 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
     mapping::verify_reflection(&pinned.surface, &mapping)?;
 
     let (resolved, stubbed) = if jars {
-        inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
-        inputs::verify_input(root, &pinned.adapter.inputs.data_fixer_jar)?;
-        inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
-        let archive = jar::Archive::open(&jar_path)?;
-        let library = jar::Archive::open(&library_path)?;
-        // The members the agent jar reflects on are game members, so they are
-        // proved against the client jar for the same reason hook targets are.
-        // Nothing but the jar can prove them: they are reached by name at
-        // runtime, so no compiler ever sees them, and the mapping says what a
-        // name becomes and never that the class still declares it.
-        mapping::verify_reflected_members(&pinned.surface, &mapping, &archive)?;
-        inputs::verify_pack_format(&pinned.adapter, &archive)?;
-        (
-            // Hook targets are game members and are never looked for in the
-            // library jar.
-            resolve::from_jar(&archive, &pinned.inventory, &mapping)?,
-            stubs::from_jar(&[&archive, &library], &pinned.seeds, &mapping)?,
-        )
+        resolve_jars(root, pinned, &mapping)?
     } else {
         (
             resolve::from_lock(&tracked, &pinned.adapter, &pinned.inventory)?,
@@ -391,22 +379,45 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
                 .to_owned(),
         ));
     }
+    compose_render(root, pinned, &mapping, &resolved, &stubbed, lock, stub_lock)
+}
 
-    let shapes = render::shapes(&pinned.inventory, &resolved)?;
+fn resolve_jars(
+    root: &Path,
+    pinned: &inputs::PinnedVersion,
+    mapping: &mapping::Mapping,
+) -> Result<(Vec<resolve::Resolved>, Vec<stubs::Stub>), GenerateError> {
+    inputs::verify_input(root, &pinned.adapter.inputs.client_jar)?;
+    inputs::verify_input(root, &pinned.adapter.inputs.data_fixer_jar)?;
+    inputs::verify_input(root, &pinned.adapter.inputs.version_manifest)?;
+    let archive = jar::Archive::open(&root.join(&pinned.adapter.inputs.client_jar.path))?;
+    let library = jar::Archive::open(&root.join(&pinned.adapter.inputs.data_fixer_jar.path))?;
+    mapping::verify_reflected_members(&pinned.surface, mapping, &archive)?;
+    inputs::verify_pack_format(&pinned.adapter, &archive)?;
+    // Hook targets are game members; only stubs may resolve against the library.
+    Ok((
+        resolve::from_jar(&archive, &pinned.inventory, mapping)?,
+        stubs::from_jar(&[&archive, &library], &pinned.seeds, mapping)?,
+    ))
+}
+
+fn compose_render(
+    root: &Path,
+    pinned: &inputs::PinnedVersion,
+    mapping: &mapping::Mapping,
+    resolved: &[resolve::Resolved],
+    stubbed: &[stubs::Stub],
+    lock: String,
+    stub_lock: String,
+) -> Result<Rendered, GenerateError> {
+    let shapes = render::shapes(&pinned.inventory, resolved)?;
     let stub_java = stubbed
         .iter()
-        .map(|stub| stub_render::stub_java(&pinned.adapter, stub, &mapping))
+        .map(|stub| stub_render::stub_java(&pinned.adapter, stub, mapping))
         .collect::<Result<Vec<_>, _>>()?;
     let roles = roles::Roles::new(&pinned.seeds, &pinned.surface, &pinned.inventory)?;
-    // Swept over the whole seed list once rather than once per template tree:
-    // the defect it catches is a seed that names no member, which is a fact
-    // about the version and not about who happened to reference it.
-    screen::every_seeded_member_resolves(&roles, &stubbed, &mapping)?;
-    let [screens, stand_ins, drivers, siblings] =
-        sources(root, pinned, &roles, &stubbed, &mapping)?;
-    // The three harness trees keep their own names below the generated root, so
-    // a sweep over one of them is a directory rather than a list of the files
-    // the other two happen to hold.
+    screen::every_seeded_member_resolves(&roles, stubbed, mapping)?;
+    let [screens, stand_ins, drivers, siblings] = sources(root, pinned, &roles, stubbed, mapping)?;
     let harness = [
         ("game", stand_ins),
         ("driver", drivers),
@@ -426,11 +437,11 @@ fn compose(root: &Path, pinned: &inputs::PinnedVersion) -> Result<Rendered, Gene
         );
     }
     Ok(Rendered {
-        bindings: render::bindings(&pinned.adapter, &pinned.inventory, &resolved),
+        bindings: render::bindings(&pinned.adapter, &pinned.inventory, resolved),
         exports: render::exports(&shapes),
         hook_java: render::hook_java(&pinned.adapter, &shapes),
         game_names_java: render::game_names(&pinned.adapter, &pinned.surface),
-        game_members_java: render::game_members(&pinned.adapter, &pinned.surface, &mapping)?,
+        game_members_java: render::game_members(&pinned.adapter, &pinned.surface, mapping)?,
         menu_layout_java: render::menu_layout(&pinned.adapter, &pinned.inventory),
         java_release: format!("{}\n", pinned.adapter.java_release),
         agent_release: format!("{}\n", pinned.adapter.java_release.max(AGENT_RELEASE_FLOOR)),
@@ -621,26 +632,42 @@ fn write(
     ] {
         place(path, content, &mut digest)?;
     }
-    for (relative, content) in &rendered.stub_java {
-        let path = stub_directory.join(relative);
-        if let Some(parent) = path.parent() {
-            create(parent)?;
-        }
-        place(&path, content, &mut digest)?;
-    }
     for (directory, sources) in [
+        (&stub_directory, &rendered.stub_java),
         (&screen_directory, &rendered.screen_java),
         (&harness_directory, &rendered.harness_java),
     ] {
-        for (relative, content) in sources {
-            let path = directory.join(relative);
-            if let Some(parent) = path.parent() {
-                create(parent)?;
-            }
-            place(&path, content, &mut digest)?;
-        }
+        write_sources(directory, sources, &mut digest)?;
     }
 
+    Ok(Generated {
+        watched: write_watched(root, pinned, rendered),
+        bindings,
+        exports,
+        java,
+        stubs: stub_directory,
+        screens: screen_directory,
+        harness: harness_directory,
+        sha256: inputs::sha256(digest.as_bytes()),
+    })
+}
+
+fn write_sources(
+    directory: &Path,
+    sources: &[(String, String)],
+    digest: &mut String,
+) -> Result<(), GenerateError> {
+    for (relative, content) in sources {
+        let path = directory.join(relative);
+        if let Some(parent) = path.parent() {
+            create(parent)?;
+        }
+        place(&path, content, digest)?;
+    }
+    Ok(())
+}
+
+fn write_watched(root: &Path, pinned: &inputs::PinnedVersion, rendered: &Rendered) -> Vec<PathBuf> {
     let pins = &pinned.adapter.inputs;
     let mut watched = vec![
         pinned.directory.join("adapter.toml"),
@@ -659,24 +686,14 @@ fn write(
             .map(|input| root.join(&input.path)),
     );
     watched.extend(rendered.templates.iter().cloned());
-
-    Ok(Generated {
-        watched,
-        bindings,
-        exports,
-        java,
-        stubs: stub_directory,
-        screens: screen_directory,
-        harness: harness_directory,
-        sha256: inputs::sha256(digest.as_bytes()),
-    })
+    watched
 }
 
 /// Removes every output tree named, so this build writes only its own bytes.
 fn empty(directories: &[&Path]) -> Result<(), GenerateError> {
     for directory in directories {
         if directory.is_dir() {
-            std::fs::remove_dir_all(directory).map_err(|error| {
+            fs::remove_dir_all(directory).map_err(|error| {
                 GenerateError::Input(format!(
                     "{} could not be emptied: {error}",
                     directory.display()
@@ -753,8 +770,15 @@ mod tests {
         let directory = repository_root()
             .join("target/ravel-generate-tests")
             .join(format!("{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&directory);
+        cleanup(&directory);
         directory
+    }
+
+    fn cleanup(directory: &Path) {
+        match std::fs::remove_dir_all(directory) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            result => result.expect("remove the test fixture"),
+        }
     }
 
     /// Copies the pinned version's tracked data into a root of its own.
@@ -887,8 +911,8 @@ mod tests {
                 .collect::<BTreeSet<_>>()
         );
 
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     /// The harness is told which names it was written under, whether or not any
@@ -911,8 +935,8 @@ mod tests {
             "a version that leaves its whole game in packages moves nothing: {aliases}"
         );
 
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     /// A version whose stand-in game spans both name spaces writes the whole of
@@ -932,10 +956,11 @@ mod tests {
         let reflection = directory.join("reflection.toml");
         let mut surface =
             std::fs::read_to_string(&reflection).expect("the staged surface should be readable");
-        let _ = write!(
+        write!(
             surface,
             "\n[[reflected]]\nname = \"{bare}\"\nclass = \"{bare}\"\nruntime = \"{bare}\"\n"
-        );
+        )
+        .expect("write the staged surface string");
         std::fs::write(&reflection, &surface).expect("the staged surface should be writable");
         repin(&directory, "[inputs.reflectiveSurface]", surface.as_bytes());
         let overrides = directory.join(super::HARNESS_OVERRIDES);
@@ -986,17 +1011,17 @@ mod tests {
             "the unmoved half is written under its own name"
         );
 
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     /// Re-pins one staged adapter input against the bytes just written.
     fn repin(directory: &Path, table: &str, bytes: &[u8]) {
         let path = directory.join("adapter.toml");
         let document = std::fs::read_to_string(&path).expect("readable");
-        let rewritten =
-            inputs::replace_pin(&document, table, &inputs::sha256(bytes), bytes.len() as u64)
-                .expect("the staged inputs pin that table");
+        let length = u64::try_from(bytes.len()).expect("the staged input length fits u64");
+        let rewritten = inputs::replace_pin(&document, table, &inputs::sha256(bytes), length)
+            .expect("the staged inputs pin that table");
         std::fs::write(&path, rewritten).expect("writable");
     }
 
@@ -1025,8 +1050,8 @@ mod tests {
             "the lock is the caller's for the call and no longer"
         );
 
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     #[test]
@@ -1062,7 +1087,24 @@ mod tests {
         assert!(!path.exists(), "nothing recreated the file");
 
         std::mem::forget(held);
-        let _ = std::fs::remove_dir_all(&root);
+        cleanup(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[should_panic(expected = "could not be removed after becoming stale")]
+    fn stale_lock_unlink_failure() {
+        let root = output("stale-directory-lock");
+        let lock = root.join(OUTPUT_LOCK);
+        std::fs::create_dir_all(&lock).expect("create the directory lock fixture");
+        let long_ago = std::time::SystemTime::now() - LOCK_STALE * 2;
+        std::fs::File::open(&lock)
+            .and_then(|file| file.set_modified(long_ago))
+            .expect("age the directory lock fixture");
+
+        let result = OutputLock::take(&root).map(|_| ());
+        cleanup(&root);
+        result.expect("take stale directory lock");
     }
 
     #[test]
@@ -1075,8 +1117,8 @@ mod tests {
 
         assert!(generated.bindings.is_file());
 
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     #[test]
@@ -1105,8 +1147,8 @@ mod tests {
         assert!(message.contains("mappings.lock"), "{message}");
         assert!(message.contains("the adapter inputs pin"), "{message}");
 
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     /// Every template the three trees render for one version.
@@ -1139,7 +1181,7 @@ mod tests {
             let held: BTreeSet<OsString> = [root.join(tree), held_by_the_version]
                 .iter()
                 .filter_map(|directory| std::fs::read_dir(directory).ok())
-                .flat_map(std::iter::Iterator::flatten)
+                .flat_map(Iterator::flatten)
                 .filter(|entry| entry.path().to_string_lossy().ends_with(".java.in"))
                 .map(|entry| entry.file_name())
                 .collect();
@@ -1176,8 +1218,8 @@ mod tests {
             9 + tracked_templates(&root, &version)
         );
 
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     #[test]
@@ -1202,49 +1244,7 @@ mod tests {
                 9 + tracked_templates(repository_root(), &version)
             );
 
-            // The screens are generated in the name space the version links, and the
-            // pinned version links the reviewed names, so they land in Ravel's
-            // screen package and the agent jar's generated names say so.
-            let screen = generated
-                .screens
-                .join("dev/ravel/jvm/screen/RavelSettingsScreen.java");
-            let drawn = std::fs::read_to_string(&screen).expect("the screen should be generated");
-            assert!(drawn.contains("package dev.ravel.jvm.screen;"), "{drawn}");
-            assert!(drawn.contains("extends Screen"), "{drawn}");
-            assert!(
-                !drawn.contains("{{"),
-                "every placeholder is rendered: {drawn}"
-            );
-
-            let names = generated.java.with_file_name("ScreenNames.java");
-            let declared =
-                std::fs::read_to_string(&names).expect("the screen names should be written");
-            assert!(
-                declared.contains(
-                    "static final String RAVEL_SETTINGS_SCREEN = \
-                 \"dev.ravel.jvm.screen.RavelSettingsScreen\";"
-                ),
-                "{declared}"
-            );
-
-            let screen = generated
-                .stubs
-                .join("net/minecraft/client/gui/screens/Screen.java");
-            let stub =
-                std::fs::read_to_string(&screen).expect("the seeded class should be stubbed");
-            assert!(
-                stub.contains("package net.minecraft.client.gui.screens;"),
-                "{stub}"
-            );
-            assert!(stub.contains("class Screen"), "{stub}");
-            assert!(
-                stub.contains(
-                    "extends \
-                     net.minecraft.client.gui.components.events.AbstractContainerEventHandler"
-                ),
-                "the focus a scrolled screen restores is declared above Screen, so the stub has \
-                 to reach it: {stub}"
-            );
+            generating_from_the_tracked_inputs_check_screens(generated);
 
             let bindings = std::fs::read_to_string(&generated.bindings).expect("readable");
             assert!(bindings.contains("pub static TARGETS"));
@@ -1261,7 +1261,48 @@ mod tests {
         })
         .expect("the tracked inputs should generate");
 
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&out);
+    }
+
+    fn generating_from_the_tracked_inputs_check_screens(generated: &super::Generated) {
+        let screen = generated
+            .screens
+            .join("dev/ravel/jvm/screen/RavelSettingsScreen.java");
+        let drawn = std::fs::read_to_string(&screen).expect("the screen should be generated");
+        assert!(drawn.contains("package dev.ravel.jvm.screen;"), "{drawn}");
+        assert!(drawn.contains("extends Screen"), "{drawn}");
+        assert!(
+            !drawn.contains("{{"),
+            "every placeholder is rendered: {drawn}"
+        );
+
+        let names = generated.java.with_file_name("ScreenNames.java");
+        let declared = std::fs::read_to_string(&names).expect("the screen names should be written");
+        assert!(
+            declared.contains(
+                "static final String RAVEL_SETTINGS_SCREEN = \
+                 \"dev.ravel.jvm.screen.RavelSettingsScreen\";"
+            ),
+            "{declared}"
+        );
+
+        let screen = generated
+            .stubs
+            .join("net/minecraft/client/gui/screens/Screen.java");
+        let stub = std::fs::read_to_string(&screen).expect("the seeded class should be stubbed");
+        assert!(
+            stub.contains("package net.minecraft.client.gui.screens;"),
+            "{stub}"
+        );
+        assert!(stub.contains("class Screen"), "{stub}");
+        assert!(
+            stub.contains(
+                "extends \
+                     net.minecraft.client.gui.components.events.AbstractContainerEventHandler"
+            ),
+            "the focus a scrolled screen restores is declared above Screen, so the stub has \
+                 to reach it: {stub}"
+        );
     }
 
     /// Every crossing the generated hook class declares, and nothing but them.
@@ -1434,10 +1475,10 @@ mod tests {
                 );
             }
 
-            let _ = std::fs::remove_dir_all(&out);
+            cleanup(&out);
         }
 
-        let _ = std::fs::remove_dir_all(&root);
+        cleanup(&root);
     }
 
     /// Two versions and nothing naming one is refused, with both names in the
@@ -1460,7 +1501,7 @@ mod tests {
         assert!(message.contains(&synthetic), "{message}");
         assert!(!out.exists(), "a refused build writes nothing");
 
-        let _ = std::fs::remove_dir_all(&root);
+        cleanup(&root);
     }
 
     /// A selection no directory carries is refused with what was actually there.
@@ -1479,7 +1520,7 @@ mod tests {
         assert!(message.contains(&synthetic), "{message}");
         assert!(!out.exists(), "a refused build writes nothing");
 
-        let _ = std::fs::remove_dir_all(&root);
+        cleanup(&root);
     }
 
     /// An empty selection reads as a refusal rather than a sentence with a hole.
@@ -1496,7 +1537,7 @@ mod tests {
         assert!(message.contains(&synthetic), "{message}");
         assert!(!out.exists(), "a refused build writes nothing");
 
-        let _ = std::fs::remove_dir_all(&root);
+        cleanup(&root);
     }
 
     /// A malformed directory this build did not select does not fail the build.
@@ -1525,7 +1566,7 @@ mod tests {
         assert!(matches!(error, GenerateError::Input(_)), "{error}");
 
         for directory in [&root, &out, &other] {
-            let _ = std::fs::remove_dir_all(directory);
+            cleanup(directory);
         }
     }
 
@@ -1580,7 +1621,7 @@ mod tests {
         assert_eq!(unselected.sha256, selected.sha256);
 
         for directory in [&default, &named, &root] {
-            let _ = std::fs::remove_dir_all(directory);
+            cleanup(directory);
         }
     }
 
@@ -1640,8 +1681,18 @@ mod tests {
             "an exported symbol is resolved by name, so no version belongs in one"
         );
 
+        the_generator_reads_a_second_version_check_surface(&root, &version, &generated);
+        cleanup(&root);
+        cleanup(&out);
+    }
+
+    fn the_generator_reads_a_second_version_check_surface(
+        root: &Path,
+        version: &str,
+        generated: &super::Generated,
+    ) {
         // Every reviewed id, in both versions, mapped onto different members.
-        let second = inputs::pinned(&root, None).expect("the staged data should parse");
+        let second = inputs::pinned(root, None).expect("the staged data should parse");
         let bindings = std::fs::read_to_string(&generated.bindings).expect("readable");
         let pinned_inventory = inputs::tracked_version_where(repository_root(), |adapter| {
             !adapter.mapping_source.needs_mappings()
@@ -1686,11 +1737,8 @@ mod tests {
                 .stubs
                 .join(format!("{}.java", seed.class.replace('.', "/")));
             let text = std::fs::read_to_string(&stub).expect("the seeded class should be stubbed");
-            assert!(text.contains(&version), "{text}");
+            assert!(text.contains(version), "{text}");
         }
-
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
     }
 
     #[test]
@@ -1721,7 +1769,7 @@ mod tests {
         }
 
         for directory in [&first, &second] {
-            let _ = std::fs::remove_dir_all(directory);
+            cleanup(directory);
         }
     }
 
@@ -1805,8 +1853,8 @@ mod tests {
             "{spurious}"
         );
 
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     /// Rewrites the staged reflective surface and re-pins it, as an edit would.
@@ -1875,8 +1923,8 @@ mod tests {
             error.to_string().contains("links as nowhere.Absent"),
             "{error}"
         );
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     /// Every `key = "value"` a document declares, in the order it declares them.
@@ -1908,7 +1956,7 @@ mod tests {
             .iter()
             .zip(declared_values(&surface, "runtime"))
         {
-            let _ = writeln!(mapping, "{class} -> {runtime}:");
+            writeln!(mapping, "{class} -> {runtime}:").expect("write the staged mapping string");
         }
         assert!(!mapping.is_empty(), "the staged surface declares nothing");
         let mapping_path = directory.join("client.txt");
@@ -1970,8 +2018,8 @@ mod tests {
 
         assert!(generated.java.is_file());
 
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     /// The same staging with one runtime name restated: a lock-only build under
@@ -1992,8 +2040,8 @@ mod tests {
             error.to_string().contains("links as nowhere.Absent"),
             "{error}"
         );
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     /// A surface copied from another version keeps a Mojang name the target
@@ -2024,8 +2072,8 @@ mod tests {
             error.to_string().contains("names no class nowhere.Absent"),
             "{error}"
         );
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&root);
+        cleanup(&out);
     }
 
     /// All three declared values are interpolated into `GameNames`: the role as a
@@ -2052,8 +2100,8 @@ mod tests {
 
             assert!(matches!(error, GenerateError::Drift(_)), "{error}");
             assert!(error.to_string().contains("which is not one"), "{error}");
-            let _ = std::fs::remove_dir_all(&root);
-            let _ = std::fs::remove_dir_all(&out);
+            cleanup(&root);
+            cleanup(&out);
         }
     }
 
@@ -2075,7 +2123,7 @@ mod tests {
 
         assert!(matches!(error, GenerateError::Drift(_)), "{error}");
         assert!(error.to_string().contains("twice"), "{error}");
-        let _ = std::fs::remove_dir_all(&root);
+        cleanup(&root);
     }
 
     /// The generated class carries both names the surface declares, because two
@@ -2122,7 +2170,7 @@ mod tests {
         })
         .expect("the tracked inputs should generate");
 
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&out);
     }
 
     /// A driver names Ravel's own screen by the whole name, wherever it landed.
@@ -2173,7 +2221,7 @@ mod tests {
         })
         .expect("the tracked inputs should generate");
 
-        let _ = std::fs::remove_dir_all(&out);
+        cleanup(&out);
     }
 
     /// Every generated Java source below one root, as the binary name it holds.

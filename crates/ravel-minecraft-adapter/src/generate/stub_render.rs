@@ -21,25 +21,27 @@ pub(super) fn stub_java(
     let (package, simple) = split(linked);
 
     let mut text = String::with_capacity(stub.members.len() * 192 + 1024);
-    let _ = writeln!(
+    writeln!(
         text,
         "// Generated from the pinned Minecraft {} class files. Do not edit.\n\
-         //\n\
-         // A compile-time stub, not Minecraft. It is compiled against and then\n\
-         // discarded: `build-screen.sh` refuses to package one, because a stub in\n\
-         // the screen jar would shadow the game's own class on the loader they\n\
-         // share. See minecraft/versions/{}/stubs.lock.",
+     //\n\
+     // A compile-time stub, not Minecraft. It is compiled against and then\n\
+     // discarded: `build-screen.sh` refuses to package one, because a stub in\n\
+     // the screen jar would shadow the game's own class on the loader they\n\
+     // share. See minecraft/versions/{}/stubs.lock.",
         adapter.minecraft, adapter.minecraft
-    );
+    )
+    .expect("writing to a String cannot fail");
     // Classes in the unnamed package must omit the package declaration.
     match &package {
         Some(package) => {
-            let _ = writeln!(text, "package {package};\n");
+            writeln!(text, "package {package};\n").expect("writing to a String cannot fail");
         }
         None => text.push('\n'),
     }
 
-    let _ = writeln!(text, "{} {{", declaration(stub, mapping, simple));
+    writeln!(text, "{} {{", declaration(stub, mapping, simple))
+        .expect("writing to a String cannot fail");
 
     for member in &stub.members {
         let modifiers = modifiers(member.flags, stub.is_interface(), member.method);
@@ -58,10 +60,11 @@ pub(super) fn stub_java(
         } else {
             stub_field(stub, member, &modifiers, &name, &descriptor, mapping)
         };
-        let _ = writeln!(text, "{}", rendered.map_err(unsupported)?);
+        writeln!(text, "{}", rendered.map_err(unsupported)?)
+            .expect("writing to a String cannot fail");
     }
 
-    let _ = writeln!(text, "}}");
+    writeln!(text, "}}").expect("writing to a String cannot fail");
     Ok((format!("{linked}.java"), text))
 }
 
@@ -83,11 +86,12 @@ fn declaration(stub: &Stub, mapping: &Mapping, simple: &str) -> String {
     }
     declaration.push_str(simple);
     if let Some(parent) = &stub.extends {
-        let _ = write!(
+        write!(
             declaration,
             " extends {}",
             source_name(mapping.runtime_class(parent))
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
     if !stub.implements.is_empty() {
         declaration.push_str(if stub.is_interface() && stub.extends.is_none() {

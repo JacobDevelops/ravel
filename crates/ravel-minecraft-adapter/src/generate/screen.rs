@@ -162,63 +162,20 @@ pub(super) fn render(
         read.push(template(path)?);
     }
 
-    let mut referenced = BTreeSet::new();
-    let mut declared = BTreeSet::new();
-    let mut added = Vec::new();
-    for template in &read {
-        let mut names = Vec::new();
-        // A stand-in declares the class its template is named after, so its own
-        // role is resolved as surely as the ones inside its placeholders — but
-        // it is kept apart from them, because a template naming its own role is
-        // not a source reaching for it.
-        if purpose == Purpose::StandIn {
-            names.push(template.name.clone());
-            declared.insert(template.name.clone());
-            if version_only.contains(&template.path) {
-                added.push((template.name.clone(), template.path.clone()));
-            }
-        }
-        for placeholder in &template.placeholders {
-            if let Placeholder::Class(role) | Placeholder::Import(role) = placeholder {
-                // A stand-in writes its own role where its class name goes, and
-                // that is the declaration rather than a source reaching for it:
-                // counting it would make every version-only template reach
-                // itself and the check below say nothing.
-                if role != &template.name || purpose != Purpose::StandIn {
-                    referenced.insert(role.clone());
-                }
-                names.push(role.clone());
-            }
-        }
-        // Resolved here, one template at a time, so a role nothing binds names
-        // the file that asked for it. The set below is resolved again as one,
-        // where what matters is that two roles do not collide.
-        for role in names {
-            roles
-                .class(&role)
-                .map_err(|error| in_template(template, error))?;
-        }
-    }
+    let TemplateRoles {
+        referenced,
+        declared,
+        added,
+    } = render_roles(&read, purpose, &version_only, roles)?;
 
     let all = referenced.union(&declared).cloned().collect();
     let linked = linked_classes(&all, roles, stubs, mapping, purpose)?;
-    // A class the mapping puts in the unnamed package cannot be named from a
-    // package at all — the language has no syntax for it — so Ravel's own
-    // sources go where their supertypes are. Under a version that keeps the game
-    // in packages they stay in Ravel's screen package, which is why an unobfuscated
-    // version generates the sources it already had. A driver is launched by the
-    // name a command line spells, so it has no package to lose under either.
-    // Which of the two it is comes from the stand-in game rather than from this
-    // tree's own roles, because the four trees are read together: a tree whose
-    // roles happened to all be packaged would otherwise draw a screen in a
-    // package that the tree beside it, and the constant the agent jar opens it
-    // by, spell bare.
     let NameSpace { unnamed, split } = name_space;
     every_name_is_nameable(&read, purpose, &linked, unnamed)?;
     let screens = (!unnamed).then_some(SCREEN_PACKAGE);
     let owned = match purpose {
-        Purpose::Screen => screens.map(str::to_owned),
-        _ => None,
+        Purpose::Screen => screens,
+        Purpose::StandIn | Purpose::Driver => None,
     };
 
     let version = Version {
@@ -235,31 +192,11 @@ pub(super) fn render(
     let mut names = Vec::with_capacity(read.len());
     let mut aliases = Vec::new();
     for template in &read {
-        // A stand-in is placed and named by the class it declares; Ravel's own
-        // sources are placed and named by the template that renders them.
-        let (package, simple, relative) = if purpose == Purpose::StandIn {
-            let linked_name = linked
-                .get(&template.name)
-                .ok_or_else(|| unresolved_role(template, &template.name))?;
-            let declared = render::alias(linked_name, version.aliased);
-            if &declared != linked_name {
-                aliases.push((declared.clone(), linked_name.clone()));
-            }
-            let (package, simple) = render::split(&declared);
-            (package, simple.to_owned(), format!("{declared}.java"))
-        } else {
-            let relative = match &owned {
-                Some(package) => {
-                    format!("{}/{}.java", package.replace('.', "/"), template.name)
-                }
-                None => format!("{}.java", template.name),
-            };
-            (owned.clone(), template.name.clone(), relative)
-        };
+        let (package, simple, relative) = render_location(template, &version, owned, &mut aliases)?;
         let source = expand(template, &version, package.as_deref())?;
-        let binary = match &package {
+        let binary = match package {
             Some(package) => format!("{package}.{simple}"),
-            None => simple.clone(),
+            None => simple,
         };
         java.push((relative, source));
         names.push((constant(&template.name), binary));
@@ -276,6 +213,80 @@ pub(super) fn render(
         referenced,
         added,
         aliases,
+    })
+}
+
+fn render_location(
+    template: &Template,
+    version: &Version<'_>,
+    owned: Option<&str>,
+    aliases: &mut Vec<(String, String)>,
+) -> Result<(Option<String>, String, String), GenerateError> {
+    // A stand-in is placed and named by the class it declares; Ravel's own
+    // sources are placed and named by the template that renders them.
+    if version.purpose == Purpose::StandIn {
+        let linked_name = version
+            .linked
+            .get(&template.name)
+            .ok_or_else(|| unresolved_role(template, &template.name))?;
+        let declared = render::alias(linked_name, version.aliased);
+        if &declared != linked_name {
+            aliases.push((declared.clone(), linked_name.clone()));
+        }
+        let (package, simple) = render::split(&declared);
+        Ok((package, simple.to_owned(), format!("{declared}.java")))
+    } else {
+        let relative = owned.map_or_else(
+            || format!("{}.java", template.name),
+            |package| format!("{}/{}.java", package.replace('.', "/"), template.name),
+        );
+        Ok((owned.map(str::to_owned), template.name.clone(), relative))
+    }
+}
+
+struct TemplateRoles {
+    referenced: BTreeSet<String>,
+    declared: BTreeSet<String>,
+    added: Vec<(String, PathBuf)>,
+}
+
+fn render_roles(
+    read: &[Template],
+    purpose: Purpose,
+    version_only: &BTreeSet<PathBuf>,
+    roles: &Roles,
+) -> Result<TemplateRoles, GenerateError> {
+    let mut referenced = BTreeSet::new();
+    let mut declared = BTreeSet::new();
+    let mut added = Vec::with_capacity(version_only.len());
+    for template in read {
+        let mut names = Vec::with_capacity(template.placeholders.len() + 1);
+        if purpose == Purpose::StandIn {
+            names.push(template.name.clone());
+            declared.insert(template.name.clone());
+            if version_only.contains(&template.path) {
+                added.push((template.name.clone(), template.path.clone()));
+            }
+        }
+        for placeholder in &template.placeholders {
+            if let Placeholder::Class(role) | Placeholder::Import(role) = placeholder {
+                // A stand-in's own declaration does not count as reaching itself.
+                if role != &template.name || purpose != Purpose::StandIn {
+                    referenced.insert(role.clone());
+                }
+                names.push(role.clone());
+            }
+        }
+        for role in names {
+            roles
+                .class(&role)
+                .map_err(|error| in_template(template, error))?;
+        }
+    }
+    Ok(TemplateRoles {
+        referenced,
+        declared,
+        added,
     })
 }
 
@@ -328,7 +339,7 @@ fn every_name_is_nameable(
             .iter()
             .filter_map(|placeholder| match placeholder {
                 Placeholder::Class(role) | Placeholder::Import(role) => Some(role.as_str()),
-                _ => None,
+                Placeholder::Package | Placeholder::Member(..) | Placeholder::Ravel(_) => None,
             });
         for role in declared.into_iter().chain(referenced) {
             let Some(outside) = linked
@@ -698,22 +709,22 @@ fn resolve(
         // The provenance rides on the package line rather than above it, because
         // a line added at the top of a generated source moves every line below
         // it and the class files would stop being the ones this version built.
-        Placeholder::Package => Ok(match package {
-            Some(package) => format!(
-                "package {package}; // Generated from the pinned Minecraft {} inputs. Do not edit.",
-                version.adapter.minecraft
-            ),
-            None => format!(
+        Placeholder::Package => Ok(package.map_or_else(
+            || format!(
                 "// Generated from the pinned Minecraft {} inputs. Do not edit. {}",
                 version.adapter.minecraft,
                 match version.purpose {
-                    // A driver is started by the name a command line spells, and
-                    // that name has no package under any version.
                     Purpose::Driver => "A command line names this class, so it has no package.",
-                    _ => "The game is in the unnamed package here, so this is too.",
+                    Purpose::Screen | Purpose::StandIn => {
+                        "The game is in the unnamed package here, so this is too."
+                    }
                 }
             ),
-        }),
+            |package| format!(
+                "package {package}; // Generated from the pinned Minecraft {} inputs. Do not edit.",
+                version.adapter.minecraft
+            ),
+        )),
         // A class the version links in the unnamed package is imported by
         // nothing: the language refuses the import and the simple name is the
         // whole name.
@@ -731,10 +742,9 @@ fn resolve(
         Placeholder::Member(role, member) => {
             member_name(role, member, version.roles, version.stubs, version.mapping)
         }
-        Placeholder::Ravel(name) => Ok(match version.screens {
-            Some(package) => format!("{package}.{name}"),
-            None => name.clone(),
-        }),
+        Placeholder::Ravel(name) => Ok(version
+            .screens
+            .map_or_else(|| name.clone(), |package| format!("{package}.{name}"))),
     }
 }
 
@@ -763,16 +773,16 @@ fn member_name(
             )))
         }
         (Some(name), _) | (None, Some(name)) => Ok(name),
-        (None, None) => Err(GenerateError::Unresolved(match roles.bound_by(role) {
-            Some(list) => format!(
-                "a template names {role}#{member_role}, and this version's {list} binds a class \
-                 to that role and no member of it to that member role"
-            ),
-            None => format!(
+        (None, None) => Err(GenerateError::Unresolved(roles.bound_by(role).map_or_else(
+            || format!(
                 "a template names {role}#{member_role} and none of this version's stubs.toml, \
                  reflection.toml or hooks.toml binds a class to that role"
             ),
-        })),
+            |list| format!(
+                "a template names {role}#{member_role}, and this version's {list} binds a class \
+                 to that role and no member of it to that member role"
+            ),
+        ))),
     }
 }
 
@@ -898,6 +908,18 @@ mod tests {
     use super::super::stubs::{Member, Stub};
     use super::*;
 
+    /// A missing staged tree needs no cleanup; every other filesystem failure does.
+    fn remove_staged(root: &Path) {
+        if let Err(error) = fs::remove_dir_all(root) {
+            assert_eq!(
+                error.kind(),
+                std::io::ErrorKind::NotFound,
+                "removing staged tree {}: {error}",
+                root.display()
+            );
+        }
+    }
+
     /// A mapping that renames a class into the unnamed package and its members
     /// with it, which is the shape an obfuscated version publishes.
     ///
@@ -984,8 +1006,8 @@ com.example.util.Held -> com.example.util.Held:
     /// not the class names: what is under test is that the binding is what
     /// carries a template, so a test whose role happened to equal the simple
     /// name would pass under a generator that ignored the seed list entirely.
-    fn seeds() -> inputs::Seeds {
-        inputs::Seeds {
+    fn seeds() -> Seeds {
+        Seeds {
             schema_version: 1,
             minecraft: "0.0.0-invented".to_owned(),
             stubs: vec![
@@ -1076,7 +1098,7 @@ com.example.util.Held -> com.example.util.Held:
 
     #[test]
     fn a_class_the_mapping_leaves_in_a_package_is_still_imported() {
-        let referenced = ["Clock".to_owned()].into_iter().collect();
+        let referenced = std::iter::once("Clock".to_owned()).collect();
         let linked = linked_classes(
             &referenced,
             &roles(&seeds()),
@@ -1091,7 +1113,7 @@ com.example.util.Held -> com.example.util.Held:
 
     #[test]
     fn a_class_the_stub_seeds_do_not_carry_is_refused() {
-        let referenced = ["Unseeded".to_owned()].into_iter().collect();
+        let referenced = std::iter::once("Unseeded".to_owned()).collect();
 
         let error = linked_classes(
             &referenced,
@@ -1119,9 +1141,8 @@ com.example.util.Held -> com.example.util.Held:
     #[test]
     fn the_datafix_measurement_scrapes_the_header_this_generator_writes() {
         let root = repository_root();
-        let script =
-            std::fs::read_to_string(root.join("jvm/harness/run-datafix-byte-preservation.sh"))
-                .expect("the measurement script is tracked");
+        let script = fs::read_to_string(root.join("jvm/harness/run-datafix-byte-preservation.sh"))
+            .expect("the measurement script is tracked");
         let (_, scrape) = script
             .split_once("sed -n '1s/^.*")
             .expect("the script scrapes the first line of the generated source");
@@ -1156,7 +1177,7 @@ com.example.util.Held -> com.example.util.Held:
                 "{first} does not carry {expected}"
             );
         }
-        let _ = std::fs::remove_dir_all(&shared);
+        remove_staged(&shared);
     }
 
     fn repository_root() -> PathBuf {
@@ -1179,7 +1200,8 @@ com.example.util.Held -> com.example.util.Held:
     fn obfuscating(stubs: &[Stub]) -> Mapping {
         let mut text = String::new();
         for (index, stub) in stubs.iter().enumerate() {
-            let _ = writeln!(text, "{} -> o{index}:", stub.class.replace('/', "."));
+            writeln!(text, "{} -> o{index}:", stub.class.replace('/', "."))
+                .expect("writing to a String cannot fail");
             let mut renamed: BTreeMap<&str, String> = BTreeMap::new();
             for member in &stub.members {
                 if member.name == "<init>" {
@@ -1190,16 +1212,18 @@ com.example.util.Held -> com.example.util.Held:
                 if member.method {
                     let (parameters, returns) =
                         render::signature(&member.descriptor).expect("a stubbed descriptor reads");
-                    let _ = writeln!(
+                    writeln!(
                         text,
                         "    {returns} {}({}) -> {linked}",
                         member.name,
                         parameters.join(",")
-                    );
+                    )
+                    .expect("writing to a String cannot fail");
                 } else {
                     let (kind, _) =
                         render::java_type(&member.descriptor).expect("a stubbed descriptor reads");
-                    let _ = writeln!(text, "    {kind} {} -> {linked}", member.name);
+                    writeln!(text, "    {kind} {} -> {linked}", member.name)
+                        .expect("writing to a String cannot fail");
                 }
             }
         }
@@ -1221,7 +1245,7 @@ com.example.util.Held -> com.example.util.Held:
         for version in inputs::tracked_versions(&root) {
             let pinned = inputs::pinned(&root, Some(&version))
                 .expect("the tracked version data should parse");
-            let tracked = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
+            let tracked = fs::read_to_string(pinned.directory.join("stubs.lock"))
                 .expect("the tracked stub lock should be readable");
             let stubs = super::super::stubs::from_lock(&tracked, &pinned.adapter, &pinned.seeds)
                 .expect("the tracked lock should resolve");
@@ -1295,7 +1319,7 @@ com.example.util.Held -> com.example.util.Held:
         for version in inputs::tracked_versions(&root) {
             let pinned = inputs::pinned(&root, Some(&version))
                 .expect("the tracked version data should parse");
-            let lock = std::fs::read_to_string(pinned.directory.join("stubs.lock"))
+            let lock = fs::read_to_string(pinned.directory.join("stubs.lock"))
                 .expect("the tracked stub lock should be readable");
             let stubs = super::super::stubs::from_lock(&lock, &pinned.adapter, &pinned.seeds)
                 .expect("the tracked lock should resolve");
@@ -1413,7 +1437,7 @@ com.example.util.Held -> com.example.util.Held:
     /// binding would pass a class-only test.
     #[test]
     fn a_role_renders_the_class_and_member_the_seed_list_binds_it_to() {
-        let referenced = ["Surface".to_owned()].into_iter().collect();
+        let referenced = std::iter::once("Surface".to_owned()).collect();
         let linked = linked_classes(
             &referenced,
             &roles(&seeds()),
@@ -1438,7 +1462,7 @@ com.example.util.Held -> com.example.util.Held:
     /// `resize` is the pair that matters: the invented mapping links `resize()`
     /// as `c` and `resize(int)` as `d`, which is the shape an obfuscated version
     /// produces and the whole reason a count exists.
-    fn seeds_binding(member_role: &str, parameters: Option<inputs::Overload>) -> inputs::Seeds {
+    fn seeds_binding(member_role: &str, parameters: Option<inputs::Overload>) -> Seeds {
         let mut seeds = seeds();
         seeds.stubs[0].members = vec![SeedMember::Bound(inputs::BoundMember {
             role: member_role.to_owned(),
@@ -1473,7 +1497,7 @@ com.example.util.Held -> com.example.util.Held:
     /// `wrap` is the pair a count cannot separate: both overloads take one
     /// parameter and the invented mapping links them as `e` and `f`, which is
     /// the shape that reached a screen as a list of the wrong thing.
-    fn seeds_wrapping(parameters: Option<inputs::Overload>) -> inputs::Seeds {
+    fn seeds_wrapping(parameters: Option<inputs::Overload>) -> Seeds {
         let mut seeds = seeds();
         seeds.stubs[0].members = vec![SeedMember::Bound(inputs::BoundMember {
             role: "split".to_owned(),
@@ -1573,13 +1597,12 @@ com.example.util.Held -> com.example.util.Held:
     fn staged_templates(name: &str, overrides: &[(&str, &str)]) -> PathBuf {
         let root =
             std::env::temp_dir().join(format!("ravel-templates-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("9.9.9")).expect("the staged directory should be made");
-        std::fs::write(root.join("Shared.java.in"), "{{package}}\nshared\n")
+        remove_staged(&root);
+        fs::create_dir_all(root.join("9.9.9")).expect("the staged directory should be made");
+        fs::write(root.join("Shared.java.in"), "{{package}}\nshared\n")
             .expect("the shared template should be written");
         for (file, text) in overrides {
-            std::fs::write(root.join("9.9.9").join(file), text)
-                .expect("the override should be written");
+            fs::write(root.join("9.9.9").join(file), text).expect("the override should be written");
         }
         root
     }
@@ -1604,7 +1627,7 @@ com.example.util.Held -> com.example.util.Held:
             "the record has to say this version's own tree rendered it"
         );
         assert_eq!(
-            std::fs::read_to_string(&applied.rendered[0]).expect("readable"),
+            fs::read_to_string(&applied.rendered[0]).expect("readable"),
             "{{package}}\noverride\n"
         );
 
@@ -1616,11 +1639,11 @@ com.example.util.Held -> com.example.util.Held:
             "a version that overrides nothing has to say so"
         );
         assert_eq!(
-            std::fs::read_to_string(&plain.rendered[0]).expect("readable"),
+            fs::read_to_string(&plain.rendered[0]).expect("readable"),
             "{{package}}\nshared\n"
         );
 
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// An override that replaces nothing is a screen only one version draws, and
@@ -1637,7 +1660,7 @@ com.example.util.Held -> com.example.util.Held:
             error.to_string().contains("overrides no shared template"),
             "{error}"
         );
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// A directory inside a version's override directory is refused rather than
@@ -1646,14 +1669,14 @@ com.example.util.Held -> com.example.util.Held:
     #[test]
     fn a_directory_inside_a_version_override_is_refused() {
         let root = staged_templates("nested", &[]);
-        std::fs::create_dir_all(root.join("9.9.9/inner")).expect("creatable");
-        std::fs::write(root.join("9.9.9/inner/Shared.java.in"), "{{package}}\n").expect("writable");
+        fs::create_dir_all(root.join("9.9.9/inner")).expect("creatable");
+        fs::write(root.join("9.9.9/inner/Shared.java.in"), "{{package}}\n").expect("writable");
 
         let error = templates(&tree(&root, "9.9.9", Purpose::Screen))
             .expect_err("a nested directory is refused");
 
         assert!(error.to_string().contains("one level only"), "{error}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     #[test]
@@ -1671,9 +1694,9 @@ com.example.util.Held -> com.example.util.Held:
     /// A template directory holding one shared template.
     fn staged_screen(name: &str, text: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("ravel-screen-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).expect("the staged directory should be made");
-        std::fs::write(root.join("Shared.java.in"), text).expect("the template should be written");
+        remove_staged(&root);
+        fs::create_dir_all(&root).expect("the staged directory should be made");
+        fs::write(root.join("Shared.java.in"), text).expect("the template should be written");
         root
     }
 
@@ -1692,9 +1715,9 @@ com.example.util.Held -> com.example.util.Held:
     /// A template directory holding one template of the caller's own name.
     fn staged_tree(name: &str, file: &str, text: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("ravel-tree-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).expect("the staged directory should be made");
-        std::fs::write(root.join(file), text).expect("the template should be written");
+        remove_staged(&root);
+        fs::create_dir_all(&root).expect("the staged directory should be made");
+        fs::write(root.join(file), text).expect("the template should be written");
         root
     }
 
@@ -1727,7 +1750,7 @@ com.example.util.Held -> com.example.util.Held:
         assert_eq!(relative, "com/example/util/Held.java");
         assert!(source.starts_with("package com.example.util;"), "{source}");
         assert!(source.contains("public class Held {"), "{source}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// The same template under a mapping that puts the class in the unnamed
@@ -1754,7 +1777,7 @@ com.example.util.Held -> com.example.util.Held:
         assert_eq!(relative, "a.java");
         assert!(!source.starts_with("package "), "{source}");
         assert!(source.contains("public class a {"), "{source}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// Where a version's name space is split, every stand-in is written in the
@@ -1771,7 +1794,7 @@ com.example.util.Held -> com.example.util.Held:
             "Clock.java.in",
             "{{package}}\npublic class {{Clock}} {\n}\n",
         );
-        std::fs::write(
+        fs::write(
             root.join("Surface.java.in"),
             "{{package}}\npublic class {{Surface}} {\n}\n",
         )
@@ -1796,7 +1819,7 @@ com.example.util.Held -> com.example.util.Held:
             rendered.aliases,
             [("Held".to_owned(), "com/example/util/Held".to_owned())]
         );
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// A version whose game is in one name space already is written where its
@@ -1821,7 +1844,7 @@ com.example.util.Held -> com.example.util.Held:
 
         assert_eq!(rendered.java[0].0, "com/example/util/Held.java");
         assert!(rendered.aliases.is_empty(), "{:?}", rendered.aliases);
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// A source naming a class the split moved names it the way the unnamed
@@ -1856,7 +1879,7 @@ com.example.util.Held -> com.example.util.Held:
             source.contains("    RavelSettingsScreen screen;"),
             "{source}"
         );
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// The name the agent jar publishes for a screen is the name the half
@@ -1907,7 +1930,7 @@ com.example.util.Held -> com.example.util.Held:
             "{}",
             siblings.java[0].1
         );
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// A tree reaching past the stand-in game to a class outside every package,
@@ -1939,7 +1962,7 @@ com.example.util.Held -> com.example.util.Held:
         assert!(message.contains('a'), "{message}");
         assert!(message.contains("outside every package"), "{message}");
         assert!(message.contains("Shared.java.in"), "{message}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// The one answer is read off the stand-in game, and a stand-in game that
@@ -1959,7 +1982,7 @@ com.example.util.Held -> com.example.util.Held:
         .expect("the seeds bind the role the template is named after");
         assert!(!one.split && !one.unnamed);
 
-        std::fs::write(
+        fs::write(
             root.join("Surface.java.in"),
             "{{package}}\npublic class {{Surface}} {\n}\n",
         )
@@ -1972,7 +1995,7 @@ com.example.util.Held -> com.example.util.Held:
         .expect("the seeds bind both roles");
         assert!(both.split && both.unnamed);
 
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// Asking that question first does not cost the reader the diagnostic that
@@ -1996,7 +2019,7 @@ com.example.util.Held -> com.example.util.Held:
         let message = error.to_string();
         assert!(message.contains("Unbound.java.in"), "{message}");
         assert!(message.contains("Unbound"), "{message}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// A driver keeps the name its template gives it and the package a command
@@ -2023,7 +2046,7 @@ com.example.util.Held -> com.example.util.Held:
         assert_eq!(relative, "Driven.java");
         assert!(!source.starts_with("package "), "{source}");
         assert!(source.contains("import com.example.util.Held;"), "{source}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// A version that leaves no game class in a package leaves Ravel's screens
@@ -2058,7 +2081,7 @@ com.example.util.Held -> com.example.util.Held:
             "{source}"
         );
         assert!(!source.contains(SCREEN_PACKAGE), "{source}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// A template named after a role no admission list binds is refused, and the
@@ -2086,7 +2109,7 @@ com.example.util.Held -> com.example.util.Held:
         let message = error.to_string();
         assert!(message.contains("Unbound.java.in"), "{message}");
         assert!(message.contains("Unbound"), "{message}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// A version-only stand-in is what a version whose game gained a class means.
@@ -2120,7 +2143,7 @@ com.example.util.Held -> com.example.util.Held:
             "{message}"
         );
         assert!(message.contains("reached by no role"), "{message}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     /// A version-only stand-in has to be reached by something the version
@@ -2165,21 +2188,7 @@ com.example.util.Held -> com.example.util.Held:
             "Driven.java.in",
             "{{package}}\n{{import Clock}}\npublic class Driven {\n    {{Clock}} held;\n}\n",
         );
-        let driver = Tree {
-            shared: &naming,
-            overrides: naming.join("0.0.0-none"),
-            purpose: Purpose::Driver,
-            stand_ins: true,
-        };
-        let drivers = render(
-            &driver,
-            &adapter(),
-            &roles(&seeds()),
-            &stubs(),
-            &proguard(),
-            SPLIT,
-        )
-        .expect("the driver names a bound role");
+        let drivers = version_only_stand_in_driver(&naming);
         every_added_template_is_reached(&[&render_game(), &drivers])
             .expect("the driver in the other tree reaches the stand-in");
 
@@ -2188,21 +2197,7 @@ com.example.util.Held -> com.example.util.Held:
             "Driven.java.in",
             "{{package}}\npublic class Driven {\n}\n",
         );
-        let quiet = Tree {
-            shared: &silent,
-            overrides: silent.join("0.0.0-none"),
-            purpose: Purpose::Driver,
-            stand_ins: true,
-        };
-        let quiet = render(
-            &quiet,
-            &adapter(),
-            &roles(&seeds()),
-            &stubs(),
-            &proguard(),
-            SPLIT,
-        )
-        .expect("a driver may name nothing");
+        let quiet = version_only_stand_in_driver(&silent);
 
         let Err(error) = every_added_template_is_reached(&[&render_game(), &quiet]) else {
             panic!("nothing this version renders names the added stand-in");
@@ -2215,8 +2210,26 @@ com.example.util.Held -> com.example.util.Held:
         );
 
         for root in [shared, overrides, naming, silent] {
-            let _ = std::fs::remove_dir_all(&root);
+            remove_staged(&root);
         }
+    }
+
+    fn version_only_stand_in_driver(shared: &Path) -> Sources {
+        let driver = Tree {
+            shared,
+            overrides: shared.join("0.0.0-none"),
+            purpose: Purpose::Driver,
+            stand_ins: true,
+        };
+        render(
+            &driver,
+            &adapter(),
+            &roles(&seeds()),
+            &stubs(),
+            &proguard(),
+            SPLIT,
+        )
+        .expect("the driver names only bound roles")
     }
 
     /// A member role a runtime list declares renders without the stub seeds
@@ -2275,7 +2288,7 @@ com.example.util.Held -> com.example.util.Held:
         let (_, source) = &screens.java[0];
         assert!(source.contains("import com.example.util.Held;"), "{source}");
         assert!(source.contains("Held held;"), "{source}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     #[test]
@@ -2296,7 +2309,7 @@ com.example.util.Held -> com.example.util.Held:
         let (_, source) = &screens.java[0];
         assert!(source.contains("import com.example.util.Held;"), "{source}");
         assert!(source.contains("Held held;"), "{source}");
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     #[test]
@@ -2329,7 +2342,7 @@ com.example.util.Held -> com.example.util.Held:
         ] {
             assert!(message.contains(named), "{message}");
         }
-        let _ = std::fs::remove_dir_all(&root);
+        remove_staged(&root);
     }
 
     #[test]

@@ -413,6 +413,14 @@ impl Proguard {
             current = Some(from);
         }
 
+        Self::parse_members(classes, mojang, declared)
+    }
+
+    fn parse_members(
+        classes: BTreeMap<String, String>,
+        mojang: BTreeMap<String, String>,
+        declared: BTreeMap<String, Vec<Declared>>,
+    ) -> Result<Self, GenerateError> {
         // Descriptors are rewritten once every class is known, because a
         // parameter can name a class the file has not reached yet.
         let mut members = BTreeMap::new();

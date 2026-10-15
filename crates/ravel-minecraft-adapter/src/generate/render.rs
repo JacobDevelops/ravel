@@ -339,40 +339,43 @@ fn java_name(id: &str) -> String {
 /// Renders the mapping provenance lock.
 pub(super) fn lock(adapter: &Adapter, resolved: &[Resolved]) -> String {
     let mut text = String::with_capacity(resolved.len() * 192 + 512);
-    let _ = writeln!(
+    writeln!(
         text,
         "# Generated mapping provenance for Minecraft {}. Do not edit.\n\
-         #\n\
-         # Every line pins one resolved member. A change to the jar, the\n\
-         # inventory, or the extractor changes this file, which is how drift is\n\
-         # noticed before a build trusts a binding.\n\
-         \n\
-         schemaVersion = {}\n\
-         minecraft = \"{}\"\n\
-         mappingSource = \"{}\"\n\
-         extractor = \"{EXTRACTOR}\"\n\
-         clientJarSha256 = \"{}\"",
+     #\n\
+     # Every line pins one resolved member. A change to the jar, the\n\
+     # inventory, or the extractor changes this file, which is how drift is\n\
+     # noticed before a build trusts a binding.\n\
+     \n\
+     schemaVersion = {}\n\
+     minecraft = \"{}\"\n\
+     mappingSource = \"{}\"\n\
+     extractor = \"{EXTRACTOR}\"\n\
+     clientJarSha256 = \"{}\"",
         adapter.minecraft,
         adapter.schema_version,
         adapter.minecraft,
         adapter.mapping_source.as_str(),
         adapter.inputs.client_jar.sha256.as_deref().unwrap_or("")
-    );
+    )
+    .expect("writing to a String cannot fail");
     // A source that reads no mapping has none to pin, so the key exists only
     // where one decided the linked names below.
     if let Some(mappings) = &adapter.inputs.client_mappings {
-        let _ = writeln!(
+        writeln!(
             text,
             "clientMappingsSha256 = \"{}\"",
             mappings.sha256.as_deref().unwrap_or("")
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
     for target in resolved {
-        let _ = writeln!(
+        writeln!(
             text,
             "\n[target.\"{}\"]\nclass = \"{}\"\nmember = \"{}\"\ndescriptor = \"{}\"\nstatic = {}",
             target.id, target.mojang_class, target.member, target.descriptor, target.is_static
-        );
+        )
+        .expect("writing to a String cannot fail");
         // A linked name is written only where the mapping source made one, so a
         // lock under a source that translates nothing says each name once and a
         // reader can see at a glance which names moved.
@@ -386,7 +389,7 @@ pub(super) fn lock(adapter: &Adapter, resolved: &[Resolved]) -> String {
             ),
         ] {
             if reviewed != linked {
-                let _ = writeln!(text, "{key} = \"{linked}\"");
+                writeln!(text, "{key} = \"{linked}\"").expect("writing to a String cannot fail");
             }
         }
     }
@@ -396,23 +399,80 @@ pub(super) fn lock(adapter: &Adapter, resolved: &[Resolved]) -> String {
 /// Renders the Rust target table the adapter includes.
 pub(super) fn bindings(adapter: &Adapter, inventory: &Inventory, resolved: &[Resolved]) -> String {
     let mut text = String::with_capacity(resolved.len() * 320 + 768);
-    let _ = writeln!(
+    writeln!(
         text,
         "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
-         //\n\
-         // Source of names: {}. Regenerate by building this crate.\n\
-         \n\
-         use ravel_minecraft::{{HookId, HookKind, HookTarget, PackFormat, PackFormatSpelling}};\n\
-         \n\
-         /// The Minecraft version every target below was resolved against.\n\
-         pub const MINECRAFT_VERSION: &str = \"{}\";\n",
+     //\n\
+     // Source of names: {}. Regenerate by building this crate.\n\
+     \n\
+     use ravel_minecraft::{{HookId, HookKind, HookTarget, PackFormat, PackFormatSpelling}};\n\
+     \n\
+     /// The Minecraft version every target below was resolved against.\n\
+     pub const MINECRAFT_VERSION: &str = \"{}\";\n",
         adapter.minecraft,
         adapter.mapping_source.as_str(),
         adapter.minecraft
-    );
+    )
+    .expect("writing to a String cannot fail");
 
+    bindings_formats(&mut text, adapter);
+
+    writeln!(
+        text,
+        "/// Capabilities this version reviewed and deliberately does not carry.\n\
+     ///\n\
+     /// A caller naming one of these is naming a decision rather than a typo.\n\
+     pub const NON_GOALS: [HookId; {}] = [{}];\n",
+        inventory.non_goals.len(),
+        inventory
+            .non_goals
+            .iter()
+            .map(|non_goal| format!("HookId::new(\"{}\")", non_goal.id))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+    .expect("writing to a String cannot fail");
+
+    for (hook, target) in inventory.hooks.iter().zip(resolved) {
+        writeln!(
+            text,
+            "/// {}\n\
+         pub const {}: HookTarget = HookTarget::new(\n\
+         \x20   HookId::new(\"{}\"),\n\
+         \x20   \"{}\",\n\
+         \x20   \"{}\",\n\
+         \x20   \"{}\",\n\
+         \x20   HookKind::{},\n\
+         );\n",
+            hook.capability,
+            constant_name(&hook.id),
+            target.id,
+            target.runtime_class,
+            target.runtime_member,
+            target.runtime_descriptor,
+            hook.kind.variant()
+        )
+        .expect("writing to a String cannot fail");
+    }
+
+    writeln!(
+        text,
+        "/// Every target the reviewed inventory pinned, in inventory order.\n\
+     pub static TARGETS: [HookTarget; {}] = [",
+        resolved.len()
+    )
+    .expect("writing to a String cannot fail");
+    for target in resolved {
+        writeln!(text, "    {},", constant_name(&target.id))
+            .expect("writing to a String cannot fail");
+    }
+    writeln!(text, "];").expect("writing to a String cannot fail");
+    text
+}
+
+fn bindings_formats(text: &mut String, adapter: &Adapter) {
     let format = &adapter.pack_format;
-    let _ = writeln!(
+    writeln!(
         text,
         "/// What a resource pack this version reads declares as its format.\n\
          pub const RESOURCE_PACK_FORMAT: PackFormat = PackFormat::new({}, {});\n\
@@ -430,55 +490,8 @@ pub(super) fn bindings(adapter: &Adapter, inventory: &Inventory, resolved: &[Res
             Spelling::PackFormat => "PackFormat",
             Spelling::MinMaxFormat => "MinMaxFormat",
         }
-    );
-
-    let _ = writeln!(
-        text,
-        "/// Capabilities this version reviewed and deliberately does not carry.\n\
-         ///\n\
-         /// A caller naming one of these is naming a decision rather than a typo.\n\
-         pub const NON_GOALS: [HookId; {}] = [{}];\n",
-        inventory.non_goals.len(),
-        inventory
-            .non_goals
-            .iter()
-            .map(|non_goal| format!("HookId::new(\"{}\")", non_goal.id))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-
-    for (hook, target) in inventory.hooks.iter().zip(resolved) {
-        let _ = writeln!(
-            text,
-            "/// {}\n\
-             pub const {}: HookTarget = HookTarget::new(\n\
-             \x20   HookId::new(\"{}\"),\n\
-             \x20   \"{}\",\n\
-             \x20   \"{}\",\n\
-             \x20   \"{}\",\n\
-             \x20   HookKind::{},\n\
-             );\n",
-            hook.capability,
-            constant_name(&hook.id),
-            target.id,
-            target.runtime_class,
-            target.runtime_member,
-            target.runtime_descriptor,
-            hook.kind.variant()
-        );
-    }
-
-    let _ = writeln!(
-        text,
-        "/// Every target the reviewed inventory pinned, in inventory order.\n\
-         pub static TARGETS: [HookTarget; {}] = [",
-        resolved.len()
-    );
-    for target in resolved {
-        let _ = writeln!(text, "    {},", constant_name(&target.id));
-    }
-    let _ = writeln!(text, "];");
-    text
+    )
+    .expect("writing to a String cannot fail");
 }
 
 /// Renders the JNI export stubs the bootstrap includes.
@@ -503,18 +516,20 @@ pub(super) fn exports(shapes: &[Shape]) -> String {
         // A refusing export answers the injected branch, so its verdict is the
         // whole point of calling it and dropping one is a bug.
         let must_use = if shape.refuses { "#[must_use]\n" } else { "" };
-        let _ = writeln!(
+        writeln!(
             text,
             "/// {}\n\
-             #[::jni::jni_mangle(\"{HOOK_CLASS}\", \"{}\")]\n\
-             {must_use}\
-             pub fn {}<'local>(\n\
-             \x20   env: ::jni::EnvUnowned<'local>,\n\
-             \x20   _class: ::jni::objects::JClass<'local>,",
+         #[::jni::jni_mangle(\"{HOOK_CLASS}\", \"{}\")]\n\
+         {must_use}\
+         pub fn {}<'local>(\n\
+         \x20   env: ::jni::EnvUnowned<'local>,\n\
+         \x20   _class: ::jni::objects::JClass<'local>,",
             shape.capability, shape.java_method, shape.rust_function
-        );
+        )
+        .expect("writing to a String cannot fail");
         for (name, parameter) in names.iter().zip(&shape.parameters) {
-            let _ = writeln!(text, "    {name}: {},", parameter.rust());
+            writeln!(text, "    {name}: {},", parameter.rust())
+                .expect("writing to a String cannot fail");
         }
 
         let values = if names.is_empty() {
@@ -536,18 +551,19 @@ pub(super) fn exports(shapes: &[Shape]) -> String {
         } else {
             ("", "enter", ";")
         };
-        let _ = writeln!(
+        writeln!(
             text,
             "){returns} {{\n\
-             \x20   crate::guard::{entry}(\n\
-             \x20       env,\n\
-             \x20       &::ravel_minecraft_adapter::pinned::{},\n\
-             \x20       |{}| ::std::result::Result::Ok({values}),\n\
-             \x20   ){terminator}\n\
-             }}\n",
+         \x20   crate::guard::{entry}(\n\
+         \x20       env,\n\
+         \x20       &::ravel_minecraft_adapter::pinned::{},\n\
+         \x20       |{}| ::std::result::Result::Ok({values}),\n\
+         \x20   ){terminator}\n\
+         }}\n",
             shape.constant,
             if carries_text { "env" } else { "_env" }
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
     text
 }
@@ -614,41 +630,42 @@ fn library_load_java() -> String {
 pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
     let mut text = String::with_capacity(shapes.len() * 384 + 2048);
     let load = library_load_java();
-    let _ = writeln!(
+    writeln!(
         text,
         "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
-         package dev.ravel.jvm;\n\n\
-         /**\n\
-         \x20* Hook surface the agent injects calls to.\n\
-         \x20*\n\
-         \x20* <p>Every method here is static, and all but the opted-in ones return\n\
-         \x20* void: the injected call site loads the target's own arguments, calls one\n\
-         \x20* of these, and continues. A hook that has to stop the call throws, which\n\
-         \x20* needs no bytecode of its own at the call site.\n\
-         \x20*\n\
-         \x20* <p>A target the reviewed inventory opts in answers a boolean instead,\n\
-         \x20* and the call site returns from the host method when it is true. The\n\
-         \x20* verdict says only whether to return, never what to return, so a target\n\
-         \x20* that returns anything but void cannot opt in at all.\n\
-         \x20*/\n\
-         public final class Hook {{\n\n\
-{load}\
-         \x20   /** Targets the agent rewrites, in reviewed inventory order. */\n\
-         \x20   public static final HookTarget[] TARGETS = {{",
+     package dev.ravel.jvm;\n\n\
+     /**\n\
+     \x20* Hook surface the agent injects calls to.\n\
+     \x20*\n\
+     \x20* <p>Every method here is static, and all but the opted-in ones return\n\
+     \x20* void: the injected call site loads the target's own arguments, calls one\n\
+     \x20* of these, and continues. A hook that has to stop the call throws, which\n\
+     \x20* needs no bytecode of its own at the call site.\n\
+     \x20*\n\
+     \x20* <p>A target the reviewed inventory opts in answers a boolean instead,\n\
+     \x20* and the call site returns from the host method when it is true. The\n\
+     \x20* verdict says only whether to return, never what to return, so a target\n\
+     \x20* that returns anything but void cannot opt in at all.\n\
+     \x20*/\n\
+     public final class Hook {{\n\n\
+    {load}\
+     \x20   /** Targets the agent rewrites, in reviewed inventory order. */\n\
+     \x20   public static final HookTarget[] TARGETS = {{",
         adapter.minecraft
-    );
+    )
+    .expect("writing to a String cannot fail");
 
     for shape in shapes {
-        let _ = writeln!(
+        writeln!(
             text,
             "        new HookTarget(\n\
-             \x20               \"{}\",\n\
-             \x20               \"{}\",\n\
-             \x20               \"{}\",\n\
-             \x20               {},\n\
-             \x20               \"{}\",\n\
-             \x20               \"{}\",\n\
-             \x20               {}),",
+         \x20               \"{}\",\n\
+         \x20               \"{}\",\n\
+         \x20               \"{}\",\n\
+         \x20               {},\n\
+         \x20               \"{}\",\n\
+         \x20               \"{}\",\n\
+         \x20               {}),",
             shape.runtime_class,
             shape.runtime_member,
             shape.runtime_descriptor,
@@ -656,18 +673,20 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
             shape.java_method,
             shape.hook_descriptor(),
             shape.refuses
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
 
-    let _ = writeln!(
+    writeln!(
         text,
         "    }};\n\n\
-         \x20   private Hook() {{\n\
-         \x20   }}\n\n\
-         \x20   /** Forces this class to initialize, and with it the library load. */\n\
-         \x20   public static void initialize() {{\n\
-         \x20   }}\n"
-    );
+     \x20   private Hook() {{\n\
+     \x20   }}\n\n\
+     \x20   /** Forces this class to initialize, and with it the library load. */\n\
+     \x20   public static void initialize() {{\n\
+     \x20   }}\n"
+    )
+    .expect("writing to a String cannot fail");
 
     for shape in shapes {
         let declared = shape
@@ -677,56 +696,60 @@ pub(super) fn hook_java(adapter: &Adapter, shapes: &[Shape]) -> String {
             .map(|(index, parameter)| format!("{} argument{index}", parameter.java()))
             .collect::<Vec<_>>()
             .join(", ");
-        let _ = writeln!(
+        writeln!(
             text,
             "    /** {} */\n\
-             \x20   public static native {} {}({declared});\n",
+         \x20   public static native {} {}({declared});\n",
             shape.capability,
             shape.java_returns(),
             shape.java_method
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
 
     // Written rather than generated, like the count below them: these belong to
     // the bootstrap rather than to any version's hook surface. They are declared
     // here because Ravel has one exported symbol surface and it is this class —
     // a screen with natives of its own would be a second one.
-    let _ = writeln!(text, "{}", written_declarations());
+    writeln!(text, "{}", written_declarations()).expect("writing to a String cannot fail");
     text
 }
 
 /// Renders the game names the agent jar's hand-written adapters resolve.
 pub(super) fn game_names(adapter: &Adapter, surface: &Reflection) -> String {
     let mut text = String::with_capacity(surface.classes.len() * 160 + 1024);
-    let _ = writeln!(
+    writeln!(
         text,
         "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
-         package dev.ravel.jvm;\n\n\
-         /**\n\
-         \x20* Game classes the hand-written adapters resolve by name.\n\
-         \x20*\n\
-         \x20* <p>Every value is the name the JVM links, and every comment is the\n\
-         \x20* Mojang name the reviewed surface declared it under. The two are the\n\
-         \x20* same under an unobfuscated version and differ under an obfuscated one,\n\
-         \x20* which is why no source spells either of them by hand.\n\
-         \x20*/\n\
-         final class GameNames {{\n",
+     package dev.ravel.jvm;\n\n\
+     /**\n\
+     \x20* Game classes the hand-written adapters resolve by name.\n\
+     \x20*\n\
+     \x20* <p>Every value is the name the JVM links, and every comment is the\n\
+     \x20* Mojang name the reviewed surface declared it under. The two are the\n\
+     \x20* same under an unobfuscated version and differ under an obfuscated one,\n\
+     \x20* which is why no source spells either of them by hand.\n\
+     \x20*/\n\
+     final class GameNames {{\n",
         adapter.minecraft
-    );
+    )
+    .expect("writing to a String cannot fail");
     for reflected in &surface.classes {
-        let _ = writeln!(
+        writeln!(
             text,
             "    /** {}. */\n\
-             \x20   static final String {} = \"{}\";\n",
+         \x20   static final String {} = \"{}\";\n",
             reflected.class, reflected.name, reflected.runtime
-        );
+        )
+        .expect("writing to a String cannot fail");
     }
-    let _ = writeln!(
+    writeln!(
         text,
         "    private GameNames() {{\n\
-         \x20   }}\n\
-         }}"
-    );
+     \x20   }}\n\
+     }}"
+    )
+    .expect("writing to a String cannot fail");
     text
 }
 
@@ -743,22 +766,23 @@ pub(super) fn game_members(
     mapping: &Mapping,
 ) -> Result<String, GenerateError> {
     let mut text = String::with_capacity(surface.classes.len() * 200 + 1024);
-    let _ = writeln!(
+    writeln!(
         text,
         "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
-         package dev.ravel.jvm;\n\n\
-         /**\n\
-         \x20* Members of the game classes the hand-written adapters resolve by name.\n\
-         \x20*\n\
-         \x20* <p>Every value is the linked name and the linked descriptor the JVM\n\
-         \x20* declares, separated by a colon, and every comment is the reviewed\n\
-         \x20* member the surface declared it under. The descriptor is carried\n\
-         \x20* because a name alone does not pick an overload, and under an\n\
-         \x20* obfuscated version it does not even pick a method.\n\
-         \x20*/\n\
-         final class GameMembers {{\n",
+     package dev.ravel.jvm;\n\n\
+     /**\n\
+     \x20* Members of the game classes the hand-written adapters resolve by name.\n\
+     \x20*\n\
+     \x20* <p>Every value is the linked name and the linked descriptor the JVM\n\
+     \x20* declares, separated by a colon, and every comment is the reviewed\n\
+     \x20* member the surface declared it under. The descriptor is carried\n\
+     \x20* because a name alone does not pick an overload, and under an\n\
+     \x20* obfuscated version it does not even pick a method.\n\
+     \x20*/\n\
+     final class GameMembers {{\n",
         adapter.minecraft
-    );
+    )
+    .expect("writing to a String cannot fail");
     let mut written = BTreeSet::new();
     for reflected in &surface.classes {
         let owner = reflected.class.replace('.', "/");
@@ -780,20 +804,22 @@ pub(super) fn game_members(
                      would be unreachable"
                 )));
             }
-            let _ = writeln!(
+            writeln!(
                 text,
                 "    /** {}#{}. */\n\
-                 \x20   static final String {constant} = \"{name}:{linked}\";\n",
+             \x20   static final String {constant} = \"{name}:{linked}\";\n",
                 reflected.class, member.name
-            );
+            )
+            .expect("writing to a String cannot fail");
         }
     }
-    let _ = writeln!(
+    writeln!(
         text,
         "    private GameMembers() {{\n\
-         \x20   }}\n\
-         }}"
-    );
+     \x20   }}\n\
+     }}"
+    )
+    .expect("writing to a String cannot fail");
     Ok(text)
 }
 
@@ -826,80 +852,84 @@ pub(super) fn menu_layout(adapter: &Adapter, inventory: &Inventory) -> String {
         .find(|hook| hook.id == inputs::TITLE_MENU_SEAM)
         .and_then(|hook| hook.title_menu_row);
     let mut text = String::with_capacity(1024);
-    let _ = writeln!(
+    writeln!(
         text,
         "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
-         package dev.ravel.jvm;\n\n\
-         /**\n\
-         \x20* Where Ravel's own row goes on this version's title menu.\n\
-         \x20*\n\
-         \x20* <p>Measured down from the top the column builder is handed. It is\n\
-         \x20* declared rather than derived because a column builder that returns\n\
-         \x20* nothing says nothing about what is free below it, and a title screen\n\
-         \x20* that places its own lower row at a constant reserves nothing when a\n\
-         \x20* row is added to the column.\n\
-         \x20*\n\
-         \x20* <p>{} is what this version declares.\n\
-         \x20*/\n\
-         final class MenuLayout {{\n\n\
-         \x20   /**\n\
-         \x20    * What a version whose column returns its own row declares.\n\
-         \x20    *\n\
-         \x20    * <p>Out of the range of any row, because a row may be negative: a\n\
-         \x20    * version whose menu has no space below the column has Ravel's row\n\
-         \x20    * above it, and an ordinary sentinel would be a legal offset.\n\
-         \x20    */\n\
-         \x20   static final int DERIVED = Integer.MIN_VALUE;\n\n\
-         \x20   /**\n\
-         \x20    * The row, or DERIVED where this version's column hands one back.\n\
-         \x20    */\n\
-         \x20   static final int RAVEL_ROW = {};\n\n\
-         \x20   private MenuLayout() {{\n\
-         \x20   }}\n\
-         }}",
+     package dev.ravel.jvm;\n\n\
+     /**\n\
+     \x20* Where Ravel's own row goes on this version's title menu.\n\
+     \x20*\n\
+     \x20* <p>Measured down from the top the column builder is handed. It is\n\
+     \x20* declared rather than derived because a column builder that returns\n\
+     \x20* nothing says nothing about what is free below it, and a title screen\n\
+     \x20* that places its own lower row at a constant reserves nothing when a\n\
+     \x20* row is added to the column.\n\
+     \x20*\n\
+     \x20* <p>{} is what this version declares.\n\
+     \x20*/\n\
+     final class MenuLayout {{\n\n\
+     \x20   /**\n\
+     \x20    * What a version whose column returns its own row declares.\n\
+     \x20    *\n\
+     \x20    * <p>Out of the range of any row, because a row may be negative: a\n\
+     \x20    * version whose menu has no space below the column has Ravel's row\n\
+     \x20    * above it, and an ordinary sentinel would be a legal offset.\n\
+     \x20    */\n\
+     \x20   static final int DERIVED = Integer.MIN_VALUE;\n\n\
+     \x20   /**\n\
+     \x20    * The row, or DERIVED where this version's column hands one back.\n\
+     \x20    */\n\
+     \x20   static final int RAVEL_ROW = {};\n\n\
+     \x20   private MenuLayout() {{\n\
+     \x20   }}\n\
+     }}",
         adapter.minecraft,
         row.map_or_else(
             || "No row, because this version's column hands one back".to_owned(),
             |row| format!("A row {row} pixels below the column top")
         ),
         row.map_or_else(|| "DERIVED".to_owned(), |row| row.to_string())
-    );
+    )
+    .expect("writing to a String cannot fail");
     text
 }
 
 /// Renders the screen class names the agent jar loads reflectively.
 pub(super) fn screen_names(adapter: &Adapter, names: &[(String, String)]) -> String {
     let mut text = String::with_capacity(names.len() * 120 + 768);
-    let _ = writeln!(
+    writeln!(
         text,
         "// Generated from the pinned Minecraft {} inputs. Do not edit.\n\
-         package dev.ravel.jvm;\n\n\
-         /**\n\
-         \x20* Ravel's own screen classes, as the version they were generated for\n\
-         \x20* names them.\n\
-         \x20*\n\
-         \x20* <p>A screen extends a game class, so it is generated rather than\n\
-         \x20* written and it is emitted beside the names that version links. Under a\n\
-         \x20* version whose game is in the unnamed package the screens are there too,\n\
-         \x20* which is why no source spells one of these by hand.\n\
-         \x20*/\n\
-         final class ScreenNames {{\n",
+     package dev.ravel.jvm;\n\n\
+     /**\n\
+     \x20* Ravel's own screen classes, as the version they were generated for\n\
+     \x20* names them.\n\
+     \x20*\n\
+     \x20* <p>A screen extends a game class, so it is generated rather than\n\
+     \x20* written and it is emitted beside the names that version links. Under a\n\
+     \x20* version whose game is in the unnamed package the screens are there too,\n\
+     \x20* which is why no source spells one of these by hand.\n\
+     \x20*/\n\
+     final class ScreenNames {{\n",
         adapter.minecraft
-    );
+    )
+    .expect("writing to a String cannot fail");
     for (constant, binary) in names {
         let simple = binary.rsplit('.').next().unwrap_or(binary);
-        let _ = writeln!(
+        writeln!(
             text,
             "    /** Ravel's {simple}, where this version's names put it. */\n\
-             \x20   static final String {constant} = \"{binary}\";\n"
-        );
+         \x20   static final String {constant} = \"{binary}\";\n"
+        )
+        .expect("writing to a String cannot fail");
     }
-    let _ = writeln!(
+    writeln!(
         text,
         "    private ScreenNames() {{\n\
-         \x20   }}\n\
-         }}"
-    );
+     \x20   }}\n\
+     }}"
+    )
+    .expect("writing to a String cannot fail");
     text
 }
 
@@ -1138,38 +1168,38 @@ fn written_declarations() -> &'static str {
 /// Renders the stub provenance lock.
 pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
     let mut text = String::with_capacity(stubs.len() * 256 + 1536);
-    let _ = writeln!(
+    writeln!(
         text,
         "# Generated stub provenance for Minecraft {}. Do not edit.\n\
-         #\n\
-         # Every entry below is one compile-time stub the settings screen is built\n\
-         # against, read out of the pinned jars: the client jar first, then the\n\
-         # serialization library the game's own signatures name. Descriptors and\n\
-         # access flags are the jar's own, which is the point: a hand-written stub\n\
-         # transcribes a generic signature, and the JVM links on the erased one.\n\
-         #\n\
-         # What this file does not promise:\n\
-         #\n\
-         # - It is checked only where the pinned jars are. A machine without them\n\
-         #   generates from this file, so on that machine the lock is the source and\n\
-         #   cannot disagree with anything. Drift is caught where the jars exist.\n\
-         # - It pins against jar hashes, so it is only as current as those pins. A\n\
-         #   Minecraft build nobody has re-pinned against is unchecked.\n\
-         # - It carries no hierarchy the stub set does not already hold. A supertype\n\
-         #   outside the set is dropped, so a change to one is invisible here.\n\
-         # - It covers the members `stubs.toml` seeds and nothing else. A member the\n\
-         #   screen starts calling is unpinned until it is seeded.\n\
-         #\n\
-         # This is a different table from mappings.lock and stays one. That file\n\
-         # pins call sites the agent rewrites; this one pins declarations the screen\n\
-         # compiles against, and one table meaning both is how the next person\n\
-         # misreads it.\n\
-         \n\
-         schemaVersion = {}\n\
-         minecraft = \"{}\"\n\
-         extractor = \"{EXTRACTOR}\"\n\
-         clientJarSha256 = \"{}\"\n\
-         dataFixerJarSha256 = \"{}\"",
+     #\n\
+     # Every entry below is one compile-time stub the settings screen is built\n\
+     # against, read out of the pinned jars: the client jar first, then the\n\
+     # serialization library the game's own signatures name. Descriptors and\n\
+     # access flags are the jar's own, which is the point: a hand-written stub\n\
+     # transcribes a generic signature, and the JVM links on the erased one.\n\
+     #\n\
+     # What this file does not promise:\n\
+     #\n\
+     # - It is checked only where the pinned jars are. A machine without them\n\
+     #   generates from this file, so on that machine the lock is the source and\n\
+     #   cannot disagree with anything. Drift is caught where the jars exist.\n\
+     # - It pins against jar hashes, so it is only as current as those pins. A\n\
+     #   Minecraft build nobody has re-pinned against is unchecked.\n\
+     # - It carries no hierarchy the stub set does not already hold. A supertype\n\
+     #   outside the set is dropped, so a change to one is invisible here.\n\
+     # - It covers the members `stubs.toml` seeds and nothing else. A member the\n\
+     #   screen starts calling is unpinned until it is seeded.\n\
+     #\n\
+     # This is a different table from mappings.lock and stays one. That file\n\
+     # pins call sites the agent rewrites; this one pins declarations the screen\n\
+     # compiles against, and one table meaning both is how the next person\n\
+     # misreads it.\n\
+     \n\
+     schemaVersion = {}\n\
+     minecraft = \"{}\"\n\
+     extractor = \"{EXTRACTOR}\"\n\
+     clientJarSha256 = \"{}\"\n\
+     dataFixerJarSha256 = \"{}\"",
         adapter.minecraft,
         adapter.schema_version,
         adapter.minecraft,
@@ -1180,19 +1210,27 @@ pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
             .sha256
             .as_deref()
             .unwrap_or("")
-    );
+    )
+    .expect("writing to a String cannot fail");
 
+    stub_lock_entries(&mut text, stubs);
+    text
+}
+
+fn stub_lock_entries(text: &mut String, stubs: &[Stub]) {
     for stub in stubs {
-        let _ = writeln!(
+        writeln!(
             text,
             "\n[[stub]]\nclass = \"{}\"\nflags = {}",
             stub.class, stub.flags
-        );
+        )
+        .expect("writing to a String cannot fail");
         if let Some(parent) = &stub.extends {
-            let _ = writeln!(text, "extends = \"{parent}\"");
+            writeln!(text, "extends = \"{parent}\"").expect("writing to a String cannot fail");
         }
         if let Some(chained) = &stub.super_constructor {
-            let _ = writeln!(text, "superConstructor = \"{chained}\"");
+            writeln!(text, "superConstructor = \"{chained}\"")
+                .expect("writing to a String cannot fail");
         }
         if !stub.implements.is_empty() {
             let rendered = stub
@@ -1201,20 +1239,20 @@ pub(super) fn stub_lock(adapter: &Adapter, stubs: &[Stub]) -> String {
                 .map(|name| format!("\"{name}\""))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let _ = writeln!(text, "implements = [{rendered}]");
+            writeln!(text, "implements = [{rendered}]").expect("writing to a String cannot fail");
         }
         for member in &stub.members {
-            let _ = writeln!(
+            writeln!(
                 text,
                 "\n[[stub.member]]\nname = \"{}\"\ndescriptor = \"{}\"\nflags = {}\nmethod = {}",
                 member.name, member.descriptor, member.flags, member.method
-            );
+            )
+            .expect("writing to a String cannot fail");
             if let Some(element) = &member.returns {
-                let _ = writeln!(text, "returns = \"{element}\"");
+                writeln!(text, "returns = \"{element}\"").expect("writing to a String cannot fail");
             }
         }
     }
-    text
 }
 
 /// Splits an internal class name into its package and the name Java declares.

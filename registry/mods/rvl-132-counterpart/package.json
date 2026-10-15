@@ -16,6 +16,14 @@
     "dedicated-server"
   ],
   "configurationSchemas": [],
+  "dependencies": [
+    {
+      "id": "rvl_210_counterpart",
+      "relationship": "required",
+      "version": ">=0.1.0, <0.2.0",
+      "order": "after"
+    }
+  ],
   "authors": [
     {
       "name": "Ravel registry maintainers"
@@ -31,7 +39,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "f83d5be2796d7cc36f07c34ecf2a3d461b294ed17515b285f4a22e72cdfed1d6"
+        "sha256": "9449ffe4cc38a692df90591223672fd6163bedd201d8094403714934320e07d5"
       },
       {
         "path": "aliases.json",
@@ -71,7 +79,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "515d5f76be7dc355f70df7b495de545d4534851439e95dd59b61682514e31c57"
+        "sha256": "4d5ca3af4fcf6c9ee9032f009f419769c80b474ae7bfb21958bc619335db5390"
       },
       {
         "path": "src/forms.rs",
@@ -87,7 +95,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "a8c7f86b2e07ecdef03514603fd18b52fe709ad3ef1e9c679c59d4c749bcedae"
+        "sha256": "338c1eb8189c0f282d972385e89d510aafde43b61623b374b8373bd14a2b1bf8"
       },
       {
         "path": "src/readings.rs",
@@ -99,7 +107,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "c26b05f38be3275ae309dbb94fdbc93cee82898c134230660e7edf5cb08ba94e"
+        "sha256": "9d481566852ab3d9d58fa3f5ae5cd04e665ba18500d3944a4745e9afa1b4464e"
       },
       {
         "path": "src/storage.rs",
@@ -109,6 +117,6 @@
   },
   "provenance": {
     "record": "provenance.json",
-    "sha256": "7c6d6ee0776e1e6da8a86b52ae36e0b51963451bce21225bd9761fda5d23f702"
+    "sha256": "d393df181a9f63183077607c37d69c25c49a5b12b818d23593bdead6a2f30547"
   }
 }

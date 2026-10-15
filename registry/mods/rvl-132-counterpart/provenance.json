@@ -16,7 +16,7 @@
     {
       "category": "metadata",
       "locator": "provenance/m6-foundation/RVL-132.json",
-      "revision": "sha256 d2c5313ddfc04b2dfd4e978a0482a027079511347f1aa9cb966346e23b158cd9",
+      "revision": "sha256 f45836da9699da8134724e7f1d5502361e05eb088169af1d0122095cc394a36e",
       "use": "The rights record the specification was written under, which clears code and behaviour and leaves names unresolved. The constraint bites in three places for this entry and this package answers each: the three registered ingredient-kind names and the seven category-type names are coined in this package's own namespace, which section four licenses for a counterpart that need not be save-compatible, so aliases.json is empty; and the item form's count-escape field name is a compatibility requirement, so it is read from a build-time input with a placeholder the tests pin the surrounding format with.",
       "producedBy": "M6-W3"
     },

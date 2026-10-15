@@ -53,7 +53,7 @@ pub fn small_grid_positions() -> [usize; SMALL * SMALL] {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ShapedRecipe {
     /// The nine positions, each naming an identity or standing empty.
-    pub demands: [Option<String>; SMALL * SMALL],
+    pub demands: [Option<ravel_sdk::content::ContentId>; SMALL * SMALL],
     /// What a match assembles.
     pub result: Stack,
 }
@@ -244,7 +244,7 @@ impl MenuLock {
 }
 
 /// Why a card refused something.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PatternRefused {
     /// A write named a position that is not an input.
     Position {
@@ -288,8 +288,8 @@ mod tests {
     fn plank_recipe() -> ShapedRecipe {
         ShapedRecipe {
             demands: [
-                Some("counterpart:beam".to_owned()),
-                Some("counterpart:beam".to_owned()),
+                Some("counterpart:beam".parse().expect("a legal identity")),
+                Some("counterpart:beam".parse().expect("a legal identity")),
                 None,
                 None,
                 None,
@@ -348,7 +348,10 @@ mod tests {
 
         assert!(card.evaluate(&recipes));
         assert_eq!(
-            card.output().expect("a match writes the output").identity,
+            card.output()
+                .expect("a match writes the output")
+                .identity
+                .to_string(),
             "counterpart:plate",
             "the scan stops at the first match in the order it was given"
         );

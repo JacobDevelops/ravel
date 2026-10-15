@@ -88,7 +88,7 @@ pub struct RebuildReport {
 /// The documents one reload collected, keyed by identifier.
 #[derive(Clone, Debug, Default)]
 pub struct Catalogue {
-    documents: BTreeMap<String, JsonValue>,
+    documents: BTreeMap<ravel_sdk::content::ContentId, JsonValue>,
 }
 
 impl Catalogue {
@@ -104,8 +104,11 @@ impl Catalogue {
     #[must_use]
     pub fn path_of(identifier: &str) -> Option<String> {
         let qualified = qualify(identifier)?;
-        let (namespace, path) = qualified.split_once(':')?;
-        Some(format!("{namespace}/{DIRECTORY}/{path}.json"))
+        Some(format!(
+            "{}/{DIRECTORY}/{}.json",
+            qualified.namespace(),
+            qualified.path()
+        ))
     }
 
     /// Replaces the whole table with what this reload collected.
@@ -170,8 +173,8 @@ impl Catalogue {
     }
 
     /// Returns the identifiers the table holds, in a deterministic order.
-    pub fn identifiers(&self) -> impl Iterator<Item = &str> {
-        self.documents.keys().map(String::as_str)
+    pub fn identifiers(&self) -> impl Iterator<Item = &ravel_sdk::content::ContentId> {
+        self.documents.keys()
     }
 }
 
@@ -282,7 +285,10 @@ mod tests {
         assert_eq!(report.held, 1);
         assert_eq!(catalogue.find("not a name", "joined_cube"), Lookup::Absent);
         assert_eq!(
-            catalogue.identifiers().collect::<Vec<_>>(),
+            catalogue
+                .identifiers()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
             ["base:good"],
             "and the identifiers come back qualified and ordered"
         );

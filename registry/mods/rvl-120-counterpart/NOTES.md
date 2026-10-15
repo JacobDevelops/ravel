@@ -101,7 +101,7 @@ textbook rule so that a later "simplification" to an unsigned accumulator fails 
 - **The re-resolve of the seventy colours is scoped to the client document on both paths (§3).** The
   original tests which document arrived on load and does not test it on reload, so reloading the
   server document on a dedicated server re-reads seventy client values with no loaded backing.
-  `Colours::resolve` takes a `Document` and answers false for the server one, and `Shared::configure`
+  `Colours::resolve` takes a `Document` and answers false for the server one, and `Entry::configure`
   passes `Document::of(side)`, so the scoping runs in production and not only under test: an instance
   built for either server side reads nothing where the original reads seventy.
 - **The three server settings are declared `common` rather than `dedicated-server` (§3).** Ravel has
@@ -160,10 +160,10 @@ textbook rule so that a later "simplification" to an unsigned accumulator fails 
   their bit pattern. Comparing them by equality would make a map holding a value that is not a number
   report dirty on every check, re-sending the whole value set every tick for the life of the screen.
 - **Neither the lifecycle nor the observed signals are kept as a log (§2).** The loader broadcasts an
-  event per tick. `Shared` keeps a count and the last one for each, so a running server does not grow
+  event per tick. `Entry` keeps a count and the last one for each, so a running server does not grow
   for the length of a session.
 - **A malformed declaration is reported rather than swallowed (§2, §3, §4).** Both declarations are
-  built once in `Shared::on` and their refusals are carried into `enter`. Reading a malformed
+  built once in `Entry::new` and their refusals are carried into `enter`. Reading a malformed
   configuration declaration as "this package declares none" would drop all seventy-three settings to
   their shipped defaults with nothing said anywhere.
 - **A list command with no codec is refused at declaration (§7).** The original discovers this by
@@ -172,7 +172,7 @@ textbook rule so that a later "simplification" to an unsigned accumulator fails 
   which is the same startup-time fault said plainly.
 - **The key binding is a press (§14).** The original polls the binding with a direct device query and
   no edge detection, so holding the key re-opens the manual on every client tick.
-  `Shared::manual_key` edge-detects, so holding it opens the manual once.
+  `Entry::manual_key` edge-detects, so holding it opens the manual once.
 - **The run-length reader has an explicit end (§12.4).** The original answers zero forever past the
   end, so a caller has to already know how many values it expects. `Runs::next_value` answers
   nothing, and `Runs::next_or_zero` keeps the original rule for a dependent that relies on it.
@@ -198,7 +198,7 @@ Each needs a seam Ravel does not publish at the reviewed revision. None is stubb
 - **Discovering a dependent's statically declared commands (§7).** Ravel publishes no way for one
   package to inspect another's types, so the original's annotation scan has no equivalent. What it
   does publish is an ordered registration window, so a dependent declares into
-  `Shared::commands_mut` at its own declaration point and the guarantee that a command exists before
+  `Entry::commands_mut` at its own declaration point and the guarantee that a command exists before
   it is called comes from declaration order. Everything a dependent observes about the transport —
   the three shapes, the exempt element set, the startup refusal, the return-false rule and the
   bounded argument bag — is implemented.
@@ -224,7 +224,7 @@ Each needs a seam Ravel does not publish at the reviewed revision. None is stubb
   original neither prevents nor documents.
 - **The four optional integrations (§15).** Ravel publishes no facility for optional cross-mod
   integration. `INTEGRATIONS` names the four roles and nothing stubs one. The rule that survives is
-  that absence is never an error, which `Shared::latch_manual` and `Shared::manual_present` hold.
+  that absence is never an error, which `Entry::latch_manual` and `Entry::manual_present` hold.
 - **The client-only observers of §2.** Ravel's `sides::ClientOnly` is where client-only work goes and
   the loader decides what runs where, so the original's three extra client registration points are
   Ravel's side isolation rather than a runtime side test in this package.

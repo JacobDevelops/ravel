@@ -27,11 +27,11 @@
     "files": [
       {
         "path": "Cargo.toml",
-        "sha256": "1d7f45e0e180df356ac61a0cab4a19fa3247a9d03024780519c312ad8e3cc972"
+        "sha256": "8fa8ee71bfedf7b3577ef56ebff612f3fc62c3016154977bf57573a8b304675f"
       },
       {
         "path": "NOTES.md",
-        "sha256": "918f4a6bf1a7c26aa9b7e60527d4698295c0ca1a922c096ba8179ab0f6a5024f"
+        "sha256": "c8e1c6b66c696bd6fe122edcb5604c5de80acaa3a50b1fdd5bdaf6f4ba126150"
       },
       {
         "path": "aliases.json",
@@ -55,11 +55,11 @@
       },
       {
         "path": "src/arithmetic.rs",
-        "sha256": "c633d32feb0eb8e2047d442eb1795e21dd73a6a7e80851682b0477b867f73ee9"
+        "sha256": "c9133a155085a471cb3ac3c82286f2333afb9e42dcf907bc237df49285f435b3"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "4a861873e28a16082fb216eba6c3d0e056449d147426028e2ba310ae76a44c0d"
+        "sha256": "d0abe9817c9236072f62abfe9358e9b2718a8971343275801353564f68861034"
       },
       {
         "path": "src/flags.rs",
@@ -71,7 +71,7 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "7dabcbf159a5b3a1908dac5a23499a055f20f9d042539c9426231094b9bfd816"
+        "sha256": "0bed2669f64f4649a647cccee585860e0e10bf83224f204d68fc9543e002c95f"
       },
       {
         "path": "src/reusable.rs",
@@ -83,12 +83,12 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "50591fbf8ebea07ca7bd6ca55d06b14ae74c9d506eed114bf3660b575d1307c3"
+        "sha256": "08bcb9978ff9220da31a83edf9b5e0562876be0ef6cf26a1ad17022a65c8c943"
       }
     ]
   },
   "provenance": {
     "record": "provenance.json",
-    "sha256": "dbb2a46a2a0a2a892533564f745cf246c70c6603aed804e59070886152b1ff23"
+    "sha256": "9784d70da9a7e127fbe143d4afb668363f98b7618b6ee4553afb5cc00ab5fc2c"
   }
 }

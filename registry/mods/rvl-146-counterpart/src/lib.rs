@@ -58,10 +58,10 @@
 //! slot with a language assertion, and assertions are disabled in a normal
 //! launch, so a second construction silently replaces the first and every holder
 //! of the first is left pointing at a library nothing else uses.
-//! [`Shared::sole`] claims the slot and *answers* [`AlreadyConstructed`] for a
+//! [`Entry::sole`] claims the slot and *answers* [`AlreadyConstructed`] for a
 //! second claim, which is the refusal the original swallows.
 //!
-//! The exported entry builds with [`Shared::new`], which claims nothing. A host
+//! The exported entry builds with [`Entry::new`], which claims nothing. A host
 //! is not the only caller of that entry — the generated members function drives
 //! it from a test or a diagnostic with no JVM in sight — so a second call in one
 //! process is a supported path, and an entry that faulted there would unwind out
@@ -127,7 +127,7 @@ pub const HOST_BLOCKERS: [&str; 5] = [
 /// The monotonic clock highlights expire against is advanced by this on every
 /// client tick, so a lifetime is a duration in game time rather than a reading of
 /// the machine's wall clock. A host with a real monotonic source calls
-/// [`Shared::advance_to`] instead and this is never consulted.
+/// [`Entry::advance_to`] instead and this is never consulted.
 pub const TICK_MILLIS: u64 = 50;
 
 /// The most saved recipe memories one world holds through this library.
@@ -215,7 +215,7 @@ impl EventCounts {
 
 /// The shared library, as the loader drives it.
 #[derive(Debug)]
-pub struct Shared {
+pub struct Entry {
     side: Side,
     collection: Collection,
     sends: Sends,
@@ -227,10 +227,10 @@ pub struct Shared {
     entered: Vec<LifecycleState>,
 }
 
-impl Shared {
+impl Entry {
     /// Builds the library on a side.
     ///
-    /// This does not claim the process-wide slot: [`Shared::sole`] does, and it
+    /// This does not claim the process-wide slot: [`Entry::sole`] does, and it
     /// is what a host calls.
     #[must_use]
     pub fn new(side: Side) -> Self {
@@ -362,7 +362,7 @@ impl Shared {
     /// A world holding more than [`MAX_MEMORIES`] opens, because refusing would
     /// cost a player their world, but it is not saved: writing what was held
     /// back over what was not would delete the rest permanently. Every dropped
-    /// entry is named in [`Shared::recovered`].
+    /// entry is named in [`Entry::recovered`].
     #[must_use]
     pub fn dropped(&self) -> Option<usize> {
         let dropped = self
@@ -442,7 +442,7 @@ impl Shared {
 }
 
 #[declare_mod(id = "rvl_146_counterpart")]
-impl Mod for Shared {
+impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.entered.push(state);
         Ok(())
@@ -470,7 +470,8 @@ impl Mod for Shared {
 
     fn saved_data_declaration(&self) -> Result<Option<SavedDataDeclaration>, ModError> {
         Memory::declaration(Self::owner())
-            .map(Some).map_err(|error| ModError::refused(error.to_string()))
+            .map(Some)
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     fn save_saved_data(&self) -> Result<Option<SavedDataEnvelope>, ModError> {
@@ -523,7 +524,7 @@ impl Mod for Shared {
     }
 }
 
-export_mod!(|side| Shared::new(side));
+export_mod!(|side| Entry::new(side));
 
 #[cfg(test)]
 mod tests {
@@ -533,8 +534,8 @@ mod tests {
     use ravel_sdk::save::SavedDataPlan;
 
     use super::{
-        __ravel_entry, AlreadyConstructed, DECLINED, EventCounts, HOST_BLOCKERS, ItemForm,
-        MAX_MEMORIES, MAX_MEMORY_NAME, MOD_ID, Memory, MemoryRefused, Moment, ReadFailure, Shared,
+        __ravel_entry, AlreadyConstructed, DECLINED, Entry, EventCounts, HOST_BLOCKERS, ItemForm,
+        MAX_MEMORIES, MAX_MEMORY_NAME, MOD_ID, Memory, MemoryRefused, Moment, ReadFailure,
         TICK_MILLIS,
     };
     use crate::colour::Colour;
@@ -564,7 +565,7 @@ mod tests {
     }
 
     fn recipe(path: &str) -> ContentId {
-        ContentId::new(Shared::owner(), path).expect("a legal content path")
+        ContentId::new(Entry::owner(), path).expect("a legal content path")
     }
 
     fn key(x: i32) -> Key {
@@ -578,21 +579,13 @@ mod tests {
     }
 
     #[test]
-    fn the_declared_identity_is_the_one_the_package_is_validated_under() {
-        let shared = Shared::new(Side::Client);
-        assert_eq!(Shared::declared_id().as_str(), MOD_ID);
-        assert_eq!(shared.id().as_str(), MOD_ID);
-        assert_eq!(shared.side(), Side::Client);
-    }
-
-    #[test]
     fn the_library_is_constructed_once_and_a_second_construction_is_refused() {
         // The only test that claims the process-wide slot, which is what makes
         // it deterministic beside every other test here. Nothing else claims it,
         // the exported entry included: `sole` is for a caller that can hear the
         // refusal, and the entry has nowhere to put one.
-        assert!(Shared::sole(Side::Client).is_ok());
-        assert_eq!(Shared::sole(Side::Client).err(), Some(AlreadyConstructed));
+        assert!(Entry::sole(Side::Client).is_ok());
+        assert_eq!(Entry::sole(Side::Client).err(), Some(AlreadyConstructed));
         assert_eq!(
             AlreadyConstructed.to_string(),
             "the shared library is already constructed in this process"
@@ -600,27 +593,16 @@ mod tests {
     }
 
     #[test]
-    fn a_library_that_declared_nothing_claims_nothing() {
-        let mut shared = Shared::new(Side::DedicatedServer);
-        let mut registrar = Accepting::default();
-        shared
-            .register(&mut registrar)
-            .expect("an accepting registrar refuses nothing");
-        assert_eq!(registrar.claimed().len(), 0);
-        assert_eq!(
-            shared
-                .content_declaration()
-                .expect("valid content")
-                .expect("a declaration")
-                .entries()
-                .len(),
-            0
-        );
+    fn the_declared_identity_is_the_one_the_package_is_validated_under() {
+        let shared = Entry::new(Side::Client);
+        assert_eq!(Entry::declared_id().as_str(), MOD_ID);
+        assert_eq!(shared.id().as_str(), MOD_ID);
+        assert_eq!(shared.side(), Side::Client);
     }
 
     #[test]
     fn what_a_dependent_declared_is_what_the_barrier_claims() {
-        let mut shared = Shared::new(Side::DedicatedServer);
+        let mut shared = Entry::new(Side::DedicatedServer);
         shared
             .collection_mut()
             .block("crusher", ItemForm::Default, &[])
@@ -644,13 +626,13 @@ mod tests {
 
     #[test]
     fn client_only_state_is_not_built_on_a_server_and_costs_it_nothing() {
-        let mut server = Shared::new(Side::DedicatedServer);
+        let mut server = Entry::new(Side::DedicatedServer);
         assert!(!server.has_client_state());
         assert!(server.client().is_err());
         assert_eq!(server.advance_to(Moment(10_000)), 0);
         server.on_disconnect();
 
-        let client = Shared::new(Side::Client);
+        let client = Entry::new(Side::Client);
         assert!(client.has_client_state());
         assert!(
             client
@@ -663,7 +645,7 @@ mod tests {
 
     #[test]
     fn a_client_tick_advances_the_clock_and_expires_what_its_time_has_passed() {
-        let mut shared = Shared::new(Side::Client);
+        let mut shared = Entry::new(Side::Client);
         shared
             .client_mut()
             .expect("a client")
@@ -690,7 +672,7 @@ mod tests {
 
     #[test]
     fn every_event_is_counted_rather_than_collected() {
-        let mut shared = Shared::new(Side::Client);
+        let mut shared = Entry::new(Side::Client);
         for _ in 0..3 {
             shared.observe(GameEvent::ServerTick).expect("observed");
         }
@@ -719,7 +701,7 @@ mod tests {
 
     #[test]
     fn leaving_a_world_forgets_the_highlights_a_client_held() {
-        let mut shared = Shared::new(Side::Client);
+        let mut shared = Entry::new(Side::Client);
         shared
             .client_mut()
             .expect("a client")
@@ -739,7 +721,7 @@ mod tests {
 
     #[test]
     fn the_whole_lifecycle_runs_through_the_entry_alone() {
-        let mut shared = Shared::new(Side::IntegratedServer);
+        let mut shared = Entry::new(Side::IntegratedServer);
         for state in LifecycleState::ALL {
             shared.enter(state).expect("every step is accepted");
         }
@@ -748,7 +730,7 @@ mod tests {
 
     #[test]
     fn a_memory_written_into_a_world_is_the_memory_read_back_out_of_it() {
-        let mut shared = Shared::new(Side::IntegratedServer);
+        let mut shared = Entry::new(Side::IntegratedServer);
         shared
             .remember(
                 "the crusher at 0 64 0",
@@ -763,7 +745,7 @@ mod tests {
             .expect("saving produces an envelope")
             .expect("this library owns world data");
 
-        let mut opened = Shared::new(Side::IntegratedServer);
+        let mut opened = Entry::new(Side::IntegratedServer);
         let declaration = opened
             .saved_data_declaration()
             .expect("valid saved data")
@@ -793,13 +775,10 @@ mod tests {
         memory[spellings.document()] = inner;
         let mut payload = ravel_sdk::json!({});
         payload["the crusher"] = memory;
-        let envelope = ravel_sdk::save::SavedDataEnvelope::current(
-            Shared::owner(),
-            Memory::version(),
-            payload,
-        );
+        let envelope =
+            ravel_sdk::save::SavedDataEnvelope::current(Entry::owner(), Memory::version(), payload);
 
-        let mut shared = Shared::new(Side::IntegratedServer);
+        let mut shared = Entry::new(Side::IntegratedServer);
         let declaration = shared
             .saved_data_declaration()
             .expect("valid saved data")
@@ -814,7 +793,7 @@ mod tests {
 
     #[test]
     fn a_fresh_world_holds_no_memory_and_is_not_a_failure() {
-        let mut shared = Shared::new(Side::IntegratedServer);
+        let mut shared = Entry::new(Side::IntegratedServer);
         let declaration = shared
             .saved_data_declaration()
             .expect("valid saved data")
@@ -828,7 +807,7 @@ mod tests {
 
     #[test]
     fn the_memories_a_world_holds_are_named_and_bounded() {
-        let mut shared = Shared::new(Side::IntegratedServer);
+        let mut shared = Entry::new(Side::IntegratedServer);
         assert_eq!(
             shared.remember("", Memory::default()),
             Err(MemoryRefused::NoName)
@@ -862,7 +841,7 @@ mod tests {
             current: search.current().cloned(),
             remembered: search.remembered().cloned(),
         };
-        let mut shared = Shared::new(Side::IntegratedServer);
+        let mut shared = Entry::new(Side::IntegratedServer);
         shared
             .remember("the crusher", memory)
             .expect("a named memory");
@@ -876,7 +855,7 @@ mod tests {
 
     #[test]
     fn a_running_server_is_recorded_where_a_radius_send_reads_it() {
-        let mut shared = Shared::new(Side::DedicatedServer);
+        let mut shared = Entry::new(Side::DedicatedServer);
         assert_eq!(shared.sends().server(), None);
         shared.sends_mut().server_started("the running server");
         assert_eq!(shared.sends().server(), Some("the running server"));
@@ -931,13 +910,10 @@ mod tests {
         for index in 0..MAX_MEMORIES + 10 {
             payload[format!("the crusher {index:05}")] = held.write(&spellings);
         }
-        let envelope = ravel_sdk::save::SavedDataEnvelope::current(
-            Shared::owner(),
-            Memory::version(),
-            payload,
-        );
+        let envelope =
+            ravel_sdk::save::SavedDataEnvelope::current(Entry::owner(), Memory::version(), payload);
 
-        let mut opened = Shared::new(Side::IntegratedServer);
+        let mut opened = Entry::new(Side::IntegratedServer);
         let declaration = opened
             .saved_data_declaration()
             .expect("valid saved data")
@@ -969,7 +945,7 @@ mod tests {
         );
 
         // A world this build did hold every memory of saves as it always did.
-        let mut ordinary = Shared::new(Side::IntegratedServer);
+        let mut ordinary = Entry::new(Side::IntegratedServer);
         ordinary
             .open_saved_data(None, &plan)
             .expect("a fresh world");

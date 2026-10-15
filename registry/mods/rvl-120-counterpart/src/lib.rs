@@ -86,7 +86,7 @@ pub const INTEGRATIONS: [&str; 4] = [
 /// grow for the whole of a session; what a caller can ask is how many arrived
 /// and which one was last.
 #[derive(Debug)]
-pub struct Shared {
+pub struct Entry {
     side: Side,
     declaration: Result<ContentDeclaration, ModError>,
     settings_declaration: Result<ConfigurationDeclaration, ModError>,
@@ -103,13 +103,13 @@ pub struct Shared {
     last_state: Option<LifecycleState>,
 }
 
-impl Default for Shared {
+impl Default for Entry {
     fn default() -> Self {
-        Self::new()
+        Self::new(Side::Client)
     }
 }
 
-impl Shared {
+impl Entry {
     /// Builds the library for one side, holding its shipped defaults.
     ///
     /// Both declarations are built once here rather than on every call, because
@@ -118,11 +118,13 @@ impl Shared {
     /// seventy-three settings to their shipped defaults with nothing said
     /// anywhere.
     #[must_use]
-    pub fn on(side: Side) -> Self {
+    pub fn new(side: Side) -> Self {
         Self {
             side,
-            declaration: census::declaration().map_err(|error| ModError::refused(error.to_string())),
-            settings_declaration: settings::declaration().map_err(|error| ModError::refused(error.to_string())),
+            declaration: census::declaration()
+                .map_err(|error| ModError::refused(error.to_string())),
+            settings_declaration: settings::declaration()
+                .map_err(|error| ModError::refused(error.to_string())),
             settings: Settings::default(),
             colours: Colours::shipped(),
             commands: Commands::new(),
@@ -135,12 +137,6 @@ impl Shared {
             states_entered: 0,
             last_state: None,
         }
-    }
-
-    /// Builds the library as a client, holding its shipped defaults.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::on(Side::Client)
     }
 
     /// Returns the side this instance was built for.
@@ -285,7 +281,7 @@ pub fn read_region(coded: &[u8]) -> Result<Vec<u8>, primitives::RunError> {
 }
 
 #[declare_mod(id = "rvl_120_counterpart")]
-impl Mod for Shared {
+impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.states_entered += 1;
         self.last_state = Some(state);
@@ -359,17 +355,16 @@ impl Mod for Shared {
     }
 }
 
-export_mod!(|side| Shared::on(side));
+export_mod!(|side| Entry::new(side));
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ravel_sdk::content::{ContentKind, RegistrationRefused, RegistryKey};
 
     #[test]
     fn deferred_declarations_preserve_the_original_refusal() {
         let original = ModError::refused("the original packaged declaration failure");
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         shared.declaration = Err(original.clone());
         assert_eq!(
             shared
@@ -381,11 +376,8 @@ mod tests {
             shared.enter(LifecycleState::Constructed),
             Err(original.clone())
         );
-        assert_eq!(
-            shared.register(&mut Accepting::default()),
-            Err(original.clone())
-        );
-        shared.declaration = census::declaration().map_err(|error| ModError::refused(error.to_string()));
+        shared.declaration =
+            census::declaration().map_err(|error| ModError::refused(error.to_string()));
         shared.settings_declaration = Err(original.clone());
         assert_eq!(
             shared
@@ -396,47 +388,16 @@ mod tests {
         assert_eq!(shared.enter(LifecycleState::Constructed), Err(original));
     }
 
-    #[derive(Default)]
-    struct Accepting {
-        claimed: Vec<RegistryKey>,
-    }
-
-    impl Registrar for Accepting {
-        fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused> {
-            self.claimed.push(key);
-            Ok(())
-        }
-
-        fn claimed(&self) -> &[RegistryKey] {
-            &self.claimed
-        }
-
-        fn loads(&self, _mod_id: &ModId) -> bool {
-            false
-        }
-    }
-
     #[test]
     fn the_declared_identity_is_the_one_the_package_carries() {
-        assert_eq!(Shared::declared_id().as_str(), MOD_ID);
-        assert_eq!(Shared::new().id().as_str(), MOD_ID);
+        assert_eq!(Entry::declared_id().as_str(), MOD_ID);
+        assert_eq!(Entry::new(Side::Client).id().as_str(), MOD_ID);
         assert_eq!(__ravel_entry(Side::DedicatedServer).id().as_str(), MOD_ID);
     }
 
     #[test]
-    fn the_one_recipe_kind_is_claimed_at_the_barrier_and_nothing_else_is() {
-        let mut shared = Shared::new();
-        let mut registrar = Accepting::default();
-        shared
-            .register(&mut registrar)
-            .expect("the accepting registrar refuses nothing");
-        assert_eq!(registrar.claimed().len(), 1);
-        assert_eq!(registrar.claimed()[0].kind(), ContentKind::Recipe);
-    }
-
-    #[test]
     fn the_library_declares_both_its_content_and_its_settings() {
-        let shared = Shared::new();
+        let shared = Entry::new(Side::Client);
         assert!(
             shared
                 .content_declaration()
@@ -453,7 +414,7 @@ mod tests {
 
     #[test]
     fn the_lifecycle_runs_through_and_what_is_kept_is_a_count_and_the_last_one() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         for state in LifecycleState::ALL {
             shared.enter(state).expect("the library accepts every step");
         }
@@ -470,7 +431,7 @@ mod tests {
 
     #[test]
     fn a_signal_every_tick_does_not_make_the_library_grow() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         let event = GameEvent::ALL[0];
         for _ in 0..10_000 {
             shared
@@ -491,7 +452,7 @@ mod tests {
         let resolved = LayeredConfiguration::resolve(declaration, None, None)
             .expect("the author's defaults resolve");
 
-        let mut server = Shared::on(Side::DedicatedServer);
+        let mut server = Entry::new(Side::DedicatedServer);
         assert_eq!(server.side(), Side::DedicatedServer);
         let before = server.colours().values().to_vec();
         server.configure(&resolved).expect("the defaults are read");
@@ -501,14 +462,14 @@ mod tests {
             "the client document has no backing on a server, so nothing is read from it"
         );
 
-        let mut client = Shared::on(Side::Client);
+        let mut client = Entry::new(Side::Client);
         client.configure(&resolved).expect("the defaults are read");
         assert_eq!(client.colours().values().len(), settings::COLOUR_COUNT);
     }
 
     #[test]
     fn a_library_that_owns_no_global_record_produces_no_envelope() {
-        let shared = Shared::new();
+        let shared = Entry::new(Side::Client);
         assert!(
             shared
                 .save_saved_data()
@@ -525,7 +486,7 @@ mod tests {
 
     #[test]
     fn a_global_record_written_on_a_server_reaches_the_envelope() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         shared
             .global_mut()
             .write(
@@ -543,7 +504,7 @@ mod tests {
 
     #[test]
     fn a_stored_global_record_reaches_the_next_visit_through_the_envelope() {
-        let mut first = Shared::new();
+        let mut first = Entry::new(Side::Client);
         first
             .global_mut()
             .write(
@@ -560,7 +521,7 @@ mod tests {
         let declaration = GlobalData::declaration().expect("the declared version is legal");
         let plan = SavedDataPlan::open(&declaration, Some(declaration.current()))
             .expect("the stored version is the declared one");
-        let mut second = Shared::new();
+        let mut second = Entry::new(Side::Client);
         second
             .open_saved_data(Some(&envelope), &plan)
             .expect("what was written reads back");
@@ -578,7 +539,7 @@ mod tests {
     fn a_world_holding_nothing_opens_the_store_empty_rather_than_refusing() {
         let declaration = GlobalData::declaration().expect("the declared version is legal");
         let plan = SavedDataPlan::open(&declaration, None).expect("absence initializes");
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         shared
             .global_mut()
             .write(Side::DedicatedServer, "left_over", ravel_sdk::json!({}))
@@ -598,11 +559,11 @@ mod tests {
         let plan = SavedDataPlan::open(&declaration, Some(declaration.current()))
             .expect("the stored version is the declared one");
         let envelope = SavedDataEnvelope::current(
-            Shared::declared_id().clone(),
+            Entry::declared_id().clone(),
             declaration.current(),
             ravel_sdk::json!({ "scope": "the_nether", "records": {} }),
         );
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         assert!(
             shared.open_saved_data(Some(&envelope), &plan).is_err(),
             "a record stored against another scope is refused rather than adopted"
@@ -611,7 +572,7 @@ mod tests {
 
     #[test]
     fn the_manual_latch_starts_unset_and_absence_is_not_an_error() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         assert_eq!(shared.manual_present(), None);
         shared.latch_manual(false);
         assert_eq!(shared.manual_present(), Some(false));
@@ -625,7 +586,7 @@ mod tests {
 
     #[test]
     fn the_key_binding_is_a_press_rather_than_a_poll_of_a_held_key() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         assert!(shared.manual_key(true, true), "the press opens the manual");
         assert!(
             !shared.manual_key(true, true),
@@ -640,7 +601,7 @@ mod tests {
 
     #[test]
     fn the_binding_does_nothing_while_no_screen_of_this_package_is_open() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         assert!(!shared.manual_key(true, false));
         assert!(
             !shared.manual_key(true, true),
@@ -683,7 +644,7 @@ mod tests {
 
     #[test]
     fn a_dependent_declares_its_commands_into_the_one_table() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         let key = CommandKey::new("dependent", "act").expect("a legal key");
         shared
             .commands_mut()
@@ -705,7 +666,7 @@ mod tests {
 
     #[test]
     fn a_dependent_places_and_removes_through_the_one_grouping_service() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         let first = Position::new(0, 0, 0);
         shared
             .grouping_mut()
@@ -719,7 +680,7 @@ mod tests {
         let declaration = settings::declaration().expect("the packaged declaration is legal");
         let resolved = LayeredConfiguration::resolve(declaration, None, None)
             .expect("the author's defaults resolve");
-        let mut shared = Shared::new();
+        let mut shared = Entry::new(Side::Client);
         shared.configure(&resolved).expect("the defaults are read");
 
         assert_eq!(shared.settings(), &Settings::default());

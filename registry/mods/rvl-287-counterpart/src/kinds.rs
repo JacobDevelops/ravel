@@ -440,7 +440,7 @@ pub struct Claim<'a> {
 pub struct Registry {
     order: Vec<String>,
     kinds: BTreeMap<String, Registered>,
-    directory: BTreeSet<String>,
+    directory: BTreeSet<ravel_sdk::content::ContentId>,
 }
 
 impl Registry {

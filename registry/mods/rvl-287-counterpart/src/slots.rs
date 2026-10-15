@@ -63,7 +63,7 @@ impl TextureId {
     /// Reads a texture name, refusing one that is not a name.
     #[must_use]
     pub fn parse(name: &str) -> Option<Self> {
-        qualify(name).map(Self)
+        qualify(name).map(|id| Self(id.to_string()))
     }
 
     /// Returns the sprite a missing texture falls back to.

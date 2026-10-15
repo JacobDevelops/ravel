@@ -158,6 +158,7 @@ conversion semantics, and signed packet fields retain their original bit pattern
   key space grows with what callers name. One rank of one dimension holds at most a declared ceiling
   and the map holds at most a declared number of dimensions, both refusing past it and saying so. A
   dimension that empties is dropped at the drain.
+  Queued work is published as `OrderingEntry`, distinct from the loader-owned `Entry`.
 - **A server tick drains every dimension, not one (§14).** §14 puts the drain after a server-side
   *level* tick and Ravel's event set carries no dimension with its server tick. Draining one named
   dimension would leave every other dimension's queue to grow until its ceiling refused, which is a

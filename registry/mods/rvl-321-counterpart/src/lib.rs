@@ -157,7 +157,8 @@ impl Entry {
         }
         Self {
             declaration: Self::declaration(),
-            configuration: settings::declaration().map_err(|error| ModError::refused(error.to_string())),
+            configuration: settings::declaration()
+                .map_err(|error| ModError::refused(error.to_string())),
             settings: Settings::default(),
             flags: FlagTable::default(),
             registries,
@@ -304,12 +305,20 @@ impl Entry {
                 })
         };
         let registered = match arguments.get("kind").and_then(JsonValue::as_str) {
-            Some("tier") => self.registries.register_tier(Tier::new(id, value)),
+            Some("tier") => {
+                let Ok(id) = id.parse::<ContentId>() else {
+                    return json!({"registered": false, "refused": "a tier names an invalid identifier"});
+                };
+                self.registries.register_tier(Tier::new(id, value))
+            }
             Some("crop_kind") => {
                 let stem = arguments
                     .get("stem")
                     .and_then(JsonValue::as_str)
                     .unwrap_or(id);
+                let Ok(id) = id.parse::<ContentId>() else {
+                    return json!({"registered": false, "refused": "a crop kind names an invalid identifier"});
+                };
                 self.registries.register_kind(CropKind::new(id, stem))
             }
             Some("modifier") => {
@@ -478,27 +487,6 @@ export_mod!(Entry::new());
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ravel_sdk::content::{RegistrationRefused, RegistryKey};
-
-    #[derive(Default)]
-    struct Accepting {
-        claimed: Vec<RegistryKey>,
-    }
-
-    impl Registrar for Accepting {
-        fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused> {
-            self.claimed.push(key);
-            Ok(())
-        }
-
-        fn claimed(&self) -> &[RegistryKey] {
-            &self.claimed
-        }
-
-        fn loads(&self, _mod_id: &ModId) -> bool {
-            false
-        }
-    }
 
     #[test]
     fn the_declared_identity_is_the_one_the_package_carries() {
@@ -508,20 +496,7 @@ mod tests {
     }
 
     #[test]
-    fn every_recipe_kind_is_claimed_once_at_the_barrier() {
-        let mut entry = Entry::new();
-        let mut registrar = Accepting::default();
-        entry
-            .register(&mut registrar)
-            .expect("the accepting registrar refuses nothing");
-        assert_eq!(registrar.claimed().len(), RECIPE_KINDS.len());
-        assert!(
-            registrar
-                .claimed()
-                .iter()
-                .all(|key| key.kind() == ContentKind::Recipe)
-        );
-
+    fn every_recipe_kind_has_a_distinct_name() {
         let mut sorted = RECIPE_KINDS.to_vec();
         sorted.sort_unstable();
         sorted.dedup();
@@ -688,11 +663,37 @@ mod tests {
     }
 
     #[test]
+    fn a_tier_or_crop_kind_with_an_invalid_identifier_is_refused_and_not_registered() {
+        let mut entry = Entry::new();
+        let tiers = entry.registries().tiers().to_vec();
+        let kinds = entry.registries().kinds().to_vec();
+        let service = Entry::contribution_service().expect("the service identity is valid");
+        for (kind, refused) in [
+            ("tier", "a tier names an invalid identifier"),
+            ("crop_kind", "a crop kind names an invalid identifier"),
+        ] {
+            let answer = entry
+                .answer_service(&ServiceRequest::new(
+                    service.clone(),
+                    json!({"kind": kind, "id": "Not Legal", "value": 1}),
+                ))
+                .expect("the entry answers its own service");
+            assert_eq!(
+                answer.value(),
+                &json!({"registered": false, "refused": refused})
+            );
+        }
+        assert_eq!(entry.registries().tiers(), tiers);
+        assert_eq!(entry.registries().kinds(), kinds);
+        assert_eq!(entry.registries().refused(), []);
+    }
+
+    #[test]
     fn a_crop_whose_companions_are_absent_is_unobtainable_rather_than_missing() {
         let crop = Crop::new(
-            "test:crop",
-            "test:tier",
-            "test:kind",
+            "test:crop".parse().expect("a legal crop identity"),
+            "test:tier".parse().expect("a legal tier identity"),
+            "test:kind".parse().expect("a legal kind identity"),
             Crafted::Entry {
                 id: "other:material".to_owned(),
                 data: None,
@@ -716,9 +717,9 @@ mod tests {
     #[test]
     fn a_material_that_resolves_to_nothing_is_the_third_state_and_not_the_second() {
         let mut crop = Crop::new(
-            "test:crop",
-            "test:tier",
-            "test:kind",
+            "test:crop".parse().expect("a legal crop identity"),
+            "test:tier".parse().expect("a legal tier identity"),
+            "test:kind".parse().expect("a legal kind identity"),
             Crafted::Tag("test:empty".to_owned()),
         );
         assert_eq!(

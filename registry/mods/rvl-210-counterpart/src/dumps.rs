@@ -129,21 +129,21 @@ impl Producers {
 }
 
 /// Where the declaration census is written, relative to the package root.
-pub const CENSUS_DOCUMENT: &str = "generated/census.json";
+pub const CENSUS_PATH: &str = "generated/census.json";
 
 /// Where the command table is written, relative to the package root.
-pub const COMMANDS_TABLE: &str = "generated/commands.txt";
+pub const COMMANDS_PATH: &str = "generated/commands.txt";
 
 /// Where the settings document is written, relative to the package root.
-pub const SETTINGS_DOCUMENT: &str = "generated/settings.json";
+pub const SETTINGS_PATH: &str = "generated/settings.json";
 
 /// Every rendered document, each as its relative path and its bytes.
 #[must_use]
 pub fn documents() -> Vec<(&'static str, String)> {
     vec![
-        (CENSUS_DOCUMENT, census_document()),
-        (COMMANDS_TABLE, commands_table()),
-        (SETTINGS_DOCUMENT, settings_document()),
+        (CENSUS_PATH, census_document()),
+        (COMMANDS_PATH, commands_table()),
+        (SETTINGS_PATH, settings_document()),
     ]
 }
 

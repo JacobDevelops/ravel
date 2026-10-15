@@ -53,7 +53,7 @@ pub type Reenqueued = Vec<(u8, String)>;
 
 /// One thing waiting to be run, as the service knows it.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Entry {
+pub struct OrderingEntry {
     /// Who enqueued, named by the caller.
     pub who: String,
     /// Which rank it asked for.
@@ -65,7 +65,7 @@ pub struct Entry {
 /// The per-dimension, per-rank queues and the counter beside them.
 #[derive(Clone, Debug, Default)]
 pub struct Ordering {
-    queues: BTreeMap<String, Vec<Vec<Entry>>>,
+    queues: BTreeMap<String, Vec<Vec<OrderingEntry>>>,
     counter: u64,
 }
 
@@ -96,7 +96,7 @@ impl Ordering {
         dimension: &str,
         rank: u8,
         who: &str,
-    ) -> Result<Entry, OrderingRefused> {
+    ) -> Result<OrderingEntry, OrderingRefused> {
         if usize::from(rank) >= RANKS {
             return Err(OrderingRefused::Rank { asked: rank });
         }
@@ -113,7 +113,7 @@ impl Ordering {
         if queue.len() >= MAX_QUEUED {
             return Err(OrderingRefused::Full { limit: MAX_QUEUED });
         }
-        let entry = Entry {
+        let entry = OrderingEntry {
             who: who.to_owned(),
             rank,
             stamp: self.counter,
@@ -142,7 +142,7 @@ impl Ordering {
     pub fn drain_with(
         &mut self,
         dimension: &str,
-        run: &mut dyn FnMut(&Entry) -> Reenqueued,
+        run: &mut dyn FnMut(&OrderingEntry) -> Reenqueued,
     ) -> Drained {
         self.counter = self.counter.wrapping_add(1);
         self.run_ranks(dimension, run)
@@ -166,7 +166,7 @@ impl Ordering {
     /// A dimension left empty is dropped, so the key space tracks what is queued.
     pub fn drain_all_with(
         &mut self,
-        run: &mut dyn FnMut(&str, &Entry) -> Reenqueued,
+        run: &mut dyn FnMut(&str, &OrderingEntry) -> Reenqueued,
     ) -> Vec<(String, Drained)> {
         self.counter = self.counter.wrapping_add(1);
         let dimensions: Vec<String> = self.queues.keys().cloned().collect();
@@ -190,7 +190,11 @@ impl Ordering {
         self.drain_all_with(&mut |_, _| Vec::new())
     }
 
-    fn run_ranks(&mut self, dimension: &str, run: &mut dyn FnMut(&Entry) -> Reenqueued) -> Drained {
+    fn run_ranks(
+        &mut self,
+        dimension: &str,
+        run: &mut dyn FnMut(&OrderingEntry) -> Reenqueued,
+    ) -> Drained {
         let mut drained = Drained::default();
         for rank in 0..RANKS {
             let taken = self
@@ -257,7 +261,7 @@ impl Ordering {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Drained {
     /// What ran, in rank order.
-    pub ran: Vec<Entry>,
+    pub ran: Vec<OrderingEntry>,
     /// What a run asked to enqueue and the service refused.
     pub refused: Vec<(u8, String, OrderingRefused)>,
 }

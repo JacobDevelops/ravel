@@ -167,7 +167,12 @@ mod tests {
     use super::*;
 
     fn tier(value: u32) -> Tier {
-        let mut tier = Tier::new(&format!("test:tier_{value}"), value);
+        let mut tier = Tier::new(
+            format!("test:tier_{value}")
+                .parse()
+                .expect("a legal tier identity"),
+            value,
+        );
         tier.adjust(
             &format!("test:ground_{value}"),
             &format!("test:material_{value}"),
@@ -238,7 +243,10 @@ mod tests {
 
     #[test]
     fn two_tiers_standing_on_one_ground_block_do_not_convert_into_each_other() {
-        let mut side = Tier::new("test:tier_side", 1);
+        let mut side = Tier::new(
+            ("test:tier_side").parse().expect("a legal tier identity"),
+            1,
+        );
         side.adjust("test:ground_1", "test:material_side");
         let held = tier(1);
         assert_ne!(side.id, held.id);

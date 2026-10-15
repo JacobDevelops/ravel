@@ -96,7 +96,12 @@ mod tests {
     use super::*;
 
     fn sixth() -> Tier {
-        crate::tier::declared("test:6", "test:ground", "test:material", false)
+        crate::tier::declared(
+            "test:6".parse().expect("a legal tier identity"),
+            "test:ground",
+            "test:material",
+            false,
+        )
     }
 
     #[test]

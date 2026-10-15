@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "1622b8298865c6814b50f1617da2c606cf4a52b57ce563293ec0d2cfc79088c7"
+        "sha256": "5c184aed333d628fc26a20d20b647213a5674915b3de52704c073c35fd24f850"
       },
       {
         "path": "aliases.json",
@@ -55,7 +55,7 @@
       },
       {
         "path": "src/conditions.rs",
-        "sha256": "605e5a7d34c4699dd7d11e705836cde06266fe928a6a24fd42baa424fb1d3e27"
+        "sha256": "ee53a83af3b38b41e688107e85713f84ffa4defdc6c06e3d1f8c7d6dbe6d4a48"
       },
       {
         "path": "src/dumps.rs",
@@ -67,15 +67,15 @@
       },
       {
         "path": "src/kinds.rs",
-        "sha256": "b49d8e53aa17c3c0b8cabd76ffe304a3f339b5fa261fa643dd9cc22347b67cb5"
+        "sha256": "16f601611cd9bf7de541597bb9af020994fd2aae48f9726077abb2f4ddd75917"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "a24d54a028b995a1f698181f100954a45b81a348781c148f32bef9cfa463a26f"
+        "sha256": "1081813076594111e7deb52b72bb158a1e0d26cbc6ba566c330a85b3a85fe25c"
       },
       {
         "path": "src/lookup.rs",
-        "sha256": "25aadf48345a2ecfc1de80ea25b7db80d31883e701641a2534d1e6d55da59ca4"
+        "sha256": "e53bef57911ba81d82a05f1f29a827abd6147da6601a84eb1fcb7e49ab938fca"
       },
       {
         "path": "src/neighbourhood.rs",
@@ -87,12 +87,12 @@
       },
       {
         "path": "src/slots.rs",
-        "sha256": "1b78407c59f801b10f00cc8d01520b4e586423cdfb4d578d583f0872ee17b061"
+        "sha256": "e8442506395c524877c8379edea68f8e1592c1a1cf1ddf7b5f958ed0ae9dfc42"
       }
     ]
   },
   "provenance": {
     "record": "provenance.json",
-    "sha256": "748cfcadf1164dd2400e363c2c7bcfd19af8d1e400677a36411a66100fd5d05a"
+    "sha256": "514c42284c4660ab17b89220952272095e2fe4f3b5b91fc55e87e1cae80d9a99"
   }
 }

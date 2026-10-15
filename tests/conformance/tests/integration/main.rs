@@ -15,6 +15,7 @@ mod pack_round_trip;
 mod package_schema;
 mod pre_world_gate;
 mod profiling_report;
+mod registry_lifecycle;
 mod saved_data;
 mod sdk_boundary;
 mod sdk_gaps;

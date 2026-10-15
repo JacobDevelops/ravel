@@ -16,7 +16,7 @@
     {
       "category": "metadata",
       "locator": "provenance/m6-foundation/RVL-060.json",
-      "revision": "sha256 fa170d6e28f82323e93c5398fd832b9dfe341307de0d219dbf8d0b9f4d53fd53",
+      "revision": "sha256 5fe53f74ac53b6a59c17bc9a1c279f2bc0e64748e76f326009825d10aae07aba",
       "use": "The rights record the specification was written under, which clears code and behaviour and leaves names unresolved. Two consequences are visible in this package: no identifier here is carried across, so aliases.json is empty; and the four compatibility-required spellings that record names -- the channel and payload suffixes, the pack descriptor key, the highlight directory and its parting key, and the eleven validator kind names -- are each read from a build-time input, are an error rather than a default when the build supplies nothing, and have a placeholder the tests pin the surrounding shape with.",
       "producedBy": "M6-W3"
     },

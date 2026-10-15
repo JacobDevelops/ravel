@@ -16,7 +16,7 @@
     {
       "category": "metadata",
       "locator": "provenance/m6-foundation/RVL-287.json",
-      "revision": "sha256 7385fc8089a96fdeecb59aa478a2886ea42c1cb18b0d208e6a4e7eb78feae79a",
+      "revision": "sha256 90835327ec68f0332033ca99a5cf60f4b02bf804af9ec17107b7c32a2075d6a1",
       "use": "The rights record the specification was written under, which clears code and behaviour, marks textures, models and sounds not-applicable, and leaves names unresolved. The unresolved names surface is why this package coins every declaration spelling and is not pack-compatible with the original; NOTES.md says so in as many words.",
       "producedBy": "M6-W3"
     },

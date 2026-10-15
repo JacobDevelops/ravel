@@ -16,6 +16,20 @@
     "dedicated-server"
   ],
   "configurationSchemas": [],
+  "dependencies": [
+    {
+      "id": "rvl_042_counterpart",
+      "relationship": "required",
+      "version": ">=0.1.0, <0.2.0",
+      "order": "after"
+    },
+    {
+      "id": "rvl_321_counterpart",
+      "relationship": "required",
+      "version": ">=0.1.0, <0.2.0",
+      "order": "after"
+    }
+  ],
   "authors": [
     {
       "name": "Ravel registry maintainers"
@@ -31,7 +45,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "cc04911d00205148c65d3fd0ce7da72a408f878b7e5d5f2bb1d83a3a5f581127"
+        "sha256": "a4beb4d434b7fe4606b4cba4bdf5e99281b996a9c9a6b83572d1c72a0f74e97b"
       },
       {
         "path": "aliases.json",
@@ -59,11 +73,11 @@
       },
       {
         "path": "src/crops.rs",
-        "sha256": "90411c6fb8f45c59504cff7366452e133f9b5f7494b5c63d0308cc7917e540fc"
+        "sha256": "5c45311f94b48a7290f07f589947afcfb825f4105d58325c8991b86de10cc804"
       },
       {
         "path": "src/data.rs",
-        "sha256": "9b511e534dd5ec326fc51cbcbdbbaf5c3bc974615e0818f7888d3391ed905040"
+        "sha256": "a70492ac7dfb42ab1ae8e8e9d32ccea38ae9018b40e06d5bc1bcfeeeaf207aba"
       },
       {
         "path": "src/drops.rs",
@@ -71,7 +85,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "b4e4cfffbaa3965cdf689d417f51ab889f743f55c6d1ffdc65234091074e2a94"
+        "sha256": "7e6a32685f411e9e884333b3a2c66b5d71de4ddc552f8c80fde7ef3cc141767d"
       },
       {
         "path": "src/foods.rs",
@@ -83,23 +97,23 @@
       },
       {
         "path": "src/ground.rs",
-        "sha256": "989eb1f2d94aaa079f91a80311409297b292f7a64afcd37be1e44049419aa485"
+        "sha256": "853145307e213e4a5f2b320a7a0c9cc659f40c10d8b1ef82c53bef60819bb25f"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "b08033c8d32f3d9f326619275685ad2752012174e74d72580019d55772a71d1a"
+        "sha256": "26d7217c31b5781d6e455f4274059aecffffac5d3c26a7460cf6a2ff76c55e6d"
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "ac52375530b8e89542febaa9b20b9b96d6655bb72824596f7584a3f1075f29a2"
+        "sha256": "2acab058f2a98c48492c2ff671ce3b36872bed72c1ba46044f5ac3877a01a25d"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "5ac51ac42e92bd79097c0b66f7f36fceee798d8f6f3633436ee8d669d78a953a"
+        "sha256": "0456bb3b477695ea84be9d3194e8a0505bffd927ea05ecd9d99f7ddf3b9e22fe"
       },
       {
         "path": "src/tier.rs",
-        "sha256": "c070b2610c4abc656ba1523d3e0fe7887321aed1f4c34b236bfda9049daa100e"
+        "sha256": "0ef49adb0260bc30a2e5f44996a769813d2283ee05182a51fde29735da8220fd"
       },
       {
         "path": "src/tools.rs",
@@ -113,6 +127,6 @@
   },
   "provenance": {
     "record": "provenance.json",
-    "sha256": "87f3c9d805f3c519a69727f13fb3ff257a70e370b6b169ddd50d968442632f4a"
+    "sha256": "f28cd62802a48fbe696927de083bac622d77e94ad33d8a227e09262fb43a4215"
   }
 }

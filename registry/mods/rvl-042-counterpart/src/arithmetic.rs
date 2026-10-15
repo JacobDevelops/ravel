@@ -186,7 +186,7 @@ impl Family {
 /// families that both apply are decided by [`Family::ORDER`] rather than by the
 /// caller.
 #[must_use]
-pub fn combination_use_on(applies: &dyn Fn(Family) -> bool) -> Option<Family> {
+pub fn combination_family(applies: &dyn Fn(Family) -> bool) -> Option<Family> {
     Family::ORDER.into_iter().find(|family| applies(*family))
 }
 
@@ -280,8 +280,9 @@ pub fn reduce(stack: &Stack, by: u64, remainder: Option<Stack>) -> Option<Stack>
 
 /// Merges one stack into another, answering with the merged stack and the rest.
 ///
-/// Two stacks combine only on the same entry, the same data, and a sum within
-/// the limit. Anything else comes back whole as the rest.
+/// Two stacks combine only on the same entry and the same data; the merged stack
+/// is filled up to the limit and any overflow comes back as the rest. A stack
+/// that cannot combine comes back whole.
 #[must_use]
 pub fn insert(into: &Stack, incoming: &Stack, limit: u64) -> (Stack, Option<Stack>) {
     if into.is_empty() {
@@ -579,16 +580,16 @@ mod tests {
     #[test]
     fn a_use_on_stops_at_the_first_family_that_applies() {
         assert_eq!(
-            combination_use_on(&|family| family != Family::Stripping),
+            combination_family(&|family| family != Family::Stripping),
             Some(Family::Flattening),
             "the order decides, not which families the caller says apply"
         );
         assert_eq!(
-            combination_use_on(&|family| family == Family::Tilling),
+            combination_family(&|family| family == Family::Tilling),
             Some(Family::Tilling)
         );
-        assert_eq!(combination_use_on(&|_| false), None);
-        assert_eq!(combination_use_on(&|_| true), Some(Family::Stripping));
+        assert_eq!(combination_family(&|_| false), None);
+        assert_eq!(combination_family(&|_| true), Some(Family::Stripping));
         assert_eq!(Family::ORDER.len(), 3);
     }
 
@@ -668,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn two_stacks_combine_only_on_the_same_entry_the_same_data_and_a_sum_within_the_limit() {
+    fn two_stacks_on_the_same_entry_and_data_merge_up_to_the_limit() {
         let (merged, rest) = insert(&Stack::new("one", 30), &Stack::new("one", 40), 64);
         assert_eq!(merged.count, 64);
         assert_eq!(rest, Some(Stack::new("one", 6)));

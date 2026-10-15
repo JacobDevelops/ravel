@@ -157,11 +157,11 @@ impl Registries {
     /// what makes an extension's opt-out final.
     pub fn register_crop(&mut self, mut crop: Crop, extension: Derived) -> bool {
         if !self.open {
-            self.refused.push(Refusal::Closed(crop.id));
+            self.refused.push(Refusal::Closed(crop.id.to_string()));
             return false;
         }
         if self.crops.iter().any(|held| held.path() == crop.path()) {
-            self.refused.push(Refusal::CropPath(crop.id));
+            self.refused.push(Refusal::CropPath(crop.id.to_string()));
             return false;
         }
         crop.derived = crop.derived.narrowed_by(extension);
@@ -172,7 +172,7 @@ impl Registries {
     /// Registers a tier, refused on full identifier collision only.
     pub fn register_tier(&mut self, tier: Tier) -> bool {
         if self.tiers.iter().any(|held| held.id == tier.id) {
-            self.refused.push(Refusal::Identifier(tier.id));
+            self.refused.push(Refusal::Identifier(tier.id.to_string()));
             return false;
         }
         self.tiers.push(tier);
@@ -182,7 +182,7 @@ impl Registries {
     /// Registers a crop kind, refused on full identifier collision only.
     pub fn register_kind(&mut self, kind: CropKind) -> bool {
         if self.kinds.iter().any(|held| held.id == kind.id) {
-            self.refused.push(Refusal::Identifier(kind.id));
+            self.refused.push(Refusal::Identifier(kind.id.to_string()));
             return false;
         }
         self.kinds.push(kind);
@@ -231,7 +231,7 @@ impl Registries {
     /// item registration, the creative listing, the derived recipes — reads
     /// this order rather than declaration order.
     pub fn sort_crops(&mut self) {
-        let values: BTreeMap<String, u32> = self
+        let values: BTreeMap<ravel_sdk::content::ContentId, u32> = self
             .tiers
             .iter()
             .map(|tier| (tier.id.clone(), tier.value))
@@ -264,8 +264,8 @@ impl Registries {
 
     /// The named tier, if one is registered under that identifier.
     #[must_use]
-    pub fn tier(&self, id: &str) -> Option<&Tier> {
-        self.tiers.iter().find(|tier| tier.id == id)
+    pub fn tier(&self, id: &ravel_sdk::content::ContentId) -> Option<&Tier> {
+        self.tiers.iter().find(|tier| &tier.id == id)
     }
 
     /// The crop kind table.
@@ -281,8 +281,8 @@ impl Registries {
 
     /// The named crop kind, if one is registered under that identifier.
     #[must_use]
-    pub fn kind(&self, id: &str) -> Option<&CropKind> {
-        self.kinds.iter().find(|kind| kind.id == id)
+    pub fn kind(&self, id: &ravel_sdk::content::ContentId) -> Option<&CropKind> {
+        self.kinds.iter().find(|kind| &kind.id == id)
     }
 
     /// The slotted modifier table.
@@ -482,7 +482,12 @@ mod tests {
     use crate::settings::Settings;
 
     fn crop(id: &str, tier: &str) -> Crop {
-        Crop::new(id, tier, "test:kind", Crafted::Nothing)
+        Crop::new(
+            (id).parse().expect("a legal crop identity"),
+            (tier).parse().expect("a legal tier identity"),
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            Crafted::Nothing,
+        )
     }
 
     #[derive(Default)]
@@ -530,12 +535,16 @@ mod tests {
         );
         assert_eq!(registries.crops().len(), 1);
 
-        assert!(registries.register_tier(Tier::new("a:same", 1)));
         assert!(
-            registries.register_tier(Tier::new("b:same", 2)),
+            registries.register_tier(Tier::new("a:same".parse().expect("a legal identity"), 1))
+        );
+        assert!(
+            registries.register_tier(Tier::new("b:same".parse().expect("a legal identity"), 2)),
             "a tier collides on the full identifier only"
         );
-        assert!(!registries.register_tier(Tier::new("a:same", 3)));
+        assert!(
+            !registries.register_tier(Tier::new("a:same".parse().expect("a legal identity"), 3))
+        );
         assert_eq!(registries.tiers().len(), 2);
     }
 
@@ -568,8 +577,14 @@ mod tests {
         assert!(registries.register_modifier(Modifier::new("a:m", 1, &["tool"])));
         assert!(registries.register_modifier(Modifier::new("b:m", 1, &["tool"])));
         assert!(!registries.register_modifier(Modifier::new("a:m", 2, &["tool"])));
-        assert!(registries.register_kind(CropKind::new("a:k", "stem")));
-        assert!(!registries.register_kind(CropKind::new("a:k", "other")));
+        assert!(registries.register_kind(CropKind::new(
+            "a:k".parse().expect("a legal identity"),
+            "stem"
+        )));
+        assert!(!registries.register_kind(CropKind::new(
+            "a:k".parse().expect("a legal identity"),
+            "other"
+        )));
         assert_eq!(registries.modifiers().len(), 2);
         assert_eq!(registries.kinds().len(), 1);
     }
@@ -577,8 +592,14 @@ mod tests {
     #[test]
     fn the_sort_is_stable_and_ascending_by_tier_value() {
         let mut registries = Registries::new();
-        registries.register_tier(Tier::new("t:high", 5));
-        registries.register_tier(Tier::new("t:low", 1));
+        registries.register_tier(Tier::new(
+            ("t:high").parse().expect("a legal tier identity"),
+            5,
+        ));
+        registries.register_tier(Tier::new(
+            ("t:low").parse().expect("a legal tier identity"),
+            1,
+        ));
         registries.open();
         for (id, tier) in [
             ("a:first_high", "t:high"),
@@ -589,10 +610,10 @@ mod tests {
             registries.register_crop(crop(id, tier), Derived::default());
         }
         registries.sort_crops();
-        let order: Vec<&str> = registries
+        let order: Vec<String> = registries
             .crops()
             .iter()
-            .map(|crop| crop.id.as_str())
+            .map(|crop| crop.id.to_string())
             .collect();
         assert_eq!(
             order,
@@ -609,7 +630,10 @@ mod tests {
     #[test]
     fn every_material_id_precedes_every_seed_id_and_all_are_in_this_namespace() {
         let mut registries = Registries::new();
-        registries.register_tier(Tier::new("t:1", 1));
+        registries.register_tier(Tier::new(
+            ("t:1").parse().expect("a legal tier identity"),
+            1,
+        ));
         registries.open();
         registries.register_crop(crop("other:alpha", "t:1"), Derived::default());
         registries.register_crop(crop("other:beta", "t:1"), Derived::default());
@@ -661,7 +685,10 @@ mod tests {
     #[test]
     fn block_registration_opens_makes_defaults_sorts_and_closes_in_that_order() {
         let mut registries = Registries::new();
-        registries.register_tier(Tier::new("t:1", 1));
+        registries.register_tier(Tier::new(
+            ("t:1").parse().expect("a legal tier identity"),
+            1,
+        ));
         let mut one = Recorder {
             name: "one".to_owned(),
             crops: vec![("a:only".to_owned(), "t:1".to_owned())],

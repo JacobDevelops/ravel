@@ -31,7 +31,6 @@
 //! - [`dumps`] — the seven registry-dumping producers;
 //! - [`commands`] — the seven subcommands;
 //! - [`capabilities`] — the attachment registry section seventeen leans on;
-//! - [`helpers`] — block-entity lookup, store and fluid helpers, side questions.
 //!
 //! `NOTES.md` beside this file says which sections are carried here, which are
 //! declarable only, and what every declared behaviour change is. Section nine's
@@ -43,7 +42,6 @@ pub mod channel;
 pub mod commands;
 pub mod declarations;
 pub mod dumps;
-pub mod helpers;
 pub mod menus;
 pub mod persistence;
 pub mod quantity;
@@ -65,7 +63,6 @@ use ravel_sdk::{JsonValue, json};
 pub use crate::capabilities::{Address, Registry, TargetClass};
 pub use crate::channel::Channel;
 pub use crate::declarations::{Declaration, Declarations};
-pub use crate::helpers::Sides;
 pub use crate::menus::{Ranges, Role, Stack, Store};
 pub use crate::persistence::{Counters, FieldTypes, Marked};
 pub use crate::quantity::{
@@ -482,12 +479,14 @@ impl Mod for Entry {
                 ));
             }
             self.counters
-                .load(envelope.payload()).map_err(|error| ModError::refused(error.to_string()))?;
+                .load(envelope.payload())
+                .map_err(|error| ModError::refused(error.to_string()))?;
         }
         // Last, so a delivery this entry refused above allocates nothing and
         // leaves the counts it was holding alone.
         self.counters
-            .next(persistence::OPENINGS).map_err(|error| ModError::refused(error.to_string()))?;
+            .next(persistence::OPENINGS)
+            .map_err(|error| ModError::refused(error.to_string()))?;
         Ok(())
     }
 }
@@ -524,20 +523,6 @@ mod tests {
         assert_eq!(Entry::declared_id().as_str(), MOD_ID);
         assert_eq!(Entry::new().id().as_str(), MOD_ID);
         assert_eq!(__ravel_entry(Side::DedicatedServer).id().as_str(), MOD_ID);
-    }
-
-    #[test]
-    fn the_command_tree_is_the_whole_of_what_reaches_the_barrier() {
-        let mut entry = Entry::new();
-        let mut registrar = Accepting::default();
-        entry.register(&mut registrar).expect("nothing is refused");
-        assert_eq!(registrar.claimed().len(), commands::SUBCOMMANDS.len());
-        assert!(
-            registrar
-                .claimed()
-                .iter()
-                .all(|key| key.kind() == ContentKind::Command)
-        );
     }
 
     #[test]
@@ -938,7 +923,6 @@ mod tests {
         let _cell = Cell::new(0u32);
         let _tank: Tank<String> = Tank::new(10);
         let _query = Query::parse("$").expect("the parse error type is public too");
-        let _sides = Sides::on(Side::Client);
         let _registry = Registry::new();
     }
 

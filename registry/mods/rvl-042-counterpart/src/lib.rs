@@ -75,7 +75,7 @@ const SOUND_BYTES: &[u8] = b"the supplied bytes";
 
 /// The shared library, as the loader drives it.
 #[derive(Debug)]
-pub struct Shared {
+pub struct Entry {
     declaration: Result<ContentDeclaration, ModError>,
     flags: FlagTable,
     settings: Settings,
@@ -85,13 +85,13 @@ pub struct Shared {
     asked: Vec<PlayRequest>,
 }
 
-impl Default for Shared {
+impl Default for Entry {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Shared {
+impl Entry {
     /// Builds the library holding its shipped defaults and no recorded answer.
     ///
     /// The content declaration is built here and held, so the barrier and the
@@ -216,7 +216,7 @@ impl Shared {
 }
 
 #[declare_mod(id = "rvl_042_counterpart")]
-impl Mod for Shared {
+impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.entered.push(state);
         Ok(())
@@ -256,63 +256,17 @@ impl Mod for Shared {
     }
 }
 
-export_mod!(Shared::new());
+export_mod!(Entry::new());
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ravel_sdk::audio::AudioEvent;
-    use ravel_sdk::content::{RegistrationRefused, RegistryKey};
-
-    #[derive(Default)]
-    struct Accepting {
-        claimed: Vec<RegistryKey>,
-    }
-
-    impl Registrar for Accepting {
-        fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused> {
-            self.claimed.push(key);
-            Ok(())
-        }
-
-        fn claimed(&self) -> &[RegistryKey] {
-            &self.claimed
-        }
-
-        fn loads(&self, _mod_id: &ModId) -> bool {
-            false
-        }
-    }
 
     #[test]
     fn the_declared_identity_is_the_one_the_package_carries() {
-        assert_eq!(Shared::declared_id().as_str(), MOD_ID);
-        assert_eq!(Shared::new().id().as_str(), MOD_ID);
-    }
-
-    #[test]
-    fn every_declared_kind_is_claimed_at_the_barrier_before_anything_else() {
-        let mut shared = Shared::new();
-        let mut registrar = Accepting::default();
-        shared
-            .register(&mut registrar)
-            .expect("the accepting registrar refuses nothing");
-
-        assert_eq!(registrar.claimed().len(), RECIPE_KINDS.len() + 1);
-        assert!(
-            registrar
-                .claimed()
-                .iter()
-                .any(|key| key.kind() == ContentKind::Command)
-        );
-        assert_eq!(
-            registrar
-                .claimed()
-                .iter()
-                .filter(|key| key.kind() == ContentKind::Recipe)
-                .count(),
-            5
-        );
+        assert_eq!(Entry::declared_id().as_str(), MOD_ID);
+        assert_eq!(Entry::new().id().as_str(), MOD_ID);
     }
 
     #[test]
@@ -325,7 +279,7 @@ mod tests {
 
     #[test]
     fn the_library_declares_both_its_content_and_its_settings() {
-        let shared = Shared::new();
+        let shared = Entry::new();
         assert!(
             shared
                 .content_declaration()
@@ -342,14 +296,14 @@ mod tests {
 
     #[test]
     fn a_library_that_has_not_been_configured_holds_no_selection_yet() {
-        let shared = Shared::new();
+        let shared = Entry::new();
         assert!(shared.selection().is_none());
         assert_eq!(shared.settings(), &Settings::default());
     }
 
     #[test]
     fn an_observed_signal_is_recorded_and_the_lifecycle_runs_through() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new();
         for state in LifecycleState::ALL {
             shared.enter(state).expect("the library accepts every step");
         }
@@ -363,7 +317,7 @@ mod tests {
 
     #[test]
     fn a_dependent_publishes_its_flags_into_the_one_table() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new();
         let id = FlagId::parse("dependent:optional").expect("a legal identity");
         shared.flags_mut().publish_constant(id.clone(), true);
         assert!(shared.flags().enabled(&id));
@@ -371,14 +325,14 @@ mod tests {
 
     #[test]
     fn the_declared_event_names_the_one_sound_this_package_owns() {
-        let declared = Shared::audio_declaration().expect("the declaration is well formed");
+        let declared = Entry::audio_declaration().expect("the declaration is well formed");
         assert_eq!(declared.entries().collect::<Vec<_>>(), [SOUND]);
         assert_eq!(
             declared.events().map(AudioEvent::entry).collect::<Vec<_>>(),
             [SOUND]
         );
 
-        let mut declared = Shared::audio_declaration().expect("the declaration is well formed");
+        let mut declared = Entry::audio_declaration().expect("the declaration is well formed");
         assert!(
             declared.event("nothing_owns_this").is_err(),
             "an event with nothing to play is refused where it is written"
@@ -387,7 +341,7 @@ mod tests {
 
     #[test]
     fn a_sweep_that_harvested_something_asks_for_the_sound_once_and_the_host_takes_it() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new();
         let harvested = SweepReport {
             sound: true,
             ..SweepReport::default()
@@ -403,13 +357,13 @@ mod tests {
         let taken = shared.take_play_requests();
         assert_eq!(taken.len(), 1);
         assert_eq!(taken[0].entry(), SOUND);
-        assert_eq!(taken[0].owner(), Shared::declared_id());
+        assert_eq!(taken[0].owner(), Entry::declared_id());
         assert_eq!(shared.take_play_requests(), Vec::<PlayRequest>::new());
     }
 
     #[test]
     fn a_sweep_that_harvested_nothing_asks_for_nothing_and_a_server_is_refused() {
-        let mut shared = Shared::new();
+        let mut shared = Entry::new();
         assert!(
             !shared
                 .announce_sweep(&SweepReport::default(), Side::Client)

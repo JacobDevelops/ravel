@@ -18,7 +18,7 @@
       "locator": "provenance/m6-foundation/RVL-086.json",
       "use": "The rights record the specification was written under, which clears code and behaviour and leaves names unresolved.",
       "producedBy": "M6-W3",
-      "revision": "sha256 6adddcb2263a3b54327c0621c16855b40cbed637a25c803ffbc8917c06d7d643"
+      "revision": "sha256 f9897106c5b27e09278c0e5200fda7957d170839f7d9f7761992c7a167fe03e3"
     },
     {
       "category": "published-api",

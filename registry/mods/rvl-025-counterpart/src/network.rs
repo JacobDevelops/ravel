@@ -63,7 +63,7 @@ fn contract(name: &str, direction: Direction) -> PacketContract {
 }
 
 fn write_stack(writer: &mut PacketWriter, stack: &Stack) {
-    writer.text(&stack.identity);
+    writer.text(&stack.identity.to_string());
     writer.u32(u32::from(stack.count));
     writer.u32(stack.damage.cast_unsigned());
     writer.bool(stack.carrier_ready);
@@ -80,6 +80,9 @@ fn write_stack(writer: &mut PacketWriter, stack: &Stack) {
 
 fn read_stack(reader: &mut PacketReader<'_>) -> Result<Stack, WireError> {
     let identity = bounded_text(reader)?;
+    let identity = identity
+        .parse()
+        .map_err(|_| WireError::ContentId { text: identity })?;
     let count = u8::try_from(reader.u32()?.min(u32::from(u8::MAX))).unwrap_or(u8::MAX);
     let damage = reader.u32()?.cast_signed();
     let carrier_ready = reader.bool()?;
@@ -597,6 +600,19 @@ mod tests {
 
     fn stack(identity: &str) -> Stack {
         Stack::of(identity).expect("a legal identity")
+    }
+
+    #[test]
+    fn a_wire_stack_refuses_an_unqualified_or_traversing_identity() {
+        for bad in ["beam", "counterpart:../beam"] {
+            let mut writer = PacketWriter::default();
+            writer.text(bad);
+            let bytes = writer.finish();
+            assert!(matches!(
+                read_stack(&mut PacketReader::new(&bytes)),
+                Err(WireError::ContentId { .. })
+            ));
+        }
     }
 
     fn carrier_record(supported: bool) -> String {

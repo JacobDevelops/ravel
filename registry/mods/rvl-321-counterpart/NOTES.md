@@ -201,13 +201,18 @@ it.
   results to preserve saturation; the first-tier produce count uses equivalent integer ceiling
   division. Machine payload saving moves the
   inventory into the same JSON field rather than cloning it through serialization.
+- **The second-drop override is an `Option`, not a -1 sentinel.** RVL-321 §5/§8 describe a crop's
+  own chance at or below -1 as deferring to its tier. `Crop::second_drop_chance` is `None` to defer
+  and `Some(chance)` for an explicit override, including `Some(0.0)` for no second drop; a dependent
+  that writes `Some(-1.0)` is giving an explicit chance, which clamps to zero. No wire, dump, service
+  or settings path carries this chance, so no serialisation point converts back to -1.
 
 ## Evidence
 
 Every rule with a number, an ordering, a refusal or a format has an inline test: the twenty settings
 and their bounds, the fourteen flags, the crop-path collision across namespaces, the global
 first-wins creature claim, the closed registration window, the stable ascending sort, materials
-before seeds, the two opacity constants, the deferral sentinel, all four growth gates, the exemption
+before seeds, the two opacity constants, the absent-versus-explicit second-drop override, all four growth gates, the exemption
 by identity, the truncate-before-multiply delay, the per-block aura draw, the 0.2-against-0.1 second
 drop, the three independent draws, the even-tier bump, the withheld seed, the instantaneous wetting,
 the quarter-chance ground drop, the moisture carried across a conversion, the exact ring assignment,

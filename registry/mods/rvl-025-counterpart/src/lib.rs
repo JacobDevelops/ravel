@@ -62,7 +62,7 @@ pub use crate::capabilities::{Group, Surface, SurfaceRefused};
 pub use crate::data::{Placement, Record, RecordRefused, Stack, Store};
 pub use crate::machines::{Machine, Ticked};
 pub use crate::matching::{MatchRule, Modes, VerdictMode};
-pub use crate::ordering::{Entry, Ordering, OrderingRefused};
+pub use crate::ordering::{Ordering, OrderingEntry, OrderingRefused};
 pub use crate::settings::Settings;
 pub use crate::shapes::{Pattern, ShapedRecipe};
 pub use crate::storage::{Carrier, Hand, Step};
@@ -120,7 +120,7 @@ pub struct Holding {
 
 /// The entry, as the loader drives it.
 #[derive(Debug)]
-pub struct Entrypoint {
+pub struct Entry {
     declaration: Result<ContentDeclaration, ModError>,
     settings: Settings,
     surface: Surface,
@@ -140,7 +140,7 @@ pub struct Entrypoint {
     deferred: bool,
 }
 
-impl Entrypoint {
+impl Entry {
     /// Builds the entry for one side, holding its shipped defaults.
     ///
     /// The client-only state is built only on a client, which is why the side is
@@ -346,7 +346,8 @@ impl Entrypoint {
     /// Returns [`ModError::Refused`] when a name this package spells is not a
     /// legal content path, which for constants is a packaging failure.
     pub fn content() -> Result<ContentDeclaration, ModError> {
-        census::declaration(Self::declared_id().clone()).map_err(|error| ModError::refused(error.to_string()))
+        census::declaration(Self::declared_id().clone())
+            .map_err(|error| ModError::refused(error.to_string()))
     }
 
     /// Answers the surface service, which is how a dependent reaches §15.
@@ -787,7 +788,7 @@ impl Entrypoint {
 }
 
 #[declare_mod(id = "rvl_025_counterpart")]
-impl Mod for Entrypoint {
+impl Mod for Entry {
     /// Takes one lifecycle step, and empties the ordering queues on the one
     /// that stands in for a server starting.
     ///
@@ -960,13 +961,13 @@ impl Mod for Entrypoint {
                 "the world stored a version this build does not read",
             ));
         }
-        self.store =
-            Store::from_saved(envelope.payload()).map_err(|error| ModError::refused(error.to_string()))?;
+        self.store = Store::from_saved(envelope.payload())
+            .map_err(|error| ModError::refused(error.to_string()))?;
         Ok(())
     }
 }
 
-export_mod!(|side| Entrypoint::new(side));
+export_mod!(|side| Entry::new(side));
 
 #[cfg(test)]
 mod tests {
@@ -996,35 +997,13 @@ mod tests {
 
     #[test]
     fn the_declared_identity_is_the_one_the_package_carries() {
-        assert_eq!(Entrypoint::declared_id().as_str(), MOD_ID);
-        assert_eq!(Entrypoint::new(Side::Client).id().as_str(), MOD_ID);
-    }
-
-    #[test]
-    fn every_declared_entry_is_claimed_at_the_barrier() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
-        let mut registrar = Accepting::default();
-        entry
-            .register(&mut registrar)
-            .expect("the accepting registrar refuses nothing");
-
-        assert_eq!(
-            registrar.claimed().len(),
-            census::BLOCKS.len() + census::ITEMS.len() + census::RECIPES + commands::NAMES.len()
-        );
-        assert_eq!(
-            registrar
-                .claimed()
-                .iter()
-                .filter(|key| key.kind() == ContentKind::Block)
-                .count(),
-            5
-        );
+        assert_eq!(Entry::declared_id().as_str(), MOD_ID);
+        assert_eq!(Entry::new(Side::Client).id().as_str(), MOD_ID);
     }
 
     #[test]
     fn the_entry_declares_both_its_content_and_its_settings() {
-        let entry = Entrypoint::new(Side::Client);
+        let entry = Entry::new(Side::Client);
         assert!(
             entry
                 .content_declaration()
@@ -1041,7 +1020,7 @@ mod tests {
 
     #[test]
     fn the_deferred_work_closes_the_surface_and_files_the_three_registrations() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         assert!(entry.surface().is_open());
         assert!(!entry.deferred_work_done());
 
@@ -1053,7 +1032,7 @@ mod tests {
 
     #[test]
     fn a_dependent_registers_into_the_surface_before_the_deferred_work_and_not_after() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry
             .surface_mut()
             .register_channel(capabilities::ChannelKind {
@@ -1076,7 +1055,7 @@ mod tests {
 
     #[test]
     fn a_server_starting_empties_the_ordering_queues() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry
             .ordering_mut()
             .enqueue(DEFAULT_DIMENSION, 0, "dependent")
@@ -1091,7 +1070,7 @@ mod tests {
 
     #[test]
     fn no_earlier_lifecycle_step_empties_the_queues() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry
             .ordering_mut()
             .enqueue(DEFAULT_DIMENSION, 0, "dependent")
@@ -1109,7 +1088,7 @@ mod tests {
 
     #[test]
     fn a_server_tick_drains_the_dimension_that_ticked() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry
             .ordering_mut()
             .enqueue(DEFAULT_DIMENSION, 2, "dependent")
@@ -1124,7 +1103,7 @@ mod tests {
 
     #[test]
     fn a_client_tick_drains_nothing() {
-        let mut entry = Entrypoint::new(Side::Client);
+        let mut entry = Entry::new(Side::Client);
         entry
             .ordering_mut()
             .enqueue(DEFAULT_DIMENSION, 0, "dependent")
@@ -1142,7 +1121,7 @@ mod tests {
 
     #[test]
     fn the_readouts_client_memory_exists_on_a_client_and_nowhere_else() {
-        let mut client = Entrypoint::new(Side::Client);
+        let mut client = Entry::new(Side::Client);
         client
             .client_mut()
             .expect("a client builds it")
@@ -1154,7 +1133,7 @@ mod tests {
         );
 
         for side in [Side::IntegratedServer, Side::DedicatedServer] {
-            let server = Entrypoint::new(side);
+            let server = Entry::new(side);
             assert!(
                 server.client().is_err(),
                 "a server side never builds the state rather than building and hiding it"
@@ -1164,7 +1143,7 @@ mod tests {
 
     #[test]
     fn the_whole_lifecycle_runs_through_and_records_what_it_was_asked() {
-        let mut entry = Entrypoint::new(Side::IntegratedServer);
+        let mut entry = Entry::new(Side::IntegratedServer);
         for state in LifecycleState::ALL {
             entry.enter(state).expect("the entry accepts every step");
         }
@@ -1189,8 +1168,8 @@ mod tests {
         PacketDelivery::of(packet, side).expect("the side may receive it")
     }
 
-    fn card_holder() -> Entrypoint {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+    fn card_holder() -> Entry {
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry.holding_mut().kind = network::Held::PatternCard;
         entry.holding_mut().hand = Some(Hand::Main);
         entry
@@ -1198,13 +1177,13 @@ mod tests {
 
     #[test]
     fn a_dependent_reaches_the_published_surface_through_the_service_seam() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         let declaration = entry
             .service_declaration()
             .expect("valid service declaration")
             .expect("the entry declares what it answers");
-        let surface = Entrypoint::surface_service().expect("a legal service name");
-        let ordering = Entrypoint::ordering_service().expect("a legal service name");
+        let surface = Entry::surface_service().expect("a legal service name");
+        let ordering = Entry::ordering_service().expect("a legal service name");
         let provided: Vec<&ServiceId> = declaration.provides().collect();
         assert!(provided.contains(&&surface));
         assert!(provided.contains(&&ordering));
@@ -1229,8 +1208,8 @@ mod tests {
 
     #[test]
     fn a_dependent_enqueues_into_the_ordering_service_through_the_same_seam() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
-        let ordering = Entrypoint::ordering_service().expect("a legal service name");
+        let mut entry = Entry::new(Side::DedicatedServer);
+        let ordering = Entry::ordering_service().expect("a legal service name");
 
         let answer = entry
             .answer_service(&ServiceRequest::new(
@@ -1258,8 +1237,8 @@ mod tests {
 
     #[test]
     fn a_dependent_supplies_a_module_an_instruction_and_a_dimension_through_the_seam() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
-        let surface = Entrypoint::surface_service().expect("a legal service name");
+        let mut entry = Entry::new(Side::DedicatedServer);
+        let surface = Entry::surface_service().expect("a legal service name");
         let mut call = |arguments: JsonValue| {
             entry
                 .answer_service(&ServiceRequest::new(surface.clone(), arguments))
@@ -1332,8 +1311,8 @@ mod tests {
 
     #[test]
     fn an_instruction_whose_body_is_not_this_entrys_is_refused_rather_than_registered() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
-        let surface = Entrypoint::surface_service().expect("a legal service name");
+        let mut entry = Entry::new(Side::DedicatedServer);
+        let surface = Entry::surface_service().expect("a legal service name");
         for arguments in [
             json!({ "action": "register_instruction", "name": "x", "output": "amount",
                     "body": [{ "step": "detonate" }] }),
@@ -1368,8 +1347,8 @@ mod tests {
 
     #[test]
     fn a_service_call_naming_nothing_this_entry_publishes_is_refused_rather_than_guessed() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
-        let surface = Entrypoint::surface_service().expect("a legal service name");
+        let mut entry = Entry::new(Side::DedicatedServer);
+        let surface = Entry::surface_service().expect("a legal service name");
 
         for arguments in [json!({}), json!({ "action": "drop_everything" })] {
             let answer = entry
@@ -1381,7 +1360,7 @@ mod tests {
 
     #[test]
     fn a_queue_in_any_dimension_is_drained_by_a_server_tick() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         for dimension in [
             DEFAULT_DIMENSION,
             "counterpart:the_nether",
@@ -1401,8 +1380,8 @@ mod tests {
     }
 
     #[test]
-    fn the_two_commands_are_claimed_and_run_rather_than_declared_and_refused() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+    fn the_claimed_cycle_command_runs_rather_than_being_declared_and_refused() {
+        let mut entry = Entry::new(Side::DedicatedServer);
         let mut registrar = Accepting::default();
         entry.register(&mut registrar).expect("nothing is refused");
         let claimed: Vec<&RegistryKey> = registrar
@@ -1410,9 +1389,8 @@ mod tests {
             .iter()
             .filter(|key| key.kind() == ContentKind::Command)
             .collect();
-        assert_eq!(claimed.len(), 2);
 
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry.holding_mut().kind = network::Held::Carrier;
         entry.holding_mut().hand = Some(Hand::Main);
         for slot in [1, 4] {
@@ -1444,7 +1422,7 @@ mod tests {
 
     #[test]
     fn a_cycle_command_whose_direction_is_not_one_of_the_two_words_is_refused() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         let key = census::claimed(MOD_ID.parse().expect("the packaged identity is legal"))
             .expect("the packaged names are legal")
             .into_iter()
@@ -1486,15 +1464,15 @@ mod tests {
                 .positions()
                 .first()
                 .and_then(Option::as_ref)
-                .map(|stack| stack.identity.as_str()),
-            Some("counterpart:beam"),
+                .map(|stack| stack.identity.to_string()),
+            Some("counterpart:beam".to_owned()),
             "the payload reached the card rather than a validation nothing called"
         );
     }
 
     #[test]
     fn a_readout_request_out_of_range_answers_nothing_and_one_in_range_answers() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry.holding_mut().chunk_loaded = true;
         entry.holding_mut().at = (0, 0, 0);
 
@@ -1520,7 +1498,7 @@ mod tests {
 
     #[test]
     fn a_wholesale_payload_carrying_an_unsound_record_changes_nothing() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry.holding_mut().kind = network::Held::Carrier;
         let before = entry.carrier().clone();
 
@@ -1549,7 +1527,7 @@ mod tests {
 
     #[test]
     fn a_client_bound_answer_reaches_the_client_only_memory() {
-        let mut entry = Entrypoint::new(Side::Client);
+        let mut entry = Entry::new(Side::Client);
         let answer = network::ReadoutAnswer {
             at: (1, 2, 3),
             values: vec![("stored".to_owned(), values::Reading::Amount(9))],
@@ -1571,7 +1549,7 @@ mod tests {
 
     #[test]
     fn the_five_records_survive_a_world_reload_through_ravels_own_seam() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry
             .store_mut()
             .write(Record::InfusionProgress, "0,64,0", json!(12))
@@ -1585,7 +1563,7 @@ mod tests {
             .save_saved_data()
             .expect("saving does not fail")
             .expect("this entry owns world data");
-        let mut reopened = Entrypoint::new(Side::DedicatedServer);
+        let mut reopened = Entry::new(Side::DedicatedServer);
         let plan = SavedDataPlan::open(
             &reopened
                 .saved_data_declaration()
@@ -1607,7 +1585,7 @@ mod tests {
 
     #[test]
     fn a_world_that_stored_nothing_opens_on_nothing_rather_than_the_last_worlds_records() {
-        let mut entry = Entrypoint::new(Side::DedicatedServer);
+        let mut entry = Entry::new(Side::DedicatedServer);
         entry
             .store_mut()
             .write(Record::InfusionProgress, "0,64,0", json!(12))

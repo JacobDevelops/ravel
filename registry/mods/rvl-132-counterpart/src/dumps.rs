@@ -22,21 +22,21 @@ use crate::settings::{DECLINED, KEYS};
 use crate::storage::{Class, Shape, table};
 
 /// Where the attachment table is written.
-pub const ATTACHMENT_TABLE: &str = "generated/capabilities.txt";
+pub const ATTACHMENTS_PATH: &str = "generated/capabilities.txt";
 
 /// Where the store-adapter table is written.
-pub const ADAPTER_TABLE: &str = "generated/storage.txt";
+pub const ADAPTERS_PATH: &str = "generated/storage.txt";
 
 /// Where the counts and their arithmetic are written.
-pub const CENSUS_DOCUMENT: &str = "generated/census.json";
+pub const CENSUS_PATH: &str = "generated/census.json";
 
 /// Every generated document, as a package-relative path and its content.
 #[must_use]
-pub fn all() -> Vec<(&'static str, String)> {
+pub fn documents() -> Vec<(&'static str, String)> {
     vec![
-        (ATTACHMENT_TABLE, capabilities()),
-        (ADAPTER_TABLE, storage()),
-        (CENSUS_DOCUMENT, census()),
+        (ATTACHMENTS_PATH, capabilities()),
+        (ADAPTERS_PATH, storage()),
+        (CENSUS_PATH, census()),
     ]
 }
 
@@ -148,7 +148,7 @@ mod tests {
     fn the_generated_documents_regenerate_byte_for_byte() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
-        for (relative, rendered) in all() {
+        for (relative, rendered) in documents() {
             let path = root.join(relative);
             if regenerating {
                 std::fs::create_dir_all(path.parent().expect("a package-relative path"))

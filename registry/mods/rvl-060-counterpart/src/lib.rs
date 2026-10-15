@@ -60,7 +60,7 @@
 //! formatted block for a user to paste into a support channel. It reads only
 //! what the game already knows about its own machine, sends nothing, and stays
 //! explicitly user-invoked. Ravel publishes no clipboard, so the text is held
-//! for the host to place through [`Shared::take_report`].
+//! for the host to place through [`Entry::take_report`].
 
 pub mod channel;
 pub mod colour;
@@ -235,7 +235,7 @@ pub struct ClientState {
 
 /// The shared library, as the loader drives it.
 #[derive(Debug)]
-pub struct Shared {
+pub struct Entry {
     side: Side,
     declaration: ContentDeclaration,
     registries: RegistryAccess,
@@ -248,7 +248,7 @@ pub struct Shared {
     report: Option<String>,
 }
 
-impl Shared {
+impl Entry {
     /// Builds the library on a side, with the durable root the host chose.
     ///
     /// Construction is where §2's two construction-time steps land: the durable
@@ -418,7 +418,7 @@ impl Shared {
 }
 
 #[declare_mod(id = "rvl_060_counterpart")]
-impl Mod for Shared {
+impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.entered.push(state);
         Ok(())
@@ -445,7 +445,7 @@ impl Mod for Shared {
     }
 }
 
-export_mod!(|side| Shared::new(side, "."));
+export_mod!(|side| Entry::new(side, "."));
 
 /// This package's own sources, so a test can assert on what they do not hold.
 ///
@@ -472,66 +472,24 @@ const SOURCES: [(&str, &str); 14] = [
 
 #[cfg(test)]
 mod tests {
-    use ravel_sdk::content::{ContentId, ContentKind, RegistrationRefused, RegistryKey};
+    use ravel_sdk::content::{ContentId, ContentKind, RegistryKey};
     use ravel_sdk::events::{CommandInvocation, GameEvent};
     use ravel_sdk::prelude::*;
 
     use super::presentation::Category;
     use super::{
-        COMMAND, Channel, DECLINED, MOD_ID, RegistryAccess, RegistrySource, SOURCES, Shared,
+        COMMAND, Channel, DECLINED, Entry, MOD_ID, RegistryAccess, RegistrySource, SOURCES,
         Suffixes,
     };
 
-    #[derive(Default)]
-    struct Accepting {
-        claimed: Vec<RegistryKey>,
-    }
-
-    impl Registrar for Accepting {
-        fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused> {
-            self.claimed.push(key);
-            Ok(())
-        }
-
-        fn claimed(&self) -> &[RegistryKey] {
-            &self.claimed
-        }
-
-        fn loads(&self, mod_id: &ModId) -> bool {
-            let _ = mod_id;
-            false
-        }
-    }
-
     #[test]
     fn the_package_is_declared_under_the_identity_its_manifest_names() {
-        assert_eq!(Shared::declared_id().as_str(), MOD_ID);
-    }
-
-    #[test]
-    fn the_library_contributes_nothing_a_world_holds_beyond_its_one_command() {
-        let mut shared = Shared::new(Side::DedicatedServer, "/root");
-        let mut registrar = Accepting::default();
-        shared
-            .register(&mut registrar)
-            .expect("the accepting registrar refuses nothing");
-        assert_eq!(registrar.claimed(), [Shared::command_key()]);
-        assert!(
-            registrar
-                .claimed()
-                .iter()
-                .all(|key| key.kind() == ContentKind::Command),
-            "no block, no item, no recipe, no tag and no loot"
-        );
-        assert_eq!(
-            Shared::command_key().to_string(),
-            "command:rvl_060_counterpart:support_report"
-        );
+        assert_eq!(Entry::declared_id().as_str(), MOD_ID);
     }
 
     #[test]
     fn the_claimed_command_runs_and_produces_the_report_for_the_host_to_place() {
-        let mut shared = Shared::new(Side::Client, "/root");
+        let mut shared = Entry::new(Side::Client, "/root");
         shared
             .facts_mut()
             .add(Category::Game, "version", "1.21.1")
@@ -539,7 +497,7 @@ mod tests {
         assert_eq!(shared.take_report(), None, "nothing has been invoked yet");
         shared
             .run_command(&CommandInvocation::new(
-                Shared::command_key(),
+                Entry::command_key(),
                 Side::Client,
                 Vec::new(),
             ))
@@ -557,10 +515,10 @@ mod tests {
 
     #[test]
     fn a_command_this_package_did_not_claim_is_refused_rather_than_answered() {
-        let mut shared = Shared::new(Side::Client, "/root");
+        let mut shared = Entry::new(Side::Client, "/root");
         let other = RegistryKey::new(
             ContentKind::Command,
-            ContentId::new(Shared::declared_id().clone(), "something_else")
+            ContentId::new(Entry::declared_id().clone(), "something_else")
                 .expect("a legal content path"),
         );
         shared
@@ -604,14 +562,14 @@ mod tests {
 
     #[test]
     fn the_accessor_a_side_installs_is_the_one_it_keeps() {
-        let shared = Shared::new(Side::DedicatedServer, "/root");
+        let shared = Entry::new(Side::DedicatedServer, "/root");
         assert_eq!(shared.registries().source(), RegistrySource::RunningServer);
         assert!(shared.registries().get().is_err());
     }
 
     #[test]
     fn the_durable_directory_is_named_at_construction_and_creates_nothing() {
-        let shared = Shared::new(Side::DedicatedServer, "/wherever/ravel/chose");
+        let shared = Entry::new(Side::DedicatedServer, "/wherever/ravel/chose");
         assert_eq!(
             shared.storage().for_package("example"),
             Ok("/wherever/ravel/chose/example".to_owned())
@@ -621,12 +579,12 @@ mod tests {
 
     #[test]
     fn the_client_only_state_is_not_built_on_a_server_side_rather_than_hidden_there() {
-        let client = Shared::new(Side::Client, "/root");
+        let client = Entry::new(Side::Client, "/root");
         assert!(client.has_client_state());
         assert!(client.client().is_ok());
         assert_eq!(client.side(), Side::Client);
         for side in [Side::IntegratedServer, Side::DedicatedServer] {
-            let server = Shared::new(side, "/root");
+            let server = Entry::new(side, "/root");
             assert!(!server.has_client_state());
             assert!(server.client().is_err());
         }
@@ -634,7 +592,7 @@ mod tests {
 
     #[test]
     fn a_disconnect_clears_the_screen_memory_on_a_client_and_costs_a_server_nothing() {
-        let mut client = Shared::new(Side::Client, "/root");
+        let mut client = Entry::new(Side::Client, "/root");
         client
             .client_mut()
             .expect("a client holds its own state")
@@ -651,14 +609,14 @@ mod tests {
             "the original never clears this, so state crosses worlds"
         );
 
-        let mut server = Shared::new(Side::DedicatedServer, "/root");
+        let mut server = Entry::new(Side::DedicatedServer, "/root");
         server.on_disconnect();
         assert!(server.client().is_err());
     }
 
     #[test]
     fn the_whole_lifecycle_runs_and_every_step_is_recorded_in_order() {
-        let mut shared = Shared::new(Side::IntegratedServer, "/root");
+        let mut shared = Entry::new(Side::IntegratedServer, "/root");
         for state in LifecycleState::ALL {
             shared.enter(state).expect("the library accepts every step");
         }
@@ -667,7 +625,7 @@ mod tests {
 
     #[test]
     fn every_observed_event_is_recorded_in_the_order_it_arrived() {
-        let mut shared = Shared::new(Side::Client, "/root");
+        let mut shared = Entry::new(Side::Client, "/root");
         for event in GameEvent::ALL {
             shared.observe(event).expect("every event is recorded");
         }
@@ -676,10 +634,10 @@ mod tests {
 
     #[test]
     fn a_channel_is_declared_beside_the_package_rather_than_in_a_process_wide_list() {
-        let mut shared = Shared::new(Side::DedicatedServer, "/root");
+        let mut shared = Entry::new(Side::DedicatedServer, "/root");
         assert_eq!(shared.channels().len(), 0);
         shared.declare_channel(Channel::new(
-            Shared::declared_id().clone(),
+            Entry::declared_id().clone(),
             "shared",
             1,
             true,
@@ -692,7 +650,7 @@ mod tests {
 
     #[test]
     fn the_one_command_reads_what_the_game_knows_and_sends_nothing() {
-        let mut shared = Shared::new(Side::Client, "/root");
+        let mut shared = Entry::new(Side::Client, "/root");
         shared
             .facts_mut()
             .add(Category::Game, "version", "1.21.1")

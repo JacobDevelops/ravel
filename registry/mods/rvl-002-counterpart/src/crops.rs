@@ -16,7 +16,7 @@ use crate::data::OWN_TAG;
 use crate::{CONVENTION_NAMESPACE, HOST_NAMESPACE};
 
 /// The crop kind every one of the six is declared at.
-pub const KIND: &str = "resource";
+pub const KIND: &str = "rvl_321_counterpart:resource";
 
 /// How many crops this entry declares.
 pub const COUNT: usize = 6;
@@ -101,7 +101,12 @@ impl Declared {
     /// opts out of all three for this namespace and ships equivalent documents
     /// instead.
     #[must_use]
-    pub fn crop(&self, namespace: &str, tier: &str, material_id: &str) -> Crop {
+    pub fn crop(
+        &self,
+        id: ravel_sdk::content::ContentId,
+        tier: &ravel_sdk::content::ContentId,
+        material_id: &str,
+    ) -> Crop {
         let crafted = match self.material {
             Material::HostEntry | Material::OwnEntry | Material::CompanionEntry => Crafted::Entry {
                 id: material_id.to_owned(),
@@ -109,7 +114,12 @@ impl Declared {
             },
             Material::ConventionTag | Material::OwnTag => Crafted::Tag(material_id.to_owned()),
         };
-        let mut crop = Crop::new(&format!("{namespace}:{}", self.path), tier, KIND, crafted);
+        let mut crop = Crop::new(
+            id,
+            tier.clone(),
+            KIND.parse().expect("a legal kind identity"),
+            crafted,
+        );
         crop.derived = OPT_OUT;
         crop
     }
@@ -232,7 +242,13 @@ mod tests {
     }
 
     fn crop_of(declared: &Declared) -> Crop {
-        declared.crop(NAMESPACE, TIER, &declared.material_id(NAMESPACE))
+        declared.crop(
+            format!("{NAMESPACE}:{}", declared.path)
+                .parse()
+                .expect("a legal crop identity"),
+            &TIER.parse().expect("a legal tier identity"),
+            &declared.material_id(NAMESPACE),
+        )
     }
 
     #[test]
@@ -267,8 +283,8 @@ mod tests {
     fn every_crop_sits_at_the_sixth_tier_and_derives_nothing() {
         for declared in &DECLARED {
             let crop = crop_of(declared);
-            assert_eq!(crop.tier, TIER);
-            assert_eq!(crop.kind, KIND);
+            assert_eq!(crop.tier.to_string(), TIER);
+            assert_eq!(crop.kind.to_string(), KIND);
             assert_eq!(crop.derived, OPT_OUT);
             assert!(!crop.derived.ritual_seed);
             assert!(!crop.derived.grid_seed);

@@ -23,7 +23,7 @@
     {
       "category": "metadata",
       "locator": "provenance/m6-foundation/RVL-180.json",
-      "revision": "sha256 2ed8def10b9410c7135d6bb905bdcd6cb0944fff203829d5426446ec20928b77",
+      "revision": "sha256 983304e44e8cf2d3ce0a90d489ba24a561fa16fabe831db6c3e00e7360d6626e",
       "use": "The rights record the specification was written under. It records the code surface as permission-required under a weak-copyleft licence with sourceUse conditional, behaviour as cleared, names as unresolved and textures as permission-required. This package carries the consequences: it is written from behaviour alone, its alias declaration is empty because no save-compatible identifier mapping is specified, and it ships no art.",
       "producedBy": "M6-W3"
     },

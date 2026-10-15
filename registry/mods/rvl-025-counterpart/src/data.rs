@@ -22,6 +22,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use ravel_sdk::JsonValue;
+use ravel_sdk::content::ContentId;
 
 /// The most entries any list-valued record may carry.
 ///
@@ -270,10 +271,10 @@ fn serde_map() -> JsonValue {
 /// the components that make two otherwise equal stacks unequal. The two boolean
 /// declarations are what §10 and §15 have a dependent supply, and they are read
 /// here rather than cast to.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Stack {
     /// What the stack is, namespaced by whoever registered it.
-    pub identity: String,
+    pub identity: ContentId,
     /// How many, never zero for a present stack.
     pub count: u8,
     /// The wear on the stack, where the identity has any.
@@ -296,24 +297,30 @@ impl Stack {
     ///
     /// # Errors
     ///
-    /// Returns [`RecordRefused::Name`] for an empty or over-long identity.
+    /// Returns [`RecordRefused::Name`] for an empty or over-long identity and
+    /// [`RecordRefused::Identity`] for a malformed one.
     pub fn of(identity: &str) -> Result<Self, RecordRefused> {
         check_name(identity)?;
         Ok(Self {
-            identity: identity.to_owned(),
+            identity: identity.parse().map_err(|_| RecordRefused::Identity {
+                identity: identity.to_owned(),
+            })?,
             count: 1,
-            ..Self::default()
+            damage: 0,
+            components: BTreeMap::new(),
+            carrier_ready: false,
+            cyclable: false,
+            upgradable: false,
+            infusion: 0,
         })
     }
 
     /// Returns whether this stack holds nothing.
     ///
-    /// A zero count and an unnamed identity are the same absence, so a record
-    /// that read a malformed entry as an empty slot cannot then present it as
-    /// something a rule can match.
+    /// A zero count denotes absence; every stack identity remains valid.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.count == 0 || self.identity.is_empty()
+        self.count == 0
     }
 
     /// Returns whether two stacks are the same identity carrying the same
@@ -323,13 +330,10 @@ impl Stack {
         self.identity == other.identity && self.components == other.components
     }
 
-    /// Returns the namespace half of the identity, empty when it has none.
+    /// Returns the namespace half of the validated identity.
     #[must_use]
     pub fn namespace(&self) -> &str {
-        match self.identity.split_once(':') {
-            Some((namespace, _)) => namespace,
-            None => "",
-        }
+        self.identity.namespace().as_str()
     }
 
     /// Writes the stack as a document.
@@ -357,7 +361,7 @@ impl Stack {
     /// # Errors
     ///
     /// Returns [`RecordRefused`] for a document that is not an object, for an
-    /// identity that is missing, empty or over-long, and for a component map
+    /// identity that is missing, empty, over-long or malformed, and for a component map
     /// above [`MAX_COMPONENTS`] or carrying an over-long name.
     pub fn from_saved(document: &JsonValue) -> Result<Self, RecordRefused> {
         let object = document
@@ -368,6 +372,9 @@ impl Stack {
             .and_then(JsonValue::as_str)
             .ok_or(RecordRefused::Shape { record: None })?;
         check_name(identity)?;
+        let identity = identity.parse().map_err(|_| RecordRefused::Identity {
+            identity: identity.to_owned(),
+        })?;
 
         let mut components = BTreeMap::new();
         if let Some(declared) = object.get("components") {
@@ -397,7 +404,7 @@ impl Stack {
                 .unwrap_or_default()
         };
         Ok(Self {
-            identity: identity.to_owned(),
+            identity,
             count: u8::try_from(
                 object
                     .get("count")
@@ -579,7 +586,7 @@ pub fn check_name(name: &str) -> Result<(), RecordRefused> {
 }
 
 /// Why a persisted record was not read back.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RecordRefused {
     /// The document is not the shape the record is written in.
     Shape {
@@ -604,6 +611,11 @@ pub enum RecordRefused {
     Name {
         /// How long the name was.
         length: usize,
+    },
+    /// An identity is not a legal namespaced content identifier.
+    Identity {
+        /// The identity as written.
+        identity: String,
     },
 }
 
@@ -633,6 +645,10 @@ impl fmt::Display for RecordRefused {
                     "a name of {length} characters is not a legal one"
                 )
             }
+            Self::Identity { identity } => write!(
+                formatter,
+                "`{identity}` is not a legal namespaced content identity"
+            ),
         }
     }
 }
@@ -834,8 +850,18 @@ mod tests {
     }
 
     #[test]
-    fn a_namespace_is_the_half_before_the_separator_and_empty_without_one() {
+    fn identities_are_validated_before_their_namespace_is_read() {
         assert_eq!(stack("counterpart:first").namespace(), "counterpart");
-        assert_eq!(stack("first").namespace(), "");
+        for bad in ["first", ":first", "counterpart:", "counterpart:../first"] {
+            assert!(Stack::of(bad).is_err());
+            assert!(Stack::from_saved(&ravel_sdk::json!({"identity": bad})).is_err());
+        }
+        assert_eq!(
+            Stack::of("first"),
+            Err(RecordRefused::Identity {
+                identity: "first".to_owned()
+            }),
+            "a malformed identity is not reported as a name-length refusal"
+        );
     }
 }

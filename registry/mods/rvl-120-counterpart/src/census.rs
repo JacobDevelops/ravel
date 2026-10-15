@@ -73,7 +73,7 @@ pub const DATA_DOCUMENTS: usize = 0;
 /// Returns [`DeclarationError`] when a declared path is not a legal content
 /// path, which for these constants is a packaging failure.
 pub fn declaration() -> Result<ContentDeclaration, DeclarationError> {
-    let mut declaration = ContentDeclaration::new(crate::Shared::declared_id().clone());
+    let mut declaration = ContentDeclaration::new(crate::Entry::declared_id().clone());
     declaration.entry(ContentKind::Recipe, RECIPE_KIND)?;
     Ok(declaration)
 }

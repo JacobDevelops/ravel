@@ -220,7 +220,7 @@ impl Carrier {
                 .components
                 .get(FORM_COMPONENT)
                 .cloned()
-                .unwrap_or_else(|| stack.identity.clone()),
+                .unwrap_or_else(|| stack.identity.to_string()),
         };
         Ok(Replacement {
             presents,
@@ -277,7 +277,7 @@ impl Carrier {
 }
 
 /// Why the carrier refused something.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CarrierRefused {
     /// A slot index is outside the six.
     Slot {

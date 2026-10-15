@@ -208,7 +208,12 @@ mod tests {
     fn tiers() -> Vec<Tier> {
         (1..=5)
             .map(|value| {
-                let mut tier = Tier::new(&format!("test:tier_{value}"), value);
+                let mut tier = Tier::new(
+                    format!("test:tier_{value}")
+                        .parse()
+                        .expect("a legal tier identity"),
+                    value,
+                );
                 tier.adjust(
                     &format!("test:ground_{value}"),
                     &format!("test:material_{value}"),
@@ -219,7 +224,12 @@ mod tests {
     }
 
     fn crop() -> Crop {
-        Crop::new("test:crop", "test:tier_1", "test:kind", Crafted::Nothing)
+        Crop::new(
+            ("test:crop").parse().expect("a legal crop identity"),
+            ("test:tier_1").parse().expect("a legal tier identity"),
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            Crafted::Nothing,
+        )
     }
 
     #[test]
@@ -259,12 +269,16 @@ mod tests {
     }
 
     #[test]
-    fn a_crops_own_chance_replaces_the_tiers_and_the_sentinel_defers() {
+    fn a_crop_override_including_zero_replaces_the_tier_and_absence_defers() {
         let tiers = tiers();
         let mut crop = crop();
-        crop.second_drop_chance = 0.5;
+        crop.second_drop_chance = Some(0.5);
         let other = Below::read(Some("test:ground_3"), &tiers[0], &tiers);
         assert!((second_drop_chance(&crop, &tiers[0], Some(other)) - 0.5).abs() < 1e-9);
+        crop.second_drop_chance = Some(0.0);
+        assert!(second_drop_chance(&crop, &tiers[0], Some(other)).abs() < 1e-9);
+        crop.second_drop_chance = None;
+        assert!((second_drop_chance(&crop, &tiers[0], Some(other)) - 0.1).abs() < 1e-9);
     }
 
     #[test]

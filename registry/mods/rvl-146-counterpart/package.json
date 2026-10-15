@@ -16,6 +16,9 @@
     "dedicated-server"
   ],
   "configurationSchemas": [],
+  "savedDataVersions": [
+    1
+  ],
   "authors": [
     {
       "name": "Ravel registry maintainers"
@@ -27,11 +30,11 @@
     "files": [
       {
         "path": "Cargo.toml",
-        "sha256": "3682e0cc6114a5d3c42e5c877e9d641869ff7734dcf03ee7ab180e67f1d547b6"
+        "sha256": "039c7d8ae3755fd1b50f066db4f31bb6a1ddbbd464bb51ca30116285ff4660a4"
       },
       {
         "path": "NOTES.md",
-        "sha256": "4f716f3b5512ae34f1e718e100ec6e230080cdb12a3b6d93b9ee1edd4329b8cc"
+        "sha256": "539bdd38a522657a6bcb5ccac9c52744bc2422e43d273a1f94a66abccbcbce83"
       },
       {
         "path": "aliases.json",
@@ -63,11 +66,11 @@
       },
       {
         "path": "src/highlights.rs",
-        "sha256": "b7286eb2167436df124b2adb3f46b61631333d8d4e743903668419e397474871"
+        "sha256": "8d71d373f7eabb69ee7f9ab999aa1bfb8d110adf0ba8a686b0124f6fe6a5353a"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "387bbef8138993506c334c3adc8489bd402d64edcb8770681495fb34490fa8d3"
+        "sha256": "2b1c997f6e849ce5269d31dd802f6f2a1cf82575a9bcb0940f1f6cf239dbf7e1"
       },
       {
         "path": "src/menus.rs",
@@ -87,7 +90,7 @@
       },
       {
         "path": "src/registration.rs",
-        "sha256": "b363a787358c7c6aab8ee1541d470169abe3cee0cdfd71c15ba73bdb062f4a70"
+        "sha256": "a026c6f1395d121267c7f83cd688c6a02b9dd5604b557e171f6a9e7ef66b866d"
       },
       {
         "path": "src/shapes.rs",
@@ -105,6 +108,6 @@
   },
   "provenance": {
     "record": "provenance.json",
-    "sha256": "86379886065981a3b97e0dc97af0552f8cbf5b7b1a02f82b49730711c3117e8f"
+    "sha256": "0dca7c1d374eb87d108ae0396cfd1b988b571c42154556a66d2369e4c5a6826d"
   }
 }

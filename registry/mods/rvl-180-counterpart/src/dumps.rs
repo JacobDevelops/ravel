@@ -2,7 +2,7 @@
 //! that holds the written tree to them.
 //!
 //! Nothing new is decided here. Every value below is read back out of
-//! [`crate::Shared::declaration`], [`crate::grouping::Aggregation::resolve`] and
+//! [`crate::Entry::declaration`], [`crate::grouping::Aggregation::resolve`] and
 //! [`crate::sprites`], so a document under `generated/` is a rendering of what
 //! this package already computes rather than a second statement of it that could
 //! disagree. That is the whole reason the module exists: `NOTES.md` claims a
@@ -22,16 +22,16 @@ use ravel_sdk::prelude::*;
 use ravel_sdk::{JsonValue, json};
 
 use crate::grouping::{self, Aggregation};
-use crate::{Shared, sprites};
+use crate::{Entry, sprites};
 
 /// Where the generated pack this package's declaration produces is written.
-pub const DECLARATIONS: &str = "generated/declarations.json";
+pub const DECLARATIONS_PATH: &str = "generated/declarations.json";
 
 /// Where the resolved groups are written.
-pub const GROUPING: &str = "generated/grouping.txt";
+pub const GROUPING_PATH: &str = "generated/grouping.txt";
 
 /// Where the sprite set is written.
-pub const SPRITES: &str = "generated/sprites.txt";
+pub const SPRITES_PATH: &str = "generated/sprites.txt";
 
 /// Returns every document, each as its path relative to the package root and
 /// its exact text.
@@ -40,16 +40,16 @@ pub const SPRITES: &str = "generated/sprites.txt";
 ///
 /// Returns [`ModError::Refused`] when a spelling this package holds as a
 /// constant is illegal, which would be the same packaging failure
-/// [`crate::Shared::declaration`] reports, and when a file the declaration
+/// [`crate::Entry::declaration`] reports, and when a file the declaration
 /// generates is not the JSON document it is generated as.
 pub fn documents() -> Result<Vec<(&'static str, String)>, ModError> {
     let aggregation =
         Aggregation::conventional().map_err(|error| ModError::refused(error.to_string()))?;
-    let declaration = Shared::declaration(&aggregation)?;
+    let declaration = Entry::declaration(&aggregation)?;
     Ok(vec![
-        (DECLARATIONS, declarations_document(&declaration)?),
-        (GROUPING, grouping_document(&aggregation)?),
-        (SPRITES, sprites_document()?),
+        (DECLARATIONS_PATH, declarations_document(&declaration)?),
+        (GROUPING_PATH, grouping_document(&aggregation)?),
+        (SPRITES_PATH, sprites_document()?),
     ])
 }
 
@@ -117,7 +117,8 @@ pub fn sprites_document() -> Result<String, ModError> {
         } else {
             "frame"
         };
-        let path = sprites::sprite_path(name).map_err(|error| ModError::refused(error.to_string()))?;
+        let path =
+            sprites::sprite_path(name).map_err(|error| ModError::refused(error.to_string()))?;
         writeln!(
             document,
             "{name}\t{group}\t{}\t{}",

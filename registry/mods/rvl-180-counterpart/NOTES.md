@@ -26,7 +26,7 @@ Nothing here softens §11's statement, and the declarable-only list is where the
 | §3 the five client-side bytecode transformations | declarable only; not reachable | — |
 | §4 the thirty-four groups | implemented | `src/grouping.rs` |
 | §4 the aggregate resolving through its leaves | implemented | `src/grouping.rs` |
-| §5 the three commands | implemented | `src/commands.rs`, `src/census.rs` |
+| §5 the three commands | implemented | `src/commands.rs`, `src/population.rs` |
 | §5 the permission level of each | declarable only | `src/commands.rs` |
 | §5 the eighteen translated lines | implemented | `src/presentation.rs` |
 | §5 the two read-only displays | implemented | `src/presentation.rs` |
@@ -83,7 +83,7 @@ Nothing here softens §11's statement, and the declarable-only list is where the
   nothing else. `grouping::Aggregation` is the nested model §4 requires, and what reaches Ravel is
   what `Aggregation::resolve` computed. The ceiling that leaves: a member contributed to a leaf after
   the declaration was built reaches the aggregate by rebuilding the declaration
-  (`Shared::rebuild_declaration`), not by the generated document picking it up on its own. Raising
+  (`Entry::rebuild_declaration`), not by the generated document picking it up on its own. Raising
   that ceiling needs a nested tag model in Ravel, not a change here. Resolution is breadth-first, so
   a group is entered at the shallowest depth that reaches it and `MAX_DEPTH` prunes only what is
   genuinely deep; and a resolution that did hit the bound refuses the declaration rather than
@@ -109,7 +109,7 @@ Nothing here softens §11's statement, and the declarable-only list is where the
   the oldest. `commands::Console` follows the outbox's rule for the notes it retains: a note past the
   bound is dropped and the drop is counted in `Console::dropped`, because a bound that discards
   without a count is a bound nobody can see was reached.
-- **A population saturates and is capped (§5).** `census::Census` takes counts from outside this
+- **A population saturates and is capped (§5).** `population::Population` takes counts from outside this
   package, so a kind beyond `MAX_KINDS` is refused, a count saturates at `MAX_PER_KIND` rather than
   wrapping, and a kind name outside a declared charset and length is refused with nothing recorded.
   A kind the removal command takes is dropped from the population rather than left counting zero, so
@@ -137,7 +137,7 @@ and nothing carries a pretend implementation.
   and the words a player typed, and names no invoker and no permission level, so there is nothing to
   compare a level against. The side *is* enforced.
 - **Where the population comes from (§5).** Ravel publishes no entity surface, so the two
-  world-acting commands read and change `census::Census` rather than a world. Every rule the commands
+  world-acting commands read and change `population::Population` rather than a world. Every rule the commands
   decide — the totals, the per-kind lines, the empty case and the player refusal — is decided over
   that value and is tested. What is host-blocked is the filling of it.
 - **Delivery of a packet (§10).** Ravel's network module states that nothing carries a mod's packet
@@ -204,7 +204,7 @@ default set clean.
 
 Three documents under `generated/` are written by `src/dumps.rs` out of the same functions the rest
 of this package uses, and nothing in them is typed by hand. `generated/declarations.json` is the pack
-`Shared::declaration` generates, path by path, with each generated file parsed back into the document
+`Entry::declaration` generates, path by path, with each generated file parsed back into the document
 it is; `generated/grouping.txt` is one row per member each of the thirty-four groups resolves to, so
 the sixteen members an aggregate reaches only through its leaves can be counted rather than taken on
 trust; `generated/sprites.txt` is the twenty-one sprite names with their group, whether §8's inferred

@@ -6,6 +6,7 @@
 //! makes the two-pass shape of [`crate::registries`] observable rather than
 //! merely documented.
 
+use ravel_sdk::content::ContentId;
 use rvl_042_counterpart::Colour;
 
 /// The opacity a crop's three colours are packed with.
@@ -17,14 +18,11 @@ pub const CROP_OPACITY: u8 = 255;
 /// dependent reads a packed value back and would see a different number.
 pub const CHARGE_OPACITY: u8 = 204;
 
-/// The sentinel a crop's own second-drop chance carries to defer to its tier.
-pub const DEFER_TO_TIER: f64 = -1.0;
-
 /// A named material tier.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tier {
     /// The full identifier, namespace and path.
-    pub id: String,
+    pub id: ContentId,
     /// The ordinal this tier sorts and computes with.
     pub value: u32,
     /// The tier's own colour.
@@ -46,9 +44,9 @@ pub struct Tier {
 impl Tier {
     /// Declares a tier holding the shipped defaults.
     #[must_use]
-    pub fn new(id: &str, value: u32) -> Self {
+    pub fn new(id: ContentId, value: u32) -> Self {
         Self {
-            id: id.to_owned(),
+            id,
             value,
             colour: Colour::new(CROP_OPACITY, 255, 255, 255),
             text_colour: Colour::new(CROP_OPACITY, 255, 255, 255),
@@ -87,7 +85,7 @@ impl Tier {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CropKind {
     /// The full identifier.
-    pub id: String,
+    pub id: ContentId,
     /// The stem model this kind's crops are drawn with.
     pub stem: String,
     /// The item crafting a seed of this kind consumes, filled in on adjust.
@@ -97,9 +95,9 @@ pub struct CropKind {
 impl CropKind {
     /// Declares a kind holding no base seed yet.
     #[must_use]
-    pub fn new(id: &str, stem: &str) -> Self {
+    pub fn new(id: ContentId, stem: &str) -> Self {
         Self {
-            id: id.to_owned(),
+            id,
             stem: stem.to_owned(),
             base_seed: None,
         }
@@ -194,15 +192,15 @@ pub struct Registration {
 #[derive(Clone, PartialEq)]
 pub struct Crop {
     /// The full identifier. Its path is the crop's name in the global space.
-    pub id: String,
+    pub id: ContentId,
     /// The tier identifier this crop belongs to.
-    pub tier: String,
+    pub tier: ContentId,
     /// The crop kind identifier this crop belongs to.
-    pub kind: String,
+    pub kind: ContentId,
     /// What crafting a seed of this crop consumes.
     pub crafted: Crafted,
-    /// The crop's own second-drop chance, or the sentinel deferring to the tier.
-    pub second_drop_chance: f64,
+    /// The crop's own second-drop chance, or `None` to defer to the tier.
+    pub second_drop_chance: Option<f64>,
     /// Whether this crop reads the ground below as its own tier's.
     pub respects_effective_ground: bool,
     /// Whether this crop contributes recipes and appears in the listing.
@@ -263,14 +261,14 @@ impl std::fmt::Debug for Crop {
 impl Crop {
     /// Declares a crop holding every shipped default.
     #[must_use]
-    pub fn new(id: &str, tier: &str, kind: &str, crafted: Crafted) -> Self {
+    pub fn new(id: ContentId, tier: ContentId, kind: ContentId, crafted: Crafted) -> Self {
         let untinted = Colour::new(CROP_OPACITY, 0, 0, 0);
         Self {
-            id: id.to_owned(),
-            tier: tier.to_owned(),
-            kind: kind.to_owned(),
+            id,
+            tier,
+            kind,
             crafted,
-            second_drop_chance: DEFER_TO_TIER,
+            second_drop_chance: None,
             respects_effective_ground: true,
             enabled: true,
             registration: Registration {
@@ -294,9 +292,7 @@ impl Crop {
     /// The crop's path, which is its name in the single global crop space.
     #[must_use]
     pub fn path(&self) -> &str {
-        self.id
-            .split_once(':')
-            .map_or(self.id.as_str(), |(_, path)| path)
+        self.id.path()
     }
 
     /// Writes one colour into all three of a crop's colours.
@@ -336,14 +332,10 @@ impl Crop {
         self.registration.seed = also_register;
     }
 
-    /// The second-drop chance in force, resolving the deferral sentinel.
+    /// The second-drop chance in force, resolving an absent crop override.
     #[must_use]
     pub fn own_or_tier_chance(&self, tier: &Tier) -> f64 {
-        if self.second_drop_chance <= DEFER_TO_TIER {
-            tier.second_drop_chance
-        } else {
-            self.second_drop_chance
-        }
+        self.second_drop_chance.unwrap_or(tier.second_drop_chance)
     }
 }
 
@@ -387,9 +379,21 @@ impl ChargeType {
 #[must_use]
 pub fn shipped_tiers() -> Vec<Tier> {
     let mut tiers: Vec<Tier> = (1..=5)
-        .map(|value| Tier::new(&format!("{}:tier_{value}", crate::MOD_ID), value))
+        .map(|value| {
+            Tier::new(
+                format!("{}:tier_{value}", crate::MOD_ID)
+                    .parse()
+                    .expect("a legal tier identity"),
+                value,
+            )
+        })
         .collect();
-    tiers.push(Tier::new(&format!("{}:tier_side", crate::MOD_ID), 1));
+    tiers.push(Tier::new(
+        format!("{}:tier_side", crate::MOD_ID)
+            .parse()
+            .expect("a legal tier identity"),
+        1,
+    ));
     tiers
 }
 
@@ -397,8 +401,18 @@ pub fn shipped_tiers() -> Vec<Tier> {
 #[must_use]
 pub fn shipped_kinds() -> Vec<CropKind> {
     vec![
-        CropKind::new(&format!("{}:kind_material", crate::MOD_ID), "stem_material"),
-        CropKind::new(&format!("{}:kind_creature", crate::MOD_ID), "stem_creature"),
+        CropKind::new(
+            format!("{}:kind_material", crate::MOD_ID)
+                .parse()
+                .expect("a legal kind identity"),
+            "stem_material",
+        ),
+        CropKind::new(
+            format!("{}:kind_creature", crate::MOD_ID)
+                .parse()
+                .expect("a legal kind identity"),
+            "stem_creature",
+        ),
     ]
 }
 
@@ -417,7 +431,7 @@ mod tests {
 
     #[test]
     fn a_tier_ships_fertilisable_with_second_drops_at_a_tenth() {
-        let tier = Tier::new("test:tier", 3);
+        let tier = Tier::new(("test:tier").parse().expect("a legal tier identity"), 3);
         assert!(tier.fertilisable);
         assert!(tier.second_drop);
         assert!((tier.second_drop_chance - 0.1).abs() < f64::EPSILON);
@@ -427,7 +441,7 @@ mod tests {
 
     #[test]
     fn effective_ground_is_exact_identity_and_an_unfilled_tier_answers_false() {
-        let mut tier = Tier::new("test:tier", 1);
+        let mut tier = Tier::new(("test:tier").parse().expect("a legal tier identity"), 1);
         assert!(!tier.is_effective_ground(Some("test:ground")));
         tier.adjust("test:ground", "test:material");
         assert!(tier.is_effective_ground(Some("test:ground")));
@@ -437,8 +451,13 @@ mod tests {
 
     #[test]
     fn a_crop_ships_deferring_to_its_tier_and_registering_all_three_things() {
-        let crop = Crop::new("test:crop", "test:tier", "test:kind", Crafted::Nothing);
-        assert!((crop.second_drop_chance - DEFER_TO_TIER).abs() < f64::EPSILON);
+        let crop = Crop::new(
+            ("test:crop").parse().expect("a legal crop identity"),
+            ("test:tier").parse().expect("a legal tier identity"),
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            Crafted::Nothing,
+        );
+        assert_eq!(crop.second_drop_chance, None);
         assert!(crop.respects_effective_ground);
         assert!(crop.enabled);
         assert!(crop.registration.block && crop.registration.material && crop.registration.seed);
@@ -448,18 +467,28 @@ mod tests {
     }
 
     #[test]
-    fn the_deferral_sentinel_reads_the_tiers_chance_and_an_own_value_wins() {
-        let mut tier = Tier::new("test:tier", 1);
+    fn an_absent_override_reads_the_tiers_chance_and_an_own_value_wins() {
+        let mut tier = Tier::new(("test:tier").parse().expect("a legal tier identity"), 1);
         tier.second_drop_chance = 0.25;
-        let mut crop = Crop::new("test:crop", "test:tier", "test:kind", Crafted::Nothing);
+        let mut crop = Crop::new(
+            ("test:crop").parse().expect("a legal crop identity"),
+            ("test:tier").parse().expect("a legal tier identity"),
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            Crafted::Nothing,
+        );
         assert!((crop.own_or_tier_chance(&tier) - 0.25).abs() < f64::EPSILON);
-        crop.second_drop_chance = 0.4;
+        crop.second_drop_chance = Some(0.4);
         assert!((crop.own_or_tier_chance(&tier) - 0.4).abs() < f64::EPSILON);
     }
 
     #[test]
     fn one_colour_is_written_into_three_and_a_zero_colour_asks_for_no_tint() {
-        let mut crop = Crop::new("test:crop", "test:tier", "test:kind", Crafted::Nothing);
+        let mut crop = Crop::new(
+            ("test:crop").parse().expect("a legal crop identity"),
+            ("test:tier").parse().expect("a legal tier identity"),
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            Crafted::Nothing,
+        );
         assert!(Crop::untinted(crop.flower_colour));
         crop.set_colour(10, 20, 30);
         assert_eq!(crop.flower_colour, crop.material_colour);
@@ -480,7 +509,12 @@ mod tests {
 
     #[test]
     fn supplying_a_block_stops_the_registration_unless_the_caller_asks() {
-        let mut crop = Crop::new("test:crop", "test:tier", "test:kind", Crafted::Nothing);
+        let mut crop = Crop::new(
+            ("test:crop").parse().expect("a legal crop identity"),
+            ("test:tier").parse().expect("a legal tier identity"),
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            Crafted::Nothing,
+        );
         crop.supply_block("test:own_block", false);
         assert!(!crop.registration.block);
         crop.supply_material("test:own_material", true);
@@ -521,7 +555,12 @@ mod tests {
 
     #[test]
     fn a_crops_path_is_read_without_its_namespace() {
-        let crop = Crop::new("other:the_name", "test:tier", "test:kind", Crafted::Nothing);
+        let crop = Crop::new(
+            ("other:the_name").parse().expect("a legal crop identity"),
+            ("test:tier").parse().expect("a legal tier identity"),
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            Crafted::Nothing,
+        );
         assert_eq!(crop.path(), "the_name");
     }
 }

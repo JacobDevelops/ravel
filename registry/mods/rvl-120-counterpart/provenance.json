@@ -16,7 +16,7 @@
     {
       "category": "metadata",
       "locator": "provenance/m6-foundation/RVL-120.json",
-      "revision": "sha256 2964f14793ab2d66c2fc84518e4fede54dda2a9090904eb3832bb03aca8e76ab",
+      "revision": "sha256 78b81130656c889f71e79f1213a6687fbfe2d23ddf9ef5cb4b9363c502dd83a6",
       "use": "The rights record the specification was written under, which clears code and behaviour and leaves names unresolved. Two consequences are visible in this package: no identifier here is carried across, so aliases.json is empty; and the three serialised redstone spellings and the wide check's polynomial are compatibility-required values that record leaves unobtainable, so both are read from a build-time input and both have a placeholder the tests pin the surrounding format with.",
       "producedBy": "M6-W3"
     },

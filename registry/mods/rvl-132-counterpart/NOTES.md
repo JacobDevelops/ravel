@@ -424,7 +424,7 @@ The generated documents: `generated/capabilities.txt` is the vanilla bundle's 46
 `capabilities::vanilla()` tables them, `generated/storage.txt` is the twelve adapters as
 `storage::table()` builds them, and `generated/census.json` is the counts of `census` with the sums
 and products this package derives from them, including the per-capability attachment counts folded
-out of the same table. `dumps::all()` renders all three from those functions and nothing else, and
+out of the same table. `dumps::documents()` renders all three from those functions and nothing else, and
 `the_generated_documents_regenerate_byte_for_byte` rebuilds each one and compares it against the
 bytes in the package, so a table that changes without its document fails. Setting
 `RAVEL_REGENERATE_GENERATED` makes that test write the documents instead of comparing them, which is

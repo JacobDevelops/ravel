@@ -297,7 +297,15 @@ mod tests {
         let derived_kinds = CROP_RECIPES.len();
         assert_eq!(derived_kinds * crops::COUNT, 18);
         for declared in crops::DECLARED {
-            let derived = declared.crop("test", "test:6", "test:material").derived;
+            let derived = declared
+                .crop(
+                    format!("test:{}", declared.path)
+                        .parse()
+                        .expect("a legal crop identity"),
+                    &"test:6".parse().expect("a legal tier identity"),
+                    "test:material",
+                )
+                .derived;
             assert_eq!(derived, crops::OPT_OUT);
             assert!(!derived.ritual_seed);
             assert!(!derived.grid_seed);

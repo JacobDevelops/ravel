@@ -14,21 +14,26 @@
 
 use std::fmt::Write as _;
 
-use ravel_sdk::{JsonValue, json};
+use ravel_sdk::{JsonValue, ModError, json};
+
+/// Where the registration census is written.
+pub const CENSUS_PATH: &str = "generated/census.json";
+/// Where the network contracts are written.
+pub const NETWORK_PATH: &str = "generated/network.txt";
+/// Where the settings table is written.
+pub const SETTINGS_PATH: &str = "generated/settings.txt";
 
 /// Every generated document, as a package-relative path and its bytes.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics when a name this package packages is not a legal content path, which
-/// is a packaging failure rather than a runtime one.
-#[must_use]
-pub fn documents() -> Vec<(String, String)> {
-    vec![
-        ("generated/census.json".to_owned(), census()),
-        ("generated/network.txt".to_owned(), network()),
-        ("generated/settings.txt".to_owned(), settings()),
-    ]
+/// Returns a refusal when a packaged declaration or content path is invalid.
+pub fn documents() -> Result<Vec<(&'static str, String)>, ModError> {
+    Ok(vec![
+        (CENSUS_PATH, census()?),
+        (NETWORK_PATH, network()?),
+        (SETTINGS_PATH, settings()?),
+    ])
 }
 
 /// Renders what this package registers, from [`crate::census`].
@@ -37,13 +42,11 @@ pub fn documents() -> Vec<(String, String)> {
 /// the constant behind it, so the document says what the registration barrier
 /// would actually receive.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics when the declared recipe path is not a legal content path.
-#[must_use]
-pub fn census() -> String {
-    let claimed: Vec<JsonValue> = crate::census::claimed()
-        .expect("a packaged content path is legal")
+/// Returns a refusal when the declared recipe path is not a legal content path.
+pub fn census() -> Result<String, ModError> {
+    let claimed: Vec<JsonValue> = crate::census::claimed()?
         .iter()
         .map(|key| {
             json!({
@@ -64,7 +67,7 @@ pub fn census() -> String {
         "dataDocuments": crate::census::DATA_DOCUMENTS,
         "integrations": crate::INTEGRATIONS,
     });
-    format!("{document}\n")
+    Ok(format!("{document}\n"))
 }
 
 /// Renders the packet contracts of [`crate::network`] as a tab-separated table.
@@ -72,13 +75,14 @@ pub fn census() -> String {
 /// The rows are in the order [`crate::network::PAYLOADS`] declares them, which
 /// is the order the contracts are built in.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics when a packaged payload name is not a legal content path.
-#[must_use]
-pub fn network() -> String {
+/// Returns a refusal when a packaged payload name is not a legal content path.
+pub fn network() -> Result<String, ModError> {
     let mut rendered = String::from("contract\tdirection\tversion\n");
-    for contract in crate::network::contracts().expect("a packaged payload name is a legal path") {
+    for contract in
+        crate::network::contracts().map_err(|error| ModError::refused(error.to_string()))?
+    {
         writeln!(
             rendered,
             "{}\t{}\t{}",
@@ -88,7 +92,7 @@ pub fn network() -> String {
         )
         .expect("writing to a string never fails");
     }
-    rendered
+    Ok(rendered)
 }
 
 /// Renders the declared settings of [`crate::settings`] as a tab-separated table.
@@ -99,13 +103,13 @@ pub fn network() -> String {
 /// from a boolean and from the ceiling's number. A colour appears in the stored
 /// form, with its alpha byte already dropped.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics when the declaration this package builds from its own tables is one
-/// the configuration schema refuses.
-#[must_use]
-pub fn settings() -> String {
-    let declaration = crate::settings::declaration().expect("a packaged declaration is legal");
+/// Returns a refusal when the declaration this package builds from its own tables
+/// is one the configuration schema refuses.
+pub fn settings() -> Result<String, ModError> {
+    let declaration =
+        crate::settings::declaration().map_err(|error| ModError::refused(error.to_string()))?;
     let mut rendered = String::from("key\tside\tdefault\n");
     for setting in declaration.settings() {
         writeln!(
@@ -117,7 +121,7 @@ pub fn settings() -> String {
         )
         .expect("writing to a string never fails");
     }
-    rendered
+    Ok(rendered)
 }
 
 #[cfg(test)]
@@ -135,7 +139,7 @@ mod tests {
     fn the_generated_documents_regenerate_byte_for_byte() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let regenerating = std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some();
-        let rendered = documents();
+        let rendered = documents().expect("the packaged declarations are valid");
         assert!(
             !rendered.is_empty(),
             "the package ships generated documents"
@@ -146,7 +150,7 @@ mod tests {
                 document.ends_with('\n'),
                 "{path} ends with a trailing newline"
             );
-            let target = root.join(&path);
+            let target = root.join(path);
             if regenerating {
                 let directory = target.parent().expect("a document has a parent directory");
                 std::fs::create_dir_all(directory).expect("the directory can be created");

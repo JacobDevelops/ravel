@@ -8,7 +8,7 @@
   ],
   "implementationMethod": "source-informed",
   "publication": {
-    "notes": "The fetched source lives only in the public repository's ignored fixture tree and is not tracked. The specification derived from it is tracked here and not in the public repository. Nothing in either is publishable while the names surface is unresolved.",
+    "notes": "The fetched source lives only in the public repository's ignored fixture tree and is not tracked. The specification derived from it is tracked here and is published in-tree in this public repository. The upstream material is not cleared for publication while the names surface is unresolved.",
     "reviewedAt": "2026-08-13T00:00:00Z",
     "reviewedBy": "unreviewed; M6-W4 wrote this record and no independent review has read it",
     "status": "private-only"

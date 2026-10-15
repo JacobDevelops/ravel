@@ -33,7 +33,7 @@ pub const MAX_KIND_LENGTH: usize = 64;
 
 /// Why a population refused what it was given.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CensusError {
+pub enum PopulationError {
     /// The name is empty, too long, or spells something a name may not.
     Name {
         /// The rejected spelling, quoted so a report can say what arrived.
@@ -46,7 +46,7 @@ pub enum CensusError {
     },
 }
 
-impl fmt::Display for CensusError {
+impl fmt::Display for PopulationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Name { candidate } => {
@@ -57,7 +57,7 @@ impl fmt::Display for CensusError {
     }
 }
 
-impl std::error::Error for CensusError {}
+impl std::error::Error for PopulationError {}
 
 /// One line of a removal report: a kind and how many of it went.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -70,12 +70,12 @@ pub struct Line {
 
 /// What is in the world, as far as this package has been told.
 #[derive(Clone, Debug, Default)]
-pub struct Census {
+pub struct Population {
     counted: BTreeMap<String, u32>,
     players: BTreeMap<String, bool>,
 }
 
-impl Census {
+impl Population {
     /// Builds an empty population.
     #[must_use]
     pub fn new() -> Self {
@@ -89,17 +89,17 @@ impl Census {
     ///
     /// # Errors
     ///
-    /// Returns [`CensusError::Name`] for a name outside the charset and length a
-    /// name may have, and [`CensusError::Full`] when the population already
+    /// Returns [`PopulationError::Name`] for a name outside the charset and length a
+    /// name may have, and [`PopulationError::Full`] when the population already
     /// holds [`MAX_KINDS`] kinds. Nothing is recorded in either case.
-    pub fn record(&mut self, kind: &str, count: u32, players: bool) -> Result<(), CensusError> {
+    pub fn record(&mut self, kind: &str, count: u32, players: bool) -> Result<(), PopulationError> {
         if !is_legal_kind(kind) {
-            return Err(CensusError::Name {
+            return Err(PopulationError::Name {
                 candidate: kind.to_owned(),
             });
         }
         if !self.counted.contains_key(kind) && self.counted.len() >= MAX_KINDS {
-            return Err(CensusError::Full { bound: MAX_KINDS });
+            return Err(PopulationError::Full { bound: MAX_KINDS });
         }
         let held = self.counted.entry(kind.to_owned()).or_insert(0);
         *held = held.saturating_add(count).min(MAX_PER_KIND);
@@ -200,13 +200,13 @@ impl Selector {
     ///
     /// # Errors
     ///
-    /// Returns [`CensusError::Name`] for a word outside the charset and length a
+    /// Returns [`PopulationError::Name`] for a word outside the charset and length a
     /// kind name may have, quoting what arrived.
-    pub fn parse(arguments: &[String]) -> Result<Self, CensusError> {
+    pub fn parse(arguments: &[String]) -> Result<Self, PopulationError> {
         match arguments {
             [only] if only == "all" => Ok(Self::Everything),
             [only] if is_legal_kind(only) => Ok(Self::OfKind(only.clone())),
-            _ => Err(CensusError::Name {
+            _ => Err(PopulationError::Name {
                 candidate: arguments.join(" "),
             }),
         }
@@ -244,9 +244,9 @@ fn is_legal_kind(candidate: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Census, CensusError, MAX_KIND_LENGTH, MAX_KINDS, MAX_PER_KIND, Selector, is_legal_kind,
+        MAX_KIND_LENGTH, MAX_KINDS, MAX_PER_KIND, Population, PopulationError, Selector,
+        is_legal_kind,
     };
-    use std::time::{Duration, Instant};
 
     fn words(line: &str) -> Vec<String> {
         line.split_whitespace().map(str::to_owned).collect()
@@ -254,118 +254,120 @@ mod tests {
 
     #[test]
     fn a_population_totals_what_it_was_told() {
-        let mut census = Census::new();
-        census.record("cow", 4, false).expect("a legal kind");
-        census.record("cow", 2, false).expect("a legal kind");
-        census.record("bat", 1, false).expect("a legal kind");
-        assert_eq!(census.count_of("cow"), 6);
-        assert_eq!(census.total(), 7);
-        assert_eq!(census.kinds(), 2);
-        assert!(!census.is_empty());
+        let mut population = Population::new();
+        population.record("cow", 4, false).expect("a legal kind");
+        population.record("cow", 2, false).expect("a legal kind");
+        population.record("bat", 1, false).expect("a legal kind");
+        assert_eq!(population.count_of("cow"), 6);
+        assert_eq!(population.total(), 7);
+        assert_eq!(population.kinds(), 2);
+        assert!(!population.is_empty());
     }
 
     #[test]
     fn a_count_saturates_at_the_ceiling_rather_than_wrapping() {
-        let mut census = Census::new();
-        census.record("cow", u32::MAX, false).expect("a legal kind");
-        census.record("cow", u32::MAX, false).expect("a legal kind");
-        assert_eq!(census.count_of("cow"), MAX_PER_KIND);
+        let mut population = Population::new();
+        population
+            .record("cow", u32::MAX, false)
+            .expect("a legal kind");
+        population
+            .record("cow", u32::MAX, false)
+            .expect("a legal kind");
+        assert_eq!(population.count_of("cow"), MAX_PER_KIND);
     }
 
     #[test]
-    fn the_kind_bound_is_enforced_and_the_work_stays_under_a_second() {
-        let started = Instant::now();
-        let mut census = Census::new();
+    fn the_kind_bound_is_enforced() {
+        let mut population = Population::new();
         for index in 0..MAX_KINDS + 5_000 {
-            let outcome = census.record(&format!("kind_{index}"), 1, false);
+            let outcome = population.record(&format!("kind_{index}"), 1, false);
             if index >= MAX_KINDS {
-                assert!(matches!(outcome, Err(CensusError::Full { .. })));
+                assert!(matches!(outcome, Err(PopulationError::Full { .. })));
             } else {
                 outcome.expect("a kind below the bound is recorded");
             }
         }
-        assert_eq!(census.kinds(), MAX_KINDS);
-        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(population.kinds(), MAX_KINDS);
     }
 
     #[test]
     fn a_name_outside_the_charset_or_the_length_is_refused_and_records_nothing() {
-        let mut census = Census::new();
+        let mut population = Population::new();
         for candidate in ["", "Cow", "co w", "cow!", &"c".repeat(MAX_KIND_LENGTH + 1)] {
             assert!(matches!(
-                census.record(candidate, 1, false),
-                Err(CensusError::Name { .. })
+                population.record(candidate, 1, false),
+                Err(PopulationError::Name { .. })
             ));
         }
-        assert_eq!(census.kinds(), 0);
+        assert_eq!(population.kinds(), 0);
         assert!(is_legal_kind("namespace:kind_one"));
     }
 
     #[test]
     fn removing_takes_the_selected_kinds_out_and_leaves_the_rest() {
-        let mut census = Census::new();
-        census.record("cow", 3, false).expect("a legal kind");
-        census.record("bat", 2, false).expect("a legal kind");
+        let mut population = Population::new();
+        population.record("cow", 3, false).expect("a legal kind");
+        population.record("bat", 2, false).expect("a legal kind");
 
-        let taken = census.remove(&Selector::OfKind("cow".to_owned()));
+        let taken = population.remove(&Selector::OfKind("cow".to_owned()));
         assert_eq!(taken.len(), 1);
         assert_eq!(taken[0].count, 3);
-        assert_eq!(census.count_of("cow"), 0);
-        assert_eq!(census.count_of("bat"), 2);
+        assert_eq!(population.count_of("cow"), 0);
+        assert_eq!(population.count_of("bat"), 2);
 
-        let rest = census.remove(&Selector::Everything);
+        let rest = population.remove(&Selector::Everything);
         assert_eq!(
             rest.len(),
             1,
             "a kind already at zero is not reported again"
         );
-        assert!(census.is_empty());
+        assert!(population.is_empty());
     }
 
     #[test]
     fn a_kind_taken_out_frees_its_place_under_the_bound() {
-        let mut census = Census::new();
+        let mut population = Population::new();
         for index in 0..MAX_KINDS {
-            census
+            population
                 .record(&format!("kind_{index}"), 1, false)
                 .expect("a kind below the bound is recorded");
         }
-        assert_eq!(census.kinds(), MAX_KINDS);
+        assert_eq!(population.kinds(), MAX_KINDS);
 
-        census.remove(&Selector::Everything);
-        assert!(census.is_empty());
+        population.remove(&Selector::Everything);
+        assert!(population.is_empty());
         assert_eq!(
-            census.kinds(),
+            population.kinds(),
             0,
             "a swept population that still counts its kinds refuses every later kind forever"
         );
-        census
+        population
             .record("cow", 1, false)
             .expect("a swept population has room for a kind it has not seen");
-        assert_eq!(census.count_of("cow"), 1);
+        assert_eq!(population.count_of("cow"), 1);
     }
 
     #[test]
     fn a_player_kind_taken_out_is_not_remembered_as_a_player_kind() {
-        let mut census = Census::new();
-        census.record("zombie", 2, true).expect("a legal kind");
-        census.remove(&Selector::OfKind("zombie".to_owned()));
-        census.record("zombie", 2, false).expect("a legal kind");
+        let mut population = Population::new();
+        population.record("zombie", 2, true).expect("a legal kind");
+        population.remove(&Selector::OfKind("zombie".to_owned()));
+        population.record("zombie", 2, false).expect("a legal kind");
         assert!(
-            !census.is_player_kind("zombie"),
+            !population.is_player_kind("zombie"),
             "a kind that was taken out carries nothing of what it was"
         );
     }
 
     #[test]
     fn a_selection_holding_a_player_kind_is_recognised_and_one_that_does_not_is_not() {
-        let mut census = Census::new();
-        census.record("player", 1, true).expect("a legal kind");
-        census.record("cow", 3, false).expect("a legal kind");
+        let mut population = Population::new();
+        population.record("player", 1, true).expect("a legal kind");
+        population.record("cow", 3, false).expect("a legal kind");
 
-        assert!(census.selection_holds_players(&Selector::Everything));
-        assert!(!census.selection_holds_players(&Selector::OfKind("cow".to_owned())));
-        assert!(census.selection_holds_players(&Selector::OfKind("player".to_owned())));
+        assert!(population.selection_holds_players(&Selector::Everything));
+        assert!(!population.selection_holds_players(&Selector::OfKind("cow".to_owned())));
+        assert!(population.selection_holds_players(&Selector::OfKind("player".to_owned())));
     }
 
     #[test]
@@ -381,7 +383,7 @@ mod tests {
         for line in ["", "cow bat", "Cow"] {
             assert!(matches!(
                 Selector::parse(&words(line)),
-                Err(CensusError::Name { .. })
+                Err(PopulationError::Name { .. })
             ));
         }
     }

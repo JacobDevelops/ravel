@@ -380,11 +380,28 @@ impl<T> Cell<T> {
     }
 }
 
+/// Fills a tank, matching contents by name.
+pub fn fill(tank: &mut Tank<String>, fluid: &str, amount: u64, attempt: Attempt) -> u64 {
+    tank.fill(&fluid.to_owned(), amount, attempt, &|left, right| {
+        left == right
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::quantity::KindError;
     use ravel_sdk::{JsonValue, json};
+
+    #[test]
+    fn a_tank_fills_and_drains_and_refuses_a_second_fluid() {
+        let mut tank = Tank::new(10);
+        assert_eq!(fill(&mut tank, "water", 6, Attempt::Real), 6);
+        assert_eq!(fill(&mut tank, "lava", 4, Attempt::Real), 0);
+        assert_eq!(fill(&mut tank, "water", 99, Attempt::Simulated), 4);
+        assert_eq!(tank.amount(), 6, "a simulation changed nothing");
+        assert_eq!(tank.drain(99, Attempt::Real), 6);
+    }
 
     #[derive(Clone, Copy, Debug)]
     struct Ones;

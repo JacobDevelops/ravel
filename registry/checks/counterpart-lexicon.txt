@@ -55,6 +55,7 @@ registries
 world
 attractor
 census
+population
 effects
 matching
 overrides
@@ -81,7 +82,6 @@ declarations
 dumps
 declaration
 registration
-helpers
 menus
 persistence
 quantity

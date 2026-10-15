@@ -141,7 +141,7 @@ Nine of these are §13's own table. The rest are this package's, and each says w
   the four families in a fixed order and takes the first that parses. Which orderings collide is
   unknown and was not tested, so `Validator::decode` refuses rather than resolving by luck.
 - **Screen state is cleared on disconnect (§10).** The original never clears the map, so reopening a
-  screen after joining a different world restores the previous world's. `Shared::on_disconnect` is
+  screen after joining a different world restores the previous world's. `Entry::on_disconnect` is
   the caller, and its trigger is declarable only because Ravel publishes no disconnect event.
 - **A pack contribution failure names its cause (§10.1).** The original's inner registration catches
   its failure, discards the cause, and logs a message that does not say what went wrong. Every
@@ -236,10 +236,10 @@ Each needs a seam Ravel does not publish at the reviewed revision. None is stubb
   `channel::Channel::contract` produces a real contract whose name is the derived payload identifier,
   so what Ravel routes on and what a peer derives are one string rather than two that can disagree.
 - **The disconnect that clears the screen memory (§10).** Ravel publishes no disconnect event. The
-  rule is implemented in `Shared::on_disconnect` and the caller is the host's.
+  rule is implemented in `Entry::on_disconnect` and the caller is the host's.
 - **The clipboard the support report is placed on (§12).** Ravel publishes no clipboard. The command
   itself is not declarable only: it is claimed at the registration barrier as a command and run
-  through `Mod::run_command`, which produces the text and holds it for `Shared::take_report`. Only the
+  through `Mod::run_command`, which produces the text and holds it for `Entry::take_report`. Only the
   placing is the host's. What is kept either way is that the command is explicitly user-invoked and
   sends nothing.
 

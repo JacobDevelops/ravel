@@ -319,7 +319,7 @@ impl DataPredicate {
 /// This is the whole of §7.3 and is public because a dependent testing stored
 /// data reaches for the rules rather than for a predicate.
 #[must_use]
-pub fn lenient(expected: &Tag, candidate: &Tag) -> bool {
+pub fn matches_leniently(expected: &Tag, candidate: &Tag) -> bool {
     matches(expected, candidate, 0)
 }
 
@@ -377,21 +377,24 @@ fn elements_match(wanted: &[Tag], present: &[Tag], depth: usize) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{DataPredicate, MAX_DEPTH, MAX_WIDTH, Mode, Tag, lenient};
+    use super::{DataPredicate, MAX_DEPTH, MAX_WIDTH, Mode, Tag, matches_leniently};
 
     #[test]
     fn numeric_matching_keeps_ieee_equality_and_wide_integer_rounding() {
-        assert!(!lenient(&Tag::Double(f64::NAN), &Tag::Double(f64::NAN)));
-        assert!(lenient(&Tag::Double(-0.0), &Tag::Double(0.0)));
-        assert!(lenient(
+        assert!(!matches_leniently(
+            &Tag::Double(f64::NAN),
+            &Tag::Double(f64::NAN)
+        ));
+        assert!(matches_leniently(&Tag::Double(-0.0), &Tag::Double(0.0)));
+        assert!(matches_leniently(
             &Tag::Double(f64::INFINITY),
             &Tag::Double(f64::INFINITY)
         ));
-        assert!(lenient(
+        assert!(matches_leniently(
             &Tag::Long(i64::MAX),
             &Tag::Double(9_223_372_036_854_775_808.0)
         ));
-        assert!(lenient(
+        assert!(matches_leniently(
             &Tag::Long(i64::MIN),
             &Tag::Double(-9_223_372_036_854_775_808.0)
         ));
@@ -413,34 +416,37 @@ mod tests {
 
     #[test]
     fn two_numeric_tags_compare_by_decimal_value_across_widths() {
-        assert!(lenient(&Tag::Byte(7), &Tag::Long(7)));
-        assert!(lenient(&Tag::Long(7), &Tag::Byte(7)));
-        assert!(lenient(&Tag::Double(7.0), &Tag::Int(7)));
-        assert!(!lenient(&Tag::Byte(7), &Tag::Long(8)));
+        assert!(matches_leniently(&Tag::Byte(7), &Tag::Long(7)));
+        assert!(matches_leniently(&Tag::Long(7), &Tag::Byte(7)));
+        assert!(matches_leniently(&Tag::Double(7.0), &Tag::Int(7)));
+        assert!(!matches_leniently(&Tag::Byte(7), &Tag::Long(8)));
     }
 
     #[test]
     fn a_number_and_a_text_do_not_match_even_when_the_text_spells_the_number() {
-        assert!(!lenient(&Tag::Int(7), &Tag::Text("7".to_owned())));
-        assert!(!lenient(&Tag::Text("7".to_owned()), &Tag::Int(7)));
+        assert!(!matches_leniently(&Tag::Int(7), &Tag::Text("7".to_owned())));
+        assert!(!matches_leniently(&Tag::Text("7".to_owned()), &Tag::Int(7)));
     }
 
     #[test]
     fn two_non_numeric_tags_of_different_kinds_fail() {
-        assert!(!lenient(
+        assert!(!matches_leniently(
             &Tag::Text("a".to_owned()),
             &Tag::List(vec![Tag::Text("a".to_owned())])
         ));
-        assert!(!lenient(&Tag::Compound([].into()), &Tag::List(vec![])));
+        assert!(!matches_leniently(
+            &Tag::Compound([].into()),
+            &Tag::List(vec![])
+        ));
     }
 
     #[test]
     fn a_compound_names_keys_and_ignores_the_rest() {
         let expected = Tag::compound([("a", Tag::Int(1))]);
         let candidate = Tag::compound([("a", Tag::Byte(1)), ("b", Tag::Text("x".to_owned()))]);
-        assert!(lenient(&expected, &candidate));
+        assert!(matches_leniently(&expected, &candidate));
         let missing = Tag::compound([("b", Tag::Int(1))]);
-        assert!(!lenient(&expected, &missing));
+        assert!(!matches_leniently(&expected, &missing));
     }
 
     #[test]
@@ -450,14 +456,14 @@ mod tests {
             "outer",
             Tag::compound([("inner", Tag::Long(3)), ("extra", Tag::Int(9))]),
         )]);
-        assert!(lenient(&expected, &candidate));
+        assert!(matches_leniently(&expected, &candidate));
     }
 
     #[test]
     fn a_list_holds_when_every_element_matches_some_element_in_any_order() {
         let expected = Tag::List(vec![Tag::Int(2), Tag::Int(1)]);
         let candidate = Tag::List(vec![Tag::Int(1), Tag::Int(3), Tag::Int(2)]);
-        assert!(lenient(&expected, &candidate));
+        assert!(matches_leniently(&expected, &candidate));
     }
 
     #[test]
@@ -465,7 +471,7 @@ mod tests {
         let expected = Tag::List(vec![Tag::Int(1), Tag::Int(1)]);
         let candidate = Tag::List(vec![Tag::Int(1)]);
         assert!(
-            lenient(&expected, &candidate),
+            matches_leniently(&expected, &candidate),
             "the rule is per-element, so one candidate satisfies both"
         );
     }
@@ -474,36 +480,45 @@ mod tests {
     fn an_element_nothing_matches_fails_the_list() {
         let expected = Tag::List(vec![Tag::Int(4)]);
         let candidate = Tag::List(vec![Tag::Int(1), Tag::Int(2)]);
-        assert!(!lenient(&expected, &candidate));
+        assert!(!matches_leniently(&expected, &candidate));
     }
 
     #[test]
     fn an_empty_expected_list_requires_an_empty_candidate() {
-        assert!(lenient(&Tag::List(vec![]), &Tag::List(vec![])));
-        assert!(!lenient(&Tag::List(vec![]), &Tag::List(vec![Tag::Int(1)])));
+        assert!(matches_leniently(&Tag::List(vec![]), &Tag::List(vec![])));
+        assert!(!matches_leniently(
+            &Tag::List(vec![]),
+            &Tag::List(vec![Tag::Int(1)])
+        ));
     }
 
     #[test]
     fn the_three_primitive_arrays_are_lists_here_too() {
-        assert!(lenient(
+        assert!(matches_leniently(
             &Tag::ByteArray(vec![2]),
             &Tag::ByteArray(vec![1, 2])
         ));
-        assert!(lenient(&Tag::IntArray(vec![9]), &Tag::IntArray(vec![9])));
-        assert!(!lenient(&Tag::LongArray(vec![]), &Tag::LongArray(vec![1])));
+        assert!(matches_leniently(
+            &Tag::IntArray(vec![9]),
+            &Tag::IntArray(vec![9])
+        ));
+        assert!(!matches_leniently(
+            &Tag::LongArray(vec![]),
+            &Tag::LongArray(vec![1])
+        ));
         assert!(
-            !lenient(&Tag::IntArray(vec![1]), &Tag::List(vec![Tag::Int(1)])),
+            !matches_leniently(&Tag::IntArray(vec![1]), &Tag::List(vec![Tag::Int(1)])),
             "the kinds still have to agree"
         );
     }
 
     #[test]
     fn anything_else_compares_by_equality() {
-        assert!(lenient(
+        assert!(matches_leniently(
             &Tag::Text("a".to_owned()),
             &Tag::Text("a".to_owned())
         ));
-        assert!(!lenient(
+        assert!(!matches_leniently(
             &Tag::Text("a".to_owned()),
             &Tag::Text("b".to_owned())
         ));
@@ -545,11 +560,11 @@ mod tests {
             deep = Tag::compound([("down", deep)]);
         }
         assert!(
-            !lenient(&deep, &deep),
+            !matches_leniently(&deep, &deep),
             "the ceiling refuses before the stack does"
         );
         let shallow = Tag::compound([("down", Tag::Int(1))]);
-        assert!(lenient(&shallow, &shallow));
+        assert!(matches_leniently(&shallow, &shallow));
     }
 
     #[test]
@@ -557,18 +572,18 @@ mod tests {
         let element = |value: usize| Tag::Int(i32::try_from(value).expect("a small index"));
         let wide = Tag::List((0..=MAX_WIDTH).map(element).collect());
         assert!(
-            !lenient(&wide, &wide),
+            !matches_leniently(&wide, &wide),
             "depth alone does not bound a rule whose cost is the product of two widths"
         );
         let at_ceiling = Tag::List((0..MAX_WIDTH).map(element).collect());
         assert!(
-            lenient(&at_ceiling, &at_ceiling),
+            matches_leniently(&at_ceiling, &at_ceiling),
             "the ceiling itself walks"
         );
 
         let wide_compound =
             Tag::compound((0..=MAX_WIDTH).map(|value| (format!("k{value}"), Tag::Int(1))));
-        assert!(!lenient(&wide_compound, &wide_compound));
+        assert!(!matches_leniently(&wide_compound, &wide_compound));
     }
 
     #[test]

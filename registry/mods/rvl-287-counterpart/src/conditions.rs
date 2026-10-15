@@ -31,6 +31,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ravel_sdk::JsonValue;
+use ravel_sdk::content::ContentId;
 
 /// The deepest a parsed condition may nest.
 ///
@@ -164,7 +165,7 @@ impl Vocabulary {
             return self;
         };
         self.blocks
-            .entry(name)
+            .entry(name.to_string())
             .or_default()
             .extend(properties.into_iter().map(Into::into));
         self
@@ -174,7 +175,7 @@ impl Vocabulary {
     #[must_use]
     pub fn with_group(mut self, name: &str) -> Self {
         if let Some(name) = qualify(name) {
-            self.groups.insert(name);
+            self.groups.insert(name.to_string());
         }
         self
     }
@@ -217,7 +218,10 @@ impl Groups {
     #[must_use]
     pub fn with_member(mut self, group: &str, block: &str) -> Self {
         if let (Some(group), Some(block)) = (qualify(group), qualify(block)) {
-            self.members.entry(group).or_default().insert(block);
+            self.members
+                .entry(group.to_string())
+                .or_default()
+                .insert(block.to_string());
         }
         self
     }
@@ -373,21 +377,12 @@ impl Condition {
 /// A bare path takes [`DEFAULT_NAMESPACE`]. Anything carrying a character a
 /// name may not hold, an empty half, or more than one separator, is refused.
 #[must_use]
-pub fn qualify(name: &str) -> Option<String> {
-    let (namespace, path) = match name.split_once(':') {
-        None => (DEFAULT_NAMESPACE, name),
-        Some((namespace, path)) => (namespace, path),
-    };
-    let legal_namespace = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_';
-    let legal_path = |c: char| legal_namespace(c) || c == '/';
-    if namespace.is_empty()
-        || path.is_empty()
-        || !namespace.chars().all(legal_namespace)
-        || !path.chars().all(legal_path)
-    {
-        return None;
+pub fn qualify(name: &str) -> Option<ContentId> {
+    if name.contains(':') {
+        name.parse().ok()
+    } else {
+        ContentId::new(DEFAULT_NAMESPACE.parse().ok()?, name).ok()
     }
-    Some(format!("{namespace}:{path}"))
 }
 
 fn parse_at(
@@ -454,6 +449,7 @@ fn parse_named_block(value: &JsonValue, vocabulary: &Vocabulary, report: &mut Re
     let named = value.get(BLOCK_KEY).and_then(JsonValue::as_str);
     let Some(block) = named
         .and_then(qualify)
+        .map(|block| block.to_string())
         .filter(|block| vocabulary.knows_block(block))
     else {
         report.refused_forms += 1;
@@ -487,6 +483,7 @@ fn parse_named_group(value: &JsonValue, vocabulary: &Vocabulary, report: &mut Re
     // so this one does too.
     if let Some(group) = named
         .and_then(qualify)
+        .map(|group| group.to_string())
         .filter(|group| vocabulary.knows_group(group))
     {
         Condition::NamedGroup(group)
@@ -893,13 +890,22 @@ mod tests {
 
     #[test]
     fn a_name_is_qualified_or_refused_and_never_half_read() {
-        assert_eq!(qualify("panel").as_deref(), Some("base:panel"));
-        assert_eq!(qualify("other:panel").as_deref(), Some("other:panel"));
         assert_eq!(
-            qualify("other:deep/panel").as_deref(),
-            Some("other:deep/panel")
+            qualify("panel").map(|id| id.to_string()),
+            Some("base:panel".to_owned())
         );
-        for bad in ["", ":", "a:", ":b", "Panel", "a:b:c", "a b", "a:b c"] {
+        assert_eq!(
+            qualify("other:panel").map(|id| id.to_string()),
+            Some("other:panel".to_owned())
+        );
+        for path in ["deep/panel", "panel.variant", "panel-variant"] {
+            let id = qualify(path).expect("valid SDK content path");
+            assert_eq!(id.namespace().as_str(), "base");
+            assert_eq!(id.path(), path);
+        }
+        for bad in [
+            "", ":", "a:", ":b", "Panel", "a:b:c", "a b", "a:b c", "a:../b", "/panel", "panel/",
+        ] {
             assert_eq!(qualify(bad), None, "{bad:?} is not a name");
         }
     }

@@ -16,7 +16,7 @@
     {
       "category": "metadata",
       "locator": "provenance/m6-foundation/RVL-042.json",
-      "revision": "sha256 17a84518b6b5594d1f9b3344a115ec74aecd734f017dad4050c345f02caa055c",
+      "revision": "sha256 6ade1a9670a0fe7fca6494f33df98faa756bb8033519c09ba38be684a3bc0c4d",
       "use": "The rights record the specification was written under, which clears code and behaviour and leaves names unresolved.",
       "producedBy": "M6-W3"
     },

@@ -8,11 +8,9 @@
 //! against the bytes on disk, so a table that moves and a document that does not
 //! is a failing test rather than a stale file.
 
-use std::fmt::{self, Write as _};
+use std::fmt::Write as _;
 
-use ravel_sdk::config::DeclarationError;
-use ravel_sdk::{JsonValue, json};
-use rvl_042_counterpart::flags::FlagIdError;
+use ravel_sdk::{JsonValue, ModError, json};
 
 use crate::census;
 use crate::refusal::Surface;
@@ -28,47 +26,14 @@ pub const SETTINGS_PATH: &str = "generated/settings.txt";
 /// Where the refusal matrix is written.
 pub const REFUSAL_PATH: &str = "generated/refusal.txt";
 
-/// Why a document could not be rendered.
-///
-/// Both causes are packaging failures rather than runtime ones: the settings
-/// document and the flag names are compile-time constants of this package.
-#[derive(Debug)]
-pub enum Refused {
-    /// The packaged settings document did not parse.
-    Declaration(DeclarationError),
-    /// A gate named in the census tables is not a legal flag identity.
-    Flag(FlagIdError),
-}
-
-impl fmt::Display for Refused {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Declaration(source) => write!(formatter, "{source}"),
-            Self::Flag(source) => write!(formatter, "{source}"),
-        }
-    }
-}
-
-impl From<DeclarationError> for Refused {
-    fn from(source: DeclarationError) -> Self {
-        Self::Declaration(source)
-    }
-}
-
-impl From<FlagIdError> for Refused {
-    fn from(source: FlagIdError) -> Self {
-        Self::Flag(source)
-    }
-}
-
 /// Every generated document, as a path relative to the package root and the
 /// bytes that belong at it.
 ///
 /// # Errors
 ///
-/// Returns [`Refused`] when the packaged settings document does not parse or a
+/// Returns [`ModError::Refused`] when the packaged settings document does not parse or a
 /// census gate is not a legal flag identity.
-pub fn documents() -> Result<Vec<(&'static str, String)>, Refused> {
+pub fn documents() -> Result<Vec<(&'static str, String)>, ModError> {
     Ok(vec![
         (CENSUS_PATH, census()?),
         (SETTINGS_PATH, settings()?),
@@ -81,14 +46,15 @@ pub fn documents() -> Result<Vec<(&'static str, String)>, Refused> {
 ///
 /// # Errors
 ///
-/// Returns [`FlagIdError`] when a gate named in the census tables is not a legal
+/// Returns [`ModError::Refused`] when a gate named in the census tables is not a legal
 /// flag identity under this package's own namespace.
-pub fn census() -> Result<String, FlagIdError> {
+pub fn census() -> Result<String, ModError> {
     let claimed: Vec<JsonValue> = census::claims()
         .into_iter()
         .map(|(kind, name)| json!({"kind": format!("{kind:?}"), "name": name}))
         .collect();
-    let grouping = census::grouping(crate::FLAG_NAMESPACE)?;
+    let grouping = census::grouping(crate::FLAG_NAMESPACE)
+        .map_err(|error| ModError::refused(error.to_string()))?;
     let listed: Vec<JsonValue> = grouping
         .declared()
         .iter()
@@ -136,13 +102,14 @@ pub fn census() -> Result<String, FlagIdError> {
 ///
 /// # Errors
 ///
-/// Returns [`DeclarationError`] when the packaged document does not parse.
+/// Returns [`ModError::Refused`] when the packaged document does not parse.
 ///
 /// # Panics
 ///
 /// Panics if formatting into a string fails.
-pub fn settings() -> Result<String, DeclarationError> {
-    let declaration = settings::declaration()?;
+pub fn settings() -> Result<String, ModError> {
+    let declaration =
+        settings::declaration().map_err(|error| ModError::refused(error.to_string()))?;
     let mut rendered = String::from("key\tside\tgroup\trestart\tdefault\tflags\n");
     for setting in declaration.settings() {
         let key = setting.key.as_str();

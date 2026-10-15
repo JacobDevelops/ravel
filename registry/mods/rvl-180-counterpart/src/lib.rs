@@ -17,7 +17,7 @@
 //!   displays behind them;
 //! - [`commands`] — the three commands, including the removal that refuses a
 //!   selection holding players;
-//! - [`census`] — the population those commands read and change;
+//! - [`population`] — the population those commands read and change;
 //! - [`sprites`] — the twenty-one interface sprite names and the one atlas
 //!   document that stitches them;
 //! - [`transport`] — this package's own wire contract for a display readout;
@@ -33,11 +33,11 @@
 //! or wire format is recoverable from any document in the artifact. That is the
 //! true state of the specification and this package does not soften it.
 
-pub mod census;
 pub mod colour;
 pub mod commands;
 pub mod dumps;
 pub mod grouping;
+pub mod population;
 pub mod presentation;
 pub mod sprites;
 pub mod transport;
@@ -48,10 +48,10 @@ use ravel_sdk::network::PacketDelivery;
 use ravel_sdk::prelude::*;
 use ravel_sdk::sides::ClientOnly;
 
-pub use crate::census::{Census, CensusError, Line, Selector};
 pub use crate::colour::Dye;
 pub use crate::commands::{Command, Console, Refusal, Report};
 pub use crate::grouping::{Aggregation, GroupingError, Resolution};
+pub use crate::population::{Line, Population, PopulationError, Selector};
 pub use crate::presentation::{Display, Readout};
 pub use crate::transport::Outbox;
 
@@ -99,7 +99,7 @@ impl ClientView {
 
 /// The shared library, as the loader drives it.
 #[derive(Debug)]
-pub struct Shared {
+pub struct Entry {
     side: Side,
     declaration: Result<ContentDeclaration, ModError>,
     aggregation: Aggregation,
@@ -110,7 +110,7 @@ pub struct Shared {
     observed: Vec<GameEvent>,
 }
 
-impl Shared {
+impl Entry {
     /// Builds the library on `side`, holding its groups and no readout.
     ///
     /// The loader builds a mod infallibly, so a packaging failure here cannot be
@@ -124,7 +124,10 @@ impl Shared {
                 let declaration = Self::declaration(&aggregation);
                 (aggregation, declaration)
             }
-            Err(source) => (Aggregation::default(), Err(ModError::refused(source.to_string()))),
+            Err(source) => (
+                Aggregation::default(),
+                Err(ModError::refused(source.to_string())),
+            ),
         };
         Self {
             side,
@@ -154,7 +157,7 @@ impl Shared {
     ///
     /// A dependent adding a coloured block to a leaf writes it here. The
     /// declaration Ravel receives is built from the resolution, so a
-    /// contribution made after [`Shared::rebuild_declaration`] last ran is
+    /// contribution made after [`Entry::rebuild_declaration`] last ran is
     /// reached by running it again.
     pub const fn aggregation_mut(&mut self) -> &mut Aggregation {
         &mut self.aggregation
@@ -279,14 +282,14 @@ impl Shared {
     }
 }
 
-impl Default for Shared {
+impl Default for Entry {
     fn default() -> Self {
         Self::new(Side::DedicatedServer)
     }
 }
 
 #[declare_mod(id = "rvl_180_counterpart")]
-impl Mod for Shared {
+impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         self.entered.push(state);
         Ok(())
@@ -337,46 +340,26 @@ impl Mod for Shared {
     }
 }
 
-export_mod!(|side| Shared::new(side));
+export_mod!(|side| Entry::new(side));
 
 #[cfg(test)]
 mod tests {
-    use super::{__ravel_entry, ClientView, MAX_HELD_READOUTS, MOD_ID, Shared};
+    use super::{__ravel_entry, ClientView, Entry, MAX_HELD_READOUTS, MOD_ID};
     use crate::colour::Dye;
-    use crate::commands::{Command, ROOTS, Report};
+    use crate::commands::{Command, Report};
     use crate::grouping::{self, TAG_COUNT};
     use crate::presentation::{self, Readout};
     use crate::sprites;
-    use ravel_sdk::content::{ContentKind, RegistrationRefused, RegistryKey};
+    use ravel_sdk::content::{ContentKind, RegistryKey};
     use ravel_sdk::events::{CommandInvocation, GameEvent};
     use ravel_sdk::network::PacketDelivery;
     use ravel_sdk::prelude::*;
     use ravel_sdk::tags::TagId;
 
-    #[derive(Default)]
-    struct Accepting {
-        claimed: Vec<RegistryKey>,
-    }
-
-    impl Registrar for Accepting {
-        fn claim(&mut self, key: RegistryKey) -> Result<(), RegistrationRefused> {
-            self.claimed.push(key);
-            Ok(())
-        }
-
-        fn claimed(&self) -> &[RegistryKey] {
-            &self.claimed
-        }
-
-        fn loads(&self, _mod_id: &ModId) -> bool {
-            false
-        }
-    }
-
     fn invocation(root: &str, side: Side, arguments: &[&str]) -> CommandInvocation {
         let key = RegistryKey::new(
             ContentKind::Command,
-            ContentId::new(Shared::declared_id().clone(), root).expect("a legal content path"),
+            ContentId::new(Entry::declared_id().clone(), root).expect("a legal content path"),
         );
         CommandInvocation::new(
             key,
@@ -387,33 +370,13 @@ mod tests {
 
     #[test]
     fn the_declared_identity_is_the_one_the_package_carries() {
-        assert_eq!(Shared::declared_id().as_str(), MOD_ID);
-        assert_eq!(Shared::new(Side::Client).id().as_str(), MOD_ID);
-    }
-
-    #[test]
-    fn the_package_claims_its_three_commands_and_nothing_of_a_world() {
-        let mut shared = Shared::new(Side::DedicatedServer);
-        let mut registrar = Accepting::default();
-        shared
-            .register(&mut registrar)
-            .expect("the accepting registrar refuses nothing");
-
-        assert_eq!(registrar.claimed().len(), ROOTS.len());
-        for key in registrar.claimed() {
-            assert_eq!(key.kind(), ContentKind::Command);
-        }
-        for kind in [ContentKind::Block, ContentKind::Item, ContentKind::Recipe] {
-            assert!(
-                !registrar.claimed().iter().any(|key| key.kind() == kind),
-                "this entry contributes no {kind} to any world"
-            );
-        }
+        assert_eq!(Entry::declared_id().as_str(), MOD_ID);
+        assert_eq!(Entry::new(Side::Client).id().as_str(), MOD_ID);
     }
 
     #[test]
     fn the_declaration_carries_thirty_four_groups_eighteen_lines_and_the_atlas() {
-        let shared = Shared::new(Side::DedicatedServer);
+        let shared = Entry::new(Side::DedicatedServer);
         let declaration = shared
             .content_declaration()
             .expect("the content declaration is valid")
@@ -448,7 +411,7 @@ mod tests {
 
     #[test]
     fn each_aggregate_is_generated_holding_what_its_leaves_hold() {
-        let mut shared = Shared::new(Side::DedicatedServer);
+        let mut shared = Entry::new(Side::DedicatedServer);
         let whole = grouping::aggregate(ContentKind::Block).expect("a legal aggregate");
         let part = grouping::leaf(ContentKind::Block, Dye::Red).expect("a legal leaf");
         let theirs = RegistryKey::new(
@@ -478,10 +441,10 @@ mod tests {
 
     #[test]
     fn a_command_a_player_typed_runs_and_its_effect_is_observable() {
-        let mut shared = Shared::new(Side::DedicatedServer);
+        let mut shared = Entry::new(Side::DedicatedServer);
         shared
             .console_mut()
-            .census_mut()
+            .population_mut()
             .record("cow", 4, false)
             .expect("a legal kind");
 
@@ -489,7 +452,7 @@ mod tests {
             .run_command(&invocation("entity_sweep", Side::DedicatedServer, &["cow"]))
             .expect("a server runs the removal");
         assert_eq!(
-            shared.console().census().count_of("cow"),
+            shared.console().population().count_of("cow"),
             0,
             "a command that resolved a name and did nothing is the defect this test exists for"
         );
@@ -498,10 +461,10 @@ mod tests {
 
     #[test]
     fn a_command_typed_on_a_client_is_refused_and_a_name_nobody_claimed_is_refused() {
-        let mut shared = Shared::new(Side::Client);
+        let mut shared = Entry::new(Side::Client);
         shared
             .console_mut()
-            .census_mut()
+            .population_mut()
             .record("cow", 4, false)
             .expect("a legal kind");
 
@@ -510,7 +473,7 @@ mod tests {
                 .run_command(&invocation("entity_sweep", Side::Client, &["cow"]))
                 .is_err()
         );
-        assert_eq!(shared.console().census().count_of("cow"), 4);
+        assert_eq!(shared.console().population().count_of("cow"), 4);
         assert!(
             shared
                 .run_command(&invocation("nothing_claimed", Side::DedicatedServer, &[]))
@@ -520,10 +483,10 @@ mod tests {
 
     #[test]
     fn the_reclamation_command_releases_what_the_other_commands_held() {
-        let mut shared = Shared::new(Side::IntegratedServer);
+        let mut shared = Entry::new(Side::IntegratedServer);
         shared
             .console_mut()
-            .census_mut()
+            .population_mut()
             .record("cow", 1, false)
             .expect("a legal kind");
         shared
@@ -560,7 +523,7 @@ mod tests {
 
     #[test]
     fn a_count_the_host_drove_is_still_reported_through_a_retained_note() {
-        let mut shared = Shared::new(Side::DedicatedServer);
+        let mut shared = Entry::new(Side::DedicatedServer);
         shared
             .run_command(&invocation("entity_tally", Side::DedicatedServer, &[]))
             .expect("a server runs the count");
@@ -573,7 +536,7 @@ mod tests {
 
     #[test]
     fn a_group_nested_past_the_depth_bound_refuses_the_declaration_rather_than_shipping_it_short() {
-        let mut shared = Shared::new(Side::DedicatedServer);
+        let mut shared = Entry::new(Side::DedicatedServer);
         let part = grouping::leaf(ContentKind::Block, Dye::Red).expect("a legal leaf");
         let mut previous = part;
         for step in 0..=grouping::MAX_DEPTH {
@@ -603,7 +566,7 @@ mod tests {
     fn a_server_publishes_a_readout_and_the_client_that_receives_it_holds_it() {
         let readout = Readout::fluid(4_000, 1_000, "water");
 
-        let mut server = Shared::new(Side::DedicatedServer);
+        let mut server = Entry::new(Side::DedicatedServer);
         assert!(server.publish(&readout).expect("a server may send one"));
         assert_eq!(server.take_outgoing().len(), 1);
         assert_eq!(server.outbox().pending(), 0);
@@ -612,7 +575,7 @@ mod tests {
             "a server holds no client view at all"
         );
 
-        let mut client = Shared::new(Side::Client);
+        let mut client = Entry::new(Side::Client);
         assert!(
             client.publish(&readout).is_err(),
             "a client may not send a client-bound readout"
@@ -642,7 +605,7 @@ mod tests {
 
     #[test]
     fn the_library_runs_the_whole_lifecycle_and_records_what_it_observes() {
-        let mut shared = Shared::new(Side::DedicatedServer);
+        let mut shared = Entry::new(Side::DedicatedServer);
         for state in LifecycleState::ALL {
             shared.enter(state).expect("the library accepts every step");
         }

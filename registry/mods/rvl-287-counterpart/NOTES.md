@@ -95,7 +95,7 @@ field names and order (`north`, `south`, `west`, `east`) remain unchanged.
   `MAX_PENDING`. Each refuses and counts; a grid past the cap is refused where it is read rather
   than allocated. Nothing else accumulates: the signals `Mod::observe` sees are a count and the last
   one rather than a list, because a client tick arrives every tick.
-- **A refused declaration is answered as refused, not as absent.** `Library::model` answers a
+- **A refused declaration is answered as refused, not as absent.** `Entry::model` answers a
   three-state `Resolved`: nobody shipped a declaration under that identifier, a kind claimed it and
   read it, or a kind claimed it and §10 rejected it. The third carries the claiming kind and the
   `ModelError`, so a pack whose declaration names an unknown layer, an unreadable texture or a slot
@@ -106,11 +106,11 @@ field names and order (`north`, `south`, `west`, `east`) remain unchanged.
   left composing the rule itself. The world position, the axis property and the column continuation
   stay the caller's, because they are not facts about a neighbourhood.
 - **A packaging fault is raised rather than defaulted.** A refusal from `kinds::Registry::built_in`
-  would leave a client with no kind and no lookup that ever answers. `Library::new` keeps it and
+  would leave a client with no kind and no lookup that ever answers. `Entry::new` keeps it and
   `Mod::enter` returns it at the first lifecycle step. `BUILT_IN` is a constant, so this cannot fire
   today, which is the argument for raising it rather than silently building an empty table.
 - **A reload replaces rather than adds.** `lookup::Catalogue::rebuild` takes the whole set, and
-  `Library::reload` drains the supply queue with it. A pack that stops shipping a document stops
+  `Entry::reload` drains the supply queue with it. A pack that stops shipping a document stops
   supplying it, which is what makes disabling a pack take effect, and the queue cannot grow across
   reloads.
 
@@ -154,7 +154,7 @@ shape is declarable the package declares it and carries no pretend implementatio
 - **The whole of §11.** Ravel publishes no model-baking surface: no element baker, no atlas, no
   chunk mesh, no vertex format. The precomputation, the per-face box transform, the null-face
   pooling of non-cullable quads and the catch-log-rethrow around quad collection are all absent.
-  What is declarable is where the drawing would go, and `Library::stage_order` declares a
+  What is declarable is where the drawing would go, and `Entry::stage_order` declares a
   contribution to Ravel's published `after_terrain` stage and resolves it. Nothing draws.
 - **The two injected hooks of §4.2 and §4.3.** Borrowing the model bakery's already-parsed documents
   and wrapping its per-model bake call both need the same absent surface. `lookup::Lookup` names the
@@ -172,7 +172,7 @@ shape is declarable the package declares it and carries no pretend implementatio
   emptiness guard and the occlusion rule are all pure functions of what it answers, and the tests
   answer it from a written-out neighbourhood.
 - **The walk over loaded resource packs.** Ravel's `GameEvent::ResourcesReloaded` says a reload
-  happened and carries nothing from it. `Library::supply` is where a host hands the collected
+  happened and carries nothing from it. `Entry::supply` is where a host hands the collected
   documents over and the reload drains them, so the table and the short circuit are exercised
   without the walk.
 - **The block and group registries the condition language resolves names against.**

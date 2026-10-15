@@ -47,7 +47,7 @@ impl TextStyle {
 /// material item do not exist yet when this pass runs, which is why pointing at
 /// them is [`adjust`]'s work and not this function's.
 #[must_use]
-pub fn registered(id: &str) -> Tier {
+pub fn registered(id: ravel_sdk::content::ContentId) -> Tier {
     let mut tier = Tier::new(id, VALUE);
     tier.colour = Colour::unpack(DISPLAY_COLOUR).with_opacity(255);
     tier.text_colour = TEXT_STYLE.colour();
@@ -75,7 +75,12 @@ pub fn adjust(tier: &mut Tier, ground: &str, material: &str, fertilisable: bool)
 
 /// The tier fully declared, as both passes leave it.
 #[must_use]
-pub fn declared(id: &str, ground: &str, material: &str, fertilisable: bool) -> Tier {
+pub fn declared(
+    id: ravel_sdk::content::ContentId,
+    ground: &str,
+    material: &str,
+    fertilisable: bool,
+) -> Tier {
     let mut tier = registered(id);
     adjust(&mut tier, ground, material, fertilisable);
     tier
@@ -100,7 +105,7 @@ mod tests {
 
     #[test]
     fn the_register_pass_declares_four_values_and_points_at_no_content() {
-        let tier = registered("test:6");
+        let tier = registered("test:6".parse().expect("a legal tier identity"));
         assert_eq!(tier.value, VALUE);
         assert_eq!(tier.colour, Colour::new(255, 0x40, 0x00, 0x5E));
         assert_eq!(tier.text_colour, TEXT_STYLE.colour());
@@ -110,7 +115,7 @@ mod tests {
 
     #[test]
     fn the_display_colour_is_the_declared_constant_at_full_opacity() {
-        let tier = registered("test:6");
+        let tier = registered("test:6".parse().expect("a legal tier identity"));
         assert_eq!(tier.colour.red, 0x40);
         assert_eq!(tier.colour.green, 0x00);
         assert_eq!(tier.colour.blue, 0x5E);
@@ -120,7 +125,7 @@ mod tests {
 
     #[test]
     fn the_adjust_pass_turns_the_second_drop_off_whatever_the_tier_arrived_holding() {
-        let mut tier = registered("test:6");
+        let mut tier = registered("test:6".parse().expect("a legal tier identity"));
         tier.second_drop = true;
         adjust(&mut tier, "test:ground", "test:material", false);
         assert!(
@@ -136,7 +141,7 @@ mod tests {
             ..Settings::default()
         };
         let tier = declared(
-            "test:6",
+            "test:6".parse().expect("a legal tier identity"),
             "test:ground",
             "test:material",
             settings.crops_fertilisable,
@@ -150,13 +155,23 @@ mod tests {
         );
         assert!(!settings.crops_fertilisable);
 
-        let off = declared("test:6", "test:ground", "test:material", false);
+        let off = declared(
+            "test:6".parse().expect("a legal tier identity"),
+            "test:ground",
+            "test:material",
+            false,
+        );
         assert!(!off.fertilisable);
     }
 
     #[test]
     fn the_adjust_pass_points_the_tier_at_its_ground_and_its_material() {
-        let tier = declared("test:6", "test:ground", "test:material", false);
+        let tier = declared(
+            "test:6".parse().expect("a legal tier identity"),
+            "test:ground",
+            "test:material",
+            false,
+        );
         assert_eq!(tier.ground.as_deref(), Some("test:ground"));
         assert_eq!(tier.material.as_deref(), Some("test:material"));
         assert!(tier.is_effective_ground(Some("test:ground")));

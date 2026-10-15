@@ -16,6 +16,9 @@
     "dedicated-server"
   ],
   "configurationSchemas": [],
+  "savedDataVersions": [
+    1
+  ],
   "authors": [
     {
       "name": "Ravel registry maintainers"
@@ -27,11 +30,11 @@
     "files": [
       {
         "path": "Cargo.toml",
-        "sha256": "4d76fa2cbe7585f731ce83dde3454d8c52686df0b84ce66f1565595b331b138a"
+        "sha256": "990ba90ded5341dea3e4fc7e73e71958aa228ba5abd345ccf58935a2e7c6bdc6"
       },
       {
         "path": "NOTES.md",
-        "sha256": "c3bd4df52036d3e9830aee7c6564d8113a98fdba5011d84cf49a746a8d71a945"
+        "sha256": "1a43342bbb4e7e39746987dd3f0818d668f4f8e98fbd79f3c19337ab63acee08"
       },
       {
         "path": "aliases.json",
@@ -59,7 +62,7 @@
       },
       {
         "path": "src/census.rs",
-        "sha256": "f318e3861399290d56b035b194c60a72328e81d70be6f3e658c74ab52abcef62"
+        "sha256": "911a8f801e3c81c2cc986c9a20b58739a779b079aebe7903773df2792dffc561"
       },
       {
         "path": "src/commands.rs",
@@ -71,7 +74,7 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "86c5acaedfa726789ef073f79b307ffda9332e20c3445030e4f36d649a78e6cb"
+        "sha256": "7e038614f7791c6bac1f69f778cf5024ccd96387ebd79820dbf982b8f758e8c8"
       },
       {
         "path": "src/grouping.rs",
@@ -79,11 +82,11 @@
       },
       {
         "path": "src/lib.rs",
-        "sha256": "7e707689a002bdb623d50ee22555ee96d4f720a2d03d978e11c350a6ff2336a4"
+        "sha256": "c4c35675085d557badeaf53065761cc86eeda37808cfcd374fb8dc878ab02801"
       },
       {
         "path": "src/network.rs",
-        "sha256": "a9de43b3c054166167f8d2b0e8d7380c5d24eac4ebf7aca3e1ecfa3e05d28c7d"
+        "sha256": "8331a9ea176f99c2c169314494e3dd0f45fe7619ccbd616f99602f04b441ba3f"
       },
       {
         "path": "src/preferences.rs",
@@ -99,11 +102,11 @@
       },
       {
         "path": "src/save.rs",
-        "sha256": "55a7526840fa97453a6d0f6474845224fb0975eb6d99ea0514461fb49f9d9806"
+        "sha256": "7933b2c269814739df3b801dfe50bb7df93e5379511d0e34dd0a992f4ee2c7b3"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "b0610eb36500bf61fd4c207334ef88022850f2794683c27dccaefe066563a374"
+        "sha256": "f6e89b72da817ba1223ff251de2aad05ac4a14e90397f826d95e7f0f1d953911"
       },
       {
         "path": "src/values.rs",
@@ -113,6 +116,6 @@
   },
   "provenance": {
     "record": "provenance.json",
-    "sha256": "afbc71598f7dec460c98e3c5e83f718f125670d2884efcf794be765dced27264"
+    "sha256": "2b3ae820e46313cb68a85406fdce5e27fa0dad6c4ff931888efd7651c5c30e48"
   }
 }

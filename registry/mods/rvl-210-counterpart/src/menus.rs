@@ -287,9 +287,95 @@ impl Store {
     }
 }
 
+/// Puts a stack into the first slot that admits it.
+///
+/// Answers the slot it went into, or nothing when no slot admits it. A slot
+/// already holding another prototype does not admit it, and neither does one
+/// that cannot take the whole stack: saturating there would destroy the overflow
+/// and still answer the slot, so a caller could not tell that part of its stack
+/// was never accepted. The store's own change counter is what a dependent
+/// watches afterwards.
+#[must_use]
+pub fn insert_first(store: &mut Store, stack: &Stack) -> Option<usize> {
+    if stack.is_empty() {
+        return None;
+    }
+    let admits = |held: &Stack| {
+        if held.is_empty() {
+            return true;
+        }
+        held.prototype == stack.prototype && held.count.checked_add(stack.count).is_some()
+    };
+    let slot = (0..store.len()).find(|slot| store.slot(*slot).is_some_and(admits))?;
+    let held = store.slot(slot)?;
+    let count = if held.is_empty() {
+        stack.count
+    } else {
+        held.count.checked_add(stack.count)?
+    };
+    store.put(slot, Stack::of(&stack.prototype, count));
+    Some(slot)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_insertion_stacks_onto_a_matching_slot_and_takes_an_empty_one_otherwise() {
+        let mut store = Store::new(2);
+        assert_eq!(insert_first(&mut store, &Stack::of("one", 2)), Some(0));
+        assert_eq!(insert_first(&mut store, &Stack::of("one", 3)), Some(0));
+        assert_eq!(store.count_of("one"), 5);
+        assert_eq!(insert_first(&mut store, &Stack::of("two", 1)), Some(1));
+        assert_eq!(
+            insert_first(&mut store, &Stack::of("three", 1)),
+            None,
+            "no slot admits a third prototype"
+        );
+    }
+
+    #[test]
+    fn an_empty_stack_is_inserted_nowhere_and_changes_nothing() {
+        let mut store = Store::new(2);
+        assert_eq!(insert_first(&mut store, &Stack::default()), None);
+        assert_eq!(store.changes(), 0);
+    }
+
+    #[test]
+    fn an_insertion_that_would_overflow_a_slot_is_refused_rather_than_losing_the_overflow() {
+        let mut store = Store::new(1);
+        assert_eq!(
+            insert_first(&mut store, &Stack::of("one", u32::MAX)),
+            Some(0)
+        );
+        let changes = store.changes();
+        assert_eq!(
+            insert_first(&mut store, &Stack::of("one", 9)),
+            None,
+            "answering the slot here would report nine accepted that never were"
+        );
+        assert_eq!(store.count_of("one"), u64::from(u32::MAX));
+        assert_eq!(
+            store.changes(),
+            changes,
+            "a refused insertion changed nothing"
+        );
+    }
+
+    #[test]
+    fn a_second_slot_takes_what_the_first_cannot() {
+        let mut store = Store::new(2);
+        assert_eq!(
+            insert_first(&mut store, &Stack::of("one", u32::MAX)),
+            Some(0)
+        );
+        assert_eq!(
+            insert_first(&mut store, &Stack::of("one", 9)),
+            Some(1),
+            "the first slot does not admit it, so the empty one does"
+        );
+    }
 
     fn ranges() -> Ranges {
         Ranges::new()

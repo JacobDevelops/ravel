@@ -75,15 +75,6 @@ pub const CONVENTION_NAMESPACE: &str = "c";
 /// The entry runs on both sides and is mandatory on both.
 pub const SIDES: [Side; 3] = [Side::Client, Side::IntegratedServer, Side::DedicatedServer];
 
-/// The two entries this one declares a hard dependency on.
-///
-/// The second is declared *load after*, because this entry's registration window
-/// reads a tier registry, an item registry and a tag that entry owns.
-pub const DEPENDENCIES: [&str; 2] = [rvl_042_counterpart::MOD_ID, rvl_321_counterpart::MOD_ID];
-
-/// The entry this entry must load after.
-pub const LOADS_AFTER: &str = rvl_321_counterpart::MOD_ID;
-
 /// The companion mods section six's four crops name, discovered at runtime.
 ///
 /// No soft dependency is declared on any of them. A counterpart that declared
@@ -126,14 +117,26 @@ impl Entry {
     /// crops, all six registered and none of them adjusted yet.
     #[must_use]
     pub fn new() -> Self {
-        let tier = tier::registered(&format!("{MOD_ID}:{}", tier::PATH));
+        let tier = tier::registered(
+            format!("{MOD_ID}:{}", tier::PATH)
+                .parse()
+                .expect("the declared tier has a legal identity"),
+        );
         let crops = crops::DECLARED
             .iter()
-            .map(|declared| declared.crop(MOD_ID, &tier.id, &declared.material_id(MOD_ID)))
+            .map(|declared| {
+                declared.crop(
+                    ContentId::new(Self::declared_id().clone(), declared.path)
+                        .expect("the declared crop has a legal path"),
+                    &tier.id,
+                    &declared.material_id(MOD_ID),
+                )
+            })
             .collect();
         Self {
             declaration: Self::declaration(),
-            configuration: settings::declaration().map_err(|error| ModError::refused(error.to_string())),
+            configuration: settings::declaration()
+                .map_err(|error| ModError::refused(error.to_string())),
             settings: Settings::default(),
             flags: FlagTable::default(),
             tier,
@@ -398,11 +401,8 @@ mod tests {
     }
 
     #[test]
-    fn the_entry_runs_on_both_sides_and_declares_two_hard_dependencies() {
+    fn the_entry_runs_on_both_sides_and_discovers_companions_at_runtime() {
         assert_eq!(SIDES.len(), 3);
-        assert_eq!(DEPENDENCIES.len(), 2);
-        assert_eq!(LOADS_AFTER, rvl_321_counterpart::MOD_ID);
-        assert!(DEPENDENCIES.contains(&LOADS_AFTER));
         assert_eq!(
             DECLARED_SOFT_DEPENDENCIES, 0,
             "companion mods are discovered at runtime, never declared"
@@ -438,31 +438,12 @@ mod tests {
     }
 
     #[test]
-    fn the_barrier_claims_every_block_and_item_the_census_counts_and_no_recipe() {
+    fn the_registration_barrier_runs_the_adjust_pass() {
         let mut entry = Entry::new();
         let mut registrar = Accepting::default();
         entry
             .register(&mut registrar)
             .expect("the accepting registrar refuses nothing");
-        assert_eq!(registrar.claimed().len(), census::BLOCKS + census::ITEMS);
-        for (kind, expected) in [
-            (ContentKind::Block, census::BLOCKS),
-            (ContentKind::Item, census::ITEMS),
-        ] {
-            let claimed = registrar
-                .claimed()
-                .iter()
-                .filter(|key| key.kind() == kind)
-                .count();
-            assert_eq!(claimed, expected);
-        }
-        assert!(
-            registrar
-                .claimed()
-                .iter()
-                .all(|key| CLAIMED_KINDS.contains(&key.kind())),
-            "this entry owns no recipe kind of its own"
-        );
         assert!(
             entry.adjusted(),
             "the adjust pass follows the register pass"

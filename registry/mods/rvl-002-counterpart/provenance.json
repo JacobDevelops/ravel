@@ -16,7 +16,7 @@
     {
       "category": "metadata",
       "locator": "provenance/m6-foundation/RVL-002.json",
-      "revision": "sha256 37bd5f5825929e69e7ddff1a439e5df6dd15867092adad014ec4ee5b70f741e2",
+      "revision": "sha256 e9bb7b7733b3fe412056f4ff541f2eda532d5e60631c2b19d6ef0bef673de9d1",
       "use": "The rights record the specification was written under, which clears code and behaviour and leaves names unresolved. This entry is almost entirely catalogue, so the unresolved names surface is why no identifier here is carried across and why aliases.json is empty.",
       "producedBy": "M6-W3"
     },

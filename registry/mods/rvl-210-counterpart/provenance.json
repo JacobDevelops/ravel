@@ -18,7 +18,7 @@
       "locator": "provenance/m6-foundation/RVL-210.json",
       "use": "The rights record the specification was written under. It clears code and behaviour and leaves names unresolved, which is why the seven storable identifiers section four counts are not carried across and why aliases.json is empty.",
       "producedBy": "M6-W3",
-      "revision": "sha256 ab4a8b46cb64248af48dbb756e5e5acd27cdb0e2728cb80e71972674ca13434d"
+      "revision": "sha256 1687ff702379c4986fe7e7855d7340da0c260774f48fe423c07d3a1c76443066"
     },
     {
       "category": "published-api",

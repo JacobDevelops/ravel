@@ -20,21 +20,21 @@ use ravel_sdk::{JsonValue, json};
 use crate::{census, foods, fuel};
 
 /// Where the census document is written, relative to the package root.
-pub const CENSUS_DOCUMENT: &str = "generated/census.json";
+pub const CENSUS_PATH: &str = "generated/census.json";
 
 /// Where the food document is written, relative to the package root.
-pub const FOODS_DOCUMENT: &str = "generated/foods.json";
+pub const FOODS_PATH: &str = "generated/foods.json";
 
 /// Where the fuel table is written, relative to the package root.
-pub const FUEL_TABLE: &str = "generated/fuel.txt";
+pub const FUEL_PATH: &str = "generated/fuel.txt";
 
 /// Every document, each as its relative path and its rendered bytes.
 #[must_use]
 pub fn documents() -> Vec<(&'static str, String)> {
     vec![
-        (CENSUS_DOCUMENT, census_document()),
-        (FOODS_DOCUMENT, foods_document()),
-        (FUEL_TABLE, fuel_table()),
+        (CENSUS_PATH, census_document()),
+        (FOODS_PATH, foods_document()),
+        (FUEL_PATH, fuel_table()),
     ]
 }
 

@@ -220,4 +220,13 @@ than from the constants they reproduce. `the_generated_documents_regenerate_byte
 and compares them against the bytes on disk, so a table that moved without its document failing is not a
 state this package can be in; setting `RAVEL_REGENERATE_GENERATED` makes the same test write them.
 
-`checks/verify-counterpart-build.sh` runs them: 138 tests.
+`checks/verify-counterpart-build.sh` runs the counterpart unit suites. The root
+`tests/conformance/tests/integration/registry_lifecycle.rs` suite drives all twelve
+counterparts through the real loader registration barrier and service admission, both
+individually and as a manifest-resolved set, on client, integrated-server and
+dedicated-server sides. It compares manifest saved-data versions with each host's
+declaration, checks running states and declared key ownership, and pins independent
+per-kind and total registration censuses, and requires world-access readiness. The combined
+round asserts declared after-dependency order against the driven host sequence.
+The isolated rounds intentionally omit package dependencies to distinguish each entry's
+lifecycle conformance from the full set's dependency-resolution contract.

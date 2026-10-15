@@ -18,14 +18,21 @@ use crate::colour::Colour;
 use crate::transport::WideValues;
 use crate::validators::{Family, KindName, Vocabulary};
 
+/// Where the colour layout is written.
+pub const COLOUR_PATH: &str = "generated/colour.txt";
+/// Where the validator shape is written.
+pub const VALIDATORS_PATH: &str = "generated/validators.json";
+/// Where the wide-value halves are written.
+pub const TRANSPORT_PATH: &str = "generated/transport.txt";
+
 /// The relative path and rendered body of every document this module writes.
 ///
 /// Ordered by path, so the set a caller walks does not depend on the order the
 /// renderers happen to be listed in.
 #[must_use]
-pub fn documents() -> Vec<(String, String)> {
+pub fn documents() -> Vec<(&'static str, String)> {
     let mut documents = vec![colour_layout(), validator_shape(), wide_value_halves()];
-    documents.sort_by(|left, right| left.0.cmp(&right.0));
+    documents.sort_by(|left, right| left.0.cmp(right.0));
     documents
 }
 
@@ -36,7 +43,7 @@ pub fn documents() -> Vec<(String, String)> {
 /// vocabulary recognises that family through, which is the field its default
 /// kind reads its argument from.
 #[must_use]
-pub fn validator_shape() -> (String, String) {
+pub fn validator_shape() -> (&'static str, String) {
     let vocabulary = Vocabulary::placeholder();
     let (lower, upper) = vocabulary.bounds();
     let kinds: Vec<JsonValue> = KindName::ALL
@@ -65,10 +72,7 @@ pub fn validator_shape() -> (String, String) {
         "families": gates,
         "kinds": kinds,
     });
-    (
-        "generated/validators.json".to_owned(),
-        format!("{document}\n"),
-    )
+    (VALIDATORS_PATH, format!("{document}\n"))
 }
 
 /// Renders the two halves each landmark value is stored as.
@@ -82,7 +86,7 @@ pub fn validator_shape() -> (String, String) {
 /// Panics when a store of one value refuses index zero, which would mean the
 /// index arithmetic no longer hides the doubling.
 #[must_use]
-pub fn wide_value_halves() -> (String, String) {
+pub fn wide_value_halves() -> (&'static str, String) {
     let mut values = vec![i32::MIN, -1, 0, i32::MAX];
     for bit in 0..31 {
         let magnitude = 1_i32 << bit;
@@ -108,7 +112,7 @@ pub fn wide_value_halves() -> (String, String) {
         writeln!(body, "{value}\t{high}\t{low}\t{recomposed}")
             .expect("writing to a String cannot fail");
     }
-    ("generated/transport.txt".to_owned(), body)
+    (TRANSPORT_PATH, body)
 }
 
 /// Renders the packed colour layout, one bit at a time.
@@ -117,7 +121,7 @@ pub fn wide_value_halves() -> (String, String) {
 /// and packs the quartet again, so the row says which channel that bit belongs
 /// to and that the round trip returns it unchanged.
 #[must_use]
-pub fn colour_layout() -> (String, String) {
+pub fn colour_layout() -> (&'static str, String) {
     let mut body = String::from("packed\tred\tgreen\tblue\talpha\trepacked\n");
     for bit in 0..u32::BITS {
         let packed = 1_u32 << bit;
@@ -134,7 +138,7 @@ pub fn colour_layout() -> (String, String) {
         )
         .expect("writing to a String cannot fail");
     }
-    ("generated/colour.txt".to_owned(), body)
+    (COLOUR_PATH, body)
 }
 
 #[cfg(test)]
@@ -157,7 +161,7 @@ mod tests {
                 rendered.ends_with('\n'),
                 "`{path}` does not end with a trailing newline"
             );
-            let full = root.join(&path);
+            let full = root.join(path);
             if std::env::var_os("RAVEL_REGENERATE_GENERATED").is_some() {
                 let parent = full.parent().expect("every document names a directory");
                 std::fs::create_dir_all(parent).expect("the directory is this package's own");

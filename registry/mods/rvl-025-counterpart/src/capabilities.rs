@@ -1356,7 +1356,8 @@ mod tests {
             written
                 .showing
                 .expect("the browser was showing a result")
-                .identity,
+                .identity
+                .to_string(),
             "counterpart:result"
         );
         assert!(

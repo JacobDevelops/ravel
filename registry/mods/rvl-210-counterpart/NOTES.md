@@ -67,7 +67,7 @@ root's public surface.
 | §15 the permission levels | not carried; the specification records them as unread | — |
 | §16 the access widening and the one bytecode patch | declarable only | — |
 | §17 the capability-attachment registry | implemented | `src/capabilities.rs` |
-| §17 block-entity lookup, stores, fluids and the side questions | implemented | `src/helpers.rs` |
+| §17 block-entity lookup, stores, fluids and the side questions | answered by `menus::insert_first`, `Store::count_of`, `storage::fill` and `Tank::drain`; block lookup calls the supplied closure directly and side questions use SDK `Side` matching/predicates, with no package lookup or side API | `src/menus.rs`, `src/storage.rs`, `ravel_sdk::Side` |
 | §17 the single-use tank and the mutable box | implemented | `src/storage.rs` |
 | §17 the game-test harness | not carried; it is not in the shipped artifact's path | — |
 
@@ -204,7 +204,7 @@ Each of these needs a seam Ravel does not publish at the reviewed revision. None
 
 ## Evidence
 
-182 inline tests, and every rule with a number, an ordering, a refusal or a format has one: both
+179 inline tests, and every rule with a number, an ordering, a refusal or a format has one: both
 settings client-scoped under one grouping with both defaults off, the three-value scope vocabulary
 and which side resolves each, a runtime write taking effect and a non-changeable setting refusing
 one, a write of the wrong kind refused, the thirty-four kind count with each named once, a kind
@@ -261,14 +261,16 @@ named with nothing rather than an empty registry, seven subcommands with five ow
 the arity of each, the settings subcommand writing the setting it names and refusing an undeclared
 name and a value of another kind, the reload subcommand emptying the channel, a listener installed
 on first registration of each of the four classes, the registry raising after baking and holding
-nothing, specific against broad addressing, the command tree as the whole of the barrier claim,
+nothing, specific against broad addressing,
 every platform codec naming a kind the codec table really has, an insertion that would overflow a
 slot refused rather than losing the overflow and the next slot taking it instead, the crafting
 helpers on a client only, the load-complete latch, the producer service and a repeated contribution,
 the counters through a save and reopen, and a resource reload emptying the channel while a tick does
-not.
+not. The command tree as the whole of the barrier claim is covered by the real-loader integration
+tests in `../../../tests/conformance/tests/integration/registry_lifecycle.rs`, alone and alongside
+every counterpart on each side.
 
-The last of the 182 is `dumps::tests::the_generated_documents_regenerate_byte_for_byte`, which is
+One of the 179 is `dumps::tests::the_generated_documents_regenerate_byte_for_byte`, which is
 not about a rule but about the three documents under `generated/`. `dumps::documents` renders them
 out of the functions that already derive their content — `declarations::own_declarations` with its
 registration order and per-side companion lists for `generated/census.json`, `commands::SUBCOMMANDS`

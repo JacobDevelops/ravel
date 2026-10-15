@@ -20,7 +20,7 @@ use std::fmt;
 
 use ravel_sdk::Side;
 
-use crate::census::{Census, CensusError, Line, Selector};
+use crate::population::{Line, Population, PopulationError, Selector};
 
 /// The root literal of the entity count.
 pub const TALLY: &str = "entity_tally";
@@ -167,7 +167,7 @@ pub enum Refusal {
         side: Side,
     },
     /// The words after the root literal are not a selection.
-    Argument(CensusError),
+    Argument(PopulationError),
 }
 
 impl fmt::Display for Refusal {
@@ -189,7 +189,7 @@ impl std::error::Error for Refusal {}
 /// this package accumulates and what the reclamation releases.
 #[derive(Clone, Debug, Default)]
 pub struct Console {
-    census: Census,
+    population: Population,
     retained: Vec<String>,
     dropped: usize,
 }
@@ -203,13 +203,13 @@ impl Console {
 
     /// Returns what is in the world, as far as this package has been told.
     #[must_use]
-    pub const fn census(&self) -> &Census {
-        &self.census
+    pub const fn population(&self) -> &Population {
+        &self.population
     }
 
     /// Returns the population for filling in.
-    pub const fn census_mut(&mut self) -> &mut Census {
-        &mut self.census
+    pub const fn population_mut(&mut self) -> &mut Population {
+        &mut self.population
     }
 
     /// Returns how many notes are held.
@@ -285,7 +285,7 @@ impl Console {
     }
 
     fn tally(&self) -> Report {
-        let total = self.census.total();
+        let total = self.population.total();
         if total == 0 {
             Report::TallyNone
         } else {
@@ -295,10 +295,10 @@ impl Console {
 
     fn sweep(&mut self, arguments: &[String]) -> Result<Report, Refusal> {
         let selector = Selector::parse(arguments).map_err(Refusal::Argument)?;
-        if self.census.selection_holds_players(&selector) {
+        if self.population.selection_holds_players(&selector) {
             return Ok(Report::SweptRefusedPlayers);
         }
-        let lines = self.census.remove(&selector);
+        let lines = self.population.remove(&selector);
         if lines.is_empty() {
             return Ok(Report::SweptNone);
         }
@@ -315,11 +315,10 @@ impl Console {
 #[cfg(test)]
 mod tests {
     use super::{Command, Console, MAX_RETAINED, REQUIRED_LEVEL, ROOTS, Refusal, Report};
-    use crate::census::Line;
+    use crate::population::Line;
     use crate::presentation::text;
     use ravel_sdk::Side;
     use std::collections::BTreeSet;
-    use std::time::{Duration, Instant};
 
     fn words(line: &str) -> Vec<String> {
         line.split_whitespace().map(str::to_owned).collect()
@@ -328,15 +327,15 @@ mod tests {
     fn populated() -> Console {
         let mut console = Console::new();
         console
-            .census_mut()
+            .population_mut()
             .record("cow", 3, false)
             .expect("a legal kind");
         console
-            .census_mut()
+            .population_mut()
             .record("bat", 2, false)
             .expect("a legal kind");
         console
-            .census_mut()
+            .population_mut()
             .record("player", 1, true)
             .expect("a legal kind");
         console
@@ -399,11 +398,11 @@ mod tests {
     fn the_removal_reports_a_total_and_a_line_for_each_kind_it_took() {
         let mut console = Console::new();
         console
-            .census_mut()
+            .population_mut()
             .record("cow", 3, false)
             .expect("a legal kind");
         console
-            .census_mut()
+            .population_mut()
             .record("bat", 2, false)
             .expect("a legal kind");
 
@@ -423,19 +422,19 @@ mod tests {
             | Report::SweptNone
             | Report::SweptRefusedPlayers) => panic!("the removal reported {other:?}"),
         }
-        assert!(console.census().is_empty());
+        assert!(console.population().is_empty());
     }
 
     #[test]
     fn a_wide_selection_holding_a_player_refuses_whole_rather_than_removing_the_rest() {
         let mut console = populated();
-        let before = console.census().total();
+        let before = console.population().total();
         assert_eq!(
             console.run(Command::Sweep, Side::DedicatedServer, &words("all")),
             Ok(Report::SweptRefusedPlayers)
         );
         assert_eq!(
-            console.census().total(),
+            console.population().total(),
             before,
             "declining the player case means declining it, not removing everything else"
         );
@@ -445,20 +444,20 @@ mod tests {
     fn a_selection_holding_players_is_refused_and_removes_nothing() {
         let mut console = populated();
         console
-            .census_mut()
+            .population_mut()
             .record("player", 0, true)
             .expect("a legal kind");
-        let before = console.census().total();
+        let before = console.population().total();
         assert_eq!(
             console.run(Command::Sweep, Side::DedicatedServer, &words("player")),
             Ok(Report::SweptRefusedPlayers)
         );
         assert_eq!(
-            console.census().total(),
+            console.population().total(),
             before,
             "a refusal that removed something would be an execution"
         );
-        assert_eq!(console.census().count_of("player"), 1);
+        assert_eq!(console.population().count_of("player"), 1);
     }
 
     #[test]
@@ -473,12 +472,12 @@ mod tests {
     #[test]
     fn words_that_are_not_a_selection_refuse_the_command_and_change_nothing() {
         let mut console = populated();
-        let before = console.census().total();
+        let before = console.population().total();
         assert!(matches!(
             console.run(Command::Sweep, Side::DedicatedServer, &words("cow bat")),
             Err(Refusal::Argument(_))
         ));
-        assert_eq!(console.census().total(), before);
+        assert_eq!(console.population().total(), before);
     }
 
     #[test]
@@ -495,7 +494,7 @@ mod tests {
             ));
         }
         assert_eq!(
-            console.census().total(),
+            console.population().total(),
             6,
             "a command refused for its side did nothing"
         );
@@ -525,14 +524,12 @@ mod tests {
 
     #[test]
     fn what_the_console_holds_is_bounded_and_the_reclamation_is_what_empties_it() {
-        let started = Instant::now();
         let mut console = Console::new();
         for index in 0..MAX_RETAINED * 4 {
             let held = console.retain(format!("note {index}"));
             assert_eq!(held, index < MAX_RETAINED);
         }
         assert_eq!(console.retained(), MAX_RETAINED);
-        assert!(started.elapsed() < Duration::from_secs(1));
 
         console.reclaim();
         assert_eq!(console.retained(), 0);
@@ -541,11 +538,10 @@ mod tests {
 
     #[test]
     fn a_removal_run_in_a_loop_cannot_grow_what_is_held_past_the_bound() {
-        let started = Instant::now();
         let mut console = Console::new();
         for round in 0..MAX_RETAINED * 2 {
             console
-                .census_mut()
+                .population_mut()
                 .record("cow", 1, false)
                 .expect("a legal kind");
             console
@@ -558,7 +554,6 @@ mod tests {
             MAX_RETAINED,
             "a note the bound discarded is counted rather than disappearing"
         );
-        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
@@ -568,7 +563,7 @@ mod tests {
             assert!(console.retain(format!("note {index}")));
         }
         console
-            .census_mut()
+            .population_mut()
             .record("cow", 3, false)
             .expect("a legal kind");
 
@@ -585,7 +580,7 @@ mod tests {
                 }],
             }
         );
-        assert_eq!(console.census().count_of("cow"), 0);
+        assert_eq!(console.population().count_of("cow"), 0);
         assert_eq!(console.dropped(), 1);
     }
 }

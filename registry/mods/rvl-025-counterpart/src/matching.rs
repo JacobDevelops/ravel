@@ -168,7 +168,10 @@ impl MatchRule {
     /// Returns [`FillRefused::Full`] at [`MAX_STACKS`] and whatever
     /// [`Stack::of`] refuses for an unusable identity.
     pub fn insert(&mut self, stack: &Stack) -> Result<bool, FillRefused> {
-        check_name(&stack.identity).map_err(FillRefused::Record)?;
+        let length = stack.identity.namespace().as_str().len() + 1 + stack.identity.path().len();
+        if length > crate::data::MAX_NAME {
+            return Err(FillRefused::Record(RecordRefused::Name { length }));
+        }
         if self
             .stacks
             .iter()
@@ -270,7 +273,7 @@ impl MatchRule {
             lines.push(line);
         };
         for stack in &self.stacks {
-            push(stack.identity.clone(), &mut lines, &mut omitted);
+            push(stack.identity.to_string(), &mut lines, &mut omitted);
         }
         for tag in &self.tags {
             for member in members(tag) {
@@ -377,7 +380,7 @@ pub struct Tooltip {
 }
 
 /// Why a rule refused something offered to it.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FillRefused {
     /// The rule already holds as many entries as it may.
     Full {
@@ -422,7 +425,8 @@ mod tests {
             verdict: VerdictMode::Exclusion,
             ..Modes::default()
         });
-        let empty = Stack::default();
+        let mut empty = stack("counterpart:empty");
+        empty.count = 0;
 
         assert!(empty.is_empty());
         assert!(
@@ -560,7 +564,7 @@ mod tests {
 
         assert_eq!(rule.remove(&stack("counterpart:first")), 2);
         assert_eq!(rule.stacks().len(), 1);
-        assert_eq!(rule.stacks()[0].identity, "counterpart:second");
+        assert_eq!(rule.stacks()[0].identity.to_string(), "counterpart:second");
     }
 
     #[test]
@@ -571,7 +575,7 @@ mod tests {
             .expect("the rule takes it");
 
         assert_eq!(added, 1);
-        assert_eq!(rule.stacks()[0].identity, "counterpart:machine");
+        assert_eq!(rule.stacks()[0].identity.to_string(), "counterpart:machine");
     }
 
     #[test]
@@ -579,7 +583,11 @@ mod tests {
         let mut rule = MatchRule::new();
         let contents = [
             stack("counterpart:first"),
-            Stack::default(),
+            {
+                let mut empty = stack("counterpart:empty");
+                empty.count = 0;
+                empty
+            },
             stack("counterpart:first"),
             stack("counterpart:second"),
         ];

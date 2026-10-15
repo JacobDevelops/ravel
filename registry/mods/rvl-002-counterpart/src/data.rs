@@ -734,7 +734,12 @@ mod tests {
         let flag = depended::flag_id(depended::GROUND_CONVERT_BY_MATERIAL)
             .expect("the dependency names its conversion flag");
         flags.publish_constant(flag, true);
-        let held = crate::tier::declared("test:6", "test:ground", "test:material", false);
+        let held = crate::tier::declared(
+            "test:6".parse().expect("a legal tier identity"),
+            "test:ground",
+            "test:material",
+            false,
+        );
 
         for moisture in 0..=highest {
             let converted = crate::ground::convert(&flags, None, true, &held, moisture, 0);
@@ -753,7 +758,13 @@ mod tests {
             .iter()
             .filter(|held| held.declares_companion())
         {
-            let crop = declared.crop("test", "test:6", &declared.material_id("test"));
+            let crop = declared.crop(
+                format!("test:{}", declared.path)
+                    .parse()
+                    .expect("a legal crop identity"),
+                &"test:6".parse().expect("a legal tier identity"),
+                &declared.material_id("test"),
+            );
             let state = crops::state(declared, &crop, false, &|_| false, &|_| 1);
             assert_eq!(state, rvl_321_counterpart::Availability::Unobtainable);
             assert_ne!(

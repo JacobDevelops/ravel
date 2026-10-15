@@ -5,7 +5,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-num-traits.workspace = true
+num-traits = { version = "0.2.19", default-features = false }
 ravel-sdk.workspace = true
 rvl-120-counterpart = { path = "../rvl-120-counterpart", version = "0.1.0" }
 

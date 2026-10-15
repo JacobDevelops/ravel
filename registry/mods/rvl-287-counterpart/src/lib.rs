@@ -166,7 +166,7 @@ impl Client {
 
 /// The rendering library, as the loader drives it.
 #[derive(Debug)]
-pub struct Library {
+pub struct Entry {
     side: Side,
     client: ClientOnly<Client>,
     fault: Option<KindError>,
@@ -175,7 +175,7 @@ pub struct Library {
     last_observed: Option<GameEvent>,
 }
 
-impl Library {
+impl Entry {
     /// Builds the library for the side it is running on.
     ///
     /// On a client the eight built-in kinds are registered here, which is where
@@ -233,7 +233,7 @@ impl Library {
     ///
     /// # Errors
     ///
-    /// The same as [`Library::client`].
+    /// The same as [`Entry::client`].
     pub fn client_mut(&mut self) -> Result<&mut Client, ModError> {
         let side = self.side;
         self.client
@@ -356,7 +356,7 @@ impl Library {
 }
 
 #[declare_mod(id = "rvl_287_counterpart")]
-impl Mod for Library {
+impl Mod for Entry {
     fn enter(&mut self, state: LifecycleState) -> Result<(), ModError> {
         if let Some(fault) = &self.fault {
             return Err(ModError::Refused {
@@ -377,13 +377,13 @@ impl Mod for Library {
     }
 }
 
-export_mod!(|side| Library::new(side));
+export_mod!(|side| Entry::new(side));
 
 #[cfg(test)]
 mod tests {
     use ravel_sdk::json;
 
-    use super::{Face, GameEvent, Library, MAX_PENDING, MOD_ID, ModelError, Resolved, STAGE};
+    use super::{Entry, Face, GameEvent, MAX_PENDING, MOD_ID, ModelError, Resolved, STAGE};
     use crate::kinds::{BUILT_IN, Context};
     use ravel_sdk::prelude::*;
 
@@ -402,13 +402,13 @@ mod tests {
 
     #[test]
     fn the_declared_identity_is_the_one_the_package_carries() {
-        assert_eq!(Library::declared_id().as_str(), MOD_ID);
-        assert_eq!(Library::new(Side::Client).id().as_str(), MOD_ID);
+        assert_eq!(Entry::declared_id().as_str(), MOD_ID);
+        assert_eq!(Entry::new(Side::Client).id().as_str(), MOD_ID);
     }
 
     #[test]
     fn a_client_registers_the_eight_kinds_at_construction() {
-        let library = Library::new(Side::Client);
+        let library = Entry::new(Side::Client);
         assert!(library.runs_here());
         let client = library.client().expect("a client has client state");
         assert_eq!(client.registry().len(), BUILT_IN.len());
@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn a_dedicated_server_registers_nothing_and_listens_to_nothing() {
         for side in [Side::DedicatedServer, Side::IntegratedServer] {
-            let mut library = Library::new(side);
+            let mut library = Entry::new(side);
             assert!(!library.runs_here(), "{side:?} builds no client state");
             assert!(library.client().is_err(), "{side:?}");
             assert!(library.supply("base:wall", wall()).is_err(), "{side:?}");
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn a_supplied_declaration_reaches_a_model_only_after_a_reload() {
-        let mut library = Library::new(Side::Client);
+        let mut library = Entry::new(Side::Client);
         assert!(
             library
                 .supply("base:wall", wall())
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn a_reload_drains_the_queue_so_the_same_document_is_not_taken_twice() {
-        let mut library = Library::new(Side::Client);
+        let mut library = Entry::new(Side::Client);
         library.supply("base:wall", wall()).expect("accepted");
         library
             .observe(GameEvent::ResourcesReloaded)
@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn the_supply_queue_is_capped_rather_than_grown_between_reloads() {
-        let mut library = Library::new(Side::Client);
+        let mut library = Entry::new(Side::Client);
         let mut accepted = 0usize;
         for index in 0..MAX_PENDING + 64 {
             if library
@@ -539,7 +539,7 @@ mod tests {
 
     #[test]
     fn a_refused_declaration_is_answered_as_refused_rather_than_as_absent() {
-        let mut library = Library::new(Side::Client);
+        let mut library = Entry::new(Side::Client);
         let mut named_nothing = wall();
         named_nothing["layer"] = json!("nothing_names_this");
         library
@@ -580,7 +580,7 @@ mod tests {
 
     #[test]
     fn an_unrelated_signal_does_not_rebuild_the_table() {
-        let mut library = Library::new(Side::Client);
+        let mut library = Entry::new(Side::Client);
         library.supply("base:wall", wall()).expect("accepted");
         for event in [GameEvent::ClientTick, GameEvent::ServerTick] {
             library.observe(event).expect("observed");
@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn this_library_declares_no_content_and_no_configuration() {
-        let library = Library::new(Side::Client);
+        let library = Entry::new(Side::Client);
         assert!(
             library
                 .content_declaration()
@@ -617,13 +617,13 @@ mod tests {
 
     #[test]
     fn the_stage_this_library_would_draw_at_is_a_published_one() {
-        let order = Library::stage_order(Library::declared_id()).expect("a published stage");
-        assert_eq!(order.at(STAGE), [Library::declared_id().clone()]);
+        let order = Entry::stage_order(Entry::declared_id()).expect("a published stage");
+        assert_eq!(order.at(STAGE), [Entry::declared_id().clone()]);
     }
 
     #[test]
     fn a_host_fills_the_vocabulary_the_condition_parser_reads() {
-        let mut library = Library::new(Side::Client);
+        let mut library = Entry::new(Side::Client);
         {
             let client = library.client_mut().expect("client");
             let taken = std::mem::take(client.vocabulary_mut());

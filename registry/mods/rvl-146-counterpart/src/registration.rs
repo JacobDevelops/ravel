@@ -495,7 +495,7 @@ impl Collection {
     /// declaration is made instead: an illegal path, a duplicate, a ceiling, and
     /// a block item form colliding with a declared item are all answered by the
     /// declaring call, so a collection that was built is a collection that runs.
-    /// That is what lets [`crate::Shared::content_declaration`] report what this
+    /// That is what lets [`crate::Entry::content_declaration`] report what this
     /// mod declares rather than swallowing a refusal to answer nothing.
     ///
     /// # Panics

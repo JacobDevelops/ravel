@@ -16,7 +16,7 @@
     {
       "category": "metadata",
       "locator": "provenance/m6-foundation/RVL-025.json",
-      "revision": "sha256 403e6370e09de464146f0e9024bb59c3938e70915349969eb6fb2c00b0177d8e",
+      "revision": "sha256 b472b5c5f724e87b9520f5b8e54a1d6a729c322cb82a7cf99f656ace6034505d",
       "use": "The rights record the specification was written under, which clears code, behaviour, textures and models and leaves names unresolved. The unresolved surface is why this package declares no save-compatible alias.",
       "producedBy": "M6-W3"
     },

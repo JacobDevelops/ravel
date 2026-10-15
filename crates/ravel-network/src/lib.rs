@@ -87,6 +87,11 @@ pub enum WireError {
         /// The version the payload named.
         found: u32,
     },
+    /// A text field was not a legal namespaced content identifier.
+    ContentId {
+        /// The text the field carried.
+        text: String,
+    },
 }
 
 impl fmt::Display for WireError {
@@ -112,6 +117,12 @@ impl fmt::Display for WireError {
                 formatter,
                 "the payload is version {found} and this end speaks version {expected}"
             ),
+            Self::ContentId { text } => {
+                write!(
+                    formatter,
+                    "`{text}` is not a legal namespaced content identifier"
+                )
+            }
         }
     }
 }

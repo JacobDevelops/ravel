@@ -118,9 +118,9 @@ Every one of §13's twenty-one rows is here, plus this package's own. Each says 
 
 - **Single construction is answerable (§2).** The original's slot is guarded by a language assertion,
   which a normal launch disables, so a second construction silently replaces the first and every
-  holder of the first is left pointing at a library nothing else uses. `Shared::sole` claims a
+  holder of the first is left pointing at a library nothing else uses. `Entry::sole` claims a
   process-wide slot and *answers* `AlreadyConstructed` for a second claim, which is the refusal the
-  original swallows. The exported entry builds with `Shared::new`, which claims nothing: the
+  original swallows. The exported entry builds with `Entry::new`, which claims nothing: the
   generated members function drives that entry from a test or a diagnostic with no JVM, so a second
   call in one process is a supported path and an entry that faulted there would unwind out of the
   host on the JNI path.
@@ -173,7 +173,7 @@ Every one of §13's twenty-one rows is here, plus this package's own. Each says 
   the recipe lookup is swallowed as though it were a parse failure. `ReadFailure` has one arm, about
   the shape of the document. An identifier the registry no longer holds is still absent rather than
   an error, and a world holding a malformed entry opens with the failure recorded in
-  `Shared::recovered` rather than only logged.
+  `Entry::recovered` rather than only logged.
 - **One count bound in both directions (§7).** The original's declared form refuses zero or less
   while its wire form accepts any thirty-two-bit value, including negatives and values far past any
   stack size.
@@ -230,7 +230,7 @@ Every one of §13's twenty-one rows is here, plus this package's own. Each says 
   is a constant with an upgrade path.
 - **A ceiling never silently deletes a world's data (§6.1).** A world holding more saved memories
   than `MAX_MEMORIES` opens, because refusing would cost a player their world, and every memory that
-  was not held is named in `Shared::recovered`. That world is then not saved: `save_saved_data`
+  was not held is named in `Entry::recovered`. That world is then not saved: `save_saved_data`
   answers a refusal, which the host's contract says leaves the previous data on disk. Writing the
   held memories back would delete the rest permanently, which is the silent loss §6.1 exists to fix,
   moved one layer along. The upgrade path is a larger ceiling; there is no version of this where a
@@ -272,7 +272,7 @@ the portable decision logic is implemented and tested.
   `Channel::contract` produces a real Ravel contract whose name is the identifier this channel
   derived, so what Ravel would route on and what a dependent declared are one string.
 - **The trigger that clears a client's highlights (§9).** Ravel publishes no disconnect event, so
-  `Shared::on_disconnect` is implemented and its caller is the host's.
+  `Entry::on_disconnect` is implemented and its caller is the host's.
 - **The trigger that records a running server (§2, §5).** Ravel publishes no server-started event.
   What a radius send does with and without one is here.
 - **The game's own stream forms (§5.1, §7).** An item stack, a compound tag and an ingredient travel
@@ -287,7 +287,7 @@ the portable decision logic is implemented and tested.
   `Outcome::CouldNotSearch` before it touches any of the four pieces of state, so the "could not
   search" case is the type's shape rather than a discipline a later edit could forget.
 - **The client's highlights and clock are not built on a server.** They live in a `ClientOnly`, so a
-  server side does not hold them rather than holding them and hiding them, and `Shared::advance_to`
+  server side does not hold them rather than holding them and hiding them, and `Entry::advance_to`
   costs a server nothing.
 
 ## Evidence

@@ -12,13 +12,19 @@
 
 use std::fmt::Write;
 
-use ravel_sdk::Side;
-use ravel_sdk::config::DeclarationError;
 use ravel_sdk::{JsonValue, json};
+use ravel_sdk::{ModError, Side};
 
 use crate::arithmetic::{half_extent, radial_positions, sweep_positions, weapon_radius};
 use crate::reusable::{Reusable, UsesLeft};
 use crate::settings;
+
+/// Where the geometry table is written.
+pub const GEOMETRY_PATH: &str = "generated/geometry.txt";
+/// Where the reusable-item table is written.
+pub const REUSABLE_PATH: &str = "generated/reusable.txt";
+/// Where the settings document is written.
+pub const SETTINGS_PATH: &str = "generated/settings.json";
 
 /// The largest declared side length the geometry table walks.
 const LARGEST_SIDE: u32 = 13;
@@ -41,11 +47,11 @@ const ORIGIN: (i32, i32, i32) = (0, 0, 0);
 ///
 /// Returns whatever [`settings::declaration`] refuses, which for the packaged
 /// document is a packaging failure rather than a runtime one.
-pub fn documents() -> Result<Vec<(&'static str, String)>, DeclarationError> {
+pub fn documents() -> Result<Vec<(&'static str, String)>, ModError> {
     Ok(vec![
-        ("generated/geometry.txt", geometry_table()),
-        ("generated/reusable.txt", reusable_table()),
-        ("generated/settings.json", settings_document()?),
+        (GEOMETRY_PATH, geometry_table()),
+        (REUSABLE_PATH, reusable_table()),
+        (SETTINGS_PATH, settings_document()?),
     ])
 }
 
@@ -123,8 +129,9 @@ fn left(uses_left: UsesLeft) -> String {
 /// # Errors
 ///
 /// Returns whatever [`settings::declaration`] refuses.
-pub fn settings_document() -> Result<String, DeclarationError> {
-    let declaration = settings::declaration()?;
+pub fn settings_document() -> Result<String, ModError> {
+    let declaration =
+        settings::declaration().map_err(|error| ModError::refused(error.to_string()))?;
     let settings: Vec<JsonValue> = declaration
         .settings()
         .iter()

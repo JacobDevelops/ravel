@@ -649,22 +649,25 @@ mod tests {
     }
 
     fn tiers() -> Tier {
-        let mut tier = Tier::new("test:tier_1", 1);
+        let mut tier = Tier::new(("test:tier_1").parse().expect("a legal tier identity"), 1);
         tier.adjust("test:ground", "test:material");
         tier
     }
 
     fn kind() -> CropKind {
-        let mut kind = CropKind::new("test:kind", "stem");
+        let mut kind = CropKind::new(
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            "stem",
+        );
         kind.adjust("test:base_seed");
         kind
     }
 
     fn crop() -> Crop {
         Crop::new(
-            "other:alpha",
-            "test:tier_1",
-            "test:kind",
+            ("other:alpha").parse().expect("a legal crop identity"),
+            ("test:tier_1").parse().expect("a legal tier identity"),
+            ("test:kind").parse().expect("a legal crop kind identity"),
             Crafted::Entry {
                 id: "test:crafted".to_owned(),
                 data: None,
@@ -1101,10 +1104,13 @@ mod tests {
 
     #[test]
     fn a_tier_with_no_material_and_a_kind_with_no_base_seed_derive_no_seed_recipe() {
-        let bare_tier = Tier::new("test:tier_1", 1);
+        let bare_tier = Tier::new(("test:tier_1").parse().expect("a legal tier identity"), 1);
         assert_eq!(derive(&crop(), &bare_tier, &kind(), true, &|_| 1).len(), 1);
 
-        let bare_kind = CropKind::new("test:kind", "stem");
+        let bare_kind = CropKind::new(
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            "stem",
+        );
         assert_eq!(derive(&crop(), &tiers(), &bare_kind, true, &|_| 1).len(), 1);
     }
 

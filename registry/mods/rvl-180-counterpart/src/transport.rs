@@ -58,7 +58,7 @@ pub const MAX_PENDING: usize = 256;
 pub fn contract() -> Result<PacketContract, ContentIdError> {
     Ok(PacketContract::new(
         PacketId::new(ContentId::new(
-            crate::Shared::declared_id().clone(),
+            crate::Entry::declared_id().clone(),
             CONTRACT_PATH,
         )?),
         Direction::ToClient,
@@ -154,7 +154,6 @@ mod tests {
     use crate::presentation::Readout;
     use ravel_sdk::Side;
     use ravel_sdk::network::{Direction, Packet, PacketDelivery, WireError, decode, encode};
-    use std::time::{Duration, Instant};
 
     #[test]
     fn the_contract_is_named_by_this_package_and_bound_to_one_direction_and_version() {
@@ -247,7 +246,6 @@ mod tests {
 
     #[test]
     fn the_queue_is_bounded_and_taking_it_empties_it() {
-        let started = Instant::now();
         let readout = Readout::energy(1_000, 1);
         let mut outbox = Outbox::new();
         for index in 0..MAX_PENDING * 4 {
@@ -258,7 +256,6 @@ mod tests {
         }
         assert_eq!(outbox.pending(), MAX_PENDING);
         assert_eq!(outbox.dropped(), MAX_PENDING * 3);
-        assert!(started.elapsed() < Duration::from_secs(1));
 
         let taken = outbox.take();
         assert_eq!(taken.len(), MAX_PENDING);

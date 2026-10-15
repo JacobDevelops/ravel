@@ -48,19 +48,21 @@ fn subjects() -> Vec<(Crop, Tier, CropKind)> {
     let mut subjects = Vec::new();
     for tier in crate::model::shipped_tiers() {
         let mut tier = tier;
-        let tier_path = path_of(&tier.id).to_owned();
+        let tier_path = tier.id.path().to_owned();
         tier.adjust(
             &format!("{}:{tier_path}_ground", crate::MOD_ID),
             &format!("{}:{tier_path}_material", crate::MOD_ID),
         );
         for kind in crate::model::shipped_kinds() {
             let mut kind = kind;
-            let kind_path = path_of(&kind.id).to_owned();
+            let kind_path = kind.id.path().to_owned();
             kind.adjust(&format!("{}:{kind_path}_seed", crate::MOD_ID));
             let crop = Crop::new(
-                &format!("{}:{tier_path}_{kind_path}", crate::MOD_ID),
-                &tier.id,
-                &kind.id,
+                format!("{}:{tier_path}_{kind_path}", crate::MOD_ID)
+                    .parse()
+                    .expect("a legal crop identity"),
+                tier.id.clone(),
+                kind.id.clone(),
                 Crafted::Entry {
                     id: format!("{}:{tier_path}_crafted", crate::MOD_ID),
                     data: None,
@@ -70,10 +72,6 @@ fn subjects() -> Vec<(Crop, Tier, CropKind)> {
         }
     }
     subjects
-}
-
-fn path_of(id: &str) -> &str {
-    id.split_once(':').map_or(id, |(_, path)| path)
 }
 
 /// The three recipes each subject crop derives, rendered as one document.

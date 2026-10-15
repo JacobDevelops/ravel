@@ -18,7 +18,7 @@
       "locator": "provenance/m6-foundation/RVL-146.json",
       "use": "The rights record the specification was written under. It clears code and behaviour and leaves names unresolved, which is why the five compatibility-required spellings section fourteen names are not carried across and why aliases.json is empty.",
       "producedBy": "M6-W3",
-      "revision": "sha256 008c846b5c0cbade9659b0b276f46d323bad113994549b3cdab7b0a739905a56"
+      "revision": "sha256 fb9534300394c888675b57191458a23b4cc5a85428f1d7c99dc94c3108b53fcc"
     },
     {
       "category": "published-api",

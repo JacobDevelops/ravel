@@ -31,7 +31,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "f7cdcd9b1d33108b42acb5229b95fb6be5f0b429a539898770fe17b436dd0d3d"
+        "sha256": "d094b9d06123f5e2f48209958738b015bd5f9cbf20916beadcf089bdf54d32f9"
       },
       {
         "path": "aliases.json",
@@ -54,28 +54,24 @@
         "sha256": "ded7ca34cce97fbcc5e6e3726b0f409dd2cfd9c83429fe89c77e4e2c35a491b2"
       },
       {
-        "path": "src/census.rs",
-        "sha256": "fba81451479fc01a0fd490b8852a5fc87c5fda2827cbcbdcad518d6bdecd6858"
-      },
-      {
         "path": "src/colour.rs",
         "sha256": "7831beacfe780366890df459645405814173f429c8e172d7cc5f06731e6e8886"
       },
       {
         "path": "src/commands.rs",
-        "sha256": "b2c9914900f06a40c60e013f919b520f69325913aa52529b1b5fd6874698c11e"
+        "sha256": "d73f3213a369a5520a2172227de7f7914212b8f0641b709d6568ab4a369a825d"
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "c44b7d1862ce3a08946480a7e103ae7a375eaee37a27ba087daef556ef71deba"
+        "sha256": "3480df425a475711f3336796f4a8ee6de5989fc8f167a9ee196fa817f21e3bf7"
       },
       {
         "path": "src/grouping.rs",
-        "sha256": "2b93fc2f3eb2bf3a5d44fe7a818c6aa611973f04346321451357cbc9b7ffb960"
+        "sha256": "ba5c1fa6cd5ce0f8f370a773eb8dfb73c610ae4c896fec7be46da376c44ba47f"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "f9b677fc03daf4dc5db33e8e0b5e51463ca6ba79773edd0f2ff3d1e47222eb86"
+        "sha256": "f62b24fff4e562f3da09b25f6684dd912121449714c711e9fdbb75c9d82bb166"
       },
       {
         "path": "src/presentation.rs",
@@ -87,12 +83,16 @@
       },
       {
         "path": "src/transport.rs",
-        "sha256": "c587a6fd31f8ecd5e2fc303e448847f81ca7e809c423a6a6ed7d408719962faf"
+        "sha256": "39f8a69f6d8bdca211516046fe9090068e75d62a7a3bb348e872e940ca7bd203"
+      },
+      {
+        "path": "src/population.rs",
+        "sha256": "5b3bc2be960ff7410f697a3fe309de2b253a563c43782741e50aa34b983d2c0e"
       }
     ]
   },
   "provenance": {
     "record": "provenance.json",
-    "sha256": "cc1c49d6d79d0853a9a060cdb78c41e814ce3e12ff4e52f32cca4881cc13030d"
+    "sha256": "d6cd8ac38f6c7cfb96a1dbbfc8d21e94235d28cf5e9f31f03cd78caadad4fa7c"
   }
 }

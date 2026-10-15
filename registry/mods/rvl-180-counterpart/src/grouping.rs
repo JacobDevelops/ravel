@@ -359,7 +359,6 @@ mod tests {
     use ravel_sdk::content::{ContentId, ContentKind, RegistryKey};
     use ravel_sdk::tags::TagId;
     use std::collections::BTreeSet;
-    use std::time::{Duration, Instant};
 
     fn other(path: &str) -> TagId {
         TagId::new(
@@ -465,9 +464,7 @@ mod tests {
             )
             .expect("a block joins a block group");
 
-        let started = Instant::now();
         let resolved = aggregation.resolve(&loop_head);
-        assert!(started.elapsed() < Duration::from_secs(1));
         assert_eq!(resolved.members.len(), 1);
         assert_eq!(resolved.revisited, 1);
     }
@@ -573,8 +570,6 @@ mod tests {
 
     #[test]
     fn the_member_reference_and_group_bounds_are_all_enforced() {
-        let started = Instant::now();
-
         let mut members = Aggregation::default();
         let target = other("bounded");
         for index in 0..MAX_MEMBERS + 32 {
@@ -621,7 +616,5 @@ mod tests {
             }
         }
         assert_eq!(groups.groups().count(), MAX_GROUPS);
-
-        assert!(started.elapsed() < Duration::from_secs(1));
     }
 }

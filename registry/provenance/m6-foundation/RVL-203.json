@@ -5,7 +5,7 @@
     "reviewedAt": null,
     "reviewedBy": "unreviewed; this record and specifications/m6-foundation/RVL-203.md were produced by a single hand in one pass, no independent review. The specification's confidence markers and coverage statement stand in for the absent second reader and are weaker than one.",
     "status": "private-only",
-    "notes": "The read source lives only in the public repository's ignored fixture tree and is not tracked. The specification is tracked at specifications/m6-foundation/RVL-203.md. Neither is publishable while the names surface is unresolved."
+    "notes": "The read source lives only in the public repository's ignored fixture tree and is not tracked. The specification is tracked at specifications/m6-foundation/RVL-203.md and is published in-tree in this public repository. The upstream material is not cleared for publication while the names surface is unresolved."
   },
   "rights": [
     {

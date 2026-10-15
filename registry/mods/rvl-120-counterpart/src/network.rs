@@ -96,7 +96,7 @@ pub fn contract(name: &str, direction: Direction) -> Result<PacketContract, Cont
 }
 
 fn owner() -> &'static ModId {
-    crate::Shared::declared_id()
+    crate::Entry::declared_id()
 }
 
 fn declared(name: &str, direction: Direction) -> PacketContract {

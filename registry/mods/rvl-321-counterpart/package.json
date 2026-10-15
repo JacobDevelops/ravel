@@ -16,6 +16,17 @@
     "dedicated-server"
   ],
   "configurationSchemas": [],
+  "dependencies": [
+    {
+      "id": "rvl_042_counterpart",
+      "relationship": "required",
+      "version": ">=0.1.0, <0.2.0",
+      "order": "after"
+    }
+  ],
+  "savedDataVersions": [
+    1
+  ],
   "authors": [
     {
       "name": "Ravel registry maintainers"
@@ -27,11 +38,11 @@
     "files": [
       {
         "path": "Cargo.toml",
-        "sha256": "9267c88ff3aba2f7f88795d86a83645649792d2fbad5578568ee5c745fc7fa65"
+        "sha256": "a50998ac43b310399f608ed51ca08715300c33f6ed8a33b7a3e07323bfcf51c1"
       },
       {
         "path": "NOTES.md",
-        "sha256": "e36813b5d6309ccbfac5098326d9094c1f2bba81588674e6fba45ab421c086cf"
+        "sha256": "11d7302c4d9413d51acb315c2593a828cba5dcbdb694384e3bced67e9aa6f602"
       },
       {
         "path": "aliases.json",
@@ -59,23 +70,23 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "5d28643adb5aa588b3e1b8ce56af533a52b53cd71fcbdec1e710b13d01782171"
+        "sha256": "a2781597a429b01264453f32333f19dc5f0c0f425dfb1d8c2d8bef17df611fda"
       },
       {
         "path": "src/ground.rs",
-        "sha256": "4965198459635d9ae071fe5526e5a0641660da507eab5eb0573f4376da50a0bb"
+        "sha256": "fea88eb1156c777b2dfae7783484baa86f99b622e8b0a3194f5dc4830d2bd35d"
       },
       {
         "path": "src/growth.rs",
-        "sha256": "b68d8ad073febd622f76794d292d2a2678dcfaec3d5e2afaa4111f64e06bed16"
+        "sha256": "3c227d83980c2b25780a4599fdcedd0c16de4ee4e297258c0bd3082eefac0d4d"
       },
       {
         "path": "src/harvest.rs",
-        "sha256": "383380eb50bd7b4270155035aaa51b132bd7e56d7e83eb4cc9da42f5cbbbd2fe"
+        "sha256": "5ec054334faa1778adc9a3f9ea977e431dd9adb3deecb95d1f79fb192da28fc1"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "550ec71ec01ad38d571eed4d83a4d35809b562672b014bf8e05a74b8846f6338"
+        "sha256": "ff5054fc2c1ee2acc3716d31bc0efb7ab3f959c522596ad691819704dc1b8d06"
       },
       {
         "path": "src/machines.rs",
@@ -83,19 +94,19 @@
       },
       {
         "path": "src/model.rs",
-        "sha256": "e03aee5059049dfcc81a93f22a1b4b780cda6605e6be10f301717e8a9f68da25"
+        "sha256": "f10b21e4f37dddf7ba462f8587cf4b7a173911122d1e28441dded8794f904581"
       },
       {
         "path": "src/recipes.rs",
-        "sha256": "3f08aa175405367f1626e3da10c5d9de80bcfa95e5bbf7de2d148b3043130dd8"
+        "sha256": "51c547e477cc1f6b67728a40271c80731179c24d001225595cf56e6095a63e92"
       },
       {
         "path": "src/registries.rs",
-        "sha256": "fc0597e634fc4ed478b991b9f852d717316c4919329a148bed7f24171af8be15"
+        "sha256": "8b9a685dbaecd69f756c0fdfcfa0c457c21f677c2b10a2003f9c1f288289f0c0"
       },
       {
         "path": "src/settings.rs",
-        "sha256": "9177ce62f5d4e6a1140dfe6fb34b2bf153987ce2509f4dda5c58dd0500099aad"
+        "sha256": "ea3320217dd09aeb21cef2bd2588f5a9ec7f01458e57b04e6c7acf0887061b78"
       },
       {
         "path": "src/world.rs",
@@ -105,6 +116,6 @@
   },
   "provenance": {
     "record": "provenance.json",
-    "sha256": "4eadeb0a7be460dcd1733daab14de0a916ca195f05ccfe8da5c4fdc443258908"
+    "sha256": "db0ae41c5108c0ffdd29c6549c0fd3ea0675327aadf87905c5edff70e647168f"
   }
 }

@@ -16,6 +16,9 @@
     "dedicated-server"
   ],
   "configurationSchemas": [],
+  "savedDataVersions": [
+    1
+  ],
   "authors": [
     {
       "name": "Ravel registry maintainers"
@@ -31,7 +34,7 @@
       },
       {
         "path": "NOTES.md",
-        "sha256": "bff7d53cf7edfdae251760cecdf13a184114b25724b4bc79df1cfffaee96f129"
+        "sha256": "658efd6d94f9e8a41207901b78d6e53ab03cd0a7e43a2fa65bd223c6c362b2b4"
       },
       {
         "path": "aliases.json",
@@ -71,19 +74,15 @@
       },
       {
         "path": "src/dumps.rs",
-        "sha256": "a25000b527366dbd9f1033ff8aa129a22e94d7e84a284ace858b1db9284a8ab5"
-      },
-      {
-        "path": "src/helpers.rs",
-        "sha256": "05c97ddb763c9bbd4bd0811ced1c4d4689006c62ed15370e49479d6cce46cda5"
+        "sha256": "5f6ab3b778b9b6d11f3b391497b3fcf2bbe0e97e623ef309098211ef690c39ec"
       },
       {
         "path": "src/lib.rs",
-        "sha256": "5751a76b831f23dc3e09130e73cb42e6c1b5dbeaca41cbfb42991cfb02e00867"
+        "sha256": "2e4b3e08934b4364d462b028e920b9774289a96a18496b8c417758fef3356b13"
       },
       {
         "path": "src/menus.rs",
-        "sha256": "ead6374059e01fef7908ce70687a29ea537b5c5ea6476719d5b71ae7d6b13cee"
+        "sha256": "c7aece91bd463933fbdf15bc8738fddf2bd6d93bd1447042431a99d09723e30a"
       },
       {
         "path": "src/persistence.rs",
@@ -99,7 +98,7 @@
       },
       {
         "path": "src/settings.rs",
-        "sha256": "4f158a4d53e8dd43b1c0ae7261b5d04690c5fa94bbdfb12f1a16ead154ba71b4"
+        "sha256": "d7406cb32ec5d431d72b306e4ea3daa3da54e7cc0b30bd00efd649feab134d32"
       },
       {
         "path": "src/shapes.rs",
@@ -107,7 +106,7 @@
       },
       {
         "path": "src/storage.rs",
-        "sha256": "3884a67c765854d2a14024655e62f447f6b1e582dcf93ce394824dd069008268"
+        "sha256": "531ee3a3f5f932333e3d1649a0097a607143ecee83969ab50e7b49dc3b354de9"
       },
       {
         "path": "src/transport.rs",
@@ -117,6 +116,6 @@
   },
   "provenance": {
     "record": "provenance.json",
-    "sha256": "668bee664a22e3705a9d7d3e1ca35b4cf2fcde5507d11e68ae6bf483aaaeccee"
+    "sha256": "55099724f984a29ba983ec449b94856ea8b80c236ec74b972d1d59b68bcea4b8"
   }
 }

@@ -124,7 +124,7 @@ impl GlobalData {
     /// Returns [`SavedDataError`] when the declared version is not a legal one,
     /// which for a constant is a packaging failure.
     pub fn declaration() -> Result<SavedDataDeclaration, SavedDataError> {
-        SavedDataDeclaration::new(crate::Shared::declared_id().clone(), [version()?])
+        SavedDataDeclaration::new(crate::Entry::declared_id().clone(), [version()?])
     }
 
     /// Builds the envelope the loader stores.
@@ -140,7 +140,7 @@ impl GlobalData {
             .map(|(name, record)| (name.as_str(), record))
             .collect();
         Ok(SavedDataEnvelope::current(
-            crate::Shared::declared_id().clone(),
+            crate::Entry::declared_id().clone(),
             version,
             json!({ "scope": SCOPE, "records": records }),
         ))
@@ -182,7 +182,7 @@ impl GlobalData {
 /// which a version may not be and which for a constant is a packaging failure.
 fn version() -> Result<SavedDataVersion, SavedDataError> {
     SavedDataVersion::new(VERSION).ok_or_else(|| SavedDataError::NoVersionsDeclared {
-        owner: crate::Shared::declared_id().clone(),
+        owner: crate::Entry::declared_id().clone(),
     })
 }
 

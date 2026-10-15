@@ -75,7 +75,7 @@ pub fn may_grow(
         return Err(Blocked::Foundation);
     }
     if require_effective_ground
-        && crop.id != EXEMPT_CROP
+        && EXEMPT_CROP.split_once(':') != Some((crop.id.namespace().as_str(), crop.id.path()))
         && !tier.is_effective_ground(around.below.as_deref())
     {
         return Err(Blocked::Ground);
@@ -205,13 +205,18 @@ mod tests {
     use crate::model::Crafted;
 
     fn tiered() -> Tier {
-        let mut tier = Tier::new("test:tier", 1);
+        let mut tier = Tier::new(("test:tier").parse().expect("a legal tier identity"), 1);
         tier.adjust("test:ground", "test:material");
         tier
     }
 
     fn crop() -> Crop {
-        Crop::new("test:crop", "test:tier", "test:kind", Crafted::Nothing)
+        Crop::new(
+            ("test:crop").parse().expect("a legal crop identity"),
+            ("test:tier").parse().expect("a legal tier identity"),
+            ("test:kind").parse().expect("a legal crop kind identity"),
+            Crafted::Nothing,
+        )
     }
 
     #[test]
@@ -262,11 +267,13 @@ mod tests {
             ..Surroundings::default()
         };
         let mut exempt = crop();
-        exempt.id = EXEMPT_CROP.to_owned();
+        exempt.id = EXEMPT_CROP.parse().expect("a legal crop identity");
         assert_eq!(may_grow(&exempt, &tiered(), &around, true), Ok(()));
 
         let mut imitator = crop();
-        imitator.id = "other:tier_one_crop".to_owned();
+        imitator.id = "other:tier_one_crop"
+            .parse()
+            .expect("a legal crop identity");
         assert_eq!(
             may_grow(&imitator, &tiered(), &around, true),
             Err(Blocked::Ground),

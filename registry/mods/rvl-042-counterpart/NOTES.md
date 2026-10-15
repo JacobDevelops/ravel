@@ -80,7 +80,7 @@ package declares the shape where a shape is declarable and carries no pretend im
 - **The data-pack condition (§4).** No conditioned data-pack loading is public.
   `flags::condition_declaration` writes the condition down as data and nothing evaluates it at load.
 - **Forcing another mod's declarations to exist (§4).** Nothing public lets a mod do that, so a
-  dependent's flags are published by their owner into `Shared::flags_mut` before anything asks, and
+  dependent's flags are published by their owner into `Entry::flags_mut` before anything asks, and
   the ordering guarantee is met by declaration order rather than by discovery.
 - **The record file (§5.2).** No public surface gives a mod arbitrary files in the configuration
   directory. `Selection::read` and `Selection::write` carry the flat map, the skipped pointer key,
@@ -88,7 +88,7 @@ package declares the shape where a shape is declarable and carries no pretend im
 - **The registered content (§6).** Ravel's registry has four kinds — block, item, recipe and command
   — so the item-level data value, the ingredient kind and the condition kind have no key to claim.
   The sound event is not among them: `ravel_sdk::audio` declares a sound entry and the event that
-  plays it, so `Shared::audio_declaration` declares both and `Shared::announce_sweep` turns §11's
+  plays it, so `Entry::audio_declaration` declares both and `Entry::announce_sweep` turns §11's
   "a sound plays once if anything was harvested" into a request the host drains through
   `Mod::take_play_requests`. The SDK's own caveat stands: the crossing is tested on both sides
   against a stand-in game and no launched game has played one. The five recipe kinds and the command
@@ -116,7 +116,7 @@ package declares the shape where a shape is declarable and carries no pretend im
   menu surface, and there is no such surface to adapt.
 - **§11's two ordering rules are carried as portable logic.** `arithmetic::Family::ORDER` is the
   fixed order a combination tool's use-on interaction tries its three families in, and
-  `arithmetic::combination_use_on` stops at the first that applies, so two families that both apply
+  `arithmetic::combination_family` stops at the first that applies, so two families that both apply
   are decided by the order rather than by the caller. `arithmetic::soak` wets every soil block in the
   cube to maximum and advances a growth step on a growable block whose own draw falls under the
   declared probability, which makes the probability per block. What maximum wetness is and what a
